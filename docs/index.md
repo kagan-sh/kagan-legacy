@@ -5,7 +5,7 @@ Keyboard-first Kanban TUI for AI-powered development.
 ## Quick start
 
 ```bash
-uv run kagan
+uv tool install kagan
 ```
 
 ## Docs

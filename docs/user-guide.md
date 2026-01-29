@@ -19,16 +19,10 @@ Kagan is a keyboard-first Kanban TUI for AI-assisted development.
 ## Install & run
 
 ```bash
-uv run kagan
-```
+uv tool install kagan
 
-Common flags:
-
-```bash
-uv run kagan --version
-uv run kagan --config /path/to/.kagan/config.toml
-uv run kagan --db /path/to/.kagan/state.db
-uv run kagan --skip-preflight
+# Execute in a git repo or a any folder where you intend to perform AI-assisted work
+kagan
 ```
 
 ## First run

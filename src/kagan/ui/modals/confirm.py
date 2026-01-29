@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from textual.binding import Binding
 from textual.containers import Container
 from textual.screen import ModalScreen
-from textual.widgets import Label
+from textual.widgets import Footer, Label
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -33,6 +33,7 @@ class ConfirmModal(ModalScreen[bool]):
             if self._message:
                 yield Label(self._message, classes="confirm-message")
             yield Label("Press Y to confirm, N to cancel", classes="confirm-hint")
+        yield Footer()
 
     def action_confirm(self) -> None:
         self.dismiss(True)

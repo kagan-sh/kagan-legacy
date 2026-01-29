@@ -13,6 +13,8 @@ developers working on the codebase. User documentation lives in `docs/`.
 
 ## Getting Started
 
+Clone the repo and execute:
+
 ```bash
 uv run kagan
 ```

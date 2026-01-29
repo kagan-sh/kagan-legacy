@@ -1,16 +1,29 @@
 """TicketCard widget for displaying a Kanban ticket."""
 
-from dataclasses import dataclass
+from __future__ import annotations
 
-from textual import events
-from textual.app import ComposeResult
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 from textual.message import Message
-from textual.reactive import reactive
+from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Label
 
-from kagan.constants import COLUMN_ORDER
-from kagan.database.models import Ticket, TicketPriority, TicketStatus
+from kagan.constants import (
+    CARD_BACKEND_MAX_LENGTH,
+    CARD_DESC_MAX_LENGTH,
+    CARD_HAT_MAX_LENGTH,
+    CARD_ID_MAX_LENGTH,
+    CARD_REVIEW_MAX_LENGTH,
+    CARD_TITLE_LINE_WIDTH,
+)
+from kagan.database.models import Ticket, TicketPriority, TicketStatus, TicketType
+
+if TYPE_CHECKING:
+    from textual import events
+    from textual.app import ComposeResult
+    from textual.timer import Timer
 
 
 class TicketCard(Widget):
@@ -18,73 +31,100 @@ class TicketCard(Widget):
 
     can_focus = True
 
-    ticket: reactive[Ticket | None] = reactive(None)
-    _dragging: bool = False
-    _drag_start_x: int = 0
+    ticket: reactive[Ticket | None] = reactive(None, recompose=True)
+    is_agent_active: var[bool] = var(False, toggle_class="agent-active")
+    is_session_active: var[bool] = var(False, toggle_class="session-active")
+    iteration_info: reactive[str] = reactive("", recompose=True)
+    _pulse_timer: Timer | None = None
 
     @dataclass
     class Selected(Message):
         ticket: Ticket
 
-    @dataclass
-    class MoveRequested(Message):
-        ticket: Ticket
-        forward: bool = True
-
-    @dataclass
-    class EditRequested(Message):
-        ticket: Ticket
-
-    @dataclass
-    class DeleteRequested(Message):
-        ticket: Ticket
-
-    @dataclass
-    class DragMove(Message):
-        ticket: Ticket
-        target_status: TicketStatus | None
-
     def __init__(self, ticket: Ticket, **kwargs) -> None:
         super().__init__(id=f"card-{ticket.id}", **kwargs)
         self.ticket = ticket
+        # Sync session state from ticket
+        self.is_session_active = getattr(ticket, "session_active", False)
 
     def compose(self) -> ComposeResult:
         """Compose the card layout."""
         if self.ticket is None:
             return
 
-        # Line 1: Title (truncated to fit)
-        yield Label(self._truncate_title(self.ticket.title, 18), classes="card-title")
+        # Line 1-2: Type badge + Title (supports 2 lines)
+        type_badge = self._get_type_badge()
+        title_lines = self._wrap_title(self.ticket.title, CARD_TITLE_LINE_WIDTH)
 
-        # Line 2: Priority icon + description
+        # First line with badge
+        first_line = f"{type_badge} {title_lines[0]}" if title_lines else f"{type_badge} Untitled"
+        yield Label(first_line, classes="card-title")
+
+        # Second line for long titles (indented to align with first line)
+        if len(title_lines) > 1:
+            yield Label(f"  {title_lines[1]}", classes="card-title-continued")
+
+        # Description line: Priority icon + description
         priority_class = self._get_priority_class()
         priority_icon = {"LOW": "▽", "MED": "◇", "HIGH": "△"}[self.ticket.priority_label]
         desc = self.ticket.description or "No description"
-        desc_text = f"{priority_icon} {self._truncate_title(desc, 15)}"
+        desc_text = f"{priority_icon} {self._truncate_title(desc, CARD_DESC_MAX_LENGTH)}"
         yield Label(desc_text, classes=f"card-desc {priority_class}")
 
-        # Line 3: hat + ID + date
+        # Meta line: session indicator + backend/hat + ID + date
+        session_indicator = self._get_session_indicator()
         hat = getattr(self.ticket, "assigned_hat", None) or ""
-        hat_display = hat[:8] if hat else ""  # Truncate hat to 8 chars
-        ticket_id = f"#{self.ticket.short_id[:4]}"  # Short 4-char ID
-        date_str = self.ticket.created_at.strftime("%m/%d")
+        hat_display = hat[:CARD_HAT_MAX_LENGTH] if hat else ""
+        ticket_id = f"#{self.ticket.short_id[:CARD_ID_MAX_LENGTH]}"
+        date_str = self.ticket.created_at.strftime("%m.%d.%y")
+        backend = getattr(self.ticket, "agent_backend", None) or ""
 
-        # Build meta line with spacing
-        if hat_display:
-            meta_text = f"{hat_display}  {ticket_id} {date_str}"
-        else:
-            meta_text = f"{ticket_id} {date_str}"
+        # Build meta line with session indicator
+        meta_parts = []
+        if session_indicator:
+            meta_parts.append(session_indicator)
+        if backend:
+            meta_parts.append(backend[:CARD_BACKEND_MAX_LENGTH])
+        elif hat_display:
+            meta_parts.append(hat_display)
+        meta_parts.append(ticket_id)
+        meta_parts.append(date_str)
 
+        meta_text = " ".join(meta_parts)
         yield Label(meta_text, classes="card-meta")
+
+        # Review info for REVIEW tickets
+        if self.ticket.status == TicketStatus.REVIEW:
+            summary = self.ticket.review_summary or "No summary"
+            yield Label(
+                self._truncate_title(f"Summary: {summary}", CARD_REVIEW_MAX_LENGTH),
+                classes="card-review",
+            )
+            yield Label(self._format_checks_status(), classes="card-checks")
+
+        # Iteration info (if agent is running) - combined with progress
+        if self.iteration_info:
+            yield Label(self.iteration_info, classes="card-iteration")
 
     def _get_priority_class(self) -> str:
         """Get CSS class for priority."""
         if self.ticket is None:
             return "low"
         priority = self.ticket.priority
-        if isinstance(priority, TicketPriority):
-            priority = priority.value
-        return {0: "low", 1: "medium", 2: "high"}.get(priority, "medium")
+        if isinstance(priority, int):
+            priority = TicketPriority(priority)
+        return priority.css_class
+
+    def _get_type_badge(self) -> str:
+        """Get type badge indicator for ticket type."""
+        if self.ticket is None:
+            return "👤"
+        ticket_type = self.ticket.ticket_type
+        if isinstance(ticket_type, str):
+            ticket_type = TicketType(ticket_type)
+        if ticket_type == TicketType.AUTO:
+            return "⚡"  # AUTO mode
+        return "👤"  # PAIR mode (human)
 
     def _truncate_title(self, title: str, max_length: int) -> str:
         """Truncate title if too long."""
@@ -92,42 +132,88 @@ class TicketCard(Widget):
             return title
         return title[: max_length - 3] + "..."
 
-    def on_mouse_down(self, event: events.MouseDown) -> None:
-        """Start potential drag operation."""
-        self._drag_start_x = event.screen_x
-        self.capture_mouse()
+    def _wrap_title(self, title: str, line_width: int) -> list[str]:
+        """Wrap title into multiple lines, respecting word boundaries."""
+        if len(title) <= line_width:
+            return [title]
 
-    def on_mouse_up(self, event: events.MouseUp) -> None:
-        """End drag operation or handle click."""
-        was_dragging = self._dragging
-        self._dragging = False
-        self.release_mouse()
-        self.remove_class("dragging")
+        # Try to break at word boundary
+        words = title.split()
+        lines: list[str] = []
+        current_line = ""
 
-        if was_dragging and self.ticket:
-            # Calculate which column we're over based on screen position
-            target_status = self._get_target_status(event.screen_x)
-            if target_status and target_status != self.ticket.status:
-                self.post_message(self.DragMove(self.ticket, target_status))
-        elif self.ticket:
-            # Was a click, not a drag
+        for word in words:
+            test_line = f"{current_line} {word}".strip() if current_line else word
+            if len(test_line) <= line_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                # Handle very long words with ternary
+                current_line = word[: line_width - 3] + "..." if len(word) > line_width else word
+
+            # Limit to 2 lines
+            if len(lines) >= 2:
+                break
+
+        if current_line and len(lines) < 2:
+            # Truncate final line if needed
+            if len(current_line) > line_width:
+                current_line = current_line[: line_width - 3] + "..."
+            lines.append(current_line)
+
+        return lines if lines else [title[: line_width - 3] + "..."]
+
+    def _get_session_indicator(self) -> str:
+        """Get visual indicator for session/agent state."""
+        if self.ticket is None:
+            return ""
+
+        # Agent actively working - show animated indicator
+        if self.is_agent_active:
+            return "●"  # Filled circle (will pulse via CSS)
+
+        # tmux session exists but not actively working
+        if self.is_session_active or getattr(self.ticket, "session_active", False):
+            return "◉"  # Circle with dot (steady state)
+
+        return ""
+
+    def _format_checks_status(self) -> str:
+        """Format checks status for review display."""
+        if self.ticket is None:
+            return "Checks: unknown"
+        if self.ticket.checks_passed is True:
+            return "Checks: passed"
+        if self.ticket.checks_passed is False:
+            return "Checks: failed"
+        return "Checks: not run"
+
+    def on_click(self, event: events.Click) -> None:
+        """Handle click: single-click focuses, double-click opens details."""
+        if event.chain == 1:
+            # Single click - just focus
+            self.focus()
+        elif event.chain >= 2 and self.ticket:
+            # Double click - open details
             self.post_message(self.Selected(self.ticket))
 
-    def on_mouse_move(self, event: events.MouseMove) -> None:
-        """Handle mouse movement during drag."""
-        if event.button != 0:
-            return
-        # Start drag if moved more than 5 pixels horizontally
-        if not self._dragging and abs(event.screen_x - self._drag_start_x) > 5:
-            self._dragging = True
-            self.add_class("dragging")
+    def watch_is_agent_active(self, active: bool) -> None:
+        """Start/stop pulse animation timer when agent state changes."""
+        if active:
+            self._pulse_timer = self.set_interval(0.6, self._toggle_pulse)
+        else:
+            if self._pulse_timer is not None:
+                self._pulse_timer.stop()
+                self._pulse_timer = None
+            self.remove_class("agent-pulse")
 
-    def _get_target_status(self, screen_x: int) -> TicketStatus | None:
-        """Determine target column based on screen X position."""
-        try:
-            screen_width = self.app.size.width
-            column_width = screen_width // 4
-            column_index = min(3, max(0, screen_x // column_width))
-            return COLUMN_ORDER[column_index]
-        except Exception:
-            return None
+    def _toggle_pulse(self) -> None:
+        """Toggle the pulse class for animation effect."""
+        self.toggle_class("agent-pulse")
+
+    def on_unmount(self) -> None:
+        """Clean up timer when card is removed."""
+        if self._pulse_timer is not None:
+            self._pulse_timer.stop()
+            self._pulse_timer = None

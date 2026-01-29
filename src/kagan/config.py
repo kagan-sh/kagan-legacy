@@ -1,9 +1,34 @@
 """Configuration loader for Kagan."""
 
+from __future__ import annotations
+
+import platform
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+# OS detection for platform-specific commands
+type OS = Literal["linux", "macos", "windows", "*"]
+
+_OS_MAP = {"Linux": "linux", "Darwin": "macos", "Windows": "windows"}
+CURRENT_OS: str = _OS_MAP.get(platform.system(), "linux")
+
+
+def get_os_value[T](matrix: Mapping[str, T]) -> T | None:
+    """Get OS-specific value with wildcard fallback.
+
+    Args:
+        matrix: Dict mapping OS names to values (e.g., {"macos": "cmd1", "*": "cmd2"})
+
+    Returns:
+        The value for the current OS, or the wildcard "*" value, or None.
+    """
+    return matrix.get(CURRENT_OS) or matrix.get("*")
 
 
 class GeneralConfig(BaseModel):
@@ -11,33 +36,40 @@ class GeneralConfig(BaseModel):
 
     max_concurrent_agents: int = Field(default=3)
     default_base_branch: str = Field(default="main")
+    auto_start: bool = Field(default=False)
+    auto_approve: bool = Field(default=False)
+    auto_merge: bool = Field(default=False)
+    max_iterations: int = Field(default=10)
+    iteration_delay_seconds: float = Field(default=2.0)
+    default_worker_agent: str = Field(default="claude")
 
 
 class AgentConfig(BaseModel):
-    """Configuration for an agent type."""
+    """Configuration for an ACP agent."""
 
-    model: str = Field(default="claude-3-5-sonnet")
-    temperature: float = Field(default=0.7)
-    cli_tool: str = Field(default="claude")
-    run_on: str = Field(default="all")
-
-
-class AgentsConfig(BaseModel):
-    """Configuration for all agents."""
-
-    planner: AgentConfig = Field(default_factory=AgentConfig)
-    worker: AgentConfig = Field(default_factory=AgentConfig)
-    overseer: AgentConfig = Field(default_factory=AgentConfig)
+    identity: str = Field(..., description="Unique identifier (e.g., 'claude.com')")
+    name: str = Field(..., description="Display name (e.g., 'Claude Code')")
+    short_name: str = Field(..., description="CLI alias (e.g., 'claude')")
+    protocol: Literal["acp"] = Field(default="acp", description="Protocol type")
+    run_command: dict[str, str] = Field(
+        default_factory=dict,
+        description="OS-specific ACP commands for AUTO mode (e.g., 'npx claude-code-acp')",
+    )
+    interactive_command: dict[str, str] = Field(
+        default_factory=dict,
+        description="OS-specific CLI commands for PAIR mode (e.g., 'claude')",
+    )
+    active: bool = Field(default=True, description="Whether this agent is active")
 
 
 class KaganConfig(BaseModel):
     """Root configuration model."""
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
-    agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    agents: dict[str, AgentConfig] = Field(default_factory=dict)
 
     @classmethod
-    def load(cls, config_path: Path | None = None) -> "KaganConfig":
+    def load(cls, config_path: Path | None = None) -> KaganConfig:
         """Load configuration from TOML file or use defaults."""
         if config_path is None:
             config_path = Path(".kagan/config.toml")
@@ -49,33 +81,13 @@ class KaganConfig(BaseModel):
 
         return cls()
 
-    @classmethod
-    def get_default_config_content(cls) -> str:
-        """Get default configuration file content."""
-        return """[general]
-max_concurrent_agents = 3
-default_base_branch = "main"
+    def get_agent(self, name: str) -> AgentConfig | None:
+        """Get agent configuration by name."""
+        return self.agents.get(name)
 
-[agents.planner]
-model = "claude-3-5-sonnet"
-temperature = 0.7
-
-[agents.worker]
-model = "claude-3-5-sonnet"
-cli_tool = "claude"  # or "aider", "opencode"
-
-[agents.overseer]
-model = "gpt-4o"
-run_on = "high_priority"  # all | high_priority | manual
-"""
-
-    def save(self, config_path: Path | None = None) -> None:
-        """Save configuration to TOML file."""
-        if config_path is None:
-            config_path = Path(".kagan/config.toml")
-
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(self.get_default_config_content())
+    def get_worker_agent(self) -> AgentConfig | None:
+        """Get the configured worker agent."""
+        return self.get_agent(self.general.default_worker_agent)
 
 
 def load_config() -> KaganConfig:
@@ -83,11 +95,12 @@ def load_config() -> KaganConfig:
     return KaganConfig.load()
 
 
-def ensure_config_exists() -> KaganConfig:
-    """Ensure config file exists, creating default if needed."""
-    config_path = Path(".kagan/config.toml")
-    if not config_path.exists():
-        config = KaganConfig()
-        config.save(config_path)
-        return config
-    return KaganConfig.load(config_path)
+def get_fallback_agent_config() -> AgentConfig:
+    """Get fallback agent config when none configured."""
+    return AgentConfig(
+        identity="claude.com",
+        name="Claude Code",
+        short_name="claude",
+        run_command={"*": "npx claude-code-acp"},
+        interactive_command={"*": "claude"},
+    )

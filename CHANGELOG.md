@@ -2,6 +2,59 @@
 
 <!-- version list -->
 
+## v0.2.0-beta.1 (2026-01-30)
+
+### Chores
+
+- Update typo in src/kagan/ui/widgets/empty_state.py
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+### Documentation
+
+- Refining docs
+  ([`67ea1fe`](https://github.com/aorumbayev/kagan/commit/67ea1fea945c4188a137c442db6b787ba2ad359f))
+
+- Update documentation with testing rules and agent capabilities
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+### Features
+
+- Refactoring, cleanup and new features ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **agents**: Add prompt refiner for pre-send enhancement
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **ansi**: Add terminal output cleaner for escape sequences
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **cli**: Add update command with auto-upgrade support
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **core**: Enhance screens with keybindings registry and read-only agents
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **keybindings**: Add centralized keybindings registry
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+- **ui**: Add new modals, widgets, and clipboard utilities
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+### Refactoring
+
+- **tests**: Reorganize test suite into categorized structure
+  ([#6](https://github.com/aorumbayev/kagan/pull/6),
+  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
+
+
 ## v0.1.0 (2026-01-29)
 
 

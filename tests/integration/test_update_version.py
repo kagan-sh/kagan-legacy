@@ -40,7 +40,10 @@ class TestVersionDetection:
 
 
 class TestFetchLatestVersion:
-    """Tests for fetching latest version from PyPI."""
+    """Tests for fetching latest version from PyPI.
+
+    These tests use httpx_mock to test the actual HTTP layer behavior.
+    """
 
     def test_fetch_latest_version_success(self, httpx_mock):
         """Test successful version fetch from PyPI."""
@@ -107,9 +110,12 @@ class TestFetchLatestVersion:
 
 
 class TestCheckForUpdates:
-    """Tests for the check_for_updates function."""
+    """Tests for the check_for_updates function.
 
-    def test_check_for_updates_dev_version(self, mocker, httpx_mock):
+    These tests mock fetch_latest_version to avoid HTTP-level mocking issues.
+    """
+
+    def test_check_for_updates_dev_version(self, mocker):
         """Test that dev versions skip update check."""
         mocker.patch("kagan.cli.update.get_installed_version", return_value="dev")
         result = check_for_updates()
@@ -118,14 +124,11 @@ class TestCheckForUpdates:
         assert result.update_available is False
         assert result.error == "Running from development version"
 
-    def test_check_for_updates_update_available(self, mocker, httpx_mock):
+    def test_check_for_updates_update_available(self, mocker):
         """Test detection of available updates."""
-        httpx_mock.add_response(
-            url="https://pypi.org/pypi/kagan/json",
-            json={"info": {"version": "2.0.0"}, "releases": {}},
-        )
-
         mocker.patch("kagan.cli.update.get_installed_version", return_value="1.0.0")
+        mocker.patch("kagan.cli.update.fetch_latest_version", return_value="2.0.0")
+
         result = check_for_updates()
 
         assert result.is_dev is False
@@ -133,25 +136,22 @@ class TestCheckForUpdates:
         assert result.latest_version == "2.0.0"
         assert result.update_available is True
 
-    def test_check_for_updates_already_latest(self, mocker, httpx_mock):
+    def test_check_for_updates_already_latest(self, mocker):
         """Test when already on latest version."""
-        httpx_mock.add_response(
-            url="https://pypi.org/pypi/kagan/json",
-            json={"info": {"version": "1.0.0"}, "releases": {}},
-        )
-
         mocker.patch("kagan.cli.update.get_installed_version", return_value="1.0.0")
+        mocker.patch("kagan.cli.update.fetch_latest_version", return_value="1.0.0")
+
         result = check_for_updates()
 
         assert result.update_available is False
         assert result.current_version == "1.0.0"
         assert result.latest_version == "1.0.0"
 
-    def test_check_for_updates_fetch_failure(self, mocker, httpx_mock):
+    def test_check_for_updates_fetch_failure(self, mocker):
         """Test handling of fetch failures."""
-        httpx_mock.add_exception(httpx.TimeoutException("Timeout"))
-
         mocker.patch("kagan.cli.update.get_installed_version", return_value="1.0.0")
+        mocker.patch("kagan.cli.update.fetch_latest_version", return_value=None)
+
         result = check_for_updates()
 
         assert result.update_available is False

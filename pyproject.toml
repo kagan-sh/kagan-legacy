@@ -102,7 +102,7 @@ markers = [
     "snapshot: visual regression tests",
     "e2e: full application tests",
 ]
-addopts = "--cov=src/kagan --cov-report=term-missing -n auto"
+addopts = "-n auto"
 
 [tool.coverage.run]
 source = ["src/kagan"]

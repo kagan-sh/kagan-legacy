@@ -105,6 +105,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -168,3 +170,22 @@ snapshot_report.html
 
 # Kagan MCP config (auto-generated)
 .mcp.json
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Credential files
+credentials*
+secrets*
+*_credentials*
+*_secrets*
+
+# Cloud provider configs
+.aws/
+.gcloud/
+.azure/

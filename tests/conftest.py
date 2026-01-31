@@ -336,11 +336,18 @@ active = true
 
 
 @pytest.fixture
-async def e2e_app_fresh(e2e_fresh_project):
+async def e2e_app_fresh(e2e_fresh_project, monkeypatch):
     """Create a KaganApp for a fresh project without git.
 
     Kagan will initialize git when it detects no repo exists.
+    Sets git user env vars so git init/commit works in CI.
     """
+    # Set git user via environment (works without existing repo)
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@test.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@test.com")
+
     app = KaganApp(
         db_path=e2e_fresh_project.db,
         config_path=e2e_fresh_project.config,

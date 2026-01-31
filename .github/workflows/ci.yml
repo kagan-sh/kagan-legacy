@@ -4,46 +4,54 @@ on:
   pull_request:
   push:
     branches: [main]
-    paths:
-      - "**.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/ci.yml"
 
 jobs:
-  check:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Ubuntu x86_64 (Intel/AMD)
-          - os: ubuntu-latest
-            name: Ubuntu x86_64
-          # Ubuntu ARM64
-          - os: ubuntu-24.04-arm
-            name: Ubuntu ARM64
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-15
-            name: macOS ARM64
-          # macOS x86_64 (Intel) - macos-13 retired, use macos-15-intel
-          - os: macos-15-intel
-            name: macOS x86_64
-
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-
+  lint:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure git user
-        run: |
-          git config --global user.name "CI Bot"
-          git config --global user.email "ci@example.com"
-
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-
       - run: uv sync --dev
+      - run: uv run poe lint
+      - run: uv run poe typecheck
 
-      - run: uv run poe check
+  test:
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    steps:
+      - uses: actions/checkout@v6
+      - run: git config --global user.name "CI" && git config --global user.email "ci@local"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - name: Test
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            uv run pytest tests/ -n auto --cov=src/kagan --cov-report=term-missing
+          else
+            uv run pytest tests/ -n auto
+          fi
+
+  test-all-platforms:
+    needs: lint
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v6
+      - run: git config --global user.name "CI" && git config --global user.email "ci@local"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - run: uv run pytest tests/ -n auto --cov=src/kagan --cov-report=term-missing

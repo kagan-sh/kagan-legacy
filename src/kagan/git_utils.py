@@ -89,10 +89,19 @@ async def get_git_version() -> GitVersion | None:
 async def check_git_user_configured() -> tuple[bool, str | None]:
     """Check if git user.name and user.email are configured.
 
+    Checks both git config and environment variables (GIT_AUTHOR_NAME,
+    GIT_COMMITTER_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_EMAIL).
+
     Returns (True, None) if configured, (False, error_message) otherwise.
     """
+    import os
+
+    # First check environment variables (takes precedence for git operations)
+    env_name = os.environ.get("GIT_AUTHOR_NAME") or os.environ.get("GIT_COMMITTER_NAME")
+    env_email = os.environ.get("GIT_AUTHOR_EMAIL") or os.environ.get("GIT_COMMITTER_EMAIL")
+
     try:
-        # Check user.name
+        # Check user.name from git config
         proc_name = await asyncio.create_subprocess_exec(
             "git",
             "config",
@@ -103,7 +112,7 @@ async def check_git_user_configured() -> tuple[bool, str | None]:
         )
         stdout_name, _ = await proc_name.communicate()
 
-        # Check user.email
+        # Check user.email from git config
         proc_email = await asyncio.create_subprocess_exec(
             "git",
             "config",
@@ -114,8 +123,12 @@ async def check_git_user_configured() -> tuple[bool, str | None]:
         )
         stdout_email, _ = await proc_email.communicate()
 
-        name_set = proc_name.returncode == 0 and stdout_name.decode().strip()
-        email_set = proc_email.returncode == 0 and stdout_email.decode().strip()
+        # Name is set if either env var or git config has it
+        name_set = bool(env_name) or (proc_name.returncode == 0 and stdout_name.decode().strip())
+        # Email is set if either env var or git config has it
+        email_set = bool(env_email) or (
+            proc_email.returncode == 0 and stdout_email.decode().strip()
+        )
 
         if not name_set and not email_set:
             return False, "Git user.name and user.email are not configured"

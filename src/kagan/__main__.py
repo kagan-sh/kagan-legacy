@@ -2,15 +2,36 @@
 
 from __future__ import annotations
 
-import os
+# Suppress asyncio subprocess cleanup errors on exit.
+# When GC runs after the event loop closes, subprocess transports may try to
+# close their pipes and fail. This was fixed in Python 3.13.1+ and 3.14+ (gh-114177),
+# but we need this workaround for Python 3.12.
 import sys
-from pathlib import Path
 
-import click
+_original_unraisablehook = sys.unraisablehook
 
-from kagan import __version__
-from kagan.cli.update import check_for_updates, prompt_and_update, update
-from kagan.constants import DEFAULT_CONFIG_PATH, DEFAULT_DB_PATH, DEFAULT_LOCK_PATH
+
+def _suppress_event_loop_closed(unraisable: sys.UnraisableHookArgs) -> None:
+    """Suppress 'Event loop is closed' errors from asyncio cleanup."""
+    if isinstance(unraisable.exc_value, RuntimeError) and "Event loop is closed" in str(
+        unraisable.exc_value
+    ):
+        return
+    _original_unraisablehook(unraisable)
+
+
+sys.unraisablehook = _suppress_event_loop_closed
+
+# Standard imports after hook is installed
+import asyncio  # noqa: E402
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import click  # noqa: E402
+
+from kagan import __version__  # noqa: E402
+from kagan.cli.update import check_for_updates, prompt_and_update, update  # noqa: E402
+from kagan.constants import DEFAULT_CONFIG_PATH, DEFAULT_DB_PATH, DEFAULT_LOCK_PATH  # noqa: E402
 
 
 def _check_for_updates_gate() -> None:
@@ -87,47 +108,49 @@ def tui(db: str, config: str, skip_preflight: bool, skip_update_check: bool) -> 
 
     # Run pre-flight checks unless skipped
     if not skip_preflight:
-        from kagan.config import KaganConfig
-        from kagan.data.builtin_agents import get_builtin_agent
+        from kagan.data.builtin_agents import (
+            any_agent_available,
+            get_first_available_agent,
+        )
         from kagan.ui.screens.troubleshooting import (
             ISSUE_PRESETS,
             DetectedIssue,
             IssueType,
             TroubleshootingApp,
+            create_no_agents_issues,
             detect_issues,
         )
 
-        # Determine agent to check (read config early if exists)
-        agent_name = "Claude Code"
-        agent_install = "curl -fsSL https://claude.ai/install.sh | bash"
-        agent_config = None
-
-        if config_path.exists():
-            cfg = KaganConfig.load(config_path)
-            agent_key = cfg.general.default_worker_agent
-            agent_config = cfg.get_agent(agent_key)
-            if builtin := get_builtin_agent(agent_key):
-                agent_name = builtin.config.name
-                agent_install = builtin.install_command
-                agent_config = builtin.config
-        else:
-            # Use default Claude agent config for first boot
-            builtin = get_builtin_agent("claude")
-            if builtin:
-                agent_config = builtin.config
-
-        # Run pre-flight checks (except lock - we'll check that separately)
-        result = detect_issues(
-            check_lock=False,
-            agent_config=agent_config,
-            agent_name=agent_name,
-            agent_install_command=agent_install,
-        )
-
-        if result.has_blocking_issues:
-            app = TroubleshootingApp(result.issues)
+        # First check: Are ANY agents available?
+        if not any_agent_available():
+            # No agents available - show installation options for all supported agents
+            issues = create_no_agents_issues()
+            app = TroubleshootingApp(issues)
             app.run()
             sys.exit(1)
+
+        # At least one agent is available - use the first available one for pre-flight
+        # The user can select a different agent in the welcome screen later
+        best_agent = get_first_available_agent()
+        if best_agent:
+            agent_name = best_agent.config.name
+            agent_install = best_agent.install_command
+            agent_config = best_agent.config
+
+            # Run pre-flight checks (except lock - we'll check that separately)
+            result = asyncio.run(
+                detect_issues(
+                    check_lock=False,
+                    agent_config=agent_config,
+                    agent_name=agent_name,
+                    agent_install_command=agent_install,
+                )
+            )
+
+            if result.has_blocking_issues:
+                app = TroubleshootingApp(result.issues)
+                app.run()
+                sys.exit(1)
 
     # Import here to avoid slow startup for --help/--version
     from kagan.lock import InstanceLock, InstanceLockError

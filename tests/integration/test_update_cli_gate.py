@@ -13,7 +13,7 @@ pytestmark = pytest.mark.integration
 class TestCheckForUpdatesGate:
     """Tests for the TUI startup version check gate."""
 
-    def test_gate_skips_for_dev_version(self, mocker, httpx_mock):
+    def test_gate_skips_for_dev_version(self, mocker):
         """Test that gate silently skips for dev versions."""
         from kagan.__main__ import _check_for_updates_gate
 
@@ -28,7 +28,7 @@ class TestCheckForUpdatesGate:
         # Should not raise and not prompt
         _check_for_updates_gate()
 
-    def test_gate_skips_on_fetch_error(self, mocker, httpx_mock):
+    def test_gate_skips_on_fetch_error(self, mocker):
         """Test that gate silently skips on fetch errors."""
         from kagan.__main__ import _check_for_updates_gate
 
@@ -43,7 +43,7 @@ class TestCheckForUpdatesGate:
         # Should not raise and not prompt
         _check_for_updates_gate()
 
-    def test_gate_no_update_available(self, mocker, httpx_mock):
+    def test_gate_no_update_available(self, mocker):
         """Test that gate does nothing when no update available."""
         from kagan.__main__ import _check_for_updates_gate
 
@@ -57,7 +57,7 @@ class TestCheckForUpdatesGate:
         # Should not raise
         _check_for_updates_gate()
 
-    def test_gate_prompts_when_update_available_user_declines(self, mocker, httpx_mock):
+    def test_gate_prompts_when_update_available_user_declines(self, mocker):
         """Test that gate prompts user when update available and user declines."""
         from kagan.__main__ import _check_for_updates_gate
 
@@ -74,7 +74,7 @@ class TestCheckForUpdatesGate:
         # Should not raise, user declined
         _check_for_updates_gate()
 
-    def test_gate_prompts_when_update_available_user_accepts(self, mocker, httpx_mock):
+    def test_gate_prompts_when_update_available_user_accepts(self, mocker):
         """Test that gate prompts user and exits after successful update."""
         from kagan.__main__ import _check_for_updates_gate
 

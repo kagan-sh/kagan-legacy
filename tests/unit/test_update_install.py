@@ -125,7 +125,7 @@ class TestPromptAndUpdate:
         updated = prompt_and_update(result)
         assert updated is False
 
-    def test_prompt_and_update_force_mode(self, httpx_mock, mocker):
+    def test_prompt_and_update_force_mode(self, mocker):
         """Test force mode skips confirmation."""
         result = UpdateCheckResult(
             current_version="1.0.0",

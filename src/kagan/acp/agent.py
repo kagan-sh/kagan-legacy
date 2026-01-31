@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,7 @@ class Agent:
         self._process: asyncio.subprocess.Process | None = None
         self._agent_task: asyncio.Task[None] | None = None
         self._read_task: asyncio.Task[None] | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
 
         self.session_id: str = ""
         self.tool_calls: dict[str, protocol.ToolCall] = {}
@@ -362,18 +364,32 @@ class Agent:
             api.session_cancel(self.session_id, {})
         return True
 
+    async def _background_cleanup(self) -> None:
+        """Background task to wait for process termination after stop."""
+        if self._process is None:
+            return
+        try:
+            await asyncio.wait_for(self._process.wait(), timeout=SHUTDOWN_TIMEOUT)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                self._process.kill()
+        except ProcessLookupError:
+            pass
+
     async def stop(self) -> None:
+        """Stop the agent process gracefully (non-blocking).
+
+        Terminates the process and schedules cleanup in the background,
+        returning immediately to avoid blocking the UI.
+        """
         self._terminals.cleanup_all()
         self._buffers.clear_all()
 
         if self._process and self._process.returncode is None:
-            try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=SHUTDOWN_TIMEOUT)
-            except TimeoutError:
-                self._process.kill()
-            except ProcessLookupError:
-                pass
+            self._process.terminate()
+            # Fire-and-forget: schedule cleanup without blocking caller
+            # Store reference to satisfy RUF006 (dangling task)
+            self._cleanup_task = asyncio.create_task(self._background_cleanup())
 
     def get_response_text(self) -> str:
         return self._buffers.get_response_text()

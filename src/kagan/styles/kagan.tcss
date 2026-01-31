@@ -229,25 +229,9 @@ TicketCard.agent-active:focus {
     border: solid $secondary;
 }
 
-/* Pulse state A - bright/highlighted (toggle ON) */
-TicketCard.agent-pulse {
-    border: solid $warning;
-    background: $panel;
-}
-
-TicketCard.agent-pulse:focus {
-    border: solid $warning;
-    background: $panel;
-}
-
-/* Combined: session + agent active - agent pulse takes precedence */
+/* Combined: session + agent active - agent style takes precedence */
 TicketCard.session-active.agent-active {
     border: solid $secondary;
-}
-
-TicketCard.session-active.agent-pulse {
-    border: solid $warning;
-    background: $panel;
 }
 
 /* ============================================
@@ -1107,30 +1091,35 @@ WelcomeScreen {
     background: $background;
     margin-bottom: 1;
     padding: 1;
+    height: auto;
 }
 
 .issue-card-title {
     text-style: bold;
     color: $warning;
     width: 100%;
+    height: auto;
 }
 
 .issue-card-message {
-    color: $text;
+    color: $foreground;
     width: 100%;
+    height: auto;
     padding-top: 1;
 }
 
 .issue-card-hint {
-    color: $text-muted;
+    color: $foreground 70%;
     text-style: italic;
     width: 100%;
+    height: auto;
     padding-top: 1;
 }
 
 .issue-card-url {
     color: $primary;
     width: 100%;
+    height: auto;
 }
 
 #troubleshoot-resolve-hint {
@@ -1487,6 +1476,7 @@ SearchBar Input:focus {
    ============================================================================= */
 
 /* Leader mode hint overlay - layer ensures it appears above footer */
+/* Uses offset-y instead of display toggle to avoid layout recalculation */
 .leader-hint {
     dock: bottom;
     width: 100%;
@@ -1495,13 +1485,13 @@ SearchBar Input:focus {
     color: $background;
     text-align: center;
     text-style: bold;
-    display: none;
     layer: overlay;
     padding: 0 1;
+    offset-y: 100%;
 }
 
 .leader-hint.visible {
-    display: block;
+    offset-y: 0;
 }
 
 /* =============================================================================

@@ -34,6 +34,10 @@ class IssueType(Enum):
     AGENT_MISSING = "agent_missing"
     NPX_MISSING = "npx_missing"
     ACP_AGENT_MISSING = "acp_agent_missing"
+    NO_AGENTS_AVAILABLE = "no_agents_available"  # No supported agents installed
+    GIT_VERSION_LOW = "git_version_low"  # Git version too old for worktrees
+    GIT_USER_NOT_CONFIGURED = "git_user_not_configured"  # Git user.name/email not set
+    GIT_NOT_INSTALLED = "git_not_installed"  # Git is not installed
 
 
 class IssueSeverity(Enum):
@@ -126,6 +130,44 @@ ISSUE_PRESETS: dict[IssueType, IssuePreset] = {
             "Neither npx nor a global installation is available."
         ),
         hint="Install the agent globally or ensure npx is available",
+    ),
+    IssueType.GIT_NOT_INSTALLED: IssuePreset(
+        type=IssueType.GIT_NOT_INSTALLED,
+        severity=IssueSeverity.BLOCKING,
+        icon="[!]",
+        title="Git Not Installed",
+        message=(
+            "Git is required but was not found on your system.\n"
+            "Kagan uses git worktrees for isolated development environments."
+        ),
+        hint="Install Git: brew install git (macOS) or apt install git (Linux)",
+        url="https://git-scm.com/downloads",
+    ),
+    IssueType.GIT_VERSION_LOW: IssuePreset(
+        type=IssueType.GIT_VERSION_LOW,
+        severity=IssueSeverity.BLOCKING,
+        icon="[!]",
+        title="Git Version Too Old",
+        message=(
+            "Your Git version does not support worktrees.\n"
+            "Kagan requires Git 2.5 or later for worktree functionality."
+        ),
+        hint="Upgrade Git: brew upgrade git (macOS) or apt update && apt upgrade git (Linux)",
+        url="https://git-scm.com/downloads",
+    ),
+    IssueType.GIT_USER_NOT_CONFIGURED: IssuePreset(
+        type=IssueType.GIT_USER_NOT_CONFIGURED,
+        severity=IssueSeverity.BLOCKING,
+        icon="[!]",
+        title="Git User Not Configured",
+        message=(
+            "Git user identity is not configured.\nKagan needs to make commits to track changes."
+        ),
+        hint=(
+            "Run:\n"
+            '  git config --global user.name "Your Name"\n'
+            '  git config --global user.email "your@email.com"'
+        ),
     ),
 }
 
@@ -351,13 +393,66 @@ def _check_agent(
     return None
 
 
-def detect_issues(
+async def _check_git_version() -> DetectedIssue | None:
+    """Check if git is installed and version supports worktrees."""
+    from kagan.git_utils import MIN_GIT_VERSION, get_git_version
+
+    version = await get_git_version()
+    if version is None:
+        return DetectedIssue(preset=ISSUE_PRESETS[IssueType.GIT_NOT_INSTALLED])
+
+    if version < MIN_GIT_VERSION:
+        # Create a customized preset with version details
+        preset = IssuePreset(
+            type=IssueType.GIT_VERSION_LOW,
+            severity=IssueSeverity.BLOCKING,
+            icon="[!]",
+            title="Git Version Too Old",
+            message=(
+                f"Your Git version ({version}) does not support worktrees.\n"
+                f"Kagan requires Git {MIN_GIT_VERSION[0]}.{MIN_GIT_VERSION[1]}+ "
+                "for worktree functionality."
+            ),
+            hint="Upgrade Git: brew upgrade git (macOS) or apt update && apt upgrade git (Linux)",
+            url="https://git-scm.com/downloads",
+        )
+        return DetectedIssue(preset=preset, details=str(version))
+
+    return None
+
+
+async def _check_git_user() -> DetectedIssue | None:
+    """Check if git user.name and user.email are configured."""
+    from kagan.git_utils import check_git_user_configured
+
+    is_configured, error_msg = await check_git_user_configured()
+    if not is_configured:
+        # Create a customized preset with specific error
+        preset = IssuePreset(
+            type=IssueType.GIT_USER_NOT_CONFIGURED,
+            severity=IssueSeverity.BLOCKING,
+            icon="[!]",
+            title="Git User Not Configured",
+            message=(f"{error_msg}\nKagan needs to make commits to track changes."),
+            hint=(
+                "Run:\n"
+                '  git config --global user.name "Your Name"\n'
+                '  git config --global user.email "your@email.com"'
+            ),
+        )
+        return DetectedIssue(preset=preset, details=error_msg)
+
+    return None
+
+
+async def detect_issues(
     *,
     check_lock: bool = False,
     lock_acquired: bool = True,
     agent_config: AgentConfig | None = None,
     agent_name: str = "Claude Code",
     agent_install_command: str | None = None,
+    check_git: bool = True,
 ) -> PreflightResult:
     """Run all pre-flight checks and return detected issues.
 
@@ -367,6 +462,7 @@ def detect_issues(
         agent_config: Optional agent configuration to check.
         agent_name: Display name of the agent to check.
         agent_install_command: Installation command for the agent.
+        check_git: Whether to check git version and configuration.
 
     Returns:
         PreflightResult containing all detected issues.
@@ -382,12 +478,23 @@ def detect_issues(
     if check_lock and not lock_acquired:
         issues.append(DetectedIssue(preset=ISSUE_PRESETS[IssueType.INSTANCE_LOCKED]))
 
-    # 3. tmux check
+    # 3. Git checks (version and user configuration)
+    if check_git:
+        git_version_issue = await _check_git_version()
+        if git_version_issue:
+            issues.append(git_version_issue)
+        else:
+            # Only check user config if git is installed and version is OK
+            git_user_issue = await _check_git_user()
+            if git_user_issue:
+                issues.append(git_user_issue)
+
+    # 4. tmux check
     tmux_issue = _check_tmux()
     if tmux_issue:
         issues.append(tmux_issue)
 
-    # 4. Agent check (interactive command for PAIR mode)
+    # 5. Agent check (interactive command for PAIR mode)
     if agent_config:
         from kagan.config import get_os_value
 
@@ -401,7 +508,7 @@ def detect_issues(
             if agent_issue:
                 issues.append(agent_issue)
 
-        # 5. ACP command check (run_command for AUTO mode)
+        # 6. ACP command check (run_command for AUTO mode)
         # This uses smart detection for npx-based commands
         acp_cmd = get_os_value(agent_config.run_command)
         if acp_cmd:
@@ -410,6 +517,33 @@ def detect_issues(
                 issues.append(acp_resolution.issue)
 
     return PreflightResult(issues=issues)
+
+
+def create_no_agents_issues() -> list[DetectedIssue]:
+    """Create issues showing all available agent install options.
+
+    Used when no supported agents are found on the system. Each agent
+    gets its own issue card with installation instructions.
+
+    Returns:
+        List of DetectedIssue for each supported agent.
+    """
+    from kagan.data.builtin_agents import list_builtin_agents
+
+    issues = []
+    for agent in list_builtin_agents():
+        preset = IssuePreset(
+            type=IssueType.NO_AGENTS_AVAILABLE,
+            severity=IssueSeverity.BLOCKING,
+            icon="[+]",  # Plus icon for "install me"
+            title=f"Install {agent.config.name}",
+            message=f"{agent.description}\nBy {agent.author}",
+            hint=agent.install_command,
+            url=agent.docs_url if agent.docs_url else None,
+        )
+        issues.append(DetectedIssue(preset=preset))
+
+    return issues
 
 
 class CopyableHint(Static):
@@ -470,29 +604,38 @@ class TroubleshootingApp(App):
         self.register_theme(KAGAN_THEME)
         self.theme = "kagan"
 
+    def _is_no_agents_case(self) -> bool:
+        """Check if this is the 'no agents available' case."""
+        return all(issue.preset.type == IssueType.NO_AGENTS_AVAILABLE for issue in self._issues)
+
     def compose(self) -> ComposeResult:
         blocking_count = sum(
             1 for issue in self._issues if issue.preset.severity == IssueSeverity.BLOCKING
         )
+
+        # Determine title and subtitle based on issue type
+        is_no_agents = self._is_no_agents_case()
+        if is_no_agents:
+            title = "No AI Agents Found"
+            subtitle = "Install one of the following to get started:"
+            resolve_hint = "Install an agent and restart Kagan"
+        else:
+            title = "Startup Issues Detected"
+            plural = "s" if blocking_count != 1 else ""
+            subtitle = f"{blocking_count} blocking issue{plural} found"
+            resolve_hint = "Resolve issues and restart Kagan"
 
         with Container(id="troubleshoot-container"):
             with Middle():
                 with Center():
                     with Static(id="troubleshoot-card"):
                         yield Static(KAGAN_LOGO, id="troubleshoot-logo")
-                        yield Static("Startup Issues Detected", id="troubleshoot-title")
-                        plural = "s" if blocking_count != 1 else ""
-                        yield Static(
-                            f"{blocking_count} blocking issue{plural} found",
-                            id="troubleshoot-count",
-                        )
+                        yield Static(title, id="troubleshoot-title")
+                        yield Static(subtitle, id="troubleshoot-count")
                         with VerticalScroll(id="troubleshoot-issues"):
                             for issue in self._issues:
                                 with Container(classes="issue-card"):
                                     yield IssueCard(issue)
-                        yield Static(
-                            "Resolve issues and restart Kagan",
-                            id="troubleshoot-resolve-hint",
-                        )
+                        yield Static(resolve_hint, id="troubleshoot-resolve-hint")
                         yield Static("Press q to exit", id="troubleshoot-exit-hint")
         yield Footer()

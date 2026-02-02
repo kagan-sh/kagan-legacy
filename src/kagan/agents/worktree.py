@@ -334,6 +334,10 @@ class WorktreeManager:
         Returns:
             Tuple of (success, message)
         """
+        import logging
+
+        log = logging.getLogger(__name__)
+
         # Get worktree path and branch
         wt_path = await self.get_path(ticket_id)
         if wt_path is None:
@@ -343,7 +347,16 @@ class WorktreeManager:
         if branch_name is None:
             return False, f"Could not determine branch for ticket {ticket_id}"
 
+        merge_started = False
         try:
+            # Check for uncommitted changes in main repo before merge
+            status_out, _ = await self._run_git("status", "--porcelain", check=False)
+            if status_out.strip():
+                return False, (
+                    "Cannot merge: main repository has uncommitted changes. "
+                    "Please commit or stash your changes first."
+                )
+
             # Get commit log for semantic message
             commits = await self.get_commit_log(ticket_id, base_branch)
             if not commits:
@@ -362,12 +375,14 @@ class WorktreeManager:
 
             # Merge the worktree branch
             if squash:
+                merge_started = True
                 await self._run_git("merge", "--squash", branch_name, check=False)
                 # Check for merge conflicts
                 status_out, _ = await self._run_git("status", "--porcelain", check=False)
                 if "UU " in status_out or "AA " in status_out or "DD " in status_out:
                     # Abort the merge
                     await self._run_git("merge", "--abort", check=False)
+                    merge_started = False
                     return False, "Merge conflict detected. Please resolve manually."
 
                 # Generate semantic commit message
@@ -375,18 +390,36 @@ class WorktreeManager:
 
                 # Commit the squashed changes
                 await self._run_git("commit", "-m", commit_msg)
+                merge_started = False  # Commit completed successfully
             else:
                 # Regular merge
+                merge_started = True
                 stdout, stderr = await self._run_git(
                     "merge", branch_name, "-m", f"Merge branch '{branch_name}'", check=False
                 )
                 if "CONFLICT" in stderr or "CONFLICT" in stdout:
                     await self._run_git("merge", "--abort", check=False)
+                    merge_started = False
                     return False, "Merge conflict detected. Please resolve manually."
+                merge_started = False  # Merge completed successfully
 
             return True, f"Successfully merged {branch_name} to {base_branch}"
 
         except WorktreeError as e:
+            # Ensure clean state on failure
+            if merge_started:
+                try:
+                    await self._run_git("merge", "--abort", check=False)
+                    log.debug(f"Aborted merge for ticket {ticket_id} after WorktreeError")
+                except Exception:
+                    pass  # Best effort cleanup
             return False, f"Merge failed: {e}"
         except Exception as e:
+            # Ensure clean state on failure
+            if merge_started:
+                try:
+                    await self._run_git("merge", "--abort", check=False)
+                    log.debug(f"Aborted merge for ticket {ticket_id} after unexpected error")
+                except Exception:
+                    pass  # Best effort cleanup
             return False, f"Unexpected error during merge: {e}"

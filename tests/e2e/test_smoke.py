@@ -6,10 +6,11 @@ They use real components (git, database) with only agent CLI mocking.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 
+from kagan.app import KaganApp
 from kagan.database.models import TicketStatus
 from tests.helpers.pages import (
     create_ticket_via_ui,
@@ -20,9 +21,6 @@ from tests.helpers.pages import (
     move_ticket_forward,
     navigate_to_kanban,
 )
-
-if TYPE_CHECKING:
-    from kagan.app import KaganApp
 
 pytestmark = pytest.mark.e2e
 
@@ -152,10 +150,34 @@ class TestScreenNavigation:
 class TestFreshProjectWorktree:
     """Test worktree creation in a fresh project (no pre-existing git repo)."""
 
+    @pytest.fixture
+    async def _fresh_app(self, tmp_path, monkeypatch):
+        """Create an app for a fresh project without git (local fixture)."""
+        project = tmp_path / "fresh_project"
+        project.mkdir()
+        kagan_dir = project / ".kagan"
+        kagan_dir.mkdir()
+        config_toml = (
+            '[general]\nauto_start = false\ndefault_base_branch = "main"\n'
+            'default_worker_agent = "claude"\n'
+            '[agents.claude]\nidentity = "claude.ai"\nname = "Claude"\nshort_name = "claude"\n'
+            'run_command."*" = "echo mock"\nactive = true\n'
+        )
+        (kagan_dir / "config.toml").write_text(config_toml)
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+        monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@test.com")
+        monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+        monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@test.com")
+        return KaganApp(
+            db_path=str(kagan_dir / "state.db"),
+            config_path=str(kagan_dir / "config.toml"),
+            lock_path=None,
+        )
+
     @pytest.mark.slow
-    async def test_pair_ticket_worktree_creation_fresh_repo(self, e2e_app_fresh: KaganApp):
+    async def test_pair_ticket_worktree_creation_fresh_repo(self, _fresh_app: KaganApp):
         """PAIR ticket can create worktree in a freshly initialized git repo."""
-        async with e2e_app_fresh.run_test(size=(120, 40)) as pilot:
+        async with _fresh_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
             await pilot.pause()
 

@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tests.helpers.pages import focus_first_ticket, is_on_screen
+from tests.helpers.pages import is_on_screen, open_ticket_modal
 
 if TYPE_CHECKING:
     from kagan.app import KaganApp
     from kagan.ui.modals.description_editor import DescriptionEditorModal
-    from kagan.ui.modals.ticket_details.modal import TicketDetailsModal
+    from kagan.ui.modals.ticket_details_modal import TicketDetailsModal
 
 pytestmark = pytest.mark.e2e
 
@@ -33,53 +33,44 @@ class TestDescriptionExpand:
         """'f' opens description editor modal in view mode (readonly)."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            await focus_first_ticket(pilot)
-            await pilot.press("v")
-            await pilot.pause()
+            async with open_ticket_modal(pilot, mode="view"):
+                await pilot.press("f")
+                await pilot.pause()
 
-            await pilot.press("f")
-            await pilot.pause()
+                assert is_on_screen(pilot, "DescriptionEditorModal")
 
-            assert is_on_screen(pilot, "DescriptionEditorModal")
-
-            editor = get_description_editor(pilot)
-            assert editor.readonly
+                editor = get_description_editor(pilot)
+                assert editor.readonly
 
     async def test_expand_action_opens_editor_in_edit_mode(self, e2e_app_with_tickets: KaganApp):
         """action_expand_description in edit mode opens editable editor."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            await focus_first_ticket(pilot)
-            await pilot.press("e")
-            await pilot.pause()
+            async with open_ticket_modal(pilot, mode="edit"):
+                # Call action directly since 'f' types into focused input
+                modal = get_modal(pilot)
+                modal.action_expand_description()
+                await pilot.pause()
 
-            # Call action directly since 'f' types into focused input
-            modal = get_modal(pilot)
-            modal.action_expand_description()
-            await pilot.pause()
+                assert is_on_screen(pilot, "DescriptionEditorModal")
 
-            assert is_on_screen(pilot, "DescriptionEditorModal")
-
-            editor = get_description_editor(pilot)
-            assert not editor.readonly
+                editor = get_description_editor(pilot)
+                assert not editor.readonly
 
     async def test_description_editor_returns_to_modal(self, e2e_app_with_tickets: KaganApp):
         """Escape in description editor returns to ticket modal."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            await focus_first_ticket(pilot)
-            await pilot.press("v")
-            await pilot.pause()
+            async with open_ticket_modal(pilot, mode="view"):
+                await pilot.press("f")
+                await pilot.pause()
 
-            await pilot.press("f")
-            await pilot.pause()
+                assert is_on_screen(pilot, "DescriptionEditorModal")
 
-            assert is_on_screen(pilot, "DescriptionEditorModal")
+                await pilot.press("escape")
+                await pilot.pause()
 
-            await pilot.press("escape")
-            await pilot.pause()
-
-            assert is_on_screen(pilot, "TicketDetailsModal")
+                assert is_on_screen(pilot, "TicketDetailsModal")
 
 
 class TestTicketDetailsDelete:
@@ -89,16 +80,13 @@ class TestTicketDetailsDelete:
         """Pressing 'd' in view mode triggers delete, requiring confirm."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            await focus_first_ticket(pilot)
-            await pilot.press("v")
-            await pilot.pause()
+            async with open_ticket_modal(pilot, mode="view"):
+                modal = get_modal(pilot)
+                ticket_id = modal.ticket.id if modal.ticket else None
+                assert ticket_id is not None
 
-            modal = get_modal(pilot)
-            ticket_id = modal.ticket.id if modal.ticket else None
-            assert ticket_id is not None
-
-            await pilot.press("d")
-            await pilot.pause()
+                await pilot.press("d")
+                await pilot.pause()
 
             # After 'd', modal dismisses and shows confirm dialog
             assert is_on_screen(pilot, "ConfirmModal")
@@ -116,16 +104,13 @@ class TestTicketDetailsDelete:
         """Delete confirmation can be cancelled."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            await focus_first_ticket(pilot)
-            await pilot.press("v")
-            await pilot.pause()
+            async with open_ticket_modal(pilot, mode="view"):
+                modal = get_modal(pilot)
+                ticket_id = modal.ticket.id if modal.ticket else None
+                assert ticket_id is not None
 
-            modal = get_modal(pilot)
-            ticket_id = modal.ticket.id if modal.ticket else None
-            assert ticket_id is not None
-
-            await pilot.press("d")
-            await pilot.pause()
+                await pilot.press("d")
+                await pilot.pause()
 
             # Cancel deletion
             await pilot.press("n")

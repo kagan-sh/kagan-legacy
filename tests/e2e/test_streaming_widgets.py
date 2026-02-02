@@ -99,3 +99,66 @@ class TestStreamingOutput:
             await output.clear()
             await pilot.pause()
             assert len(output.children) == 0
+
+    async def test_filters_complete_xml_blocks(self):
+        """Verify that complete <todos>...</todos> blocks are filtered out."""
+        app = WidgetTestApp()
+        async with app.run_test() as pilot:
+            output = StreamingOutput()
+            await app.query_one("#container").mount(output)
+            await output.post_response("Hello <todos>content</todos> World")
+            await pilot.pause()
+            content = output.get_text_content()
+            assert "<todos>" not in content
+            assert "Hello" in content
+            assert "World" in content
+
+    async def test_filters_partial_xml_tags_during_streaming(self):
+        """Verify that partial XML tags like '<todos' are buffered and not displayed."""
+        app = WidgetTestApp()
+        async with app.run_test() as pilot:
+            output = StreamingOutput()
+            await app.query_one("#container").mount(output)
+
+            # Simulate streaming fragments where XML tag is split
+            await output.post_response("Hello ")
+            await output.post_response("<todos")  # Partial tag - should be buffered
+            await output.post_response(">\n  <todo>Test</todo>\n</todos>")
+            await output.post_response(" World")
+
+            await pilot.pause()
+
+            content = output.get_text_content()
+            assert "<todos" not in content
+            assert "<plan" not in content
+            assert "Hello" in content
+            assert "World" in content
+
+    async def test_filters_plan_xml_blocks(self):
+        """Verify that <plan>...</plan> blocks are also filtered out."""
+        app = WidgetTestApp()
+        async with app.run_test() as pilot:
+            output = StreamingOutput()
+            await app.query_one("#container").mount(output)
+            await output.post_response("Before <plan>some plan content</plan> After")
+            await pilot.pause()
+            content = output.get_text_content()
+            assert "<plan>" not in content
+            assert "Before" in content
+            assert "After" in content
+
+    async def test_xml_buffer_reset_on_clear(self):
+        """Verify that XML buffer is cleared when output is cleared."""
+        app = WidgetTestApp()
+        async with app.run_test() as pilot:
+            output = StreamingOutput()
+            await app.query_one("#container").mount(output)
+
+            # Start a partial XML block
+            await output.post_response("Text <todos")
+            assert output._xml_buffer != ""  # Buffer should have content
+
+            await output.clear()
+            await pilot.pause()
+
+            assert output._xml_buffer == ""  # Buffer should be cleared

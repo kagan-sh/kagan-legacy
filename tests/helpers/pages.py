@@ -6,12 +6,15 @@ not a full Page Object framework. Keep them simple and focused.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from textual.pilot import Pilot
 
-    from kagan.database.models import Ticket, TicketStatus
+    from kagan.database.models import Ticket, TicketStatus, TicketType
 
 
 async def skip_welcome_if_shown(pilot: Pilot) -> None:
@@ -23,7 +26,13 @@ async def skip_welcome_if_shown(pilot: Pilot) -> None:
 
 
 async def navigate_to_kanban(pilot: Pilot) -> None:
-    """Navigate to Kanban screen from anywhere."""
+    """Navigate to Kanban screen from anywhere.
+
+    Handles the case where PlannerScreen is pushed without KanbanScreen
+    on the stack (empty board boot) by directly installing KanbanScreen.
+    """
+    from kagan.ui.screens.kanban import KanbanScreen
+
     app = pilot.app
     screen_name = type(app.screen).__name__
 
@@ -34,7 +43,13 @@ async def navigate_to_kanban(pilot: Pilot) -> None:
     # Re-check after potential welcome screen navigation
     screen_name = type(app.screen).__name__
     if screen_name == "PlannerScreen":
-        await pilot.press("escape")
+        # When app boots with empty board, PlannerScreen is the only screen.
+        # Pressing escape pops to nothing. Instead, switch to KanbanScreen directly.
+        app.switch_screen(KanbanScreen())
+        await pilot.pause()
+    elif "Kanban" not in screen_name and "SettingsModal" not in screen_name:
+        # If we're not on Kanban/Settings, try to get there via switch
+        app.switch_screen(KanbanScreen())
         await pilot.pause()
 
 
@@ -89,6 +104,32 @@ async def focus_first_ticket(pilot: Pilot) -> bool:
     return False
 
 
+@asynccontextmanager
+async def open_ticket_modal(
+    pilot: Pilot, mode: Literal["view", "edit"] = "view"
+) -> AsyncIterator[None]:
+    """Focus first ticket and open the ticket modal in the specified mode.
+
+    Args:
+        pilot: The Textual pilot instance.
+        mode: "view" to open with 'v' key, "edit" to open with 'e' key.
+
+    Yields:
+        None - use the modal while inside the context.
+
+    Example:
+        async with open_ticket_modal(pilot, mode="edit"):
+            # Modal is now open in edit mode
+            title_input = pilot.app.screen.query_one("#title-input", Input)
+            title_input.value = "New title"
+    """
+    await focus_first_ticket(pilot)
+    key = "v" if mode == "view" else "e"
+    await pilot.press(key)
+    await pilot.pause()
+    yield
+
+
 async def move_ticket_forward(pilot: Pilot) -> None:
     """Move the focused ticket to the next status column using g+l leader key."""
     await pilot.press("g", "l")
@@ -123,3 +164,63 @@ def get_ticket_count(pilot: Pilot) -> int:
 def is_on_screen(pilot: Pilot, screen_name: str) -> bool:
     """Check if we're on a specific screen by name."""
     return screen_name in type(pilot.app.screen).__name__
+
+
+def focus_review_ticket(pilot: Pilot) -> Ticket | None:
+    """Focus a ticket in REVIEW status. Returns the ticket or None."""
+    from kagan.database.models import TicketStatus
+
+    return focus_ticket_by_criteria(pilot, status=TicketStatus.REVIEW)
+
+
+def focus_ticket_by_criteria(
+    pilot: Pilot,
+    status: TicketStatus | None = None,
+    ticket_type: TicketType | None = None,
+) -> Ticket | None:
+    """Focus a ticket matching the given criteria. Returns the ticket or None.
+
+    Args:
+        pilot: The Textual pilot instance.
+        status: Optional status to filter by.
+        ticket_type: Optional ticket type to filter by.
+
+    Returns:
+        The focused ticket, or None if no matching ticket found.
+    """
+    from kagan.ui.widgets.card import TicketCard
+
+    cards = list(pilot.app.screen.query(TicketCard))
+    for card in cards:
+        if card.ticket is None:
+            continue
+        if status is not None and card.ticket.status != status:
+            continue
+        if ticket_type is not None and card.ticket.ticket_type != ticket_type:
+            continue
+        card.focus()
+        return card.ticket
+    return None
+
+
+@asynccontextmanager
+async def open_settings_modal(pilot: Pilot) -> AsyncIterator[None]:
+    """Navigate to kanban and open settings modal.
+
+    Note: This context manager opens the modal and yields. It does NOT close
+    the modal on exit - the test is responsible for closing it (escape/ctrl+s).
+
+    Yields:
+        None - use the modal while inside the context.
+
+    Example:
+        async with open_settings_modal(pilot):
+            switch = pilot.app.screen.query_one("#auto-start-switch", Switch)
+            await pilot.click("#auto-start-switch")
+            await pilot.press("escape")  # Test must close modal
+    """
+    await navigate_to_kanban(pilot)
+    await pilot.pause()
+    await pilot.press("comma")
+    await pilot.pause()
+    yield

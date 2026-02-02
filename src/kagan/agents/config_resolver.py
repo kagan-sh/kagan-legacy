@@ -17,9 +17,8 @@ def resolve_agent_config(
 
     Priority:
     1. ticket.agent_backend (explicit override per ticket)
-    2. ticket.assigned_hat (DEPRECATED - backward compat, will be removed)
-    3. config.general.default_worker_agent (project default)
-    4. Fallback agent config (hardcoded sensible default)
+    2. config.general.default_worker_agent (project default)
+    3. Fallback agent config (hardcoded sensible default)
 
     Args:
         ticket: The ticket to resolve config for
@@ -35,19 +34,10 @@ def resolve_agent_config(
     if ticket.agent_backend:
         if builtin := get_builtin_agent(ticket.agent_backend):
             return builtin.config
-        # Also check custom agents in config
         if agent_config := config.get_agent(ticket.agent_backend):
             return agent_config
 
-    # Priority 2: assigned_hat (DEPRECATED - for backward compatibility only)
-    # TODO: Remove in future version once migration is complete
-    if ticket.assigned_hat:
-        if builtin := get_builtin_agent(ticket.assigned_hat):
-            return builtin.config
-        if agent_config := config.get_agent(ticket.assigned_hat):
-            return agent_config
-
-    # Priority 3: config's default_worker_agent
+    # Priority 2: config's default_worker_agent
     default_agent = config.general.default_worker_agent
     if builtin := get_builtin_agent(default_agent):
         return builtin.config

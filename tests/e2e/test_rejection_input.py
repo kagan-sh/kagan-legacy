@@ -30,8 +30,9 @@ class TestRejectionInputOpen:
 
             assert is_on_screen(pilot, "RejectionInputModal")
             assert pilot.app.screen.query_one("#feedback-input", TextArea)
-            assert pilot.app.screen.query_one("#submit-btn", Button)
-            assert pilot.app.screen.query_one("#cancel-btn", Button)
+            assert pilot.app.screen.query_one("#retry-btn", Button)
+            assert pilot.app.screen.query_one("#stage-btn", Button)
+            assert pilot.app.screen.query_one("#shelve-btn", Button)
 
     async def test_modal_focuses_textarea_on_mount(self, e2e_app: KaganApp):
         """TextArea is focused when modal opens."""
@@ -50,14 +51,14 @@ class TestRejectionInputOpen:
 class TestRejectionInputSubmit:
     """Test submit behavior."""
 
-    async def test_submit_button_dismisses_with_feedback(self, e2e_app: KaganApp):
-        """Clicking submit returns feedback text."""
+    async def test_retry_button_dismisses_with_feedback(self, e2e_app: KaganApp):
+        """Clicking retry returns feedback text with retry action."""
         async with e2e_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
 
-            result = None
+            result: tuple[str, str] | None = None
 
-            def capture_result(value):
+            def capture_result(value: tuple[str, str] | None) -> None:
                 nonlocal result
                 result = value
 
@@ -69,19 +70,19 @@ class TestRejectionInputSubmit:
             text_area.insert("Fix the bug")
             await pilot.pause()
 
-            await pilot.click("#submit-btn")
+            await pilot.click("#retry-btn")
             await pilot.pause()
 
-            assert result == "Fix the bug"
+            assert result == ("Fix the bug", "retry")
 
-    async def test_ctrl_s_submits(self, e2e_app: KaganApp):
-        """Ctrl+S submits the feedback."""
+    async def test_stage_button_dismisses_with_feedback(self, e2e_app: KaganApp):
+        """Clicking stage returns feedback text with stage action."""
         async with e2e_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
 
-            result = None
+            result: tuple[str, str] | None = None
 
-            def capture_result(value):
+            def capture_result(value: tuple[str, str] | None) -> None:
                 nonlocal result
                 result = value
 
@@ -90,22 +91,22 @@ class TestRejectionInputSubmit:
             await pilot.pause()
 
             text_area = pilot.app.screen.query_one("#feedback-input", TextArea)
-            text_area.insert("Use ctrl+s")
+            text_area.insert("Stage this")
             await pilot.pause()
 
-            await pilot.press("ctrl+s")
+            await pilot.click("#stage-btn")
             await pilot.pause()
 
-            assert result == "Use ctrl+s"
+            assert result == ("Stage this", "stage")
 
-    async def test_empty_feedback_returns_none(self, e2e_app: KaganApp):
-        """Empty feedback returns None on submit."""
+    async def test_empty_feedback_still_submits(self, e2e_app: KaganApp):
+        """Empty feedback still returns with action."""
         async with e2e_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
 
-            result: str | None = "sentinel"
+            result: tuple[str, str] | None = ("sentinel", "sentinel")
 
-            def capture_result(value: str | None) -> None:
+            def capture_result(value: tuple[str, str] | None) -> None:
                 nonlocal result
                 result = value
 
@@ -113,23 +114,23 @@ class TestRejectionInputSubmit:
             pilot.app.push_screen(modal, capture_result)
             await pilot.pause()
 
-            await pilot.click("#submit-btn")
+            await pilot.click("#retry-btn")
             await pilot.pause()
 
-            assert result is None
+            assert result == ("", "retry")
 
 
 class TestRejectionInputCancel:
-    """Test cancel/escape behavior."""
+    """Test cancel/escape/shelve behavior."""
 
     async def test_escape_cancels(self, e2e_app: KaganApp):
         """Escape dismisses with None."""
         async with e2e_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
 
-            result: str | None = "sentinel"
+            result: tuple[str, str] | None = ("sentinel", "sentinel")
 
-            def capture_result(value: str | None) -> None:
+            def capture_result(value: tuple[str, str] | None) -> None:
                 nonlocal result
                 result = value
 
@@ -146,14 +147,14 @@ class TestRejectionInputCancel:
 
             assert result is None
 
-    async def test_cancel_button_dismisses(self, e2e_app: KaganApp):
-        """Cancel button dismisses with None."""
+    async def test_shelve_button_dismisses(self, e2e_app: KaganApp):
+        """Shelve button dismisses with None."""
         async with e2e_app.run_test(size=(120, 40)) as pilot:
             await navigate_to_kanban(pilot)
 
-            result: str | None = "sentinel"
+            result: tuple[str, str] | None = ("sentinel", "sentinel")
 
-            def capture_result(value: str | None) -> None:
+            def capture_result(value: tuple[str, str] | None) -> None:
                 nonlocal result
                 result = value
 
@@ -161,7 +162,7 @@ class TestRejectionInputCancel:
             pilot.app.push_screen(modal, capture_result)
             await pilot.pause()
 
-            await pilot.click("#cancel-btn")
+            await pilot.click("#shelve-btn")
             await pilot.pause()
 
             assert result is None

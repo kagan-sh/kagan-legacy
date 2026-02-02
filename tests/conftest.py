@@ -3,23 +3,50 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from hypothesis import Phase, Verbosity, settings
 
 from kagan.app import KaganApp
 from kagan.database.manager import StateManager
+from kagan.database.models import Ticket, TicketPriority, TicketStatus, TicketType
 from tests.helpers.git import init_git_repo_with_commit
 from tests.helpers.mocks import (
     create_mock_agent,
+    create_mock_process,
     create_mock_session_manager,
     create_mock_worktree_manager,
+    create_test_agent_config,
     create_test_config,
 )
+
+# =============================================================================
+# Hypothesis Profiles
+# =============================================================================
+
+settings.register_profile(
+    "ci",
+    max_examples=100,
+    deadline=None,
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+)
+settings.register_profile(
+    "dev",
+    max_examples=20,
+    deadline=500,
+)
+settings.register_profile(
+    "debug",
+    max_examples=10,
+    verbosity=Verbosity.verbose,
+    deadline=None,
+)
+settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
 
 # =============================================================================
 # Core Unit Test Fixtures
@@ -38,29 +65,6 @@ async def state_manager():
         await manager.initialize()
         yield manager
         await manager.close()
-
-
-@pytest.fixture
-async def state_manager_factory(tmp_path: Path):
-    """Factory fixture to create state managers with access to db_path.
-
-    Use this when you need to verify db file creation/existence.
-    """
-    managers: list[StateManager] = []
-
-    async def _factory():
-        db_path = tmp_path / "test.db"
-        manager = StateManager(db_path)
-        await manager.initialize()
-        managers.append(manager)
-        return manager, db_path
-
-    yield _factory
-
-    # Cleanup all created managers in async context
-    for manager in managers:
-        with contextlib.suppress(RuntimeError):
-            await manager.close()
 
 
 @pytest.fixture
@@ -122,9 +126,31 @@ def config():
     return create_test_config()
 
 
+@pytest.fixture
+def agent_config():
+    """Create a minimal AgentConfig for testing."""
+    return create_test_agent_config()
+
+
+@pytest.fixture
+def mock_process():
+    """Create a mock subprocess for agent process testing."""
+    return create_mock_process()
+
+
 # =============================================================================
 # E2E Test Fixtures
 # =============================================================================
+
+
+async def _create_e2e_app_with_tickets(e2e_project, tickets: list[Ticket]) -> KaganApp:
+    """Helper to create a KaganApp with pre-populated tickets."""
+    manager = StateManager(e2e_project.db)
+    await manager.initialize()
+    for ticket in tickets:
+        await manager.create_ticket(ticket)
+    await manager.close()
+    return KaganApp(db_path=e2e_project.db, config_path=e2e_project.config, lock_path=None)
 
 
 @pytest.fixture
@@ -215,285 +241,81 @@ async def e2e_app(e2e_project):
 
 
 @pytest.fixture
-async def e2e_app_with_review_ticket_and_worktree(e2e_project):
-    """App with REVIEW ticket that has a worktree with commits."""
-    from kagan.database.models import TicketCreate, TicketPriority, TicketStatus
-
-    manager = StateManager(e2e_project.db)
-    await manager.initialize()
-
-    # Create a REVIEW ticket
-    ticket = await manager.create_ticket(
-        TicketCreate(
-            title="Feature with changes",
-            description="A feature ready for review with commits",
-            priority=TicketPriority.HIGH,
-            status=TicketStatus.REVIEW,
-        )
-    )
-
-    await manager.close()
-
-    # Create branch from main
-    branch_name = f"kagan/{ticket.id}"
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "branch",
-        branch_name,
-        cwd=e2e_project.root,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
-
-    # Create worktree directory
-    worktree_path = e2e_project.root / ".kagan" / "worktrees" / ticket.id
-    worktree_path.parent.mkdir(parents=True, exist_ok=True)
-
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "worktree",
-        "add",
-        str(worktree_path),
-        branch_name,
-        cwd=e2e_project.root,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
-
-    # Make a change and commit in the worktree
-    feature_file = worktree_path / "feature.py"
-    feature_file.write_text("# New feature\ndef new_feature():\n    return True\n")
-
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "add",
-        ".",
-        cwd=worktree_path,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
-
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "commit",
-        "-m",
-        f"Add feature for {ticket.id}",
-        cwd=worktree_path,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
-
-    app = KaganApp(
-        db_path=e2e_project.db,
-        config_path=e2e_project.config,
-        lock_path=None,
-    )
-    return app
-
-
-@pytest.fixture
-async def e2e_fresh_project(tmp_path: Path):
-    """Create a project directory WITHOUT git initialization.
-
-    This simulates a user running kagan in a completely empty folder,
-    which triggers kagan to initialize git itself.
-    """
-    project = tmp_path / "fresh_project"
-    project.mkdir()
-
-    # NO git init - kagan should do this itself
-    # Just create .kagan config so it skips welcome screen
-    kagan_dir = project / ".kagan"
-    kagan_dir.mkdir()
-
-    config_content = """# Kagan Test Configuration
-[general]
-auto_start = false
-auto_merge = false
-default_base_branch = "main"
-default_worker_agent = "claude"
-
-[agents.claude]
-identity = "claude.ai"
-name = "Claude"
-short_name = "claude"
-run_command."*" = "echo mock-claude"
-interactive_command."*" = "echo mock-claude-interactive"
-active = true
-"""
-    (kagan_dir / "config.toml").write_text(config_content)
-
-    return SimpleNamespace(
-        root=project,
-        db=str(kagan_dir / "state.db"),
-        config=str(kagan_dir / "config.toml"),
-        kagan_dir=kagan_dir,
-    )
-
-
-@pytest.fixture
-async def e2e_app_fresh(e2e_fresh_project, monkeypatch):
-    """Create a KaganApp for a fresh project without git.
-
-    Kagan will initialize git when it detects no repo exists.
-    Sets git user env vars so git init/commit works in CI.
-    """
-    # Set git user via environment (works without existing repo)
-    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
-    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@test.com")
-    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
-    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@test.com")
-
-    app = KaganApp(
-        db_path=e2e_fresh_project.db,
-        config_path=e2e_fresh_project.config,
-        lock_path=None,
-    )
-    return app
-
-
-@pytest.fixture
 async def e2e_app_with_tickets(e2e_project):
-    """Create a KaganApp with pre-populated tickets for testing.
-
-    Tickets are created via StateManager before the app runs,
-    simulating a user who has already been using Kagan.
-    """
-    from kagan.database.models import TicketCreate, TicketPriority, TicketStatus
-
-    # Initialize state manager and create tickets
-    manager = StateManager(e2e_project.db)
-    await manager.initialize()
-
-    await manager.create_ticket(
-        TicketCreate(
-            title="Backlog task",
-            description="A task in backlog",
-            priority=TicketPriority.LOW,
-            status=TicketStatus.BACKLOG,
-        )
+    """Create a KaganApp with pre-populated tickets (backlog, in-progress, review)."""
+    return await _create_e2e_app_with_tickets(
+        e2e_project,
+        [
+            Ticket.create(
+                title="Backlog task",
+                description="A task in backlog",
+                priority=TicketPriority.LOW,
+                status=TicketStatus.BACKLOG,
+            ),
+            Ticket.create(
+                title="In progress task",
+                description="Currently working",
+                priority=TicketPriority.HIGH,
+                status=TicketStatus.IN_PROGRESS,
+            ),
+            Ticket.create(
+                title="Review task",
+                description="Ready for review",
+                priority=TicketPriority.MEDIUM,
+                status=TicketStatus.REVIEW,
+            ),
+        ],
     )
-    await manager.create_ticket(
-        TicketCreate(
-            title="In progress task",
-            description="Currently working",
-            priority=TicketPriority.HIGH,
-            status=TicketStatus.IN_PROGRESS,
-        )
-    )
-    await manager.create_ticket(
-        TicketCreate(
-            title="Review task",
-            description="Ready for review",
-            priority=TicketPriority.MEDIUM,
-            status=TicketStatus.REVIEW,
-        )
-    )
-
-    await manager.close()
-
-    # Create app pointing to same DB
-    app = KaganApp(
-        db_path=e2e_project.db,
-        config_path=e2e_project.config,
-        lock_path=None,
-    )
-    return app
 
 
 @pytest.fixture
 async def e2e_app_with_auto_ticket(e2e_project):
-    """Create a KaganApp with an AUTO ticket in IN_PROGRESS for testing.
-
-    This is used to test AUTO ticket movement restrictions.
-    """
-    from kagan.database.models import TicketCreate, TicketPriority, TicketStatus, TicketType
-
-    manager = StateManager(e2e_project.db)
-    await manager.initialize()
-
-    # Create an AUTO ticket in IN_PROGRESS
-    await manager.create_ticket(
-        TicketCreate(
-            title="Auto task in progress",
-            description="An AUTO task currently being worked on by agent",
-            priority=TicketPriority.HIGH,
-            status=TicketStatus.IN_PROGRESS,
-            ticket_type=TicketType.AUTO,
-        )
+    """Create a KaganApp with an AUTO ticket in IN_PROGRESS."""
+    return await _create_e2e_app_with_tickets(
+        e2e_project,
+        [
+            Ticket.create(
+                title="Auto task in progress",
+                description="An AUTO task currently being worked on by agent",
+                priority=TicketPriority.HIGH,
+                status=TicketStatus.IN_PROGRESS,
+                ticket_type=TicketType.AUTO,
+            )
+        ],
     )
-
-    await manager.close()
-
-    app = KaganApp(
-        db_path=e2e_project.db,
-        config_path=e2e_project.config,
-        lock_path=None,
-    )
-    return app
 
 
 @pytest.fixture
 async def e2e_app_with_done_ticket(e2e_project):
-    """Create a KaganApp with a ticket in DONE status for testing.
-
-    This is used to test DONE -> BACKLOG jump behavior.
-    """
-    from kagan.database.models import TicketCreate, TicketPriority, TicketStatus
-
-    manager = StateManager(e2e_project.db)
-    await manager.initialize()
-
-    # Create a DONE ticket
-    await manager.create_ticket(
-        TicketCreate(
-            title="Completed task",
-            description="A task that has been completed",
-            priority=TicketPriority.MEDIUM,
-            status=TicketStatus.DONE,
-        )
+    """Create a KaganApp with a ticket in DONE status."""
+    return await _create_e2e_app_with_tickets(
+        e2e_project,
+        [
+            Ticket.create(
+                title="Completed task",
+                description="A task that has been completed",
+                priority=TicketPriority.MEDIUM,
+                status=TicketStatus.DONE,
+            )
+        ],
     )
-
-    await manager.close()
-
-    app = KaganApp(
-        db_path=e2e_project.db,
-        config_path=e2e_project.config,
-        lock_path=None,
-    )
-    return app
 
 
 @pytest.fixture
 async def e2e_app_with_ac_ticket(e2e_project):
     """Create a KaganApp with a ticket that has acceptance criteria."""
-    from kagan.database.models import TicketCreate, TicketPriority, TicketStatus
-
-    manager = StateManager(e2e_project.db)
-    await manager.initialize()
-
-    await manager.create_ticket(
-        TicketCreate(
-            title="Task with acceptance criteria",
-            description="A task with defined acceptance criteria",
-            priority=TicketPriority.HIGH,
-            status=TicketStatus.BACKLOG,
-            acceptance_criteria=["User can login", "Error messages shown"],
-        )
+    return await _create_e2e_app_with_tickets(
+        e2e_project,
+        [
+            Ticket.create(
+                title="Task with acceptance criteria",
+                description="A task with defined acceptance criteria",
+                priority=TicketPriority.HIGH,
+                status=TicketStatus.BACKLOG,
+                acceptance_criteria=["User can login", "Error messages shown"],
+            )
+        ],
     )
-
-    await manager.close()
-
-    app = KaganApp(
-        db_path=e2e_project.db,
-        config_path=e2e_project.config,
-        lock_path=None,
-    )
-    return app
 
 
 # =============================================================================
@@ -565,94 +387,57 @@ def mock_review_agent():
     return agent
 
 
-@pytest.fixture(autouse=True)
-def auto_mock_tmux_for_app_tests(request, monkeypatch):
-    """Auto-mock tmux for tests that use KaganApp fixtures.
-
-    tmux is an external system boundary, so mocking is appropriate per testing_rules.md.
-    This ensures tests don't fail when tmux isn't installed (e.g., some CI runners).
-    """
-    # Check if this test uses any e2e_app fixture
-    fixture_names = request.fixturenames
-    uses_app_fixture = any(name.startswith("e2e_app") or name == "app" for name in fixture_names)
-
-    if not uses_app_fixture:
-        return  # No mocking needed
-
-    # Track fake sessions for realism
-    fake_sessions: dict[str, dict] = {}
+def _create_fake_tmux(sessions: dict):
+    """Create a fake tmux function that tracks session state."""
 
     async def fake_run_tmux(*args: str) -> str:
-        """Mock tmux that simulates basic session management."""
         if not args:
             return ""
-        command = args[0]
-
-        if command == "list-sessions":
-            return "\n".join(sorted(fake_sessions.keys()))
-
-        if command == "new-session":
-            if "-s" in args:
-                idx = list(args).index("-s")
-                if idx + 1 < len(args):
-                    name = args[idx + 1]
-                    fake_sessions[name] = {"created": True}
-            return ""
-
-        if command == "kill-session":
-            if "-t" in args:
-                idx = list(args).index("-t")
-                if idx + 1 < len(args):
-                    name = args[idx + 1]
-                    fake_sessions.pop(name, None)
-            return ""
-
-        if command == "send-keys":
-            return ""
-
+        command, args_list = args[0], list(args)
+        if command == "new-session" and "-s" in args_list:
+            idx = args_list.index("-s")
+            name = args_list[idx + 1] if idx + 1 < len(args_list) else None
+            if name:
+                cwd = args_list[args_list.index("-c") + 1] if "-c" in args_list else ""
+                # Extract environment variables from -e flags
+                env: dict[str, str] = {}
+                for i, val in enumerate(args_list):
+                    if val == "-e" and i + 1 < len(args_list):
+                        key, _, env_value = args_list[i + 1].partition("=")
+                        env[key] = env_value
+                sessions[name] = {"cwd": cwd, "env": env, "sent_keys": []}
+        elif command == "kill-session" and "-t" in args_list:
+            sessions.pop(args_list[args_list.index("-t") + 1], None)
+        elif command == "send-keys" and "-t" in args_list:
+            idx = args_list.index("-t")
+            name, keys = args_list[idx + 1], args_list[idx + 2] if idx + 2 < len(args_list) else ""
+            if name in sessions:
+                sessions[name]["sent_keys"].append(keys)
+        elif command == "list-sessions":
+            return "\n".join(sorted(sessions.keys()))
         return ""
 
-    # Patch BOTH the source module AND the manager's imported binding
-    # (manager.py does `from ... import run_tmux` at module load time)
-    monkeypatch.setattr("kagan.sessions.tmux.run_tmux", fake_run_tmux)
-    monkeypatch.setattr("kagan.sessions.manager.run_tmux", fake_run_tmux)
+    return fake_run_tmux
+
+
+@pytest.fixture(autouse=True)
+def auto_mock_tmux_for_app_tests(request, monkeypatch):
+    """Auto-mock tmux for tests using KaganApp fixtures (external system boundary)."""
+    # Match fixtures that create KaganApp instances
+    app_fixture_patterns = ("e2e_app", "app", "welcome_app", "_fresh_app")
+    if not any(
+        n.startswith(app_fixture_patterns) or n in app_fixture_patterns
+        for n in request.fixturenames
+    ):
+        return
+    fake = _create_fake_tmux({})
+    monkeypatch.setattr("kagan.sessions.tmux.run_tmux", fake)
+    monkeypatch.setattr("kagan.sessions.manager.run_tmux", fake)
 
 
 @pytest.fixture
 def mock_tmux(monkeypatch):
-    """Intercept tmux subprocess calls.
-
-    Shared by: test_sessions.py, test_sessions_lifecycle.py
-    """
-    from typing import Any
-
-    sessions: dict[str, dict[str, Any]] = {}
-
-    async def fake_run_tmux(*args: str) -> str:
-        command = args[0]
-        if command == "new-session":
-            name = args[args.index("-s") + 1]
-            cwd = args[args.index("-c") + 1]
-            env: dict[str, str] = {}
-            for idx, value in enumerate(args):
-                if value == "-e" and idx + 1 < len(args):
-                    key, _, env_value = args[idx + 1].partition("=")
-                    env[key] = env_value
-            sessions[name] = {"cwd": cwd, "env": env, "sent_keys": []}
-            return ""
-        if command == "send-keys":
-            name = args[args.index("-t") + 1]
-            key_text = args[args.index("-t") + 2]
-            if name in sessions:
-                sessions[name]["sent_keys"].append(key_text)
-            return ""
-        if command == "list-sessions":
-            return "\n".join(sorted(sessions.keys()))
-        if command == "kill-session":
-            name = args[args.index("-t") + 1]
-            sessions.pop(name, None)
-            return ""
-        return ""
-
-    monkeypatch.setattr("kagan.sessions.manager.run_tmux", fake_run_tmux)
+    """Intercept tmux calls and return session state for assertions."""
+    sessions: dict = {}
+    monkeypatch.setattr("kagan.sessions.manager.run_tmux", _create_fake_tmux(sessions))
     return sessions

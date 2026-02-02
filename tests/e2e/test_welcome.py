@@ -1,150 +1,75 @@
-"""Tests for WelcomeScreen."""
+"""E2E tests for WelcomeScreen UI interactions."""
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from kagan.git_utils import _ensure_gitignored
-from kagan.ui.screens.welcome import DEFAULT_BASE_BRANCHES, WelcomeScreen
+from kagan.app import KaganApp
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = pytest.mark.e2e
 
 
-def _create_welcome_screen(
-    has_git_repo: bool = True, repo_root: Path | None = None
-) -> WelcomeScreen:
-    """Create WelcomeScreen instance without full init for unit testing."""
-    screen = WelcomeScreen.__new__(WelcomeScreen)
-    screen._has_git_repo = has_git_repo
-    screen._repo_root = repo_root or Path.cwd()
-    return screen
+@pytest.fixture
+async def welcome_app(tmp_path: Path, monkeypatch) -> KaganApp:
+    """Create app for welcome screen testing (fresh project, no config)."""
+    # Set git env vars for CI compatibility
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@test.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@test.com")
+
+    project = tmp_path / "new_project"
+    project.mkdir()
+
+    return KaganApp(
+        db_path=str(project / ".kagan" / "state.db"),
+        config_path=str(project / ".kagan" / "config.toml"),
+        lock_path=None,
+    )
 
 
-class TestBuildBranchOptions:
-    """Tests for _build_branch_options method."""
+class TestWelcomeScreenUI:
+    """E2E tests for WelcomeScreen user interactions."""
 
-    def test_default_branch_first(self):
-        screen = _create_welcome_screen()
-        result = screen._build_branch_options(["feature", "develop"], "main")
-        assert result[0] == "main"
+    async def test_welcome_screen_shows_on_first_boot(self, welcome_app: KaganApp):
+        """Welcome screen is shown when no config exists."""
+        async with welcome_app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            assert "WelcomeScreen" in type(pilot.app.screen).__name__
 
-    def test_deduplicates_branches(self):
-        screen = _create_welcome_screen()
-        result = screen._build_branch_options(["main", "develop", "main"], "main")
-        assert result.count("main") == 1
+    async def test_welcome_screen_has_agent_select(self, welcome_app: KaganApp):
+        """Welcome screen shows agent selection dropdown."""
+        from textual.widgets import Select
 
-    def test_includes_default_base_branches(self):
-        screen = _create_welcome_screen()
-        result = screen._build_branch_options([], "main")
-        for branch in DEFAULT_BASE_BRANCHES:
-            assert branch in result
+        async with welcome_app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            agent_select = pilot.app.screen.query_one("#agent-select", Select)
+            assert agent_select is not None
 
-    def test_preserves_order_default_then_branches_then_defaults(self):
-        screen = _create_welcome_screen()
-        result = screen._build_branch_options(["feature", "bugfix"], "develop")
-        assert result[0] == "develop"
-        assert result[1] == "feature"
-        assert result[2] == "bugfix"
+    @pytest.mark.parametrize(
+        "action,action_type",
+        [
+            ("click", "#continue-btn"),
+            ("key", "escape"),
+        ],
+        ids=["continue_button", "escape_key"],
+    )
+    async def test_exit_welcome_screen(self, welcome_app: KaganApp, action: str, action_type: str):
+        """Verify actions that exit the welcome screen."""
+        async with welcome_app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            assert "WelcomeScreen" in type(pilot.app.screen).__name__
 
-    def test_empty_branches_list(self):
-        screen = _create_welcome_screen()
-        result = screen._build_branch_options([], "main")
-        assert "main" in result
-        assert len(result) >= len(DEFAULT_BASE_BRANCHES)
+            if action == "click":
+                await pilot.click(action_type)
+            else:
+                await pilot.press(action_type)
+            await pilot.pause()
+            await pilot.pause()  # Extra pause for async config write
 
-
-class TestGetDefaultBaseBranch:
-    """Tests for _get_default_base_branch method."""
-
-    async def test_no_git_repo_returns_main(self):
-        screen = _create_welcome_screen(has_git_repo=False)
-        result = await screen._get_default_base_branch([])
-        assert result == "main"
-
-    async def test_no_git_repo_ignores_branches(self):
-        screen = _create_welcome_screen(has_git_repo=False)
-        result = await screen._get_default_base_branch(["develop", "feature"])
-        assert result == "main"
-
-    async def test_with_git_repo_prefers_default_candidates(self, tmp_path: Path, monkeypatch):
-        # Mock get_current_branch to return None (async)
-        async def mock_get_current_branch(_):
-            return None
-
-        monkeypatch.setattr("kagan.ui.screens.welcome.get_current_branch", mock_get_current_branch)
-        screen = _create_welcome_screen(has_git_repo=True, repo_root=tmp_path)
-        result = await screen._get_default_base_branch(["develop", "feature"])
-        assert result == "develop"
-
-    async def test_with_git_repo_falls_back_to_first_branch(self, tmp_path: Path, monkeypatch):
-        async def mock_get_current_branch(_):
-            return None
-
-        monkeypatch.setattr("kagan.ui.screens.welcome.get_current_branch", mock_get_current_branch)
-        screen = _create_welcome_screen(has_git_repo=True, repo_root=tmp_path)
-        result = await screen._get_default_base_branch(["custom-branch", "another"])
-        assert result == "custom-branch"
-
-    async def test_with_git_repo_uses_current_branch(self, tmp_path: Path, monkeypatch):
-        async def mock_get_current_branch(_):
-            return "feature-x"
-
-        monkeypatch.setattr("kagan.ui.screens.welcome.get_current_branch", mock_get_current_branch)
-        screen = _create_welcome_screen(has_git_repo=True, repo_root=tmp_path)
-        result = await screen._get_default_base_branch(["main", "develop"])
-        assert result == "feature-x"
-
-
-class TestEnsureGitignored:
-    """Tests for _ensure_gitignored function from git_utils."""
-
-    def test_creates_gitignore_if_missing(self, tmp_path: Path):
-        created, updated = _ensure_gitignored(tmp_path)
-
-        assert created is True
-        assert updated is False
-        gitignore = tmp_path / ".gitignore"
-        assert gitignore.exists()
-        content = gitignore.read_text()
-        assert ".kagan/" in content
-
-    def test_appends_to_existing_gitignore(self, tmp_path: Path):
-        gitignore = tmp_path / ".gitignore"
-        gitignore.write_text("node_modules/\n")
-
-        created, updated = _ensure_gitignored(tmp_path)
-
-        assert created is False
-        assert updated is True
-        content = gitignore.read_text()
-        assert "node_modules/" in content
-        assert ".kagan/" in content
-
-    def test_appends_newline_if_missing(self, tmp_path: Path):
-        gitignore = tmp_path / ".gitignore"
-        gitignore.write_text("node_modules/")  # No trailing newline
-
-        _ensure_gitignored(tmp_path)
-
-        content = gitignore.read_text()
-        assert "\n\n# Kagan local state\n.kagan/" in content
-
-    def test_skips_if_already_ignored_with_slash(self, tmp_path: Path):
-        gitignore = tmp_path / ".gitignore"
-        gitignore.write_text(".kagan/\n")
-
-        created, updated = _ensure_gitignored(tmp_path)
-
-        assert created is False
-        assert updated is False
-
-    def test_skips_if_already_ignored_without_slash(self, tmp_path: Path):
-        gitignore = tmp_path / ".gitignore"
-        gitignore.write_text(".kagan\n")
-
-        created, updated = _ensure_gitignored(tmp_path)
-
-        assert created is False
-        assert updated is False
+            assert "WelcomeScreen" not in type(pilot.app.screen).__name__

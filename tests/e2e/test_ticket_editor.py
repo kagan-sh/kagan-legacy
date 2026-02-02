@@ -6,22 +6,22 @@ import pytest
 from textual.widgets import Button, Input, TextArea
 
 from kagan.app import KaganApp
-from kagan.database.models import TicketCreate, TicketPriority, TicketType
+from kagan.database.models import Ticket, TicketPriority, TicketType
 from kagan.ui.screens.ticket_editor import TicketEditorScreen
 
 pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture
-def sample_tickets() -> list[TicketCreate]:
+def sample_tickets() -> list[Ticket]:
     return [
-        TicketCreate(
+        Ticket.create(
             title="First Ticket",
             description="First description",
             priority=TicketPriority.MEDIUM,
             ticket_type=TicketType.AUTO,
         ),
-        TicketCreate(
+        Ticket.create(
             title="Second Ticket",
             description="Second description",
             priority=TicketPriority.HIGH,
@@ -33,9 +33,7 @@ def sample_tickets() -> list[TicketCreate]:
 class TestTicketEditorScreen:
     """Tests for TicketEditorScreen."""
 
-    async def test_compose_creates_tabs_for_each_ticket(
-        self, sample_tickets: list[TicketCreate]
-    ) -> None:
+    async def test_compose_creates_tabs_for_each_ticket(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         async with app.run_test(size=(120, 40)) as pilot:
             screen = TicketEditorScreen(sample_tickets)
@@ -49,9 +47,7 @@ class TestTicketEditorScreen:
             assert screen.query_one("#description-1", TextArea)
             assert screen.query_one("#description-2", TextArea)
 
-    async def test_inputs_prepopulated_with_ticket_data(
-        self, sample_tickets: list[TicketCreate]
-    ) -> None:
+    async def test_inputs_prepopulated_with_ticket_data(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         async with app.run_test(size=(120, 40)) as pilot:
             screen = TicketEditorScreen(sample_tickets)
@@ -65,7 +61,7 @@ class TestTicketEditorScreen:
             desc1 = screen.query_one("#description-1", TextArea)
             assert desc1.text == "First description"
 
-    async def test_escape_dismisses_with_none(self, sample_tickets: list[TicketCreate]) -> None:
+    async def test_escape_dismisses_with_none(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         result = None
 
@@ -83,9 +79,7 @@ class TestTicketEditorScreen:
 
         assert result is None
 
-    async def test_finish_button_returns_edited_tickets(
-        self, sample_tickets: list[TicketCreate]
-    ) -> None:
+    async def test_finish_button_returns_edited_tickets(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         result = None
 
@@ -113,7 +107,7 @@ class TestTicketEditorScreen:
         assert len(result) == 2
         assert result[0].title == "Modified Title"
 
-    async def test_ctrl_s_finishes_editing(self, sample_tickets: list[TicketCreate]) -> None:
+    async def test_ctrl_s_finishes_editing(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         result = None
 
@@ -132,7 +126,7 @@ class TestTicketEditorScreen:
         assert result is not None
         assert len(result) == 2
 
-    async def test_empty_title_uses_original(self, sample_tickets: list[TicketCreate]) -> None:
+    async def test_empty_title_uses_original(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         result = None
 
@@ -157,7 +151,7 @@ class TestTicketEditorScreen:
         assert result is not None
         assert result[0].title == "First Ticket"  # Original preserved
 
-    async def test_focus_first_input_on_mount(self, sample_tickets: list[TicketCreate]) -> None:
+    async def test_focus_first_input_on_mount(self, sample_tickets: list[Ticket]) -> None:
         app = KaganApp(db_path=":memory:")
         async with app.run_test(size=(120, 40)) as pilot:
             screen = TicketEditorScreen(sample_tickets)
@@ -186,7 +180,7 @@ class TestTicketEditorScreen:
 
         assert result == []
 
-    async def test_preserves_non_editable_fields(self, sample_tickets: list[TicketCreate]) -> None:
+    async def test_preserves_non_editable_fields(self, sample_tickets: list[Ticket]) -> None:
         # Add extra fields that aren't editable (use list for acceptance_criteria)
         sample_tickets[0].acceptance_criteria = ["Must pass tests"]
         sample_tickets[0].parent_id = "parent-123"

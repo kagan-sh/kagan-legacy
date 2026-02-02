@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+# Python version check - must be before any imports that use 3.12+ syntax.
+# This check uses only Python 3.8+ compatible syntax.
+# Note: from __future__ is allowed before this check as it's valid in Python 3.7+.
+import sys
+
+if sys.version_info < (3, 12):  # noqa: UP036
+    print("Error: Kagan requires Python 3.12 or higher.")
+    print(
+        "You are running Python {}.{}".format(  # noqa: UP032
+            sys.version_info.major, sys.version_info.minor
+        )
+    )
+    print("Please upgrade Python: https://www.python.org/downloads/")
+    sys.exit(1)
+
 # Suppress asyncio subprocess cleanup errors on exit.
 # When GC runs after the event loop closes, subprocess transports may try to
 # close their pipes and fail. This was fixed in Python 3.13.1+ and 3.14+ (gh-114177),
 # but we need this workaround for Python 3.12.
-import sys
 
 _original_unraisablehook = sys.unraisablehook
 
@@ -30,6 +44,7 @@ from pathlib import Path  # noqa: E402
 import click  # noqa: E402
 
 from kagan import __version__  # noqa: E402
+from kagan.cli.tools import tools  # noqa: E402
 from kagan.cli.update import check_for_updates, prompt_and_update, update  # noqa: E402
 from kagan.constants import DEFAULT_CONFIG_PATH, DEFAULT_DB_PATH, DEFAULT_LOCK_PATH  # noqa: E402
 
@@ -79,8 +94,9 @@ def cli(ctx: click.Context, version: bool) -> None:
         ctx.invoke(tui)
 
 
-# Register update subcommand
+# Register subcommands
 cli.add_command(update)
+cli.add_command(tools)
 
 
 @cli.command()
@@ -147,10 +163,18 @@ def tui(db: str, config: str, skip_preflight: bool, skip_update_check: bool) -> 
                 )
             )
 
-            if result.has_blocking_issues:
+            # Show troubleshooting screen if there are any issues
+            if result.issues:
                 app = TroubleshootingApp(result.issues)
-                app.run()
-                sys.exit(1)
+                exit_code = app.run()
+
+                # If blocking issues, always exit
+                if result.has_blocking_issues:
+                    sys.exit(1)
+
+                # For warnings, check if user chose to quit or continue
+                if exit_code != TroubleshootingApp.EXIT_CONTINUE:
+                    sys.exit(exit_code if exit_code is not None else 1)
 
     # Import here to avoid slow startup for --help/--version
     from kagan.lock import InstanceLock, InstanceLockError

@@ -19,10 +19,18 @@ class Signal(Enum):
 
 @dataclass
 class SignalResult:
-    """Result of signal parsing with optional reason."""
+    """Result of signal parsing with optional reason and metadata.
+
+    For APPROVE signals, additional context helps maintainers understand the changes:
+    - reason/summary: Brief description of what was implemented
+    - approach: Technical approach or pattern used (aids debugging)
+    - key_files: Primary files to examine when debugging or extending
+    """
 
     signal: Signal
     reason: str = ""
+    approach: str = ""
+    key_files: str = ""
 
 
 # Patterns for parsing signals from agent output
@@ -30,9 +38,17 @@ _PATTERNS = [
     (Signal.COMPLETE, re.compile(r"<complete\s*/?>", re.IGNORECASE)),
     (Signal.BLOCKED, re.compile(r'<blocked\s+reason="([^"]+)"\s*/?>', re.IGNORECASE)),
     (Signal.CONTINUE, re.compile(r"<continue\s*/?>", re.IGNORECASE)),
-    (Signal.APPROVE, re.compile(r'<approve\s+summary="([^"]+)"\s*/?>', re.IGNORECASE)),
+    # APPROVE captures summary (required), approach and key_files (optional)
+    (Signal.APPROVE, re.compile(r"<approve\s+[^>]*/?>")),
     (Signal.REJECT, re.compile(r'<reject\s+reason="([^"]+)"\s*/?>', re.IGNORECASE)),
 ]
+
+# Patterns for extracting attributes from APPROVE signal
+_APPROVE_ATTRS = {
+    "summary": re.compile(r'summary="([^"]+)"', re.IGNORECASE),
+    "approach": re.compile(r'approach="([^"]+)"', re.IGNORECASE),
+    "key_files": re.compile(r'key_files="([^"]+)"', re.IGNORECASE),
+}
 
 
 def parse_signal(output: str) -> SignalResult:
@@ -45,10 +61,35 @@ def parse_signal(output: str) -> SignalResult:
         SignalResult with parsed signal. Defaults to CONTINUE if no signal found.
     """
     # Signals that capture a reason/summary in group(1)
-    signals_with_reason = {Signal.BLOCKED, Signal.APPROVE, Signal.REJECT}
+    signals_with_reason = {Signal.BLOCKED, Signal.REJECT}
 
     for sig, pat in _PATTERNS:
         if m := pat.search(output):
+            if sig == Signal.APPROVE:
+                return _parse_approve_signal(m.group(0))
             reason = m.group(1) if sig in signals_with_reason else ""
             return SignalResult(sig, reason)
     return SignalResult(Signal.CONTINUE)
+
+
+def _parse_approve_signal(approve_tag: str) -> SignalResult:
+    """Parse APPROVE signal with optional approach and key_files attributes.
+
+    Args:
+        approve_tag: The full <approve .../> tag string.
+
+    Returns:
+        SignalResult with summary, approach, and key_files populated.
+    """
+    summary = ""
+    approach = ""
+    key_files = ""
+
+    if m := _APPROVE_ATTRS["summary"].search(approve_tag):
+        summary = m.group(1)
+    if m := _APPROVE_ATTRS["approach"].search(approve_tag):
+        approach = m.group(1)
+    if m := _APPROVE_ATTRS["key_files"].search(approve_tag):
+        key_files = m.group(1)
+
+    return SignalResult(Signal.APPROVE, reason=summary, approach=approach, key_files=key_files)

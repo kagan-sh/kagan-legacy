@@ -8,22 +8,12 @@ import pytest
 
 from kagan.database.models import TicketStatus
 from kagan.ui.widgets.card import TicketCard
-from tests.helpers.pages import is_on_screen
+from tests.helpers.pages import focus_review_ticket, is_on_screen
 
 if TYPE_CHECKING:
     from kagan.app import KaganApp
 
 pytestmark = pytest.mark.e2e
-
-
-def _focus_review_ticket(pilot) -> bool:
-    """Focus a ticket in REVIEW status. Returns True if found."""
-    cards = list(pilot.app.screen.query(TicketCard))
-    for card in cards:
-        if card.ticket and card.ticket.status == TicketStatus.REVIEW:
-            card.focus()
-            return True
-    return False
 
 
 class TestDiffModalOpen:
@@ -33,7 +23,7 @@ class TestDiffModalOpen:
         """Pressing 'g' then 'd' on REVIEW ticket opens DiffModal."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            assert _focus_review_ticket(pilot)
+            assert focus_review_ticket(pilot) is not None
             await pilot.pause()
 
             await pilot.press("g", "d")
@@ -68,7 +58,7 @@ class TestDiffModalDisplay:
 
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            assert _focus_review_ticket(pilot)
+            assert focus_review_ticket(pilot) is not None
             await pilot.pause()
 
             await pilot.press("g", "d")
@@ -84,7 +74,7 @@ class TestDiffModalDisplay:
 
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            assert _focus_review_ticket(pilot)
+            assert focus_review_ticket(pilot) is not None
             await pilot.pause()
 
             await pilot.press("g", "d")
@@ -103,7 +93,7 @@ class TestDiffModalClose:
         """Pressing escape closes the DiffModal."""
         async with e2e_app_with_tickets.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            assert _focus_review_ticket(pilot)
+            assert focus_review_ticket(pilot) is not None
             await pilot.pause()
 
             await pilot.press("g", "d")

@@ -55,6 +55,8 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - run: git config --global user.name "CI" && git config --global user.email "ci@local"
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
         with:

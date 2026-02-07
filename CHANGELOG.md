@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v0.3.0-beta.2 (2026-02-07)
+
+### Bug Fixes
+
+- Port Windows compatibility, snapshot isolation, and CI hardening
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+- Resolve quality blockers and stabilize test suite
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+### Chores
+
+- Windows tweaks
+  ([`e8c1fe9`](https://github.com/aorumbayev/kagan/commit/e8c1fe9eb186b03eec17e7336a28de662f4991df))
+
+### Documentation
+
+- Cap Python to 3.12–3.13 and update all user-facing documentation
+  ([`a873c6a`](https://github.com/aorumbayev/kagan/commit/a873c6a10c3447f4ae44cc3f7b5a746fae0564ec))
+
+- Refresh documentation and remove outdated internal references
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+### Features
+
+- Implement planner mode, pair flow, and ACP streaming UI
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+- Projects, multi-repos, workspaces, bug fixes, ui polishing, windows support
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+### Refactoring
+
+- Centralize storage with XDG paths and schema evolution
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+- Consolidate git wrapper and modernize async patterns
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+- Remodel architecture with service-oriented patterns
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+- **core**: Migrate to sqlmodel ORM and official ACP SDK
+  ([#15](https://github.com/aorumbayev/kagan/pull/15),
+  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
+
+
 ## v0.3.0-beta.1 (2026-02-02)
 
 ### Chores

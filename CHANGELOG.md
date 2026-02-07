@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.0-beta.5 (2026-02-07)
+
+### Bug Fixes
+
+- Harden review modal against ci race conditions
+  ([`24a0674`](https://github.com/aorumbayev/kagan/commit/24a0674e7017e5e4f586f08573992db28981601f))
+
+
 ## v0.3.0-beta.4 (2026-02-07)
 
 ### Bug Fixes

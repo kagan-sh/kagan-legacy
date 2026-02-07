@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, cast
 
+from sqlalchemy.exc import OperationalError
 from textual import on
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
@@ -224,6 +225,14 @@ class ReviewModal(
             self.query_one("#review-loading", LoadingIndicator).remove()
         self.query_one("#review-tabs").remove_class("hidden")
         self.query_one("#ai-review-section").remove_class("hidden")
+        app = cast("KaganApp", self.app)
+        if (
+            not self._read_only
+            and self._task_model.task_type == TaskType.PAIR
+            and self._task_model.status == TaskStatus.REVIEW
+            and app.ctx.config.general.auto_review
+        ):
+            self.query_one("#ai-review-chat", ChatPanel).remove_class("hidden")
         if not self._read_only:
             self.query_one(".button-row").remove_class("hidden")
         self._set_active_tab(self._initial_tab)
@@ -409,7 +418,12 @@ class ReviewModal(
 
     async def _refresh_runtime_state(self) -> None:
         app = cast("KaganApp", self.app)
-        latest = await app.ctx.task_service.get_task(self._task_model.id)
+        try:
+            latest = await app.ctx.task_service.get_task(self._task_model.id)
+        except OperationalError:
+            # Modal teardown can race with background workers when test/app DB
+            # connections are being closed; ignore stale refresh attempts.
+            return
         if latest is not None:
             previous_status = self._task_model.status
             self._task_model = latest

@@ -5,15 +5,23 @@ developers working on the codebase. User documentation lives in `docs/`.
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.12 – 3.13
 - `uv` for dependency management
 - A terminal that supports Textual (for running the TUI)
-- tmux (for PAIR mode testing)
+- tmux (for PAIR mode testing on macOS/Linux)
 - Git (for worktree functionality)
 
 ## Getting Started
 
-Clone the repo and execute:
+Clone the repo and install dependencies:
+
+```bash
+git clone https://github.com/aorumbayev/kagan.git
+cd kagan
+uv sync --dev
+```
+
+Run the app:
 
 ```bash
 uv run kagan
@@ -46,7 +54,7 @@ uv run poe check      # lint + typecheck + test
 ## Testing
 
 ```bash
-# All tests
+# All tests (parallel by default)
 uv run pytest tests/ -v
 
 # Single file
@@ -57,12 +65,22 @@ uv run pytest tests/features/test_agent_automation.py::TestIterationLoop -v
 
 # Single test
 uv run pytest tests/features/test_agent_automation.py::TestIterationLoop::test_complete_signal_moves_to_review -v
+
+# By marker
+uv run pytest -m unit -v              # Unit tests
+uv run pytest -m integration -v       # Integration tests
+uv run pytest -m e2e -v               # End-to-end tests
+uv run pytest -m "not slow" -v        # Exclude slow tests
+uv run pytest tests/ -n 0 -v          # Sequential (for debugging)
 ```
 
 ## UI Snapshots
 
+Snapshot tests must run sequentially (no parallel):
+
 ```bash
-UPDATE_SNAPSHOTS=1 uv run pytest tests/test_snapshots.py --snapshot-update
+uv run poe test-snapshot              # Run snapshot tests
+uv run poe test-snapshot-update       # Update snapshots
 ```
 
 ## Docs Preview
@@ -107,6 +125,9 @@ src/kagan/
 ├── lock.py             # Instance lock (single instance)
 ├── git_utils.py        # Git helper functions
 ├── keybindings.py      # Centralized keybinding registry (single file)
+├── builtin_agents.py   # Built-in agent definitions (Claude, OpenCode, Codex, Gemini, Kimi, Copilot)
+├── preflight.py        # Pre-flight checks and agent detection
+├── __main__.py         # CLI entry point (Click-based)
 ├── adapters/
 │   ├── db/             # SQLModel schema + repositories
 │   ├── git/            # Worktree/diff/merge adapters
@@ -139,16 +160,14 @@ src/kagan/
 │   ├── signals.py      # Agent completion signals parser
 │   ├── prompt.py       # Prompt building for AUTO mode
 │   ├── prompt_loader.py    # Template loading for prompts
+│   ├── installer.py    # Agent installation helpers
 │   └── config_resolver.py  # Agent config resolution
 ├── acp/                # Agent Control Protocol
-│   ├── agent.py        # ACP Agent class (JSON-RPC over subprocess)
-│   ├── protocol.py     # ACP protocol types
+│   ├── kagan_agent.py  # ACP Agent class (JSON-RPC over subprocess)
 │   ├── messages.py     # Textual messages for agent events
 │   ├── terminals.py    # Terminal management for agents
 │   ├── terminal.py     # Single terminal handling
 │   └── buffers.py      # Response buffering
-├── data/
-│   └── builtin_agents.py   # Built-in agent definitions (Claude, OpenCode)
 ├── styles/
 │   └── kagan.tcss      # ALL CSS here (no DEFAULT_CSS in Python!)
 └── ui/
@@ -161,10 +180,12 @@ src/kagan/
     │   │   ├── screen.py   # KanbanScreen implementation
     │   │   ├── focus.py    # Focus management helpers
     │   │   └── hints.py    # Keybinding hints
-    │   ├── planner/        # Planner screen (chat-first)
-    │   ├── welcome.py      # First-boot setup screen
-    │   ├── task_editor.py    # Task editor screen
-    │   └── troubleshooting/    # Pre-flight check failures
+    │   ├── planner/        # Planner screen (chat-first AI planner)
+    │   ├── welcome.py      # Project picker screen
+    │   ├── onboarding.py   # First-boot setup screen
+    │   ├── task_editor.py  # Task editor screen
+    │   ├── repo_picker.py  # Multi-repo selector
+    │   └── troubleshooting/ # Pre-flight check failure screen
     ├── widgets/
     │   ├── card.py         # TaskCard widget
     │   ├── column.py       # KanbanColumn widget
@@ -188,7 +209,10 @@ src/kagan/
         ├── description_editor.py   # Full-screen description editor
         ├── help.py             # Help modal
         ├── tmux_gateway.py     # Tmux gateway info modal
-        ├── duplicate_task.py # Duplicate task modal
+        ├── duplicate_task.py   # Duplicate task modal
+        ├── global_agent_picker.py  # Agent switcher modal
+        ├── agent_install.py    # Agent installation modal
+        ├── agent_choice.py     # Agent choice modal
         └── actions.py          # Modal action enums
 ```
 

@@ -16,13 +16,14 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Terminals",
     "Topic :: Utilities",
     "Typing :: Typed",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "textual>=7.0.0",
     "aiosqlite>=0.22.0",

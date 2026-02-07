@@ -201,6 +201,10 @@ flowchart TB
     subgraph Agents["AI Agents"]
         Claude["Claude Code"]
         OpenCode["OpenCode"]
+        Codex["Codex"]
+        Gemini["Gemini CLI"]
+        Kimi["Kimi CLI"]
+        Copilot["GitHub Copilot"]
     end
 
     Agents --> Code
@@ -255,7 +259,9 @@ AUTO tasks have automatic state transitions driven by the agent. PAIR tasks are 
 
 ## Supported AI CLIs
 
-- **Claude Code** (Anthropic)
-- **OpenCode** (open source)
-
-Coming soon: Gemini, Codex, and more.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** (Anthropic)
+- **[OpenCode](https://opencode.ai/docs)** (SST)
+- **[Codex](https://github.com/openai/codex)** (OpenAI)
+- **[Gemini CLI](https://github.com/google-gemini/gemini-cli)** (Google)
+- **[Kimi CLI](https://github.com/MoonshotAI/kimi-cli)** (Moonshot AI)
+- **[GitHub Copilot](https://github.com/github/copilot-cli)** (GitHub)

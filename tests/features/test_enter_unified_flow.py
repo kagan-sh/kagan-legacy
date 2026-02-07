@@ -379,6 +379,15 @@ async def test_enter_pair_review_auto_starts_ai_review_when_enabled(tmp_path: Pa
         await _focus_task(pilot, task_ids.pair_review)
         await pilot.press("enter")
         review = await wait_for_screen(pilot, ReviewModal, timeout=10.0)
+        # Auto-start happens during async hydration; CI runners can lag behind initial mount.
+        timeout = 5.0
+        elapsed = 0.0
+        while elapsed < timeout:
+            await pilot.pause()
+            if not review.query_one("#ai-review-chat").has_class("hidden"):
+                break
+            await asyncio.sleep(0.1)
+            elapsed += 0.1
         assert not review.query_one("#ai-review-chat").has_class("hidden")
 
 

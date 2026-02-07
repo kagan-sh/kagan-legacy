@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.0-beta.3 (2026-02-07)
+
+### Bug Fixes
+
+- Prevent cd release hangs from snapshot tests
+  ([`0bc6fa5`](https://github.com/aorumbayev/kagan/commit/0bc6fa5c3d7437598b22d5450325ac64277d40bf))
+
+
 ## v0.3.0-beta.2 (2026-02-07)
 
 ### Bug Fixes

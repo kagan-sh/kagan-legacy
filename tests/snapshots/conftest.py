@@ -33,6 +33,7 @@ import pytest
 from syrupy.extensions.image import SVGImageSnapshotExtension
 
 from kagan.app import KaganApp
+from kagan.command_utils import clear_which_cache
 from tests.helpers.git import init_git_repo_with_commit
 from tests.helpers.mocks import MockAgent, MockAgentFactory, create_fake_tmux
 
@@ -58,6 +59,37 @@ def _normalize_svg(svg: str) -> str:
 
 SNAPSHOT_TERMINAL_COLS = 120
 SNAPSHOT_TERMINAL_ROWS = 40
+
+
+@pytest.fixture(autouse=True)
+def _mock_agent_gates_for_ci(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass agent-availability and MCP-configuration gates on CI.
+
+    On CI runners the ``claude`` (or other agent) CLI is not installed, so:
+
+    1. ``AgentHealthServiceImpl._check_agent()`` marks the agent as unavailable
+       and PlannerScreen never calls ``_start_planner()``.
+    2. ``check_agent_installed()`` returns False, blocking PAIR session flows
+       behind an AgentChoiceModal.
+    3. ``is_global_mcp_configured()`` returns False (no MCP config files on CI),
+       causing an ``McpInstallModal`` to block session flows.
+
+    This fixture mocks the two ``shutil.which`` entry-points and the MCP config
+    check so that all snapshot tests run identically on CI and locally.
+    """
+    clear_which_cache()
+    monkeypatch.setattr(
+        "kagan.services.agent_health.shutil.which",
+        lambda _cmd, *_a, **_kw: "/usr/bin/mock",
+    )
+    monkeypatch.setattr(
+        "kagan.agents.installer.shutil.which",
+        lambda _cmd, *_a, **_kw: "/usr/bin/mock",
+    )
+    monkeypatch.setattr(
+        "kagan.mcp.global_config.is_global_mcp_configured",
+        lambda _agent: True,
+    )
 
 
 @pytest.fixture(autouse=True)

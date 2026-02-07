@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.0-beta.4 (2026-02-07)
+
+### Bug Fixes
+
+- Stabilize enter review auto-start assertion in ci
+  ([`c301968`](https://github.com/aorumbayev/kagan/commit/c301968302c77927aeac534791c6ccbf75a0fae9))
+
+
 ## v0.3.0-beta.3 (2026-02-07)
 
 ### Bug Fixes

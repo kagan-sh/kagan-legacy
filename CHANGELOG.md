@@ -2,6 +2,30 @@
 
 <!-- version list -->
 
+## v0.3.0-beta.6 (2026-02-07)
+
+### Bug Fixes
+
+- Add additional is_mounted guards in async worker methods
+  ([#18](https://github.com/aorumbayev/kagan/pull/18),
+  [`58c51ec`](https://github.com/aorumbayev/kagan/commit/58c51ec7e0692bd9f748373431e374654201de02))
+
+- Add is_mounted guards to prevent database access during shutdown
+  ([#18](https://github.com/aorumbayev/kagan/pull/18),
+  [`58c51ec`](https://github.com/aorumbayev/kagan/commit/58c51ec7e0692bd9f748373431e374654201de02))
+
+### Continuous Integration
+
+- Race condition in async workers accessing database during widget unmount
+  ([#18](https://github.com/aorumbayev/kagan/pull/18),
+  [`58c51ec`](https://github.com/aorumbayev/kagan/commit/58c51ec7e0692bd9f748373431e374654201de02))
+
+### Refactoring
+
+- Replace OperationalError band-aids with ordered shutdown and lifecycle-aware DB sessions
+  ([`ae9e3c5`](https://github.com/aorumbayev/kagan/commit/ae9e3c56bc5098a12136802a8cf714ed67b15b9e))
+
+
 ## v0.3.0-beta.5 (2026-02-07)
 
 ### Bug Fixes

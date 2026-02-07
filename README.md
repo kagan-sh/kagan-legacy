@@ -34,20 +34,33 @@ Kagan is a terminal-based Kanban board that integrates AI agents to help you com
 
 ## Install
 
+=== "UV (Recommended)"
+
 ```bash
-# Standard install (requires Python 3.12+)
-pip install kagan
-
-# Recommended: faster with uv
 uv tool install kagan
+```
 
-# Or all-in-one (includes uv + Python if needed)
+=== "Mac / Linux"
+
+```bash
 curl -fsSL https://uvget.me/install.sh | bash -s -- kagan
+```
+
+=== "Windows (PowerShell)"
+
+```powershell
+iwr -useb uvget.me/install.ps1 -OutFile install.ps1; .\install.ps1 kagan
+```
+
+=== "pip"
+
+```bash
+pip install kagan
 ```
 
 ### Requirements
 
-- Python 3.12 or higher
+- Python 3.12 – 3.13
 - Git repository (for worktrees)
 - tmux (recommended on macOS/Linux for native PAIR terminal sessions)
 - VS Code or Cursor (supported PAIR launchers, especially on Windows)
@@ -59,16 +72,21 @@ curl -fsSL https://uvget.me/install.sh | bash -s -- kagan
 kagan              # Launch TUI (default command)
 kagan tui          # Launch TUI explicitly
 kagan mcp          # Run as MCP server
-kagan tools        # Stateless developer utilities
+kagan tools        # Stateless developer utilities (prompt enhancement)
 kagan update       # Check for and install updates
+kagan list         # List all projects with task counts
+kagan reset        # Reset data (interactive)
 kagan --help       # Show all options
 ```
 
 ## Supported AI CLIs
 
-- Claude Code
-- OpenCode
-- *More coming soon*
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic)
+- [OpenCode](https://opencode.ai/docs) (SST)
+- [Codex](https://github.com/openai/codex) (OpenAI)
+- [Gemini CLI](https://github.com/google-gemini/gemini-cli) (Google)
+- [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) (Moonshot AI)
+- [GitHub Copilot](https://github.com/github/copilot-cli) (GitHub)
 
 ## Documentation
 

@@ -7,7 +7,6 @@ from kagan.ui.screens.planner.state import (
     PersistentPlannerState,
     PlannerPhase,
     PlannerState,
-    SlashCommand,
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "PlannerPhase",
     "PlannerScreen",
     "PlannerState",
-    "SlashCommand",
 ]

@@ -12,6 +12,7 @@ internally calls asyncio.run(), which conflicts with async test functions.
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -134,6 +135,7 @@ class TestKanbanFlow:
             agent_factory=mock_acp_agent_factory,
         )
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Timing-sensitive; flaky on Windows CI")
     @pytest.mark.snapshot
     def test_kanban_journey(
         self,

@@ -28,7 +28,7 @@ def _check_for_updates_gate() -> None:
     """Check for updates and prompt user before starting TUI."""
     result = check_for_updates()
 
-    if result.is_dev or result.error:
+    if result.is_dev or result.is_local or result.error:
         return
 
     if result.update_available:

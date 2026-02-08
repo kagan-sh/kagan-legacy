@@ -10,12 +10,11 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Footer, Label, Rule, TabbedContent, TabPane
 
 from kagan.acp import messages
-from kagan.acp.messages import Answer
 from kagan.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.core.models.enums import TaskStatus
 from kagan.keybindings import AGENT_OUTPUT_BINDINGS
 from kagan.ui.modals.base import KaganModalScreen
-from kagan.ui.utils.agent_exit import is_graceful_agent_termination
+from kagan.ui.utils.agent_stream_router import AgentStreamRouter
 from kagan.ui.utils.clipboard import copy_with_notification
 from kagan.ui.widgets import ChatPanel
 
@@ -62,6 +61,12 @@ class AgentOutputModal(KaganModalScreen[None]):
         self._current_mode: str = ""
         self._available_modes: dict[str, messages.Mode] = {}
         self._available_commands: list[AvailableCommand] = []
+        self._agent_stream = AgentStreamRouter(
+            get_output=self._get_active_output,
+            on_set_modes=self._set_modes,
+            on_mode_update=self._mode_update,
+            on_commands_update=self._commands_update,
+        )
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-output-container"):
@@ -252,80 +257,19 @@ class AgentOutputModal(KaganModalScreen[None]):
             return self.query_one("#impl-chat", ChatPanel).output
         return self.query_one("#agent-chat", ChatPanel).output
 
-    @on(messages.AgentUpdate)
-    async def on_agent_update(self, message: messages.AgentUpdate) -> None:
-        """Handle agent text output."""
-        await self._get_active_output().post_response(message.text)
-
-    @on(messages.Thinking)
-    async def on_agent_thinking(self, message: messages.Thinking) -> None:
-        """Handle agent thinking/reasoning."""
-        await self._get_active_output().post_thought(message.text)
-
-    @on(messages.ToolCall)
-    async def on_tool_call(self, message: messages.ToolCall) -> None:
-        """Handle tool call start."""
-        await self._get_active_output().upsert_tool_call(message.tool_call)
-
-    @on(messages.ToolCallUpdate)
-    async def on_tool_call_update(self, message: messages.ToolCallUpdate) -> None:
-        """Handle tool call update."""
-        await self._get_active_output().apply_tool_call_update(message.update, message.tool_call)
-
-    @on(messages.AgentReady)
-    async def on_agent_ready(self, message: messages.AgentReady) -> None:
-        """Handle agent ready."""
-        await self._get_active_output().post_note("Agent ready", classes="success")
-
-    @on(messages.AgentFail)
-    async def on_agent_fail(self, message: messages.AgentFail) -> None:
-        """Handle agent failure."""
-        output = self._get_active_output()
-        if is_graceful_agent_termination(message.message):
-            await output.post_note(
-                "Agent stream ended by cancellation (SIGTERM).",
-                classes="dismissed",
-            )
-            return
-        await output.post_note(f"Error: {message.message}", classes="error")
-        if message.details:
-            await output.post_note(message.details)
-
-    @on(messages.Plan)
-    async def on_plan(self, message: messages.Plan) -> None:
-        """Display plan entries from agent."""
-        await self._get_active_output().post_plan(message.entries)
-
-    @on(messages.SetModes)
-    def on_set_modes(self, message: messages.SetModes) -> None:
-        """Store available modes from agent."""
+    def _set_modes(self, message: messages.SetModes) -> None:
         self._current_mode = message.current_mode
         self._available_modes = message.modes
 
-    @on(messages.ModeUpdate)
-    def on_mode_update(self, message: messages.ModeUpdate) -> None:
-        """Track mode changes from agent."""
+    def _mode_update(self, message: messages.ModeUpdate) -> None:
         self._current_mode = message.current_mode
 
-    @on(messages.AvailableCommandsUpdate)
-    def on_commands_update(self, message: messages.AvailableCommandsUpdate) -> None:
-        """Store available slash commands from agent."""
+    def _commands_update(self, message: messages.AvailableCommandsUpdate) -> None:
         self._available_commands = message.commands
 
-    @on(messages.RequestPermission)
-    def on_request_permission(self, message: messages.RequestPermission) -> None:
-        """Auto-approve permissions in watch mode (passive observation)."""
-        for opt in message.options:
-            if opt.kind == "allow_once":
-                message.result_future.set_result(Answer(opt.option_id))
-                return
-        for opt in message.options:
-            if "allow" in opt.kind:
-                message.result_future.set_result(Answer(opt.option_id))
-                return
-
-        if message.options:
-            message.result_future.set_result(Answer(message.options[0].option_id))
+    @on(messages.AgentMessage)
+    async def on_agent_message(self, message: messages.AgentMessage) -> None:
+        await self._agent_stream.dispatch(message)
 
     @on(Button.Pressed, "#cancel-btn")
     async def on_cancel_btn(self) -> None:

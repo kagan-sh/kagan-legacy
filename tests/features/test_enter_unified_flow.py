@@ -232,6 +232,18 @@ async def test_enter_auto_in_progress_opens_review_workspace_output_tab(
 
 
 @pytest.mark.asyncio
+async def test_enter_auto_in_progress_without_runtime_prompts_to_start(
+    tmp_path: Path,
+) -> None:
+    app, task_ids = await _seed_app(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await wait_for_screen(pilot, KanbanScreen, timeout=10.0)
+        await _focus_task(pilot, task_ids.auto_in_progress)
+        await pilot.press("enter")
+        await wait_for_modal(pilot, ConfirmModal, timeout=5.0)
+
+
+@pytest.mark.asyncio
 async def test_enter_auto_in_progress_attaches_live_stream_immediately_from_waited_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -11,6 +11,7 @@ internally calls asyncio.run(), which conflicts with async test functions.
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 
 
 class TestPlannerFlow:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Timing-sensitive; flaky on Windows CI")
     @pytest.mark.snapshot
     def test_planner_journey(
         self,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -11,7 +10,9 @@ from kagan.core.models.enums import StreamPhase
 from kagan.limits import AGENT_TIMEOUT
 
 if TYPE_CHECKING:
-    from kagan.acp.agent import Agent
+    from textual.worker import Worker
+
+    from kagan.acp import Agent
     from kagan.ui.modals.review import ReviewModal
     from kagan.ui.widgets import StreamingOutput
 
@@ -135,7 +136,7 @@ class ReviewPromptMixin:
     """Prompt lifecycle for review generation."""
 
     _agent: Agent | None
-    _prompt_task: asyncio.Task[None] | None
+    _prompt_worker: Worker[None] | None
 
     async def _generate_ai_review(self: ReviewModal, output: StreamingOutput) -> None:
         """Spawn agent to generate code review."""
@@ -171,7 +172,11 @@ class ReviewPromptMixin:
             return
 
         review_prompt = build_review_prompt(self._task_model.title, diff, queued_follow_up)
-        self._prompt_task = asyncio.create_task(self._run_prompt(review_prompt, output))
+        self._prompt_worker = self.run_worker(
+            self._run_prompt(review_prompt, output),
+            exclusive=True,
+            exit_on_error=False,
+        )
 
     async def _run_prompt(self: ReviewModal, prompt: str, output: StreamingOutput) -> None:
         """Run prompt in background, handle errors."""

@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-import asyncio
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kagan.core.models.enums import CardIndicator, TaskStatus, TaskType
 from kagan.git_utils import has_git_repo
+from kagan.services.runtime import AutoOutputMode
 from kagan.services.workspaces import RepoWorkspaceInput
+from kagan.ui.screen_result import await_screen_result
 
 if TYPE_CHECKING:
+    from kagan.acp import Agent
+    from kagan.adapters.db.schema import Task
     from kagan.config import AgentConfig
-    from kagan.core.models.entities import Task
     from kagan.mcp.global_config import GlobalMcpSpec
+    from kagan.services.runtime import AutoOutputReadiness
     from kagan.ui.screens.kanban.screen import KanbanScreen
 
 VALID_PAIR_LAUNCHERS = {"tmux", "vscode", "cursor"}
@@ -69,17 +72,10 @@ class KanbanSessionController:
     async def ensure_mcp_installed(self, agent_config: AgentConfig, spec: GlobalMcpSpec) -> bool:
         from kagan.ui.modals.mcp_install import McpInstallModal
 
-        future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
-
-        def on_result(result: bool | None) -> None:
-            if not future.done():
-                future.set_result(result is True)
-
-        self.screen.app.push_screen(
-            McpInstallModal(agent_config=agent_config, spec=spec),
-            callback=on_result,
+        result = await await_screen_result(
+            self.screen.app, McpInstallModal(agent_config=agent_config, spec=spec)
         )
-        return await future
+        return result is True
 
     async def handle_missing_agent(self, task: Task, agent_config: AgentConfig) -> str:
         from kagan.builtin_agents import get_builtin_agent, list_available_agents
@@ -88,22 +84,15 @@ class KanbanSessionController:
         builtin = get_builtin_agent(agent_config.short_name)
         available = list_available_agents()
 
-        future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
-
-        def on_result(result: str | None) -> None:
-            if not future.done():
-                future.set_result(result or AgentChoiceResult.CANCELLED)
-
-        self.screen.app.push_screen(
+        result = await await_screen_result(
+            self.screen.app,
             AgentChoiceModal(
                 missing_agent=builtin,
                 available_agents=available,
                 task_title=task.title,
             ),
-            callback=on_result,
         )
-
-        return await future
+        return result or AgentChoiceResult.CANCELLED
 
     async def update_task_agent(self, task: Task, agent_short_name: str) -> None:
         current_agent = task.get_agent_config(self.screen.kagan_app.config).short_name
@@ -116,14 +105,10 @@ class KanbanSessionController:
     async def ask_confirmation(self, title: str, message: str) -> bool:
         from kagan.ui.modals import ConfirmModal
 
-        future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
-
-        def on_result(result: bool | None) -> None:
-            if not future.done():
-                future.set_result(result is True)
-
-        self.screen.app.push_screen(ConfirmModal(title=title, message=message), callback=on_result)
-        return await future
+        result = await await_screen_result(
+            self.screen.app, ConfirmModal(title=title, message=message)
+        )
+        return result is True
 
     async def confirm_start_auto_task(self, task: Task) -> bool:
         from kagan.constants import NOTIFICATION_TITLE_MAX_LENGTH
@@ -149,25 +134,41 @@ class KanbanSessionController:
         *,
         wait_for_running: bool = False,
     ) -> None:
-        scheduler = self.screen.ctx.automation_service
+        automation = self.screen.ctx.automation_service
+        runtime_service = self.screen.ctx.runtime_service
+        attached_agent: Agent | None = None
 
         if wait_for_running:
-            for _ in range(20):
-                if scheduler.is_running(task.id):
-                    break
-                await asyncio.sleep(0.1)
+            attached_agent = await automation.wait_for_running_agent(task.id, timeout=6.0)
 
-        if not scheduler.is_running(task.id):
-            latest = await self.screen.ctx.execution_service.get_latest_execution_for_task(task.id)
-            if latest is None:
-                self.screen.notify("No agent logs available for this task", severity="warning")
-                return
+        readiness: AutoOutputReadiness = await runtime_service.prepare_auto_output(task)
+        if attached_agent is not None and readiness.running_agent is None:
+            readiness.running_agent = attached_agent
+            readiness.is_running = True
+            readiness.can_open_output = True
+            readiness.output_mode = AutoOutputMode.LIVE
+        if readiness.output_mode is AutoOutputMode.WAITING and not readiness.is_running:
+            recovery = await runtime_service.recover_stale_auto_output(task)
+            if recovery.message:
+                self.screen.notify(
+                    recovery.message,
+                    severity="information" if recovery.success else "warning",
+                )
+            if recovery.success:
+                readiness = await runtime_service.prepare_auto_output(task)
 
-        await self.screen._open_review_for_task(
+        if readiness.message:
+            severity = "warning" if not readiness.can_open_output else "information"
+            self.screen.notify(readiness.message, severity=severity)
+        if not readiness.can_open_output:
+            return
+
+        await self.screen._review.open_review_for_task(
             task,
             read_only=True,
             initial_tab="review-agent-output",
             include_running_output=True,
+            auto_output_readiness=readiness,
         )
 
     async def open_session_flow(self, task: Task) -> None:
@@ -176,7 +177,9 @@ class KanbanSessionController:
             task = refreshed
 
         if task.status in (TaskStatus.REVIEW, TaskStatus.DONE):
-            await self.screen._open_review_for_task(task, read_only=task.status == TaskStatus.DONE)
+            await self.screen._review.open_review_for_task(
+                task, read_only=task.status == TaskStatus.DONE
+            )
             return
 
         if task.task_type == TaskType.AUTO:
@@ -190,7 +193,7 @@ class KanbanSessionController:
                     wait_for_running=True,
                 )
             elif task.status == TaskStatus.IN_PROGRESS:
-                await self.open_auto_output_for_task(task)
+                await self.open_auto_output_for_task(task, wait_for_running=True)
             return
 
         agent_config = task.get_agent_config(self.screen.kagan_app.config)
@@ -226,10 +229,10 @@ class KanbanSessionController:
             if wt_path is None:
                 return
 
-        if not await self.screen._ensure_pair_terminal_backend_ready(task):
+        if not await self.ensure_pair_terminal_backend_ready(task):
             return
 
-        terminal_backend = self.screen._resolve_pair_terminal_backend(task)
+        terminal_backend = self.resolve_pair_terminal_backend(task)
 
         if not await self.screen.ctx.session_service.session_exists(task.id):
             self.screen.notify("Creating session...", severity="information")
@@ -243,31 +246,28 @@ class KanbanSessionController:
         if not self.screen.kagan_app.config.ui.skip_pair_instructions:
             from kagan.ui.modals.tmux_gateway import PairInstructionsModal
 
-            def on_gateway_result(result: str | None) -> None:
-                if result is None:
-                    return
-                if result == "skip_future":
-                    self.screen.kagan_app.config.ui.skip_pair_instructions = True
-                    cb_result = self.save_pair_instructions_preference(skip=True)
-                    if asyncio.iscoroutine(cb_result):
-                        asyncio.create_task(cb_result)
-
-                self.screen.app.call_later(
-                    self.screen._do_open_pair_session, task, wt_path, terminal_backend
-                )
-
-            self.screen.app.push_screen(
+            result = await await_screen_result(
+                self.screen.app,
                 PairInstructionsModal(
                     task.id,
                     task.title,
                     terminal_backend,
-                    self.screen._startup_prompt_path_hint(wt_path),
+                    self.startup_prompt_path_hint(wt_path),
                 ),
-                on_gateway_result,
             )
+            if result is None:
+                return
+            if result == "skip_future":
+                self.screen.kagan_app.config.ui.skip_pair_instructions = True
+                self.screen.run_worker(
+                    self.save_pair_instructions_preference(skip=True),
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+            await self.do_open_pair_session(task, wt_path, terminal_backend)
             return
 
-        await self.screen._do_open_pair_session(task, wt_path, terminal_backend)
+        await self.do_open_pair_session(task, wt_path, terminal_backend)
 
     def resolve_pair_terminal_backend(self, task: Task) -> str:
         task_backend = getattr(task, "terminal_backend", None)
@@ -292,7 +292,7 @@ class KanbanSessionController:
         from kagan.terminals.installer import check_terminal_installed, first_available_pair_backend
         from kagan.ui.modals.terminal_install import TerminalInstallModal
 
-        backend = self.screen._resolve_pair_terminal_backend(task)
+        backend = self.resolve_pair_terminal_backend(task)
         is_windows = platform.system() == "Windows"
 
         if backend in {"vscode", "cursor"}:
@@ -324,7 +324,10 @@ class KanbanSessionController:
                 )
                 return False
 
-            installed_tmux = await self.screen.app.push_screen(TerminalInstallModal("tmux"))
+            installed_tmux = await await_screen_result(
+                self.screen.app,
+                TerminalInstallModal("tmux"),
+            )
             if installed_tmux and check_terminal_installed("tmux"):
                 return True
 
@@ -363,19 +366,19 @@ class KanbanSessionController:
                 await self.screen.ctx.task_service.update_fields(
                     task.id, status=TaskStatus.IN_PROGRESS
                 )
-                await self.screen._refresh_board()
+                await self.screen._board.refresh_board()
 
             with self.screen.app.suspend():
                 attached = await self.screen.ctx.session_service.attach_session(task.id)
 
-            backend = terminal_backend or self.screen._resolve_pair_terminal_backend(task)
+            backend = terminal_backend or self.resolve_pair_terminal_backend(task)
             if not attached:
                 self.screen.notify("Failed to open PAIR session", severity="warning")
                 return
 
             if backend != "tmux":
                 prompt_path = (
-                    self.screen._startup_prompt_path_hint(workspace_path)
+                    self.startup_prompt_path_hint(workspace_path)
                     if workspace_path is not None
                     else Path(".kagan/start_prompt.md")
                 )
@@ -391,21 +394,12 @@ class KanbanSessionController:
 
             from kagan.ui.modals.confirm import ConfirmModal
 
-            def on_confirm(result: bool | None) -> None:
-                if result:
-
-                    async def move_to_review() -> None:
-                        await self.screen.ctx.task_service.update_fields(
-                            task.id, status=TaskStatus.REVIEW
-                        )
-                        await self.screen._refresh_board()
-
-                    self.screen.app.call_later(move_to_review)
-
-            self.screen.app.push_screen(
-                ConfirmModal("Session Complete", "Move task to REVIEW?"),
-                on_confirm,
+            confirmed = await await_screen_result(
+                self.screen.app, ConfirmModal("Session Complete", "Move task to REVIEW?")
             )
+            if confirmed:
+                await self.screen.ctx.task_service.update_fields(task.id, status=TaskStatus.REVIEW)
+                await self.screen._board.refresh_board()
 
         except Exception as e:
             from kagan.tmux import TmuxError
@@ -417,7 +411,9 @@ class KanbanSessionController:
         if task.task_type == TaskType.PAIR:
             return
 
-        if self.screen.ctx.automation_service.is_running(task.id):
+        runtime_view = self.screen.ctx.runtime_service.get(task.id)
+        is_running = runtime_view.is_running if runtime_view is not None else False
+        if is_running:
             self.screen.notify("Agent already running for this task (press Enter to open output)")
             return
 
@@ -432,7 +428,7 @@ class KanbanSessionController:
             refreshed = await self.screen.ctx.task_service.get_task(task.id)
             if refreshed:
                 task = refreshed
-            await self.screen._refresh_board()
+            await self.screen._board.refresh_board()
 
         self.screen.notify("Starting agent...", severity="information")
 
@@ -444,7 +440,7 @@ class KanbanSessionController:
             spawned = result
 
         if spawned:
-            self.screen._set_card_indicator(task.id, CardIndicator.RUNNING, is_active=True)
+            self.screen._board.set_card_indicator(task.id, CardIndicator.RUNNING, is_active=True)
             self.screen.notify(f"Agent started: {task.id[:8]}", severity="information")
         else:
             self.screen.notify("Failed to start agent (at capacity?)", severity="warning")

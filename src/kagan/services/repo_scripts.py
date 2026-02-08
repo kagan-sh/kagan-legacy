@@ -8,9 +8,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from kagan.adapters.db.session import get_session
 
+if TYPE_CHECKING:
     from kagan.adapters.db.repositories import ClosingAwareSessionFactory
     from kagan.adapters.db.schema import Repo
     from kagan.core.events import EventBus
@@ -81,10 +81,6 @@ class RepoScriptServiceImpl:
         self._events = event_bus
         self._dev_server_processes: dict[str, list[asyncio.subprocess.Process]] = {}
 
-    def _get_session(self) -> AsyncSession:
-        """Get a new async session."""
-        return self._session_factory()
-
     async def run_script(
         self,
         workspace_id: str,
@@ -97,7 +93,7 @@ class RepoScriptServiceImpl:
         from kagan.adapters.db.schema import Repo, WorkspaceRepo
         from kagan.core.events import ScriptCompleted
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
                 select(WorkspaceRepo, Repo)
                 .join(Repo)
@@ -170,7 +166,7 @@ class RepoScriptServiceImpl:
 
         from kagan.adapters.db.schema import Repo, WorkspaceRepo
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
                 select(WorkspaceRepo, Repo)
                 .join(Repo)

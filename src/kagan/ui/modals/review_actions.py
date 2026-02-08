@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.widgets import Static, TabbedContent
 
@@ -10,7 +10,6 @@ from kagan.core.models.enums import StreamPhase, TaskType
 from kagan.ui.utils.clipboard import copy_with_notification
 
 if TYPE_CHECKING:
-    from kagan.app import KaganApp
     from kagan.ui.modals.review import ReviewModal
 
 
@@ -36,12 +35,11 @@ class ReviewActionsMixin:
     async def action_attach_session(self: ReviewModal) -> None:
         if self._task_model.task_type != TaskType.PAIR:
             return
-        app = cast("KaganApp", self.app)
-        if not await app.ctx.session_service.session_exists(self._task_model.id):
+        if not await self.ctx.session_service.session_exists(self._task_model.id):
             self.notify("No active session for this task", severity="warning")
             return
         with self.app.suspend():
-            await app.ctx.session_service.attach_session(self._task_model.id)
+            await self.ctx.session_service.attach_session(self._task_model.id)
 
     async def action_generate_review(self: ReviewModal) -> None:
         """Generate or regenerate AI review."""
@@ -92,8 +90,8 @@ class ReviewActionsMixin:
         if self._phase not in (StreamPhase.THINKING, StreamPhase.STREAMING):
             return
 
-        if self._prompt_task and not self._prompt_task.done():
-            self._prompt_task.cancel()
+        if self._prompt_worker is not None and not self._prompt_worker.is_finished:
+            self._prompt_worker.cancel()
         if self._agent:
             await self._agent.stop()
             self._agent = None

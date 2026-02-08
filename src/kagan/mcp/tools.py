@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kagan.constants import KAGAN_GENERATED_PATTERNS
+from kagan.adapters.git.operations import GitOperationsAdapter
 from kagan.core.models.enums import TaskStatus
 from kagan.services.tasks import TaskService  # noqa: TC001
 
 if TYPE_CHECKING:
-    from kagan.services.executions import ExecutionService
+    from kagan.adapters.db.repositories import ExecutionRepository
+    from kagan.adapters.git.operations import GitOperationsProtocol
     from kagan.services.projects import ProjectService
     from kagan.services.workspaces import WorkspaceService
 
@@ -25,12 +25,14 @@ class KaganMCPServer:
         *,
         workspace_service: WorkspaceService | None = None,
         project_service: ProjectService | None = None,
-        execution_service: ExecutionService | None = None,
+        execution_service: ExecutionRepository | None = None,
+        git_adapter: GitOperationsProtocol | None = None,
     ) -> None:
         self._state = state_manager
         self._workspaces = workspace_service
         self._projects = project_service
         self._executions = execution_service
+        self._git = git_adapter or GitOperationsAdapter()
 
     async def get_context(self, task_id: str) -> dict:
         """Get task context for AI tools."""
@@ -160,31 +162,7 @@ class KaganMCPServer:
     async def _has_uncommitted_changes(self, path: Path) -> bool:
         if not path.exists():
             return False
-        process = await asyncio.create_subprocess_shell(
-            "git status --porcelain",
-            cwd=path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await process.communicate()
-
-        if not stdout.strip():
-            return False
-
-        for line in stdout.decode().strip().split("\n"):
-            if not line:
-                continue
-
-            filepath = line[3:].split(" -> ")[0]
-
-            is_kagan_file = any(
-                filepath.startswith(p.rstrip("/")) or filepath == p.rstrip("/")
-                for p in KAGAN_GENERATED_PATTERNS
-            )
-            if not is_kagan_file:
-                return True
-
-        return False
+        return await self._git.has_uncommitted_changes(str(path))
 
     async def get_task(
         self,
@@ -265,7 +243,7 @@ class KaganMCPServer:
         if execution is None:
             return []
 
-        log_entry = await self._executions.get_logs(execution.id)
+        log_entry = await self._executions.get_execution_logs(execution.id)
         if log_entry is None:
             return []
 

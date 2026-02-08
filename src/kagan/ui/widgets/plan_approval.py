@@ -14,7 +14,7 @@ from kagan.core.models.enums import TaskType
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 class PlanApprovalWidget(VerticalGroup):

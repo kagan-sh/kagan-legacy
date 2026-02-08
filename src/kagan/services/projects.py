@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from sqlalchemy import func, literal, or_
 from sqlmodel import col, select
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from kagan.adapters.db.session import get_session
+from kagan.core.time import utc_now
 
+if TYPE_CHECKING:
     from kagan.adapters.db.repositories import ClosingAwareSessionFactory, RepoRepository
     from kagan.adapters.db.schema import Project, Repo
     from kagan.core.events import EventBus
@@ -84,10 +87,6 @@ class ProjectServiceImpl:
         self._events = event_bus
         self._repo_repository = repo_repository
 
-    def _get_session(self) -> AsyncSession:
-        """Get a new async session."""
-        return self._session_factory()
-
     async def create_project(
         self,
         name: str,
@@ -100,11 +99,11 @@ class ProjectServiceImpl:
 
         repo_paths = repo_paths or []
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             project = DbProject(
                 name=name,
                 description=description or "",
-                last_opened_at=datetime.now(),
+                last_opened_at=utc_now(),
             )
             session.add(project)
             await session.commit()
@@ -131,13 +130,13 @@ class ProjectServiceImpl:
         from kagan.adapters.db.schema import Project as DbProject
         from kagan.core.events import ProjectOpened
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             project = await session.get(DbProject, project_id)
             if project is None:
                 raise ValueError(f"Project not found: {project_id}")
 
-            project.last_opened_at = datetime.now()
-            project.updated_at = datetime.now()
+            project.last_opened_at = utc_now()
+            project.updated_at = utc_now()
             session.add(project)
             await session.commit()
             await session.refresh(project)
@@ -150,18 +149,23 @@ class ProjectServiceImpl:
         """Return a project by ID."""
         from kagan.adapters.db.schema import Project as DbProject
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             return await session.get(DbProject, project_id)
 
     async def list_recent_projects(self, limit: int = 10) -> list[Project]:
         """Get recently opened projects sorted by last_opened_at desc."""
         from kagan.adapters.db.schema import Project as DbProject
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
                 select(DbProject)
-                .where(col(DbProject.last_opened_at).is_not(None))
-                .order_by(col(DbProject.last_opened_at).desc())
+                .order_by(
+                    func.coalesce(
+                        col(DbProject.last_opened_at),
+                        col(DbProject.updated_at),
+                        col(DbProject.created_at),
+                    ).desc(),
+                )
                 .limit(limit)
             )
             return list(result.scalars().all())
@@ -203,7 +207,7 @@ class ProjectServiceImpl:
         """Get all repos for a project with junction metadata."""
         from kagan.adapters.db.schema import ProjectRepo, Repo
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
                 select(ProjectRepo, Repo)
                 .join(Repo)
@@ -227,21 +231,36 @@ class ProjectServiceImpl:
         from kagan.adapters.db.schema import Project as DbProject
         from kagan.adapters.db.schema import ProjectRepo, Repo
 
-        resolved_path = str(Path(repo_path).resolve())
+        resolved = Path(repo_path).resolve()
+        resolved_path = str(resolved)
+        path_separator = os.sep
 
-        async with self._get_session() as session:
-            result = await session.execute(select(Repo).where(Repo.path == resolved_path))
-            repo = result.scalars().first()
-
-            if repo is None:
-                return None
-
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
-                select(ProjectRepo).where(ProjectRepo.repo_id == repo.id)
+                select(DbProject, Repo.path)
+                .join(ProjectRepo, col(ProjectRepo.project_id) == col(DbProject.id))
+                .join(Repo, col(Repo.id) == col(ProjectRepo.repo_id))
+                .where(
+                    or_(
+                        col(Repo.path) == resolved_path,
+                        literal(resolved_path).like(col(Repo.path) + path_separator + "%"),
+                    )
+                )
             )
-            project_repo = result.scalars().first()
-
-            if project_repo is None:
+            matches = [
+                (project, path)
+                for project, path in result.all()
+                if resolved == Path(path) or resolved.is_relative_to(Path(path))
+            ]
+            if not matches:
                 return None
 
-            return await session.get(DbProject, project_repo.project_id)
+            best_project, _ = max(
+                matches,
+                key=lambda match: (
+                    len(Path(match[1]).parts),
+                    match[0].last_opened_at or datetime.min,
+                    match[0].updated_at,
+                ),
+            )
+            return best_project

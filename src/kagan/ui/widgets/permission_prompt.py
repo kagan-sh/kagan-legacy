@@ -14,6 +14,7 @@ from kagan.keybindings import PERMISSION_PROMPT_BINDINGS
 if TYPE_CHECKING:
     from acp.schema import PermissionOption, ToolCall, ToolCallUpdate
     from textual.app import ComposeResult
+    from textual.worker import Worker
 
     from kagan.acp.messages import Answer
 
@@ -41,7 +42,7 @@ class PermissionPrompt(VerticalGroup):
         self._tool_call = tool_call
         self._result_future = result_future
         self._timeout = int(timeout)
-        self._timer_task: asyncio.Task[None] | None = None
+        self._timer_worker: Worker[None] | None = None
 
     @property
     def title(self) -> str:
@@ -59,12 +60,16 @@ class PermissionPrompt(VerticalGroup):
 
     def on_mount(self) -> None:
         self.remaining_seconds = self._timeout
-        self._timer_task = asyncio.create_task(self._countdown())
+        self._timer_worker = self.run_worker(
+            self._countdown(),
+            exclusive=True,
+            exit_on_error=False,
+        )
         self.focus()
 
     def on_unmount(self) -> None:
-        if self._timer_task and not self._timer_task.done():
-            self._timer_task.cancel()
+        if self._timer_worker is not None and not self._timer_worker.is_finished:
+            self._timer_worker.cancel()
         if not self._result_future.done():
             self._reject()
 

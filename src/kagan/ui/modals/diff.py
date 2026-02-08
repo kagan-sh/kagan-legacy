@@ -15,7 +15,7 @@ from kagan.ui.utils.diff import colorize_diff
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
     from kagan.services.diffs import RepoDiff
 
 

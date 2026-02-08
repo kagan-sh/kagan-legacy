@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from rich.markup import escape
+
 
 def colorize_diff_line(line: str) -> str:
     """Colorize a single diff line with Rich markup."""
+    escaped = escape(line)
     if line.startswith("+") and not line.startswith("+++"):
-        return f"[green]{line}[/green]"
+        return f"[green]{escaped}[/green]"
     if line.startswith("-") and not line.startswith("---"):
-        return f"[red]{line}[/red]"
+        return f"[red]{escaped}[/red]"
     if line.startswith("@@"):
-        return f"[cyan]{line}[/cyan]"
-    return line
+        return f"[cyan]{escaped}[/cyan]"
+    return escaped
 
 
 def colorize_diff(content: str) -> str:

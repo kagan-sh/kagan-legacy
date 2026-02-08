@@ -9,7 +9,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, TabbedContent, TabPane, TextArea
 
-from kagan.core.models.entities import Task
+from kagan.adapters.db.schema import Task
 from kagan.core.models.enums import TaskPriority, TaskType
 from kagan.keybindings import TASK_EDITOR_BINDINGS
 from kagan.ui.widgets.base import BaseBranchInput, PairTerminalBackendSelect

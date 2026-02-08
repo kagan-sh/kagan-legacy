@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
-from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, ListItem, ListView, Static
 
 from kagan.constants import KAGAN_LOGO
+from kagan.ui.modals.base import KaganModalScreen
 from kagan.ui.utils.path import truncate_path
 from kagan.ui.widgets.keybinding_hint import KeybindingHint
 
@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
     from kagan.adapters.db.schema import Project, Repo
-    from kagan.app import KaganApp
-    from kagan.bootstrap import AppContext
 
 
 class RepoListItem(ListItem):
@@ -49,7 +47,7 @@ class RepoListItem(ListItem):
             yield Label(f"{self.task_count} {task_label}", classes="repo-tasks")
 
 
-class RepoPickerScreen(ModalScreen[str | None]):
+class RepoPickerScreen(KaganModalScreen[str | None]):
     """Screen for selecting a repository in multi-repo projects."""
 
     BINDINGS = [
@@ -72,20 +70,6 @@ class RepoPickerScreen(ModalScreen[str | None]):
         self._repositories = repositories
         self._current_repo_id = current_repo_id
         self._repo_items: list[RepoListItem] = []
-
-    @property
-    def kagan_app(self) -> KaganApp:
-        """Get the typed KaganApp instance."""
-        return cast("KaganApp", self.app)
-
-    @property
-    def ctx(self) -> AppContext:
-        """Get the application context for service access."""
-        app = self.kagan_app
-        if not hasattr(app, "_ctx") or app._ctx is None:
-            msg = "AppContext not initialized. Ensure bootstrap has completed."
-            raise RuntimeError(msg)
-        return app._ctx
 
     def compose(self) -> ComposeResult:
         """Compose the repository picker layout."""

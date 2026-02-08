@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal
 from textual.widgets import DataTable, RichLog, Static
@@ -12,7 +12,6 @@ from kagan.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.ui.utils.diff import colorize_diff_line
 
 if TYPE_CHECKING:
-    from kagan.app import KaganApp
     from kagan.services.diffs import RepoDiff
     from kagan.ui.modals.review import ReviewModal
 
@@ -37,8 +36,7 @@ class ReviewDiffMixin:
             table.add_row(repo or "—", sha or "—", message or "—")
 
     async def _populate_diff_pane(self: ReviewModal, workspaces: list) -> None:
-        app = cast("KaganApp", self.app)
-        diff_service = getattr(app.ctx, "diff_service", None)
+        diff_service = getattr(self.ctx, "diff_service", None)
 
         if workspaces and diff_service is not None:
             diffs = await diff_service.get_all_diffs(workspaces[0].id)
@@ -137,28 +135,27 @@ class ReviewDiffMixin:
     async def _open_diff_modal(self: ReviewModal) -> None:
         from kagan.ui.modals import DiffModal
 
-        app = cast("KaganApp", self.app)
         workspaces = await self._worktree.list_workspaces(task_id=self._task_model.id)
         title = (
             f"Diff: {self._task_model.short_id} {self._task_model.title[:MODAL_TITLE_MAX_LENGTH]}"
         )
-        diff_service = getattr(app.ctx, "diff_service", None)
+        diff_service = getattr(self.ctx, "diff_service", None)
 
         if not workspaces or diff_service is None:
             diff_text = self._diff_text or await self._worktree.get_diff(
                 self._task_model.id, self._base_branch
             )
-            await self.app.push_screen(
-                DiffModal(title=title, diff_text=diff_text, task=self._task_model),
-                callback=self._on_diff_result,
+            result = await self.app.push_screen(
+                DiffModal(title=title, diff_text=diff_text, task=self._task_model)
             )
+            self._on_diff_result(result)
             return
 
         diffs = await diff_service.get_all_diffs(workspaces[0].id)
-        await self.app.push_screen(
-            DiffModal(title=title, diffs=diffs, task=self._task_model),
-            callback=self._on_diff_result,
+        result = await self.app.push_screen(
+            DiffModal(title=title, diffs=diffs, task=self._task_model)
         )
+        self._on_diff_result(result)
 
     def _on_diff_result(self: ReviewModal, result: str | None) -> None:
         if result == "approve":

@@ -2911,8 +2911,15 @@ KeybindingHint:empty {
    ============================================================================= */
 
 KanbanHintBar {
+    dock: bottom;
+    height: 2;
     background: $surface;
     color: $text-muted;
+}
+
+KanbanHintBar .hint-bar-row {
+    height: 1;
+    width: 100%;
 }
 
 /* Row 1: Navigation — movement arrows */
@@ -2921,18 +2928,21 @@ KanbanHintBar .hint-bar-nav {
 }
 
 KanbanHintBar .hint-nav-left {
+    width: 1fr;
     text-align: left;
     padding: 0 1;
     color: $text-muted;
 }
 
 KanbanHintBar .hint-nav-center {
+    width: auto;
     text-align: center;
     padding: 0 2;
     color: $text-disabled;
 }
 
 KanbanHintBar .hint-nav-right {
+    width: 1fr;
     text-align: right;
     padding: 0 1;
     color: $text-muted;
@@ -2944,16 +2954,19 @@ KanbanHintBar .hint-bar-actions {
 }
 
 KanbanHintBar .hint-actions-left {
+    width: 1fr;
     text-align: left;
 }
 
 KanbanHintBar .hint-actions {
+    width: auto;
     text-align: center;
     padding: 0 2;
     color: $text-muted;
 }
 
 KanbanHintBar .hint-global {
+    width: 1fr;
     text-align: right;
     padding: 0 1;
     color: $text-disabled;
@@ -3776,37 +3789,6 @@ InstanceLockedModal {
 #instance-locked-quit {
     width: 100%;
     margin-top: 1;
-}
-
-/* =============================================================================
-   KANBAN HINT BAR (moved from keybinding_hint.py)
-   ============================================================================= */
-
-KanbanHintBar {
-    dock: bottom;
-    height: 2;
-}
-KanbanHintBar .hint-bar-row {
-    height: 1;
-    width: 100%;
-}
-KanbanHintBar .hint-nav-left {
-    width: 1fr;
-}
-KanbanHintBar .hint-nav-center {
-    width: auto;
-}
-KanbanHintBar .hint-nav-right {
-    width: 1fr;
-}
-KanbanHintBar .hint-actions-left {
-    width: 1fr;
-}
-KanbanHintBar .hint-actions {
-    width: auto;
-}
-KanbanHintBar .hint-global {
-    width: 1fr;
 }
 
 /* =============================================================================

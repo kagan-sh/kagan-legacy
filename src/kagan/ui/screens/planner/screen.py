@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from textual import events, getters, on
@@ -21,10 +21,12 @@ from kagan.agents.refiner import PromptRefiner
 from kagan.config import get_fallback_agent_config
 from kagan.constants import BOX_DRAWING, KAGAN_LOGO, PLANNER_TITLE_MAX_LENGTH
 from kagan.core.models.enums import ChatRole
+from kagan.core.time import utc_now
 from kagan.git_utils import list_local_branches
 from kagan.keybindings import PLANNER_BINDINGS
 from kagan.limits import AGENT_TIMEOUT
 from kagan.ui.modals import BaseBranchModal
+from kagan.ui.screen_result import await_screen_result
 from kagan.ui.screens.base import KaganScreen
 from kagan.ui.screens.planner.message_handler import MessageHandler
 from kagan.ui.screens.planner.state import (
@@ -47,12 +49,13 @@ if TYPE_CHECKING:
     from acp.schema import AvailableCommand
     from textual.app import ComposeResult
 
+    from kagan.adapters.db.schema import Task
     from kagan.app import KaganApp
-    from kagan.core.models.entities import Task
     from kagan.services.queued_messages import QueuedMessageService
 
 MIN_INPUT_HEIGHT = 1
 MAX_INPUT_HEIGHT = 6
+BRANCH_LOOKUP_TIMEOUT_SECONDS = 1.0
 
 
 PLANNER_EXAMPLES = [
@@ -188,7 +191,7 @@ class PlannerScreen(KaganScreen):
                     "",
                     id="planner-input",
                     show_line_numbers=False,
-                    placeholder="Describe your task... (/ for commands)",
+                    placeholder="Describe your task... (/ for commands, Ctrl+C to clear or stop)",
                 )
         yield Footer(show_command_palette=False)
 
@@ -385,7 +388,7 @@ class PlannerScreen(KaganScreen):
         await output.post_user_input(text)
 
         self._state.conversation_history.append(
-            ChatMessage(role=ChatRole.USER, content=text, timestamp=datetime.now())
+            ChatMessage(role=ChatRole.USER, content=text, timestamp=utc_now())
         )
 
         if self._state.agent:
@@ -420,7 +423,7 @@ class PlannerScreen(KaganScreen):
                     ChatMessage(
                         role=ChatRole.ASSISTANT,
                         content=full_response,
-                        timestamp=datetime.now(),
+                        timestamp=utc_now(),
                         plan_tasks=tasks or None,
                         todos=todos,
                     )
@@ -649,10 +652,8 @@ class PlannerScreen(KaganScreen):
     @on(PlanApprovalWidget.EditRequested)
     async def on_plan_edit_requested(self, event: PlanApprovalWidget.EditRequested) -> None:
         """Handle request to edit tasks before approval."""
-        self.app.push_screen(
-            TaskEditorScreen(event.tasks),
-            self._on_task_editor_result,
-        )
+        result = await await_screen_result(self.app, TaskEditorScreen(event.tasks))
+        await self._on_task_editor_result(result)
 
     async def _on_task_editor_result(self, result: list[Task] | None) -> None:
         """Handle result from task editor."""
@@ -759,8 +760,11 @@ class PlannerScreen(KaganScreen):
         await self._get_output().post_note(help_text)
 
     async def action_cancel(self) -> None:
-        """Cancel the current agent operation and preserve context."""
+        """Cancel the current agent operation or clear the input field."""
         if not self._state.agent or self._state.phase != PlannerPhase.PROCESSING:
+            planner_input = self.query_one("#planner-input", PlannerInput)
+            if planner_input.text:
+                planner_input.clear()
             return
 
         if self._state.accumulated_response:
@@ -769,7 +773,7 @@ class PlannerScreen(KaganScreen):
                 ChatMessage(
                     role=ChatRole.ASSISTANT,
                     content=partial_content,
-                    timestamp=datetime.now(),
+                    timestamp=utc_now(),
                 )
             )
 
@@ -861,25 +865,47 @@ class PlannerScreen(KaganScreen):
     def action_set_task_branch(self) -> None:
         self.notify("Select a task on the Kanban board to set its branch", severity="warning")
 
-    async def action_set_default_branch(self) -> None:
+    def action_set_default_branch(self) -> None:
+        self.run_worker(
+            self._set_default_branch_flow(),
+            group="planner-set-default-branch",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    async def _set_default_branch_flow(self) -> None:
         config = self.kagan_app.config
         current = config.general.default_base_branch
 
-        branches = await list_local_branches(self.kagan_app.project_root)
+        branches = await self._load_branch_candidates()
 
-        result = await self.app.push_screen(
+        result = await await_screen_result(
+            self.app,
             BaseBranchModal(
                 branches=branches,
                 current_value=current,
                 title="Set Default Base Branch",
                 description="Branch used for new tasks (e.g. main, develop):",
-            )
+            ),
         )
 
         if result is not None:
             config.general.default_base_branch = result
             await config.save(self.kagan_app.config_path)
             self.notify(f"Default branch set to: {result}")
+
+    async def _load_branch_candidates(self) -> list[str]:
+        try:
+            return await asyncio.wait_for(
+                list_local_branches(self.kagan_app.project_root),
+                timeout=BRANCH_LOOKUP_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            self.notify(
+                "Branch lookup timed out. Enter branch manually.",
+                severity="warning",
+            )
+            return []
 
     async def on_unmount(self) -> None:
         input_text = ""

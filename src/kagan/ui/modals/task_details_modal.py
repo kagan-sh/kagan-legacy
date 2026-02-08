@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, cast
 from textual import on
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Input, Label, Rule, Select, Static, TextArea
 
 from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
 from kagan.keybindings import TASK_DETAILS_BINDINGS
 from kagan.ui.modals.actions import ModalAction
+from kagan.ui.modals.base import KaganModalScreen
 from kagan.ui.modals.description_editor import DescriptionEditorModal
 from kagan.ui.utils import copy_with_notification, safe_query_one
 from kagan.ui.widgets.base import (
@@ -39,15 +39,14 @@ from kagan.ui.widgets.workspace_repos import WorkspaceReposWidget
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.app import KaganApp
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 TaskUpdateDict = dict[str, object]
 VALID_PAIR_LAUNCHERS = {"tmux", "vscode", "cursor"}
 
 
-class TaskDetailsModal(ModalScreen[ModalAction | TaskUpdateDict | None]):
+class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
     """Unified modal for viewing, editing, and creating tasks."""
 
     editing = reactive(False)
@@ -77,11 +76,6 @@ class TaskDetailsModal(ModalScreen[ModalAction | TaskUpdateDict | None]):
         if self._is_done:
             start_editing = False
         self._initial_editing = self.is_create or start_editing
-
-    @property
-    def kagan_app(self) -> KaganApp:
-        """Get the typed KaganApp instance."""
-        return cast("KaganApp", getattr(self.app, "kagan_app", self.app))
 
     def on_mount(self) -> None:
         if self.is_create:
@@ -262,7 +256,7 @@ class TaskDetailsModal(ModalScreen[ModalAction | TaskUpdateDict | None]):
         if not self._task_model:
             return
         try:
-            workspace_service = self.kagan_app.ctx.workspace_service
+            workspace_service = self.ctx.workspace_service
             workspaces = await workspace_service.list_workspaces(task_id=self._task_model.id)
         except Exception:
             return
@@ -277,7 +271,13 @@ class TaskDetailsModal(ModalScreen[ModalAction | TaskUpdateDict | None]):
             return
 
         loading.display = False
-        await container.mount(WorkspaceReposWidget(workspaces[0].id))
+        await container.mount(
+            WorkspaceReposWidget(
+                workspaces[0].id,
+                workspace_service=self.ctx.workspace_service,
+                diff_service=self.ctx.diff_service,
+            )
+        )
 
     def _compose_meta_row(self) -> ComposeResult:
         """Compose the metadata row."""
@@ -404,32 +404,34 @@ class TaskDetailsModal(ModalScreen[ModalAction | TaskUpdateDict | None]):
             self.action_expand_description()
             return
         description_input = self.query_one("#description-input", TextArea)
-        current_text = description_input.text
-
-        def handle_result(result: str | None) -> None:
-            if result is not None:
-                description_input.text = result
-
-        modal = DescriptionEditorModal(
-            description=current_text,
-            readonly=False,
-            title="Edit Description",
-            mention_items=self._mention_items,
+        self.run_worker(
+            self._open_full_description_editor(description_input),
+            exclusive=True,
+            exit_on_error=False,
         )
-        self.app.push_screen(modal, handle_result)
+
+    async def _open_full_description_editor(self, description_input: TextArea) -> None:
+        result = await self.app.push_screen(
+            DescriptionEditorModal(
+                description=description_input.text,
+                readonly=False,
+                title="Edit Description",
+                mention_items=self._mention_items,
+            )
+        )
+        if result is not None:
+            description_input.text = result
 
     async def _load_mention_items(self) -> None:
-        if not hasattr(self.kagan_app, "_ctx") or self.kagan_app._ctx is None:
+        try:
+            ctx = self.ctx
+        except RuntimeError:
             return
-        project_id = None
-        if self._task_model:
-            project_id = self._task_model.project_id
-        else:
-            project_id = self.kagan_app._ctx.active_project_id
+        project_id = self._task_model.project_id if self._task_model else ctx.active_project_id
         if project_id is None:
             return
 
-        tasks = await self.kagan_app._ctx.task_service.list_tasks(project_id=project_id)
+        tasks = await ctx.task_service.list_tasks(project_id=project_id)
         current_id = self._task_model.id if self._task_model else None
         self._mention_items = [
             TaskMentionItem(task_id=task.id, title=task.title, status=task.status.value)

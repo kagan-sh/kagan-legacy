@@ -17,7 +17,7 @@ from kagan.ui.widgets.card import TaskCard
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 # Column icons for each status

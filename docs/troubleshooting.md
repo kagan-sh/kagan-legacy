@@ -86,26 +86,26 @@ curl -fsSL https://uvget.me/install.sh -o install.sh && chmod +x install.sh && .
 Kagan auto-detects installed AI CLI agents on startup. If your agent is not detected:
 
 1. Make sure the agent's CLI binary is in your `PATH`
-2. Run `which claude`, `which opencode`, `which gemini`, etc. to verify
-3. Restart your terminal after installing an agent
-4. Check the Debug Log (++f12++) for detection details
+1. Run `which claude`, `which opencode`, `which gemini`, etc. to verify
+1. Restart your terminal after installing an agent
+1. Check the Debug Log (++f12++) for detection details
 
 ### Instance Lock Error
 
 Kagan enforces one instance per repository. If you see "instance locked":
 
 1. Close any other running Kagan instances for the same repo
-2. If the lock is stale (e.g. after a crash), use `kagan reset` to clean up
-3. Or delete the lock file manually from the XDG data directory
+1. If the lock is stale (e.g. after a crash), use `kagan reset` to clean up
+1. Or delete the lock file manually from the XDG data directory
 
 ### Merge Conflicts
 
 If a merge fails in REVIEW:
 
 1. Kagan shows merge readiness (Ready / At Risk / Blocked) before you merge
-2. Use the resolve action in Task Details to open a terminal in the merge worktree
-3. Fix conflicts manually, then retry the merge
-4. Consider enabling `serialize_merges = true` in config to reduce conflicts when running
+1. Use the resolve action in Task Details to open a terminal in the merge worktree
+1. Fix conflicts manually, then retry the merge
+1. Consider enabling `serialize_merges = true` in config to reduce conflicts when running
    multiple parallel agents
 
 ### Small Terminal Window

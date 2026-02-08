@@ -17,7 +17,7 @@ from kagan.limits import AGENT_TIMEOUT
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kagan.acp.agent import Agent
+    from kagan.acp import Agent
     from kagan.config import AgentConfig
 
 

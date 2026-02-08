@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Label, Static
@@ -10,7 +10,8 @@ from textual.widgets import Button, Label, Static
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.app import KaganApp
+    from kagan.services.diffs import DiffService
+    from kagan.services.workspaces import WorkspaceService
 
 
 class WorkspaceRepoItem(Static):
@@ -54,9 +55,17 @@ class WorkspaceRepoItem(Static):
 class WorkspaceReposWidget(Static):
     """Widget displaying all repos in a workspace."""
 
-    def __init__(self, workspace_id: str) -> None:
+    def __init__(
+        self,
+        workspace_id: str,
+        *,
+        workspace_service: WorkspaceService,
+        diff_service: DiffService | None,
+    ) -> None:
         super().__init__()
         self.workspace_id = workspace_id
+        self._workspace_service = workspace_service
+        self._diff_service = diff_service
         self.repos: list[dict] = []
 
     def compose(self) -> ComposeResult:
@@ -69,9 +78,7 @@ class WorkspaceReposWidget(Static):
 
     async def refresh_repos(self) -> None:
         """Refresh the repo list."""
-        app = cast("KaganApp", self.app)
-        workspace_service = app.ctx.workspace_service
-        self.repos = await workspace_service.get_workspace_repos(self.workspace_id)
+        self.repos = await self._workspace_service.get_workspace_repos(self.workspace_id)
 
         repo_list = self.query_one("#repo-list", Vertical)
         await repo_list.remove_children()
@@ -99,9 +106,10 @@ class WorkspaceReposWidget(Static):
     async def _open_diff(self, repo_id: str) -> None:
         from kagan.ui.modals import DiffModal
 
-        app = cast("KaganApp", self.app)
-        diff_service = app.ctx.diff_service
-        repo_diff = await diff_service.get_repo_diff(self.workspace_id, repo_id)
+        if self._diff_service is None:
+            self.notify("Diff service unavailable", severity="warning")
+            return
+        repo_diff = await self._diff_service.get_repo_diff(self.workspace_id, repo_id)
         await self.app.push_screen(DiffModal(diffs=[repo_diff]))
 
     async def _open_merge_dialog(self) -> None:

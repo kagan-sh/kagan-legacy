@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Rule, TabbedContent, TabPane
 
 from kagan.acp import messages
@@ -15,6 +14,7 @@ from kagan.acp.messages import Answer
 from kagan.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.core.models.enums import TaskStatus
 from kagan.keybindings import AGENT_OUTPUT_BINDINGS
+from kagan.ui.modals.base import KaganModalScreen
 from kagan.ui.utils.agent_exit import is_graceful_agent_termination
 from kagan.ui.utils.clipboard import copy_with_notification
 from kagan.ui.widgets import ChatPanel
@@ -23,14 +23,13 @@ if TYPE_CHECKING:
     from acp.schema import AvailableCommand
     from textual.app import ComposeResult
 
-    from kagan.acp.agent import Agent
-    from kagan.app import KaganApp
-    from kagan.core.models.entities import Task
+    from kagan.acp import Agent
+    from kagan.adapters.db.schema import Task
     from kagan.services.queued_messages import QueuedMessageService
     from kagan.ui.widgets.streaming_output import StreamingOutput
 
 
-class AgentOutputModal(ModalScreen[None]):
+class AgentOutputModal(KaganModalScreen[None]):
     """Modal for watching an AUTO task's agent progress in real-time.
 
     Supports two modes:
@@ -141,6 +140,7 @@ class AgentOutputModal(ModalScreen[None]):
     async def _mount_single(self) -> None:
         panel = self.query_one("#agent-chat", ChatPanel)
         output = panel.output
+        panel.set_logs_loader(self._load_execution_logs)
         if self._agent:
             # Live agent: buffer holds the full session history — replay rebuilds the view.
             # Skip load_logs(); in-flight executions have no DB logs yet.
@@ -156,9 +156,14 @@ class AgentOutputModal(ModalScreen[None]):
         # Load existing queued messages
         await panel.refresh_queued_messages()
 
+    async def _load_execution_logs(self, execution_id: str) -> str | None:
+        entry = await self.ctx.execution_service.get_execution_logs(execution_id)
+        if entry is None:
+            return None
+        return entry.logs
+
     def _get_queue_service(self) -> QueuedMessageService | None:
-        app = cast("KaganApp", self.app)
-        service = getattr(app.ctx, "queued_message_service", None)
+        service = getattr(self.ctx, "queued_message_service", None)
         if service is None:
             return None
         return cast("QueuedMessageService", service)
@@ -194,14 +199,12 @@ class AgentOutputModal(ModalScreen[None]):
             await review_panel.output.post_note("No review logs available", classes="warning")
             return
 
-        app = cast("KaganApp", self.app)
-
-        execution = await app.ctx.execution_service.get_execution(self._execution_id)
+        execution = await self.ctx.execution_service.get_execution(self._execution_id)
         has_review_result = False
         if execution and execution.metadata_:
             has_review_result = "review_result" in execution.metadata_
 
-        entries = await app.ctx.execution_service.get_log_entries(self._execution_id)
+        entries = await self.ctx.execution_service.get_execution_log_entries(self._execution_id)
 
         if not entries:
             await impl_panel.output.post_note("No execution logs available", classes="warning")
@@ -341,8 +344,7 @@ class AgentOutputModal(ModalScreen[None]):
 
     async def action_cancel_agent(self) -> None:
         """Stop agent completely and move task to BACKLOG."""
-        app = cast("KaganApp", self.app)
-        automation = app.ctx.automation_service
+        automation = self.ctx.automation_service
         if automation is None:
             self.notify("Automation service unavailable", severity="error")
             return
@@ -352,7 +354,7 @@ class AgentOutputModal(ModalScreen[None]):
             output = self._get_active_output()
             await output.post_note("Agent stopped", classes="warning")
 
-            await app.ctx.task_service.move(self._task_model.id, TaskStatus.BACKLOG)
+            await self.ctx.task_service.move(self._task_model.id, TaskStatus.BACKLOG)
             await output.post_note(
                 "Task moved to BACKLOG (select task and press 'a' to restart)", classes="info"
             )
@@ -362,8 +364,7 @@ class AgentOutputModal(ModalScreen[None]):
 
     async def action_start_agent(self) -> None:
         """Start the agent for the stopped task."""
-        app = cast("KaganApp", self.app)
-        automation = app.ctx.automation_service
+        automation = self.ctx.automation_service
         if automation is None:
             self.notify("Automation service unavailable", severity="error")
             return
@@ -373,7 +374,7 @@ class AgentOutputModal(ModalScreen[None]):
             return
 
         # Ensure workspace exists
-        wt_path = await app.ctx.workspace_service.get_path(self._task_model.id)
+        wt_path = await self.ctx.workspace_service.get_path(self._task_model.id)
         if wt_path is None:
             self.notify("No workspace configured for this task", severity="error")
             return

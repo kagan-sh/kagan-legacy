@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from kagan.core.models.enums import SessionStatus, SessionType
+from kagan.core.models.policies import (
+    transition_status_from_agent_complete,
+    transition_status_from_review_pass,
+    transition_status_from_review_reject,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from kagan.adapters.db.repositories import TaskRepository
-    from kagan.adapters.db.schema import Session
+    from kagan.adapters.db.repositories.scratch import ScratchRepository
+    from kagan.adapters.db.repositories.session_records import SessionRecordRepository
+    from kagan.adapters.db.schema import Session, Task
     from kagan.core.events import EventBus
-    from kagan.core.models.entities import Task
     from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
     from kagan.services.types import ProjectId, TaskId
 
@@ -27,12 +33,120 @@ def _extract_task_mentions(description: str) -> set[str]:
     return {match.group(1) for match in _TASK_MENTION_RE.finditer(description)}
 
 
-class TaskService:
+class TaskService(Protocol):
+    """Protocol boundary for task operations."""
+
+    async def create_task(
+        self,
+        title: str,
+        description: str,
+        *,
+        project_id: ProjectId | None = None,
+        created_by: str | None = None,
+    ) -> Task: ...
+
+    async def update_task(
+        self,
+        task_id: TaskId,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        priority: TaskPriority | None = None,
+        task_type: TaskType | None = None,
+        assigned_hat: str | None = None,
+        agent_backend: str | None = None,
+        acceptance_criteria: list[str] | None = None,
+    ) -> Task | None: ...
+
+    async def set_status(
+        self,
+        task_id: TaskId,
+        to_status: TaskStatus,
+        *,
+        reason: str | None = None,
+    ) -> Task | None: ...
+
+    async def get_task(self, task_id: TaskId) -> Task | None: ...
+
+    async def list_tasks(
+        self,
+        *,
+        project_id: ProjectId | None = None,
+        status: TaskStatus | None = None,
+    ) -> list[Task]: ...
+
+    async def delete_task(self, task_id: TaskId) -> bool: ...
+
+    async def update_fields(self, task_id: TaskId, **kwargs: object) -> Task | None: ...
+
+    async def move(self, task_id: TaskId, new_status: TaskStatus) -> Task | None: ...
+
+    async def create_session_record(
+        self,
+        *,
+        workspace_id: str,
+        session_type: SessionType,
+        external_id: str | None = None,
+    ) -> Session: ...
+
+    async def close_session_record(
+        self,
+        session_id: str,
+        *,
+        status: SessionStatus = SessionStatus.CLOSED,
+    ) -> Session | None: ...
+
+    async def close_session_by_external_id(
+        self,
+        external_id: str,
+        *,
+        status: SessionStatus = SessionStatus.CLOSED,
+    ) -> Session | None: ...
+
+    async def get_by_status(self, status: TaskStatus) -> Sequence[Task]: ...
+
+    async def search(self, query: str) -> Sequence[Task]: ...
+
+    async def get_task_links(self, task_id: TaskId) -> list[str]: ...
+
+    async def get_scratchpad(self, task_id: TaskId) -> str: ...
+
+    async def update_scratchpad(self, task_id: TaskId, content: str) -> None: ...
+
+    async def sync_status_from_agent_complete(
+        self, task_id: TaskId, success: bool
+    ) -> Task | None: ...
+
+    async def sync_status_from_review_pass(self, task_id: TaskId) -> Task | None: ...
+
+    async def sync_status_from_review_reject(
+        self, task_id: TaskId, reason: str | None = None
+    ) -> Task | None: ...
+
+
+class TaskServiceImpl:
     """Task service backed by TaskRepository and EventBus."""
 
-    def __init__(self, repo: TaskRepository, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        repo: TaskRepository,
+        event_bus: EventBus,
+        *,
+        session_repo: SessionRecordRepository | None = None,
+        scratch_repo: ScratchRepository | None = None,
+    ) -> None:
         self._repo = repo
         self._events = event_bus
+        if session_repo is None:
+            from kagan.adapters.db.repositories.session_records import SessionRecordRepository
+
+            session_repo = SessionRecordRepository(repo.session_factory)
+        if scratch_repo is None:
+            from kagan.adapters.db.repositories.scratch import ScratchRepository
+
+            scratch_repo = ScratchRepository(repo.session_factory)
+        self._sessions = session_repo
+        self._scratch = scratch_repo
 
     async def create_task(
         self,
@@ -44,7 +158,6 @@ class TaskService:
     ) -> Task:
         from kagan.adapters.db.schema import Task as DbTask
         from kagan.core.events import TaskCreated
-        from kagan.core.models.entities import Task as DomainTask
 
         project_id = project_id or self._repo.default_project_id
         if project_id is None:
@@ -65,7 +178,7 @@ class TaskService:
             )
         )
         await self._sync_task_links(created.id, created.project_id, created.description)
-        return DomainTask.model_validate(created)
+        return created
 
     async def update_task(
         self,
@@ -98,7 +211,6 @@ class TaskService:
         reason: str | None = None,
     ) -> Task | None:
         from kagan.core.events import TaskStatusChanged, TaskUpdated
-        from kagan.core.models.entities import Task as DomainTask
 
         current = await self._repo.get(task_id)
         if current is None:
@@ -118,13 +230,11 @@ class TaskService:
         await self._events.publish(
             TaskUpdated(task_id=task_id, fields_changed=["status"], updated_at=updated.updated_at)
         )
-        return DomainTask.model_validate(updated)
+        return updated
 
     async def get_task(self, task_id: TaskId) -> Task | None:
-        from kagan.core.models.entities import Task as DomainTask
-
         task = await self._repo.get(task_id)
-        return DomainTask.model_validate(task) if task else None
+        return task
 
     async def list_tasks(
         self,
@@ -132,20 +242,17 @@ class TaskService:
         project_id: ProjectId | None = None,
         status: TaskStatus | None = None,
     ) -> list[Task]:
-        from kagan.core.models.entities import Task as DomainTask
-
         if status:
             tasks = await self._repo.get_by_status(status, project_id=project_id)
         else:
             tasks = await self._repo.get_all(project_id=project_id)
-        return [DomainTask.model_validate(task) for task in tasks]
+        return list(tasks)
 
     async def delete_task(self, task_id: TaskId) -> bool:
         return await self._repo.delete(task_id)
 
     async def update_fields(self, task_id: TaskId, **kwargs: object) -> Task | None:
         from kagan.core.events import TaskStatusChanged, TaskUpdated
-        from kagan.core.models.entities import Task as DomainTask
 
         current = await self._repo.get(task_id)
         if current is None:
@@ -177,7 +284,7 @@ class TaskService:
         if "description" in kwargs and kwargs["description"] is not None:
             await self._sync_task_links(updated.id, updated.project_id, updated.description)
 
-        return DomainTask.model_validate(updated)
+        return updated
 
     async def move(self, task_id: TaskId, new_status: TaskStatus) -> Task | None:
         return await self.set_status(task_id, new_status)
@@ -189,7 +296,7 @@ class TaskService:
         session_type: SessionType,
         external_id: str | None = None,
     ) -> Session:
-        return await self._repo.create_session_record(
+        return await self._sessions.create_session_record(
             workspace_id=workspace_id,
             session_type=session_type,
             external_id=external_id,
@@ -201,7 +308,7 @@ class TaskService:
         *,
         status: SessionStatus = SessionStatus.CLOSED,
     ) -> Session | None:
-        return await self._repo.close_session_record(session_id, status=status)
+        return await self._sessions.close_session_record(session_id, status=status)
 
     async def close_session_by_external_id(
         self,
@@ -209,48 +316,56 @@ class TaskService:
         *,
         status: SessionStatus = SessionStatus.CLOSED,
     ) -> Session | None:
-        return await self._repo.close_session_by_external_id(external_id, status=status)
+        return await self._sessions.close_session_by_external_id(external_id, status=status)
 
     async def get_by_status(self, status: TaskStatus) -> Sequence[Task]:
-        from kagan.core.models.entities import Task as DomainTask
-
         tasks = await self._repo.get_by_status(status)
-        return [DomainTask.model_validate(task) for task in tasks]
+        return tasks
 
     async def search(self, query: str) -> Sequence[Task]:
-        from kagan.core.models.entities import Task as DomainTask
-
         tasks = await self._repo.search(query)
-        return [DomainTask.model_validate(task) for task in tasks]
+        return tasks
 
     async def get_task_links(self, task_id: TaskId) -> list[str]:
         return await self._repo.get_task_links(task_id)
 
     async def get_scratchpad(self, task_id: TaskId) -> str:
-        return await self._repo.get_scratchpad(task_id)
+        return await self._scratch.get_scratchpad(task_id)
 
     async def update_scratchpad(self, task_id: TaskId, content: str) -> None:
-        await self._repo.update_scratchpad(task_id, content)
+        await self._scratch.update_scratchpad(task_id, content)
 
     async def sync_status_from_agent_complete(self, task_id: TaskId, success: bool) -> Task | None:
-        from kagan.core.models.entities import Task as DomainTask
-
-        task = await self._repo.sync_status_from_agent_complete(task_id, success)
-        return DomainTask.model_validate(task) if task else None
+        task = await self._repo.get(task_id)
+        if task is None:
+            return None
+        next_status = transition_status_from_agent_complete(task.status, success)
+        if next_status == task.status:
+            return task
+        task = await self.set_status(task_id, next_status, reason="agent_complete")
+        return task
 
     async def sync_status_from_review_pass(self, task_id: TaskId) -> Task | None:
-        from kagan.core.models.entities import Task as DomainTask
-
-        task = await self._repo.sync_status_from_review_pass(task_id)
-        return DomainTask.model_validate(task) if task else None
+        task = await self._repo.get(task_id)
+        if task is None:
+            return None
+        next_status = transition_status_from_review_pass(task.status)
+        if next_status == task.status:
+            return task
+        task = await self.set_status(task_id, next_status, reason="review_passed")
+        return task
 
     async def sync_status_from_review_reject(
         self, task_id: TaskId, reason: str | None = None
     ) -> Task | None:
-        from kagan.core.models.entities import Task as DomainTask
-
-        task = await self._repo.sync_status_from_review_reject(task_id, reason=reason)
-        return DomainTask.model_validate(task) if task else None
+        task = await self._repo.get(task_id)
+        if task is None:
+            return None
+        next_status = transition_status_from_review_reject(task.status)
+        if next_status == task.status:
+            return task
+        task = await self.set_status(task_id, next_status, reason=reason)
+        return task
 
     async def _sync_task_links(self, task_id: str, project_id: str, description: str) -> None:
         mentions = _extract_task_mentions(description)

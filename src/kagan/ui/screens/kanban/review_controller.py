@@ -10,10 +10,13 @@ from kagan.core.models.enums import (
     TaskStatus,
     TaskType,
 )
+from kagan.core.time import utc_now
+from kagan.ui.screen_result import await_screen_result
 from kagan.ui.screens.kanban import focus
 
 if TYPE_CHECKING:
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
+    from kagan.services.runtime import AutoOutputReadiness
     from kagan.ui.screens.kanban.screen import KanbanScreen
     from kagan.ui.widgets.card import TaskCard
 
@@ -37,7 +40,7 @@ class KanbanReviewController:
         if self.screen.ctx.merge_service and await self.screen.ctx.merge_service.has_no_changes(
             task
         ):
-            self.confirm_close_no_changes(task)
+            await self.confirm_close_no_changes(task)
             return
         await self.execute_merge(
             task,
@@ -64,8 +67,6 @@ class KanbanReviewController:
     async def handle_rebase_conflict(
         self, task: Task, base_branch: str, conflict_files: list[str]
     ) -> None:
-        from datetime import datetime
-
         from kagan.agents.conflict_instructions import build_conflict_resolution_instructions
 
         await self.screen.ctx.workspace_service.abort_rebase(task.id)
@@ -78,7 +79,7 @@ class KanbanReviewController:
             conflict_files=conflict_files,
         )
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        timestamp = utc_now().strftime("%Y-%m-%d %H:%M")
         separator = f"\n\n---\n_Rebase conflict detected ({timestamp}):_\n\n"
         current_desc = task.description or ""
         new_desc = current_desc + separator + instructions
@@ -93,7 +94,7 @@ class KanbanReviewController:
 
         self.screen._merge_failed_tasks.add(task.id)
 
-        await self.screen._refresh_and_sync()
+        await self.screen._board.refresh_and_sync()
         n_files = len(conflict_files)
         self.screen.notify(
             f"Rebase conflict: {n_files} file(s). Task moved to IN_PROGRESS.",
@@ -111,21 +112,7 @@ class KanbanReviewController:
         new_status = TaskStatus.next_status(status) if forward else TaskStatus.prev_status(status)
         if new_status:
             if status == TaskStatus.IN_PROGRESS and task_type == TaskType.AUTO:
-                self.screen._pending_auto_move_task = task
-                self.screen._pending_auto_move_status = new_status
-                title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
-                destination = new_status.value.upper()
-                from kagan.ui.modals import ConfirmModal
-
-                self.screen.app.push_screen(
-                    ConfirmModal(
-                        title="Stop Agent and Move Task?",
-                        message=(
-                            f"Stop agent, keep worktree/logs, and move '{title}' to {destination}?"
-                        ),
-                    ),
-                    callback=self.on_auto_move_confirmed,
-                )
+                await self.on_auto_move_confirmed(task, new_status)
                 return
 
             if status == TaskStatus.REVIEW and new_status == TaskStatus.DONE:
@@ -133,19 +120,9 @@ class KanbanReviewController:
                     self.screen.ctx.merge_service
                     and await self.screen.ctx.merge_service.has_no_changes(task)
                 ):
-                    self.confirm_close_no_changes(task)
+                    await self.confirm_close_no_changes(task)
                     return
-                self.screen._pending_merge_task = task
-                title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
-                from kagan.ui.modals import ConfirmModal
-
-                self.screen.app.push_screen(
-                    ConfirmModal(
-                        title="Complete Task?",
-                        message=f"Merge '{title}' and move to DONE?",
-                    ),
-                    callback=self.on_merge_confirmed,
-                )
+                await self.on_merge_confirmed(task)
                 return
 
             if (
@@ -153,14 +130,7 @@ class KanbanReviewController:
                 and task_type == TaskType.PAIR
                 and new_status == TaskStatus.REVIEW
             ):
-                self.screen._pending_advance_task = task
-                title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
-                from kagan.ui.modals import ConfirmModal
-
-                self.screen.app.push_screen(
-                    ConfirmModal(title="Advance to Review?", message=f"Move '{title}' to REVIEW?"),
-                    callback=self.on_advance_confirmed,
-                )
+                await self.on_advance_confirmed(task)
                 return
 
             if (
@@ -168,10 +138,10 @@ class KanbanReviewController:
                 and status == TaskStatus.IN_PROGRESS
                 and new_status != TaskStatus.REVIEW
             ):
-                self.screen._set_card_indicator(task.id, CardIndicator.IDLE, is_active=False)
+                self.screen._board.set_card_indicator(task.id, CardIndicator.IDLE, is_active=False)
 
             await self.screen.ctx.task_service.move(task.id, new_status)
-            await self.screen._refresh_board()
+            await self.screen._board.refresh_board()
             self.screen.notify(f"Moved #{task.id} to {new_status.value}")
             focus.focus_column(self.screen, new_status)
         else:
@@ -180,59 +150,106 @@ class KanbanReviewController:
                 severity="warning",
             )
 
-    async def on_merge_confirmed(self, confirmed: bool | None) -> None:
-        if confirmed and self.screen._pending_merge_task:
-            task = self.screen._pending_merge_task
-            await self.execute_merge(
-                task,
-                success_msg=f"Merged and completed: {task.title}",
-                track_failures=True,
-            )
-        self.screen._pending_merge_task = None
+    async def on_merge_confirmed(self, task: Task) -> None:
+        from kagan.ui.modals import ConfirmModal
 
-    async def on_close_confirmed(self, confirmed: bool | None) -> None:
-        if confirmed and self.screen._pending_close_task:
-            task = self.screen._pending_close_task
-            success, message = (
-                await self.screen.ctx.merge_service.close_exploratory(task)
-                if self.screen.ctx.merge_service
-                else (False, "")
-            )
-            if success:
-                await self.screen._refresh_board()
-                self.screen.notify(f"Closed (no changes): {task.title}")
-            else:
-                self.screen.notify(message, severity="error")
-        self.screen._pending_close_task = None
+        self.screen._ui_state.pending_merge_task = task
+        title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
+        confirmed = await await_screen_result(
+            self.screen.app,
+            ConfirmModal(
+                title="Complete Task?",
+                message=f"Merge '{title}' and move to DONE?",
+            ),
+        )
+        pending_task = self.screen._ui_state.pending_merge_task
+        self.screen._ui_state.pending_merge_task = None
+        if not confirmed or pending_task is None:
+            return
+        await self.execute_merge(
+            pending_task,
+            success_msg=f"Merged and completed: {pending_task.title}",
+            track_failures=True,
+        )
 
-    async def on_advance_confirmed(self, confirmed: bool | None) -> None:
-        if confirmed and self.screen._pending_advance_task:
-            task = self.screen._pending_advance_task
-            await self.screen.ctx.task_service.update_fields(task.id, status=TaskStatus.REVIEW)
-            await self.screen._refresh_board()
-            self.screen.notify(f"Moved #{task.id} to REVIEW")
-            focus.focus_column(self.screen, TaskStatus.REVIEW)
-        self.screen._pending_advance_task = None
+    async def on_close_confirmed(self, task: Task) -> None:
+        from kagan.ui.modals import ConfirmModal
 
-    async def on_auto_move_confirmed(self, confirmed: bool | None) -> None:
-        task = self.screen._pending_auto_move_task
-        new_status = self.screen._pending_auto_move_status
-        self.screen._pending_auto_move_task = None
-        self.screen._pending_auto_move_status = None
+        self.screen._ui_state.pending_close_task = task
+        title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
+        confirmed = await await_screen_result(
+            self.screen.app,
+            ConfirmModal(
+                title="No Changes Detected",
+                message=f"Mark '{title}' as DONE and archive the workspace?",
+            ),
+        )
+        pending_task = self.screen._ui_state.pending_close_task
+        self.screen._ui_state.pending_close_task = None
+        if not confirmed or pending_task is None:
+            return
+        success, message = (
+            await self.screen.ctx.merge_service.close_exploratory(pending_task)
+            if self.screen.ctx.merge_service
+            else (False, "")
+        )
+        if success:
+            await self.screen._board.refresh_board()
+            self.screen.notify(f"Closed (no changes): {pending_task.title}")
+            return
+        self.screen.notify(message, severity="error")
 
-        if not confirmed or task is None or new_status is None:
+    async def on_advance_confirmed(self, task: Task) -> None:
+        from kagan.ui.modals import ConfirmModal
+
+        self.screen._ui_state.pending_advance_task = task
+        title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
+        confirmed = await await_screen_result(
+            self.screen.app,
+            ConfirmModal(title="Advance to Review?", message=f"Move '{title}' to REVIEW?"),
+        )
+        pending_task = self.screen._ui_state.pending_advance_task
+        self.screen._ui_state.pending_advance_task = None
+        if not confirmed or pending_task is None:
+            return
+        await self.screen.ctx.task_service.update_fields(pending_task.id, status=TaskStatus.REVIEW)
+        await self.screen._board.refresh_board()
+        self.screen.notify(f"Moved #{pending_task.id} to REVIEW")
+        focus.focus_column(self.screen, TaskStatus.REVIEW)
+
+    async def on_auto_move_confirmed(self, task: Task, new_status: TaskStatus) -> None:
+        from kagan.ui.modals import ConfirmModal
+
+        self.screen._ui_state.pending_auto_move_task = task
+        self.screen._ui_state.pending_auto_move_status = new_status
+        title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
+        destination = new_status.value.upper()
+        confirmed = await await_screen_result(
+            self.screen.app,
+            ConfirmModal(
+                title="Stop Agent and Move Task?",
+                message=f"Stop agent, keep worktree/logs, and move '{title}' to {destination}?",
+            ),
+        )
+        pending_task = self.screen._ui_state.pending_auto_move_task
+        pending_status = self.screen._ui_state.pending_auto_move_status
+        self.screen._ui_state.pending_auto_move_task = None
+        self.screen._ui_state.pending_auto_move_status = None
+        if not confirmed or pending_task is None or pending_status is None:
             return
 
-        scheduler = self.screen.ctx.automation_service
-        if scheduler.is_running(task.id):
-            await scheduler.stop_task(task.id)
+        was_running = await self.screen.ctx.automation_service.stop_task(pending_task.id)
+        self.screen._board.set_card_indicator(pending_task.id, CardIndicator.IDLE, is_active=False)
 
-        self.screen._set_card_indicator(task.id, CardIndicator.IDLE, is_active=False)
-
-        await self.screen.ctx.task_service.move(task.id, new_status)
-        await self.screen._refresh_board()
-        self.screen.notify(f"Moved #{task.id} to {new_status.value} (agent stopped)")
-        focus.focus_column(self.screen, new_status)
+        await self.screen.ctx.task_service.move(pending_task.id, pending_status)
+        await self.screen._board.refresh_board()
+        if was_running:
+            self.screen.notify(
+                f"Moved #{pending_task.id} to {pending_status.value} (agent stopped)"
+            )
+        else:
+            self.screen.notify(f"Moved #{pending_task.id} to {pending_status.value}")
+        focus.focus_column(self.screen, pending_status)
 
     async def action_merge(self) -> None:
         task = self.get_review_task(focus.get_focused_card(self.screen))
@@ -241,7 +258,7 @@ class KanbanReviewController:
         if self.screen.ctx.merge_service and await self.screen.ctx.merge_service.has_no_changes(
             task
         ):
-            self.confirm_close_no_changes(task)
+            await self.confirm_close_no_changes(task)
             return
         await self.execute_merge(task, success_msg=f"Merged and completed: {task.title}")
 
@@ -258,24 +275,24 @@ class KanbanReviewController:
         if not workspaces or self.screen.ctx.diff_service is None:
             base = self.screen.kagan_app.config.general.default_base_branch
             diff_text = await workspace_service.get_diff(task.id, base_branch=base)  # type: ignore[misc]
-            await self.screen.app.push_screen(
-                DiffModal(title=title, diff_text=diff_text, task=task),
-                callback=lambda result: self.on_diff_result(task, result),
+            result = await await_screen_result(
+                self.screen.app, DiffModal(title=title, diff_text=diff_text, task=task)
             )
+            await self.on_diff_result(task, result)
             return
 
         diffs = await self.screen.ctx.diff_service.get_all_diffs(workspaces[0].id)
-        await self.screen.app.push_screen(
-            DiffModal(title=title, diffs=diffs, task=task),
-            callback=lambda result: self.on_diff_result(task, result),
+        result = await await_screen_result(
+            self.screen.app, DiffModal(title=title, diffs=diffs, task=task)
         )
+        await self.on_diff_result(task, result)
 
     async def on_diff_result(self, task: Task, result: str | None) -> None:
         if result == ReviewResult.APPROVE:
             if self.screen.ctx.merge_service and await self.screen.ctx.merge_service.has_no_changes(
                 task
             ):
-                self.confirm_close_no_changes(task)
+                await self.confirm_close_no_changes(task)
                 return
             await self.execute_merge(task, success_msg=f"Merged: {task.title}")
         elif result == ReviewResult.REJECT:
@@ -294,22 +311,44 @@ class KanbanReviewController:
         read_only: bool = False,
         initial_tab: str | None = None,
         include_running_output: bool = False,
+        auto_output_readiness: AutoOutputReadiness | None = None,
     ) -> None:
         from kagan.ui.modals import ReviewModal
 
         agent_config = task.get_agent_config(self.screen.kagan_app.config)
         task_id = task.id
-        scheduler = self.screen.ctx.automation_service
         is_auto = task.task_type == TaskType.AUTO
+        runtime_service = self.screen.ctx.runtime_service
+        runtime_view = runtime_service.get(task.id) if is_auto else None
 
-        execution_id = scheduler.get_execution_id(task.id) if is_auto else None
-        run_count = scheduler.get_run_count(task.id) if is_auto else 0
-        is_running = scheduler.is_running(task.id) if is_auto else False
-        is_reviewing = scheduler.is_reviewing(task.id) if is_auto else False
-        review_agent = scheduler.get_review_agent(task.id) if is_auto else None
-        running_agent = (
-            scheduler.get_running_agent(task.id) if is_auto and include_running_output else None
-        )
+        if is_auto:
+            execution_id = runtime_view.execution_id if runtime_view is not None else None
+            run_count = runtime_view.run_count if runtime_view is not None else 0
+            is_running = runtime_view.is_running if runtime_view is not None else False
+            is_reviewing = runtime_view.is_reviewing if runtime_view is not None else False
+            review_agent = runtime_view.review_agent if runtime_view is not None else None
+        else:
+            execution_id = None
+            run_count = 0
+            is_running = False
+            is_reviewing = False
+            review_agent = None
+
+        running_agent = None
+        if is_auto and include_running_output:
+            running_agent = runtime_view.running_agent if runtime_view is not None else None
+            if running_agent is None:
+                running_agent = self.screen.ctx.automation_service.get_running_agent(task.id)
+            if running_agent is not None:
+                is_running = True
+        if is_auto and auto_output_readiness is not None:
+            if auto_output_readiness.execution_id is not None:
+                execution_id = auto_output_readiness.execution_id
+            is_running = auto_output_readiness.is_running
+            if include_running_output and auto_output_readiness.running_agent is not None:
+                running_agent = auto_output_readiness.running_agent
+        if running_agent is not None:
+            is_running = True
 
         if execution_id is None:
             latest = await self.screen.ctx.execution_service.get_latest_execution_for_task(task.id)
@@ -320,10 +359,8 @@ class KanbanReviewController:
                         task.id
                     )
 
-        async def handle_review(result: str | None) -> None:
-            await self.on_review_result(task_id, result)
-
-        await self.screen.app.push_screen(
+        result = await await_screen_result(
+            self.screen.app,
             ReviewModal(
                 task=task,
                 worktree_manager=self.screen.ctx.workspace_service,
@@ -345,8 +382,8 @@ class KanbanReviewController:
                     else "review-summary"
                 ),
             ),
-            callback=handle_review,
         )
+        await self.on_review_result(task_id, result)
 
     async def on_review_result(self, task_id: str, result: str | None) -> None:
         task = await self.screen.ctx.task_service.get_task(task_id)
@@ -369,7 +406,7 @@ class KanbanReviewController:
             if self.screen.ctx.merge_service and await self.screen.ctx.merge_service.has_no_changes(
                 task
             ):
-                self.confirm_close_no_changes(task)
+                await self.confirm_close_no_changes(task)
                 return
             await self.execute_merge(
                 task,
@@ -377,7 +414,7 @@ class KanbanReviewController:
                 track_failures=True,
             )
         elif result == ReviewResult.EXPLORATORY:
-            self.confirm_close_no_changes(task)
+            await self.confirm_close_no_changes(task)
         elif result == ReviewResult.REJECT:
             await self.handle_reject_with_feedback(task)
 
@@ -397,12 +434,12 @@ class KanbanReviewController:
         if success:
             if track_failures:
                 self.screen._merge_failed_tasks.discard(task.id)
-            await self.screen._refresh_board()
+            await self.screen._board.refresh_board()
             self.screen.notify(success_msg, severity="information")
         else:
             if track_failures:
                 self.screen._merge_failed_tasks.add(task.id)
-                self.screen._sync_agent_states()
+                self.screen._board.sync_agent_states()
             self.screen.notify(self.format_merge_failure(task, message), severity="error")
         return success
 
@@ -412,26 +449,14 @@ class KanbanReviewController:
             return f"Merge failed (AUTO): {message}"
         return f"Merge failed (PAIR): {message}"
 
-    def confirm_close_no_changes(self, task: Task) -> None:
-        from kagan.ui.modals import ConfirmModal
-
-        self.screen._pending_close_task = task
-        title = task.title[:NOTIFICATION_TITLE_MAX_LENGTH]
-        self.screen.app.push_screen(
-            ConfirmModal(
-                title="No Changes Detected",
-                message=f"Mark '{title}' as DONE and archive the workspace?",
-            ),
-            callback=self.on_close_confirmed,
-        )
+    async def confirm_close_no_changes(self, task: Task) -> None:
+        await self.on_close_confirmed(task)
 
     async def handle_reject_with_feedback(self, task: Task) -> None:
         from kagan.ui.modals import RejectionInputModal
 
-        await self.screen.app.push_screen(
-            RejectionInputModal(task.title),
-            callback=lambda result: self.apply_rejection_result(task, result),
-        )
+        result = await await_screen_result(self.screen.app, RejectionInputModal(task.title))
+        await self.apply_rejection_result(task, result)
 
     async def apply_rejection_result(self, task: Task, result: tuple[str, str] | None) -> None:
         if self.screen.ctx.merge_service is None:
@@ -446,7 +471,7 @@ class KanbanReviewController:
         else:
             feedback, action = result
             await self.screen.ctx.merge_service.apply_rejection_feedback(task, feedback, action)
-        await self.screen._refresh_board()
+        await self.screen._board.refresh_board()
         if action == RejectionAction.BACKLOG:
             self.screen.notify(f"Moved to BACKLOG: {task.title}")
         else:

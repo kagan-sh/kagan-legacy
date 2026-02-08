@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -10,6 +11,7 @@ from textual.containers import Container, Horizontal
 from textual.widgets import Button, Footer, Label, ListItem, ListView, Static, Switch
 
 from kagan.constants import KAGAN_LOGO
+from kagan.core.time import utc_now
 from kagan.keybindings import WELCOME_BINDINGS, get_key_for_action
 from kagan.ui.screens.base import KaganScreen
 from kagan.ui.utils.path import truncate_path
@@ -19,11 +21,6 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
     from kagan.app import KaganApp
-
-
-def _utcnow() -> datetime:
-    """Return the current UTC time. Extracted for test monkeypatching."""
-    return datetime.now(UTC)
 
 
 class ProjectListItem(ListItem):
@@ -70,7 +67,7 @@ class ProjectListItem(ListItem):
         """Format last opened time as relative time with arrow indicator (e.g., '2h ↵')."""
         if not self.last_opened:
             return "Never ↵"
-        now = _utcnow()
+        now = utc_now()
         last_opened = self.last_opened
         if last_opened.tzinfo is None:
             last_opened = last_opened.replace(tzinfo=UTC)
@@ -153,7 +150,7 @@ class WelcomeScreen(KaganScreen):
 
     async def on_mount(self) -> None:
         """Load recent projects on mount."""
-        self.run_worker(self._load_recent_projects(), exclusive=True)
+        self.run_worker(self._load_recent_projects(), exclusive=True, exit_on_error=False)
         self._update_keybinding_hints()
 
     def _update_keybinding_hints(self) -> None:
@@ -169,18 +166,37 @@ class WelcomeScreen(KaganScreen):
 
     async def _load_recent_projects(self) -> None:
         """Load and display recent projects from project service."""
+        project_service = self.ctx.project_service
+        projects = None
+        for attempt in range(3):
+            try:
+                projects = await project_service.list_recent_projects(limit=10)
+                break
+            except Exception as exc:
+                self.log(
+                    "Recent projects load failed",
+                    attempt=attempt + 1,
+                    error=str(exc),
+                )
+                if attempt == 2:
+                    self._show_empty_state(
+                        f"Unable to load projects from {self.ctx.db_path}. Restart and try again."
+                    )
+                    self._hide_continue_highlight()
+                    return
+                await asyncio.sleep(0.35 * (attempt + 1))
+
         if not self.is_mounted:
             return
-        try:
-            project_service = self.ctx.project_service
-            projects = await project_service.list_recent_projects(limit=10)
-        except (AttributeError, RuntimeError):
+
+        if projects is None:
             self._show_empty_state("No recent projects found.")
             self._hide_continue_highlight()
             return
 
         list_view = self.query_one("#project-list", ListView)
         empty_state = self.query_one("#empty-state", Label)
+        list_view.clear()
 
         if not projects:
             list_view.display = False
@@ -197,10 +213,23 @@ class WelcomeScreen(KaganScreen):
             try:
                 repos = await project_service.get_project_repos(project.id)
                 repo_paths = [r.path for r in repos]
-            except (AttributeError, RuntimeError):
+            except Exception as exc:
+                self.log(
+                    "Project repo lookup failed",
+                    project_id=project.id,
+                    error=str(exc),
+                )
                 repo_paths = []
 
-            task_summary = await self._get_task_summary(project.id)
+            try:
+                task_summary = await self._get_task_summary(project.id)
+            except Exception as exc:
+                self.log(
+                    "Project task summary lookup failed",
+                    project_id=project.id,
+                    error=str(exc),
+                )
+                task_summary = "○ No tasks"
 
             item = ProjectListItem(
                 project_id=project.id,
@@ -260,7 +289,7 @@ class WelcomeScreen(KaganScreen):
                 return f"○ {len(tasks)} tasks"
             else:
                 return "○ No tasks"
-        except (AttributeError, RuntimeError, TypeError):
+        except Exception:
             return "○ No tasks"
 
     def _show_empty_state(self, message: str) -> None:
@@ -360,51 +389,15 @@ class WelcomeScreen(KaganScreen):
         self._open_project_by_index(int(index))
 
     async def _open_project(self, project_id: str) -> None:
-        """Open a project and switch to appropriate screen."""
+        """Open a project and switch to the project board."""
         try:
-            project_service = self.ctx.project_service
-            project = await project_service.open_project(project_id)
-
-            # Note: This requires active_project_id to be added to AppContext
-            if hasattr(self.ctx, "active_project_id"):
-                self.ctx.active_project_id = project_id
-
-            repos = await project_service.get_project_repos(project_id)
-            if repos:
-                if not await self.kagan_app._set_active_repo_for_project(
-                    project, allow_picker=True
-                ):
-                    return
-            else:
-                self.kagan_app._clear_active_repo()
-                from kagan.ui.screens.repo_picker import RepoPickerScreen
-
-                selected_repo_id = await self.app.push_screen_wait(
-                    RepoPickerScreen(project=project, repositories=repos, current_repo_id=None)
-                )
-                if not selected_repo_id:
-                    self.notify("Add a repository to continue", severity="warning")
-                    return
-                repos = await project_service.get_project_repos(project_id)
-                selected_repo = next((repo for repo in repos if repo.id == selected_repo_id), None)
-                if selected_repo is None:
-                    self.notify("No repository selected", severity="warning")
-                    return
-                if not await self.kagan_app._apply_active_repo(selected_repo):
-                    # Repo is locked by another instance - modal was shown
-                    return
-
-            tasks = await self.ctx.task_service.list_tasks(project_id=project_id)
-            if len(tasks) == 0:
-                from kagan.ui.screens.planner import PlannerScreen
-
-                await self.app.switch_screen(
-                    PlannerScreen(agent_factory=self.kagan_app._agent_factory)
-                )
-            else:
-                from kagan.ui.screens.kanban import KanbanScreen
-
-                await self.app.switch_screen(KanbanScreen())
+            opened = await self.kagan_app.open_project_session(
+                project_id,
+                allow_picker=True,
+                screen_mode="switch",
+            )
+            if not opened:
+                self.notify("Unable to open project", severity="warning")
         except Exception as e:
             self.app.notify(f"Failed to open project: {e}", severity="error")
 

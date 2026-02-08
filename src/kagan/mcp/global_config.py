@@ -10,9 +10,13 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kagan.core.models.enums import McpFileFormat, McpInstallMethod
 from kagan.mcp_naming import get_mcp_server_name
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -31,80 +35,107 @@ def _resolve_kagan_path() -> str:
     return shutil.which("kagan") or "kagan"
 
 
+@dataclass(frozen=True)
+class _GlobalMcpSpecTemplate:
+    method: McpInstallMethod
+    config_resolver: Callable[[], Path]
+    file_format: McpFileFormat
+    cli_add_factory: Callable[[str, str], list[str]] | None = None
+    cli_list: tuple[str, ...] | None = None
+
+
+def _build_claude_cli_add(server_name: str, kagan_bin: str) -> list[str]:
+    return [
+        "claude",
+        "mcp",
+        "add",
+        "--transport",
+        "stdio",
+        "--scope",
+        "user",
+        server_name,
+        "--",
+        kagan_bin,
+        "mcp",
+    ]
+
+
+def _build_kimi_cli_add(server_name: str, kagan_bin: str) -> list[str]:
+    return [
+        "kimi",
+        "mcp",
+        "add",
+        "--transport",
+        "stdio",
+        server_name,
+        "--",
+        kagan_bin,
+        "mcp",
+    ]
+
+
+def _get_global_mcp_spec_templates() -> dict[str, _GlobalMcpSpecTemplate]:
+    return {
+        "opencode": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.FILE,
+            config_resolver=_resolve_opencode_config_path,
+            file_format=McpFileFormat.OPENCODE,
+        ),
+        "claude": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.CLI,
+            config_resolver=_resolve_claude_config_path,
+            file_format=McpFileFormat.CLAUDE,
+            cli_add_factory=_build_claude_cli_add,
+            cli_list=("claude", "mcp", "list"),
+        ),
+        "codex": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.FILE,
+            config_resolver=_resolve_codex_config_path,
+            file_format=McpFileFormat.CODEX,
+        ),
+        "gemini": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.FILE,
+            config_resolver=_resolve_gemini_config_path,
+            file_format=McpFileFormat.CLAUDE,
+        ),
+        "kimi": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.CLI,
+            config_resolver=_resolve_kimi_config_path,
+            file_format=McpFileFormat.CLAUDE,
+            cli_add_factory=_build_kimi_cli_add,
+            cli_list=("kimi", "mcp", "list"),
+        ),
+        "copilot": _GlobalMcpSpecTemplate(
+            method=McpInstallMethod.FILE,
+            config_resolver=_resolve_copilot_config_path,
+            file_format=McpFileFormat.COPILOT,
+        ),
+    }
+
+
 def get_global_mcp_spec(agent_short_name: str) -> GlobalMcpSpec | None:
     """Return global MCP config spec for supported agents."""
+    template = _get_global_mcp_spec_templates().get(agent_short_name)
+    if template is None:
+        return None
+
     kagan_bin = _resolve_kagan_path()
     server_name = get_mcp_server_name()
 
-    if agent_short_name == "opencode":
-        return GlobalMcpSpec(
-            agent="opencode",
-            method=McpInstallMethod.FILE,
-            config_path=_resolve_opencode_config_path(),
-            file_format=McpFileFormat.OPENCODE,
-        )
-    if agent_short_name == "claude":
-        return GlobalMcpSpec(
-            agent="claude",
-            method=McpInstallMethod.CLI,
-            config_path=_resolve_claude_config_path(),
-            file_format=McpFileFormat.CLAUDE,
-            cli_add=[
-                "claude",
-                "mcp",
-                "add",
-                "--transport",
-                "stdio",
-                "--scope",
-                "user",
-                server_name,
-                "--",
-                kagan_bin,
-                "mcp",
-            ],
-            cli_list=["claude", "mcp", "list"],
-        )
-    if agent_short_name == "codex":
-        return GlobalMcpSpec(
-            agent="codex",
-            method=McpInstallMethod.FILE,
-            config_path=_resolve_codex_config_path(),
-            file_format=McpFileFormat.CODEX,
-        )
-    if agent_short_name == "gemini":
-        return GlobalMcpSpec(
-            agent="gemini",
-            method=McpInstallMethod.FILE,
-            config_path=_resolve_gemini_config_path(),
-            file_format=McpFileFormat.CLAUDE,
-        )
-    if agent_short_name == "kimi":
-        return GlobalMcpSpec(
-            agent="kimi",
-            method=McpInstallMethod.CLI,
-            config_path=_resolve_kimi_config_path(),
-            file_format=McpFileFormat.CLAUDE,
-            cli_add=[
-                "kimi",
-                "mcp",
-                "add",
-                "--transport",
-                "stdio",
-                server_name,
-                "--",
-                kagan_bin,
-                "mcp",
-            ],
-            cli_list=["kimi", "mcp", "list"],
-        )
-    if agent_short_name == "copilot":
-        return GlobalMcpSpec(
-            agent="copilot",
-            method=McpInstallMethod.FILE,
-            config_path=_resolve_copilot_config_path(),
-            file_format=McpFileFormat.COPILOT,
-        )
-    return None
+    cli_add = (
+        template.cli_add_factory(server_name, kagan_bin)
+        if template.cli_add_factory is not None
+        else None
+    )
+    cli_list = list(template.cli_list) if template.cli_list is not None else None
+    return GlobalMcpSpec(
+        agent=agent_short_name,
+        method=template.method,
+        config_path=template.config_resolver(),
+        file_format=template.file_format,
+        cli_add=cli_add,
+        cli_list=cli_list,
+    )
 
 
 def get_global_mcp_install_command(agent_short_name: str) -> str | None:

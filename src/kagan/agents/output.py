@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from kagan.acp.agent import Agent
+    from kagan.acp import Agent
 
 
 def _json_safe(value: Any) -> Any:
@@ -31,7 +31,8 @@ def serialize_agent_output(agent: Agent, *, include_thinking: bool = False) -> s
     from kagan.acp import messages as msg_types
 
     serialized_messages: list[dict[str, Any]] = []
-    for message in agent._buffers.messages:
+    buffered_messages = agent.get_messages()
+    for message in buffered_messages:
         if isinstance(message, msg_types.AgentUpdate):
             # Streamed agent text chunks are reconstructed from get_response_text()
             # and appended once below to avoid quadratic log growth.

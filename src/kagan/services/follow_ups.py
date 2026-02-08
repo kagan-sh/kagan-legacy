@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Protocol
 from kagan.core.models.enums import ExecutionRunReason
 
 if TYPE_CHECKING:
+    from kagan.adapters.db.repositories import ExecutionRepository
     from kagan.adapters.db.schema import CodingAgentTurn, ExecutionProcess
-    from kagan.services.executions import ExecutionService
     from kagan.services.queued_messages import QueuedMessage, QueuedMessageService
     from kagan.services.types import SessionId
 
@@ -41,7 +41,7 @@ class FollowUpServiceImpl:
 
     def __init__(
         self,
-        execution_service: ExecutionService,
+        execution_service: ExecutionRepository,
         queued_messages: QueuedMessageService,
     ) -> None:
         self._executions = execution_service
@@ -74,7 +74,7 @@ class FollowUpServiceImpl:
                 "source_execution_id": latest_execution.id,
             },
         )
-        await self._executions.append_log(execution.id, self._serialize_prompt(prompt))
+        await self._executions.append_execution_log(execution.id, self._serialize_prompt(prompt))
         return execution
 
     async def resume_follow_up(

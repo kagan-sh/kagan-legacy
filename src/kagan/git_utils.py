@@ -6,11 +6,13 @@ All functions are async to avoid blocking the event loop during subprocess calls
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - Used at runtime in _ensure_gitignored
 
 MIN_GIT_VERSION = (2, 5, 0)
+GIT_QUERY_TIMEOUT_SECONDS = 5.0
 
 
 @dataclass
@@ -195,7 +197,16 @@ async def has_git_repo(repo_root: Path) -> bool:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=GIT_QUERY_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await proc.communicate()
+            return False
         return proc.returncode == 0 and stdout.decode().strip() == "true"
     except FileNotFoundError:
         return False
@@ -216,7 +227,16 @@ async def list_local_branches(repo_root: Path) -> list[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=GIT_QUERY_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await proc.communicate()
+            return []
         if proc.returncode != 0:
             return []
         return [line.strip() for line in stdout.decode().splitlines() if line.strip()]
@@ -238,7 +258,16 @@ async def get_current_branch(repo_root: Path) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=GIT_QUERY_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await proc.communicate()
+            return ""
         if proc.returncode != 0:
             return ""
         branch = stdout.decode().strip()

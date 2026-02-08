@@ -21,11 +21,13 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from kagan.config import KaganConfig
 from kagan.core.events import (
+    AutomationAgentAttached,
+    AutomationReviewAgentAttached,
+    AutomationTaskEnded,
+    AutomationTaskStarted,
     DomainEvent,
     EventBus,
     EventHandler,
-    ExecutionCompleted,
-    ExecutionFailed,
     MergeCompleted,
     MergeFailed,
     PRCreated,
@@ -34,8 +36,6 @@ from kagan.core.events import (
     TaskCreated,
     TaskStatusChanged,
     TaskUpdated,
-    WorkspaceProvisioned,
-    WorkspaceReleased,
 )
 
 if TYPE_CHECKING:
@@ -43,18 +43,18 @@ if TYPE_CHECKING:
 
     from textual.signal import Signal
 
-    from kagan.adapters.db.repositories import TaskRepository
+    from kagan.adapters.db.repositories import ExecutionRepository, TaskRepository
     from kagan.agents.agent_factory import AgentFactory
     from kagan.services.agent_health import AgentHealthService
     from kagan.services.automation import AutomationService
     from kagan.services.diffs import DiffService
-    from kagan.services.executions import ExecutionService
     from kagan.services.follow_ups import FollowUpService
     from kagan.services.merges import MergeService
     from kagan.services.projects import ProjectService
     from kagan.services.queued_messages import QueuedMessageService
     from kagan.services.repo_scripts import RepoScriptService
     from kagan.services.reviews import ReviewService
+    from kagan.services.runtime import RuntimeService
     from kagan.services.sessions import SessionService
     from kagan.services.tasks import TaskService
     from kagan.services.workspaces import WorkspaceService
@@ -221,10 +221,11 @@ class AppContext:
     task_service: TaskService = field(init=False)
     workspace_service: WorkspaceService = field(init=False)
     session_service: SessionService = field(init=False)
-    execution_service: ExecutionService = field(init=False)
+    execution_service: ExecutionRepository = field(init=False)
     queued_message_service: QueuedMessageService = field(init=False)
     follow_up_service: FollowUpService = field(init=False)
     review_service: ReviewService = field(init=False)
+    runtime_service: RuntimeService = field(init=False)
     merge_service: MergeService = field(init=False)
     diff_service: DiffService = field(init=False)
     repo_script_service: RepoScriptService = field(init=False)
@@ -292,6 +293,26 @@ def wire_default_signals(bridge: SignalBridge, app: object) -> None:
             app.task_changed_signal,
             extractor=lambda e: e.task_id,
         )
+        bridge.bind(
+            AutomationTaskStarted,
+            app.task_changed_signal,
+            extractor=lambda e: e.task_id,
+        )
+        bridge.bind(
+            AutomationAgentAttached,
+            app.task_changed_signal,
+            extractor=lambda e: e.task_id,
+        )
+        bridge.bind(
+            AutomationReviewAgentAttached,
+            app.task_changed_signal,
+            extractor=lambda e: e.task_id,
+        )
+        bridge.bind(
+            AutomationTaskEnded,
+            app.task_changed_signal,
+            extractor=lambda e: e.task_id,
+        )
 
 
 @asynccontextmanager
@@ -350,23 +371,29 @@ async def create_app_context(
         event_bus=event_bus,
     )
 
-    from kagan.adapters.db.repositories import RepoRepository, TaskRepository
+    from kagan.adapters.db.repositories import (
+        ExecutionRepository,
+        RepoRepository,
+        ScratchRepository,
+        SessionRecordRepository,
+        TaskRepository,
+    )
     from kagan.adapters.git.operations import GitOperationsAdapter
     from kagan.adapters.git.worktrees import GitWorktreeAdapter
     from kagan.agents.agent_factory import create_agent
     from kagan.services import (
-        AutomationService,
+        AutomationServiceImpl,
         DiffServiceImpl,
-        ExecutionServiceImpl,
         FollowUpServiceImpl,
-        MergeService,
+        MergeServiceImpl,
         ProjectServiceImpl,
         QueuedMessageServiceImpl,
         RepoScriptServiceImpl,
         ReviewServiceImpl,
-        SessionService,
-        TaskService,
-        WorkspaceService,
+        RuntimeServiceImpl,
+        SessionServiceImpl,
+        TaskServiceImpl,
+        WorkspaceServiceImpl,
     )
 
     project_root = project_root or Path.cwd()
@@ -384,13 +411,19 @@ async def create_app_context(
 
     event_bus.add_handler(_set_default_project, ProjectOpened)
 
-    session_factory = task_repo._session_factory
-    assert session_factory is not None, "TaskRepository not initialized"
-
+    session_factory = task_repo.session_factory
     repo_repository = RepoRepository(session_factory)
+    execution_repository = ExecutionRepository(session_factory)
+    session_record_repository = SessionRecordRepository(session_factory)
+    scratch_repository = ScratchRepository(session_factory)
 
     ctx._task_repo = task_repo
-    ctx.task_service = TaskService(task_repo, event_bus)
+    ctx.task_service = TaskServiceImpl(
+        task_repo,
+        event_bus,
+        session_repo=session_record_repository,
+        scratch_repo=scratch_repository,
+    )
     ctx.project_service = ProjectServiceImpl(
         session_factory,
         event_bus,
@@ -398,30 +431,35 @@ async def create_app_context(
     )
     git_adapter = GitWorktreeAdapter()
     git_ops_adapter = GitOperationsAdapter()
-    ctx.workspace_service = WorkspaceService(
+    ctx.workspace_service = WorkspaceServiceImpl(
         session_factory,
-        event_bus,
         git_adapter,
         ctx.task_service,
         ctx.project_service,
     )
-    ctx.session_service = SessionService(
+    ctx.session_service = SessionServiceImpl(
         project_root,
         ctx.task_service,
         ctx.workspace_service,
         config,
     )
-    ctx.execution_service = ExecutionServiceImpl(task_repo)
+    ctx.execution_service = execution_repository
     ctx.queued_message_service = QueuedMessageServiceImpl()
     ctx.follow_up_service = FollowUpServiceImpl(
         ctx.execution_service,
         ctx.queued_message_service,
     )
     ctx.review_service = ReviewServiceImpl(ctx.task_service, ctx.execution_service)
+    ctx.runtime_service = RuntimeServiceImpl(
+        ctx.project_service,
+        session_factory,
+        execution_service=ctx.execution_service,
+        automation_resolver=lambda: ctx.automation_service,
+    )
 
     factory = agent_factory if agent_factory is not None else create_agent
 
-    ctx.automation_service = AutomationService(
+    ctx.automation_service = AutomationServiceImpl(
         ctx.task_service,
         ctx.workspace_service,
         config,
@@ -431,8 +469,9 @@ async def create_app_context(
         agent_factory=factory,
         queued_message_service=ctx.queued_message_service,
         git_adapter=git_ops_adapter,
+        runtime_service=ctx.runtime_service,
     )
-    ctx.merge_service = MergeService(
+    ctx.merge_service = MergeServiceImpl(
         ctx.task_service,
         ctx.workspace_service,
         ctx.session_service,
@@ -442,7 +481,6 @@ async def create_app_context(
         event_bus,
         git_ops_adapter,
     )
-    ctx.automation_service.set_merge_service(ctx.merge_service)
     ctx.diff_service = DiffServiceImpl(session_factory, git_ops_adapter, ctx.workspace_service)
     ctx.repo_script_service = RepoScriptServiceImpl(
         session_factory,
@@ -461,8 +499,6 @@ __all__ = [
     "AppContext",
     "DomainEvent",
     "EventBus",
-    "ExecutionCompleted",
-    "ExecutionFailed",
     "InMemoryEventBus",
     "MergeCompleted",
     "MergeFailed",
@@ -472,8 +508,6 @@ __all__ = [
     "TaskCreated",
     "TaskStatusChanged",
     "TaskUpdated",
-    "WorkspaceProvisioned",
-    "WorkspaceReleased",
     "bootstrap_app",
     "create_app_context",
     "create_signal_bridge",

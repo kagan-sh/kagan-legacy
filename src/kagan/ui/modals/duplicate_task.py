@@ -14,7 +14,7 @@ from kagan.keybindings import DUPLICATE_TASK_BINDINGS
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 class DuplicateTaskModal(ModalScreen[dict[str, object] | None]):

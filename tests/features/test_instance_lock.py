@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import platform
 import time
 from pathlib import Path
 
@@ -16,6 +17,8 @@ import pytest
 from filelock import Timeout
 
 from kagan.instance_lock import InstanceLock, LockInfo
+
+_IS_WINDOWS = platform.system() == "Windows"
 
 
 class TestSingleInstanceEnforcement:
@@ -304,6 +307,11 @@ def _subprocess_try_acquire(
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    _IS_WINDOWS,
+    reason="multiprocessing.Process uses 'spawn' on Windows which re-imports conftest "
+    "top-level code and hangs under pytest-xdist",
+)
 class TestCrossProcessLocking:
     """Tests that verify locking works across OS processes.
 
@@ -397,6 +405,10 @@ class TestPathCanonicalization:
     """Tests that different path representations resolve to the same lock."""
 
     @pytest.mark.integration
+    @pytest.mark.skipif(
+        _IS_WINDOWS,
+        reason="symlinks require SeCreateSymbolicLinkPrivilege on Windows",
+    )
     def test_symlink_resolves_to_same_lock(self, tmp_path: Path) -> None:
         """Accessing repo via symlink uses the same lock as direct path."""
         repo = tmp_path / "actual_repo"
@@ -417,6 +429,10 @@ class TestPathCanonicalization:
         lock_via_real.release()
 
     @pytest.mark.integration
+    @pytest.mark.skipif(
+        _IS_WINDOWS,
+        reason="os.chdir() is process-global and unsafe under pytest-xdist workers on Windows",
+    )
     def test_relative_and_absolute_paths_same_lock(self, tmp_path: Path) -> None:
         """Relative and absolute paths to same repo use same lock."""
         repo = tmp_path / "repo"

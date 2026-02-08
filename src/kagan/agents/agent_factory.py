@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kagan.acp.agent import Agent
+    from kagan.acp import Agent
     from kagan.config import AgentConfig
 
 
@@ -32,6 +32,6 @@ def create_agent(
     read_only: bool = False,
 ) -> Agent:
     """Create a production Agent instance."""
-    from kagan.acp.agent import Agent
+    from kagan.acp import Agent
 
     return Agent(project_root, agent_config, read_only=read_only)

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+from kagan.core.time import utc_now
 
 QueueLane = Literal["implementation", "review", "planner"]
 DEFAULT_QUEUE_LANE: QueueLane = "implementation"
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -100,7 +104,7 @@ class QueuedMessageServiceImpl:
             content=content,
             author=author,
             metadata=metadata,
-            queued_at=datetime.now(),
+            queued_at=utc_now(),
         )
         async with self._lock:
             self._queue.setdefault(self._key(session_id, lane), []).append(message)

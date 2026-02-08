@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 
     from acp.schema import PlanEntry
 
-    from kagan.acp.agent import Agent
+    from kagan.acp import Agent
+    from kagan.adapters.db.schema import Task
     from kagan.agents.refiner import PromptRefiner
-    from kagan.core.models.entities import Task
 
 
 class PlannerPhase(Enum):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar
 
 from acp.schema import ToolCall as AcpToolCall
 from textual import events, on
@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
     from textual.app import ComposeResult
 
-    from kagan.app import KaganApp
     from kagan.services.queued_messages import QueuedMessage
 
 
@@ -136,6 +135,7 @@ class ChatPanel(Vertical):
         self._send_handler: Callable[[str], Awaitable[None]] | None = None
         self._remove_handler: Callable[[int], Awaitable[bool]] | None = None
         self._get_queued_handler: Callable[[], Awaitable[list[QueuedMessage]]] | None = None
+        self._logs_loader: Callable[[str], Awaitable[str | None]] | None = None
 
     def compose(self) -> ComposeResult:
         yield StreamingOutput(id=self._output_id, classes="chat-output")
@@ -163,13 +163,12 @@ class ChatPanel(Vertical):
         self._execution_id = execution_id
 
     async def load_logs(self) -> None:
-        if not self._execution_id:
+        if not self._execution_id or self._logs_loader is None:
             return
-        app = cast("KaganApp", self.app)
-        logs = await app.ctx.execution_service.get_logs(self._execution_id)
-        if logs is None or not logs.logs:
+        logs = await self._logs_loader(self._execution_id)
+        if not logs:
             return
-        for line in logs.logs.splitlines():
+        for line in logs.splitlines():
             await self._render_log_line(line)
 
     async def append_local_message(self, content: str, author: str = "You") -> None:
@@ -193,6 +192,9 @@ class ChatPanel(Vertical):
         self, handler: Callable[[], Awaitable[list[QueuedMessage]]] | None
     ) -> None:
         self._get_queued_handler = handler
+
+    def set_logs_loader(self, handler: Callable[[str], Awaitable[str | None]] | None) -> None:
+        self._logs_loader = handler
 
     async def refresh_queued_messages(self) -> None:
         """Refresh the queued messages display."""
@@ -232,7 +234,7 @@ class ChatPanel(Vertical):
         # Refresh queued messages display
         await self.refresh_queued_messages()
 
-    async def _render_log_line(self, log_line: str) -> None:
+    async def _render_log_line(self, log_line: str) -> bool:
         """Render a single JSONL log line into the output."""
         try:
             data = json.loads(log_line)
@@ -240,19 +242,22 @@ class ChatPanel(Vertical):
             await self.output.post_note(
                 "Unsupported log format (expected JSON).", classes="warning"
             )
-            return
+            return True
 
         message_entries = data.get("messages", [])
+        rendered = False
         for msg in message_entries:
             msg_type = msg.get("type", "")
             if msg_type == MessageType.RESPONSE:
                 content = msg.get("content", "")
                 if content:
                     await self.output.post_response(content)
+                    rendered = True
             elif msg_type == MessageType.THINKING:
                 content = msg.get("content", "")
                 if content:
                     await self.output.post_thought(content)
+                    rendered = True
             elif msg_type == MessageType.TOOL_CALL or msg_type == MessageType.TOOL_CALL_UPDATE:
                 tool_call = AcpToolCall.model_validate(
                     {
@@ -266,23 +271,31 @@ class ChatPanel(Vertical):
                     }
                 )
                 await self.output.upsert_tool_call(tool_call)
+                rendered = True
             elif msg_type == MessageType.PLAN:
                 plan_entries = msg.get("entries", [])
                 if plan_entries:
                     await self.output.post_plan(plan_entries)
+                    rendered = True
             elif msg_type == MessageType.AGENT_READY:
                 await self.output.post_note("Agent ready", classes="success")
+                rendered = True
             elif msg_type == MessageType.AGENT_FAIL:
                 error_msg = msg.get("message", "Unknown error")
                 await self.output.post_note(f"Error: {error_msg}", classes="error")
+                rendered = True
                 details = msg.get("details")
                 if details:
                     await self.output.post_note(details)
+                    rendered = True
 
         if not message_entries:
             response_text = data.get("response_text", "")
             if response_text:
                 await self.output.post_response(response_text)
+                rendered = True
+
+        return rendered
 
 
 __all__ = ["ChatPanel"]

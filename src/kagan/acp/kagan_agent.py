@@ -156,6 +156,10 @@ class KaganAgent:
             log.debug(f"Replaying {len(self._buffers.messages)} buffered messages to new target")
             self._buffers.replay_messages_to(target)
 
+    def get_messages(self) -> list[Message]:
+        """Return a snapshot of buffered ACP messages."""
+        return list(self._buffers.messages)
+
     def set_auto_approve(self, enabled: bool) -> None:
         self._auto_approve = enabled
         log.debug(f"Auto-approve mode: {enabled}")

@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from kagan.adapters.db.session import get_session
 
+if TYPE_CHECKING:
     from kagan.adapters.db.repositories import ClosingAwareSessionFactory
-    from kagan.adapters.git.operations import GitOperationsAdapter
+    from kagan.adapters.git.operations import GitOperationsProtocol
     from kagan.services.workspaces import WorkspaceService
 
 
@@ -58,16 +58,12 @@ class DiffServiceImpl:
     def __init__(
         self,
         session_factory: ClosingAwareSessionFactory,
-        git_adapter: GitOperationsAdapter,
+        git_adapter: GitOperationsProtocol,
         workspace_service: WorkspaceService,
     ) -> None:
         self._session_factory = session_factory
         self._git = git_adapter
         self._workspace_service = workspace_service
-
-    def _get_session(self) -> AsyncSession:
-        """Get a new async session."""
-        return self._session_factory()
 
     async def get_repo_diff(self, workspace_id: str, repo_id: str) -> RepoDiff:
         """Get diff for a single repo."""
@@ -75,7 +71,7 @@ class DiffServiceImpl:
 
         from kagan.adapters.db.schema import Repo, WorkspaceRepo
 
-        async with self._get_session() as session:
+        async with get_session(self._session_factory) as session:
             result = await session.execute(
                 select(WorkspaceRepo, Repo)
                 .join(Repo)

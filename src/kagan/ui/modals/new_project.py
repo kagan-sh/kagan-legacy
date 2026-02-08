@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
+
+from kagan.ui.modals.base import KaganModalScreen
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.app import KaganApp
 
-
-class NewProjectModal(ModalScreen[dict | None]):
+class NewProjectModal(KaganModalScreen[dict | None]):
     """Modal for creating a new project."""
 
     def compose(self) -> ComposeResult:
@@ -71,8 +70,7 @@ class NewProjectModal(ModalScreen[dict | None]):
                     return
                 self.notify("Git repository initialized", severity="information")
 
-        app = cast("KaganApp", self.app)
-        project_service = app.ctx.project_service
+        project_service = self.ctx.project_service
         repo_paths: list[str | Path] = []
         if resolved_path is not None:
             repo_paths.append(str(resolved_path))

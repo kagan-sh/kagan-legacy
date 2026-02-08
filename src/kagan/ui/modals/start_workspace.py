@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Label, Select, Static
 
 from kagan.services.workspaces import RepoWorkspaceInput
+from kagan.ui.modals.base import KaganModalScreen
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
-
-    from kagan.app import KaganApp
 
 
 class RepoCheckboxItem(Static):
@@ -45,7 +43,7 @@ class RepoCheckboxItem(Static):
             yield Label(f"→ {self.default_branch}", classes="repo-branch")
 
 
-class StartWorkspaceModal(ModalScreen[str | None]):
+class StartWorkspaceModal(KaganModalScreen[str | None]):
     """Modal for selecting repos and starting a workspace."""
 
     BINDINGS = [
@@ -103,8 +101,7 @@ class StartWorkspaceModal(ModalScreen[str | None]):
         self.run_worker(self._load_repos(), exclusive=True)
 
     async def _load_repos(self) -> None:
-        app = cast("KaganApp", self.app)
-        project_service = app.ctx.project_service
+        project_service = self.ctx.project_service
         repos = await project_service.get_project_repo_details(self.project_id)
 
         repo_list = self.query_one("#repo-list", ScrollableContainer)
@@ -163,8 +160,7 @@ class StartWorkspaceModal(ModalScreen[str | None]):
             error_label.update("Please select at least one repository")
             return
 
-        app = cast("KaganApp", self.app)
-        workspace_service = app.ctx.workspace_service
+        workspace_service = self.ctx.workspace_service
 
         try:
             workspace_id = await workspace_service.provision(

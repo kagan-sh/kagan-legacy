@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal
+from textual.css.query import NoMatches
 from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Static
@@ -96,12 +97,15 @@ class KanbanHintBar(Widget):
             actions: Context-sensitive action hints for row 2.
             global_hints: Always-visible global shortcuts (help, actions).
         """
-        nav_left = self.query_one("#hint-nav-left", Static)
-        nav_center = self.query_one("#hint-nav-center", Static)
-        nav_right = self.query_one("#hint-nav-right", Static)
-        actions_left = self.query_one("#hint-actions-left", Static)
-        actions_widget = self.query_one("#hint-actions", Static)
-        global_widget = self.query_one("#hint-global", Static)
+        try:
+            nav_left = self.query_one("#hint-nav-left", Static)
+            nav_center = self.query_one("#hint-nav-center", Static)
+            nav_right = self.query_one("#hint-nav-right", Static)
+            actions_left = self.query_one("#hint-actions-left", Static)
+            actions_widget = self.query_one("#hint-actions", Static)
+            global_widget = self.query_one("#hint-global", Static)
+        except NoMatches:
+            return
 
         if navigation:
             self.has_card = True
@@ -134,5 +138,8 @@ class KanbanHintBar(Widget):
             "#hint-actions",
             "#hint-global",
         ):
-            self.query_one(widget_id, Static).update("")
+            try:
+                self.query_one(widget_id, Static).update("")
+            except NoMatches:
+                return
         self.has_card = False

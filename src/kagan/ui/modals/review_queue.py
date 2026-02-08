@@ -8,7 +8,6 @@ from kagan.core.models.enums import StreamPhase, TaskStatus, TaskType
 from kagan.ui.modals.review_prompt import truncate_queue_payload
 
 if TYPE_CHECKING:
-    from kagan.app import KaganApp
     from kagan.services.queued_messages import QueuedMessageService
     from kagan.ui.modals.review import ReviewModal
 
@@ -84,8 +83,7 @@ class ReviewQueueMixin:
         self._implementation_queue_pending = status.has_queued
 
     def _get_queue_service(self: ReviewModal) -> QueuedMessageService | None:
-        app = cast("KaganApp", self.app)
-        service = getattr(app.ctx, "queued_message_service", None)
+        service = getattr(self.ctx, "queued_message_service", None)
         if service is None:
             return None
         return cast("QueuedMessageService", service)
@@ -134,10 +132,9 @@ class ReviewQueueMixin:
         await service.queue_message(self._task_model.id, content, lane="implementation")
         await self._refresh_implementation_queue_state()
 
-        app = cast("KaganApp", self.app)
-        automation = app.ctx.automation_service
-        if not automation.is_running(self._task_model.id):
-            await automation.spawn_for_task(self._task_model)
+        automation = self.ctx.automation_service
+        spawned = await automation.spawn_for_task(self._task_model)
+        if spawned:
             await self._get_agent_output_panel().output.post_note(
                 "Queued follow-up accepted. Starting next implementation run...",
                 classes="info",

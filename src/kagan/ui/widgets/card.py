@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from textual import events
     from textual.app import ComposeResult
 
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 class TaskCard(Widget):

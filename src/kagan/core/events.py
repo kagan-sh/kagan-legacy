@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
+from kagan.core.time import utc_now
+
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from kagan.core.models.enums import TaskStatus
 
 
@@ -17,7 +20,7 @@ def _new_event_id() -> str:
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return utc_now()
 
 
 class DomainEvent(Protocol):
@@ -88,102 +91,37 @@ class TaskStatusChanged:
 
 
 @dataclass(frozen=True)
-class WorkspaceProvisioned:
-    workspace_id: str
-    task_id: str | None
-    branch: str
-    path: str
-    repo_count: int
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
+class AutomationTaskStarted:
+    """Emitted when an AUTO task enters automation running state."""
 
-
-@dataclass(frozen=True)
-class WorkspaceReleased:
-    workspace_id: str
-    task_id: str | None
-    reason: str | None
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class SessionStarted:
-    session_id: str
-    workspace_id: str
-    kind: str
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class SessionEnded:
-    session_id: str
-    workspace_id: str
-    reason: str | None
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionRequested:
-    execution_id: str
-    workspace_id: str | None
-    kind: str
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionStarted:
-    execution_id: str
-    workspace_id: str | None
-    started_at: datetime
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionOutputChunk:
-    execution_id: str
-    stream: str
-    chunk: str
-    seq: int
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionCompleted:
-    execution_id: str
-    exit_code: int
-    duration_ms: int
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionFailed:
-    execution_id: str
-    error: str
-    duration_ms: int
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class ExecutionCancelled:
-    execution_id: str
-    reason: str | None
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class MergeRequested:
-    merge_id: str
     task_id: str
-    workspace_id: str | None
+    event_id: str = field(default_factory=_new_event_id)
+    occurred_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class AutomationAgentAttached:
+    """Emitted when a running AUTO task gets a live implementation agent."""
+
+    task_id: str
+    event_id: str = field(default_factory=_new_event_id)
+    occurred_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class AutomationReviewAgentAttached:
+    """Emitted when a running AUTO task gets a live review agent."""
+
+    task_id: str
+    event_id: str = field(default_factory=_new_event_id)
+    occurred_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class AutomationTaskEnded:
+    """Emitted when an AUTO task leaves automation running state."""
+
+    task_id: str
     event_id: str = field(default_factory=_new_event_id)
     occurred_at: datetime = field(default_factory=_now)
 
@@ -209,18 +147,6 @@ class MergeFailed:
     error: str
     conflict_op: str | None = None
     conflict_files: list[str] | None = None
-    event_id: str = field(default_factory=_new_event_id)
-    occurred_at: datetime = field(default_factory=_now)
-
-
-@dataclass(frozen=True)
-class WorkspaceRepoStatus:
-    """Emitted when a workspace repo's status changes."""
-
-    workspace_id: str
-    repo_id: str
-    has_changes: bool
-    diff_stats: dict | None = None
     event_id: str = field(default_factory=_new_event_id)
     occurred_at: datetime = field(default_factory=_now)
 

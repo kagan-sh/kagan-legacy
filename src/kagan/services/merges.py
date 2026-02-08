@@ -5,18 +5,18 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
+from kagan.adapters.db.session import get_required_session
 from kagan.core.models.enums import MergeStatus, MergeType, RejectionAction, TaskStatus
+from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from kagan.adapters.db.repositories import ClosingAwareSessionFactory
-    from kagan.adapters.git.operations import GitOperationsAdapter
+    from kagan.adapters.db.schema import Task
+    from kagan.adapters.git.operations import GitOperationsProtocol
     from kagan.config import KaganConfig
     from kagan.core.events import EventBus
-    from kagan.core.models.entities import Task
     from kagan.services.automation import AutomationService
     from kagan.services.sessions import SessionService
     from kagan.services.tasks import TaskService
@@ -48,7 +48,56 @@ class MergeResult:
     conflict_files: list[str] | None = None
 
 
-class MergeService:
+class MergeService(Protocol):
+    """Protocol boundary for merge and cleanup lifecycle operations."""
+
+    async def delete_task(self, task: TaskLike) -> tuple[bool, str]: ...
+
+    async def merge_task(self, task: TaskLike) -> tuple[bool, str]: ...
+
+    async def close_exploratory(self, task: TaskLike) -> tuple[bool, str]: ...
+
+    async def apply_rejection_feedback(
+        self,
+        task: TaskLike,
+        feedback: str | None,
+        action: str = "backlog",
+    ) -> Task: ...
+
+    async def has_no_changes(self, task: TaskLike) -> bool: ...
+
+    async def merge_repo(
+        self,
+        workspace_id: str,
+        repo_id: str,
+        *,
+        strategy: MergeStrategy = MergeStrategy.DIRECT,
+        pr_title: str | None = None,
+        pr_body: str | None = None,
+        commit_message: str | None = None,
+    ) -> MergeResult: ...
+
+    async def merge_all(
+        self,
+        workspace_id: str,
+        *,
+        strategy: MergeStrategy = MergeStrategy.DIRECT,
+        skip_unchanged: bool = True,
+        commit_message: str | None = None,
+    ) -> list[MergeResult]: ...
+
+    async def create_pr(
+        self,
+        workspace_id: str,
+        repo_id: str,
+        *,
+        title: str,
+        body: str,
+        draft: bool = False,
+    ) -> str: ...
+
+
+class MergeServiceImpl:
     """Manages merge lifecycle operations without UI coupling."""
 
     def __init__(
@@ -60,7 +109,7 @@ class MergeService:
         config: KaganConfig,
         session_factory: ClosingAwareSessionFactory | None = None,
         event_bus: EventBus | None = None,
-        git_adapter: GitOperationsAdapter | None = None,
+        git_adapter: GitOperationsProtocol | None = None,
     ) -> None:
         self.tasks = task_service
         self.worktrees = worktrees
@@ -71,11 +120,6 @@ class MergeService:
         self._session_factory = session_factory
         self._events = event_bus
         self._git = git_adapter
-
-    def _get_session(self) -> AsyncSession:
-        if self._session_factory is None:
-            raise RuntimeError("Merge service missing session factory for per-repo operations")
-        return self._session_factory()
 
     async def _get_latest_workspace_id(self, task_id: str) -> str | None:
         workspaces = await self.workspace_service.list_workspaces(task_id=task_id)
@@ -191,9 +235,7 @@ class MergeService:
         )
 
         if feedback:
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            timestamp = utc_now().strftime("%Y-%m-%d %H:%M")
             new_description = task.description or ""
             new_description += f"\n\n---\n**Review Feedback ({timestamp}):**\n{feedback}"
 
@@ -239,14 +281,15 @@ class MergeService:
         if self._events is None or self._git is None:
             raise RuntimeError("Merge service missing dependencies for per-repo operations")
 
-        from datetime import datetime
-
         from sqlmodel import col, select
 
         from kagan.adapters.db.schema import Merge, Repo, Workspace, WorkspaceRepo
         from kagan.core.events import MergeCompleted, MergeFailed, PRCreated
 
-        async with self._get_session() as session:
+        async with get_required_session(
+            self._session_factory,
+            error_message="Merge service missing session factory for per-repo operations",
+        ) as session:
             result = await session.execute(
                 select(WorkspaceRepo, Repo, Workspace)
                 .join(Repo, col(WorkspaceRepo.repo_id) == col(Repo.id))
@@ -378,7 +421,10 @@ class MergeService:
                         )
                     )
 
-        async with self._get_session() as session:
+        async with get_required_session(
+            self._session_factory,
+            error_message="Merge service missing session factory for per-repo operations",
+        ) as session:
             merge_type = (
                 MergeType.PR if strategy == MergeStrategy.PULL_REQUEST else MergeType.DIRECT
             )
@@ -396,7 +442,7 @@ class MergeService:
                     if merge_result.success
                     else MergeStatus.CLOSED
                 ),
-                pr_merged_at=datetime.now()
+                pr_merged_at=utc_now()
                 if merge_type == MergeType.PR and merge_result.success
                 else None,
                 pr_merge_commit_sha=merge_result.commit_sha

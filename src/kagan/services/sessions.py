@@ -6,12 +6,13 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from kagan.config import get_os_value
 from kagan.core.models.enums import PairTerminalBackend, SessionStatus, SessionType
 from kagan.mcp_naming import get_mcp_server_name
 from kagan.tmux import TmuxError, run_tmux
+from kagan.utils.background_tasks import BackgroundTasks
 from kagan.wezterm import WeztermError, create_workspace_session, kill_workspace, run_wezterm
 from kagan.wezterm import workspace_exists as wezterm_workspace_exists
 
@@ -40,7 +41,29 @@ _AGENT_MODEL_CONFIG_KEY: dict[str, str] = {
 }
 
 
-class SessionService:
+class SessionService(Protocol):
+    """Protocol boundary for PAIR session lifecycle operations."""
+
+    async def create_session(self, task: TaskLike, worktree_path: Path) -> str: ...
+
+    async def create_resolution_session(self, task: TaskLike, workdir: Path) -> str: ...
+
+    async def attach_session(self, task_id: str) -> bool: ...
+
+    async def attach_resolution_session(self, task_id: str) -> bool: ...
+
+    async def session_exists(self, task_id: str) -> bool: ...
+
+    async def resolution_session_exists(self, task_id: str) -> bool: ...
+
+    async def kill_session(self, task_id: str) -> None: ...
+
+    async def kill_resolution_session(self, task_id: str) -> None: ...
+
+    async def shutdown(self) -> None: ...
+
+
+class SessionServiceImpl:
     """Manages session launchers for PAIR tasks."""
 
     def __init__(
@@ -56,6 +79,7 @@ class SessionService:
         self._config = config
         self._launched_external: set[str] = set()
         self._external_proc: asyncio.subprocess.Process | None = None
+        self._background_tasks = BackgroundTasks()
 
     @staticmethod
     def _coerce_terminal_backend(value: object) -> str | None:
@@ -449,6 +473,10 @@ class SessionService:
             status=SessionStatus.CLOSED,
         )
 
+    async def shutdown(self) -> None:
+        """Stop any background tasks started by the session service."""
+        await self._background_tasks.shutdown()
+
     async def _write_context_files(
         self,
         worktree_path: Path,
@@ -616,7 +644,7 @@ class SessionService:
         """Schedule .gitignore commit in background so session creation isn't blocked."""
         if not modified:
             return
-        asyncio.create_task(self._bg_commit_gitignore(worktree_path))
+        self._background_tasks.spawn(self._bg_commit_gitignore(worktree_path))
 
     async def _bg_commit_gitignore(self, worktree_path: Path) -> None:
         """Background task to commit .gitignore changes (best-effort)."""

@@ -9,6 +9,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+from kagan.ui.screen_result import await_screen_result
+
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
@@ -85,24 +87,19 @@ class AgentChoiceModal(ModalScreen[str | None]):
 
                 yield Button("Cancel", variant="default", id="cancel-btn")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "install-btn":
-            self._show_install_modal()
+            await self._show_install_modal()
         elif event.button.id == "cancel-btn":
             self.dismiss(None)
 
-    def _show_install_modal(self) -> None:
+    async def _show_install_modal(self) -> None:
         from kagan.ui.modals.agent_install import AgentInstallModal
 
-        def on_install_result(result: bool | None) -> None:
+        if self._missing:
+            result = await await_screen_result(self.app, AgentInstallModal(agent=self._missing))
             if result is True:
                 self.dismiss(AgentChoiceResult.INSTALLED)
-
-        if self._missing:
-            self.app.push_screen(
-                AgentInstallModal(agent=self._missing),
-                callback=on_install_result,
-            )
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option.id:

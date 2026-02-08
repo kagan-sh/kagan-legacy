@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Label, Select, Static
 
 from kagan.services.merges import MergeResult, MergeStrategy
+from kagan.ui.modals.base import KaganModalScreen
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
-
-    from kagan.app import KaganApp
 
 
 class RepoMergeRow(Static):
@@ -54,7 +52,7 @@ class RepoMergeRow(Static):
                 yield Label("No changes", classes="no-changes")
 
 
-class MergeDialog(ModalScreen[list[MergeResult] | None]):
+class MergeDialog(KaganModalScreen[list[MergeResult] | None]):
     """Dialog for merging workspace changes."""
 
     def __init__(self, workspace_id: str, repos: list[dict]) -> None:
@@ -113,8 +111,7 @@ class MergeDialog(ModalScreen[list[MergeResult] | None]):
             self.notify("No repos selected", severity="warning")
             return
 
-        app = cast("KaganApp", self.app)
-        merge_service = app.ctx.merge_service
+        merge_service = self.ctx.merge_service
         results: list[MergeResult] = []
         for repo_id in selected_repos:
             results.append(

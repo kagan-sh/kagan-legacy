@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
+from kagan.adapters.git.base import GitAdapterBase
 from kagan.services.diffs import FileDiff
 
 
@@ -27,36 +28,37 @@ class MergeOperationResult:
     conflict: MergeConflictMetadata | None = None
 
 
-class GitOperationsAdapter:
+class GitOperationsProtocol(Protocol):
+    """Protocol boundary for higher-level git operations used by services."""
+
+    async def has_uncommitted_changes(self, worktree_path: str) -> bool: ...
+
+    async def commit_all(self, worktree_path: str, message: str) -> str: ...
+
+    async def push(self, worktree_path: str, branch: str, *, force: bool = False) -> None: ...
+
+    async def merge_squash(
+        self,
+        repo_path: str,
+        source_branch: str,
+        target_branch: str,
+        *,
+        commit_message: str | None = None,
+    ) -> MergeOperationResult: ...
+
+    async def merge_branch(self, repo_path: str, source_branch: str, target_branch: str) -> str: ...
+
+    async def is_base_ahead(self, repo_path: str, base_ref: str, head_ref: str) -> bool: ...
+
+    async def get_file_diffs(self, worktree_path: str, target_branch: str) -> list[FileDiff]: ...
+
+
+class GitOperationsAdapter(GitAdapterBase):
     """Extended git operations for worktree-based repos."""
 
     async def has_uncommitted_changes(self, worktree_path: str) -> bool:
-        """Check if worktree has uncommitted changes to tracked files.
-
-        Ignores untracked files (matching vibe-kanban behaviour) and
-        Kagan-generated files.
-        """
-        from kagan.constants import KAGAN_GENERATED_PATTERNS
-
-        stdout, _ = await self._run_git(Path(worktree_path), ["status", "--porcelain"])
-        if not stdout.strip():
-            return False
-
-        for line in stdout.strip().split("\n"):
-            if not line:
-                continue
-            # Skip untracked files — they are not uncommitted changes
-            if line.startswith("?? "):
-                continue
-            filepath = line[3:].split(" -> ")[0]
-            is_kagan_file = any(
-                filepath.startswith(p.rstrip("/")) or filepath == p.rstrip("/")
-                for p in KAGAN_GENERATED_PATTERNS
-            )
-            if not is_kagan_file:
-                return True
-
-        return False
+        """Check if worktree has uncommitted tracked changes."""
+        return await self._has_uncommitted_changes(Path(worktree_path))
 
     async def commit_all(self, worktree_path: str, message: str) -> str:
         """Stage all changes and commit."""
@@ -287,31 +289,3 @@ class GitOperationsAdapter:
     async def _abort_merge(self, repo_path: Path) -> None:
         await self._run_git(repo_path, ["merge", "--abort"], check=False)
         await self._run_git(repo_path, ["reset", "--hard"], check=False)
-
-    async def _run_git(self, cwd: Path, args: list[str], check: bool = True) -> tuple[str, str]:
-        """Run a git command."""
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            *args,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode != 0 and check:
-            raise RuntimeError(f"git {' '.join(args)} failed: {stderr.decode()}")
-
-        return stdout.decode(), stderr.decode()
-
-    async def _run_git_result(self, cwd: Path, args: list[str]) -> tuple[int, str, str]:
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            *args,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        returncode = proc.returncode if proc.returncode is not None else 1
-        return returncode, stdout.decode(), stderr.decode()

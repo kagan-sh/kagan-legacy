@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from textual.app import App, SystemCommand
 from textual.signal import Signal
@@ -23,9 +24,9 @@ from kagan.constants import (
     DEFAULT_DB_PATH,
 )
 from kagan.debug_log import setup_debug_logging
-from kagan.git_utils import has_git_repo
 from kagan.instance_lock import InstanceLock, LockInfo
 from kagan.keybindings import APP_BINDINGS
+from kagan.services.runtime import RuntimeSessionEvent, RuntimeSessionState
 from kagan.terminal import supports_truecolor
 from kagan.theme import KAGAN_THEME, KAGAN_THEME_256
 from kagan.ui.screens.kanban import KanbanScreen
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from textual.screen import Screen
+    from textual.worker import Worker
 
     from kagan.adapters.db.schema import Project, Repo
     from kagan.ui.screens.planner.state import PersistentPlannerState
@@ -75,6 +77,7 @@ class KaganApp(App):
         self.planner_state: PersistentPlannerState | None = None
         self._agent_factory = agent_factory
         self._instance_lock: InstanceLock | None = None
+        self._startup_worker: Worker[None] | None = None
 
     @property
     def ctx(self) -> AppContext:
@@ -89,21 +92,35 @@ class KaganApp(App):
         # Acquire per-repo instance lock before any initialization
         self._instance_lock = InstanceLock(self.project_root)
         if not self._instance_lock.acquire():
-            from kagan.ui.modals.instance_locked import InstanceLockedModal
-
             lock_info = self._instance_lock.get_holder_info()
-            await self.push_screen(InstanceLockedModal(lock_info))
-            return
+            if lock_info is not None and lock_info.pid == os.getpid():
+                self.log("Reusing same-process instance lock for startup")
+            else:
+                from kagan.ui.modals.instance_locked import InstanceLockedModal
+
+                await self.push_screen(InstanceLockedModal(lock_info))
+                return
 
         if not self._config_exists():
             await self.push_screen(OnboardingScreen())
             return
 
-        await self._initialize_app()
+        self._run_startup_worker()
 
     def _config_exists(self) -> bool:
         """Check if the config file exists (determines first boot vs normal boot)."""
         return self.config_path.exists()
+
+    def _run_startup_worker(self) -> None:
+        """Start app initialization in an exclusive startup worker."""
+        if self._startup_worker is not None and not self._startup_worker.is_finished:
+            return
+        self._startup_worker = self.run_worker(
+            self._initialize_app(),
+            group="startup",
+            exclusive=True,
+            exit_on_error=False,
+        )
 
     async def _initialize_app(self) -> None:
         """Initialize all app components."""
@@ -137,16 +154,16 @@ class KaganApp(App):
         """Called when welcome screen completes to continue app initialization."""
         self.call_later(self._run_init_after_welcome)
 
-    async def _run_init_after_welcome(self) -> None:
+    def _run_init_after_welcome(self) -> None:
         """Run initialization after welcome screen."""
-        await self._initialize_app()
+        self._run_startup_worker()
 
     def on_onboarding_screen_completed(self, message: OnboardingScreen.Completed) -> None:
         """Handle OnboardingScreen.Completed message."""
         self.config = message.config
         self.call_later(self._continue_after_onboarding)
 
-    async def _continue_after_onboarding(self) -> None:
+    def _continue_after_onboarding(self) -> None:
         """Called after OnboardingScreen completes to continue startup flow.
 
         Pops the onboarding screen, reinitializes context (now that config exists),
@@ -154,45 +171,95 @@ class KaganApp(App):
         """
 
         self.pop_screen()
-
-        await self._initialize_app()
+        self._run_startup_worker()
 
     async def _startup_screen_decision(self) -> None:
-        """Decide which screen to show on startup based on project context.
-
-        Flow:
-        1. If CWD is in an existing project → open that project
-        2. If CWD is a git repo not in any project → show WelcomeScreen with CWD suggestion
-        3. Otherwise → show welcome screen for project selection
-        """
+        """Decide the startup flow from runtime session controller state."""
         ctx = self.ctx
         cwd = self.project_root
+        decision = await ctx.runtime_service.decide_startup(cwd)
 
-        project = await ctx.project_service.find_project_by_repo_path(str(cwd))
-        if project:
-            self.log("Detected project from CWD", project_id=project.id)
-            ctx.active_project_id = project.id
-            project = await ctx.project_service.open_project(project.id)
-            await self._set_active_repo_for_project(project, preferred_path=cwd, allow_picker=False)
-            await self._push_main_screen()
-            return
-
-        suggest_cwd = await has_git_repo(cwd)
-        cwd_path = str(cwd) if suggest_cwd else None
+        if decision.should_open_project and decision.project_id is not None:
+            opened = await self.open_project_session(
+                decision.project_id,
+                preferred_repo_id=decision.preferred_repo_id,
+                preferred_path=decision.preferred_path,
+                allow_picker=False,
+                screen_mode="push",
+            )
+            if opened:
+                return
 
         from kagan.ui.screens.welcome import WelcomeScreen
 
-        await self.push_screen(WelcomeScreen(suggest_cwd=suggest_cwd, cwd_path=cwd_path))
+        await self.push_screen(
+            WelcomeScreen(
+                suggest_cwd=decision.suggest_cwd,
+                cwd_path=decision.cwd_path,
+            )
+        )
         self.log(
             "WelcomeScreen pushed",
-            suggest_cwd=suggest_cwd,
-            cwd_path=cwd_path,
+            suggest_cwd=decision.suggest_cwd,
+            cwd_path=decision.cwd_path,
         )
+
+    def _apply_runtime_session_state(self, state: RuntimeSessionState) -> None:
+        """Apply runtime session state to mutable app context."""
+        self.ctx.active_project_id = state.project_id
+        self.ctx.active_repo_id = state.repo_id
+
+    async def _dispatch_runtime_session(
+        self,
+        event: RuntimeSessionEvent,
+        *,
+        project_id: str | None = None,
+        repo_id: str | None = None,
+    ) -> RuntimeSessionState:
+        """Dispatch a session event and sync AppContext from controller state."""
+        service = self.ctx.runtime_service
+        try:
+            state = await service.dispatch(
+                event,
+                project_id=project_id,
+                repo_id=repo_id,
+            )
+        except Exception as exc:
+            self.log("Runtime session persist failed", error=str(exc))
+            state = service.state
+        self._apply_runtime_session_state(state)
+        return state
+
+    async def open_project_session(
+        self,
+        project_id: str,
+        *,
+        preferred_repo_id: str | None = None,
+        preferred_path: Path | None = None,
+        allow_picker: bool = True,
+        screen_mode: Literal["push", "switch"] = "switch",
+    ) -> bool:
+        """Open a project, resolve active repo, and navigate to the main screen."""
+        project = await self.ctx.project_service.open_project(project_id)
+        await self._dispatch_runtime_session(
+            RuntimeSessionEvent.PROJECT_SELECTED,
+            project_id=project.id,
+        )
+        if not await self._set_active_repo_for_project(
+            project,
+            preferred_repo_id=preferred_repo_id,
+            preferred_path=preferred_path,
+            allow_picker=allow_picker,
+        ):
+            return False
+        await self._show_main_screen(mode=screen_mode)
+        return True
 
     async def _set_active_repo_for_project(
         self,
         project: Project,
         *,
+        preferred_repo_id: str | None = None,
         preferred_path: Path | None = None,
         allow_picker: bool = True,
     ) -> bool:
@@ -202,18 +269,21 @@ class KaganApp(App):
         """
         repo = await self._select_repo_for_project(
             project,
+            preferred_repo_id=preferred_repo_id,
             preferred_path=preferred_path,
             allow_picker=allow_picker,
         )
         if repo is None:
             self._clear_active_repo()
+            await self._dispatch_runtime_session(RuntimeSessionEvent.REPO_CLEARED)
             return False
-        return await self._apply_active_repo(repo)
+        return await self._apply_active_repo(repo, project_id=project.id)
 
     async def _select_repo_for_project(
         self,
         project: Project,
         *,
+        preferred_repo_id: str | None = None,
         preferred_path: Path | None = None,
         allow_picker: bool = True,
     ) -> Repo | None:
@@ -221,6 +291,11 @@ class KaganApp(App):
         repos = await self.ctx.project_service.get_project_repos(project.id)
         if not repos:
             return None
+
+        if preferred_repo_id is not None:
+            preferred_repo = next((repo for repo in repos if repo.id == preferred_repo_id), None)
+            if preferred_repo is not None:
+                return preferred_repo
 
         if preferred_path is not None:
             matched = self._match_repo_for_path(repos, preferred_path)
@@ -266,8 +341,14 @@ class KaganApp(App):
 
         # Try to acquire the new lock first (before releasing old)
         if not new_lock.acquire():
+            holder = new_lock.get_holder_info()
+            # Treat same-process lock ownership as current-instance ownership.
+            # This prevents false-positive lock modals when repository selection
+            # re-enters a path that this running app already holds.
+            if holder is not None and holder.pid == os.getpid():
+                return None
             # New repo is locked by another instance
-            return new_lock.get_holder_info()
+            return holder
 
         # Success - release old lock and switch
         if self._instance_lock:
@@ -276,7 +357,7 @@ class KaganApp(App):
         self._instance_lock = new_lock
         return None
 
-    async def _apply_active_repo(self, repo: Repo) -> bool:
+    async def _apply_active_repo(self, repo: Repo, *, project_id: str | None = None) -> bool:
         """Apply repo selection to app context and services.
 
         Returns True if successful, False if the repo is locked by another instance.
@@ -294,11 +375,15 @@ class KaganApp(App):
                 return False
 
         self.project_root = new_path
-        self.ctx.active_repo_id = repo.id
+        await self._dispatch_runtime_session(
+            RuntimeSessionEvent.REPO_SELECTED,
+            project_id=project_id or self.ctx.active_project_id,
+            repo_id=repo.id,
+        )
 
-        from kagan.services.sessions import SessionService
+        from kagan.services.sessions import SessionServiceImpl
 
-        self.ctx.session_service = SessionService(
+        self.ctx.session_service = SessionServiceImpl(
             self.project_root,
             self.ctx.task_service,
             self.ctx.workspace_service,
@@ -310,19 +395,27 @@ class KaganApp(App):
         """Clear active repo selection when a project has no repos."""
         self.ctx.active_repo_id = None
 
-    async def _push_main_screen(self) -> None:
-        """Push the main screen (Planner if empty, Kanban otherwise)."""
+    async def _show_main_screen(self, *, mode: Literal["push", "switch"] = "push") -> None:
+        """Navigate to the main screen (Planner if empty, Kanban otherwise)."""
         ctx = self.ctx
         tasks = await ctx.task_service.list_tasks(project_id=ctx.active_project_id)
 
         if not tasks:
             from kagan.ui.screens.planner import PlannerScreen
 
-            await self.push_screen(PlannerScreen(agent_factory=self._agent_factory))
-            self.log("PlannerScreen pushed (empty board)")
+            screen = PlannerScreen(agent_factory=self._agent_factory)
+            if mode == "switch":
+                await self.switch_screen(screen)
+            else:
+                await self.push_screen(screen)
+            self.log("PlannerScreen shown (empty board)", mode=mode)
         else:
-            await self.push_screen(KanbanScreen())
-            self.log("KanbanScreen pushed, app ready")
+            screen = KanbanScreen()
+            if mode == "switch":
+                await self.switch_screen(screen)
+            else:
+                await self.push_screen(screen)
+            self.log("KanbanScreen shown, app ready", mode=mode)
 
     async def on_unmount(self) -> None:
         """Clean up on unmount."""
@@ -450,7 +543,7 @@ class KaganApp(App):
         if selected_repo is None:
             return
 
-        if not await self._apply_active_repo(selected_repo):
+        if not await self._apply_active_repo(selected_repo, project_id=project.id):
             # Repo is locked by another instance - modal was shown
             return
 

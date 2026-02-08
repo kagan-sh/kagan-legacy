@@ -24,6 +24,7 @@ from kagan.core.models.enums import (
     TaskType,
     WorkspaceStatus,
 )
+from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
     from kagan.config import KaganConfig
@@ -42,8 +43,8 @@ class Project(SQLModel, table=True):
     name: str = Field(index=True)
     description: str = Field(default="")
     last_opened_at: datetime | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     tasks: list["Task"] = Relationship(back_populates="project")
     workspaces: list["Workspace"] = Relationship(back_populates="project")
@@ -62,11 +63,22 @@ class Repo(SQLModel, table=True):
     default_working_dir: str | None = Field(default=None)
     default_branch: str = Field(default="main")
     scripts: dict[str, str] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     project_repos: list["ProjectRepo"] = Relationship(back_populates="repo")
     workspace_repos: list["WorkspaceRepo"] = Relationship(back_populates="repo")
+
+
+class AppState(SQLModel, table=True):
+    """Persisted runtime app state."""
+
+    __tablename__ = "app_state"  # type: ignore[bad-override]
+
+    key: str = Field(primary_key=True)
+    last_active_project_id: str | None = Field(default=None)
+    last_active_repo_id: str | None = Field(default=None)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class TaskTag(SQLModel, table=True):
@@ -85,7 +97,7 @@ class TaskLink(SQLModel, table=True):
 
     task_id: str = Field(foreign_key="tasks.id", primary_key=True)
     ref_task_id: str = Field(foreign_key="tasks.id", primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Task(SQLModel, table=True):
@@ -106,8 +118,8 @@ class Task(SQLModel, table=True):
     agent_backend: str | None = Field(default=None)
     base_branch: str | None = Field(default=None)
     acceptance_criteria: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="tasks")
     parent: Optional["Task"] = Relationship(
@@ -193,8 +205,8 @@ class Workspace(SQLModel, table=True):
     branch_name: str
     path: str
     status: WorkspaceStatus = Field(default=WorkspaceStatus.ACTIVE, index=True)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="workspaces")
     task: Task | None = Relationship(back_populates="workspaces")
@@ -213,7 +225,7 @@ class Session(SQLModel, table=True):
     session_type: SessionType = Field(index=True)
     status: SessionStatus = Field(default=SessionStatus.ACTIVE, index=True)
     external_id: str | None = Field(default=None, index=True)
-    started_at: datetime = Field(default_factory=datetime.now)
+    started_at: datetime = Field(default_factory=utc_now)
     ended_at: datetime | None = Field(default=None)
 
     workspace: Workspace = Relationship(back_populates="sessions")
@@ -232,10 +244,10 @@ class ExecutionProcess(SQLModel, table=True):
     status: ExecutionStatus = Field(default=ExecutionStatus.RUNNING, index=True)
     exit_code: int | None = Field(default=None)
     dropped: bool = Field(default=False, index=True)
-    started_at: datetime = Field(default_factory=datetime.now)
+    started_at: datetime = Field(default_factory=utc_now)
     completed_at: datetime | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     error: str | None = Field(default=None)
     metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
@@ -268,7 +280,7 @@ class ExecutionProcessLog(SQLModel, table=True):
     execution_process_id: str = Field(foreign_key="execution_processes.id", index=True)
     logs: str
     byte_size: int
-    inserted_at: datetime = Field(default_factory=datetime.now, index=True)
+    inserted_at: datetime = Field(default_factory=utc_now, index=True)
 
     execution: ExecutionProcess = Relationship(back_populates="logs")
 
@@ -285,8 +297,8 @@ class CodingAgentTurn(SQLModel, table=True):
     summary: str | None = Field(default=None)
     seen: bool = Field(default=False)
     agent_message_id: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     execution: ExecutionProcess = Relationship(back_populates="turns")
 
@@ -302,8 +314,8 @@ class ExecutionProcessRepoState(SQLModel, table=True):
     before_head_commit: str | None = Field(default=None)
     after_head_commit: str | None = Field(default=None)
     merge_commit: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     execution: ExecutionProcess = Relationship(back_populates="repo_states")
 
@@ -324,8 +336,8 @@ class Merge(SQLModel, table=True):
     pr_status: MergeStatus = Field(default=MergeStatus.OPEN, index=True)
     pr_merged_at: datetime | None = Field(default=None)
     pr_merge_commit_sha: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     workspace: Workspace | None = Relationship(back_populates="merges")
 
@@ -338,7 +350,7 @@ class Tag(SQLModel, table=True):
     id: str = Field(default_factory=_new_id, primary_key=True)
     name: str = Field(index=True, unique=True)
     color: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
 
     tasks: list["Task"] = Relationship(back_populates="tags", link_model=TaskTag)
 
@@ -351,8 +363,8 @@ class Scratch(SQLModel, table=True):
     id: str = Field(default_factory=_new_id, primary_key=True)
     scratch_type: ScratchType = Field(index=True)
     payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class Image(SQLModel, table=True):
@@ -364,7 +376,7 @@ class Image(SQLModel, table=True):
     task_id: str = Field(foreign_key="tasks.id", index=True)
     uri: str
     caption: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
 
     task: Task = Relationship(back_populates="images")
 
@@ -380,7 +392,7 @@ class ProjectRepo(SQLModel, table=True):
     repo_id: str = Field(foreign_key="repos.id", index=True)
     is_primary: bool = Field(default=False)
     display_order: int = Field(default=0)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
 
     project: "Project" = Relationship(back_populates="project_repos")
     repo: "Repo" = Relationship(back_populates="project_repos")
@@ -397,8 +409,8 @@ class WorkspaceRepo(SQLModel, table=True):
     repo_id: str = Field(foreign_key="repos.id", index=True)
     target_branch: str
     worktree_path: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     workspace: "Workspace" = Relationship(back_populates="workspace_repos")
     repo: "Repo" = Relationship(back_populates="workspace_repos")

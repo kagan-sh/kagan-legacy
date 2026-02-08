@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from textual.widget import Widget
 
     from kagan.acp.messages import Answer
-    from kagan.core.models.entities import Task
+    from kagan.adapters.db.schema import Task
 
 
 # Regex to strip plan/todos XML blocks from response text

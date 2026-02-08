@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from sqlalchemy.exc import OperationalError
 from textual import on
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
-from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
@@ -24,10 +24,12 @@ from textual.widgets import (
 )
 
 from kagan.acp import messages
+from kagan.adapters.db.repositories.base import RepositoryClosing
 from kagan.agents.agent_factory import AgentFactory, create_agent
 from kagan.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.core.models.enums import StreamPhase, TaskStatus, TaskType
 from kagan.keybindings import REVIEW_BINDINGS
+from kagan.ui.modals.base import KaganModalScreen
 from kagan.ui.modals.review_actions import ReviewActionsMixin
 from kagan.ui.modals.review_diff import ReviewDiffMixin
 from kagan.ui.modals.review_prompt import ReviewPromptMixin
@@ -38,16 +40,18 @@ from kagan.ui.modals.review_stream import ReviewStreamMixin
 from kagan.ui.utils.agent_exit import parse_agent_exit_code as parse_agent_exit_code_message
 from kagan.ui.widgets import ChatPanel
 
+_SHUTDOWN_ERRORS = (RepositoryClosing, OperationalError)
+
 if TYPE_CHECKING:
     from textual.app import ComposeResult
     from textual.timer import Timer
+    from textual.worker import Worker
 
-    from kagan.acp.agent import Agent
-    from kagan.app import KaganApp
+    from kagan.acp import Agent
+    from kagan.adapters.db.repositories import ExecutionRepository
+    from kagan.adapters.db.schema import Task
     from kagan.config import AgentConfig
-    from kagan.core.models.entities import Task
     from kagan.services.diffs import FileDiff
-    from kagan.services.executions import ExecutionService
     from kagan.services.workspaces import WorkspaceService
 
 
@@ -68,11 +72,17 @@ class ReviewModal(
     ReviewQueueMixin,
     ReviewStateMixin,
     ReviewStreamMixin,
-    ModalScreen[str | None],
+    KaganModalScreen[str | None],
 ):
     """Modal for reviewing task changes."""
 
     BINDINGS = REVIEW_BINDINGS
+    _agent: Agent | None
+    _live_output_agent: Agent | None
+    _live_review_agent: Agent | None
+    _live_output_attached: bool
+    _live_output_wait_noted: bool
+    _live_review_attached: bool
 
     def __init__(
         self,
@@ -81,7 +91,7 @@ class ReviewModal(
         agent_config: AgentConfig,
         base_branch: str = "main",
         agent_factory: AgentFactory = create_agent,
-        execution_service: ExecutionService | None = None,
+        execution_service: ExecutionRepository | None = None,
         execution_id: str | None = None,
         run_count: int = 0,
         running_agent: Agent | None = None,
@@ -109,6 +119,7 @@ class ReviewModal(
         self._read_only = read_only
         self._initial_tab = initial_tab
         self._live_output_attached = False
+        self._live_output_wait_noted = False
         self._live_review_attached = False
         self._review_log_loaded = False
         self._phase: StreamPhase = StreamPhase.IDLE
@@ -118,7 +129,7 @@ class ReviewModal(
         self._no_changes: bool = False
         self._anim_timer: Timer | None = None
         self._anim_frame: int = 0
-        self._prompt_task: asyncio.Task[None] | None = None
+        self._prompt_worker: Worker[None] | None = None
         self._review_queue_pending = False
         self._implementation_queue_pending = False
         self._hydrated = False
@@ -216,6 +227,12 @@ class ReviewModal(
         """Render shell immediately, then hydrate heavy content in background."""
         self._show_shell()
         self._bind_task_updates()
+        # Attach live streams as soon as the modal mounts so AUTO Enter opens into
+        # an already streaming output pane.
+        with contextlib.suppress(Exception):
+            await self._attach_live_output_stream_if_available(wait_for_agent=False)
+        with contextlib.suppress(Exception):
+            await self._attach_live_review_stream_if_available()
         self.run_worker(self._hydrate_content, exclusive=True, exit_on_error=False)
 
     def _show_shell(self) -> None:
@@ -224,12 +241,11 @@ class ReviewModal(
             self.query_one("#review-loading", LoadingIndicator).remove()
         self.query_one("#review-tabs").remove_class("hidden")
         self.query_one("#ai-review-section").remove_class("hidden")
-        app = cast("KaganApp", self.app)
         if (
             not self._read_only
             and self._task_model.task_type == TaskType.PAIR
             and self._task_model.status == TaskStatus.REVIEW
-            and app.ctx.config.general.auto_review
+            and self.ctx.config.general.auto_review
         ):
             self.query_one("#ai-review-chat", ChatPanel).remove_class("hidden")
         if not self._read_only:
@@ -239,60 +255,92 @@ class ReviewModal(
         self._sync_review_queue_visibility()
 
     def _bind_task_updates(self) -> None:
-        app = cast("KaganApp", self.app)
-        app.task_changed_signal.subscribe(self, self._on_task_changed)
+        self.kagan_app.task_changed_signal.subscribe(self, self._on_task_changed)
 
     async def _hydrate_content(self) -> None:
         """Load commits, diffs and history without blocking initial paint."""
-        if not self.is_mounted:
-            return
         from kagan.debug_log import log
 
-        log.info(f"[ReviewModal] Hydrating content for task {self._task_model.id[:8]}")
+        workspaces = []
+        try:
+            workspaces = await self._worktree.list_workspaces(task_id=self._task_model.id)
+            if workspaces:
+                actual_branch = workspaces[0].branch_name
+                branch_info = self.query_one("#branch-info", Label)
+                branch_info.update(f"Branch: {actual_branch} → {self._base_branch}")
 
-        workspaces = await self._worktree.list_workspaces(task_id=self._task_model.id)
-        if workspaces:
-            actual_branch = workspaces[0].branch_name
-            branch_info = self.query_one("#branch-info", Label)
-            branch_info.update(f"Branch: {actual_branch} → {self._base_branch}")
+            commits_task = self._worktree.get_commit_log(self._task_model.id, self._base_branch)
+            diff_stats_task = self._worktree.get_diff_stats(self._task_model.id, self._base_branch)
+            diff_task = self._worktree.get_diff(self._task_model.id, self._base_branch)
+            commits, diff_stats, self._diff_text = await asyncio.gather(
+                commits_task,
+                diff_stats_task,
+                diff_task,
+            )
 
-        commits_task = self._worktree.get_commit_log(self._task_model.id, self._base_branch)
-        diff_stats_task = self._worktree.get_diff_stats(self._task_model.id, self._base_branch)
-        diff_task = self._worktree.get_diff(self._task_model.id, self._base_branch)
-        commits, diff_stats, self._diff_text = await asyncio.gather(
-            commits_task,
-            diff_stats_task,
-            diff_task,
-        )
-
-        self._populate_commits(commits)
-        self.query_one("#diff-stats", Static).update(diff_stats or "[dim](No changes)[/dim]")
-        self._diff_stats = diff_stats or ""
-        self._no_changes = not commits and not self._diff_stats
-        await self._populate_diff_pane(workspaces)
+            self._populate_commits(commits)
+            self.query_one("#diff-stats", Static).update(diff_stats or "[dim](No changes)[/dim]")
+            self._diff_stats = diff_stats or ""
+            self._no_changes = not commits and not self._diff_stats
+            await self._populate_diff_pane(workspaces)
+        except Exception as exc:
+            log.error(
+                "[ReviewModal] Failed to hydrate diff/commit data",
+                task_id=self._task_model.id[:8],
+                error=str(exc),
+            )
+            self._diff_text = ""
+            self._diff_stats = ""
+            self._no_changes = False
+            with contextlib.suppress(NoMatches):
+                self.query_one("#diff-stats", Static).update(
+                    "[dim](Unable to load diff data)[/dim]"
+                )
 
         if self._no_changes:
             self.query_one("#approve-btn", Button).label = "Close task"
 
-        await asyncio.gather(
+        history_results = await asyncio.gather(
             self._load_agent_output_history(),
             self._configure_follow_up_chat(),
             self._configure_agent_output_chat(),
+            return_exceptions=True,
         )
-        await asyncio.gather(
+        for result in history_results:
+            if isinstance(result, Exception):
+                log.error(
+                    "[ReviewModal] Failed to hydrate output/chat state",
+                    task_id=self._task_model.id[:8],
+                    error=str(result),
+                )
+
+        queue_results = await asyncio.gather(
             self._refresh_review_queue_state(),
             self._refresh_implementation_queue_state(),
+            return_exceptions=True,
         )
+        for result in queue_results:
+            if isinstance(result, Exception):
+                log.error(
+                    "[ReviewModal] Failed to refresh queue state",
+                    task_id=self._task_model.id[:8],
+                    error=str(result),
+                )
 
         if self._read_only:
             self.query_one("#generate-btn", Button).add_class("hidden")
             self.query_one("#cancel-btn", Button).add_class("hidden")
 
         if self._execution_service is not None:
-            await self._load_prior_review()
-        await self._attach_live_output_stream_if_available()
-        await self._attach_live_review_stream_if_available()
-        auto_started = await self._maybe_auto_start_pair_review()
+            with contextlib.suppress(Exception):
+                await self._load_prior_review()
+        with contextlib.suppress(Exception):
+            await self._attach_live_output_stream_if_available()
+        with contextlib.suppress(Exception):
+            await self._attach_live_review_stream_if_available()
+        auto_started = False
+        with contextlib.suppress(Exception):
+            auto_started = await self._maybe_auto_start_pair_review()
         self._hydrated = True
         if auto_started:
             self._set_active_tab("review-ai")
@@ -420,8 +468,10 @@ class ReviewModal(
     async def _refresh_runtime_state(self) -> None:
         if not self.is_mounted:
             return
-        app = cast("KaganApp", self.app)
-        latest = await app.ctx.task_service.get_task(self._task_model.id)
+        try:
+            latest = await self.ctx.task_service.get_task(self._task_model.id)
+        except _SHUTDOWN_ERRORS:
+            return
         if latest is not None:
             previous_status = self._task_model.status
             self._task_model = latest
@@ -433,30 +483,33 @@ class ReviewModal(
                 self._set_phase(StreamPhase.IDLE)
                 self._set_active_tab("review-ai")
 
-        scheduler = app.ctx.automation_service
-        self._is_running = scheduler.is_running(self._task_model.id)
-        self._is_reviewing = scheduler.is_reviewing(self._task_model.id)
-        self._execution_id = scheduler.get_execution_id(self._task_model.id) or self._execution_id
-        self._live_output_agent = scheduler.get_running_agent(self._task_model.id)
-        self._live_review_agent = scheduler.get_review_agent(self._task_model.id)
+        runtime_view = self.ctx.runtime_service.get(self._task_model.id)
+        self._is_running = runtime_view.is_running if runtime_view is not None else False
+        self._is_reviewing = runtime_view.is_reviewing if runtime_view is not None else False
+        if runtime_view is not None and runtime_view.execution_id is not None:
+            self._execution_id = runtime_view.execution_id
+        self._live_output_agent = runtime_view.running_agent if runtime_view is not None else None
+        self._live_review_agent = runtime_view.review_agent if runtime_view is not None else None
 
         await self._attach_live_output_stream_if_available()
         await self._attach_live_review_stream_if_available()
-        await asyncio.gather(
-            self._refresh_review_queue_state(),
-            self._refresh_implementation_queue_state(),
-        )
-        if self._hydrated and self._task_model.status == TaskStatus.REVIEW:
-            await self._load_prior_review()
+        try:
+            await asyncio.gather(
+                self._refresh_review_queue_state(),
+                self._refresh_implementation_queue_state(),
+            )
+            if self._hydrated and self._task_model.status == TaskStatus.REVIEW:
+                await self._load_prior_review()
+        except _SHUTDOWN_ERRORS:
+            return
 
     async def on_unmount(self) -> None:
         """Cleanup agent and animation on close."""
-        app = cast("KaganApp", self.app)
         with contextlib.suppress(Exception):
-            app.task_changed_signal.unsubscribe(self)
+            self.kagan_app.task_changed_signal.unsubscribe(self)
         self._stop_animation()
-        if self._prompt_task and not self._prompt_task.done():
-            self._prompt_task.cancel()
+        if self._prompt_worker is not None and not self._prompt_worker.is_finished:
+            self._prompt_worker.cancel()
         if self._agent:
             await self._agent.stop()
         if self._live_output_agent:

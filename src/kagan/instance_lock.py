@@ -90,7 +90,7 @@ class InstanceLock:
         self._lock = FileLock(str(self._lock_path), blocking=False)
         self._acquired = False
 
-    def acquire(self) -> bool:
+    def acquire(self, *, _retry_stale: bool = True) -> bool:
         """Attempt to acquire the lock (non-blocking).
 
         Returns True if lock acquired, False if another instance holds it.
@@ -104,7 +104,40 @@ class InstanceLock:
             self._acquired = True
             return True
         except Timeout:
+            if _retry_stale:
+                holder = self.get_holder_info()
+                if holder is not None and self._is_stale_holder(holder):
+                    self._cleanup_stale_lock_files()
+                    self._lock = FileLock(str(self._lock_path), blocking=False)
+                    return self.acquire(_retry_stale=False)
             return False
+
+    @staticmethod
+    def _pid_is_running(pid: int) -> bool:
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+
+    def _is_stale_holder(self, holder: LockInfo) -> bool:
+        if holder.pid == os.getpid():
+            return False
+        if holder.hostname not in {"", "unknown", socket.gethostname()}:
+            return False
+        return not self._pid_is_running(holder.pid)
+
+    def _cleanup_stale_lock_files(self) -> None:
+        with contextlib.suppress(OSError):
+            self._lock_path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            self._info_path.unlink(missing_ok=True)
 
     def release(self) -> None:
         """Release the lock if held."""

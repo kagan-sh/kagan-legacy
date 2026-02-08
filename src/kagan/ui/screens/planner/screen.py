@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, cast
@@ -12,6 +13,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Center, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
+from textual.reactive import var
 from textual.widgets import Footer, Static, TextArea
 
 from kagan.acp import messages
@@ -28,16 +30,18 @@ from kagan.limits import AGENT_TIMEOUT
 from kagan.ui.modals import BaseBranchModal
 from kagan.ui.screen_result import await_screen_result
 from kagan.ui.screens.base import KaganScreen
-from kagan.ui.screens.planner.message_handler import MessageHandler
+from kagan.ui.screens.planner.commands import PlannerCommandProvider
 from kagan.ui.screens.planner.state import (
     ChatMessage,
     NoteInfo,
     PersistentPlannerState,
     PlannerPhase,
     PlannerState,
-    SlashCommand,
 )
 from kagan.ui.screens.task_editor import TaskEditorScreen
+from kagan.ui.utils.agent_exit import is_graceful_agent_termination
+from kagan.ui.utils.agent_stream_router import AgentStreamRouter
+from kagan.ui.utils.slash_registry import SlashCommandRegistry, parse_slash_command_call
 from kagan.ui.widgets import StatusBar, StreamingOutput
 from kagan.ui.widgets.chat_panel import QueuedMessageRow, QueuedMessagesContainer
 from kagan.ui.widgets.header import KaganHeader
@@ -52,6 +56,9 @@ if TYPE_CHECKING:
     from kagan.adapters.db.schema import Task
     from kagan.app import KaganApp
     from kagan.services.queued_messages import QueuedMessageService
+    from kagan.ui.utils.slash_registry import SlashCommand
+
+type PlannerSlashHandler = Callable[[str], None | Awaitable[None]]
 
 MIN_INPUT_HEIGHT = 1
 MAX_INPUT_HEIGHT = 6
@@ -154,13 +161,16 @@ class PlannerInput(TextArea):
 class PlannerScreen(KaganScreen):
     """Chat-first planner for creating tasks."""
 
+    COMMANDS = {PlannerCommandProvider}
     BINDINGS = PLANNER_BINDINGS
+    planner_status: var[str] = var("waiting", init=False)
+    planner_hint: var[str] = var("Initializing agent...", init=False)
+    slash_commands: var[list[SlashCommand[PlannerSlashHandler]]] = var(list, init=False)
     header = getters.query_one(KaganHeader)
 
     def __init__(self, agent_factory: AgentFactory = create_agent, **kwargs) -> None:
         super().__init__(**kwargs)
         self._state = PlannerState()
-        self._message_handler = MessageHandler(self)
         self._agent_factory = agent_factory
 
         self._current_mode: str = ""
@@ -169,11 +179,23 @@ class PlannerScreen(KaganScreen):
 
         self._clearing: bool = False
         self._slash_complete: SlashComplete | None = None
-        self._builtin_commands: list[SlashCommand] = [
-            SlashCommand("clear", "Clear conversation and start fresh"),
-            SlashCommand("help", "Show available commands"),
-        ]
+        self._slash_registry: SlashCommandRegistry[PlannerSlashHandler] = SlashCommandRegistry()
+        self._register_slash_commands()
+        self.set_reactive(PlannerScreen.slash_commands, self._slash_registry.list_commands())
         self._planner_queue_pending = False
+        self._agent_stream = AgentStreamRouter(
+            get_output=self._get_output,
+            show_output=self._show_output,
+            on_update=self._handle_agent_update,
+            on_thinking=self._handle_thinking,
+            on_ready=self._handle_agent_ready,
+            on_fail=self._handle_agent_fail,
+            on_request_permission=self._handle_request_permission,
+            on_set_modes=self._handle_set_modes,
+            on_mode_update=self._handle_mode_update,
+            on_commands_update=self._handle_commands_update,
+            ignore_fail=lambda _message: self._clearing,
+        )
 
     def compose(self) -> ComposeResult:
         yield KaganHeader()
@@ -182,7 +204,10 @@ class PlannerScreen(KaganScreen):
             yield PlannerEmptyState()
             yield StreamingOutput(id="planner-output")
             with Vertical(id="planner-bottom"):
-                yield StatusBar()
+                yield StatusBar().data_bind(
+                    status=PlannerScreen.planner_status,
+                    hint=PlannerScreen.planner_hint,
+                )
                 yield QueuedMessagesContainer(
                     id="planner-queued-messages",
                     classes="queued-messages-container planner-queued-messages",
@@ -329,8 +354,8 @@ class PlannerScreen(KaganScreen):
                 self._get_output().add_class("visible")
 
     def _update_status(self, status: str, message: str) -> None:
-        with suppress(NoMatches):
-            self.query_one(StatusBar).update_status(status, message)
+        self.planner_status = status
+        self.planner_hint = message
 
     def _enable_input(self) -> None:
         with suppress(NoMatches):
@@ -348,8 +373,87 @@ class PlannerScreen(KaganScreen):
         with suppress(NoMatches):
             self.query_one("#planner-input", PlannerInput).focus()
 
+    def _register_slash_commands(self) -> None:
+        @self._slash_registry.command(aliases=["cls"])
+        async def clear(_args: str) -> None:
+            """Clear conversation and start fresh."""
+            await self._execute_clear()
+
+        @self._slash_registry.command(aliases=["h", "?"])
+        async def help(_args: str) -> None:
+            """Show available commands."""
+            await self._execute_help()
+
+    async def _execute_slash_command(self, command_name: str, args: str) -> bool:
+        command = self._slash_registry.find_command(command_name)
+        if command is None:
+            self.notify(f"Unknown command: /{command_name}", severity="warning")
+            return False
+
+        result = command.func(args)
+        if asyncio.iscoroutine(result):
+            await result
+        return True
+
+    async def _handle_agent_update(self, message: messages.AgentUpdate) -> None:
+        self._state.accumulated_response.append(message.text)
+        await self._get_output().post_response(message.text)
+
+    async def _handle_thinking(self, message: messages.Thinking) -> None:
+        if not self._state.thinking_shown:
+            self._state.thinking_shown = True
+            await self._get_output().post_thinking_indicator()
+        await self._get_output().post_thought(message.text)
+
+    async def _handle_agent_ready(self, _message: messages.AgentReady) -> None:
+        self._clearing = False
+        self._state = self._state.with_agent_ready(True)
+        self._enable_input()
+        self._update_status("ready", "Press ? for help")
+
+    async def _handle_agent_fail(self, message: messages.AgentFail) -> None:
+        if is_graceful_agent_termination(message.message):
+            self._update_status("ready", "Agent stream ended (cancelled)")
+            self._enable_input()
+            await self._get_output().post_note(
+                "Agent stream ended by cancellation (SIGTERM).",
+                classes="dismissed",
+            )
+            return
+
+        self._update_status("error", f"Error: {message.message}")
+        self._disable_input()
+        output = self._get_output()
+        await output.post_note(f"Error: {message.message}", classes="error")
+        if message.details:
+            await output.post_note(message.details)
+
+    def _handle_set_modes(self, message: messages.SetModes) -> None:
+        self._current_mode = message.current_mode
+        self._available_modes = message.modes
+
+    def _handle_mode_update(self, message: messages.ModeUpdate) -> None:
+        self._current_mode = message.current_mode
+
+    def _handle_commands_update(self, message: messages.AvailableCommandsUpdate) -> None:
+        self._available_commands = message.commands
+
+    async def _handle_request_permission(self, message: messages.RequestPermission) -> None:
+        await self._get_output().post_permission_request(
+            message.options,
+            message.tool_call,
+            message.result_future,
+            timeout=300.0,
+        )
+
     @on(PlannerInput.SubmitRequested)
     async def on_submit_requested(self, event: PlannerInput.SubmitRequested) -> None:
+        if slash_call := parse_slash_command_call(event.text):
+            await self._execute_slash_command(slash_call.name, slash_call.args)
+            self.query_one("#planner-input", PlannerInput).clear()
+            await self._hide_slash_complete()
+            return
+
         if self._state.phase == PlannerPhase.PROCESSING:
             queued_text = event.text.strip()
             if queued_text:
@@ -512,52 +616,9 @@ class PlannerScreen(KaganScreen):
         )
         await self._refresh_planner_queue_messages()
 
-    @on(messages.AgentUpdate)
-    async def on_agent_update(self, message: messages.AgentUpdate) -> None:
-        await self._message_handler.handle_agent_update(message)
-
-    @on(messages.Thinking)
-    async def on_agent_thinking(self, message: messages.Thinking) -> None:
-        await self._message_handler.handle_thinking(message)
-
-    @on(messages.ToolCall)
-    async def on_tool_call(self, message: messages.ToolCall) -> None:
-        await self._message_handler.handle_tool_call(message)
-
-    @on(messages.ToolCallUpdate)
-    async def on_tool_call_update(self, message: messages.ToolCallUpdate) -> None:
-        await self._message_handler.handle_tool_call_update(message)
-
-    @on(messages.AgentReady)
-    async def on_agent_ready(self, message: messages.AgentReady) -> None:
-        self._clearing = False
-        await self._message_handler.handle_agent_ready(message)
-
-    @on(messages.AgentFail)
-    async def on_agent_fail(self, message: messages.AgentFail) -> None:
-        if self._clearing:
-            return
-        await self._message_handler.handle_agent_fail(message)
-
-    @on(messages.Plan)
-    async def on_plan(self, message: messages.Plan) -> None:
-        await self._message_handler.handle_plan(message)
-
-    @on(messages.SetModes)
-    def on_set_modes(self, message: messages.SetModes) -> None:
-        self._message_handler.handle_set_modes(message)
-
-    @on(messages.ModeUpdate)
-    def on_mode_update(self, message: messages.ModeUpdate) -> None:
-        self._message_handler.handle_mode_update(message)
-
-    @on(messages.AvailableCommandsUpdate)
-    def on_commands_update(self, message: messages.AvailableCommandsUpdate) -> None:
-        self._message_handler.handle_commands_update(message)
-
-    @on(messages.RequestPermission)
-    async def on_request_permission(self, message: messages.RequestPermission) -> None:
-        await self._message_handler.handle_request_permission(message)
+    @on(messages.AgentMessage)
+    async def on_agent_message(self, message: messages.AgentMessage) -> None:
+        await self._agent_stream.dispatch(message)
 
     @on(PlanApprovalWidget.Approved)
     async def on_plan_approved(self, event: PlanApprovalWidget.Approved) -> None:
@@ -665,23 +726,24 @@ class PlannerScreen(KaganScreen):
             await self._get_output().post_plan_approval(result)
 
     @on(TextArea.Changed, "#planner-input")
-    def on_planner_input_changed(self, event: TextArea.Changed) -> None:
-        self._check_slash_trigger()
+    async def on_planner_input_changed(self, event: TextArea.Changed) -> None:
+        await self._check_slash_trigger()
 
-    def _check_slash_trigger(self) -> None:
+    async def _check_slash_trigger(self) -> None:
         with suppress(NoMatches):
             planner_input = self.query_one("#planner-input", PlannerInput)
             text = planner_input.text
 
             if text.startswith("/") and len(text) <= 2:
-                self.run_worker(self._show_slash_complete())
+                await self._show_slash_complete()
             elif self._slash_complete is not None and not text.startswith("/"):
-                self.run_worker(self._hide_slash_complete())
+                await self._hide_slash_complete()
 
     async def _show_slash_complete(self) -> None:
         if self._slash_complete is None:
-            self._slash_complete = SlashComplete(id="slash-complete")
-            self._slash_complete.slash_commands = self._builtin_commands
+            self._slash_complete = SlashComplete(id="slash-complete").data_bind(
+                slash_commands=PlannerScreen.slash_commands
+            )
             bottom = self.query_one("#planner-bottom", Vertical)
             planner_input = self.query_one("#planner-input", PlannerInput)
             await bottom.mount(self._slash_complete, before=planner_input)
@@ -697,11 +759,7 @@ class PlannerScreen(KaganScreen):
         planner_input = self.query_one("#planner-input", PlannerInput)
         planner_input.clear()
         await self._hide_slash_complete()
-
-        if event.command == "clear":
-            await self._execute_clear()
-        elif event.command == "help":
-            await self._execute_help()
+        await self._execute_slash_command(event.command, "")
 
     @on(SlashComplete.Dismissed)
     async def on_slash_dismissed(self, event: SlashComplete.Dismissed) -> None:
@@ -755,8 +813,16 @@ class PlannerScreen(KaganScreen):
     async def _execute_help(self) -> None:
         self._show_output()
         help_text = "**Available Commands:**\n"
-        for cmd in self._builtin_commands:
-            help_text += f"- `/{cmd.command}` - {cmd.help}\n"
+        commands: list[SlashCommand] = sorted(
+            self._slash_registry.list_commands(),
+            key=lambda cmd: cmd.command,
+        )
+        for cmd in commands:
+            aliases = ""
+            if cmd.aliases:
+                alias_text = ", ".join(f"/{alias}" for alias in cmd.aliases)
+                aliases = f" ({alias_text})"
+            help_text += f"- `/{cmd.command}`{aliases} - {cmd.help}\n"
         await self._get_output().post_note(help_text)
 
     async def action_cancel(self) -> None:
@@ -853,11 +919,17 @@ class PlannerScreen(KaganScreen):
         """
         from kagan.ui.screens.kanban import KanbanScreen
 
-        has_kanban_underneath = any(
-            isinstance(screen, KanbanScreen) for screen in self.app.screen_stack[:-1]
+        target_kanban = next(
+            (
+                cast("KanbanScreen", screen)
+                for screen in reversed(self.app.screen_stack[:-1])
+                if isinstance(screen, KanbanScreen)
+            ),
+            None,
         )
 
-        if has_kanban_underneath:
+        if target_kanban is not None:
+            await target_kanban.prepare_for_planner_return()
             self.app.pop_screen()
         else:
             self.app.switch_screen(KanbanScreen())

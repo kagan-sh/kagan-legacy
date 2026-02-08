@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,15 +22,29 @@ if TYPE_CHECKING:
 VALID_PAIR_LAUNCHERS = {"tmux", "vscode", "cursor"}
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceProvisionResult:
+    success: bool
+    path: Path | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PairBackendReadiness:
+    success: bool
+    backend: str | None = None
+    error: str | None = None
+
+
 class KanbanSessionController:
     def __init__(self, screen: KanbanScreen) -> None:
         self.screen = screen
 
-    async def provision_workspace_for_active_repo(self, task: Task) -> Path | None:
+    async def provision_workspace_for_active_repo(self, task: Task) -> WorkspaceProvisionResult:
         active_repo_id = self.screen.ctx.active_repo_id
         if active_repo_id is None:
             self.screen.notify("Select a repository to start a session", severity="warning")
-            return None
+            return WorkspaceProvisionResult(success=False, error="No active repository selected")
 
         repo_details = await self.screen.ctx.project_service.get_project_repo_details(
             task.project_id
@@ -37,7 +52,7 @@ class KanbanSessionController:
         repo = next((item for item in repo_details if item["id"] == active_repo_id), None)
         if repo is None:
             self.screen.notify("Active repository not part of this project", severity="error")
-            return None
+            return WorkspaceProvisionResult(success=False, error="Active repo not in project")
 
         repo_path = Path(repo["path"])
         if not await has_git_repo(repo_path):
@@ -45,7 +60,7 @@ class KanbanSessionController:
                 f"Not a git repository: {repo_path}. Run git init first.",
                 severity="error",
             )
-            return None
+            return WorkspaceProvisionResult(success=False, error="Repository has no git metadata")
 
         self.screen.notify("Creating workspace...", severity="information")
         try:
@@ -61,13 +76,13 @@ class KanbanSessionController:
             )
         except Exception as exc:
             self.screen.notify(f"Failed to create workspace: {exc}", severity="error")
-            return None
+            return WorkspaceProvisionResult(success=False, error=str(exc))
 
         wt_path = await self.screen.ctx.workspace_service.get_path(task.id)
         if wt_path is None:
             self.screen.notify("Failed to provision workspace", severity="error")
-            return None
-        return wt_path
+            return WorkspaceProvisionResult(success=False, error="Workspace path missing")
+        return WorkspaceProvisionResult(success=True, path=wt_path)
 
     async def ensure_mcp_installed(self, agent_config: AgentConfig, spec: GlobalMcpSpec) -> bool:
         from kagan.ui.modals.mcp_install import McpInstallModal
@@ -133,7 +148,7 @@ class KanbanSessionController:
         task: Task,
         *,
         wait_for_running: bool = False,
-    ) -> None:
+    ) -> bool:
         automation = self.screen.ctx.automation_service
         runtime_service = self.screen.ctx.runtime_service
         attached_agent: Agent | None = None
@@ -161,7 +176,7 @@ class KanbanSessionController:
             severity = "warning" if not readiness.can_open_output else "information"
             self.screen.notify(readiness.message, severity=severity)
         if not readiness.can_open_output:
-            return
+            return False
 
         await self.screen._review.open_review_for_task(
             task,
@@ -170,6 +185,7 @@ class KanbanSessionController:
             include_running_output=True,
             auto_output_readiness=readiness,
         )
+        return True
 
     async def open_session_flow(self, task: Task) -> None:
         refreshed = await self.screen.ctx.task_service.get_task(task.id)
@@ -193,7 +209,22 @@ class KanbanSessionController:
                     wait_for_running=True,
                 )
             elif task.status == TaskStatus.IN_PROGRESS:
-                await self.open_auto_output_for_task(task, wait_for_running=True)
+                runtime_view = self.screen.ctx.runtime_service.get(task.id)
+                is_running = runtime_view.is_running if runtime_view is not None else False
+                opened = await self.open_auto_output_for_task(
+                    task,
+                    wait_for_running=is_running,
+                )
+                if opened or is_running:
+                    return
+                if not await self.confirm_start_auto_task(task):
+                    return
+                await self.start_agent_flow(task)
+                refreshed_after_start = await self.screen.ctx.task_service.get_task(task.id)
+                await self.open_auto_output_for_task(
+                    refreshed_after_start or task,
+                    wait_for_running=True,
+                )
             return
 
         agent_config = task.get_agent_config(self.screen.kagan_app.config)
@@ -225,14 +256,16 @@ class KanbanSessionController:
 
         wt_path = await self.screen.ctx.workspace_service.get_path(task.id)
         if wt_path is None:
-            wt_path = await self.provision_workspace_for_active_repo(task)
-            if wt_path is None:
+            provision_result = await self.provision_workspace_for_active_repo(task)
+            if not provision_result.success or provision_result.path is None:
                 return
+            wt_path = provision_result.path
 
-        if not await self.ensure_pair_terminal_backend_ready(task):
+        backend_readiness = await self.ensure_pair_terminal_backend_ready(task)
+        if not backend_readiness.success or backend_readiness.backend is None:
             return
 
-        terminal_backend = self.resolve_pair_terminal_backend(task)
+        terminal_backend = backend_readiness.backend
 
         if not await self.screen.ctx.session_service.session_exists(task.id):
             self.screen.notify("Creating session...", severity="information")
@@ -288,7 +321,7 @@ class KanbanSessionController:
 
         return "tmux"
 
-    async def ensure_pair_terminal_backend_ready(self, task: Task) -> bool:
+    async def ensure_pair_terminal_backend_ready(self, task: Task) -> PairBackendReadiness:
         from kagan.terminals.installer import check_terminal_installed, first_available_pair_backend
         from kagan.ui.modals.terminal_install import TerminalInstallModal
 
@@ -297,16 +330,19 @@ class KanbanSessionController:
 
         if backend in {"vscode", "cursor"}:
             if check_terminal_installed(backend):
-                return True
+                return PairBackendReadiness(success=True, backend=backend)
             self.screen.notify(
                 f"{backend} is not installed. Install it and retry.",
                 severity="warning",
             )
-            return False
+            return PairBackendReadiness(
+                success=False,
+                error=f"{backend} launcher is not installed",
+            )
 
         if backend == "tmux":
             if check_terminal_installed("tmux"):
-                return True
+                return PairBackendReadiness(success=True, backend=backend)
             if is_windows:
                 fallback = first_available_pair_backend(windows=True)
                 if fallback is not None:
@@ -317,19 +353,22 @@ class KanbanSessionController:
                         f"tmux not found on Windows. Using {fallback} for this task.",
                         severity="information",
                     )
-                    return True
+                    return PairBackendReadiness(success=True, backend=fallback)
                 self.screen.notify(
                     "PAIR cancelled: install VS Code or Cursor to continue on Windows.",
                     severity="warning",
                 )
-                return False
+                return PairBackendReadiness(
+                    success=False,
+                    error="No supported PAIR launcher available on Windows",
+                )
 
             installed_tmux = await await_screen_result(
                 self.screen.app,
                 TerminalInstallModal("tmux"),
             )
             if installed_tmux and check_terminal_installed("tmux"):
-                return True
+                return PairBackendReadiness(success=True, backend=backend)
 
             fallback = first_available_pair_backend(windows=False)
             if fallback is not None:
@@ -340,16 +379,19 @@ class KanbanSessionController:
                     "Cursor: https://cursor.com/downloads",
                     severity="information",
                 )
-                return True
+                return PairBackendReadiness(success=True, backend=fallback)
             self.screen.notify(
                 "PAIR cancelled: install tmux (recommended), or install VS Code/Cursor "
                 "for external development.",
                 severity="warning",
             )
-            return False
+            return PairBackendReadiness(
+                success=False,
+                error="No supported PAIR launcher available",
+            )
 
         self.screen.notify(f"Unsupported PAIR launcher: {backend}", severity="warning")
-        return False
+        return PairBackendReadiness(success=False, error=f"Unsupported PAIR launcher: {backend}")
 
     @staticmethod
     def startup_prompt_path_hint(workspace_path: Path) -> Path:
@@ -419,9 +461,10 @@ class KanbanSessionController:
 
         wt_path = await self.screen.ctx.workspace_service.get_path(task.id)
         if wt_path is None:
-            wt_path = await self.provision_workspace_for_active_repo(task)
-            if wt_path is None:
+            provision_result = await self.provision_workspace_for_active_repo(task)
+            if not provision_result.success or provision_result.path is None:
                 return
+            wt_path = provision_result.path
 
         if task.status == TaskStatus.BACKLOG:
             await self.screen.ctx.task_service.move(task.id, TaskStatus.IN_PROGRESS)

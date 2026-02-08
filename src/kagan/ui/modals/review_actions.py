@@ -150,6 +150,11 @@ class ReviewActionsMixin:
     async def action_close_or_cancel(self: ReviewModal) -> None:
         """Cancel review if in progress, otherwise close."""
         if self._phase in (StreamPhase.THINKING, StreamPhase.STREAMING):
+            # For automation-managed live streams there is nothing local to cancel.
+            # In that mode Esc should behave as close.
+            if self._agent is None and (self._live_review_attached or self._live_output_attached):
+                self.dismiss(None)
+                return
             await self.action_cancel_review()
         else:
             self.dismiss(None)

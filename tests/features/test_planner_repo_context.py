@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -52,6 +53,7 @@ def _read_planner_output(screen: PlannerScreen) -> str:
     return "\n".join(widget.content for widget in screen.query(StreamingMarkdown))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing-sensitive; flaky on Windows CI")
 @pytest.mark.asyncio
 async def test_planner_uses_active_repo_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -38,6 +38,7 @@ from kagan.ui.modals.review_queue import ReviewQueueMixin
 from kagan.ui.modals.review_state import ReviewStateMixin
 from kagan.ui.modals.review_stream import ReviewStreamMixin
 from kagan.ui.utils.agent_exit import parse_agent_exit_code as parse_agent_exit_code_message
+from kagan.ui.utils.agent_stream_router import AgentStreamRouter
 from kagan.ui.widgets import ChatPanel
 
 _SHUTDOWN_ERRORS = (RepositoryClosing, OperationalError)
@@ -133,6 +134,12 @@ class ReviewModal(
         self._review_queue_pending = False
         self._implementation_queue_pending = False
         self._hydrated = False
+        self._agent_stream = AgentStreamRouter(
+            get_output=self._get_stream_output,
+            on_update=self._on_stream_update,
+            on_complete=self._on_stream_complete,
+            on_fail=self._on_stream_fail,
+        )
 
     def compose(self) -> ComposeResult:
         with Vertical(id="review-modal-container"):
@@ -378,36 +385,13 @@ class ReviewModal(
     def on_reject_btn(self) -> None:
         self.action_reject()
 
-    @on(messages.AgentUpdate)
-    async def on_agent_update(self, message: messages.AgentUpdate) -> None:
+    async def _on_stream_update(self, message: messages.AgentUpdate) -> None:
         if self._phase == StreamPhase.THINKING:
             self._set_phase(StreamPhase.STREAMING)
         output = self._get_stream_output()
         await output.post_response(message.text)
 
-    @on(messages.Thinking)
-    async def on_agent_thinking(self, message: messages.Thinking) -> None:
-        output = self._get_stream_output()
-        await output.post_thought(message.text)
-
-    @on(messages.ToolCall)
-    async def on_tool_call(self, message: messages.ToolCall) -> None:
-        await self._get_stream_output().upsert_tool_call(message.tool_call)
-
-    @on(messages.ToolCallUpdate)
-    async def on_tool_call_update(self, message: messages.ToolCallUpdate) -> None:
-        await self._get_stream_output().apply_tool_call_update(message.update, message.tool_call)
-
-    @on(messages.AgentReady)
-    async def on_agent_ready(self, _: messages.AgentReady) -> None:
-        await self._get_stream_output().post_note("Agent ready", classes="success")
-
-    @on(messages.Plan)
-    async def on_plan(self, message: messages.Plan) -> None:
-        await self._get_stream_output().post_plan(message.entries)
-
-    @on(messages.AgentComplete)
-    async def on_agent_complete(self, _: messages.AgentComplete) -> None:
+    async def _on_stream_complete(self, _: messages.AgentComplete) -> None:
         if self._agent is not None:
             self._agent = None
         if self._live_output_attached and self._agent is None:
@@ -424,8 +408,7 @@ class ReviewModal(
         if not self._read_only and self._review_queue_pending:
             await self._start_review_follow_up_if_needed()
 
-    @on(messages.AgentFail)
-    async def on_agent_fail(self, message: messages.AgentFail) -> None:
+    async def _on_stream_fail(self, message: messages.AgentFail) -> None:
         output = self._get_stream_output()
         exit_code = parse_agent_exit_code(message.message)
         if exit_code == -15:
@@ -464,6 +447,10 @@ class ReviewModal(
             self._refresh_implementation_queue_state(),
         )
         await self._refresh_runtime_state()
+
+    @on(messages.AgentMessage)
+    async def on_agent_message(self, message: messages.AgentMessage) -> None:
+        await self._agent_stream.dispatch(message)
 
     async def _refresh_runtime_state(self) -> None:
         if not self.is_mounted:

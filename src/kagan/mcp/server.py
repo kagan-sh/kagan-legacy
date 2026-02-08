@@ -9,6 +9,7 @@ Uses MCP SDK best practices:
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,13 +38,27 @@ from kagan.paths import get_config_path, get_database_path
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+logger = logging.getLogger(__name__)
+
+
+NO_SESSION_MESSAGE = (
+    "No active Kagan session. "
+    "This MCP server is registered globally but Kagan is not managing the current directory. "
+    "Run 'kagan' to start a session, or use this tool from a Kagan-managed project."
+)
+
 
 @dataclass
 class MCPLifespanContext:
-    """Context available during MCP server lifetime via lifespan."""
+    """Context available during MCP server lifetime via lifespan.
 
-    app_context: AppContext
-    server: KaganMCPServer
+    When the server starts outside a Kagan-managed project (no git repo,
+    missing database, etc.) both fields are ``None`` and tools return a
+    helpful "no active session" message instead of crashing the host.
+    """
+
+    app_context: AppContext | None
+    server: KaganMCPServer | None
 
 
 # Type alias for our Context with lifespan
@@ -55,16 +70,29 @@ async def _mcp_lifespan(mcp: FastMCP) -> AsyncIterator[MCPLifespanContext]:
     """Lifespan manager for MCP server resources.
 
     Creates AppContext and KaganMCPServer on startup, available via ctx.request_context.
+
+    When the environment is not suitable (no git repo, DB failure, etc.) the
+    server starts in **degraded mode**: the lifespan context yields with
+    ``server=None`` so the MCP transport stays alive and tools can return a
+    user-friendly error instead of killing the host process.
     """
     project_root = Path.cwd()
-    if not await has_git_repo(project_root):
-        raise RuntimeError("Not in a git repository")
 
-    app_ctx = await create_app_context(
-        get_config_path(),
-        get_database_path(),
-        project_root=project_root,
-    )
+    if not await has_git_repo(project_root):
+        yield MCPLifespanContext(app_context=None, server=None)
+        return
+
+    try:
+        app_ctx = await create_app_context(
+            get_config_path(),
+            get_database_path(),
+            project_root=project_root,
+        )
+    except Exception:
+        logger.warning("Failed to initialize app context, running in degraded mode", exc_info=True)
+        yield MCPLifespanContext(app_context=None, server=None)
+        return
+
     server = KaganMCPServer(
         app_ctx.task_service,
         workspace_service=app_ctx.workspace_service,
@@ -74,14 +102,15 @@ async def _mcp_lifespan(mcp: FastMCP) -> AsyncIterator[MCPLifespanContext]:
 
     yield MCPLifespanContext(app_context=app_ctx, server=server)
 
-    # Cleanup if needed (currently none required)
 
+def _get_server(ctx: MCPContext) -> KaganMCPServer | None:
+    """Extract KaganMCPServer from request context.
 
-def _get_server(ctx: MCPContext) -> KaganMCPServer:
-    """Extract KaganMCPServer from request context."""
+    Returns ``None`` when running in degraded mode (no active Kagan session).
+    """
     lifespan_ctx = ctx.request_context.lifespan_context
     if lifespan_ctx is None:
-        raise RuntimeError("MCP server not initialized - lifespan context is None")
+        return None
     return lifespan_ctx.server
 
 
@@ -201,7 +230,7 @@ def _create_mcp_server(readonly: bool = False) -> FastMCP:
 
         server = _get_server(ctx) if ctx else None
         if server is None:
-            raise ValueError("Server not initialized")
+            raise ValueError(NO_SESSION_MESSAGE)
 
         raw = await server.get_task(
             task_id,
@@ -254,7 +283,7 @@ def _create_mcp_server(readonly: bool = False) -> FastMCP:
 
             server = _get_server(ctx) if ctx else None
             if server is None:
-                raise ValueError("Server not initialized")
+                raise ValueError(NO_SESSION_MESSAGE)
 
             raw = await server.get_context(task_id)
 
@@ -324,7 +353,7 @@ def _create_mcp_server(readonly: bool = False) -> FastMCP:
 
             server = _get_server(ctx) if ctx else None
             if server is None:
-                raise ValueError("Server not initialized")
+                raise ValueError(NO_SESSION_MESSAGE)
 
             result = await server.update_scratchpad(task_id, content)
 
@@ -352,7 +381,7 @@ def _create_mcp_server(readonly: bool = False) -> FastMCP:
 
             server = _get_server(ctx) if ctx else None
             if server is None:
-                raise ValueError("Server not initialized")
+                raise ValueError(NO_SESSION_MESSAGE)
 
             raw = await server.request_review(task_id, summary)
 

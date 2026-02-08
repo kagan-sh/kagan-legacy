@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -38,12 +39,13 @@ class UpdateCheckResult:
     current_version: str
     latest_version: str | None
     is_dev: bool
+    is_local: bool = False
     error: str | None = None
 
     @property
     def update_available(self) -> bool:
         """Check if an update is available."""
-        if self.is_dev or self.latest_version is None:
+        if self.is_dev or self.is_local or self.latest_version is None:
             return False
         try:
             return parse_version(self.latest_version) > parse_version(self.current_version)
@@ -59,6 +61,25 @@ def get_installed_version() -> str:
 def is_dev_version(version: str) -> bool:
     """Check if this is a development/editable install."""
     return version == "dev" or ".dev" in version or "+editable" in version
+
+
+def is_local_install() -> bool:
+    """Check if kagan was installed from a local/file source (not PyPI).
+
+    Uses PEP 610 direct_url.json metadata to detect local directory installs.
+    This catches cases like ``uv tool install .`` or ``pip install /path/to/kagan``
+    where the package version looks normal but auto-upgrade via PyPI would fail.
+    """
+    try:
+        dist = distribution("kagan")
+        direct_url_text = dist.read_text("direct_url.json")
+        if direct_url_text is None:
+            return False
+        direct_url = json.loads(direct_url_text)
+        url = direct_url.get("url", "")
+        return url.startswith("file://")
+    except Exception:
+        return False
 
 
 def fetch_latest_version(prerelease: bool = False, timeout: float = TIMEOUT_SECONDS) -> str | None:
@@ -120,6 +141,15 @@ def check_for_updates(prerelease: bool = False) -> UpdateCheckResult:
             latest_version=None,
             is_dev=True,
             error="Running from development version",
+        )
+
+    if is_local_install():
+        return UpdateCheckResult(
+            current_version=current,
+            latest_version=None,
+            is_dev=False,
+            is_local=True,
+            error="Installed from local source",
         )
 
     latest = fetch_latest_version(prerelease=prerelease)
@@ -295,6 +325,15 @@ def update(force: bool, check_only: bool, prerelease: bool) -> None:
     if result.is_dev:
         click.secho("Running from development version. Cannot auto-update.", fg="yellow")
         click.echo("If you installed from source, use 'git pull' instead.")
+        if check_only:
+            sys.exit(2)
+        return
+
+    if result.is_local:
+        click.secho("Installed from local source. Cannot auto-update from PyPI.", fg="yellow")
+        click.echo("To update, rebuild from your local source:")
+        click.echo("  uv tool install . --force  (from the kagan source directory)")
+        click.echo("  or: git pull && uv tool install . --force")
         if check_only:
             sys.exit(2)
         return

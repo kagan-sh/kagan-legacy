@@ -16,7 +16,10 @@
   <a href="https://opensource.org/license/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://github.com/aorumbayev/kagan/stargazers"><img src="https://img.shields.io/github/stars/aorumbayev/kagan?style=for-the-badge" alt="Stars"></a>
   <a href="https://discord.gg/dB5AgMwWMy"><img src="https://img.shields.io/badge/discord-join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://snyk.io/test/github/kagan-sh/kagan"><img src="https://img.shields.io/snyk/vulnerabilities/github/kagan-sh/kagan?style=for-the-badge&logo=snyk&logoColor=white" alt="Snyk"></a>
+</p>
+
+<p align="center">
+  <a href="https://snyk.io/test/github/kagan-sh/kagan?targetFile=pyproject.toml"><img src="https://snyk.io/test/github/kagan-sh/kagan/badge.svg?targetFile=pyproject.toml&style=flat" alt="Snyk"></a>
 </p>
 
 <p align="center">
@@ -29,7 +32,7 @@
 ---
 
 <p align="center">
-  <img src="https://i.imgur.com/dZRl5V7.png" alt="Kagan Screenshot" width="700">
+  <img src=".github/assets/demo.gif" alt="Kagan Demo" width="700">
 </p>
 
 Terminal Kanban board with integrated AI agents for autonomous and collaborative development. Review mode surfaces merge readiness and conflict guidance.

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock
 
+from tests.mcp.contract._bridge_test_support import CLIENT_VERSION, SESSION_ORIGIN
+
 from kagan.core.ipc.contracts import CoreResponse
 from kagan.mcp.tools import CoreClientBridge
 
@@ -21,13 +23,14 @@ def _bridge_for_routes(
         *,
         session_id: str,
         session_profile: str | None = None,
-        session_origin: str | None = None,
+        session_origin: str,
+        client_version: str,
         capability: str,
         method: str,
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> CoreResponse:
-        del session_id, session_profile, session_origin, idempotency_key
+        del session_id, session_profile, session_origin, client_version, idempotency_key
         if captured_calls is not None:
             captured_calls.append(
                 {
@@ -40,7 +43,12 @@ def _bridge_for_routes(
         return CoreResponse.success("req-1", result=payload)
 
     client.request = _request
-    return CoreClientBridge(client, session_id="test-session")
+    return CoreClientBridge(
+        client,
+        session_id="test-session",
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
+    )
 
 
 async def test_end_to_end_job_flow_uses_submit_wait_events_contract() -> None:

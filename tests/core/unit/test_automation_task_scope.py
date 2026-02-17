@@ -14,10 +14,10 @@ from kagan.core.services.automation.runner import AutomationEngine, AutomationRe
 if TYPE_CHECKING:
     from kagan.core.agents.agent_factory import AgentFactory
     from kagan.core.config import AgentConfig
-    from kagan.core.services.runtime import RuntimeService
-    from kagan.core.services.tasks import TaskService
+    from kagan.core.services.runtime import RuntimeServiceImpl
+    from kagan.core.services.tasks import TaskServiceImpl
     from kagan.core.services.types import TaskLike
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.workspaces import WorkspaceServiceImpl
 
 
 class _FakeAgent:
@@ -80,10 +80,10 @@ async def test_auto_execution_sets_task_scope_on_agent(monkeypatch, tmp_path) ->
     )
 
     engine = AutomationEngine(
-        task_service=cast("TaskService", task_service),
-        workspace_service=cast("WorkspaceService", SimpleNamespace()),
+        task_service=cast("TaskServiceImpl", task_service),
+        workspace_service=cast("WorkspaceServiceImpl", SimpleNamespace()),
         config=create_test_config(),
-        runtime_service=cast("RuntimeService", runtime_service),
+        runtime_service=cast("RuntimeServiceImpl", runtime_service),
         agent_factory=cast("AgentFactory", _factory),
     )
 
@@ -118,15 +118,15 @@ async def test_auto_review_sets_task_scope_on_agent(monkeypatch, tmp_path) -> No
         return fake_agent
 
     reviewer = AutomationReviewer(
-        task_service=cast("TaskService", SimpleNamespace()),
-        workspace_service=cast("WorkspaceService", SimpleNamespace()),
+        task_service=cast("TaskServiceImpl", SimpleNamespace()),
+        workspace_service=cast("WorkspaceServiceImpl", SimpleNamespace()),
         config=create_test_config(),
         execution_service=None,
         notifier=None,
         agent_factory=cast("AgentFactory", _factory),
         git_adapter=None,
         runtime_service=cast(
-            "RuntimeService",
+            "RuntimeServiceImpl",
             SimpleNamespace(clear_review_agent=lambda _task_id: None),
         ),
         get_agent_config=lambda _task: cast(
@@ -154,6 +154,62 @@ async def test_auto_review_sets_task_scope_on_agent(monkeypatch, tmp_path) -> No
     assert passed is True
     assert fake_agent.task_id == "AUTO-456"
     assert fake_agent.auto_approve is True
+
+
+async def test_auto_review_does_not_drop_review_log_start_index_when_setting_review_result(
+    monkeypatch, tmp_path
+) -> None:
+    """Regression: avoid read-after-write metadata loss when persisting review_result."""
+    config = create_test_config()
+    config.general.auto_review = True
+
+    task_service = SimpleNamespace(
+        update_fields=AsyncMock(return_value=None),
+        get_scratchpad=AsyncMock(return_value=""),
+        update_scratchpad=AsyncMock(return_value=None),
+    )
+    workspace_service = SimpleNamespace(get_path=AsyncMock(return_value=tmp_path))
+    runtime_service = SimpleNamespace(get=lambda _task_id: SimpleNamespace(execution_id="exec-1"))
+
+    execution_service = SimpleNamespace(
+        get_execution_log_entries=AsyncMock(
+            return_value=[
+                SimpleNamespace(logs="a"),
+                SimpleNamespace(logs="b"),
+            ]
+        ),
+        get_execution=AsyncMock(return_value=SimpleNamespace(metadata_={})),
+        update_execution=AsyncMock(return_value=None),
+    )
+
+    reviewer = AutomationReviewer(
+        task_service=cast("TaskServiceImpl", task_service),
+        workspace_service=cast("WorkspaceServiceImpl", workspace_service),
+        config=config,
+        execution_service=cast("Any", execution_service),
+        notifier=None,
+        agent_factory=cast("AgentFactory", lambda *_a, **_kw: None),
+        git_adapter=None,
+        runtime_service=cast("RuntimeServiceImpl", runtime_service),
+        get_agent_config=lambda _task: cast("AgentConfig", SimpleNamespace(identity="x", name="x")),
+        apply_model_override=lambda *_a, **_kw: None,
+        set_review_agent=AsyncMock(return_value=None),
+        notify_task_changed=lambda: None,
+    )
+    monkeypatch.setattr(reviewer, "run_review", AsyncMock(return_value=(True, "LGTM")))
+
+    task = SimpleNamespace(
+        id="AUTO-999",
+        title="Task",
+        description="",
+        base_branch="main",
+    )
+    await reviewer._handle_complete(cast("TaskLike", task))
+
+    # Second update should retain the review_log_start_index set earlier.
+    final_metadata = execution_service.update_execution.await_args_list[-1].kwargs["metadata"]
+    assert final_metadata["review_log_start_index"] == 2
+    assert "review_result" in final_metadata
 
 
 async def test_auto_execution_persists_incremental_output_during_run(monkeypatch, tmp_path) -> None:
@@ -197,10 +253,10 @@ async def test_auto_execution_persists_incremental_output_during_run(monkeypatch
     )
 
     engine = AutomationEngine(
-        task_service=cast("TaskService", task_service),
-        workspace_service=cast("WorkspaceService", SimpleNamespace()),
+        task_service=cast("TaskServiceImpl", task_service),
+        workspace_service=cast("WorkspaceServiceImpl", SimpleNamespace()),
         config=create_test_config(),
-        runtime_service=cast("RuntimeService", runtime_service),
+        runtime_service=cast("RuntimeServiceImpl", runtime_service),
         execution_service=cast("Any", execution_service),
         agent_factory=cast("AgentFactory", _factory),
     )

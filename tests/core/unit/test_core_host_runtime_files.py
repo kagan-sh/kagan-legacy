@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 from kagan.core.config import KaganConfig
+from kagan.core.domain.enums import TaskType
 from kagan.core.host import CoreHost
 from kagan.core.instance_lease import CoreInstanceLock
 from kagan.core.ipc.transports import ServerHandle
-from kagan.core.models.enums import TaskType
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:

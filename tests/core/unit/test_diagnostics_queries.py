@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from kagan.core.api import KaganAPI
-from kagan.core.request_handlers import handle_diagnostics_instrumentation
+from kagan.core.commands.automation import handle_diagnostics_instrumentation
 
 
 async def test_instrumentation_snapshot_returns_core_state(monkeypatch) -> None:
@@ -22,7 +22,7 @@ async def test_instrumentation_snapshot_returns_core_state(monkeypatch) -> None:
     )
 
     ctx = SimpleNamespace()
-    f = KaganAPI(cast("Any", ctx))
-    result = await handle_diagnostics_instrumentation(f, {})
+    ctx.api = KaganAPI(cast("Any", ctx))
+    result = await handle_diagnostics_instrumentation(ctx, {})
 
     assert result["instrumentation"] == sentinel

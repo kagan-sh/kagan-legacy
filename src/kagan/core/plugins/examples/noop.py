@@ -12,7 +12,7 @@ from kagan.core.plugins.sdk import (
     PluginRegistrationApi,
     PluginRegistry,
 )
-from kagan.core.security import CapabilityProfile
+from kagan.core.policy import CapabilityProfile
 
 
 class NoOpExamplePlugin:

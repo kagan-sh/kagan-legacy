@@ -28,8 +28,8 @@ def _suppress_event_loop_closed(unraisable: sys.UnraisableHookArgs) -> None:
 
 sys.unraisablehook = _suppress_event_loop_closed
 
-from kagan.cli.commands.root import cli  # noqa: E402
 from kagan.cli.commands.tui import tui  # noqa: E402
+from kagan.cli.main import cli  # noqa: E402
 
 __all__ = ["cli", "tui"]
 

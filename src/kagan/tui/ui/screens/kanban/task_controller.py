@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kagan.core.models.enums import CardIndicator, TaskStatus, TaskType
+from kagan.core.domain.enums import CardIndicator, TaskStatus, TaskType
 from kagan.core.services.jobs import JobStatus
 from kagan.tui.ui.modals import ConfirmModal, ModalAction, TaskDetailsModal
 from kagan.tui.ui.screen_result import await_screen_result
@@ -243,7 +243,7 @@ class KanbanTaskController:
         branch = await choose_branch_with_modal(
             self.screen.app,
             project_root=self.screen.kagan_app.project_root,
-            current_value=task.base_branch or "",
+            current_value=(task.base_branch or "") if isinstance(task.base_branch, str) else "",
             title="Set Task Branch",
             description=f"Set base branch for: {task.title[:40]}",
             timeout_seconds=BRANCH_LOOKUP_TIMEOUT_SECONDS,
@@ -256,21 +256,3 @@ class KanbanTaskController:
         await self.screen.ctx.api.update_task(task.id, base_branch=branch or None)
         await self.screen._board.refresh_board()
         self.screen.notify(f"Branch set to: {branch or '(default)'}")
-
-    async def set_default_branch_flow(self) -> None:
-        """Set default branch flow."""
-        config = self.screen.kagan_app.config
-
-        branch = await choose_branch_with_modal(
-            self.screen.app,
-            project_root=self.screen.kagan_app.project_root,
-            current_value=config.general.default_base_branch,
-            title="Set Default Branch",
-            description="Set global default branch for new workspaces:",
-            timeout_seconds=BRANCH_LOOKUP_TIMEOUT_SECONDS,
-            warn=lambda message: self.screen.notify(message, severity="warning"),
-        )
-        if branch is not None:
-            config.general.default_base_branch = branch or "main"
-            await config.save(self.screen.kagan_app.config_path)
-            self.screen.notify(f"Default branch set to: {branch or 'main'}")

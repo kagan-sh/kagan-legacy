@@ -19,6 +19,7 @@ Purpose: give coding agents the minimum high-signal rules needed to ship safe, t
 - Avoid ambiguity; define assumptions in code/tests.
 - Fail loudly on invalid state unless failure is intentionally suppressed.
 - Keep one obvious way to do routine tasks (build, test, lint, release).
+- Follow Zen of Python as a hard constraint: explicit, simple, readable, and one obvious way.
 
 ## Instruction Maintenance
 
@@ -47,52 +48,53 @@ uv run poe check
 uv run pre-commit run --all-files
 ```
 
-## Test Commands (Use These First)
+## Test Commands
 
 ```bash
-# all tests
-uv run poe test
-uv run pytest tests/ -v
-
-# single file/class/test
-uv run pytest tests/core/unit/test_runtime_state_service.py -v
-uv run pytest tests/core/unit/test_runtime_state_service.py::TestRuntimeStateService -v
-uv run pytest tests/mcp/contract/test_mcp_v2_end_to_end.py::test_end_to_end_job_flow_uses_submit_wait_events_contract -v
-
-# filter
-uv run pytest tests/ -k "runtime and refresh" -v
-uv run pytest tests/ -m "core and unit" -v
-
-# sequential (debug/snapshot safety)
-uv run pytest tests/ -n 0 -v
+uv run pytest
 ```
 
-## High-Signal Test Profiles
+Or with paths/filters:
 
 ```bash
-uv run poe test-core
-uv run poe test-mcp
-uv run poe test-smoke
-uv run poe test-tui-snapshot
-uv run poe test-snapshot-update
+uv run pytest tests/ -v
+uv run pytest tests/core/unit/test_runtime_state_service.py -v
+uv run pytest tests/ -k "runtime and refresh" -v
+uv run pytest tests/ -m "core and unit" -v
+uv run pytest tests/ -n 0 -v   # sequential (debug/snapshot update)
+uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
 ```
 
 ## Pytest and Marker Policy
 
 - Default addopts include `-n auto --dist=loadgroup`.
-- Snapshot tests must run with `-n 0`.
+- Snapshot tests use `xdist_group` and run with `-n auto`; only `--snapshot-update` requires `-n 0`.
 - Package/type markers are path-assigned in `tests/conftest.py`.
-- Do not manually add: `core`, `mcp`, `tui`, `unit`, `contract`, `snapshot`, `smoke`.
+- Do not manually add: `core`, `mcp`, `tui`, `plugins`, `fast`, `unit`, `contract`, `snapshot`, `smoke`.
 - `integration` marker is deprecated/disallowed for explicit use.
+- Do not write tautology tests (tests that only restate implementation internals).
+- Prefer tests that validate useful user-facing behavior and observable outcomes.
+
+## Test Value Gate (Mandatory)
+
+- Add tests only for user-visible behavior, API/contract guarantees, or real regressions.
+- Do not add tautology tests or pass-through wiring tests already covered elsewhere.
+- Search first (`rg`) for existing coverage and extend current tests instead of adding near-duplicates.
+- Reuse fixtures/helpers from `tests/**/conftest.py` and `tests/helpers/**`; avoid local fixtures when reusable ones exist.
+- Every new test must fail on the pre-fix path and pass after the fix.
+- If a new fixture is unavoidable, add a one-line comment explaining why shared fixtures are insufficient.
+- Before commit, remove or merge redundant tests introduced during the change.
 
 Path mapping:
 
+- `tests/core/fast/*` -> `core`, `fast`
 - `tests/core/unit/*` -> `core`, `unit`
 - `tests/core/smoke/*` -> `core`, `smoke`
 - `tests/mcp/contract/*` -> `mcp`, `contract`
 - `tests/mcp/smoke/*` -> `mcp`, `smoke`
 - `tests/tui/snapshot/*` -> `tui`, `snapshot`
 - `tests/tui/smoke/*` -> `tui`, `smoke`
+- `tests/plugins/*` -> `plugins`, `unit`
 
 ## Code Style
 
@@ -133,6 +135,43 @@ Path mapping:
 - Direct subprocess calls are only allowed in:
   - `src/kagan/core/adapters/process.py`
 
+### Module Map
+
+**Domain layer** — `src/kagan/core/domain/`
+- `enums.py` — canonical enums (TaskStatus, TaskType, etc.)
+- `errors.py` — domain-specific error types
+- `task_rules.py` — task lifecycle/transition rules
+
+**Command dispatch** — `src/kagan/core/commands/`
+- `tasks.py`, `projects.py`, `automation.py`, `workspaces.py`, `plugins.py` — command handlers by capability
+- `_parsing.py` — input parsing helpers (limits, offsets, timeouts)
+- `_serialization.py` — response building and output formatting
+- `__init__.py` — `CommandRouter` dispatches `(capability, method)` pairs to handlers
+
+**Policy** — `src/kagan/core/policy.py`
+- Consolidated auth/security: `CapabilityProfile`, `AuthorizationPolicy`, `SessionBinding`, `@command` decorator, `RequestContext`
+- Merged from the former `security.py`, `session_binding.py`, `expose.py`, `request_context.py`
+
+**SDK** — `src/kagan/sdk/`
+- `_client.py` — `KaganSDK` typed client
+- `_transport.py` — `SDKTransport` (IPC communication)
+- `_types.py` — response dataclasses
+- `_errors.py` — `SDKError` hierarchy
+
+**MCP server** — `src/kagan/mcp/`
+- `server.py` — FastMCP server setup
+- `tools.py` — MCP tool definitions (bridge layer)
+- `_tool_gen.py` — tool registration/generation
+- `_response_models.py` — MCP response models
+- `_truncation.py` — response size management
+
+### Compatibility Shims (transitional)
+
+These modules delegate to `core/commands/` and exist only for backward-compatible imports in tests:
+- `core/request_handlers/` — handler facades wrapping command functions
+- `core/request_dispatch_map/` — dispatch map built from `CommandRouter`
+- `core/request_handler_support.py` — re-exports from `commands/_parsing.py` and `commands/_serialization.py`
+
 ## TUI Rules
 
 - Keep Textual styling in:
@@ -148,6 +187,8 @@ uv run poe docs-serve
 uv run poe docs-build
 uv run poe workflows-check
 ```
+
+- Any user-facing behavior change must be documented in user-facing docs in the same change.
 
 ## Commit Conventions
 
@@ -165,5 +206,6 @@ uv run poe workflows-check
 - Ran the smallest relevant tests first, then broader gates as needed.
 - Do not claim completion without executing verification commands.
 - Updated tests/docs when behavior or contracts changed.
+- Confirmed tests exercise user-facing behavior (not implementation tautologies).
 - Kept changes within existing boundaries unless task explicitly required boundary changes.
 - Left a short summary with changed files and verification commands executed.

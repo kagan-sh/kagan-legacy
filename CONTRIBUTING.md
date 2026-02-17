@@ -45,17 +45,17 @@ uv run poe typecheck  # Pyrefly type checker
 uv run pytest tests/ -v
 ```
 
-Run the full suite:
+Run the fast quality gate:
 
 ```bash
-uv run poe check      # lint + typecheck + test
-uv run poe check-full # full quality gates
+uv run poe check
 ```
 
 ## Testing
 
 ```bash
-# All tests (parallel by default)
+uv run pytest
+# or
 uv run pytest tests/ -v
 
 # Single file
@@ -76,11 +76,9 @@ uv run pytest tests/ -n 0 -v          # Sequential (for debugging)
 
 ## UI Snapshots
 
-Snapshot tests must run sequentially (no parallel):
-
 ```bash
-uv run poe test-tui-snapshot          # Run snapshot tests
-uv run poe test-snapshot-update       # Update snapshots
+uv run pytest tests/tui/snapshot/ -v
+uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
 ```
 
 ## Docs Preview
@@ -128,7 +126,7 @@ src/kagan/
 
 Read and follow the architecture contract before making structural changes:
 
-- [`docs/reference/architecture.md`](docs/reference/architecture.md)
+- [`docs/concepts/architecture-overview.md`](docs/concepts/architecture-overview.md)
 
 **Dependency rule:** `core` has no dependency on `tui`, `mcp`, or `cli`.
 `tui` and `mcp` depend only on `core`. `cli` assembles entry points.
@@ -137,9 +135,9 @@ Read and follow the architecture contract before making structural changes:
 
 1. **Clone and install** (2 min): `git clone ... && cd kagan && uv sync --dev`
 1. **Read this file** (5 min): Understand prerequisites, linting, test commands
-1. **Skim architecture** (5 min): Read `docs/reference/architecture.md`
+1. **Skim architecture** (5 min): Read `docs/concepts/architecture-overview.md`
 1. **Run the app** (2 min): `uv run kagan` to see the Kanban TUI
-1. **Run the quality gate** (5 min): `uv run poe check`
+1. **Run the quality gate** (30 sec): `uv run poe check`
 1. **Pick a task** and explore the relevant module for orientation (10 min)
 
 ### Source Layout
@@ -225,7 +223,7 @@ def __init__(self, task: Task, **kwargs) -> None:
 
 ### CSS in TCSS Only
 
-All styles go in `src/kagan/styles/kagan.tcss`. Never use `DEFAULT_CSS` in Python.
+All styles go in `src/kagan/tui/styles/kagan.tcss`. Never use `DEFAULT_CSS` in Python.
 
 ## Git Commit Rules
 
@@ -245,5 +243,5 @@ git config commit.gpgsign false
 
 ## Notes
 
-- Kagan uses Textual; styles should live in `src/kagan/styles/kagan.tcss`
+- Kagan uses Textual; styles should live in `src/kagan/tui/styles/kagan.tcss`
 - See `AGENTS.md` for agent workflow and coding guidelines

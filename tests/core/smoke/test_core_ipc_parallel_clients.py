@@ -14,7 +14,9 @@ from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.discovery import CoreEndpoint
 from kagan.core.ipc.server import IPCServer
 from kagan.core.ipc.transports import UnixSocketTransport
-from kagan.core.security import AuthorizationError, AuthorizationPolicy, CapabilityProfile
+from kagan.core.policy import AuthorizationError, AuthorizationPolicy, CapabilityProfile
+
+TEST_CLIENT_VERSION = "test-version"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -61,7 +63,10 @@ def short_tmp():  # type: ignore[override]
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_two_clients_concurrent_requests(short_tmp) -> None:
     """Two IPCClients can send requests concurrently to one IPCServer."""
     sock = str(short_tmp / "t.sock")
@@ -77,8 +82,20 @@ async def test_two_clients_concurrent_requests(short_tmp) -> None:
 
     try:
         resp_a, resp_b = await asyncio.gather(
-            client_a.request(session_id="tui", capability="tasks", method="list"),
-            client_b.request(session_id="mcp", capability="projects", method="list"),
+            client_a.request(
+                session_id="tui",
+                session_origin="tui",
+                client_version=TEST_CLIENT_VERSION,
+                capability="tasks",
+                method="list",
+            ),
+            client_b.request(
+                session_id="mcp",
+                session_origin="tui",
+                client_version=TEST_CLIENT_VERSION,
+                capability="projects",
+                method="list",
+            ),
         )
         assert resp_a.ok and resp_a.result is not None
         assert resp_a.result["capability"] == "tasks"
@@ -90,7 +107,10 @@ async def test_two_clients_concurrent_requests(short_tmp) -> None:
         await server.stop()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_viewer_denied_destructive_command(short_tmp) -> None:
     """A viewer-profile session is denied access to a mutating command."""
     sock = str(short_tmp / "t.sock")
@@ -108,6 +128,8 @@ async def test_viewer_denied_destructive_command(short_tmp) -> None:
     try:
         resp = await client.request(
             session_id="viewer-session",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
             capability="tasks",
             method="delete",
         )
@@ -119,7 +141,10 @@ async def test_viewer_denied_destructive_command(short_tmp) -> None:
         await server.stop()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_viewer_allowed_read_query(short_tmp) -> None:
     """A viewer-profile session can issue a read-only query."""
     sock = str(short_tmp / "t.sock")
@@ -137,6 +162,8 @@ async def test_viewer_allowed_read_query(short_tmp) -> None:
     try:
         resp = await client.request(
             session_id="viewer-session",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
             capability="tasks",
             method="list",
         )
@@ -148,7 +175,10 @@ async def test_viewer_allowed_read_query(short_tmp) -> None:
         await server.stop()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_invalid_token_rejected(short_tmp) -> None:
     """A client with a wrong bearer token gets AUTH_FAILED."""
     sock = str(short_tmp / "t.sock")
@@ -161,7 +191,13 @@ async def test_invalid_token_rejected(short_tmp) -> None:
     await client.connect()
 
     try:
-        resp = await client.request(session_id="s1", capability="tasks", method="list")
+        resp = await client.request(
+            session_id="s1",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
+            capability="tasks",
+            method="list",
+        )
         assert not resp.ok
         assert resp.error is not None
         assert resp.error.code == "AUTH_FAILED"
@@ -170,7 +206,10 @@ async def test_invalid_token_rejected(short_tmp) -> None:
         await server.stop()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_multiple_profiles_on_same_server(short_tmp) -> None:
     """Different sessions with different profiles get correct auth results."""
     sock = str(short_tmp / "t.sock")
@@ -188,16 +227,32 @@ async def test_multiple_profiles_on_same_server(short_tmp) -> None:
 
     try:
         # Viewer cannot delete
-        resp_deny = await client.request(session_id="viewer", capability="tasks", method="delete")
+        resp_deny = await client.request(
+            session_id="viewer",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
+            capability="tasks",
+            method="delete",
+        )
         assert not resp_deny.ok
 
         # Operator can create
-        resp_ok = await client.request(session_id="operator", capability="tasks", method="create")
+        resp_ok = await client.request(
+            session_id="operator",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
+            capability="tasks",
+            method="create",
+        )
         assert resp_ok.ok
 
         # Operator cannot delete (only maintainer can)
         resp_deny2 = await client.request(
-            session_id="operator", capability="tasks", method="delete"
+            session_id="operator",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
+            capability="tasks",
+            method="delete",
         )
         assert not resp_deny2.ok
     finally:
@@ -205,7 +260,10 @@ async def test_multiple_profiles_on_same_server(short_tmp) -> None:
         await server.stop()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets unavailable on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
 async def test_client_rejects_mismatched_request_id(short_tmp) -> None:
     """Client closes connection when server returns a mismatched request_id."""
     sock = str(short_tmp / "t.sock")
@@ -223,8 +281,50 @@ async def test_client_rejects_mismatched_request_id(short_tmp) -> None:
 
     try:
         with pytest.raises(ConnectionError, match="request_id mismatch"):
-            await client.request(session_id="s1", capability="tasks", method="list")
+            await client.request(
+                session_id="s1",
+                session_origin="tui",
+                client_version=TEST_CLIENT_VERSION,
+                capability="tasks",
+                method="list",
+            )
         assert not client.is_connected
+    finally:
+        await client.close()
+        await server.stop()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Unix sockets unavailable on Windows",
+)
+async def test_client_handles_large_response_line(short_tmp) -> None:
+    """Client reads large single-line JSON responses without framing errors."""
+    sock = str(short_tmp / "t.sock")
+    transport = UnixSocketTransport(path=sock)
+    large_payload = "x" * (128 * 1024)
+
+    async def large_handler(req: CoreRequest) -> CoreResponse:
+        return CoreResponse.success(req.request_id, result={"payload": large_payload})
+
+    server = IPCServer(handler=large_handler, transport=transport)
+    await server.start()
+
+    ep = _endpoint(sock, server.token)
+    client = IPCClient(ep, transport=UnixSocketTransport(path=sock))
+    await client.connect()
+
+    try:
+        resp = await client.request(
+            session_id="s1",
+            session_origin="tui",
+            client_version=TEST_CLIENT_VERSION,
+            capability="tasks",
+            method="list",
+        )
+        assert resp.ok
+        assert resp.result is not None
+        assert resp.result["payload"] == large_payload
     finally:
         await client.close()
         await server.stop()

@@ -11,7 +11,7 @@ import pytest
 if TYPE_CHECKING:
     from kagan.core.adapters.db.repositories import TaskRepository
     from kagan.core.bootstrap import InMemoryEventBus
-    from kagan.core.services.tasks import TaskService
+    from kagan.core.services.tasks import TaskServiceImpl
 
 
 @pytest.fixture
@@ -38,8 +38,8 @@ def event_bus() -> InMemoryEventBus:
 
 
 @pytest.fixture
-def task_service(state_manager: TaskRepository, event_bus: InMemoryEventBus) -> TaskService:
-    """Create a TaskService backed by the test repository."""
+def task_service(state_manager: TaskRepository, event_bus: InMemoryEventBus) -> TaskServiceImpl:
+    """Create a TaskServiceImpl backed by the test repository."""
     from kagan.core.services.tasks import TaskServiceImpl
 
     return TaskServiceImpl(state_manager, event_bus)
@@ -49,7 +49,7 @@ def task_service(state_manager: TaskRepository, event_bus: InMemoryEventBus) -> 
 def task_factory(state_manager: TaskRepository):
     """Factory for creating DB Task objects with default project/repo IDs."""
     from kagan.core.adapters.db.schema import Task
-    from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
+    from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 
     def _factory(
         *,

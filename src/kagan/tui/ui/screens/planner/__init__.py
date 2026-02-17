@@ -1,7 +1,6 @@
 """Planner screen package."""
 
-from kagan.tui.ui.screens.planner.screen import PlannerInput, PlannerScreen
-from kagan.tui.ui.screens.planner.state import (
+from kagan.tui.ui.screens.planner.runtime import (
     ChatMessage,
     NoteInfo,
     PersistentPlannerState,
@@ -9,6 +8,7 @@ from kagan.tui.ui.screens.planner.state import (
     PlannerPhase,
     PlannerState,
 )
+from kagan.tui.ui.screens.planner.screen import PlannerInput, PlannerScreen
 
 __all__ = [
     "ChatMessage",

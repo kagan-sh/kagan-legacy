@@ -8,7 +8,7 @@ from acp.schema import PlanEntry
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 from kagan.core.time import utc_now
 
 

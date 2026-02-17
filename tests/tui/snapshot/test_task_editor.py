@@ -12,7 +12,7 @@ from tests.tui.snapshot.conftest import _normalize_svg
 from kagan.core.adapters.db.repositories import TaskRepository
 from kagan.core.adapters.db.schema import Task
 from kagan.core.adapters.db.schema import Task as DbTask
-from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 from kagan.tui.app import KaganApp
 
 if TYPE_CHECKING:

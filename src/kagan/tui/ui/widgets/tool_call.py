@@ -14,7 +14,7 @@ from textual.css.query import NoMatches
 from textual.reactive import var
 from textual.widgets import Markdown, Static
 
-from kagan.core.models.enums import ToolCallStatus
+from kagan.core.domain.enums import ToolCallStatus
 from kagan.tui.ui.utils.helpers import colorize_diff, copy_with_notification
 
 if TYPE_CHECKING:

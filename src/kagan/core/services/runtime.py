@@ -1,34 +1,53 @@
 """Unified runtime service.
 
 Combines persisted startup/session context, in-memory runtime task projection,
-and AUTO output readiness/recovery orchestration.
+AUTO output readiness/recovery orchestration, process control primitives,
+idempotency cache, and runtime snapshot serialization.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import hashlib
+import json
+import logging
+import os
+import subprocess
+import sys
+import time
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from sqlalchemy.exc import OperationalError
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
 from kagan.core.adapters.db.schema import AppState
 from kagan.core.adapters.db.session import AsyncSessionFactory, get_session
+from kagan.core.adapters.process import spawn_detached
+from kagan.core.domain.enums import ExecutionStatus, TaskType
 from kagan.core.git_utils import has_git_repo
-from kagan.core.models.enums import ExecutionStatus, TaskType
+from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
+from kagan.core.paths import (
+    get_config_path,
+    get_core_runtime_dir,
+    get_data_dir,
+    get_database_path,
+)
+from kagan.core.process_liveness import pid_exists
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-    from datetime import datetime
-    from pathlib import Path
 
     from kagan.core.acp import Agent
     from kagan.core.adapters.db.repositories import ExecutionRepository
-    from kagan.core.services.automation import AutomationService
-    from kagan.core.services.projects import ProjectService
+    from kagan.core.config import KaganConfig
+    from kagan.core.services.automation import AutomationServiceImpl
+    from kagan.core.services.projects import ProjectServiceImpl
     from kagan.core.services.types import TaskLike
 
 
@@ -137,70 +156,6 @@ class AutoOutputRecoveryResult:
     message: str
 
 
-class RuntimeService(Protocol):
-    """Unified runtime contract for context, view state, and auto-output orchestration."""
-
-    @property
-    def state(self) -> RuntimeContextState: ...
-
-    async def get_last_active_context(self) -> RuntimeContextState: ...
-
-    async def set_last_active_context(
-        self,
-        project_id: str | None,
-        repo_id: str | None,
-    ) -> None: ...
-
-    async def dispatch(
-        self,
-        event: RuntimeSessionEvent,
-        *,
-        project_id: str | None = None,
-        repo_id: str | None = None,
-    ) -> RuntimeContextState: ...
-
-    async def reconcile_startup_state(self) -> RuntimeContextState: ...
-
-    async def decide_startup(self, cwd: Path) -> StartupSessionDecision: ...
-
-    def get(self, task_id: str) -> RuntimeTaskView | None: ...
-
-    def running_tasks(self) -> set[str]: ...
-
-    def mark_started(self, task_id: str) -> None: ...
-
-    def set_execution(self, task_id: str, execution_id: str | None, run_count: int) -> None: ...
-
-    def attach_running_agent(self, task_id: str, agent: Agent) -> None: ...
-
-    def attach_review_agent(self, task_id: str, agent: Agent) -> None: ...
-
-    def clear_review_agent(self, task_id: str) -> None: ...
-
-    def mark_blocked(
-        self,
-        task_id: str,
-        *,
-        reason: str,
-        blocked_by_task_ids: tuple[str, ...] = (),
-        overlap_hints: tuple[str, ...] = (),
-    ) -> None: ...
-
-    def mark_pending(self, task_id: str, *, reason: str) -> None: ...
-
-    def clear_pending(self, task_id: str) -> None: ...
-
-    def clear_blocked(self, task_id: str) -> None: ...
-
-    def mark_ended(self, task_id: str) -> None: ...
-
-    async def prepare_auto_output(self, task: TaskLike) -> AutoOutputReadiness: ...
-
-    async def recover_stale_auto_output(self, task: TaskLike) -> AutoOutputRecoveryResult: ...
-
-    async def reconcile_running_tasks(self, task_ids: Sequence[str]) -> None: ...
-
-
 @dataclass(slots=True)
 class _LiveRuntimeState:
     execution_id: str | None = None
@@ -235,10 +190,10 @@ class RuntimeServiceImpl:
 
     def __init__(
         self,
-        project_service: ProjectService,
+        project_service: ProjectServiceImpl,
         session_factory: AsyncSessionFactory,
         execution_service: ExecutionRepository,
-        automation_resolver: Callable[[], AutomationService | None] | None = None,
+        automation_resolver: Callable[[], AutomationServiceImpl | None] | None = None,
     ) -> None:
         self._projects = project_service
         self._session_factory = session_factory
@@ -526,7 +481,7 @@ class RuntimeServiceImpl:
 
         return _LiveRuntimeState()
 
-    def _resolve_automation_service(self) -> AutomationService | None:
+    def _resolve_automation_service(self) -> AutomationServiceImpl | None:
         if self._automation_resolver is None:
             return None
         try:
@@ -614,7 +569,7 @@ class RuntimeServiceImpl:
                         return self._readiness(
                             output_mode=AutoOutputMode.BACKFILL,
                             execution_id=live.execution_id,
-                            is_running=False,
+                            is_running=True,
                             message=blocked_message,
                         )
                     return self._readiness(
@@ -722,3 +677,393 @@ class RuntimeServiceImpl:
                 success=False,
                 message=self._STALE_RECOVERY_NO_LIVE_RUNTIME_MESSAGE,
             )
+
+
+# ---------------------------------------------------------------------------
+# Idempotency (formerly runtime_helpers)
+# ---------------------------------------------------------------------------
+
+IDEMPOTENCY_CACHE_LIMIT = 512
+
+IDEMPOTENT_MUTATION_METHODS: set[tuple[str, str]] = {
+    ("tasks", "create"),
+    ("tasks", "update"),
+    ("tasks", "move"),
+    ("tasks", "delete"),
+    ("tasks", "update_scratchpad"),
+    ("review", "request"),
+    ("review", "approve"),
+    ("review", "reject"),
+    ("review", "merge"),
+    ("review", "rebase"),
+    ("jobs", "submit"),
+    ("jobs", "cancel"),
+    ("sessions", "create"),
+    ("sessions", "attach"),
+    ("sessions", "kill"),
+    ("projects", "create"),
+    ("projects", "open"),
+    ("projects", "add_repo"),
+    ("settings", "update"),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class CachedResponseEnvelope:
+    ok: bool
+    result: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(slots=True)
+class IdempotencyRecord:
+    fingerprint: str
+    response: CachedResponseEnvelope | None = None
+    pending: asyncio.Future[CachedResponseEnvelope] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyReservation:
+    cache_key: tuple[str, str]
+    fingerprint: str
+    pending: asyncio.Future[CachedResponseEnvelope]
+    owner: bool
+
+
+# ---------------------------------------------------------------------------
+# Runtime snapshot (formerly runtime_helpers)
+# ---------------------------------------------------------------------------
+
+
+class RuntimeSnapshot(TypedDict):
+    """Serialized runtime state exposed to query/command callers."""
+
+    is_running: bool
+    is_reviewing: bool
+    is_blocked: bool
+    blocked_reason: str | None
+    blocked_by_task_ids: list[str]
+    overlap_hints: list[str]
+    blocked_at: str | None
+    is_pending: bool
+    pending_reason: str | None
+    pending_at: str | None
+
+
+class RuntimeSnapshotSource(Protocol):
+    """Minimal runtime service interface required for snapshot lookup."""
+
+    def get(self, task_id: str) -> object | None:
+        """Return runtime view for task_id or None when unavailable."""
+
+
+def empty_runtime_snapshot() -> RuntimeSnapshot:
+    """Return default runtime payload when there is no active runtime view."""
+    return RuntimeSnapshot(
+        is_running=False,
+        is_reviewing=False,
+        is_blocked=False,
+        blocked_reason=None,
+        blocked_by_task_ids=[],
+        overlap_hints=[],
+        blocked_at=None,
+        is_pending=False,
+        pending_reason=None,
+        pending_at=None,
+    )
+
+
+def _iso_or_none(value: object) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def serialize_runtime_view(view: object | None) -> RuntimeSnapshot:
+    """Serialize runtime view object into a stable dict payload."""
+    if view is None:
+        return empty_runtime_snapshot()
+    return RuntimeSnapshot(
+        is_running=bool(getattr(view, "is_running", False)),
+        is_reviewing=bool(getattr(view, "is_reviewing", False)),
+        is_blocked=bool(getattr(view, "is_blocked", False)),
+        blocked_reason=getattr(view, "blocked_reason", None),
+        blocked_by_task_ids=[str(task_id) for task_id in getattr(view, "blocked_by_task_ids", ())],
+        overlap_hints=[str(hint) for hint in getattr(view, "overlap_hints", ())],
+        blocked_at=_iso_or_none(getattr(view, "blocked_at", None)),
+        is_pending=bool(getattr(view, "is_pending", False)),
+        pending_reason=getattr(view, "pending_reason", None),
+        pending_at=_iso_or_none(getattr(view, "pending_at", None)),
+    )
+
+
+def runtime_snapshot_for_task(
+    *,
+    task_id: str,
+    runtime_service: RuntimeSnapshotSource | None,
+) -> RuntimeSnapshot:
+    """Resolve task runtime snapshot from a runtime service if available."""
+    if runtime_service is None:
+        return empty_runtime_snapshot()
+    return serialize_runtime_view(runtime_service.get(task_id))
+
+
+# ---------------------------------------------------------------------------
+# Process control (formerly runtime_control)
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
+_CORE_START_LOCK_NAME = "core.start.lock"
+_CORE_START_POLL_SECONDS = 0.2
+_CORE_START_LOCK_STALE_SECONDS = 60.0
+_CORE_LEASE_FILE = "core.lease.json"
+_CORE_INSTANCE_LOCK_FILE = "core.instance.lock"
+
+
+def _build_daemon_command(config_path: Path, db_path: Path) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "kagan.core.daemon",
+        "--config-path",
+        str(config_path),
+        "--db-path",
+        str(db_path),
+    ]
+
+
+def _spawn_core_detached(
+    *,
+    config_path: Path,
+    db_path: Path,
+    runtime_dir: Path,
+) -> subprocess.Popen[bytes]:
+    cmd = _build_daemon_command(config_path, db_path)
+    env = dict(os.environ)
+    env["KAGAN_CORE_RUNTIME_DIR"] = str(runtime_dir)
+
+    if os.name == "nt":
+        creationflags = 0
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        return spawn_detached(cmd, env=env, windows_creationflags=creationflags)
+
+    return spawn_detached(cmd, env=env)
+
+
+def _core_start_lock_path(runtime_dir: Path) -> Path:
+    return runtime_dir / _CORE_START_LOCK_NAME
+
+
+def _try_acquire_start_lock(lock_path: Path) -> bool:
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(f"{os.getpid()}\n")
+    return True
+
+
+def _release_start_lock(lock_path: Path) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        lock_path.unlink()
+
+
+def _maybe_clear_stale_start_lock(lock_path: Path, *, stale_after_seconds: float) -> None:
+    try:
+        lock_age = time.time() - lock_path.stat().st_mtime
+    except FileNotFoundError:
+        return
+    if lock_age < stale_after_seconds:
+        return
+    logger.warning("Removing stale core start lock older than %.1fs", lock_age)
+    with contextlib.suppress(FileNotFoundError):
+        lock_path.unlink()
+
+
+def _read_pid(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _has_live_core_instance_lock(runtime_dir: Path) -> bool:
+    pid: int | None = None
+    lease_path = runtime_dir / _CORE_LEASE_FILE
+    try:
+        lease_data = json.loads(lease_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        lease_data = None
+    if isinstance(lease_data, dict):
+        raw_owner_pid = lease_data.get("owner_pid")
+        if isinstance(raw_owner_pid, int):
+            pid = raw_owner_pid
+        elif isinstance(raw_owner_pid, str):
+            with contextlib.suppress(ValueError):
+                pid = int(raw_owner_pid)
+    if pid is None:
+        pid = _read_pid(runtime_dir / _CORE_INSTANCE_LOCK_FILE)
+    return pid is not None and pid_exists(pid)
+
+
+def discover_running_pid_fallback(*, runtime_dir: Path | None = None) -> int | None:
+    resolved_runtime_dir = runtime_dir if runtime_dir is not None else get_core_runtime_dir()
+    lease_path = resolved_runtime_dir / _CORE_LEASE_FILE
+    try:
+        lease_data = json.loads(lease_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        lease_data = None
+    if isinstance(lease_data, dict):
+        raw_owner_pid = lease_data.get("owner_pid")
+        if isinstance(raw_owner_pid, int) and pid_exists(raw_owner_pid):
+            return raw_owner_pid
+        if isinstance(raw_owner_pid, str):
+            with contextlib.suppress(ValueError):
+                parsed = int(raw_owner_pid)
+                if pid_exists(parsed):
+                    return parsed
+    pid = _read_pid(resolved_runtime_dir / _CORE_INSTANCE_LOCK_FILE)
+    if pid is not None and pid_exists(pid):
+        return pid
+    return None
+
+
+def cleanup_stale_runtime_files(*, runtime_dir: Path | None = None) -> None:
+    resolved_runtime_dir = runtime_dir if runtime_dir is not None else get_core_runtime_dir()
+    for name in ("endpoint.json", "token", _CORE_LEASE_FILE):
+        with contextlib.suppress(OSError):
+            (resolved_runtime_dir / name).unlink(missing_ok=True)
+
+
+def _resolve_runtime_dir(config_path: Path, db_path: Path) -> Path:
+    override = os.environ.get("KAGAN_CORE_RUNTIME_DIR")
+    if override:
+        return Path(override).expanduser().resolve(strict=False)
+
+    resolved_config = config_path.expanduser().resolve(strict=False)
+    resolved_db = db_path.expanduser().resolve(strict=False)
+    default_config = get_config_path().expanduser().resolve(strict=False)
+    default_db = get_database_path().expanduser().resolve(strict=False)
+
+    if resolved_config == default_config and resolved_db == default_db:
+        return get_core_runtime_dir()
+
+    key = f"{resolved_config}\n{resolved_db}".encode()
+    suffix = hashlib.sha256(key).hexdigest()[:16]
+    if os.name == "nt":
+        return get_data_dir() / "core" / "scoped" / suffix
+    return Path("/tmp") / "kagan-core" / suffix
+
+
+async def ensure_core_running(
+    *,
+    config: KaganConfig | None = None,
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    timeout: float = 15.0,
+) -> CoreEndpoint:
+    del config
+    config_path = config_path or get_config_path()
+    db_path = db_path or get_database_path()
+    runtime_dir = _resolve_runtime_dir(config_path, db_path)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = _core_start_lock_path(runtime_dir)
+
+    endpoint = discover_core_endpoint(runtime_dir=runtime_dir)
+    if endpoint is not None:
+        logger.info("Found existing core: %s %s", endpoint.transport, endpoint.address)
+        return endpoint
+
+    logger.info("No running core found, starting one...")
+    process: subprocess.Popen[bytes] | None = None
+    has_start_lock = False
+
+    deadline = asyncio.get_running_loop().time() + timeout
+    stale_after = max(_CORE_START_LOCK_STALE_SECONDS, timeout * 2)
+    try:
+        while asyncio.get_running_loop().time() < deadline:
+            endpoint = discover_core_endpoint(runtime_dir=runtime_dir)
+            if endpoint is not None:
+                return endpoint
+
+            if not has_start_lock:
+                has_start_lock = _try_acquire_start_lock(lock_path)
+                if has_start_lock:
+                    process = _spawn_core_detached(
+                        config_path=config_path,
+                        db_path=db_path,
+                        runtime_dir=runtime_dir,
+                    )
+                else:
+                    _maybe_clear_stale_start_lock(lock_path, stale_after_seconds=stale_after)
+
+            if process is not None and process.poll() is not None:
+                if _has_live_core_instance_lock(runtime_dir):
+                    process = None
+                else:
+                    msg = f"Core daemon exited early with code {process.returncode}"
+                    raise RuntimeError(msg)
+
+            await asyncio.sleep(_CORE_START_POLL_SECONDS)
+    finally:
+        if has_start_lock:
+            _release_start_lock(lock_path)
+
+    msg = f"Core host did not become available within {timeout}s"
+    raise TimeoutError(msg)
+
+
+def ensure_core_running_sync(
+    *,
+    config: KaganConfig | None = None,
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    timeout: float = 15.0,
+) -> CoreEndpoint:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(
+            ensure_core_running(
+                config=config,
+                config_path=config_path,
+                db_path=db_path,
+                timeout=timeout,
+            )
+        )
+    msg = "ensure_core_running_sync cannot be called from within a running event loop"
+    raise RuntimeError(msg)
+
+
+async def run_core_host(*, config_path: Path | None = None, db_path: Path | None = None) -> None:
+    from kagan.core.host import CoreHost
+
+    resolved_config_path = config_path or get_config_path()
+    resolved_db_path = db_path or get_database_path()
+    host = CoreHost(config_path=resolved_config_path, db_path=resolved_db_path)
+    await host.start()
+    await host.wait_until_stopped()
+
+
+def launch_core_subprocess(
+    *,
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+) -> int:
+    try:
+        asyncio.run(run_core_host(config_path=config_path, db_path=db_path))
+    except KeyboardInterrupt:
+        logger.info("Core host interrupted by user")
+    return 0

@@ -12,7 +12,7 @@ from textual.widget import Widget
 from textual.widgets import Label
 
 from kagan.core.constants import STATUS_LABELS
-from kagan.core.models.enums import CardIndicator, TaskStatus
+from kagan.core.domain.enums import CardIndicator, TaskStatus
 from kagan.tui.ui.widgets.card import TaskCard
 
 if TYPE_CHECKING:

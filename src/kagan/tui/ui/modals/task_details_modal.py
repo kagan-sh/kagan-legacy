@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from enum import Enum, StrEnum, auto
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy.exc import OperationalError
 from textual import on
@@ -14,7 +14,7 @@ from textual.reactive import reactive
 from textual.widgets import Button, Footer, Input, Label, Rule, Select, Static, TextArea
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
-from kagan.core.models.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskStatus, TaskType
 from kagan.tui.keybindings import TASK_DETAILS_BINDINGS
 from kagan.tui.ui.modals.base import KaganModalScreen
 from kagan.tui.ui.modals.description_editor import DescriptionEditorModal
@@ -30,6 +30,10 @@ from kagan.tui.ui.widgets.base import (
     TaskTypeSelect,
     TitleInput,
 )
+from kagan.tui.ui.widgets.github_context import (
+    format_github_context,
+    resolve_github_context,
+)
 from kagan.tui.ui.widgets.task_mentions import (
     TaskMentionArea,
     TaskMentionComplete,
@@ -43,6 +47,7 @@ from kagan.tui.ui.widgets.workspace_repos import WorkspaceReposWidget
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
+    from textual.timer import Timer
 
     from kagan.core.adapters.db.schema import Task
 
@@ -86,6 +91,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         self._is_done = False
         self._mention_items: list[TaskMentionItem] = []
         self._mention_complete: TaskMentionComplete | None = None
+        self._presence_timer: Timer | None = None
         if task is not None:
             status = task.status
             self._is_done = status == TaskStatus.DONE
@@ -112,6 +118,13 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                 exclusive=True,
                 exit_on_error=False,
             )
+            self.run_worker(
+                self._load_github_context,
+                group="task-details-github-context",
+                exclusive=True,
+                exit_on_error=False,
+            )
+            self._presence_timer = self.set_interval(1.0, self._poll_task_presence)
         if self.editing:
             self.run_worker(
                 self._load_mention_items,
@@ -121,6 +134,10 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             )
 
     def on_unmount(self) -> None:
+        if self._presence_timer is not None:
+            with contextlib.suppress(Exception):
+                self._presence_timer.stop()
+            self._presence_timer = None
         task_changed_signal = getattr(self.kagan_app, "task_changed_signal", None)
         if task_changed_signal is None:
             return
@@ -129,6 +146,11 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
 
     async def _on_task_changed(self, task_id: str) -> None:
         if not self.is_mounted or self._task_model is None or task_id != self._task_model.id:
+            return
+        self._poll_task_presence()
+
+    def _poll_task_presence(self) -> None:
+        if not self.is_mounted or self._task_model is None:
             return
         self.run_worker(
             self._refresh_task_presence,
@@ -182,6 +204,8 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             yield from self._compose_base_branch_field()
 
             yield from self._compose_workspace_repos_section()
+
+            yield from self._compose_github_section()
 
             yield from self._compose_meta_row()
 
@@ -315,8 +339,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         if not self._task_model:
             return
         try:
-            workspace_service = self.ctx.api.workspace_service
-            workspaces = await workspace_service.list_workspaces(task_id=self._task_model.id)
+            workspaces = await self.ctx.api.list_workspaces(task_id=self._task_model.id)
         except _TASK_DETAILS_LOAD_ERRORS as exc:
             self.log(
                 "Workspace repo lookup failed",
@@ -338,10 +361,48 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         await container.mount(
             WorkspaceReposWidget(
                 workspaces[0].id,
-                workspace_service=self.ctx.api.workspace_service,
-                diff_service=self.ctx.api.diff_service,
+                load_repos=self._load_workspace_repo_rows,
+                load_repo_diff=self._load_workspace_repo_diff,
             )
         )
+
+    async def _load_workspace_repo_rows(self, workspace_id: str) -> list[dict[str, Any]]:
+        return await self.ctx.api.get_workspace_repos(workspace_id)
+
+    async def _load_workspace_repo_diff(self, workspace_id: str, repo_id: str) -> object | None:
+        return await self.ctx.api.get_repo_diff(workspace_id, repo_id)
+
+    def _compose_github_section(self) -> ComposeResult:
+        """Compose the GitHub context section (view mode only)."""
+        if self.is_create or not self._task_model:
+            return
+        with Vertical(classes="github-section view-only", id="github-section"):
+            yield Label("GitHub", classes="section-title")
+            yield Static("Loading…", id="github-context-content")
+        yield Rule()
+
+    async def _load_github_context(self) -> None:
+        """Load GitHub context from project repos (no API calls)."""
+        if not self._task_model:
+            return
+        project_id = self._task_model.project_id
+        if not project_id:
+            return
+        try:
+            repos = await self.ctx.api.get_project_repos(project_id)
+        except _TASK_DETAILS_LOAD_ERRORS as exc:
+            self.log(
+                "GitHub context lookup failed",
+                project_id=project_id,
+                error=str(exc),
+            )
+            return
+
+        gh_ctx = resolve_github_context(repos, self._task_model.id)
+        lines = format_github_context(gh_ctx)
+        content_widget = safe_query_one(self, "#github-context-content", Static)
+        if content_widget:
+            content_widget.update("\n".join(f"  {line}" for line in lines))
 
     def _compose_meta_row(self) -> ComposeResult:
         """Compose the metadata row."""
@@ -582,9 +643,12 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         return status.value.replace("_", " ")
 
     def _build_agent_options(self) -> list[tuple[str, str]]:
+        from kagan.core.builtin_agents import BUILTIN_AGENTS
+
         kagan_app = self.kagan_app
         default_agent = self._get_default_agent_key()
         options: list[tuple[str, str]] = []
+        seen: set[str] = set()
 
         if hasattr(kagan_app, "config") and kagan_app.config.agents:
             for name, agent in kagan_app.config.agents.items():
@@ -592,14 +656,14 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                     continue
                 label = self._format_agent_label(agent.name, name == default_agent)
                 options.append((label, name))
-            options.sort(key=lambda item: 0 if item[1] == default_agent else 1)
-            return options
-
-        from kagan.core.builtin_agents import BUILTIN_AGENTS
+                seen.add(name)
 
         for name, agent in BUILTIN_AGENTS.items():
+            if name in seen:
+                continue
             label = self._format_agent_label(agent.config.name, name == default_agent)
             options.append((label, name))
+
         options.sort(key=lambda item: 0 if item[1] == default_agent else 1)
         return options
 

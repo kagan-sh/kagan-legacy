@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
 
 from kagan.core.config import KaganConfig
-from kagan.core.models.enums import TaskStatus
-from kagan.core.services.merges import MergeResult, MergeServiceImpl, MergeStrategy
+from kagan.core.domain.enums import TaskStatus
+from kagan.core.services.workspaces import MergeResult, MergeStrategy
+from kagan.core.services.workspaces.service import WorkspaceServiceImpl
 
 if TYPE_CHECKING:
-    from kagan.core.services.automation import AutomationService
-    from kagan.core.services.sessions import SessionService
-    from kagan.core.services.tasks import TaskService
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.automation import AutomationServiceImpl
+    from kagan.core.services.sessions import SessionServiceImpl
+    from kagan.core.services.tasks import TaskServiceImpl
 
 
 class _RecordingLock:
@@ -41,7 +41,7 @@ def _build_service(
     running: bool = False,
     reviewing: bool = False,
     stop_clears_runtime: bool = True,
-) -> tuple[MergeServiceImpl, Any, Any]:
+) -> tuple[WorkspaceServiceImpl, Any, Any]:
     workspace_repos = repos or [
         {
             "repo_id": "repo-1",
@@ -51,14 +51,6 @@ def _build_service(
         }
     ]
     task_service = SimpleNamespace(update_fields=AsyncMock())
-    worktrees = SimpleNamespace(
-        release=AsyncMock(),
-        rebase_onto_base=AsyncMock(return_value=rebase_result),
-        get_workspace_repos=AsyncMock(return_value=workspace_repos),
-        get_commit_log=AsyncMock(return_value=commits or []),
-        get_files_changed=AsyncMock(return_value=changed_files or ["repo-1:file.py"]),
-        get_files_changed_on_base=AsyncMock(return_value=base_changed_files or []),
-    )
     sessions = SimpleNamespace(kill_session=AsyncMock())
     runtime_state = {"running": running, "reviewing": reviewing}
 
@@ -78,16 +70,29 @@ def _build_service(
     config = KaganConfig()
     config.general.serialize_merges = serialize_merges
 
-    service = MergeServiceImpl(
-        task_service=cast("TaskService", task_service),
-        worktrees=cast("WorkspaceService", worktrees),
-        sessions=cast("SessionService", sessions),
-        automation=cast("AutomationService", automation),
+    # Build a WorkspaceServiceImpl with merge deps wired
+    git_adapter = AsyncMock()  # worktree adapter (unused for merge-only tests)
+    project_service = AsyncMock()
+    service = WorkspaceServiceImpl(
+        session_factory=AsyncMock(),
+        git_adapter=git_adapter,
+        task_service=cast("TaskServiceImpl", task_service),
+        project_service=project_service,
+        sessions=cast("SessionServiceImpl", sessions),
+        automation=cast("AutomationServiceImpl", automation),
         config=config,
     )
 
+    # Mock workspace methods used by merge_task
     service._get_latest_workspace_id = AsyncMock(return_value="ws-1")
     service.has_no_changes = AsyncMock(return_value=False)
+    service.get_workspace_repos = AsyncMock(return_value=workspace_repos)
+    service.get_commit_log = AsyncMock(return_value=commits or [])
+    service.get_files_changed = AsyncMock(return_value=changed_files or ["repo-1:file.py"])
+    service.get_files_changed_on_base = AsyncMock(return_value=base_changed_files or [])
+    service.rebase_onto_base = AsyncMock(return_value=rebase_result)
+    service.release = AsyncMock()
+
     batches = list(merge_batches or [])
 
     async def _merge_all(*args: object, **kwargs: object) -> list[MergeResult]:
@@ -99,7 +104,7 @@ def _build_service(
 
     service.merge_all = AsyncMock(side_effect=_merge_all)
     task = SimpleNamespace(id="task-1", title="Test task", description="desc", base_branch="main")
-    return service, task, worktrees
+    return service, task, service
 
 
 def _success_result() -> MergeResult:
@@ -141,7 +146,7 @@ async def test_merge_task_serializes_when_enabled() -> None:
     assert success is True
     assert message == "Merged all repos"
     assert events == ["lock_enter", "merge_all", "lock_exit"]
-    service.tasks.update_fields.assert_awaited_once_with(task.id, status=TaskStatus.DONE)
+    service._tasks.update_fields.assert_awaited_once_with(task.id, status=TaskStatus.DONE)
 
 
 async def test_merge_task_does_not_take_lock_when_disabled() -> None:
@@ -153,7 +158,7 @@ async def test_merge_task_does_not_take_lock_when_disabled() -> None:
     assert success is True
     assert message == "Merged all repos"
     assert events == ["merge_all"]
-    service.tasks.update_fields.assert_awaited_once_with(task.id, status=TaskStatus.DONE)
+    service._tasks.update_fields.assert_awaited_once_with(task.id, status=TaskStatus.DONE)
 
 
 async def test_merge_task_preemptively_rebases_for_high_overlap_risk() -> None:
@@ -280,3 +285,114 @@ async def test_merge_task_fails_when_runtime_does_not_quiesce(monkeypatch) -> No
     assert success is False
     assert message.startswith("Merge blocked: Task runtime is still active")
     assert events == ["lock_enter", "stop_task", "lock_exit"]
+
+
+async def test_merge_task_catches_git_push_runtime_error() -> None:
+    """Regression: git push failure in merge_all must not propagate as uncaught exception."""
+    events: list[str] = []
+    service, task, _worktrees = _build_service(serialize_merges=False, events=events)
+    service.merge_all = AsyncMock(
+        side_effect=RuntimeError("git push origin kagan/abc123 failed (non-fast-forward)")
+    )
+
+    success, message = await service.merge_task(task)
+
+    assert success is False
+    assert "Git operation failed during merge" in message
+    assert "non-fast-forward" in message
+    assert "Check branch state and retry" in message
+    service._tasks.update_fields.assert_not_awaited()
+
+
+async def test_merge_task_catches_rebase_runtime_error() -> None:
+    """Regression: RuntimeError from rebase_onto_base must not propagate as uncaught exception."""
+    events: list[str] = []
+    service, task, worktrees = _build_service(
+        serialize_merges=False,
+        events=events,
+        merge_batches=[[_base_ahead_failure()]],
+    )
+    worktrees.rebase_onto_base = AsyncMock(
+        side_effect=RuntimeError("git rebase --onto main failed (rc=128): fatal error")
+    )
+
+    success, message = await service.merge_task(task)
+
+    assert success is False
+    assert "Auto-rebase failed" in message
+    assert "rebase --onto main" in message
+    assert "Try running 'review rebase' manually and retry merge" in message
+    service._tasks.update_fields.assert_not_awaited()
+
+
+async def test_merge_task_catches_premerge_rebase_runtime_error() -> None:
+    """Regression: RuntimeError from pre-merge rebase must return structured failure."""
+    events: list[str] = []
+    service, task, worktrees = _build_service(
+        serialize_merges=False,
+        events=events,
+        changed_files=["repo-1:src/calc.py"],
+        base_changed_files=["repo-1:src/calc.py"],
+    )
+    worktrees.rebase_onto_base = AsyncMock(
+        side_effect=RuntimeError("git fetch origin main failed (rc=128)")
+    )
+
+    success, message = await service.merge_task(task)
+
+    assert success is False
+    assert "Pre-merge rebase failed" in message
+    assert "git fetch origin main" in message
+    assert "Try running 'review rebase' manually and retry merge" in message
+    service._tasks.update_fields.assert_not_awaited()
+
+
+async def test_merge_repo_pushes_worktree_branch_with_force(monkeypatch) -> None:
+    """Verify merge_repo passes force=True to git push (worktree branch after rebase)."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace as NS
+    from unittest.mock import MagicMock
+
+    from kagan.core.adapters.git.operations import MergeOperationResult
+
+    git_mock = AsyncMock()
+    git_mock.has_uncommitted_changes = AsyncMock(return_value=False)
+    git_mock.push = AsyncMock()
+    git_mock.merge_squash = AsyncMock(
+        return_value=MergeOperationResult(success=True, message="ok", commit_sha="abc123")
+    )
+    events_mock = AsyncMock()
+    events_mock.publish = AsyncMock()
+
+    workspace_repo = NS(worktree_path="/tmp/wt", repo_id="repo-1", target_branch="main")
+    repo = NS(path="/tmp/repo", name="repo-1", id="repo-1")
+    workspace = NS(branch_name="kagan/task-1", task_id="task-1", id="ws-1")
+
+    mock_row = MagicMock()
+    mock_row.first.return_value = (workspace_repo, repo, workspace)
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_row)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_session_factory():
+        yield mock_session
+
+    service = WorkspaceServiceImpl(
+        session_factory=fake_session_factory,
+        git_adapter=AsyncMock(),
+        task_service=cast("TaskServiceImpl", NS(update_fields=AsyncMock())),
+        project_service=AsyncMock(),
+        sessions=cast("SessionServiceImpl", NS()),
+        automation=cast("AutomationServiceImpl", NS()),
+        config=KaganConfig(),
+        event_bus=events_mock,
+        git_ops_adapter=git_mock,
+    )
+
+    result = await service.merge_repo("ws-1", "repo-1", commit_message="test merge")
+
+    assert result.success is True
+    git_mock.push.assert_awaited_once_with("/tmp/wt", "kagan/task-1", force=True)

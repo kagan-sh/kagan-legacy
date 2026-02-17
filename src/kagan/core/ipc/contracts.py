@@ -33,12 +33,14 @@ class CoreRequest(BaseModel):
             "Capability profile for this session (viewer|planner|pair_worker|operator|maintainer)"
         ),
     )
-    session_origin: str | None = Field(
-        default=None,
+    session_origin: str = Field(
         description=(
-            "Origin lane for this session (legacy|kagan|kagan_admin). "
+            "Origin lane for this session (kagan|kagan_admin|tui). "
             "Used for server-side capability ceilings and namespace constraints."
         ),
+    )
+    client_version: str = Field(
+        description="Client-reported kagan package version for protocol validation",
     )
     capability: str = Field(
         description="Logical service group (e.g. 'tasks', 'agents', 'config')",

@@ -1,10 +1,13 @@
-"""AutomationEngine: high-level lifecycle orchestration for AUTO tasks."""
+"""AutomationEngine: high-level lifecycle orchestration for AUTO tasks.
+
+Includes queued-message service (formerly queued_messages.py) and the unified
+AutomationServiceImpl wrapper (formerly orchestrator.py).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import re
 import weakref
 from collections import deque
 from dataclasses import dataclass
@@ -16,6 +19,15 @@ from kagan.core.agents.prompt_builders import build_prompt, get_review_prompt
 from kagan.core.agents.signals import Signal, SignalResult, parse_signal
 from kagan.core.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.core.debug_log import log
+from kagan.core.domain.enums import (
+    ExecutionRunReason,
+    ExecutionStatus,
+    NotificationSeverity,
+    SessionStatus,
+    SessionType,
+    TaskStatus,
+    TaskType,
+)
 from kagan.core.events import (
     AutomationAgentAttached,
     AutomationReviewAgentAttached,
@@ -27,23 +39,12 @@ from kagan.core.events import (
 )
 from kagan.core.git_utils import get_git_user_identity
 from kagan.core.limits import AGENT_TIMEOUT_LONG
-from kagan.core.models.enums import (
-    ExecutionRunReason,
-    ExecutionStatus,
-    NotificationSeverity,
-    SessionStatus,
-    SessionType,
-    TaskStatus,
-    TaskType,
-)
-from kagan.core.services.permission_policy import AgentPermissionScope, resolve_auto_approve
-from kagan.core.services.queued_messages import QueuedMessageServiceImpl
+from kagan.core.policy import AgentPermissionScope, resolve_auto_approve
 from kagan.core.time import utc_now
 from kagan.core.utils import BackgroundTasks, truncate_queue_payload
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-    from datetime import datetime
     from pathlib import Path
 
     from kagan.core.acp import Agent
@@ -51,12 +52,23 @@ if TYPE_CHECKING:
     from kagan.core.adapters.git.operations import GitOperationsProtocol
     from kagan.core.agents.agent_factory import AgentFactory
     from kagan.core.config import AgentConfig, KaganConfig
-    from kagan.core.services.queued_messages import QueuedMessage, QueuedMessageService
-    from kagan.core.services.runtime import RuntimeService, RuntimeTaskView
-    from kagan.core.services.sessions import SessionService
-    from kagan.core.services.tasks import TaskService
+    from kagan.core.services.runtime import RuntimeServiceImpl, RuntimeTaskView
+    from kagan.core.services.sessions import SessionServiceImpl
+    from kagan.core.services.tasks import TaskServiceImpl
     from kagan.core.services.types import TaskLike
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.workspaces import WorkspaceServiceImpl
+
+# ---------------------------------------------------------------------------
+# Queued message service (extracted to _queue.py, re-exported here)
+# ---------------------------------------------------------------------------
+
+from kagan.core.services.automation._queue import (
+    DEFAULT_QUEUE_LANE,
+    QueuedMessage,
+    QueuedMessageServiceImpl,
+    QueueLane,
+    QueueStatus,
+)
 
 # ---------------------------------------------------------------------------
 # State dataclasses
@@ -73,17 +85,6 @@ class RunningTaskState:
 
 
 @dataclass(slots=True)
-class BlockedSpawnState:
-    """Scheduler metadata for conflict-blocked AUTO task starts."""
-
-    task_id: str
-    blocker_task_ids: tuple[str, ...]
-    overlap_hints: tuple[str, ...]
-    reason: str
-    blocked_at: datetime
-
-
-@dataclass(slots=True)
 class AutomationEvent:
     """Queue item for automation status worker."""
 
@@ -96,33 +97,88 @@ class AutomationEvent:
 # Policy helpers
 # ---------------------------------------------------------------------------
 
-_PATH_HINT_RE = re.compile(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+")
-_FILE_HINT_RE = re.compile(r"[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,8}")
-_WORD_RE = re.compile(r"[A-Za-z0-9_]+")
 _STREAM_LOG_FLUSH_INTERVAL_SECONDS = 0.25
 
-_KEYWORD_HINTS: dict[str, str] = {
-    "test": "tests/**",
-    "tests": "tests/**",
-    "pytest": "tests/**",
-    "readme": "README.md",
-    "docs": "docs/**",
-    "config": "config/**",
-    "pyproject": "pyproject.toml",
-    "docker": "Dockerfile",
-}
+
+# ---------------------------------------------------------------------------
+# Incremental persistence helpers (module-level, shared by engine + reviewer)
+# ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class ConflictAssessment:
-    """Conflict decision for a candidate spawn against running tasks."""
+async def _persist_incremental_agent_output(
+    execution_repo: ExecutionRepository,
+    execution_id: str,
+    agent: Agent,
+    *,
+    next_message_index: int = 0,
+) -> tuple[int, bool]:
+    """Persist newly buffered agent messages for a running execution."""
+    buffered_messages = agent.get_messages()
+    if next_message_index >= len(buffered_messages):
+        return len(buffered_messages), False
 
-    blocker_task_ids: tuple[str, ...]
-    overlap_hints: tuple[str, ...]
+    new_messages = buffered_messages[next_message_index:]
+    payload = serialize_agent_messages(new_messages)
+    if payload is None:
+        return len(buffered_messages), False
 
-    @property
-    def is_blocked(self) -> bool:
-        return bool(self.blocker_task_ids)
+    await execution_repo.append_execution_log(execution_id, payload)
+    return len(buffered_messages), True
+
+
+async def _send_prompt_with_incremental_persistence(
+    execution_repo: ExecutionRepository,
+    *,
+    task_id: str,
+    execution_id: str,
+    agent: Agent,
+    prompt: str,
+) -> bool:
+    """Send a prompt and flush incremental output while the prompt is running."""
+    prompt_task = asyncio.create_task(agent.send_prompt(prompt))
+    next_message_index = 0
+    persisted_any = False
+
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                {prompt_task},
+                timeout=_STREAM_LOG_FLUSH_INTERVAL_SECONDS,
+            )
+            next_message_index, persisted = await _persist_incremental_agent_output(
+                execution_repo,
+                execution_id,
+                agent,
+                next_message_index=next_message_index,
+            )
+            persisted_any = persisted_any or persisted
+            if done:
+                break
+
+        await prompt_task
+    except Exception:
+        if not prompt_task.done():
+            prompt_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await prompt_task
+        raise
+    finally:
+        try:
+            next_message_index, persisted = await _persist_incremental_agent_output(
+                execution_repo,
+                execution_id,
+                agent,
+                next_message_index=next_message_index,
+            )
+            persisted_any = persisted_any or persisted
+        except Exception as exc:  # quality-allow-broad-except
+            log.debug(
+                "Unable to persist trailing incremental output for %s: %s",
+                task_id,
+                exc,
+            )
+
+    return persisted_any
 
 
 def is_auto_task(task_type: TaskType) -> bool:
@@ -148,62 +204,6 @@ def can_spawn_new_agent(*, running_count: int, max_agents: int) -> bool:
     return running_count < max_agents
 
 
-def derive_conflict_hints(task: TaskLike) -> tuple[str, ...]:
-    """Derive deterministic conflict hints from task text."""
-    joined = "\n".join(
-        part.strip()
-        for part in (
-            task.title,
-            task.description or "",
-            " ".join(task.acceptance_criteria or []),
-        )
-        if part and part.strip()
-    )
-    if not joined:
-        return ()
-
-    normalized = joined.replace("`", " ")
-    hints: set[str] = set()
-
-    for match in _PATH_HINT_RE.findall(normalized):
-        hints.add(match.strip("./"))
-    for match in _FILE_HINT_RE.findall(normalized):
-        hints.add(match.strip("./"))
-
-    words = {word.lower() for word in _WORD_RE.findall(normalized)}
-    for word in words:
-        keyword_hint = _KEYWORD_HINTS.get(word)
-        if keyword_hint:
-            hints.add(keyword_hint)
-
-    return tuple(sorted(hints))
-
-
-def assess_conflict(
-    candidate: TaskLike,
-    running_tasks: dict[str, TaskLike],
-) -> ConflictAssessment:
-    """Assess whether candidate should be blocked by running tasks."""
-    if not running_tasks:
-        return ConflictAssessment((), ())
-
-    candidate_hints = set(derive_conflict_hints(candidate))
-    if not candidate_hints:
-        return ConflictAssessment((), ())
-
-    blockers: list[str] = []
-    overlaps: set[str] = set()
-    for task_id, running in running_tasks.items():
-        running_hints = set(derive_conflict_hints(running))
-        overlap = candidate_hints & running_hints
-        if not overlap:
-            continue
-        blockers.append(task_id)
-        overlaps.update(overlap)
-
-    return ConflictAssessment(tuple(blockers), tuple(sorted(overlaps)))
-
-
 # ---------------------------------------------------------------------------
 # AutomationReviewer
 # ---------------------------------------------------------------------------
@@ -213,14 +213,14 @@ class AutomationReviewer:
     def __init__(
         self,
         *,
-        task_service: TaskService,
-        workspace_service: WorkspaceService,
+        task_service: TaskServiceImpl,
+        workspace_service: WorkspaceServiceImpl,
         config: KaganConfig,
         execution_service: ExecutionRepository | None,
         notifier: Callable[[str, str, NotificationSeverity], None] | None,
         agent_factory: AgentFactory,
         git_adapter: GitOperationsProtocol | None,
-        runtime_service: RuntimeService,
+        runtime_service: RuntimeServiceImpl,
         get_agent_config: Callable[[TaskLike], AgentConfig],
         apply_model_override: Callable[[Agent, AgentConfig, str], None],
         set_review_agent: Callable[[str, Agent], Awaitable[None]],
@@ -269,12 +269,20 @@ class AutomationReviewer:
 
         try:
             await agent.wait_ready(timeout=AGENT_TIMEOUT_LONG)
-            await agent.send_prompt(prompt)
+
+            if self._executions is not None:
+                await _send_prompt_with_incremental_persistence(
+                    self._executions,
+                    task_id=task.id,
+                    execution_id=execution_id,
+                    agent=agent,
+                    prompt=prompt,
+                )
+            else:
+                await agent.send_prompt(prompt)
             response = agent.get_response_text()
 
-            serialized_output = serialize_agent_output(agent)
             if self._executions is not None:
-                await self._executions.append_execution_log(execution_id, serialized_output)
                 await self._executions.append_agent_turn(
                     execution_id,
                     prompt=prompt,
@@ -321,11 +329,21 @@ class AutomationReviewer:
         review_note = ""
         review_attempted = False
         execution_id = None
+        execution_metadata: dict[str, object] | None = None
+        review_log_start_index: int | None = None
         runtime_view = self._runtime_service.get(task.id)
         if runtime_view is not None:
             execution_id = runtime_view.execution_id
 
         if wt_path is not None and execution_id is not None:
+            if self._executions is not None:
+                entries = await self._executions.get_execution_log_entries(execution_id)
+                review_log_start_index = len(entries)
+                existing = await self._executions.get_execution(execution_id)
+                execution_metadata = dict(existing.metadata_ or {}) if existing else {}
+                execution_metadata["review_log_start_index"] = review_log_start_index
+                await self._executions.update_execution(execution_id, metadata=execution_metadata)
+
             review_passed, review_note = await self.run_review(task, wt_path, execution_id)
             review_attempted = True
 
@@ -357,10 +375,11 @@ class AutomationReviewer:
                 "summary": review_note,
                 "completed_at": utc_now().isoformat(),
             }
-            await self._executions.update_execution(
-                execution_id,
-                metadata={"review_result": review_result},
-            )
+            merged_meta = dict(execution_metadata or {})
+            if review_log_start_index is not None:
+                merged_meta["review_log_start_index"] = review_log_start_index
+            merged_meta["review_result"] = review_result
+            await self._executions.update_execution(execution_id, metadata=merged_meta)
 
     async def _handle_blocked(self, task: TaskLike, reason: str) -> None:
         """Handle blocked task by moving it back to backlog with context."""
@@ -371,9 +390,27 @@ class AutomationReviewer:
         await self._tasks.update_fields(task.id, status=TaskStatus.BACKLOG)
         self._notify_task_changed()
 
+    async def _resolve_review_base_branch(self, task: TaskLike) -> str:
+        task_branch = (task.base_branch or "").strip()
+        if task_branch:
+            return task_branch
+
+        workspaces = await self._workspaces.list_workspaces(task_id=task.id)
+        if workspaces:
+            repos = await self._workspaces.get_workspace_repos(workspaces[0].id)
+            for repo in repos:
+                target_branch = str(repo.get("target_branch") or "").strip()
+                if target_branch:
+                    return target_branch
+
+        raise ValueError(
+            f"Task {task.id} has no base branch configured for review. "
+            "Set task branch explicitly or sync repository branch first."
+        )
+
     async def _build_review_prompt(self, task: TaskLike) -> str:
         """Build review prompt from template with commits and diff."""
-        base = task.base_branch or self._config.general.default_base_branch
+        base = await self._resolve_review_base_branch(task)
         commits = await self._workspaces.get_commit_log(task.id, base)
         diff_summary = await self._workspaces.get_diff_stats(task.id, base)
 
@@ -397,18 +434,18 @@ class AutomationEngine:
     def __init__(
         self,
         *,
-        task_service: TaskService,
-        workspace_service: WorkspaceService,
+        task_service: TaskServiceImpl,
+        workspace_service: WorkspaceServiceImpl,
         config: KaganConfig,
-        runtime_service: RuntimeService,
-        session_service: SessionService | None = None,
+        runtime_service: RuntimeServiceImpl,
+        session_service: SessionServiceImpl | None = None,
         execution_service: ExecutionRepository | None = None,
         on_task_changed: Callable[[], None] | None = None,
         on_error: Callable[[str, str], None] | None = None,
         notifier: Callable[[str, str, NotificationSeverity], None] | None = None,
         agent_factory: AgentFactory,
         event_bus: EventBus | None = None,
-        queued_message_service: QueuedMessageService | None = None,
+        queued_message_service: QueuedMessageServiceImpl | None = None,
         git_adapter: GitOperationsProtocol | None = None,
     ) -> None:
         self._tasks = task_service
@@ -431,7 +468,6 @@ class AutomationEngine:
         )
         self._pending_spawn_queue: deque[str] = deque()
         self._pending_spawn_set: set[str] = set()
-        self._blocked_pending: dict[str, BlockedSpawnState] = {}
         self._pending_spawn_lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
         self._event_task: asyncio.Task[None] | None = None
@@ -562,17 +598,10 @@ class AutomationEngine:
             return
 
         if not is_auto_task(task.task_type):
-            self._blocked_pending.pop(task_id, None)
-            self._clear_runtime_blocked(task_id)
             return
-
-        if task_id in self._blocked_pending and task.status is not TaskStatus.BACKLOG:
-            self._blocked_pending.pop(task_id, None)
-            self._clear_runtime_blocked(task_id)
 
         if should_stop_running_on_status_change(old_status=old_status, new_status=new_status):
             await self._stop_if_running(task_id)
-        await self._retry_blocked_pending_spawns()
 
     async def _process_spawn(self, task_id: str) -> None:
         """Handle explicit spawn requests from the UI."""
@@ -589,8 +618,6 @@ class AutomationEngine:
             self._discard_pending_spawn(task_id)
             return
 
-        self._blocked_pending.pop(task.id, None)
-        self._clear_runtime_blocked(task.id)
         self._enqueue_pending_spawn(task.id)
         await self._admit_pending_spawns()
 
@@ -665,14 +692,12 @@ class AutomationEngine:
     async def stop_task(self, task_id: str) -> bool:
         """Request to stop a task. Returns True if was running."""
         if task_id not in self._running:
-            was_pending = task_id in self._pending_spawn_set or task_id in self._blocked_pending
+            was_pending = task_id in self._pending_spawn_set
             if not was_pending:
                 return False
 
             self._discard_pending_spawn(task_id)
-            self._blocked_pending.pop(task_id, None)
             self._clear_runtime_pending(task_id)
-            self._clear_runtime_blocked(task_id)
             task = await self._tasks.get_task(task_id)
             if task is not None and task.status is not TaskStatus.BACKLOG:
                 await self._update_task_status(task.id, TaskStatus.BACKLOG)
@@ -720,8 +745,6 @@ class AutomationEngine:
         await self._reviewer._handle_complete(task)
 
     async def _handle_blocked(self, task: TaskLike, reason: str) -> None:
-        self._blocked_pending.pop(task.id, None)
-        self._mark_runtime_blocked(task.id, reason=reason)
         await self._reviewer._handle_blocked(task, reason)
 
     # ------------------------------------------------------------------
@@ -749,43 +772,29 @@ class AutomationEngine:
         self._clear_runtime_pending(task_id)
 
     async def _admit_pending_spawns(self) -> None:
-        """Start pending AUTO tasks while capacity is available."""
+        """Start pending AUTO tasks while capacity is available.
+
+        Tasks spawn in parallel unconditionally. Conflicts are handled at merge
+        time via rebase, matching vibe-kanban's proven model.
+        """
         async with self._pending_spawn_lock:
             max_agents = self._config.general.max_concurrent_agents
             while self._pending_spawn_queue and can_spawn_new_agent(
                 running_count=len(self._running),
                 max_agents=max_agents,
             ):
-                started = False
-                for next_task_id in tuple(self._pending_spawn_queue):
-                    task = await self._tasks.get_task(next_task_id)
-                    if (
-                        task is None
-                        or not is_auto_task(task.task_type)
-                        or next_task_id in self._running
-                    ):
-                        self._discard_pending_spawn(next_task_id)
-                        self._blocked_pending.pop(next_task_id, None)
-                        self._clear_runtime_blocked(next_task_id)
-                        continue
+                next_task_id = self._pending_spawn_queue[0]
+                task = await self._tasks.get_task(next_task_id)
+                if (
+                    task is None
+                    or not is_auto_task(task.task_type)
+                    or next_task_id in self._running
+                ):
+                    self._discard_pending_spawn(next_task_id)
+                    continue
 
-                    running_tasks = await self._list_running_auto_tasks(
-                        exclude_task_id=task.id,
-                    )
-                    conflict = assess_conflict(task, running_tasks)
-                    if conflict.is_blocked:
-                        self._discard_pending_spawn(task.id)
-                        await self._mark_spawn_blocked(task, conflict)
-                        continue
-
-                    self._discard_pending_spawn(task.id)
-                    self._blocked_pending.pop(task.id, None)
-                    self._clear_runtime_blocked(task.id)
-                    await self._spawn(task)
-                    started = True
-                    break
-                if not started:
-                    break
+                self._discard_pending_spawn(task.id)
+                await self._spawn(task)
 
             if self._pending_spawn_queue:
                 next_task_id = self._pending_spawn_queue[0]
@@ -819,145 +828,10 @@ class AutomationEngine:
         runner_task.add_done_callback(self._make_done_callback(task.id))
 
     # ------------------------------------------------------------------
-    # Preparation: conflict detection and blocked-spawn management
-    # ------------------------------------------------------------------
-
-    async def _list_running_auto_tasks(self, *, exclude_task_id: str) -> dict[str, TaskLike]:
-        running: dict[str, TaskLike] = {}
-        for running_task_id in tuple(self._running.keys()):
-            if running_task_id == exclude_task_id:
-                continue
-            task = await self._tasks.get_task(running_task_id)
-            if task is None or not is_auto_task(task.task_type):
-                continue
-            running[running_task_id] = task
-        return running
-
-    async def _mark_spawn_blocked(self, task: TaskLike, conflict: ConflictAssessment) -> None:
-        overlap_preview = ", ".join(conflict.overlap_hints[:3])
-        blockers_preview = ", ".join(f"#{task_id[:8]}" for task_id in conflict.blocker_task_ids[:3])
-        reason = f"Waiting on {blockers_preview} before starting"
-        if overlap_preview:
-            reason += f" (overlap: {overlap_preview})"
-
-        self._blocked_pending[task.id] = BlockedSpawnState(
-            task_id=task.id,
-            blocker_task_ids=conflict.blocker_task_ids,
-            overlap_hints=conflict.overlap_hints,
-            reason=reason,
-            blocked_at=utc_now(),
-        )
-        self._mark_runtime_blocked(
-            task.id,
-            reason=reason,
-            blocked_by_task_ids=conflict.blocker_task_ids,
-            overlap_hints=conflict.overlap_hints,
-        )
-        await self._record_blocked_history(
-            task.id,
-            reason=reason,
-            blocker_task_ids=conflict.blocker_task_ids,
-            overlap_hints=conflict.overlap_hints,
-        )
-        if task.status is not TaskStatus.BACKLOG:
-            await self._update_task_status(task.id, TaskStatus.BACKLOG)
-        self._notify_task_changed()
-
-    async def _record_blocked_history(
-        self,
-        task_id: str,
-        *,
-        reason: str,
-        blocker_task_ids: tuple[str, ...],
-        overlap_hints: tuple[str, ...],
-    ) -> None:
-        """Persist a lightweight blocked event trail in the task scratchpad."""
-        timestamp = utc_now().strftime("%Y-%m-%d %H:%M")
-        blockers = ", ".join(f"#{blocker_id[:8]}" for blocker_id in blocker_task_ids) or "none"
-        overlap = ", ".join(overlap_hints[:5]) or "n/a"
-        entry = (
-            f"\n\n---\n[Blocked auto-start {timestamp}]\n"
-            f"- Reason: {reason}\n"
-            f"- Blocked by: {blockers}\n"
-            f"- Overlap hints: {overlap}"
-        )
-        try:
-            scratchpad = await self._tasks.get_scratchpad(task_id)
-            await self._tasks.update_scratchpad(task_id, (scratchpad or "") + entry)
-        except Exception as exc:  # quality-allow-broad-except
-            log.debug("Unable to persist blocked history for %s: %s", task_id, exc)
-
-    async def _retry_blocked_pending_spawns(self) -> None:
-        if not self._blocked_pending:
-            return
-
-        resumed_task_ids: list[str] = []
-        for task_id, blocked in tuple(self._blocked_pending.items()):
-            task = await self._tasks.get_task(task_id)
-            if task is None or not is_auto_task(task.task_type):
-                self._blocked_pending.pop(task_id, None)
-                self._clear_runtime_blocked(task_id)
-                continue
-
-            waiting_on: list[str] = []
-            for blocker_task_id in blocked.blocker_task_ids:
-                if await self._blocker_is_active(blocker_task_id):
-                    waiting_on.append(blocker_task_id)
-            if waiting_on:
-                continue
-
-            self._blocked_pending.pop(task_id, None)
-            self._clear_runtime_blocked(task_id)
-            self._enqueue_pending_spawn(task.id)
-            self._mark_runtime_pending(task.id, reason="Queued after blockers cleared.")
-            resumed_task_ids.append(task.id)
-
-        if resumed_task_ids:
-            self._notify_task_changed()
-            await self._admit_pending_spawns()
-
-    async def _blocker_is_active(self, blocker_task_id: str) -> bool:
-        """Return whether blocker task should keep dependent task in blocked state."""
-        if blocker_task_id in self._running:
-            return True
-
-        blocker = await self._tasks.get_task(blocker_task_id)
-        if blocker is None:
-            return False
-
-        runtime_view = self._runtime_view(blocker_task_id)
-        if runtime_view is not None and (
-            runtime_view.is_running or runtime_view.is_reviewing or runtime_view.is_pending
-        ):
-            return True
-
-        return blocker.status in {TaskStatus.IN_PROGRESS, TaskStatus.REVIEW}
-
-    # ------------------------------------------------------------------
     # Execution: agent invocation
     # ------------------------------------------------------------------
 
-    async def _persist_incremental_agent_output(
-        self,
-        execution_id: str,
-        agent: Agent,
-        *,
-        next_message_index: int,
-    ) -> tuple[int, bool]:
-        """Persist newly buffered agent messages for a running execution."""
-        buffered_messages = agent.get_messages()
-        if next_message_index >= len(buffered_messages):
-            return len(buffered_messages), False
-
-        new_messages = buffered_messages[next_message_index:]
-        payload = serialize_agent_messages(new_messages)
-        if payload is None or self._executions is None:
-            return len(buffered_messages), False
-
-        await self._executions.append_execution_log(execution_id, payload)
-        return len(buffered_messages), True
-
-    async def _send_prompt_with_incremental_persistence(
+    async def _engine_send_prompt_with_incremental_persistence(
         self,
         *,
         task_id: str,
@@ -965,53 +839,18 @@ class AutomationEngine:
         agent: Agent,
         prompt: str,
     ) -> bool:
-        """Send a prompt and flush incremental output while the prompt is running."""
+        """Send a prompt with incremental persistence (engine-level wrapper)."""
         if self._executions is None:
             await agent.send_prompt(prompt)
             return False
 
-        prompt_task = asyncio.create_task(agent.send_prompt(prompt))
-        next_message_index = 0
-        persisted_any = False
-
-        try:
-            while True:
-                done, _ = await asyncio.wait(
-                    {prompt_task},
-                    timeout=_STREAM_LOG_FLUSH_INTERVAL_SECONDS,
-                )
-                next_message_index, persisted = await self._persist_incremental_agent_output(
-                    execution_id,
-                    agent,
-                    next_message_index=next_message_index,
-                )
-                persisted_any = persisted_any or persisted
-                if done:
-                    break
-
-            await prompt_task
-        except Exception:
-            if not prompt_task.done():
-                prompt_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await prompt_task
-            raise
-        finally:
-            try:
-                next_message_index, persisted = await self._persist_incremental_agent_output(
-                    execution_id,
-                    agent,
-                    next_message_index=next_message_index,
-                )
-                persisted_any = persisted_any or persisted
-            except Exception as exc:  # quality-allow-broad-except
-                log.debug(
-                    "Unable to persist trailing incremental output for %s: %s",
-                    task_id,
-                    exc,
-                )
-
-        return persisted_any
+        return await _send_prompt_with_incremental_persistence(
+            self._executions,
+            task_id=task_id,
+            execution_id=execution_id,
+            agent=agent,
+            prompt=prompt,
+        )
 
     async def _run_execution(
         self,
@@ -1058,7 +897,8 @@ class AutomationEngine:
         log.info(f"Sending prompt to agent for task {task.id}, run {run_count}")
         persisted_incremental_output = False
         try:
-            persisted_incremental_output = await self._send_prompt_with_incremental_persistence(
+            send = self._engine_send_prompt_with_incremental_persistence
+            persisted_incremental_output = await send(
                 task_id=task.id,
                 execution_id=execution_id,
                 agent=agent,
@@ -1108,7 +948,7 @@ class AutomationEngine:
                 try:
                     wt_path = await self._workspaces.create(
                         task.id,
-                        base_branch=(task.base_branch or self._config.general.default_base_branch),
+                        base_branch=task.base_branch,
                     )
                 except ValueError as exc:
                     error_msg = str(exc)
@@ -1303,7 +1143,6 @@ class AutomationEngine:
         await self._publish_runtime_event(AutomationTaskEnded(task_id=task_id))
         if removed.pending_respawn:
             self._enqueue_pending_spawn(task_id)
-        await self._retry_blocked_pending_spawns()
         await self._admit_pending_spawns()
 
     def _remove_running_state_soon(self, task_id: str) -> None:
@@ -1316,8 +1155,6 @@ class AutomationEngine:
         self._publish_runtime_event_soon(AutomationTaskEnded(task_id=task_id))
         if removed.pending_respawn:
             self._enqueue_pending_spawn(task_id)
-        with contextlib.suppress(RuntimeError):
-            self._background_tasks.spawn(self._retry_blocked_pending_spawns())
         with contextlib.suppress(RuntimeError):
             self._background_tasks.spawn(self._admit_pending_spawns())
 
@@ -1373,28 +1210,6 @@ class AutomationEngine:
     # ------------------------------------------------------------------
     # Preparation: runtime state markers
     # ------------------------------------------------------------------
-
-    def _mark_runtime_blocked(
-        self,
-        task_id: str,
-        *,
-        reason: str,
-        blocked_by_task_ids: tuple[str, ...] = (),
-        overlap_hints: tuple[str, ...] = (),
-    ) -> None:
-        marker = getattr(self._runtime_service, "mark_blocked", None)
-        if callable(marker):
-            marker(
-                task_id,
-                reason=reason,
-                blocked_by_task_ids=blocked_by_task_ids,
-                overlap_hints=overlap_hints,
-            )
-
-    def _clear_runtime_blocked(self, task_id: str) -> None:
-        clearer = getattr(self._runtime_service, "clear_blocked", None)
-        if callable(clearer):
-            clearer(task_id)
 
     def _mark_runtime_pending(self, task_id: str, *, reason: str) -> None:
         marker = getattr(self._runtime_service, "mark_pending", None)
@@ -1468,3 +1283,153 @@ class AutomationEngine:
 
     async def _update_task_status(self, task_id: str, status: TaskStatus) -> None:
         await self._tasks.update_fields(task_id, status=status)
+
+
+# ---------------------------------------------------------------------------
+# AutomationService protocol + impl (formerly orchestrator.py)
+# ---------------------------------------------------------------------------
+
+
+class AutomationServiceImpl:
+    """Thin wrapper over AutomationEngine for AUTO task orchestration."""
+
+    def __init__(
+        self,
+        task_service: TaskServiceImpl,
+        workspace_service: WorkspaceServiceImpl,
+        config: KaganConfig,
+        runtime_service: RuntimeServiceImpl,
+        session_service: SessionServiceImpl | None = None,
+        execution_service: ExecutionRepository | None = None,
+        on_task_changed: Callable[[], None] | None = None,
+        on_error: Callable[[str, str], None] | None = None,
+        notifier: Callable[[str, str, NotificationSeverity], None] | None = None,
+        agent_factory: AgentFactory | None = None,
+        event_bus: EventBus | None = None,
+        queued_message_service: QueuedMessageServiceImpl | None = None,
+        git_adapter: GitOperationsProtocol | None = None,
+    ) -> None:
+        from kagan.core.agents.agent_factory import create_agent as _create_agent
+
+        self._merge_lock = asyncio.Lock()
+        self._queued = queued_message_service or QueuedMessageServiceImpl()
+        self._engine = AutomationEngine(
+            task_service=task_service,
+            workspace_service=workspace_service,
+            config=config,
+            runtime_service=runtime_service,
+            session_service=session_service,
+            execution_service=execution_service,
+            on_task_changed=on_task_changed,
+            on_error=on_error,
+            notifier=notifier,
+            agent_factory=agent_factory or _create_agent,
+            event_bus=event_bus,
+            queued_message_service=self._queued,
+            git_adapter=git_adapter,
+        )
+
+    @property
+    def merge_lock(self) -> asyncio.Lock:
+        """Lock for serializing merge operations."""
+        return self._merge_lock
+
+    @property
+    def running_tasks(self) -> set[str]:
+        return self._engine.running_tasks
+
+    async def start(self) -> None:
+        await self._engine.start()
+
+    async def stop(self) -> None:
+        await self._engine.stop()
+
+    def is_running(self, task_id: str) -> bool:
+        return self._engine.is_running(task_id)
+
+    def is_reviewing(self, task_id: str) -> bool:
+        return self._engine.is_reviewing(task_id)
+
+    def get_running_agent(self, task_id: str) -> Agent | None:
+        return self._engine.get_running_agent(task_id)
+
+    def get_review_agent(self, task_id: str) -> Agent | None:
+        return self._engine.get_review_agent(task_id)
+
+    async def wait_for_running_agent(
+        self,
+        task_id: str,
+        *,
+        timeout: float = 2.0,
+        interval: float = 0.05,
+    ) -> Agent | None:
+        return await self._engine.wait_for_running_agent(
+            task_id,
+            timeout=timeout,
+            interval=interval,
+        )
+
+    def get_execution_id(self, task_id: str) -> str | None:
+        return self._engine.get_execution_id(task_id)
+
+    def get_run_count(self, task_id: str) -> int:
+        return self._engine.get_run_count(task_id)
+
+    async def queue_message(
+        self,
+        session_id: str,
+        content: str,
+        *,
+        lane: QueueLane = DEFAULT_QUEUE_LANE,
+        author: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> QueuedMessage:
+        return await self._queued.queue_message(
+            session_id,
+            content,
+            lane=lane,
+            author=author,
+            metadata=metadata,
+        )
+
+    async def cancel_queued(self, session_id: str, *, lane: QueueLane = DEFAULT_QUEUE_LANE) -> None:
+        await self._queued.cancel_queued(session_id, lane=lane)
+
+    async def get_status(
+        self, session_id: str, *, lane: QueueLane = DEFAULT_QUEUE_LANE
+    ) -> QueueStatus:
+        return await self._queued.get_status(session_id, lane=lane)
+
+    async def take_queued(
+        self, session_id: str, *, lane: QueueLane = DEFAULT_QUEUE_LANE
+    ) -> QueuedMessage | None:
+        return await self._queued.take_queued(session_id, lane=lane)
+
+    async def take_all_queued(
+        self, session_id: str, *, lane: QueueLane = DEFAULT_QUEUE_LANE
+    ) -> list[QueuedMessage]:
+        return await self._queued.take_all_queued(session_id, lane=lane)
+
+    async def get_queued(
+        self, session_id: str, *, lane: QueueLane = DEFAULT_QUEUE_LANE
+    ) -> list[QueuedMessage]:
+        return await self._queued.get_queued(session_id, lane=lane)
+
+    async def remove_message(
+        self, session_id: str, index: int, *, lane: QueueLane = DEFAULT_QUEUE_LANE
+    ) -> bool:
+        return await self._queued.remove_message(session_id, index, lane=lane)
+
+    async def handle_status_change(
+        self,
+        task_id: str,
+        old_status: TaskStatus | None,
+        new_status: TaskStatus | None,
+    ) -> None:
+        await self._engine.handle_status_change(task_id, old_status, new_status)
+
+    async def spawn_for_task(self, task: TaskLike) -> bool:
+        return await self._engine.spawn_for_task(task)
+
+    async def stop_task(self, task_id: str) -> bool:
+        return await self._engine.stop_task(task_id)

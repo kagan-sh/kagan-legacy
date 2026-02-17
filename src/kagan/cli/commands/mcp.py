@@ -57,7 +57,7 @@ def mcp(
     directory is a Kagan-managed project.
 
     Use --readonly for ACP agents to expose only coordination tools
-    (tasks_list, get_task).
+    (task_list, task_get).
     """
     if capability is not None and capability not in _VALID_CAPABILITIES:
         valid = ", ".join(sorted(_VALID_CAPABILITIES))
@@ -66,35 +66,22 @@ def mcp(
         valid = ", ".join(sorted(_VALID_IDENTITIES))
         raise click.BadParameter(f"Invalid identity '{identity}'. Expected one of: {valid}")
 
-    from kagan.mcp.server import main as mcp_main
+    from kagan.mcp.runtime import main as mcp_main
 
-    try:
-        if enable_internal_instrumentation:
-            mcp_main(
-                readonly=readonly,
-                endpoint=endpoint,
-                session_id=session_id,
-                capability=capability,
-                identity=identity,
-                enable_internal_instrumentation=True,
-            )
-            return
+    if enable_internal_instrumentation:
         mcp_main(
             readonly=readonly,
             endpoint=endpoint,
             session_id=session_id,
             capability=capability,
             identity=identity,
+            enable_internal_instrumentation=True,
         )
-    except TypeError as exc:
-        message = str(exc)
-        missing_new_flag = "enable_internal_instrumentation" in message
-        if (not enable_internal_instrumentation) or not missing_new_flag:
-            raise
-        mcp_main(
-            readonly=readonly,
-            endpoint=endpoint,
-            session_id=session_id,
-            capability=capability,
-            identity=identity,
-        )
+        return
+    mcp_main(
+        readonly=readonly,
+        endpoint=endpoint,
+        session_id=session_id,
+        capability=capability,
+        identity=identity,
+    )

@@ -7,6 +7,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from kagan.core.ipc.constants import MAX_LINE_BYTES
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.transports import DefaultTransport, TCPLoopbackTransport, UnixSocketTransport
 
@@ -15,7 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_MAX_LINE_BYTES = 4 * 1024 * 1024  # 4 MiB per JSON line
 _DEFAULT_TIMEOUT = 30.0
 
 
@@ -31,6 +31,8 @@ class IPCClient:
         await client.connect()
         response = await client.request(
             session_id="s1",
+            session_origin="tui",
+            client_version="1.0.0",
             capability="tasks",
             method="list",
         )
@@ -111,16 +113,29 @@ class IPCClient:
             self._reader = None
             logger.debug("IPC client disconnected")
 
+    async def reconnect(self, endpoint: CoreEndpoint) -> None:
+        """Swap to a new endpoint without auto-connecting.
+
+        Closes the current connection (if open), sets the new endpoint and
+        creates the matching transport.  The caller decides when to
+        ``connect()`` again.
+        """
+        await self.close()
+        self._endpoint = endpoint
+        self._transport = self._transport_for_endpoint(endpoint)
+
     async def request(
         self,
         *,
         session_id: str,
         session_profile: str | None = None,
-        session_origin: str | None = None,
+        session_origin: str,
+        client_version: str,
         capability: str,
         method: str,
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        request_timeout_seconds: float | None = None,
     ) -> CoreResponse:
         """Send a request to the core and return the response.
 
@@ -128,10 +143,13 @@ class IPCClient:
 
         Args:
             session_id: Identifier of the originating client session.
+            session_origin: Origin lane for this session (kagan, kagan_admin, tui).
+            client_version: Client-reported kagan package version.
             capability: Logical service group (e.g. ``tasks``).
             method: Method name within the capability.
             params: Method-specific parameters.
             idempotency_key: Optional de-duplication key.
+            request_timeout_seconds: Optional per-request read timeout override.
 
         Returns:
             The ``CoreResponse`` from the core.
@@ -148,6 +166,7 @@ class IPCClient:
             session_id=session_id,
             session_profile=session_profile,
             session_origin=session_origin,
+            client_version=client_version,
             capability=capability,
             method=method,
             params=params or {},
@@ -158,6 +177,9 @@ class IPCClient:
         payload["bearer_token"] = self._endpoint.token
 
         line = json.dumps(payload, separators=(",", ":")) + "\n"
+        effective_timeout = (
+            self._timeout if request_timeout_seconds is None else request_timeout_seconds
+        )
 
         async with self._lock:
             self._writer.write(line.encode("utf-8"))
@@ -166,8 +188,12 @@ class IPCClient:
             try:
                 raw = await asyncio.wait_for(
                     self._reader.readline(),
-                    timeout=self._timeout,
+                    timeout=effective_timeout,
                 )
+            except ValueError as exc:
+                await self.close()
+                msg = "IPC response exceeded stream framing limit"
+                raise ConnectionError(msg) from exc
             except TimeoutError:
                 await self.close()
                 raise
@@ -175,6 +201,10 @@ class IPCClient:
         if not raw:
             await self.close()
             msg = "Connection closed by server"
+            raise ConnectionError(msg)
+        if len(raw) > MAX_LINE_BYTES:
+            await self.close()
+            msg = "IPC response exceeded max line size"
             raise ConnectionError(msg)
 
         try:

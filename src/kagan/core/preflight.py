@@ -8,7 +8,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from kagan.core.command_utils import cached_which, split_command_string
-from kagan.core.models.enums import VALID_PAIR_BACKENDS
+from kagan.core.domain.enums import VALID_PAIR_BACKENDS
 
 if TYPE_CHECKING:
     from kagan.core.config import AgentConfig

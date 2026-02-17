@@ -7,6 +7,7 @@ import kagan.mcp.registrars as registrars
 _EXPECTED_EXPORTS = {
     "ToolRegistrationContext",
     "SharedToolRegistrationContext",
+    "TaskRuntimeState",
     "register_full_mode_tools",
     "register_shared_tools",
 }

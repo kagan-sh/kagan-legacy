@@ -15,22 +15,22 @@ from kagan.core.api import (
     KaganAPI,
     SessionCreateFailedError,
 )
+from kagan.core.commands.automation import handle_session_create
 from kagan.core.config import AgentConfig, KaganConfig
-from kagan.core.models.enums import PairTerminalBackend, SessionType, TaskStatus, TaskType
-from kagan.core.request_handlers import handle_session_create
-from kagan.core.services.session_bundle import (
+from kagan.core.domain.enums import PairTerminalBackend, SessionType, TaskStatus, TaskType
+from kagan.core.services.sessions import (
+    SessionServiceImpl,
     build_external_launcher_command,
     bundle_json_path,
     bundle_prompt_path,
     write_startup_bundle,
 )
-from kagan.core.services.sessions import SessionServiceImpl
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from kagan.core.services.tasks import TaskService
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.tasks import TaskServiceImpl
+    from kagan.core.services.workspaces import WorkspaceServiceImpl
 
 
 @dataclass
@@ -96,15 +96,16 @@ def _build_service(
 def _build_launch_service() -> SessionServiceImpl:
     return SessionServiceImpl(
         project_root=Path("."),
-        task_service=cast("TaskService", object()),
-        workspace_service=cast("WorkspaceService", object()),
+        task_service=cast("TaskServiceImpl", object()),
+        workspace_service=cast("WorkspaceServiceImpl", object()),
         config=KaganConfig(),
     )
 
 
-def _api(**services: object) -> KaganAPI:
+def _ctx(**services: object) -> Any:
     ctx = SimpleNamespace(**services)
-    return KaganAPI(cast("Any", ctx))
+    ctx.api = KaganAPI(cast("Any", ctx))
+    return ctx
 
 
 def _agent(short_name: str, interactive_command: str = "agent-cli") -> AgentConfig:
@@ -441,8 +442,8 @@ async def test_session_create_rejects_mismatched_worktree_path(tmp_path: Path) -
             f"worktree_path must point to the task workspace. Expected: {expected_worktree}",
         )
 
-    f = _api()
-    f.create_session = AsyncMock(side_effect=_create_session)
+    f = _ctx()
+    f.api.create_session = AsyncMock(side_effect=_create_session)
 
     result = await handle_session_create(
         f,
@@ -451,8 +452,8 @@ async def test_session_create_rejects_mismatched_worktree_path(tmp_path: Path) -
 
     assert result["success"] is False
     assert result["code"] == "INVALID_WORKTREE_PATH"
-    assert result["next_tool"] == "sessions_exists"
-    assert result["next_arguments"] == {"task_id": "task-1"}
+    assert result["next_tool"] == "session_manage"
+    assert result["next_arguments"] == {"action": "read", "task_id": "task-1"}
 
 
 async def test_session_create_returns_structured_error_when_backend_fails(
@@ -461,8 +462,8 @@ async def test_session_create_returns_structured_error_when_backend_fails(
     async def _create_session(task_id, *, worktree_path=None, reuse_if_exists=True):
         raise SessionCreateFailedError(task_id, RuntimeError("tmux unavailable"))
 
-    f = _api()
-    f.create_session = AsyncMock(side_effect=_create_session)
+    f = _ctx()
+    f.api.create_session = AsyncMock(side_effect=_create_session)
 
     result = await handle_session_create(f, {"task_id": "task-1"})
 

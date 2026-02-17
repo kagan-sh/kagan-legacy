@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kagan.core.security import CapabilityProfile
+from kagan.core.policy import CapabilityProfile
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from kagan.core.bootstrap import AppContext
@@ -28,6 +29,9 @@ _PROFILE_RANK: dict[CapabilityProfile, int] = {
     CapabilityProfile.OPERATOR: 3,
     CapabilityProfile.MAINTAINER: 4,
 }
+
+PLUGIN_UI_DESCRIBE_METHOD = "ui_describe"
+PLUGIN_HOOK_VALIDATE_REVIEW: Final = "validate_review_transition"
 
 
 class PluginManifest(BaseModel):
@@ -68,6 +72,17 @@ class PluginOperationHandler(Protocol):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class McpToolSchema:
+    """Declarative MCP tool descriptor contributed by a plugin operation."""
+
+    tool_name: str
+    description: str
+    parameters: dict[str, Any]
+    response_schema: dict[str, Any]
+    annotations: str = "mutating"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PluginOperation:
     """Registration descriptor for one plugin capability/method pair."""
 
@@ -78,6 +93,15 @@ class PluginOperation:
     minimum_profile: CapabilityProfile = CapabilityProfile.MAINTAINER
     mutating: bool = False
     description: str = ""
+    mcp_tool_schema: McpToolSchema | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PluginCapabilitySpec:
+    """Explicit capability declaration exposed by a plugin."""
+
+    capability: str
+    methods: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,13 +161,37 @@ class Plugin(Protocol):
         """Register plugin operations and policy hooks."""
 
 
+@runtime_checkable
+class PluginCapabilityProvider(Protocol):
+    """Optional plugin contract for explicit capability declarations."""
+
+    @property
+    def capabilities(self) -> tuple[PluginCapabilitySpec, ...]:
+        """Declared capability/method contract for this plugin."""
+
+
+@runtime_checkable
+class PluginLifecycle(Protocol):
+    """Optional plugin lifecycle hooks managed by core."""
+
+    async def on_core_startup(self, ctx: AppContext) -> None:
+        """Run plugin startup hook after core context initialization."""
+
+    async def on_core_shutdown(self, ctx: AppContext) -> None:
+        """Run plugin shutdown hook during core teardown."""
+
+
 class PluginRegistry(PluginRegistrationApi):
     """In-memory registry for plugin manifests, operations, and policy hooks."""
 
     def __init__(self) -> None:
         self._manifests: dict[str, PluginManifest] = {}
+        self._plugins: dict[str, Plugin] = {}
         self._operations: dict[tuple[str, str], PluginOperation] = {}
         self._policy_hooks: dict[tuple[str, str], list[PluginPolicyHook]] = {}
+        self._capability_specs: dict[str, tuple[PluginCapabilitySpec, ...]] = {}
+        self._lifecycle_order: list[str] = []
+        self._lifecycle_active = False
 
     def load_manifest(
         self,
@@ -153,10 +201,17 @@ class PluginRegistry(PluginRegistrationApi):
     ) -> PluginManifest:
         """Load and validate a plugin manifest via the provided loader contract."""
         manifest_loader = loader or JsonPluginManifestLoader()
-        return manifest_loader.load(manifest_path)
+        manifest = manifest_loader.load(manifest_path)
+        if not isinstance(manifest, PluginManifest):
+            msg = "Plugin manifest loader must return PluginManifest"
+            raise TypeError(msg)
+        return manifest
 
     def register_plugin(self, plugin: Plugin) -> None:
         """Register a plugin manifest and invoke its registration hooks."""
+        if not isinstance(plugin, Plugin):
+            msg = "Plugin must define 'manifest' and 'register(api)'"
+            raise TypeError(msg)
         manifest = plugin.manifest
         if not isinstance(manifest, PluginManifest):
             msg = "Plugin manifest must be an instance of PluginManifest"
@@ -169,6 +224,7 @@ class PluginRegistry(PluginRegistrationApi):
             raise ValueError(msg)
 
         self._manifests[manifest.id] = manifest
+        self._plugins[manifest.id] = plugin
         try:
             plugin.register(self)
         except Exception:  # quality-allow-broad-except
@@ -178,9 +234,20 @@ class PluginRegistry(PluginRegistrationApi):
             self._rollback_plugin(manifest.id)
             msg = f"Plugin '{manifest.id}' must register at least one operation"
             raise ValueError(msg)
+        try:
+            self._capability_specs[manifest.id] = self._validate_capability_contract(
+                manifest.id,
+                plugin,
+            )
+        except Exception:
+            self._rollback_plugin(manifest.id)
+            raise
 
     def register_operation(self, operation: PluginOperation) -> None:
         """Register a capability/method dispatch target for a known plugin."""
+        if not isinstance(operation, PluginOperation):
+            msg = "Plugin operation must be an instance of PluginOperation"
+            raise TypeError(msg)
         plugin_manifest = self._manifests.get(operation.plugin_id)
         if plugin_manifest is None:
             msg = f"Plugin '{operation.plugin_id}' must be registered before operations"
@@ -217,6 +284,18 @@ class PluginRegistry(PluginRegistrationApi):
         hook: PluginPolicyHook,
     ) -> None:
         """Register a policy hook for an existing plugin operation."""
+        if not _PLUGIN_ID_PATTERN.fullmatch(plugin_id):
+            msg = f"Plugin ID '{plugin_id}' must match {_PLUGIN_ID_PATTERN.pattern}"
+            raise ValueError(msg)
+        if not _CAPABILITY_PATTERN.fullmatch(capability):
+            msg = f"Capability '{capability}' must match {_CAPABILITY_PATTERN.pattern}"
+            raise ValueError(msg)
+        if not _METHOD_PATTERN.fullmatch(method):
+            msg = f"Method '{method}' must match {_METHOD_PATTERN.pattern}"
+            raise ValueError(msg)
+        if not callable(hook):
+            msg = "Policy hook must be callable"
+            raise TypeError(msg)
         key = (capability, method)
         operation = self._operations.get(key)
         if operation is None:
@@ -237,6 +316,61 @@ class PluginRegistry(PluginRegistrationApi):
     def resolve_operation(self, capability: str, method: str) -> PluginOperation | None:
         """Resolve a plugin operation by capability/method."""
         return self._operations.get((capability, method))
+
+    def operations_for_method(self, method: str) -> tuple[PluginOperation, ...]:
+        """Return plugin operations that implement the given method name."""
+        return tuple(
+            operation
+            for (_, registered_method), operation in self._operations.items()
+            if registered_method == method
+        )
+
+    def capabilities_for_plugin(self, plugin_id: str) -> tuple[PluginCapabilitySpec, ...]:
+        """Return the plugin capability contract for a registered plugin."""
+        if plugin_id not in self._manifests:
+            msg = f"Plugin '{plugin_id}' is not registered"
+            raise ValueError(msg)
+        return self._capability_specs.get(plugin_id, ())
+
+    async def start_lifecycle(self, ctx: AppContext) -> None:
+        """Run startup hooks for plugins that implement lifecycle hooks."""
+        if self._lifecycle_active:
+            return
+        self._lifecycle_order.clear()
+        for plugin_id in sorted(self._plugins):
+            plugin = self._plugins[plugin_id]
+            if not isinstance(plugin, PluginLifecycle):
+                continue
+            try:
+                await plugin.on_core_startup(ctx)
+            except Exception as exc:  # quality-allow-broad-except
+                await self._rollback_started_lifecycle_hooks(ctx)
+                msg = f"Plugin '{plugin_id}' startup hook failed"
+                raise RuntimeError(msg) from exc
+            self._lifecycle_order.append(plugin_id)
+        self._lifecycle_active = True
+
+    async def shutdown_lifecycle(self, ctx: AppContext) -> None:
+        """Run shutdown hooks for started plugins in reverse startup order."""
+        if not self._lifecycle_active:
+            return
+        first_exception: Exception | None = None
+        first_failed_plugin_id: str | None = None
+        for plugin_id in reversed(self._lifecycle_order):
+            plugin = self._plugins.get(plugin_id)
+            if plugin is None or not isinstance(plugin, PluginLifecycle):
+                continue
+            try:
+                await plugin.on_core_shutdown(ctx)
+            except Exception as exc:  # quality-allow-broad-except
+                if first_exception is None:
+                    first_exception = exc
+                    first_failed_plugin_id = plugin_id
+        self._lifecycle_order.clear()
+        self._lifecycle_active = False
+        if first_exception is not None and first_failed_plugin_id is not None:
+            msg = f"Plugin '{first_failed_plugin_id}' shutdown hook failed"
+            raise RuntimeError(msg) from first_exception
 
     def evaluate_policy(
         self,
@@ -293,20 +427,187 @@ class PluginRegistry(PluginRegistrationApi):
 
     def _rollback_plugin(self, plugin_id: str) -> None:
         self._manifests.pop(plugin_id, None)
+        self._plugins.pop(plugin_id, None)
+        self._capability_specs.pop(plugin_id, None)
         operation_keys = [
             key for key, operation in self._operations.items() if operation.plugin_id == plugin_id
         ]
         for key in operation_keys:
             self._operations.pop(key, None)
             self._policy_hooks.pop(key, None)
+        self._lifecycle_order = [item for item in self._lifecycle_order if item != plugin_id]
 
     def _registered_operation_count(self, plugin_id: str) -> int:
         return sum(1 for operation in self._operations.values() if operation.plugin_id == plugin_id)
 
+    def all_operations(self) -> tuple[PluginOperation, ...]:
+        """Return all registered operations."""
+        return tuple(self._operations.values())
+
+    def discover_and_register(self, entrypoints: Sequence[str]) -> None:
+        """Discover and register plugins from dotted entrypoint strings.
+
+        Each entrypoint is "module.path:ClassName". The class must implement
+        the Plugin protocol.
+        """
+        import importlib
+
+        for entrypoint in entrypoints:
+            if not isinstance(entrypoint, str):
+                msg = f"Invalid plugin entrypoint '{entrypoint}': expected 'module:Class'"
+                raise ValueError(msg)
+            normalized_entrypoint = entrypoint.strip()
+            if not normalized_entrypoint:
+                msg = f"Invalid plugin entrypoint '{entrypoint}': expected 'module:Class'"
+                raise ValueError(msg)
+            module_path, _, class_name = normalized_entrypoint.rpartition(":")
+            if not module_path or not class_name:
+                msg = (
+                    f"Invalid plugin entrypoint '{normalized_entrypoint}': expected 'module:Class'"
+                )
+                raise ValueError(msg)
+            try:
+                module = importlib.import_module(module_path)
+            except ImportError as exc:
+                msg = f"Cannot import plugin module '{module_path}'"
+                raise ValueError(msg) from exc
+            cls = getattr(module, class_name, None)
+            if cls is None:
+                msg = f"Plugin class '{class_name}' not found in module '{module_path}'"
+                raise ValueError(msg)
+            if not isinstance(cls, type):
+                msg = f"Plugin entrypoint '{normalized_entrypoint}' must reference a class"
+                raise ValueError(msg)
+            try:
+                plugin = cls()
+            except Exception as exc:  # quality-allow-broad-except
+                msg = (
+                    f"Plugin class '{class_name}' in module '{module_path}' "
+                    "could not be instantiated"
+                )
+                raise ValueError(msg) from exc
+            self.register_plugin(plugin)
+
+    def _validate_capability_contract(
+        self,
+        plugin_id: str,
+        plugin: Plugin,
+    ) -> tuple[PluginCapabilitySpec, ...]:
+        if isinstance(plugin, PluginCapabilityProvider):
+            try:
+                declared_specs = plugin.capabilities
+            except Exception as exc:  # quality-allow-broad-except
+                msg = f"Plugin '{plugin_id}' capability contract could not be loaded"
+                raise ValueError(msg) from exc
+            if not isinstance(declared_specs, tuple):
+                msg = f"Plugin '{plugin_id}' capability contract must be a tuple"
+                raise TypeError(msg)
+            specs: tuple[PluginCapabilitySpec, ...] = declared_specs
+        else:
+            specs = self._derive_capabilities_from_operations(plugin_id)
+        return self._normalize_and_validate_specs(plugin_id, specs)
+
+    def _derive_capabilities_from_operations(
+        self,
+        plugin_id: str,
+    ) -> tuple[PluginCapabilitySpec, ...]:
+        by_capability: dict[str, set[str]] = {}
+        for operation in self._operations.values():
+            if operation.plugin_id != plugin_id:
+                continue
+            by_capability.setdefault(operation.capability, set()).add(operation.method)
+        normalized = tuple(
+            PluginCapabilitySpec(
+                capability=capability,
+                methods=tuple(sorted(methods)),
+            )
+            for capability, methods in sorted(by_capability.items())
+        )
+        return normalized
+
+    def _normalize_and_validate_specs(
+        self,
+        plugin_id: str,
+        specs: tuple[PluginCapabilitySpec, ...],
+    ) -> tuple[PluginCapabilitySpec, ...]:
+        declared_methods: dict[str, set[str]] = {}
+        for spec in specs:
+            if not isinstance(spec, PluginCapabilitySpec):
+                msg = f"Plugin '{plugin_id}' capability entries must be PluginCapabilitySpec values"
+                raise TypeError(msg)
+            if not _CAPABILITY_PATTERN.fullmatch(spec.capability):
+                msg = f"Capability '{spec.capability}' must match {_CAPABILITY_PATTERN.pattern}"
+                raise ValueError(msg)
+            if not spec.methods:
+                msg = f"Plugin '{plugin_id}' capability '{spec.capability}' must declare methods"
+                raise ValueError(msg)
+            methods = declared_methods.setdefault(spec.capability, set())
+            for method in spec.methods:
+                if not _METHOD_PATTERN.fullmatch(method):
+                    msg = f"Method '{method}' must match {_METHOD_PATTERN.pattern}"
+                    raise ValueError(msg)
+                methods.add(method)
+
+        registered_methods: dict[str, set[str]] = {}
+        for operation in self._operations.values():
+            if operation.plugin_id != plugin_id:
+                continue
+            registered_methods.setdefault(operation.capability, set()).add(operation.method)
+
+        for capability, methods in declared_methods.items():
+            actual = registered_methods.get(capability, set())
+            if methods != actual:
+                missing = sorted(methods - actual)
+                extra = sorted(actual - methods)
+                if missing:
+                    msg = (
+                        f"Plugin '{plugin_id}' capability '{capability}' declares missing "
+                        f"operations: {', '.join(missing)}"
+                    )
+                    raise ValueError(msg)
+                msg = (
+                    f"Plugin '{plugin_id}' capability '{capability}' registered undeclared "
+                    f"operations: "
+                    f"{', '.join(extra)}"
+                )
+                raise ValueError(msg)
+
+        undeclared = sorted(set(registered_methods) - set(declared_methods))
+        if undeclared:
+            msg = (
+                f"Plugin '{plugin_id}' capability contract missing declarations for: "
+                f"{', '.join(undeclared)}"
+            )
+            raise ValueError(msg)
+
+        normalized = tuple(
+            PluginCapabilitySpec(
+                capability=capability,
+                methods=tuple(sorted(methods)),
+            )
+            for capability, methods in sorted(declared_methods.items())
+        )
+        return normalized
+
+    async def _rollback_started_lifecycle_hooks(self, ctx: AppContext) -> None:
+        for plugin_id in reversed(self._lifecycle_order):
+            plugin = self._plugins.get(plugin_id)
+            if plugin is None or not isinstance(plugin, PluginLifecycle):
+                continue
+            with contextlib.suppress(Exception):  # quality-allow-broad-except
+                await plugin.on_core_shutdown(ctx)
+        self._lifecycle_order.clear()
+
 
 __all__ = [
+    "PLUGIN_HOOK_VALIDATE_REVIEW",
+    "PLUGIN_UI_DESCRIBE_METHOD",
     "JsonPluginManifestLoader",
+    "McpToolSchema",
     "Plugin",
+    "PluginCapabilityProvider",
+    "PluginCapabilitySpec",
+    "PluginLifecycle",
     "PluginManifest",
     "PluginManifestLoader",
     "PluginOperation",

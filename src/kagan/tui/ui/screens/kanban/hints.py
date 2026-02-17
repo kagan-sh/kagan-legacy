@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from kagan.core.models.enums import TaskStatus, TaskType
+from kagan.core.domain.enums import TaskStatus, TaskType
 from kagan.tui.keybindings import APP_BINDINGS, KANBAN_BINDINGS, get_key_for_action
 
 
@@ -44,6 +44,10 @@ def build_kanban_hints(
     task_type: TaskType | None,
 ) -> KanbanHints:
     """Build two-tier keybinding hints for the Kanban board.
+
+    Args:
+        status: Current task status, or None if no task is selected.
+        task_type: Current task type.
 
     Returns:
         KanbanHints with navigation (row 1) and actions (row 2).

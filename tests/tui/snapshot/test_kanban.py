@@ -12,17 +12,17 @@ internally calls asyncio.run(), which conflicts with async test functions.
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from tests.helpers.journey_runner import bundle_snapshots, execute_test_actions, parse_actions
+from tests.helpers.wait import wait_for_screen
 from tests.tui.snapshot.conftest import _normalize_svg
 
 from kagan.core.adapters.db.repositories import TaskRepository
 from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 from kagan.tui.app import KaganApp
 
 if TYPE_CHECKING:
@@ -129,7 +129,6 @@ class TestKanbanFlow:
             agent_factory=mock_acp_agent_factory,
         )
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Timing-sensitive; flaky on Windows CI")
     def test_kanban_journey(
         self,
         kanban_app: KaganApp,
@@ -143,9 +142,8 @@ class TestKanbanFlow:
 
             cols, rows = snapshot_terminal_size
             async with kanban_app.run_test(headless=True, size=(cols, rows)) as pilot:
-                await pilot.pause()
-                assert isinstance(pilot.app.screen, KanbanScreen)
-                pilot.app.screen.focus_first_card()
+                screen = await wait_for_screen(pilot, KanbanScreen, timeout=10.0)
+                screen.focus_first_card()
                 snapshots = await execute_test_actions(
                     pilot,
                     parse_actions("shot(board) slash (backlog) shot(search) escape"),

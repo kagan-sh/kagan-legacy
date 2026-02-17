@@ -13,7 +13,7 @@ from kagan.core.agents.agent_factory import AgentFactory, create_agent
 from kagan.core.agents.refinement_rules import build_refinement_prompt
 from kagan.core.debug_log import log
 from kagan.core.limits import AGENT_TIMEOUT
-from kagan.core.services.permission_policy import AgentPermissionScope, resolve_auto_approve
+from kagan.core.policy import AgentPermissionScope, resolve_auto_approve
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
     from kagan.core.adapters.db.schema import Task
-    from kagan.core.services.diffs import RepoDiff
+    from kagan.core.services.workspaces import RepoDiff
 
 
 class DiffModal(ModalScreen[str | None]):

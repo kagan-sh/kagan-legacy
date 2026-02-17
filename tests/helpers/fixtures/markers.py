@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-_PACKAGE_MARKERS = frozenset({"core", "mcp", "tui"})
-_TYPE_MARKERS = frozenset({"unit", "contract", "snapshot", "smoke"})
+_PACKAGE_MARKERS = frozenset({"core", "mcp", "tui", "plugins"})
+_TYPE_MARKERS = frozenset({"unit", "fast", "contract", "snapshot", "smoke"})
 _DEPRECATED_TEST_MARKERS = frozenset({"integration"})
 _DISALLOWED_EXPLICIT_MARKERS = _PACKAGE_MARKERS | _TYPE_MARKERS | _DEPRECATED_TEST_MARKERS
 _PATH_MARKER_RULES: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("tests/core/fast/", ("core", "fast")),
     ("tests/core/unit/", ("core", "unit")),
     ("tests/core/smoke/", ("core", "smoke")),
     ("tests/mcp/contract/", ("mcp", "contract")),
     ("tests/mcp/smoke/", ("mcp", "smoke")),
     ("tests/tui/snapshot/", ("tui", "snapshot")),
     ("tests/tui/smoke/", ("tui", "smoke")),
+    ("tests/plugins/", ("plugins", "unit")),
 )
 
 
@@ -65,8 +67,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if item.get_closest_marker("snapshot"):
             item.add_marker(pytest.mark.xdist_group("snapshots"))
         if item.get_closest_marker("smoke"):
+            _smoke_packages = ("core", "mcp", "tui", "plugins")
             package = next(
-                (name for name in ("core", "mcp", "tui") if item.get_closest_marker(name)),
+                (name for name in _smoke_packages if item.get_closest_marker(name)),
                 None,
             )
             if package is not None:

@@ -10,27 +10,25 @@ import pytest
 
 from kagan.core.adapters.db.repositories import TaskRepository
 from kagan.core.adapters.db.schema import Project
-from kagan.core.models.enums import ExecutionStatus, TaskType
-from kagan.core.runtime_helpers import (
-    RuntimeSnapshotSource,
-    empty_runtime_snapshot,
-    runtime_snapshot_for_task,
-    serialize_runtime_view,
-)
+from kagan.core.domain.enums import ExecutionStatus, TaskType
 from kagan.core.services.runtime import (
     AutoOutputMode,
     RuntimeContextState,
     RuntimeServiceImpl,
     RuntimeSessionEvent,
+    RuntimeSnapshotSource,
     RuntimeTaskPhase,
     RuntimeTaskView,
+    empty_runtime_snapshot,
+    runtime_snapshot_for_task,
+    serialize_runtime_view,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from kagan.core.adapters.db.repositories import ExecutionRepository
-    from kagan.core.services.projects import ProjectService
+    from kagan.core.services.projects import ProjectServiceImpl
     from kagan.core.services.types import TaskLike
 
 
@@ -71,7 +69,7 @@ async def _make_service(
     repo = TaskRepository(tmp_path / "runtime-orchestrator.db")
     await repo.initialize()
     service = RuntimeServiceImpl(
-        project_service=cast("ProjectService", SimpleNamespace()),
+        project_service=cast("ProjectServiceImpl", SimpleNamespace()),
         session_factory=repo.session_factory,
         execution_service=executions,
         automation_resolver=lambda: cast("Any", automation),
@@ -116,7 +114,7 @@ async def _make_runtime_service(
         get_project=AsyncMock(return_value=get_project_result),
         find_project_by_repo_path=AsyncMock(return_value=find_project_result),
     )
-    project_service = cast("ProjectService", project_service_ns)
+    project_service = cast("ProjectServiceImpl", project_service_ns)
     service = RuntimeServiceImpl(
         project_service=project_service,
         session_factory=repo.session_factory,
@@ -128,7 +126,7 @@ async def _make_runtime_service(
 async def _make_runtime_view_service(tmp_path: Path):
     repo = TaskRepository(tmp_path / "runtime-view.db")
     await repo.initialize()
-    project_service = cast("ProjectService", SimpleNamespace())
+    project_service = cast("ProjectServiceImpl", SimpleNamespace())
     execution_service = cast(
         "ExecutionRepository",
         SimpleNamespace(
@@ -230,6 +228,31 @@ async def test_prepare_auto_output_clears_stale_runtime_execution_reference(tmp_
     await repo.close()
 
 
+async def test_prepare_auto_output_backfill_keeps_running_state_for_incremental_streaming(
+    tmp_path: Path,
+) -> None:
+    task = _Task(id="auto0001", task_type=TaskType.AUTO)
+    runtime_view = RuntimeTaskView(
+        task_id=task.id,
+        phase=RuntimeTaskPhase.RUNNING,
+        execution_id="exec-running",
+    )
+    running_execution = SimpleNamespace(id="exec-running", status=ExecutionStatus.RUNNING)
+    service, _automation, _executions, repo = await _make_service(
+        tmp_path,
+        runtime_view=runtime_view,
+        execution_by_id={"exec-running": running_execution},
+        log_entries=[SimpleNamespace(logs='{"messages":[{"content":"line"}]}')],
+    )
+
+    readiness = await service.prepare_auto_output(cast("TaskLike", task))
+
+    assert readiness.output_mode is AutoOutputMode.BACKFILL
+    assert readiness.is_running is True
+    assert readiness.execution_id == "exec-running"
+    await repo.close()
+
+
 @pytest.mark.parametrize(
     ("status", "logs", "is_running", "should_recover"),
     [
@@ -288,7 +311,7 @@ async def test_runtime_state_service_persists_last_active_context(tmp_path: Path
     repo = TaskRepository(db_path)
     await repo.initialize()
 
-    project_service = cast("ProjectService", SimpleNamespace())
+    project_service = cast("ProjectServiceImpl", SimpleNamespace())
     execution_service = cast(
         "ExecutionRepository",
         SimpleNamespace(get_latest_execution_for_task=AsyncMock()),
@@ -326,7 +349,7 @@ async def test_runtime_session_dispatch_reduces_and_persists(tmp_path: Path) -> 
     repo = TaskRepository(tmp_path / "runtime.db")
     await repo.initialize()
 
-    project_service = cast("ProjectService", SimpleNamespace())
+    project_service = cast("ProjectServiceImpl", SimpleNamespace())
     service = RuntimeServiceImpl(
         project_service=project_service,
         session_factory=repo.session_factory,

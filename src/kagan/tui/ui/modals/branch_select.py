@@ -46,7 +46,7 @@ class BaseBranchModal(ModalScreen[str | None]):
         """Initialize modal copy and available branch choices."""
         super().__init__(**kwargs)
         self._branches = branches or []
-        self._current_value = current_value
+        self._current_value = current_value if isinstance(current_value, str) else ""
         self._title = title
         self._description = description
 
@@ -67,11 +67,18 @@ class BaseBranchModal(ModalScreen[str | None]):
 
             options.append(("+ Custom branch...", _CUSTOM_OPTION))
 
+            option_values = {v for _, v in options}
+            initial_value: str | Any = (
+                self._current_value
+                if self._current_value and self._current_value in option_values
+                else _SELECT_BLANK
+            )
             yield Select[str](
                 options,
-                value=self._current_value if self._current_value else _SELECT_BLANK,
+                value=initial_value,
                 id="branch-select",
                 prompt="Select a branch...",
+                allow_blank=True,
             )
 
             yield Input(

@@ -153,7 +153,7 @@ class WelcomeScreen(KaganScreen):
 
             yield Label(
                 "Control Kagan from your editor via Admin MCP"
-                " — docs.kagan.sh/how-to/admin-mcp-editors",
+                " — docs.kagan.sh/guides/editor-mcp-setup/",
                 id="admin-mcp-hint",
             )
 
@@ -279,7 +279,7 @@ class WelcomeScreen(KaganScreen):
         try:
             tasks = await self.ctx.api.list_tasks(project_id=project_id)
 
-            from kagan.core.models.enums import TaskStatus
+            from kagan.core.domain.enums import TaskStatus
 
             in_progress = sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS)
             in_review = sum(1 for t in tasks if t.status == TaskStatus.REVIEW)
@@ -393,7 +393,7 @@ class WelcomeScreen(KaganScreen):
         await self.app.push_screen(
             SettingsModal(
                 config=self.ctx.config,
-                config_path=self.ctx.config_path,
+                api=self.ctx.api,
             )
         )
 

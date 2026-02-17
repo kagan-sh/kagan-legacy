@@ -10,11 +10,14 @@ if TYPE_CHECKING:
     from textual.pilot import Pilot
     from textual.screen import Screen
 
-    from kagan.core.models.enums import TaskStatus
+    from kagan.core.domain.enums import TaskStatus
     from kagan.tui.app import KaganApp
 
 # CI runners are significantly slower; scale timeouts accordingly.
-_CI_MULTIPLIER: float = 5.0 if os.environ.get("CI") else 1.0
+# Windows CI is often slower than Linux/macOS for TUI tests.
+_CI_MULTIPLIER: float = (
+    8.0 if (os.environ.get("CI") and os.name == "nt") else (5.0 if os.environ.get("CI") else 1.0)
+)
 
 
 def _ci_timeout(timeout: float) -> float:
@@ -77,6 +80,10 @@ async def wait_for_screen(
     deadline = _deadline(timeout)
     while asyncio.get_running_loop().time() < deadline:
         await pilot.pause()
+        startup_worker = getattr(pilot.app, "_startup_worker", None)
+        startup_error = getattr(startup_worker, "error", None)
+        if startup_worker is not None and startup_worker.is_finished and startup_error is not None:
+            raise RuntimeError(f"startup worker failed: {startup_error}")
         current_screen = pilot.app.screen
         if isinstance(current_screen, screen_type):
             expected_agent = pilot.app.config.general.default_worker_agent.strip()
@@ -91,7 +98,7 @@ async def wait_for_screen(
                     continue
 
             if isinstance(current_screen, KanbanScreen):
-                tasks = await pilot.app.ctx.task_service.list_tasks(
+                tasks = await pilot.app.ctx.api.list_tasks(
                     project_id=pilot.app.ctx.active_project_id
                 )
                 if tasks:
@@ -204,7 +211,7 @@ async def wait_for_task_status(
     deadline = _deadline(timeout)
     last_status = None
     while asyncio.get_running_loop().time() < deadline:
-        task = await app.ctx.task_service.get_task(task_id)
+        task = await app.ctx.api.get_task(task_id)
         if task:
             last_status = task.status
             if task.status == status:

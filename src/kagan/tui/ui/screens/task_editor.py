@@ -11,7 +11,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, TabbedContent, TabPane, TextArea
 
 from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskType
+from kagan.core.domain.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskType
 from kagan.tui.keybindings import TASK_EDITOR_BINDINGS
 from kagan.tui.ui.widgets.base import BaseBranchInput, PairTerminalBackendSelect
 

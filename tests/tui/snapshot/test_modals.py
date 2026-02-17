@@ -26,7 +26,7 @@ from kagan.core.adapters.db.repositories import (
     TaskRepository,
 )
 from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 from kagan.tui.app import KaganApp
 
 if TYPE_CHECKING:
@@ -154,7 +154,6 @@ AUTO_MODE_CONFIG = """\
 [general]
 auto_review = true
 auto_approve = true
-default_base_branch = "main"
 default_worker_agent = "claude"
 max_concurrent_agents = 3
 
@@ -192,6 +191,7 @@ class TestReviewModal:
             repo_repo = RepoRepository(manager._session_factory)
             repo, _ = await repo_repo.get_or_create(project.root, default_branch="main")
             if repo.id:
+                await repo_repo.update_default_branch(repo.id, "main", mark_configured=True)
                 await repo_repo.add_to_project(project_id, repo.id, is_primary=True)
 
             task = Task(
@@ -208,7 +208,7 @@ class TestReviewModal:
             await manager.create(task)
 
             from kagan.core.adapters.db.schema import Workspace
-            from kagan.core.models.enums import ExecutionRunReason, SessionType, WorkspaceStatus
+            from kagan.core.domain.enums import ExecutionRunReason, SessionType, WorkspaceStatus
 
             worktree_path = project.root / "worktrees" / task.id
             worktree_path.mkdir(parents=True, exist_ok=True)
@@ -300,7 +300,7 @@ class TestReviewModal:
 
         async def run_flow() -> dict[str, str]:
             from kagan.tui.ui.modals.diff import DiffModal
-            from kagan.tui.ui.modals.review import ReviewModal
+            from kagan.tui.ui.modals.review_flow import ReviewModal
 
             cols, rows = snapshot_terminal_size
             async with app.run_test(headless=True, size=(cols, rows)) as pilot:

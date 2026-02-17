@@ -27,10 +27,10 @@ def _mock_agent_gates_for_ci(monkeypatch: pytest.MonkeyPatch) -> None:
     feature tests run identically on CI and locally.
     """
     clear_which_cache()
-    agent_health_module = import_module("kagan.core.services.agent_health")
+    bootstrap_module = import_module("kagan.core.bootstrap")
     agents_installer_module = import_module("kagan.core.agents.installer")
     monkeypatch.setattr(
-        agent_health_module.shutil,
+        bootstrap_module.shutil,
         "which",
         lambda _cmd, *_a, **_kw: "/usr/bin/mock",
     )

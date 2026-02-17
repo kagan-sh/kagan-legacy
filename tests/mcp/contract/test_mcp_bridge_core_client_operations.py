@@ -5,7 +5,12 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from tests.mcp.contract._bridge_test_support import SESSION, make_client
+from tests.mcp.contract._bridge_test_support import (
+    CLIENT_VERSION,
+    SESSION,
+    SESSION_ORIGIN,
+    make_client,
+)
 
 from kagan.core.ipc.contracts import CoreErrorDetail, CoreResponse
 from kagan.mcp.tools import CoreClientBridge, MCPBridgeError
@@ -15,7 +20,9 @@ from kagan.mcp.tools import CoreClientBridge, MCPBridgeError
 async def test_request_review_success() -> None:
     """request_review should translate to review.request command."""
     client = make_client({"success": True, "task_id": "T1", "status": "review"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.request_review("T1", "Done implementing")
 
     assert result["status"] == "review"
@@ -23,7 +30,8 @@ async def test_request_review_success() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="review",
         method="request",
         params={"task_id": "T1", "summary": "Done implementing"},
@@ -34,7 +42,9 @@ async def test_request_review_success() -> None:
 async def test_request_review_failure() -> None:
     """request_review should return error when core reports failure."""
     client = make_client({"success": False, "message": "Task not found"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.request_review("T1", "summary")
 
     assert result["status"] == "error"
@@ -51,16 +61,18 @@ async def test_request_review_preserves_recovery_fields() -> None:
             "message": "Review blocked",
             "code": "REVIEW_BLOCKED",
             "hint": "Resolve overlap and retry.",
-            "next_tool": "tasks_update",
+            "next_tool": "task_patch",
             "next_arguments": {"task_id": "T1", "status": "IN_PROGRESS"},
         }
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.request_review("T1", "summary")
 
     assert result["code"] == "REVIEW_BLOCKED"
     assert result["hint"] == "Resolve overlap and retry."
-    assert result["next_tool"] == "tasks_update"
+    assert result["next_tool"] == "task_patch"
     assert result["next_arguments"] == {"task_id": "T1", "status": "IN_PROGRESS"}
 
 
@@ -111,7 +123,9 @@ async def test_job_methods_route_to_core_requests(
         payload = {"success": True, "task_id": "T1", "job_id": "J1", "events": []}
 
     client = make_client(payload)
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     method = getattr(bridge, bridge_method)
     result = await method(**kwargs)
 
@@ -119,7 +133,8 @@ async def test_job_methods_route_to_core_requests(
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="jobs",
         method=expected_method,
         params=expected_params,
@@ -137,7 +152,9 @@ async def test_wait_job_preserves_timeout_metadata() -> None:
         "timeout": {"requested_seconds": 0.25, "waited_seconds": 0.25},
     }
     client = make_client(payload)
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
 
     result = await bridge.wait_job(job_id="J1", task_id="T1", timeout_seconds=0.25)
 
@@ -151,14 +168,17 @@ async def test_create_session() -> None:
     client = make_client(
         {"success": True, "task_id": "T1", "session_name": "kagan-T1", "backend": "tmux"}
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.create_session("T1", reuse_if_exists=False, worktree_path="/tmp/wt")
 
     assert result["success"] is True
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="sessions",
         method="create",
         params={
@@ -173,14 +193,17 @@ async def test_create_session() -> None:
 async def test_session_exists() -> None:
     """session_exists should translate to sessions.exists command."""
     client = make_client({"task_id": "T1", "exists": True, "session_name": "kagan-T1"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.session_exists("T1")
 
     assert result["exists"] is True
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="sessions",
         method="exists",
         params={"task_id": "T1"},
@@ -191,14 +214,17 @@ async def test_session_exists() -> None:
 async def test_kill_session() -> None:
     """kill_session should translate to sessions.kill command."""
     client = make_client({"success": True, "task_id": "T1"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.kill_session("T1")
 
     assert result["success"] is True
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="sessions",
         method="kill",
         params={"task_id": "T1"},
@@ -209,14 +235,17 @@ async def test_kill_session() -> None:
 async def test_get_settings() -> None:
     """get_settings should translate to settings.get query."""
     client = make_client({"settings": {"general.auto_review": True}})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_settings()
 
     assert result["settings"]["general.auto_review"] is True
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="settings",
         method="get",
         params={},
@@ -227,14 +256,17 @@ async def test_get_settings() -> None:
 async def test_update_settings() -> None:
     """update_settings should translate to settings.update command."""
     client = make_client({"success": True, "updated": {"general.auto_review": False}})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.update_settings({"general.auto_review": False})
 
     assert result["success"] is True
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="settings",
         method="update",
         params={"fields": {"general.auto_review": False}},
@@ -275,7 +307,9 @@ async def test_bridge_reconnects_and_retries_after_auth_failure() -> None:
         ),
         patch("kagan.core.ipc.client.IPCClient", return_value=fresh_client),
     ):
-        bridge = CoreClientBridge(stale_client, SESSION)
+        bridge = CoreClientBridge(
+            stale_client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+        )
         result = await bridge.get_settings()
 
     assert result["settings"]["general.auto_review"] is True
@@ -304,7 +338,9 @@ async def test_bridge_reconnects_and_retries_after_connection_error() -> None:
     )
 
     with patch("kagan.core.ipc.discovery.discover_core_endpoint") as discover_mock:
-        bridge = CoreClientBridge(client, SESSION)
+        bridge = CoreClientBridge(
+            client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+        )
         result = await bridge.get_settings()
 
     assert result["settings"]["general.auto_review"] is True
@@ -338,7 +374,9 @@ async def test_bridge_refreshes_endpoint_when_reconnect_fails_on_connection_erro
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=object()),
         patch("kagan.core.ipc.client.IPCClient", return_value=fresh_client),
     ):
-        bridge = CoreClientBridge(stale_client, SESSION)
+        bridge = CoreClientBridge(
+            stale_client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+        )
         result = await bridge.get_settings()
 
     assert result["settings"]["general.auto_review"] is True
@@ -353,14 +391,17 @@ async def test_bridge_refreshes_endpoint_when_reconnect_fails_on_connection_erro
 async def test_get_scratchpad() -> None:
     """get_scratchpad should translate to tasks.scratchpad query."""
     client = make_client({"task_id": "T1", "content": "my notes"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_scratchpad("T1")
 
     assert result == "my notes"
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="scratchpad",
         params={"task_id": "T1"},
@@ -371,7 +412,9 @@ async def test_get_scratchpad() -> None:
 async def test_core_error_raises_typed_bridge_error() -> None:
     """Bridge should raise MCPBridgeError with normalized code/message."""
     client = make_client(ok=False)
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
 
     with pytest.raises(MCPBridgeError) as exc_info:
         await bridge.get_task("T1")
@@ -397,7 +440,9 @@ async def test_auth_failed_normalizes_to_stale_token_code_when_recovery_fails() 
     )
 
     with patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=None):
-        bridge = CoreClientBridge(stale_client, SESSION)
+        bridge = CoreClientBridge(
+            stale_client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+        )
         with pytest.raises(MCPBridgeError) as exc_info:
             await bridge.get_settings()
 

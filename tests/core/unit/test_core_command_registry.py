@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from kagan.core.ipc.contracts import CoreRequest
+from kagan.version import get_kagan_version
 
 if TYPE_CHECKING:
     from kagan.core.host import CoreHost
@@ -18,7 +20,28 @@ async def _dispatch_request(host: CoreHost, request: CoreRequest):
 
 
 def _set_dispatch_map(monkeypatch: pytest.MonkeyPatch, dispatch_map: dict[tuple[str, str], object]):
-    monkeypatch.setattr("kagan.core.host._REQUEST_DISPATCH_MAP", dispatch_map)
+    HandlerFn = Callable[[object, dict], Awaitable[dict]]
+
+    class _Router:
+        async def dispatch(self, capability: str, method: str, ctx, params):
+            del ctx
+            handler = dispatch_map.get((capability, method))
+            if handler is None:
+                return None
+            if not callable(handler):
+                return None
+            return await cast("HandlerFn", handler)(object(), params)
+
+    monkeypatch.setattr("kagan.core.host.get_command_router", lambda: _Router())
+
+
+def _request(**kwargs) -> CoreRequest:
+    session_id = str(kwargs.get("session_id", ""))
+    if session_id and ":" not in session_id:
+        kwargs["session_id"] = f"ext:{session_id}"
+    kwargs.setdefault("session_origin", "kagan_admin")
+    kwargs.setdefault("client_version", get_kagan_version())
+    return CoreRequest(**kwargs)
 
 
 class TestCoreHostDispatch:
@@ -35,7 +58,7 @@ class TestCoreHostDispatch:
         """Unknown capability.method returns UNKNOWN_METHOD error."""
         host._ctx = object()
 
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="nonexistent",
@@ -51,7 +74,7 @@ class TestCoreHostDispatch:
     @pytest.mark.asyncio()
     async def test_dispatch_without_context_returns_not_ready(self, host):
         """Request before context init returns NOT_READY error."""
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             capability="tasks",
             method="list",
@@ -75,7 +98,7 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("test", "action"): mock_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="test",
@@ -100,7 +123,7 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("test", "bad"): bad_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="test",
@@ -124,7 +147,7 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("test", "bad_value"): bad_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="test",
@@ -150,7 +173,7 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("test", "fail"): failing_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="test",
@@ -178,7 +201,7 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("tasks", "create"): mutate_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request_1 = CoreRequest(
+        request_1 = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="tasks",
@@ -186,7 +209,7 @@ class TestCoreHostDispatch:
             params={"title": "dedup me"},
             idempotency_key="mutate-key-1",
         )
-        request_2 = CoreRequest(
+        request_2 = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="tasks",
@@ -221,14 +244,14 @@ class TestCoreHostDispatch:
         _set_dispatch_map(monkeypatch, {("tasks", "list"): query_adapter})
         host._ctx = SimpleNamespace(api=object())
 
-        request_1 = CoreRequest(
+        request_1 = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="tasks",
             method="list",
             idempotency_key="query-key-1",
         )
-        request_2 = CoreRequest(
+        request_2 = _request(
             session_id="test-session",
             session_profile="maintainer",
             capability="tasks",

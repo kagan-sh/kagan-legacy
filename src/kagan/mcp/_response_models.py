@@ -1,0 +1,493 @@
+"""Pydantic response models for MCP tools."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class RecoveryResponse(BaseModel):
+    """Shared recovery envelope for actionable MCP responses."""
+
+    message: str | None = Field(default=None, description="Human-readable status message")
+    code: str | None = Field(default=None, description="Machine-readable status code")
+    hint: str | None = Field(default=None, description="Actionable remediation guidance")
+    next_tool: str | None = Field(default=None, description="Suggested next MCP tool")
+    next_arguments: dict[str, object] | None = Field(
+        default=None,
+        description="Suggested arguments for next_tool",
+    )
+
+
+class MutatingResponse(RecoveryResponse):
+    """Base response for mutating MCP tools."""
+
+    success: bool = Field(description="Whether the operation succeeded")
+
+
+class TaskScopedMutatingResponse(MutatingResponse):
+    """Base response for mutating MCP tools that target a specific task."""
+
+    task_id: str = Field(description="ID of the task")
+
+
+class JobScopedResponse(RecoveryResponse):
+    """Base response for MCP tools scoped to a specific asynchronous job."""
+
+    success: bool = Field(description="Whether the operation succeeded")
+    job_id: str = Field(description="Core job identifier")
+    task_id: str = Field(description="ID of the associated task")
+
+
+class RepoInfo(BaseModel):
+    """Information about a repository in the workspace."""
+
+    repo_id: str = Field(description="Unique repository identifier")
+    name: str = Field(description="Repository name")
+    path: str = Field(description="Path to the repository root")
+    worktree_path: str | None = Field(default=None, description="Path to git worktree if active")
+    target_branch: str | None = Field(default=None, description="Target branch for merging")
+    has_changes: bool | None = Field(
+        default=None, description="Whether repo has uncommitted changes"
+    )
+    diff_stats: str | None = Field(default=None, description="Summary of changes (e.g., '+10 -5')")
+
+
+class LinkedTask(BaseModel):
+    """Summary of a linked task referenced via @mention."""
+
+    task_id: str = Field(description="Unique task identifier")
+    title: str = Field(description="Task title")
+    status: str = Field(description="Current status (backlog, in_progress, review, done)")
+    description: str | None = Field(default=None, description="Task description")
+
+
+class AgentLogEntry(BaseModel):
+    """A single agent execution log entry."""
+
+    run: int = Field(description="Run number (1 = first run)")
+    content: str = Field(description="Log content")
+    created_at: str = Field(description="ISO timestamp of log creation")
+
+
+class TaskRuntimeState(BaseModel):
+    """Live runtime state for task scheduling/execution."""
+
+    is_running: bool = Field(default=False, description="Whether an agent is currently running")
+    is_reviewing: bool = Field(default=False, description="Whether the review agent is running")
+    is_blocked: bool = Field(
+        default=False, description="Whether scheduler has blocked auto-start for this task"
+    )
+    blocked_reason: str | None = Field(
+        default=None, description="Human-readable block reason when blocked"
+    )
+    blocked_by_task_ids: list[str] = Field(
+        default_factory=list,
+        description="Task IDs currently blocking this task from auto-start",
+    )
+    overlap_hints: list[str] = Field(
+        default_factory=list,
+        description="Conflict-hint tokens used by scheduler for blocking decisions",
+    )
+    blocked_at: str | None = Field(
+        default=None,
+        description="ISO timestamp when the task entered blocked runtime state",
+    )
+    is_pending: bool = Field(
+        default=False,
+        description="Whether scheduler accepted start but task is pending admission",
+    )
+    pending_reason: str | None = Field(
+        default=None,
+        description="Human-readable pending reason when task is queued",
+    )
+    pending_at: str | None = Field(
+        default=None,
+        description="ISO timestamp when the task entered pending queue",
+    )
+
+
+class TaskContext(BaseModel):
+    """Full context for working on a task. Returned by task_get(mode=context)."""
+
+    task_id: str = Field(description="Unique task identifier")
+    title: str = Field(description="Task title")
+    description: str | None = Field(default=None, description="Detailed task description")
+    acceptance_criteria: list[str] | None = Field(
+        default=None, description="List of criteria that must be met"
+    )
+    scratchpad: str | None = Field(default=None, description="Agent notes and progress tracking")
+    workspace_id: str | None = Field(default=None, description="Active workspace ID if any")
+    workspace_branch: str | None = Field(
+        default=None, description="Git branch name for the workspace"
+    )
+    workspace_path: str | None = Field(default=None, description="Path to workspace directory")
+    working_dir: str | None = Field(default=None, description="Primary working directory for agent")
+    repos: list[RepoInfo] = Field(default_factory=list, description="Repositories in workspace")
+    repo_count: int = Field(default=0, description="Number of repositories")
+    linked_tasks: list[LinkedTask] = Field(
+        default_factory=list, description="Tasks referenced via @mentions"
+    )
+    runtime: TaskRuntimeState | None = Field(
+        default=None,
+        description="Live runtime metadata for scheduling and coordination",
+    )
+
+
+class TaskSummary(BaseModel):
+    """Brief task summary for listings and coordination."""
+
+    task_id: str = Field(description="Unique task identifier")
+    title: str = Field(description="Task title")
+    status: str | None = Field(default=None, description="Current task status")
+    description: str | None = Field(default=None, description="Task description")
+    scratchpad: str | None = Field(default=None, description="Agent notes")
+    acceptance_criteria: list[str] | None = Field(default=None, description="Acceptance criteria")
+    runtime: TaskRuntimeState | None = Field(
+        default=None, description="Live runtime metadata when available"
+    )
+
+
+class TaskDetails(BaseModel):
+    """Detailed task information. Returned by task_get."""
+
+    task_id: str = Field(description="Unique task identifier")
+    title: str = Field(description="Task title")
+    status: str = Field(description="Current status")
+    description: str | None = Field(default=None, description="Task description")
+    acceptance_criteria: list[str] | None = Field(default=None, description="Acceptance criteria")
+    scratchpad: str | None = Field(default=None, description="Agent notes (if requested)")
+    review_feedback: str | None = Field(
+        default=None, description="Review feedback (if requested and available)"
+    )
+    logs: list[AgentLogEntry] | None = Field(
+        default=None, description="Agent execution logs (if requested)"
+    )
+    runtime: TaskRuntimeState | None = Field(
+        default=None, description="Live runtime metadata when available"
+    )
+
+
+class TaskWaitResponse(BaseModel):
+    """Response from task_wait long-poll tool."""
+
+    changed: bool = Field(description="Whether task status changed before timeout")
+    timed_out: bool = Field(description="Whether the wait timed out without status change")
+    task_id: str = Field(description="ID of the watched task")
+    previous_status: str | None = Field(
+        default=None, description="Task status at the start of the wait"
+    )
+    current_status: str | None = Field(
+        default=None, description="Task status at the end of the wait"
+    )
+    changed_at: str | None = Field(
+        default=None, description="ISO timestamp cursor for observed task status updates"
+    )
+    task: dict[str, object] | None = Field(
+        default=None, description="Compact task snapshot (no large logs/scratchpads)"
+    )
+    code: str | None = Field(default=None, description="Machine-readable status code")
+    message: str | None = Field(default=None, description="Human-readable status message")
+
+
+class PlanProposalResponse(MutatingResponse):
+    """Response from plan_submit tool."""
+
+    status: str = Field(description="'received' when plan was accepted")
+    task_count: int = Field(description="Number of tasks in the proposal")
+    todo_count: int = Field(description="Number of todos in the proposal")
+    tasks: list[dict[str, object]] | None = Field(
+        default=None,
+        description="Echoed normalized task payload for ACP clients that need robust parsing",
+    )
+    todos: list[dict[str, object]] | None = Field(
+        default=None,
+        description="Echoed normalized todo payload for ACP clients that need robust parsing",
+    )
+
+
+class TaskListResponse(BaseModel):
+    """Response from task_list tool."""
+
+    tasks: list[TaskSummary] = Field(default_factory=list, description="List of tasks")
+    count: int = Field(default=0, description="Total number of tasks returned")
+
+
+class TaskLogsResponse(RecoveryResponse):
+    """Response from task_logs tool."""
+
+    task_id: str = Field(description="ID of the task")
+    logs: list[AgentLogEntry] = Field(default_factory=list, description="Ordered log entries")
+    count: int = Field(default=0, description="Number of logs returned")
+    total_runs: int = Field(default=0, description="Total runs available for this task")
+    returned_runs: int = Field(default=0, description="Number of runs included in this page")
+    offset: int = Field(default=0, description="Page offset used for this response")
+    limit: int = Field(default=0, description="Page limit used for this response")
+    has_more: bool = Field(default=False, description="Whether additional runs are available")
+    next_offset: int | None = Field(default=None, description="Offset for the next page")
+    truncated: bool = Field(
+        default=False,
+        description="Whether log content was reduced for transport safety",
+    )
+
+
+class TaskCreateResponse(TaskScopedMutatingResponse):
+    """Response from task_create tool."""
+
+    title: str = Field(description="Task title")
+    status: str = Field(description="Initial status (usually 'backlog')")
+
+
+class JobResponse(JobScopedResponse):
+    """Response from job_start, job_poll, and job_cancel tools."""
+
+    action: str | None = Field(default=None, description="Submitted job action")
+    status: str | None = Field(default=None, description="Current job status")
+    timed_out: bool | None = Field(
+        default=None,
+        description="Whether job_poll(wait=true) returned before terminal status due to timeout",
+    )
+    timeout_metadata: dict[str, object] | None = Field(
+        default=None,
+        description="Structured timeout metadata from core when available",
+    )
+    created_at: str | None = Field(default=None, description="Job creation timestamp")
+    updated_at: str | None = Field(default=None, description="Job last update timestamp")
+    result: dict[str, object] | None = Field(
+        default=None,
+        description="Terminal action result payload when available",
+    )
+    runtime: TaskRuntimeState | None = Field(
+        default=None,
+        description="Runtime metadata extracted from result payload when available",
+    )
+    current_task_type: str | None = Field(
+        default=None,
+        description="Current task execution mode when relevant (AUTO or PAIR)",
+    )
+
+
+class JobEvent(BaseModel):
+    """A single event emitted during asynchronous job execution."""
+
+    job_id: str | None = Field(default=None, description="Core job identifier")
+    task_id: str | None = Field(default=None, description="Associated task ID")
+    status: str | None = Field(default=None, description="Job status at the time of this event")
+    timestamp: str | None = Field(default=None, description="ISO timestamp for this event")
+    message: str | None = Field(default=None, description="Human-readable event summary")
+    code: str | None = Field(
+        default=None,
+        description="Machine-readable event code when available",
+    )
+
+
+class JobEventsResponse(JobScopedResponse):
+    """Response from job_poll(events=true) tool."""
+
+    events: list[JobEvent] = Field(
+        default_factory=list,
+        description="Ordered list of job events",
+    )
+    total_events: int = Field(default=0, description="Total events available for this job")
+    returned_events: int = Field(default=0, description="Number of events in this page")
+    offset: int = Field(default=0, description="Page offset used for this response")
+    limit: int = Field(default=0, description="Page limit used for this response")
+    has_more: bool = Field(default=False, description="Whether additional events are available")
+    next_offset: int | None = Field(default=None, description="Offset for the next page")
+
+
+class TaskDeleteResponse(TaskScopedMutatingResponse):
+    """Response from task_delete tool."""
+
+
+class ProjectInfo(BaseModel):
+    """Summary of a project."""
+
+    project_id: str = Field(description="Unique project identifier")
+    name: str = Field(description="Project name")
+    description: str | None = Field(default=None, description="Project description")
+
+
+class ProjectListResponse(BaseModel):
+    """Response from project_list tool."""
+
+    projects: list[ProjectInfo] = Field(default_factory=list, description="List of projects")
+    count: int = Field(default=0, description="Total number of projects returned")
+
+
+class ProjectOpenResponse(MutatingResponse):
+    """Response from project_open tool."""
+
+    project_id: str = Field(description="ID of the opened project")
+    name: str = Field(description="Project name")
+
+
+class RepoListItem(BaseModel):
+    """Summary of a repository in a project."""
+
+    repo_id: str = Field(description="Unique repository identifier")
+    name: str = Field(description="Repository name")
+    display_name: str | None = Field(default=None, description="Human-readable display name")
+    path: str = Field(description="Path to the repository")
+
+
+class RepoListResponse(BaseModel):
+    """Response from repo_list tool."""
+
+    repos: list[RepoListItem] = Field(default_factory=list, description="List of repositories")
+    count: int = Field(default=0, description="Total number of repos returned")
+
+
+class ReviewActionResponse(TaskScopedMutatingResponse):
+    """Response from the review tool (approve, reject, merge, rebase actions)."""
+
+
+class AuditEvent(BaseModel):
+    """A single audit event entry."""
+
+    event_id: str | None = Field(default=None, description="Unique event identifier")
+    occurred_at: str | None = Field(default=None, description="ISO timestamp of the event")
+    actor_type: str | None = Field(default=None, description="Type of actor (user, agent, system)")
+    actor_id: str | None = Field(default=None, description="Identifier of the actor")
+    capability: str | None = Field(default=None, description="Capability that produced the event")
+    command_name: str | None = Field(default=None, description="Command that was executed")
+    success: bool | None = Field(default=None, description="Whether the command succeeded")
+
+
+class AuditTailResponse(BaseModel):
+    """Response from audit_list tool."""
+
+    events: list[AuditEvent] = Field(default_factory=list, description="List of audit events")
+    count: int = Field(default=0, description="Total number of events returned")
+
+
+class InstrumentationSnapshotResponse(BaseModel):
+    """Response from internal diagnostics instrumentation tool."""
+
+    enabled: bool = Field(description="Whether instrumentation collection is enabled")
+    log_events: bool = Field(description="Whether structured instrumentation logs are enabled")
+    counters: dict[str, int] = Field(
+        default_factory=dict,
+        description="Counter aggregates keyed by metric name",
+    )
+    timings: dict[str, dict[str, float | int]] = Field(
+        default_factory=dict,
+        description="Timing aggregates keyed by metric name",
+    )
+
+
+class SettingsGetResponse(BaseModel):
+    """Response from settings_get tool."""
+
+    settings: dict[str, object] = Field(
+        default_factory=dict,
+        description="Allowlisted settings snapshot keyed by dotted paths",
+    )
+
+
+class SettingsUpdateResponse(MutatingResponse):
+    """Response from settings_set tool."""
+
+    updated: dict[str, object] = Field(
+        default_factory=dict,
+        description="Fields accepted and applied in this update request",
+    )
+    settings: dict[str, object] = Field(
+        default_factory=dict,
+        description="Settings snapshot after update (or current snapshot on failure)",
+    )
+
+
+class PluginToolResponse(MutatingResponse):
+    """Generic response envelope for plugin-contributed MCP tools."""
+
+    plugin_id: str = Field(default="", description="Plugin that handled the operation")
+    capability: str = Field(default="", description="Plugin capability namespace")
+    method: str = Field(default="", description="Operation method name")
+    data: dict[str, object] = Field(
+        default_factory=dict,
+        description="Plugin-specific response payload",
+    )
+
+
+WorkflowStatusInput = Literal[
+    "BACKLOG",
+    "IN_PROGRESS",
+    "REVIEW",
+    "DONE",
+    "backlog",
+    "in_progress",
+    "review",
+    "done",
+]
+TaskTypeInput = Literal["AUTO", "PAIR", "auto", "pair"]
+TaskStatusInput = Literal[
+    "BACKLOG",
+    "IN_PROGRESS",
+    "REVIEW",
+    "DONE",
+    "backlog",
+    "in_progress",
+    "review",
+    "done",
+]
+TaskPriorityInput = Literal[
+    "LOW",
+    "MED",
+    "MEDIUM",
+    "HIGH",
+    "low",
+    "med",
+    "medium",
+    "high",
+]
+JobActionInput = Literal["start_agent", "stop_agent"]
+TerminalBackendInput = Literal["tmux", "vscode", "cursor"]
+ReviewActionInput = Literal["approve", "reject", "merge", "rebase"]
+RejectionActionInput = Literal["reopen", "return", "in_progress", "backlog"]
+SessionActionInput = Literal["open", "read", "close"]
+
+
+__all__ = [
+    "AgentLogEntry",
+    "AuditEvent",
+    "AuditTailResponse",
+    "InstrumentationSnapshotResponse",
+    "JobActionInput",
+    "JobEvent",
+    "JobEventsResponse",
+    "JobResponse",
+    "LinkedTask",
+    "MutatingResponse",
+    "PlanProposalResponse",
+    "PluginToolResponse",
+    "ProjectInfo",
+    "ProjectListResponse",
+    "ProjectOpenResponse",
+    "RecoveryResponse",
+    "RejectionActionInput",
+    "RepoInfo",
+    "RepoListItem",
+    "RepoListResponse",
+    "ReviewActionInput",
+    "ReviewActionResponse",
+    "SessionActionInput",
+    "SettingsGetResponse",
+    "SettingsUpdateResponse",
+    "TaskContext",
+    "TaskCreateResponse",
+    "TaskDeleteResponse",
+    "TaskDetails",
+    "TaskListResponse",
+    "TaskLogsResponse",
+    "TaskPriorityInput",
+    "TaskRuntimeState",
+    "TaskScopedMutatingResponse",
+    "TaskStatusInput",
+    "TaskSummary",
+    "TaskTypeInput",
+    "TaskWaitResponse",
+    "TerminalBackendInput",
+    "WorkflowStatusInput",
+]

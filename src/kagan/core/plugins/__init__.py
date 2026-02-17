@@ -3,6 +3,9 @@
 from kagan.core.plugins.sdk import (
     JsonPluginManifestLoader,
     Plugin,
+    PluginCapabilityProvider,
+    PluginCapabilitySpec,
+    PluginLifecycle,
     PluginManifest,
     PluginManifestLoader,
     PluginOperation,
@@ -17,6 +20,9 @@ from kagan.core.plugins.sdk import (
 __all__ = [
     "JsonPluginManifestLoader",
     "Plugin",
+    "PluginCapabilityProvider",
+    "PluginCapabilitySpec",
+    "PluginLifecycle",
     "PluginManifest",
     "PluginManifestLoader",
     "PluginOperation",

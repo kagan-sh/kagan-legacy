@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 def _ensure_core_ready_for_cli(db_path: str) -> None:
     """Auto-start core daemon for TUI clients when config allows it."""
     from kagan.core.config import KaganConfig
-    from kagan.core.launcher import ensure_core_running_sync
+    from kagan.core.services.runtime import ensure_core_running_sync
 
     config = KaganConfig.load(get_config_path())
     if not config.general.core_autostart:
@@ -76,7 +76,7 @@ async def _cleanup_done_workspaces(db_path: str, older_than_days: int) -> int:
     from kagan.core.adapters.db.engine import create_db_engine
     from kagan.core.adapters.db.schema import Task, Workspace, WorkspaceRepo
     from kagan.core.adapters.git.worktrees import GitWorktreeAdapter
-    from kagan.core.models.enums import TaskStatus, WorkspaceStatus
+    from kagan.core.domain.enums import TaskStatus, WorkspaceStatus
 
     cutoff = utc_now() - timedelta(days=older_than_days)
     engine = await create_db_engine(db_path)

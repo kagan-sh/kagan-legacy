@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from kagan.core.ipc.contracts import CoreRequest
-from kagan.core.security import (
+from kagan.core.policy import (
     CAPABILITY_PROFILES,
     AuthorizationError,
     AuthorizationPolicy,
@@ -25,7 +25,26 @@ def _set_request_handler(
     method: str,
     handler,
 ) -> None:
-    monkeypatch.setattr("kagan.core.host._REQUEST_DISPATCH_MAP", {(capability, method): handler})
+    class _Router:
+        async def dispatch(self, actual_capability: str, actual_method: str, ctx, params):
+            del ctx
+            if (actual_capability, actual_method) != (capability, method):
+                return None
+            return await handler(object(), params)
+
+    monkeypatch.setattr("kagan.core.host.get_command_router", lambda: _Router())
+
+
+TEST_CLIENT_VERSION = "test-version"
+
+
+def _request(**kwargs) -> CoreRequest:
+    session_id = str(kwargs.get("session_id", ""))
+    if session_id and ":" not in session_id:
+        kwargs["session_id"] = f"tui:{session_id}"
+    kwargs.setdefault("session_origin", "tui")
+    kwargs.setdefault("client_version", TEST_CLIENT_VERSION)
+    return CoreRequest(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +181,7 @@ class TestCoreHostAuthorization:
         _set_request_handler(monkeypatch, "tasks", "delete", mock_handler)
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="unknown-session",
             capability="tasks",
             method="delete",
@@ -178,10 +197,10 @@ class TestCoreHostAuthorization:
     async def test_viewer_session_blocked_from_mutation(self, host):
         """A viewer session cannot call mutating commands."""
         host._ctx = SimpleNamespace(api=object())
-        host.register_session("viewer-session", "viewer")
 
-        request = CoreRequest(
+        request = _request(
             session_id="viewer-session",
+            session_profile="viewer",
             capability="tasks",
             method="delete",
         )
@@ -203,10 +222,10 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "tasks", "list", mock_query)
         host._ctx = SimpleNamespace(api=object())
-        host.register_session("viewer-session", "viewer")
 
-        request = CoreRequest(
+        request = _request(
             session_id="viewer-session",
+            session_profile="viewer",
             capability="tasks",
             method="list",
         )
@@ -219,10 +238,10 @@ class TestCoreHostAuthorization:
     async def test_operator_session_blocked_from_merge(self, host):
         """An operator session cannot merge reviews."""
         host._ctx = SimpleNamespace(api=object())
-        host.register_session("op-session", "operator")
 
-        request = CoreRequest(
+        request = _request(
             session_id="op-session",
+            session_profile="operator",
             capability="review",
             method="merge",
         )
@@ -233,8 +252,8 @@ class TestCoreHostAuthorization:
         assert response.error.code == "AUTHORIZATION_DENIED"
 
     @pytest.mark.asyncio()
-    async def test_unregister_session_reverts_to_default(self, host, monkeypatch):
-        """After unregister, the session falls back to viewer."""
+    async def test_viewer_profile_binding_remains_restricted(self, host, monkeypatch):
+        """A viewer-bound session remains restricted across repeated requests."""
         call_log = []
 
         async def mock_handler(api, params):
@@ -244,20 +263,26 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "tasks", "delete", mock_handler)
         host._ctx = SimpleNamespace(api=object())
-        host.register_session("temp-session", "viewer")
 
         # Viewer cannot delete
-        request = CoreRequest(
+        request = _request(
             session_id="temp-session",
+            session_profile="viewer",
             capability="tasks",
             method="delete",
         )
         response = await _dispatch_request(host, request)
         assert not response.ok
 
-        # Unregister reverts to viewer
-        host.unregister_session("temp-session")
-        response = await _dispatch_request(host, request)
+        # Binding remains viewer on subsequent calls.
+        response = await _dispatch_request(
+            host,
+            _request(
+                session_id="temp-session",
+                capability="tasks",
+                method="delete",
+            ),
+        )
         assert not response.ok
         assert len(call_log) == 0
 
@@ -274,7 +299,7 @@ class TestCoreHostAuthorization:
         _set_request_handler(monkeypatch, "tasks", "create", mock_handler)
         host._ctx = SimpleNamespace(api=object())
 
-        request = CoreRequest(
+        request = _request(
             session_id="mcp-session",
             session_profile="operator",
             capability="tasks",
@@ -289,9 +314,15 @@ class TestCoreHostAuthorization:
     async def test_request_profile_cannot_change_after_binding(self, host):
         """Once bound, a session profile cannot be changed."""
         host._ctx = SimpleNamespace(api=object())
-        host.register_session("mcp-session", "operator")
+        seed_request = _request(
+            session_id="mcp-session",
+            session_profile="operator",
+            capability="tasks",
+            method="list",
+        )
+        await _dispatch_request(host, seed_request)
 
-        request = CoreRequest(
+        request = _request(
             session_id="mcp-session",
             session_profile="viewer",
             capability="tasks",
@@ -315,11 +346,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "tasks", "create", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-401",
             session_profile="maintainer",
             session_origin="kagan",
+            client_version="test-version",
             capability="tasks",
             method="create",
         )
@@ -334,11 +367,13 @@ class TestCoreHostAuthorization:
     async def test_kagan_admin_origin_requires_ext_namespace(self, host):
         """The admin lane must use ext:* session namespace."""
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-402",
             session_profile="maintainer",
             session_origin="kagan_admin",
+            client_version="test-version",
             capability="tasks",
             method="list",
         )
@@ -360,11 +395,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "tasks", "update_scratchpad", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-403",
             session_profile="pair_worker",
             session_origin="kagan",
+            client_version="test-version",
             capability="tasks",
             method="update_scratchpad",
             params={"task_id": "TASK-404", "content": "notes"},
@@ -388,11 +425,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "jobs", "submit", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-500",
             session_profile="pair_worker",
             session_origin="kagan",
+            client_version="test-version",
             capability="jobs",
             method="submit",
             params={"task_id": "TASK-501", "action": "start_agent"},
@@ -416,11 +455,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "jobs", "wait", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-600",
             session_profile="pair_worker",
             session_origin="kagan",
+            client_version="test-version",
             capability="jobs",
             method="wait",
             params={"job_id": "job-1", "task_id": "TASK-601"},
@@ -448,11 +489,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "jobs", "events", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="task:TASK-700",
             session_profile="pair_worker",
             session_origin="kagan",
+            client_version="test-version",
             capability="jobs",
             method="events",
             params={"job_id": "job-1", "task_id": "TASK-701"},
@@ -476,11 +519,13 @@ class TestCoreHostAuthorization:
 
         _set_request_handler(monkeypatch, "tasks", "delete", mock_handler)
         host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
 
-        request = CoreRequest(
+        request = _request(
             session_id="ext:orchestrator",
             session_profile="maintainer",
             session_origin="kagan_admin",
+            client_version="test-version",
             capability="tasks",
             method="delete",
             params={"task_id": "TASK-405"},
@@ -489,3 +534,109 @@ class TestCoreHostAuthorization:
 
         assert response.ok
         assert call_log == ["TASK-405"]
+
+    @pytest.mark.asyncio()
+    async def test_tui_origin_requires_tui_namespace(self, host):
+        """TUI lane is restricted to tui:* session namespace."""
+        host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
+
+        request = _request(
+            session_id="default:session",
+            session_profile="maintainer",
+            session_origin="tui",
+            client_version="test-version",
+            capability="tasks",
+            method="list",
+        )
+        response = await _dispatch_request(host, request)
+
+        assert not response.ok
+        assert response.error is not None
+        assert response.error.code == "SESSION_NAMESPACE_DENIED"
+
+    @pytest.mark.asyncio()
+    async def test_tui_origin_tui_namespace_allows_maintainer_ops(self, host, monkeypatch):
+        """TUI lane can run maintainer operations from tui:* sessions."""
+        call_log = []
+
+        async def mock_handler(api, params):
+            del api
+            call_log.append(params["task_id"])
+            return {"success": True}
+
+        _set_request_handler(monkeypatch, "tasks", "delete", mock_handler)
+        host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
+
+        request = _request(
+            session_id="tui:instance-1",
+            session_profile="maintainer",
+            session_origin="tui",
+            client_version="test-version",
+            capability="tasks",
+            method="delete",
+            params={"task_id": "TASK-406"},
+        )
+        response = await _dispatch_request(host, request)
+
+        assert response.ok
+        assert call_log == ["TASK-406"]
+
+    @pytest.mark.asyncio()
+    async def test_kagan_origin_rejects_blank_client_version(self, host, monkeypatch):
+        """Kagan-origin requests must include a non-empty client version."""
+        call_log = []
+
+        async def mock_handler(api, params):
+            del api, params
+            call_log.append(True)
+            return {"ok": True}
+
+        _set_request_handler(monkeypatch, "tasks", "list", mock_handler)
+        host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
+
+        request = _request(
+            session_id="task:TASK-800",
+            session_profile="pair_worker",
+            session_origin="kagan",
+            client_version="",
+            capability="tasks",
+            method="list",
+        )
+        response = await _dispatch_request(host, request)
+
+        assert not response.ok
+        assert response.error is not None
+        assert response.error.code == "MCP_OUTDATED"
+        assert len(call_log) == 0
+
+    @pytest.mark.asyncio()
+    async def test_kagan_origin_rejects_mismatched_client_version(self, host, monkeypatch):
+        """Kagan-origin requests are rejected when MCP/client and core versions differ."""
+        call_log = []
+
+        async def mock_handler(api, params):
+            del api, params
+            call_log.append(True)
+            return {"ok": True}
+
+        _set_request_handler(monkeypatch, "tasks", "list", mock_handler)
+        host._ctx = SimpleNamespace(api=object())
+        host._runtime_version = "test-version"
+
+        request = _request(
+            session_id="task:TASK-801",
+            session_profile="pair_worker",
+            session_origin="kagan",
+            client_version="old-version",
+            capability="tasks",
+            method="list",
+        )
+        response = await _dispatch_request(host, request)
+
+        assert not response.ok
+        assert response.error is not None
+        assert response.error.code == "MCP_OUTDATED"
+        assert len(call_log) == 0

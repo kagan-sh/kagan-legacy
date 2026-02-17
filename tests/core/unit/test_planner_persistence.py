@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from kagan.core.adapters.db.repositories import PlannerRepository, TaskRepository
-from kagan.core.models.enums import ProposalStatus
+from kagan.core.domain.enums import ProposalStatus
 
 
 @pytest.fixture

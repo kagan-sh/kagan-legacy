@@ -46,7 +46,7 @@ from kagan.core.acp.terminals import TerminalManager
 from kagan.core.debug_log import log
 from kagan.core.limits import SHUTDOWN_TIMEOUT, SUBPROCESS_LIMIT
 from kagan.core.mcp_naming import get_mcp_server_name
-from kagan.core.services.permission_policy import (
+from kagan.core.policy import (
     resolve_mcp_capability,
     resolve_permission_decision,
 )

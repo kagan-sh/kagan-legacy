@@ -10,7 +10,7 @@ from textual.containers import Horizontal
 from textual.widgets import Markdown, Static
 from textual.widgets.markdown import MarkdownStream  # noqa: TC002 (used at runtime)
 
-from kagan.core.models.enums import StreamRole  # noqa: TC001 (used at runtime for type)
+from kagan.core.domain.enums import StreamRole  # noqa: TC001 (used at runtime for type)
 from kagan.tui.ui.utils.helpers import copy_with_notification
 
 if TYPE_CHECKING:

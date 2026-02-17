@@ -19,7 +19,7 @@ from kagan.core.adapters.db.repositories import ExecutionRepository
 from kagan.core.adapters.git.operations import GitOperationsAdapter
 from kagan.core.adapters.git.worktrees import GitWorktreeAdapter
 from kagan.core.bootstrap import InMemoryEventBus
-from kagan.core.models.enums import TaskStatus, TaskType
+from kagan.core.domain.enums import TaskStatus, TaskType
 from kagan.core.services.automation import AutomationServiceImpl
 from kagan.core.services.runtime import RuntimeServiceImpl
 from kagan.core.services.tasks import TaskServiceImpl
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kagan.core.adapters.db.repositories import TaskRepository
-    from kagan.core.services.projects import ProjectService
+    from kagan.core.services.projects import ProjectServiceImpl
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32",
@@ -74,7 +74,7 @@ class TestAutoCommitOnComplete:
         git_adapter = GitOperationsAdapter()
         execution_service = ExecutionRepository(state_manager.session_factory)
         runtime_service = RuntimeServiceImpl(
-            project_service=cast("ProjectService", MagicMock()),
+            project_service=cast("ProjectServiceImpl", MagicMock()),
             session_factory=state_manager.session_factory,
             execution_service=execution_service,
         )
@@ -120,7 +120,7 @@ class TestAutoCommitOnComplete:
         git_adapter = GitOperationsAdapter()
         execution_service = ExecutionRepository(state_manager.session_factory)
         runtime_service = RuntimeServiceImpl(
-            project_service=cast("ProjectService", MagicMock()),
+            project_service=cast("ProjectServiceImpl", MagicMock()),
             session_factory=state_manager.session_factory,
             execution_service=execution_service,
         )
@@ -148,7 +148,8 @@ class TestAutoCommitOnMerge:
     async def test_merge_auto_commits_instead_of_failing(self, tmp_path: Path):
         """merge_repo auto-commits uncommitted changes instead of returning failure."""
         from kagan.core.adapters.db.schema import Repo, Workspace, WorkspaceRepo
-        from kagan.core.services.merges import MergeServiceImpl, MergeStrategy
+        from kagan.core.services.workspaces import MergeStrategy
+        from kagan.core.services.workspaces.service import WorkspaceServiceImpl
 
         worktree = await _init_repo(tmp_path)
         await _make_dirty(worktree)
@@ -156,16 +157,17 @@ class TestAutoCommitOnMerge:
         git_adapter = GitOperationsAdapter()
         assert await git_adapter.has_uncommitted_changes(str(worktree))
 
-        # Build MergeService with mocked dependencies
-        merge_svc = MergeServiceImpl(
-            MagicMock(),  # task_service
-            MagicMock(),  # workspace_service
-            MagicMock(),  # session_service
-            MagicMock(merge_lock=asyncio.Lock()),  # automation_service
-            create_test_config(),
-            None,  # session_factory
-            InMemoryEventBus(),
-            git_adapter,
+        # Build WorkspaceService with mocked dependencies
+        merge_svc = WorkspaceServiceImpl(
+            session_factory=None,
+            git_adapter=MagicMock(),  # worktree adapter
+            task_service=MagicMock(),
+            project_service=MagicMock(),
+            sessions=MagicMock(),
+            automation=MagicMock(merge_lock=asyncio.Lock()),
+            config=create_test_config(),
+            event_bus=InMemoryEventBus(),
+            git_ops_adapter=git_adapter,
         )
 
         # Mock the DB query that merge_repo does internally

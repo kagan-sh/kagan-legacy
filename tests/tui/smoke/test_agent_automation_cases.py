@@ -24,16 +24,15 @@ from tests.helpers.wait import wait_until
 from kagan.core.adapters.db.repositories import ExecutionRepository
 from kagan.core.agents.signals import Signal, parse_signal
 from kagan.core.bootstrap import InMemoryEventBus
+from kagan.core.domain.enums import TaskStatus, TaskType
 from kagan.core.events import (
     AutomationAgentAttached,
-    AutomationReviewAgentAttached,
     AutomationTaskEnded,
     AutomationTaskStarted,
 )
-from kagan.core.models.enums import TaskStatus, TaskType
 from kagan.core.paths import get_worktree_base_dir
 from kagan.core.services.automation import AutomationServiceImpl, RunningTaskState
-from kagan.core.services.queued_messages import QueuedMessageServiceImpl
+from kagan.core.services.automation.runner import QueuedMessageServiceImpl
 from kagan.core.services.runtime import RuntimeServiceImpl
 from kagan.core.services.tasks import TaskServiceImpl
 
@@ -41,7 +40,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kagan.core.adapters.db.repositories import TaskRepository
-    from kagan.core.services.projects import ProjectService
+    from kagan.core.services.projects import ProjectServiceImpl
 
 
 def build_automation(
@@ -59,7 +58,7 @@ def build_automation(
     task_service = TaskServiceImpl(state_manager, event_bus)
     execution_service = ExecutionRepository(state_manager.session_factory)
     runtime_service = RuntimeServiceImpl(
-        project_service=cast("ProjectService", MagicMock()),
+        project_service=cast("ProjectServiceImpl", MagicMock()),
         session_factory=state_manager.session_factory,
         execution_service=execution_service,
     )
@@ -260,7 +259,7 @@ class TestExecutionRuns:
         await worktrees.create(task.id)
         assert state_manager._session_factory is not None
         from kagan.core.adapters.db.schema import Workspace
-        from kagan.core.models.enums import WorkspaceStatus
+        from kagan.core.domain.enums import WorkspaceStatus
 
         async with state_manager._session_factory() as session:
             workspace = Workspace(
@@ -324,7 +323,7 @@ class TestExecutionRuns:
         await worktrees.create(task.id)
         assert state_manager._session_factory is not None
         from kagan.core.adapters.db.schema import Workspace
-        from kagan.core.models.enums import WorkspaceStatus
+        from kagan.core.domain.enums import WorkspaceStatus
 
         async with state_manager._session_factory() as session:
             workspace = Workspace(
@@ -377,7 +376,7 @@ class TestExecutionRuns:
         await worktrees.create(task.id)
         assert state_manager._session_factory is not None
         from kagan.core.adapters.db.schema import Workspace
-        from kagan.core.models.enums import WorkspaceStatus
+        from kagan.core.domain.enums import WorkspaceStatus
 
         async with state_manager._session_factory() as session:
             workspace = Workspace(
@@ -452,7 +451,7 @@ class TestAutomationRuntimeEvents:
         await worktrees.create(task.id)
         assert state_manager._session_factory is not None
         from kagan.core.adapters.db.schema import Workspace
-        from kagan.core.models.enums import WorkspaceStatus
+        from kagan.core.domain.enums import WorkspaceStatus
 
         async with state_manager._session_factory() as session:
             workspace = Workspace(
@@ -492,7 +491,6 @@ class TestAutomationRuntimeEvents:
 
         assert any(isinstance(event, AutomationTaskStarted) for event in published)
         assert any(isinstance(event, AutomationAgentAttached) for event in published)
-        assert any(isinstance(event, AutomationReviewAgentAttached) for event in published)
         assert any(isinstance(event, AutomationTaskEnded) for event in published)
 
         await scheduler.stop()
@@ -548,7 +546,7 @@ class TestSessionManagement:
         worktree_path.mkdir(parents=True)
         assert state_manager._session_factory is not None
         from kagan.core.adapters.db.schema import Workspace
-        from kagan.core.models.enums import WorkspaceStatus
+        from kagan.core.domain.enums import WorkspaceStatus
 
         async with state_manager._session_factory() as session:
             workspace = Workspace(

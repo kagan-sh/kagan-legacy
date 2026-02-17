@@ -11,7 +11,6 @@ internally calls asyncio.run(), which conflicts with async test functions.
 from __future__ import annotations
 
 import asyncio
-import sys
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -29,7 +28,6 @@ pytestmark = pytest.mark.usefixtures("global_mock_tmux")
 
 
 class TestPlannerFlow:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Timing-sensitive; flaky on Windows CI")
     def test_planner_journey(
         self,
         snapshot_project: SimpleNamespace,

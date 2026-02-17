@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 from kagan.core.ipc.contracts import CoreErrorDetail, CoreResponse
 
 SESSION = "test-session-1"
+SESSION_ORIGIN = "kagan"
+CLIENT_VERSION = "test-version"
 
 
 def make_client(response_data: dict | None = None, ok: bool = True) -> AsyncMock:

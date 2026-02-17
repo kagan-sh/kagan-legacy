@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.mcp.contract._bridge_test_support import SESSION, make_client
+from tests.mcp.contract._bridge_test_support import (
+    CLIENT_VERSION,
+    SESSION,
+    SESSION_ORIGIN,
+    make_client,
+)
 
 from kagan.core.ipc.contracts import CoreErrorDetail, CoreResponse
 from kagan.mcp.tools import CoreClientBridge, MCPBridgeError
@@ -47,7 +53,9 @@ async def test_get_context_uses_tasks_context_when_available() -> None:
             ],
         }
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_context("TASK-001")
 
     assert result["task_id"] == "TASK-001"
@@ -58,7 +66,8 @@ async def test_get_context_uses_tasks_context_when_available() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="context",
         params={"task_id": "TASK-001"},
@@ -76,6 +85,7 @@ async def test_get_context_raises_when_tasks_context_unavailable() -> None:
         session_id,
         session_profile,
         session_origin,
+        client_version,
         capability,
         method,
         params,
@@ -83,7 +93,7 @@ async def test_get_context_raises_when_tasks_context_unavailable() -> None:
         calls.append((capability, method))
         assert session_id == SESSION
         assert session_profile is None
-        assert session_origin is None
+        assert session_origin == SESSION_ORIGIN
         if capability == "tasks" and method == "context":
             return CoreResponse(
                 request_id="r0",
@@ -94,7 +104,9 @@ async def test_get_context_raises_when_tasks_context_unavailable() -> None:
 
     client.request = mock_request
 
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     with pytest.raises(MCPBridgeError) as exc_info:
         await bridge.get_context("TASK-001")
 
@@ -117,7 +129,9 @@ async def test_get_task_basic() -> None:
             },
         }
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task("TASK-002")
 
     assert result["task_id"] == "TASK-002"
@@ -125,7 +139,8 @@ async def test_get_task_basic() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="get",
         params={"task_id": "TASK-002"},
@@ -155,7 +170,9 @@ async def test_get_task_includes_runtime_metadata() -> None:
             },
         }
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task("TASK-RT1")
 
     assert result["runtime"]["is_blocked"] is True
@@ -174,13 +191,14 @@ async def test_get_task_with_scratchpad() -> None:
         session_id,
         session_profile,
         session_origin,
+        client_version,
         capability,
         method,
         params,
     ):
         calls.append((capability, method, params))
         assert session_profile is None
-        assert session_origin is None
+        assert session_origin == SESSION_ORIGIN
         if method == "get":
             return CoreResponse(
                 request_id="r1",
@@ -205,14 +223,16 @@ async def test_get_task_with_scratchpad() -> None:
         return CoreResponse(request_id="r0", ok=True, result={})
 
     client.request = mock_request
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task("T1", include_scratchpad=True)
 
     assert result["task_id"] == "T1"
     assert result["scratchpad"] == "notes"
     assert calls == [
         ("tasks", "get", {"task_id": "T1"}),
-        ("tasks", "scratchpad", {"task_id": "T1"}),
+        ("tasks", "scratchpad", {"task_id": "T1", "content_char_limit": 6000}),
     ]
 
 
@@ -227,6 +247,7 @@ async def test_get_task_with_logs_uses_tasks_logs() -> None:
         session_id,
         session_profile,
         session_origin,
+        client_version,
         capability,
         method,
         params,
@@ -234,7 +255,79 @@ async def test_get_task_with_logs_uses_tasks_logs() -> None:
         calls.append((capability, method))
         assert session_id == SESSION
         assert session_profile is None
-        assert session_origin is None
+        assert session_origin == SESSION_ORIGIN
+        if capability == "tasks" and method == "get":
+            return CoreResponse(
+                request_id="r1",
+                ok=True,
+                result={
+                    "found": True,
+                    "task": {
+                        "id": "T1",
+                        "title": "T",
+                        "status": "backlog",
+                        "description": None,
+                        "acceptance_criteria": [],
+                    },
+                },
+            )
+        if capability == "tasks" and method == "logs":
+            assert params == {
+                "task_id": "T1",
+                "limit": 3,
+                "content_char_limit": 2000,
+                "total_char_limit": 6000,
+            }
+            return CoreResponse(
+                request_id="r2",
+                ok=True,
+                result={
+                    "task_id": "T1",
+                    "logs": [
+                        {
+                            "run": 2,
+                            "content": "run 2 content",
+                            "created_at": "2026-02-09T10:00:00+00:00",
+                        }
+                    ],
+                },
+            )
+        return CoreResponse(request_id="rx", ok=True, result={})
+
+    client.request = mock_request
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    result = await bridge.get_task("T1", include_logs=True)
+
+    assert result["task_id"] == "T1"
+    assert result["logs"] == [
+        {
+            "run": 2,
+            "content": "run 2 content",
+            "created_at": "2026-02-09T10:00:00+00:00",
+        }
+    ]
+    assert calls == [("tasks", "get"), ("tasks", "logs")]
+
+
+@pytest.mark.asyncio
+async def test_get_task_with_logs_includes_pagination_hints() -> None:
+    client = AsyncMock()
+
+    async def mock_request(
+        *,
+        session_id,
+        session_profile,
+        session_origin,
+        client_version,
+        capability,
+        method,
+        params,
+    ):
+        assert session_id == SESSION
+        assert session_profile is None
+        assert session_origin == SESSION_ORIGIN
         if capability == "tasks" and method == "get":
             return CoreResponse(
                 request_id="r1",
@@ -258,28 +351,31 @@ async def test_get_task_with_logs_uses_tasks_logs() -> None:
                     "task_id": "T1",
                     "logs": [
                         {
-                            "run": 2,
-                            "content": "run 2 content",
+                            "run": 3,
+                            "content": "latest log",
                             "created_at": "2026-02-09T10:00:00+00:00",
                         }
                     ],
+                    "total_runs": 8,
+                    "returned_runs": 1,
+                    "has_more": True,
+                    "next_offset": 3,
+                    "truncated": True,
                 },
             )
         return CoreResponse(request_id="rx", ok=True, result={})
 
     client.request = mock_request
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task("T1", include_logs=True)
 
-    assert result["task_id"] == "T1"
-    assert result["logs"] == [
-        {
-            "run": 2,
-            "content": "run 2 content",
-            "created_at": "2026-02-09T10:00:00+00:00",
-        }
-    ]
-    assert calls == [("tasks", "get"), ("tasks", "logs")]
+    assert result["logs_total_runs"] == 8
+    assert result["logs_returned_runs"] == 1
+    assert result["logs_has_more"] is True
+    assert result["logs_next_offset"] == 3
+    assert result["logs_truncated"] is True
 
 
 @pytest.mark.asyncio
@@ -293,6 +389,7 @@ async def test_get_task_with_logs_fallback_when_query_unavailable() -> None:
         session_id,
         session_profile,
         session_origin,
+        client_version,
         capability,
         method,
         params,
@@ -300,7 +397,7 @@ async def test_get_task_with_logs_fallback_when_query_unavailable() -> None:
         calls.append((capability, method))
         assert session_id == SESSION
         assert session_profile is None
-        assert session_origin is None
+        assert session_origin == SESSION_ORIGIN
         if capability == "tasks" and method == "get":
             return CoreResponse(
                 request_id="r1",
@@ -317,6 +414,12 @@ async def test_get_task_with_logs_fallback_when_query_unavailable() -> None:
                 },
             )
         if capability == "tasks" and method == "logs":
+            assert params == {
+                "task_id": "T1",
+                "limit": 3,
+                "content_char_limit": 2000,
+                "total_char_limit": 6000,
+            }
             return CoreResponse(
                 request_id="r2",
                 ok=False,
@@ -325,13 +428,105 @@ async def test_get_task_with_logs_fallback_when_query_unavailable() -> None:
         return CoreResponse(request_id="rx", ok=True, result={})
 
     client.request = mock_request
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task("T1", include_logs=True)
 
     assert result["task_id"] == "T1"
     assert result["status"] == "backlog"
     assert result["logs"] == []
     assert calls == [("tasks", "get"), ("tasks", "logs")]
+
+
+@pytest.mark.asyncio
+async def test_list_task_logs_routes_to_tasks_logs_query() -> None:
+    client = make_client(
+        {
+            "task_id": "T1",
+            "logs": [],
+            "count": 0,
+            "total_runs": 12,
+            "returned_runs": 0,
+            "offset": 4,
+            "limit": 4,
+            "has_more": True,
+            "next_offset": 8,
+            "truncated": False,
+        }
+    )
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+
+    result = await bridge.list_task_logs(task_id="T1", limit=4, offset=4)
+
+    assert result["task_id"] == "T1"
+    assert result["next_offset"] == 8
+    client.request.assert_called_once_with(
+        session_id=SESSION,
+        session_profile=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
+        capability="tasks",
+        method="logs",
+        params={"task_id": "T1", "limit": 4, "offset": 4},
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_task_degrades_when_optional_payload_query_exceeds_transport_limit() -> None:
+    """Oversized scratchpad/log queries should degrade rather than fail task_get."""
+    client = AsyncMock()
+
+    async def mock_request(
+        *,
+        session_id,
+        session_profile,
+        session_origin,
+        client_version,
+        capability,
+        method,
+        params,
+    ):
+        assert session_id == SESSION
+        assert session_profile is None
+        assert session_origin == SESSION_ORIGIN
+        if capability == "tasks" and method == "get":
+            return CoreResponse(
+                request_id="r1",
+                ok=True,
+                result={
+                    "found": True,
+                    "task": {
+                        "id": "T-OVERSIZE",
+                        "title": "Oversized task",
+                        "status": "backlog",
+                        "description": None,
+                        "acceptance_criteria": [],
+                    },
+                },
+            )
+        if capability == "tasks" and method in {"scratchpad", "logs"}:
+            raise RuntimeError("Separator is not found, and chunk exceed the limit")
+        return CoreResponse(request_id="rx", ok=True, result={})
+
+    client.request = mock_request
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    result = await bridge.get_task(
+        "T-OVERSIZE",
+        mode="full",
+        include_scratchpad=True,
+        include_logs=True,
+    )
+
+    assert result["task_id"] == "T-OVERSIZE"
+    assert result["scratchpad"] == "[omitted: scratchpad exceeded transport limits]"
+    assert result["scratchpad_truncated"] is True
+    assert result["logs"] == []
+    assert result["logs_truncated"] is True
 
 
 @pytest.mark.asyncio
@@ -344,13 +539,14 @@ async def test_get_task_summary_mode_truncates_large_fields() -> None:
         session_id,
         session_profile,
         session_origin,
+        client_version,
         capability,
         method,
         params,
     ):
         assert session_id == SESSION
         assert session_profile is None
-        assert session_origin is None
+        assert session_origin == SESSION_ORIGIN
         if capability == "tasks" and method == "get":
             return CoreResponse(
                 request_id="r1",
@@ -391,7 +587,9 @@ async def test_get_task_summary_mode_truncates_large_fields() -> None:
         return CoreResponse(request_id="rx", ok=True, result={})
 
     client.request = mock_request
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.get_task(
         "T1",
         include_scratchpad=True,
@@ -406,6 +604,146 @@ async def test_get_task_summary_mode_truncates_large_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_task_summary_mode_truncates_description_and_acceptance_criteria() -> None:
+    """get_task(mode=summary) trims oversized description and criteria lists."""
+    client = make_client(
+        {
+            "found": True,
+            "task": {
+                "id": "T-TRUNC",
+                "title": "Big task",
+                "status": "backlog",
+                "description": "d" * 8_000,
+                "acceptance_criteria": [f"criterion-{idx}-" + ("x" * 800) for idx in range(30)],
+            },
+        }
+    )
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    result = await bridge.get_task("T-TRUNC", mode="summary")
+
+    assert "[truncated " in (result["description"] or "")
+    assert isinstance(result["acceptance_criteria"], list)
+    assert len(result["acceptance_criteria"]) == 21
+    assert result["acceptance_criteria"][-1].startswith("[truncated ")
+
+
+@pytest.mark.asyncio
+async def test_get_task_summary_mode_stays_within_transport_budget() -> None:
+    """summary payload should stay under budget even with oversized runtime/title/criteria."""
+    client = make_client(
+        {
+            "found": True,
+            "task": {
+                "id": "T-BUDGET-S",
+                "title": "x" * 18_000,
+                "status": "backlog",
+                "description": "d" * 8_000,
+                "acceptance_criteria": [f"criterion-{idx}-" + ("x" * 1_000) for idx in range(80)],
+                "runtime": {
+                    "blocked_reason": "blocked-" + ("r" * 5_000),
+                    "pending_reason": "pending-" + ("p" * 5_000),
+                    "blocked_by_task_ids": [f"task-{idx}-" + ("t" * 200) for idx in range(120)],
+                    "overlap_hints": [f"hint-{idx}-" + ("h" * 500) for idx in range(200)],
+                },
+            },
+        }
+    )
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    result = await bridge.get_task("T-BUDGET-S", mode="summary")
+
+    assert result["task_id"] == "T-BUDGET-S"
+    assert result["status"] == "backlog"
+    assert len(json.dumps(result, ensure_ascii=True, default=str)) <= 12_000
+
+
+@pytest.mark.asyncio
+async def test_get_task_full_mode_stays_within_transport_budget() -> None:
+    """full payload should stay under budget even with large logs/scratchpad inputs."""
+    client = AsyncMock()
+
+    async def mock_request(
+        *,
+        session_id,
+        session_profile,
+        session_origin,
+        client_version,
+        capability,
+        method,
+        params,
+    ):
+        assert session_id == SESSION
+        assert session_profile is None
+        assert session_origin == SESSION_ORIGIN
+        if capability == "tasks" and method == "get":
+            return CoreResponse(
+                request_id="r1",
+                ok=True,
+                result={
+                    "found": True,
+                    "task": {
+                        "id": "T-BUDGET-F",
+                        "title": "x" * 24_000,
+                        "status": "backlog",
+                        "description": "d" * 20_000,
+                        "acceptance_criteria": [
+                            f"criterion-{idx}-" + ("x" * 1_600) for idx in range(120)
+                        ],
+                        "runtime": {
+                            "blocked_reason": "blocked-" + ("r" * 12_000),
+                            "pending_reason": "pending-" + ("p" * 12_000),
+                            "blocked_by_task_ids": [
+                                f"task-{idx}-" + ("t" * 400) for idx in range(120)
+                            ],
+                            "overlap_hints": [f"hint-{idx}-" + ("h" * 800) for idx in range(200)],
+                        },
+                    },
+                },
+            )
+        if capability == "tasks" and method == "scratchpad":
+            return CoreResponse(
+                request_id="r2",
+                ok=True,
+                result={"content": "s" * 80_000},
+            )
+        if capability == "tasks" and method == "logs":
+            return CoreResponse(
+                request_id="r3",
+                ok=True,
+                result={
+                    "task_id": "T-BUDGET-F",
+                    "logs": [
+                        {
+                            "run": idx,
+                            "content": f"log-{idx}-" + ("x" * 30_000),
+                            "created_at": "2026-02-09T10:00:00+00:00",
+                        }
+                        for idx in range(1, 25)
+                    ],
+                },
+            )
+        return CoreResponse(request_id="rx", ok=True, result={})
+
+    client.request = mock_request
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    result = await bridge.get_task(
+        "T-BUDGET-F",
+        mode="full",
+        include_scratchpad=True,
+        include_logs=True,
+    )
+
+    assert result["task_id"] == "T-BUDGET-F"
+    assert result["status"] == "backlog"
+    assert len(json.dumps(result, ensure_ascii=True, default=str)) <= 24_000
+
+
+@pytest.mark.asyncio
 async def test_list_tasks_with_coordination_filters() -> None:
     """list_tasks should pass filter/exclusion/scratchpad flags to tasks.list."""
     client = make_client(
@@ -417,7 +755,9 @@ async def test_list_tasks_with_coordination_filters() -> None:
             "count": 2,
         }
     )
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.list_tasks(
         filter="IN_PROGRESS",
         exclude_task_ids=["T3"],
@@ -429,7 +769,8 @@ async def test_list_tasks_with_coordination_filters() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="list",
         params={
@@ -444,7 +785,9 @@ async def test_list_tasks_with_coordination_filters() -> None:
 async def test_update_scratchpad() -> None:
     """update_scratchpad should translate to tasks.update_scratchpad command."""
     client = make_client({"success": True, "task_id": "T1", "message": "updated"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     result = await bridge.update_scratchpad("T1", "new notes")
 
     assert result["success"] is True
@@ -453,7 +796,8 @@ async def test_update_scratchpad() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="update_scratchpad",
         params={"task_id": "T1", "content": "new notes"},
@@ -463,7 +807,9 @@ async def test_update_scratchpad() -> None:
 @pytest.mark.asyncio
 async def test_create_task_accepts_extended_fields() -> None:
     client = make_client({"success": True, "task_id": "T1"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     await bridge.create_task(
         title="New task",
         description="desc",
@@ -482,7 +828,8 @@ async def test_create_task_accepts_extended_fields() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="create",
         params={
@@ -503,9 +850,37 @@ async def test_create_task_accepts_extended_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_task_accepts_scalar_acceptance_criteria() -> None:
+    client = make_client({"success": True, "task_id": "T1"})
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+    await bridge.create_task(
+        title="New task",
+        acceptance_criteria="single criterion",
+    )
+
+    client.request.assert_called_once_with(
+        session_id=SESSION,
+        session_profile=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
+        capability="tasks",
+        method="create",
+        params={
+            "title": "New task",
+            "description": "",
+            "acceptance_criteria": "single criterion",
+        },
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_task_accepts_extended_fields() -> None:
     client = make_client({"success": True, "task_id": "T1"})
-    bridge = CoreClientBridge(client, SESSION)
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
     await bridge.update_task(
         "T1",
         task_type="PAIR",
@@ -522,7 +897,8 @@ async def test_update_task_accepts_extended_fields() -> None:
     client.request.assert_called_once_with(
         session_id=SESSION,
         session_profile=None,
-        session_origin=None,
+        session_origin=SESSION_ORIGIN,
+        client_version=CLIENT_VERSION,
         capability="tasks",
         method="update",
         params={
@@ -538,3 +914,36 @@ async def test_update_task_accepts_extended_fields() -> None:
             "acceptance_criteria": ["done"],
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_bridge_error_uses_fallback_message_when_core_message_empty() -> None:
+    client = AsyncMock()
+
+    async def mock_request(
+        *,
+        session_id,
+        session_profile,
+        session_origin,
+        client_version,
+        capability,
+        method,
+        params,
+    ):
+        del session_id, session_profile, session_origin, client_version, capability, method, params
+        return CoreResponse(
+            request_id="r1",
+            ok=False,
+            error=CoreErrorDetail(code="INVALID_PARAMS", message=""),
+        )
+
+    client.request = mock_request
+    bridge = CoreClientBridge(
+        client, SESSION, session_origin=SESSION_ORIGIN, client_version=CLIENT_VERSION
+    )
+
+    with pytest.raises(MCPBridgeError) as exc_info:
+        await bridge.get_context("TASK-001")
+
+    assert exc_info.value.code == "INVALID_PARAMS"
+    assert exc_info.value.message == "tasks.context request failed"

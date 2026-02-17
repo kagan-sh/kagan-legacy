@@ -9,7 +9,7 @@ from textual.containers import Horizontal, Vertical, VerticalGroup
 from textual.message import Message
 from textual.widgets import Button, Static
 
-from kagan.core.models.enums import TaskType
+from kagan.core.domain.enums import TaskType
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult

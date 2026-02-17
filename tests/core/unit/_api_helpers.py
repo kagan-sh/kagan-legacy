@@ -15,6 +15,8 @@ from kagan.core.adapters.db.repositories.auxiliary import ScratchRepository
 from kagan.core.api import KaganAPI
 from kagan.core.bootstrap import AppContext, InMemoryEventBus
 from kagan.core.config import KaganConfig
+from kagan.core.plugins.github import register_github_plugin
+from kagan.core.plugins.sdk import PluginRegistry
 from kagan.core.services.projects import ProjectServiceImpl
 from kagan.core.services.tasks import TaskServiceImpl
 
@@ -43,6 +45,10 @@ def mock_workspace_service() -> MagicMock:
     ws.get_workspace_repos = AsyncMock(return_value=[])
     ws.rebase_onto_base = AsyncMock(return_value=(True, "OK", []))
     ws.abort_rebase = AsyncMock(return_value=(True, "OK"))
+    # Merge operations (formerly MergeService)
+    ws.delete_task = AsyncMock(return_value=(True, "Deleted successfully"))
+    ws.merge_task = AsyncMock(return_value=(True, "Merged all repos"))
+    ws.apply_rejection_feedback = AsyncMock()
     return ws
 
 
@@ -54,15 +60,6 @@ def mock_session_service() -> MagicMock:
     ss.create_session = AsyncMock(return_value="kagan-test-session")
     ss.attach_session = AsyncMock(return_value=True)
     return ss
-
-
-def mock_merge_service() -> MagicMock:
-    """Build a mock MergeService with essential methods."""
-    ms = MagicMock()
-    ms.delete_task = AsyncMock(return_value=(True, "Deleted successfully"))
-    ms.merge_task = AsyncMock(return_value=(True, "Merged all repos"))
-    ms.apply_rejection_feedback = AsyncMock()
-    return ms
 
 
 def mock_job_service() -> MagicMock:
@@ -98,7 +95,7 @@ async def build_api(
     db_path = tmp_path / "test.db"
     config_path = tmp_path / "config.toml"
     config_path.write_text(
-        '[general]\nauto_review = false\ndefault_base_branch = "main"\n'
+        "[general]\nauto_review = false\n"
         'default_worker_agent = "claude"\n\n'
         "[agents.claude]\n"
         'identity = "claude.ai"\nname = "Claude"\nshort_name = "claude"\n'
@@ -134,9 +131,10 @@ async def build_api(
     ctx.workspace_service = mock_workspace_service()
     ctx.session_service = mock_session_service()
     ctx.automation_service = mock_automation_service()
-    ctx.merge_service = mock_merge_service()
     ctx.job_service = mock_job_service()
     ctx.active_project_id = project_id
+    ctx.plugin_registry = PluginRegistry()
+    register_github_plugin(ctx.plugin_registry)
 
     api = KaganAPI(ctx)
     return task_repo, api, ctx

@@ -10,10 +10,12 @@ import json
 import logging
 import os
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kagan.core.bootstrap import create_app_context
+from kagan.core.commands import get_command_router
 from kagan.core.config import KaganConfig
+from kagan.core.domain.enums import TaskType
 from kagan.core.events import (
     CoreHostDraining,
     CoreHostRunning,
@@ -26,7 +28,6 @@ from kagan.core.instance_lease import (
 )
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.server import IPCServer
-from kagan.core.models.enums import TaskType
 from kagan.core.paths import (
     get_config_path,
     get_core_endpoint_path,
@@ -35,47 +36,42 @@ from kagan.core.paths import (
     get_core_token_path,
     get_database_path,
 )
-from kagan.core.request_dispatch_map import build_request_dispatch_map
-from kagan.core.runtime_helpers import (
+from kagan.core.policy import (
+    AuthorizationError,
+    CapabilityProfile,
+    RequestContext,
+    SessionBinding,
+    SessionBindingError,
+    SessionOrigin,
+    enforce_task_scope,
+    request_context,
+)
+from kagan.core.policy import (
+    get_binding as get_session_binding,
+)
+from kagan.core.services.runtime import (
     IDEMPOTENCY_CACHE_LIMIT,
     IDEMPOTENT_MUTATION_METHODS,
     CachedResponseEnvelope,
     IdempotencyRecord,
     IdempotencyReservation,
 )
-from kagan.core.security import AuthorizationError, CapabilityProfile
-from kagan.core.session_binding import (
-    SessionBinding,
-    SessionBindingError,
-    enforce_task_scope,
-)
-from kagan.core.session_binding import (
-    get_binding as get_session_binding,
-)
-from kagan.core.session_binding import (
-    register_session as register_session_binding,
-)
-from kagan.core.session_binding import (
-    unregister_session as unregister_session_binding,
-)
+from kagan.version import get_kagan_version
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from typing import Any
 
     from kagan.core.bootstrap import AppContext
     from kagan.core.ipc.transports import ServerHandle
     from kagan.core.plugins.sdk import PluginOperation, PluginPolicyDecision, PluginRegistry
-    from kagan.core.request_dispatch_map import RequestHandler
 
 logger = logging.getLogger(__name__)
+
+_REQUEST_DISPATCH_MAP: dict[tuple[str, str], Any] | None = None
 
 
 def _core_lease_path() -> Path:
     return get_core_runtime_dir() / "core.lease.json"
-
-
-_REQUEST_DISPATCH_MAP: dict[tuple[str, str], RequestHandler] | None = None
 
 
 class CoreHostStatus(enum.Enum):
@@ -125,6 +121,7 @@ class CoreHost:
         self._session_bindings: dict[str, SessionBinding] = {}
         self._idempotency_records: OrderedDict[tuple[str, str], IdempotencyRecord] = OrderedDict()
         self._idempotency_lock = asyncio.Lock()
+        self._runtime_version = get_kagan_version()
         self._instance_lock = CoreInstanceLock(
             get_core_instance_lock_path(),
             lease_path=_core_lease_path(),
@@ -144,22 +141,6 @@ class CoreHost:
     def client_count(self) -> int:
         """Number of active IPC clients (approximation)."""
         return self._client_count
-
-    def register_session(self, session_id: str, profile: str) -> None:
-        """Associate a session with a capability profile.
-
-        Args:
-            session_id: The IPC session identifier.
-            profile: Profile name (viewer, planner, pair_worker, operator, maintainer).
-
-        Raises:
-            ValueError: If *profile* is not a recognized capability profile.
-        """
-        register_session_binding(self._session_bindings, session_id, profile)
-
-    def unregister_session(self, session_id: str) -> None:
-        """Remove the profile binding for a session."""
-        unregister_session_binding(self._session_bindings, session_id)
 
     def _plugin_registry(self) -> PluginRegistry | None:
         if self._ctx is None:
@@ -360,9 +341,44 @@ class CoreHost:
             await self._record_audit_event(request, response)
             return response
 
-        response = await self._dispatch_with_idempotency(request)
+        incompatibility = self._validate_mcp_client_version(request, binding=binding)
+        if incompatibility is not None:
+            await self._record_audit_event(request, incompatibility)
+            return incompatibility
+
+        with request_context(RequestContext(request=request, binding=binding)):
+            response = await self._dispatch_with_idempotency(request)
         await self._record_audit_event(request, response)
         return response
+
+    def _validate_mcp_client_version(
+        self,
+        request: CoreRequest,
+        *,
+        binding: SessionBinding,
+    ) -> CoreResponse | None:
+        if binding.origin not in (SessionOrigin.KAGAN, SessionOrigin.KAGAN_ADMIN):
+            return None
+        client_version = request.client_version.strip() if request.client_version else ""
+        if not client_version:
+            return CoreResponse.failure(
+                request.request_id,
+                code="MCP_OUTDATED",
+                message=(
+                    "MCP client did not report its version. Restart the MCP client/session "
+                    "to load the latest kagan package."
+                ),
+            )
+        if client_version != self._runtime_version:
+            return CoreResponse.failure(
+                request.request_id,
+                code="MCP_OUTDATED",
+                message=(
+                    f"MCP client version '{client_version}' does not match core version "
+                    f"'{self._runtime_version}'. Restart the MCP client/session."
+                ),
+            )
+        return None
 
     @staticmethod
     def _idempotency_cache_key(request: CoreRequest) -> tuple[str, str] | None:
@@ -610,29 +626,31 @@ class CoreHost:
         self,
         request: CoreRequest,
     ) -> dict[str, Any] | None:
-        """Attempt to dispatch a request through the KaganAPI.
+        """Attempt to dispatch a request through the command router.
 
         Returns the formatted result dict if the (capability, method) pair is
-        in the request dispatch map, or ``None`` when no built-in handler
+        registered in the command router, or ``None`` when no built-in handler
         exists for that pair.
 
         Authorization has already been enforced before this method is called.
         """
-        global _REQUEST_DISPATCH_MAP
         assert self._ctx is not None
-        api = getattr(self._ctx, "api", None)
-        if api is None:
+        if _REQUEST_DISPATCH_MAP is not None:
+            api = getattr(self._ctx, "api", None)
+            if api is None:
+                return None
+            handler = _REQUEST_DISPATCH_MAP.get((request.capability, request.method))
+            if handler is None:
+                return None
+            return await handler(api, request.params)
+        if getattr(self._ctx, "api", None) is None:
             return None
-
-        if _REQUEST_DISPATCH_MAP is None:
-            _REQUEST_DISPATCH_MAP = build_request_dispatch_map()
-
-        key = (request.capability, request.method)
-        if key not in _REQUEST_DISPATCH_MAP:
-            return None
-
-        handler = _REQUEST_DISPATCH_MAP[key]
-        return await handler(api, request.params)
+        return await get_command_router().dispatch(
+            request.capability,
+            request.method,
+            self._ctx,
+            request.params,
+        )
 
     async def _try_plugin_dispatch(
         self,

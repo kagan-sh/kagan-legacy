@@ -1,81 +1,62 @@
 ---
 title: Troubleshooting
-description: Fast fixes for common issues
+description: Symptom-first fixes for common Kagan issues
 icon: material/bug
 ---
 
 # Troubleshooting
 
-## TL;DR
-
-1. Check terminal size (`>= 80x20`)
-1. Check agent binaries in `PATH`
-1. Open debug log with `F12`
-1. Use `kagan reset` for stale local state
-
-## Quick fix table
-
-| Symptom                                      | Fast fix                                         |
-| -------------------------------------------- | ------------------------------------------------ |
-| Agent not detected                           | Verify CLI binary in `PATH`, restart terminal    |
-| PAIR session won't open                      | Install/select backend (`tmux`, VS Code, Cursor) |
-| Instance lock error                          | Close duplicate instance or run `kagan reset`    |
-| Merge conflict in REVIEW                     | Resolve in merge worktree, retry merge           |
-| MCP says `AUTH_STALE_TOKEN`                  | Restart MCP client or run `kagan core restart`   |
-| UI looks broken                              | Resize terminal to at least `80x20`              |
-| `kagan core status` says metadata incomplete | Run `kagan core stop` then `kagan core start`    |
-
-## Windows
-
-### Native extension install errors (`vcruntime`, `cl.exe`)
-
-Install [Microsoft Visual C++ Redistributable](https://go.microsoft.com/fwlink/?LinkID=135170).
-
-### Recommended install path
-
-```powershell
-iwr -useb uvget.me/install.ps1 -OutFile install.ps1; .\install.ps1 kagan
+```bash
+kagan doctor
 ```
 
-### PAIR backend
+Match symptom text below.
 
-Windows defaults to VS Code. Override:
+## Core / MCP
 
-```toml
-[general]
-default_pair_terminal_backend = "vscode"  # or "cursor"
-```
+| Symptom | Fix |
+| ------- | --- |
+| Runtime metadata incomplete | `kagan core stop` → `start` → `status` |
+| `AUTH_STALE_TOKEN` | Reconnect MCP client; `kagan core stop` → `start` |
+| `DISCONNECTED` | Run `kagan` once, then `kagan mcp` |
+| `START_PENDING` | Poll `job_poll(wait=false)` until running/terminal |
+| `logs_truncated` / `logs_has_more` | `task_logs(task_id, offset, limit)`; use `next_offset` |
 
-## macOS / Linux
+## PAIR / terminal
 
-### `tmux` not found
+| Symptom | Fix |
+| ------- | --- |
+| tmux not found | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora) |
+| Unsupported PAIR launcher | `default_pair_terminal_backend = "tmux"` \| `"vscode"` \| `"cursor"` in config |
+
+## Git
+
+| Symptom | Fix |
+| ------- | --- |
+| Git not found | `brew install git` / `apt install git` / `dnf install git` |
+| Git identity not configured | `git config --global user.name "…"` and `user.email "…"` |
+
+## Other
+
+| Symptom | Fix |
+| ------- | --- |
+| Another instance running | Close other instance; if stale: `kagan reset` |
+| UI rendering issues | Resize ≥80×20; truecolor terminal; `F12` debug log |
+
+## GitHub plugin
+
+| Code | Fix |
+| ---- | --- |
+| `GH_CLI_NOT_AVAILABLE` | `brew install gh` / `apt install gh` / `dnf install gh` |
+| `GH_AUTH_REQUIRED` | `gh auth login` |
+| `GH_NOT_CONNECTED` | MCP `kagan_github_connect_repo` or TUI `.` → Connect GitHub |
+| `LEASE_HELD_BY_OTHER` | `force_takeover: true` if holder gone; 2h+ lease → auto takeover |
+| Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login` |
+
+## Nuclear cleanup
 
 ```bash
-brew install tmux            # macOS
-sudo apt install tmux        # Debian / Ubuntu
-sudo dnf install tmux        # Fedora / RHEL
+kagan reset --force
 ```
 
-Or switch backend:
-
-```toml
-[general]
-default_pair_terminal_backend = "vscode"
-```
-
-## General
-
-- **Agent not detected**: verify binary (`which claude`, etc.), restart terminal, check `F12` debug log.
-- **Instance lock error**: close other Kagan instances for same repo, or `kagan reset`.
-- **Merge conflicts**: open resolve from Task Details, resolve in worktree, retry. Consider `serialize_merges = true`.
-
-### Reset local state
-
-```bash
-kagan reset         # interactive
-kagan reset --force # delete all local state
-```
-
-`kagan reset` stops a running core daemon before deleting state.
-
-Data paths: `~/.local/share/kagan/kagan.db`, `~/.config/kagan/config.toml`, system temp dir (`/var/tmp/kagan/worktrees/`).
+Permanently removes local state. Last resort.

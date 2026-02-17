@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, Label, Select, Static
 
-from kagan.core.services.merges import MergeResult, MergeStrategy
+from kagan.core.services.workspaces import MergeResult, MergeStrategy
 from kagan.tui.ui.modals.base import KaganModalScreen
 
 if TYPE_CHECKING:

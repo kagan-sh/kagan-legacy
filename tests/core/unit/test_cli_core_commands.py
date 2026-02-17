@@ -16,7 +16,7 @@ def test_core_start_reports_existing_core() -> None:
     endpoint = CoreEndpoint(transport="tcp", address="127.0.0.1", port=4444, pid=1234)
     with (
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=endpoint),
-        patch("kagan.core.launcher.ensure_core_running_sync") as mock_ensure,
+        patch("kagan.core.services.runtime.ensure_core_running_sync") as mock_ensure,
     ):
         result = runner.invoke(core, ["start"])
 
@@ -31,7 +31,10 @@ def test_core_start_autostarts_when_not_running() -> None:
     endpoint = CoreEndpoint(transport="tcp", address="127.0.0.1", port=5555, pid=4321)
     with (
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=None),
-        patch("kagan.core.launcher.ensure_core_running_sync", return_value=endpoint) as mock_ensure,
+        patch(
+            "kagan.core.services.runtime.ensure_core_running_sync",
+            return_value=endpoint,
+        ) as mock_ensure,
     ):
         result = runner.invoke(core, ["start"])
 
@@ -46,7 +49,7 @@ def test_core_start_foreground_uses_blocking_launcher() -> None:
     runner = CliRunner()
     with (
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=None),
-        patch("kagan.core.launcher.launch_core_subprocess", return_value=0) as mock_launch,
+        patch("kagan.core.services.runtime.launch_core_subprocess", return_value=0) as mock_launch,
     ):
         result = runner.invoke(core, ["start", "--foreground"])
 
@@ -59,7 +62,7 @@ def test_core_status_reports_incomplete_runtime_metadata() -> None:
     runner = CliRunner()
     with (
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=None),
-        patch("kagan.cli.commands.core._discover_running_pid_fallback", return_value=2468),
+        patch("kagan.cli.commands.core.discover_running_pid_fallback", return_value=2468),
     ):
         result = runner.invoke(core, ["status"])
 
@@ -73,7 +76,7 @@ def test_core_stop_uses_pid_fallback_when_endpoint_is_missing() -> None:
     runner = CliRunner()
     with (
         patch("kagan.core.ipc.discovery.discover_core_endpoint", return_value=None),
-        patch("kagan.cli.commands.core._discover_running_pid_fallback", return_value=2468),
+        patch("kagan.cli.commands.core.discover_running_pid_fallback", return_value=2468),
         patch("os.kill") as mock_kill,
     ):
         result = runner.invoke(core, ["stop"])

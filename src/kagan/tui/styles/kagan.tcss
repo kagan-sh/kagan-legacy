@@ -104,6 +104,15 @@ KaganHeader .header-logo {
     padding-right: 1;
 }
 
+KaganHeader .header-logo.logo-connected {
+    color: $secondary;
+}
+
+KaganHeader .header-logo.logo-disconnected {
+    color: $text-muted;
+    text-opacity: 60%;
+}
+
 KaganHeader .header-title {
     width: auto;
     color: $primary;
@@ -140,10 +149,29 @@ KaganHeader .header-sessions {
     color: $text-muted;
 }
 
+KaganHeader .header-github-status {
+    width: auto;
+    padding-right: 2;
+    color: $text-muted;
+}
+
+KaganHeader .header-github-status.github-synced {
+    color: $success;
+}
+
+KaganHeader .header-github-status.github-pending {
+    color: $warning;
+}
+
 KaganHeader .header-agent {
     width: auto;
     color: $secondary;
     text-style: bold;
+    padding-right: 2;
+}
+
+KaganHeader .core-status {
+    width: auto;
     padding-right: 2;
 }
 
@@ -342,6 +370,14 @@ TaskCard .card-branch {
     height: 1;
     color: $text-muted;
     text-style: italic;
+    margin-left: 1;
+}
+
+/* GitHub context badges (issue #, PR #) */
+TaskCard .card-badge-gh {
+    width: auto;
+    height: 1;
+    color: $text-muted;
     margin-left: 1;
 }
 
@@ -659,6 +695,19 @@ TaskDetailsModal .audit-section {
 TaskDetailsModal #audit-content {
     color: $text-muted;
     padding: 1;
+}
+
+/* GitHub context section */
+TaskDetailsModal .github-section {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+TaskDetailsModal #github-context-content {
+    color: $text-muted;
+    padding: 0 1;
+    height: auto;
 }
 
 TaskDetailsModal .meta-row {
@@ -1773,6 +1822,35 @@ ReviewModal .button-row .button-group-end Button {
 
 #review-agent-output-chat.queue-disabled .chat-input {
     display: none;
+}
+
+/* PR Comments tab */
+#pr-comments-scroll {
+    height: 1fr;
+    padding-right: 1;
+}
+
+#pr-comments-loading {
+    height: 3;
+}
+
+#pr-comments-loading.hidden {
+    display: none;
+}
+
+.pr-comment-item {
+    padding: 1;
+    margin-bottom: 1;
+    background: $background;
+    border: round $border;
+    height: auto;
+}
+
+.pr-comment-resolve-btn {
+    dock: bottom;
+    width: auto;
+    min-width: 18;
+    margin-top: 1;
 }
 
 /* =============================================================================
@@ -3545,4 +3623,49 @@ PeekOverlay .peek-status {
 
 PeekOverlay .peek-content {
     color: $text-muted;
+}
+
+/* =============================================================================
+   PLUGIN FORM MODAL
+   ============================================================================= */
+
+PluginFormModal {
+    align: center middle;
+}
+
+PluginFormModal #dialog {
+    width: 60;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 2 3;
+}
+
+PluginFormModal .dialog-title {
+    text-align: center;
+    text-style: bold;
+    color: $secondary;
+    padding-bottom: 1;
+}
+
+PluginFormModal .field {
+    height: auto;
+    margin: 1 0 0 0;
+}
+
+PluginFormModal .field-label {
+    margin-bottom: 0;
+    color: $text;
+    text-style: bold;
+}
+
+PluginFormModal #dialog-actions {
+    height: auto;
+    margin-top: 2;
+    align: center middle;
+}
+
+PluginFormModal #dialog-actions Button {
+    margin: 0 1;
+    min-width: 16;
 }

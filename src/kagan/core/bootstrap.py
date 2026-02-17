@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import shutil
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from kagan.core.config import KaganConfig
+from kagan.core.domain.enums import AgentStatus
 from kagan.core.events import (
     AutomationAgentAttached,
     AutomationReviewAgentAttached,
@@ -38,7 +40,6 @@ from kagan.core.events import (
     TaskStatusChanged,
     TaskUpdated,
 )
-from kagan.core.plugins.examples import register_example_plugins
 from kagan.core.plugins.sdk import PluginRegistry
 
 if TYPE_CHECKING:
@@ -54,17 +55,13 @@ if TYPE_CHECKING:
     )
     from kagan.core.agents.agent_factory import AgentFactory
     from kagan.core.api import KaganAPI
-    from kagan.core.services.agent_health import AgentHealthService
-    from kagan.core.services.automation import AutomationService
-    from kagan.core.services.diffs import DiffService
-    from kagan.core.services.jobs import JobService
-    from kagan.core.services.merges import MergeService
-    from kagan.core.services.projects import ProjectService
-    from kagan.core.services.reviews import ReviewService
-    from kagan.core.services.runtime import RuntimeService
-    from kagan.core.services.sessions import SessionService
-    from kagan.core.services.tasks import TaskService
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.automation import AutomationServiceImpl
+    from kagan.core.services.jobs import JobServiceImpl
+    from kagan.core.services.projects import ProjectServiceImpl
+    from kagan.core.services.runtime import RuntimeServiceImpl
+    from kagan.core.services.sessions import SessionServiceImpl
+    from kagan.core.services.tasks import TaskServiceImpl
+    from kagan.core.services.workspaces import WorkspaceServiceImpl
 
 
 class InMemoryEventBus:
@@ -192,6 +189,44 @@ class SignalBridge:
         self._bindings.clear()
 
 
+class AgentHealthServiceImpl:
+    """Check if configured agent CLI is available."""
+
+    def __init__(self, config: KaganConfig) -> None:
+        self._config = config
+        self._status: AgentStatus = AgentStatus.AVAILABLE
+        self._message: str | None = None
+        self._check_agent()
+
+    def _check_agent(self) -> None:
+        """Check if agent CLI exists."""
+        agent_name = self._config.general.default_worker_agent
+        cli_names: dict[str, list[str]] = {
+            "claude": ["claude"],
+            "opencode": ["opencode"],
+        }
+        commands = cli_names.get(agent_name, [agent_name])
+        for cmd in commands:
+            if shutil.which(cmd):
+                self._status = AgentStatus.AVAILABLE
+                self._message = None
+                return
+        self._status = AgentStatus.UNAVAILABLE
+        self._message = f"Agent CLI '{agent_name}' not found in PATH"
+
+    def check_status(self) -> AgentStatus:
+        return self._status
+
+    def get_status_message(self) -> str | None:
+        return self._message
+
+    def is_available(self) -> bool:
+        return self._status == AgentStatus.AVAILABLE
+
+    def refresh(self) -> None:
+        self._check_agent()
+
+
 @dataclass
 class AppContext:
     """Central container for application dependencies.
@@ -211,11 +246,9 @@ class AppContext:
         event_bus: Domain event bus for pub/sub.
         signal_bridge: Bridges events to Textual Signals.
         task_service: Task operations.
-        workspace_service: Workspace (worktree) operations.
+        workspace_service: Workspace, diff, and merge operations.
         session_service: Tmux session operations.
         execution_service: Agent/script execution operations.
-        review_service: Review status and log updates.
-        merge_service: Git merge operations.
         automation_service: Reactive automation service for automated workflows.
     """
 
@@ -226,18 +259,15 @@ class AppContext:
     event_bus: EventBus = field(default_factory=InMemoryEventBus)
     signal_bridge: SignalBridge | None = None
 
-    task_service: TaskService = field(init=False)
-    workspace_service: WorkspaceService = field(init=False)
-    session_service: SessionService = field(init=False)
+    task_service: TaskServiceImpl = field(init=False)
+    workspace_service: WorkspaceServiceImpl = field(init=False)
+    session_service: SessionServiceImpl = field(init=False)
     execution_service: ExecutionRepository = field(init=False)
-    job_service: JobService = field(init=False)
-    review_service: ReviewService = field(init=False)
-    runtime_service: RuntimeService = field(init=False)
-    merge_service: MergeService = field(init=False)
-    diff_service: DiffService = field(init=False)
-    automation_service: AutomationService = field(init=False)
-    project_service: ProjectService = field(init=False)
-    agent_health: AgentHealthService = field(init=False)
+    job_service: JobServiceImpl = field(init=False)
+    runtime_service: RuntimeServiceImpl = field(init=False)
+    automation_service: AutomationServiceImpl = field(init=False)
+    project_service: ProjectServiceImpl = field(init=False)
+    agent_health: AgentHealthServiceImpl = field(init=False)
     audit_repository: AuditRepository = field(init=False)
     planner_repository: PlannerRepository = field(init=False)
     api: KaganAPI = field(init=False)
@@ -264,6 +294,15 @@ class AppContext:
         if self.signal_bridge:
             self.signal_bridge.unbind_all()
 
+        lifecycle_error: RuntimeError | None = None
+        if hasattr(self, "plugin_registry"):
+            shutdown_lifecycle = getattr(self.plugin_registry, "shutdown_lifecycle", None)
+            if shutdown_lifecycle is not None:
+                try:
+                    await shutdown_lifecycle(self)
+                except RuntimeError as exc:
+                    lifecycle_error = exc
+
         if hasattr(self, "automation_service"):
             await self.automation_service.stop()
         if hasattr(self, "job_service"):
@@ -271,6 +310,8 @@ class AppContext:
 
         if self._task_repo is not None:
             await self._task_repo.close()
+        if lifecycle_error is not None:
+            raise lifecycle_error
 
 
 def create_signal_bridge(event_bus: EventBus) -> SignalBridge:
@@ -388,7 +429,7 @@ async def create_app_context(
         event_bus=event_bus,
     )
     ctx.plugin_registry = PluginRegistry()
-    register_example_plugins(ctx.plugin_registry)
+    ctx.plugin_registry.discover_and_register(config.plugins.discovery)
 
     from kagan.core.adapters.db.repositories import (
         AuditRepository,
@@ -405,11 +446,8 @@ async def create_app_context(
     from kagan.core.agents.agent_factory import create_agent
     from kagan.core.services import (
         AutomationServiceImpl,
-        DiffServiceImpl,
         JobServiceImpl,
-        MergeServiceImpl,
         ProjectServiceImpl,
-        ReviewServiceImpl,
         RuntimeServiceImpl,
         SessionServiceImpl,
         TaskServiceImpl,
@@ -421,7 +459,6 @@ async def create_app_context(
     task_repo = TaskRepository(
         db_path,
         project_root=project_root,
-        default_branch=config.general.default_base_branch,
     )
     await task_repo.initialize()
 
@@ -454,13 +491,16 @@ async def create_app_context(
         event_bus,
         repo_repository,
     )
-    git_adapter = GitWorktreeAdapter()
+    git_adapter = GitWorktreeAdapter(base_ref_strategy=config.general.worktree_base_ref_strategy)
     git_ops_adapter = GitOperationsAdapter()
     ctx.workspace_service = WorkspaceServiceImpl(
         session_factory,
         git_adapter,
         ctx.task_service,
         ctx.project_service,
+        git_ops_adapter=git_ops_adapter,
+        event_bus=event_bus,
+        config=config,
     )
     ctx.session_service = SessionServiceImpl(
         project_root,
@@ -469,7 +509,6 @@ async def create_app_context(
         config,
     )
     ctx.execution_service = execution_repository
-    ctx.review_service = ReviewServiceImpl(ctx.task_service, ctx.execution_service)
     ctx.runtime_service = RuntimeServiceImpl(
         ctx.project_service,
         session_factory,
@@ -497,19 +536,10 @@ async def create_app_context(
         return await execute_job_action(ctx, action=action, params=params)
 
     ctx.job_service = JobServiceImpl(_job_executor, repository=job_repository)
-    ctx.merge_service = MergeServiceImpl(
-        ctx.task_service,
-        ctx.workspace_service,
-        ctx.session_service,
-        ctx.automation_service,
-        config,
-        session_factory,
-        event_bus,
-        git_ops_adapter,
-    )
-    ctx.diff_service = DiffServiceImpl(session_factory, git_ops_adapter, ctx.workspace_service)
 
-    from kagan.core.services.agent_health import AgentHealthServiceImpl
+    # Wire merge/diff dependencies now that automation + sessions are available
+    ctx.workspace_service._sessions = ctx.session_service
+    ctx.workspace_service._automation = ctx.automation_service
 
     ctx.agent_health = AgentHealthServiceImpl(config)
 
@@ -517,10 +547,17 @@ async def create_app_context(
 
     ctx.api = KaganAPI(ctx)
 
+    try:
+        await ctx.plugin_registry.start_lifecycle(ctx)
+    except Exception:  # quality-allow-broad-except
+        await ctx.close()
+        raise
+
     return ctx
 
 
 __all__ = [
+    "AgentHealthServiceImpl",
     "AppContext",
     "DomainEvent",
     "EventBus",

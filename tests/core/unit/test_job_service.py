@@ -10,7 +10,7 @@ import pytest
 
 from kagan.core.adapters.db.repositories import JobRepository, TaskRepository
 from kagan.core.api import KaganAPI
-from kagan.core.request_handlers import handle_job_events
+from kagan.core.commands.automation import handle_job_events
 from kagan.core.services.jobs import JobServiceImpl, JobStatus
 
 
@@ -418,9 +418,10 @@ async def test_handle_job_events_paginates_persisted_lifecycle(tmp_path) -> None
         )
         await _wait_for_status(service, submitted.job_id, JobStatus.SUCCEEDED)
 
-        f = KaganAPI(cast("Any", SimpleNamespace(job_service=service)))
+        ctx = SimpleNamespace(job_service=service)
+        ctx.api = KaganAPI(cast("Any", ctx))
         page = await handle_job_events(
-            f,
+            ctx,
             {
                 "job_id": submitted.job_id,
                 "task_id": "TASK-PAGE",

@@ -53,9 +53,10 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("R", "rebase", "Rebase", key_display="Shift+R", show=False),
     Binding("p", "open_planner", "Plan Mode", show=False),
     Binding("b", "set_task_branch", "Set Task Branch", show=False),
-    Binding("B", "set_default_branch", "Set Default Branch", key_display="Shift+B", show=False),
     Binding("A", "switch_global_agent", "Switch Agent", key_display="Shift+A", show=False),
     Binding("comma", "open_settings", "Settings", key_display=",", show=False),
+    # Plugin-backed repo sync action from the UI catalog.
+    Binding("G", "repo_sync", "Repo Sync", key_display="Shift+G", show=False),
     Binding("h", "focus_left", "Left", show=False),
     Binding("j", "focus_down", "Down", show=False),
     Binding("k", "focus_up", "Up", show=False),
@@ -106,6 +107,7 @@ REVIEW_BINDINGS: list[BindingType] = [
     Binding("2", "show_diff", "Diff Tab", key_display="2"),
     Binding("3", "show_ai_review", "Review Tab", key_display="3"),
     Binding("4", "show_agent_output", "Output Tab", key_display="4"),
+    Binding("5", "show_pr_comments", "PR Comments", key_display="5"),
     Binding("enter", "approve", "Approve", key_display="Enter"),
     Binding("R", "rebase", "Rebase", key_display="Shift+R"),
     Binding("r", "reject", "Reject"),
@@ -158,7 +160,6 @@ PLANNER_BINDINGS: list[BindingType] = [
     Binding("ctrl+c", "cancel", "Stop", priority=True),
     Binding("f2", "refine", "Enhance", key_display="F2", priority=True),
     Binding("b", "set_task_branch", "Set Task Branch", show=False),
-    Binding("B", "set_default_branch", "Set Default Branch", key_display="Shift+B", show=False),
 ]
 
 TASK_EDITOR_BINDINGS: list[BindingType] = [

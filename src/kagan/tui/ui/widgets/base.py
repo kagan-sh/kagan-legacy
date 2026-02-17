@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from textual.widgets import Input, Select, TextArea
 
 from kagan.core.constants import PRIORITY_LABELS
-from kagan.core.models.enums import PairTerminalBackend, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import PairTerminalBackend, TaskPriority, TaskStatus, TaskType
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -169,6 +169,9 @@ class AgentBackendSelect(Select[str]):
         **kwargs,
     ) -> None:
         opts = options if options is not None else []
+        valid_values = {v for _, v in opts}
+        if value and value not in valid_values:
+            value = opts[0][1] if opts else ""
         super().__init__(
             options=opts,
             value=value,

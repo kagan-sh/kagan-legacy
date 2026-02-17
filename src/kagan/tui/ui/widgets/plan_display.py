@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from textual.containers import VerticalGroup
 from textual.widgets import Static
 
-from kagan.core.models.enums import PlanStatus
+from kagan.core.domain.enums import PlanStatus
 from kagan.tui.ui.utils.helpers import copy_with_notification
 
 if TYPE_CHECKING:

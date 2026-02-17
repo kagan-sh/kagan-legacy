@@ -17,7 +17,7 @@ from kagan.core.constants import (
     CARD_ID_MAX_LENGTH,
     CARD_TITLE_LINE_WIDTH,
 )
-from kagan.core.models.enums import CardIndicator
+from kagan.core.domain.enums import CardIndicator
 from kagan.tui.ui.card_formatters import truncate_text
 
 if TYPE_CHECKING:
@@ -50,6 +50,10 @@ class TaskCard(Widget):
         self._branch_label: Label | None = None
         self._type_label: Label | None = None
         self._priority_label: Label | None = None
+        self._github_issue_label: Label | None = None
+        self._github_pr_label: Label | None = None
+        self._github_issue_number: int | None = None
+        self._github_pr_number: int | None = None
         self.task_model = task
 
     def compose(self) -> ComposeResult:
@@ -73,10 +77,16 @@ class TaskCard(Widget):
                 self._backend_label.display = False
                 self._branch_label = Label("", classes="card-badge card-branch")
                 self._branch_label.display = False
+                self._github_issue_label = Label("", classes="card-badge-gh")
+                self._github_issue_label.display = False
+                self._github_pr_label = Label("", classes="card-badge-gh")
+                self._github_pr_label.display = False
                 self._type_label = Label("", classes="card-badge card-badge-type")
                 self._priority_label = Label("", classes="card-badge card-badge-priority")
                 yield self._backend_label
                 yield self._branch_label
+                yield self._github_issue_label
+                yield self._github_pr_label
                 yield self._type_label
                 yield Label("", classes="card-spacer")
                 yield self._priority_label
@@ -162,6 +172,35 @@ class TaskCard(Widget):
         self._priority_label.remove_class("priority-medium")
         self._priority_label.remove_class("priority-high")
         self._priority_label.add_class(f"priority-{task.priority.css_class}")
+
+        self._render_github_badges()
+
+    def update_github_context(
+        self,
+        issue_number: int | None,
+        pr_number: int | None,
+    ) -> None:
+        """Update GitHub issue and PR numbers displayed on the card."""
+        self._github_issue_number = issue_number
+        self._github_pr_number = pr_number
+        self._render_github_badges()
+
+    def _render_github_badges(self) -> None:
+        if self._github_issue_label is not None:
+            if self._github_issue_number is not None:
+                self._github_issue_label.update(f"#{self._github_issue_number}")
+                self._github_issue_label.display = True
+            else:
+                self._github_issue_label.update("")
+                self._github_issue_label.display = False
+
+        if self._github_pr_label is not None:
+            if self._github_pr_number is not None:
+                self._github_pr_label.update(f"PR#{self._github_pr_number}")
+                self._github_pr_label.display = True
+            else:
+                self._github_pr_label.update("")
+                self._github_pr_label.display = False
 
     def _render_indicator(self) -> None:
         if self._indicator_label is None:

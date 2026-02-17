@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
-from kagan.core.models.enums import (
+from kagan.core.domain.enums import (
     ExecutionRunReason,
     ExecutionStatus,
     MergeStatus,

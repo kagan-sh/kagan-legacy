@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kagan.tui.ui.screens.onboarding import OnboardingScreen
+from kagan.tui.ui.screens.setup_flow import OnboardingScreen
 
 if TYPE_CHECKING:
     from textual.pilot import Pilot

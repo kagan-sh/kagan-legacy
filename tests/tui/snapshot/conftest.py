@@ -9,12 +9,9 @@ These fixtures provide:
 - SVG snapshot extension for proper .svg file output
 
 Note on pytest-xdist:
-    Syrupy works with xdist for reading/writing snapshots. However, when running
-    ``--snapshot-update`` with multiple workers, unused snapshot detection is disabled.
-    To detect and delete unused snapshots, run with ``-n 0`` (sequential mode).
-
-    Snapshot tests are grouped on the same xdist worker using ``xdist_group`` marker
-    to minimize potential race conditions during snapshot writes.
+    Snapshot tests use ``xdist_group("snapshots")`` so they run on one worker with
+    ``-n auto``. For ``--snapshot-update``, run with ``-n 0`` so syrupy can detect
+    and delete unused snapshots.
 
 Note on snapshot strategy:
     We render to SVG via Textual, then normalize to semantic text rows and assert
@@ -129,10 +126,10 @@ def _mock_agent_gates_for_ci(monkeypatch: pytest.MonkeyPatch) -> None:
     snapshot tests run identically on CI and locally.
     """
     clear_which_cache()
-    agent_health_module = import_module("kagan.core.services.agent_health")
+    bootstrap_module = import_module("kagan.core.bootstrap")
     agents_installer_module = import_module("kagan.core.agents.installer")
     monkeypatch.setattr(
-        agent_health_module.shutil,
+        bootstrap_module.shutil,
         "which",
         lambda _cmd, *_a, **_kw: "/usr/bin/mock",
     )
@@ -235,6 +232,7 @@ async def snapshot_project(tmp_path: Path) -> SimpleNamespace:
     repo_repo = RepoRepository(task_repo._session_factory)
     repo, _ = await repo_repo.get_or_create(project, default_branch="main")
     if repo.id:
+        await repo_repo.update_default_branch(repo.id, "main", mark_configured=True)
         await repo_repo.add_to_project(project_id, repo.id, is_primary=True)
 
     await task_repo.close()

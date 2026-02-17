@@ -11,9 +11,9 @@ from textual.widgets import Static
 
 from kagan.core.adapters.db.repositories import RepoRepository, TaskRepository
 from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import ExecutionStatus, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import ExecutionStatus, TaskPriority, TaskStatus, TaskType
 from kagan.tui.app import KaganApp
-from kagan.tui.ui.modals.review import ReviewModal
+from kagan.tui.ui.modals.review_flow import ReviewModal
 from kagan.tui.ui.screens.kanban import KanbanScreen
 from kagan.tui.ui.widgets.card import TaskCard
 from kagan.tui.ui.widgets.chat_panel import ChatPanel
@@ -68,6 +68,7 @@ async def seed_enter_flow_app(tmp_path: Path) -> tuple[KaganApp, TaskIds]:
     repo_repo = RepoRepository(manager._session_factory)
     repo, _ = await repo_repo.get_or_create(repo_path, default_branch="main")
     if repo.id:
+        await repo_repo.update_default_branch(repo.id, "main", mark_configured=True)
         await repo_repo.add_to_project(project_id, repo.id, is_primary=True)
 
     tasks = [

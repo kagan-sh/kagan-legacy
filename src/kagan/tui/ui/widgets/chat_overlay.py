@@ -31,7 +31,7 @@ from kagan.core.agents.agent_factory import AgentFactory, create_agent
 from kagan.core.agents.orchestrator import build_orchestrator_prompt
 from kagan.core.config import get_fallback_agent_config
 from kagan.core.constants import BOX_DRAWING, KAGAN_LOGO, KAGAN_LOGO_SMALL
-from kagan.core.domain.enums import ChatRole, MessageType, StreamPhase, TaskStatus, TaskType
+from kagan.core.domain.enums import MessageType, StreamPhase, TaskStatus, TaskType
 from kagan.core.policy import AgentPermissionScope, resolve_auto_approve
 from kagan.core.safety import (
     QUEUE_MESSAGE_MAX_CHARS,
@@ -48,15 +48,15 @@ from kagan.tui.ui.utils.slash_registry import (
     SlashCommandRegistry,
     parse_slash_command_call,
 )
-from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
-from kagan.tui.ui.widgets.slash_complete import SlashComplete
-from kagan.tui.ui.widgets.status_bar import StatusBar
-from kagan.tui.ui.widgets.streaming_output import StreamingOutput
 from kagan.tui.ui.widgets.chat_overlay_collaborators import (
     ChatOverlaySlashCommandExecutor,
     ChatOverlayStreamCoordinator,
     ChatOverlayTargetManager,
 )
+from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
+from kagan.tui.ui.widgets.slash_complete import SlashComplete
+from kagan.tui.ui.widgets.status_bar import StatusBar
+from kagan.tui.ui.widgets.streaming_output import StreamingOutput
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -113,20 +113,20 @@ class ChatOverlay(Vertical):
 
     _ORCHESTRATOR_PROMPT_TIMEOUT_SECONDS = 300.0
     _CTRL_C_DOUBLE_PRESS_WINDOW_SECONDS = 0.8
-    _INTRO_HEADING = "🎯 Orchestrate Your Work"
+    _INTRO_HEADING = "What are we building?"
     _INTRO_QUOTE_PROBABILITY = 0.35
     _INTRO_QUOTES: tuple[tuple[str, str], ...] = (
-        ("Funny", "A clean backlog is just organized optimism."),
-        ("Funny", "If the plan survives Monday, it is probably production-ready."),
-        ("Funny", "Ship small, celebrate often, and blame the cache last."),
-        ("Wise", "Clear scope today beats heroic rewrites tomorrow."),
+        ("Funny", "A clean backlog is just organized ambition."),
+        ("Funny", "If the plan survives Monday, ship it."),
+        ("Funny", "Ship small. Celebrate often. Blame the cache last."),
+        ("Wise", "Clarity today beats heroics tomorrow."),
         ("Wise", "Momentum comes from finishing the next smallest thing."),
         ("Wise", "Good systems reward honesty about tradeoffs."),
     )
     _EXAMPLES: tuple[str, ...] = (
-        '"Plan a rollout for GitHub issue sync in this repo"',
-        '"Break this feature into AUTO and PAIR tasks"',
-        '"Draft acceptance criteria for the current milestone"',
+        '"Plan a rollout for GitHub issue sync"',
+        '"Break this feature into parallel tasks"',
+        '"Draft acceptance criteria for the milestone"',
     )
     _FULLSCREEN_LOGO = KAGAN_LOGO
     _POPUP_LOGO = KAGAN_LOGO_SMALL
@@ -212,8 +212,7 @@ class ChatOverlay(Vertical):
                             )
                             yield Static(self._intro_quote, id="chat-overlay-empty-quote")
                             yield Static(
-                                "Describe what you want to build or accomplish.\n"
-                                "Kagan can plan tasks, manage execution, and guide review.",
+                                "Describe the work. Kagan plans, executes, and reviews.",
                                 id="chat-overlay-empty-description",
                             )
                             with Vertical(id="chat-overlay-empty-examples"):
@@ -544,92 +543,7 @@ class ChatOverlay(Vertical):
         return ChatTargetKind.ORCHESTRATOR.value
 
     async def _refresh_chat_targets(self) -> None:
-        current_key = self._active_target().key
-        targets: list[ChatTarget] = [self._orchestrator_target()]
-        self._task_context_by_id = {}
-        ctx = getattr(self.app, "ctx", None)
-        requested_task_id = self._requested_task_id
-        requested_context = self._requested_task_context
-
-        if ctx is not None and getattr(ctx, "active_project_id", None):
-            project_id = ctx.active_project_id
-            in_progress: list[object] = []
-            in_review: list[object] = []
-            try:
-                in_progress_result, in_review_result = await asyncio.gather(
-                    ctx.api.list_tasks(
-                        project_id=project_id,
-                        status=TaskStatus.IN_PROGRESS.value,
-                    ),
-                    ctx.api.list_tasks(
-                        project_id=project_id,
-                        status=TaskStatus.REVIEW.value,
-                    ),
-                    return_exceptions=True,
-                )
-                if not isinstance(in_progress_result, Exception):
-                    in_progress = list(in_progress_result)
-                if not isinstance(in_review_result, Exception):
-                    in_review = list(in_review_result)
-            except Exception:
-                in_progress = []
-                in_review = []
-
-            for task in in_progress:
-                context = self._task_context(task)
-                if context is None:
-                    continue
-                self._task_context_by_id[context.task_id] = context
-                self._append_target_if_missing(targets, self._target_from_context(context))
-
-            for task in in_review:
-                context = self._task_context(task)
-                if context is None:
-                    continue
-                self._task_context_by_id[context.task_id] = context
-                self._append_target_if_missing(targets, self._target_from_context(context))
-
-        if requested_context is None and requested_task_id:
-            requested_context = self._task_context_by_id.get(requested_task_id)
-        if requested_context is None and requested_task_id and ctx is not None:
-            try:
-                fetched_task = await ctx.api.get_task(requested_task_id)
-            except Exception:
-                fetched_task = None
-            if fetched_task is not None:
-                requested_context = self._task_context(fetched_task)
-                if requested_context is not None:
-                    self._task_context_by_id[requested_context.task_id] = requested_context
-
-        preferred_key: str | None = None
-        if requested_context is not None:
-            self._focused_task_context = requested_context
-            self._append_target_if_missing(targets, self._target_from_context(requested_context))
-            preferred_key = self._preferred_target_key_for_context(requested_context, targets)
-        elif requested_task_id:
-            for target in targets:
-                if target.task_id == requested_task_id:
-                    preferred_key = target.key
-                    break
-
-        self._chat_targets = targets
-        selected_index: int | None = None
-        if preferred_key is not None:
-            for index, target in enumerate(self._chat_targets):
-                if target.key == preferred_key:
-                    selected_index = index
-                    break
-        if selected_index is None:
-            for index, target in enumerate(self._chat_targets):
-                if target.key == current_key:
-                    selected_index = index
-                    break
-        self._active_target_index = selected_index if selected_index is not None else 0
-        self._requested_task_id = None
-        self._requested_task_context = None
-        self._sync_active_target_ui()
-        with contextlib.suppress(Exception):
-            await self._sync_active_target_session()
+        await self._target_manager.refresh_chat_targets()
 
     def _sync_active_target_ui(self, *, notify: bool = False) -> None:
         target = self._active_target()
@@ -1324,27 +1238,7 @@ class ChatOverlay(Vertical):
             await self._agent.cancel()
 
     def _build_compact_snapshot(self) -> str:
-        if not self._conversation_history:
-            return ""
-        lines: list[str] = []
-        for role, content in self._conversation_history[-self._COMPACT_MAX_HISTORY_ITEMS :]:
-            role_token = str(role).strip().lower()
-            role_label = (
-                "User"
-                if role_token in {str(ChatRole.USER), ChatRole.USER.value, "user"}
-                else "Assistant"
-            )
-            sanitized = redact_sensitive_text(
-                normalize_untrusted_text(content, max_chars=self._COMPACT_ENTRY_MAX_CHARS),
-                redact_pii=True,
-            ).strip()
-            if not sanitized:
-                continue
-            lines.append(f"{role_label}: {sanitized}")
-        snapshot = "\n".join(lines).strip()
-        if len(snapshot) > self._COMPACT_SNAPSHOT_MAX_CHARS:
-            return snapshot[: self._COMPACT_SNAPSHOT_MAX_CHARS - 1].rstrip() + "…"
-        return snapshot
+        return self._stream_coordinator.build_compact_snapshot()
 
     def _snapshot_preview(self, snapshot: str) -> str:
         if len(snapshot) <= self._COMPACT_PREVIEW_MAX_CHARS:
@@ -1461,18 +1355,16 @@ class ChatOverlay(Vertical):
     @on(messages.AgentMessage)
     async def _on_agent_message(self, message: messages.AgentMessage) -> None:
         """Route ACP agent messages to stream router."""
-        await self._get_agent_stream().dispatch(message)
+        await self._stream_coordinator.on_agent_message(message)
 
     async def _handle_agent_update(self, msg: messages.AgentUpdate) -> None:
-        await self.output.post_response(msg.text)
+        await self._stream_coordinator.handle_agent_update(msg)
 
     async def _handle_thinking(self, msg: messages.Thinking) -> None:
-        await self.output.post_thought(msg.text)
+        await self._stream_coordinator.handle_thinking(msg)
 
     async def _handle_agent_ready(self, _msg: messages.AgentReady) -> None:
-        self._clearing = False
-        await self.output.clear_thinking_indicator(phase=StreamPhase.IDLE)
-        self._update_status("ready", self._ready_hint(self._active_target()))
+        await self._stream_coordinator.handle_agent_ready()
 
     async def _handle_agent_complete(self, _msg: messages.AgentComplete) -> None:
         await self.output.clear_thinking_indicator(phase=StreamPhase.IDLE)
@@ -1494,19 +1386,7 @@ class ChatOverlay(Vertical):
 
     async def _handle_tool_call(self, msg: messages.ToolCall) -> None:
         """Intercept plan_tasks/plan_submit to show approval widget; else default."""
-        tool = msg.tool_call
-        tool_id = (
-            getattr(tool, "tool_call_id", None) or getattr(tool, "toolCallId", None) or "unknown"
-        )
-        tool_name = (getattr(tool, "name", None) or getattr(tool, "title", None) or "").lower()
-        if "plan_tasks" not in tool_name and "plan_submit" not in tool_name:
-            await self.output.upsert_tool_call(tool)
-            return
-        tasks, _todos, err = parse_proposed_plan({tool_id: tool})
-        if err or not tasks:
-            await self.output.post_note(err or "Could not parse plan", classes="error")
-            return
-        await self.output.post_plan_approval(tasks)
+        await self._stream_coordinator.handle_tool_call(msg)
 
     async def _handle_request_permission(self, msg: messages.RequestPermission) -> None:
         await self.output.post_permission_request(
@@ -1930,56 +1810,7 @@ class ChatOverlay(Vertical):
         self._update_status("ready", self._ready_hint(self._active_target()))
 
     async def _execute_help(self) -> None:
-        self._show_output()
-        commands = sorted(self._slash_popup_commands(), key=lambda cmd: cmd.command)
-        verbosity = self._interaction_verbosity()
-
-        if verbosity == "tldr":
-            quick = {
-                "help": "Show commands",
-                "clear": "Reset conversation",
-                "new": "Start fresh session",
-                "compact": "Compact context",
-                "browse": "List chat sessions",
-                "attach": "Attach to a session",
-                "restart": "Restart AUTO target",
-                "stop": "Stop AUTO target",
-                "skills": "List local skills",
-                "mode": "List/set mode",
-            }
-            lines = ["**Quick Commands:**", ""]
-            for name, description in quick.items():
-                lines.append(f"- `/{name}` - {description}")
-            lines.append("")
-            lines.append(
-                "Switch to short/technical verbosity in Settings for full command details."
-            )
-            await self.output.post_note("\n".join(lines))
-            return
-
-        help_text = "**Available Commands:**\n"
-        for command in commands:
-            aliases = ""
-            if command.aliases:
-                alias_text = ", ".join(f"/{alias}" for alias in command.aliases)
-                aliases = f" ({alias_text})"
-            help_text += f"- `/{command.command}`{aliases} - {command.help}\n"
-        if verbosity == "technical":
-            help_text += (
-                "\n**Usage Notes:**\n"
-                "- `Tab` cycles active chat session (Orchestrator/AUTO/REVIEW).\n"
-                "- `/browse` lists sessions; `/attach <id|kind|label>` switches directly.\n"
-                "- `/restart [extra context]` starts the next AUTO iteration "
-                "for the active AUTO target.\n"
-                "- `/stop` requests stop for the active AUTO session.\n"
-                "- `/new session` starts a fresh local chat session.\n"
-                "- `/clear all sessions` resets local chat sessions and target focus.\n"
-                "- `/skills` lists trusted local skill metadata; `/skills refresh` rescans.\n"
-                "- `/mode` with no args lists modes; `/mode <id>` switches mode.\n"
-                "- `/compact` prefers native agent compaction; when unavailable it uses "
-                "Kagan's redacted snapshot + fresh-session fallback.\n"
-            )
-        await self.output.post_note(help_text)
+        await self._slash_executor.execute_help()
 
     async def _execute_modes(self) -> None:
         self._show_output()
@@ -2018,65 +1849,10 @@ class ChatOverlay(Vertical):
         )
 
     async def _execute_targets(self) -> None:
-        await self._refresh_chat_targets()
-        self._show_output()
-        lines = [
-            "**Chat Sessions (Tab to cycle):**",
-            "",
-            "Use `/attach <task-id|kind|label>` to switch directly.",
-            "",
-        ]
-        active_key = self._active_target().key
-        for target in self._chat_targets:
-            marker = " (active)" if target.key == active_key else ""
-            task_hint = f" [task: `{target.task_id}`]" if target.task_id else ""
-            lines.append(f"- `{target.kind.value}`: {target.label}{task_hint}{marker}")
-        await self.output.post_note("\n".join(lines))
+        await self._target_manager.execute_targets()
 
     async def _execute_skills(self, args: str) -> None:
-        normalized = self._normalize_command_args(args)
-        if normalized not in {"", "list", "refresh"}:
-            self.notify("Usage: /skills [list|refresh]", severity="warning")
-            return
-
-        self._show_output()
-        if not self._auto_skill_discovery_enabled():
-            await self.output.post_note(
-                "Skill discovery is disabled. Enable "
-                "`general.auto_skill_discovery` in Settings to scan trusted local skill roots.",
-                classes="info",
-            )
-            return
-
-        discovered = self._discover_local_skills(force_refresh=normalized == "refresh")
-        if not discovered:
-            await self.output.post_note(
-                "No local skills discovered in trusted roots "
-                "(`.agents/.pi/.claude/.codex/.vtcode`).",
-                classes="info",
-            )
-            return
-
-        lines = [
-            "**Discovered Local Skills:**",
-            "",
-            "Metadata-only catalog from trusted local roots. Skill instruction bodies are not "
-            "auto-loaded.",
-            "",
-        ]
-        for skill in discovered[: self._SKILL_DISCOVERY_DISPLAY_LIMIT]:
-            try:
-                relative_path = skill.location.relative_to(skill.source_root)
-                location = f"{skill.source_root}/{relative_path}"
-            except ValueError:
-                location = str(skill.location)
-            description = skill.description or "No description"
-            lines.append(f"- `{skill.name}`: {description} (`{location}`)")
-        if len(discovered) > self._SKILL_DISCOVERY_DISPLAY_LIMIT:
-            omitted = len(discovered) - self._SKILL_DISCOVERY_DISPLAY_LIMIT
-            lines.append("")
-            lines.append(f"... and {omitted} more skill(s).")
-        await self.output.post_note("\n".join(lines))
+        await self._slash_executor.execute_skills(args)
 
     async def _noop_slash_handler(self, _args: str) -> None:
         return
@@ -2106,8 +1882,6 @@ class ChatOverlay(Vertical):
             screen = self.screen
             if hasattr(screen, "prepare_for_orchestrator_return"):
                 await screen.prepare_for_orchestrator_return()
-            elif hasattr(screen, "prepare_for_planner_return"):
-                await screen.prepare_for_planner_return()
         except Exception as exc:
             self.notify(f"Failed to create tasks: {exc}", severity="error")
 

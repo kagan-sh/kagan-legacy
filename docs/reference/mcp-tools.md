@@ -262,6 +262,7 @@ Default and max timeouts are server-side configurable via settings:
 | `START_PENDING`    | Job accepted, pending scheduler admission   | Poll with `job_poll(wait=true)`     |
 | `DISCONNECTED`     | Core unavailable                            | Start/restart core, retry           |
 | `AUTH_STALE_TOKEN` | MCP token is stale after core restart       | Reconnect MCP client                |
+| `CLIENT_OUTDATED`  | Client version/build hash mismatches core   | Restart MCP/TUI session             |
 | `WAIT_TIMEOUT`     | `task_wait` timed out without status change | Retry with same or adjusted timeout |
 | `WAIT_INTERRUPTED` | `task_wait` was interrupted/cancelled       | Retry with `from_updated_at` cursor |
 

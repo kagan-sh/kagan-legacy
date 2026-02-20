@@ -562,6 +562,7 @@ class PluginUiCatalogResponse(_FrozenBase):
     actions: list[dict[str, Any]] = []
     forms: list[dict[str, Any]] = []
     badges: list[dict[str, Any]] = []
+    diagnostics: list[str] = []
 
 
 class PluginUiInvokeResponse(_FrozenBase):
@@ -571,6 +572,7 @@ class PluginUiInvokeResponse(_FrozenBase):
     code: str = ""
     message: str = ""
     data: dict[str, Any] | None = None
+    refresh: dict[str, bool] = {}
 
 
 __all__ = [

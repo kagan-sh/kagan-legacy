@@ -42,7 +42,7 @@ from kagan.mcp._response_models import *  # noqa: F403  # Import all response mo
 from kagan.mcp._tool_closures import _register_full_mode_tools
 from kagan.mcp._tool_gen import SharedToolRegistrationContext, register_shared_tools
 from kagan.sdk import KaganSDK, SDKTransport
-from kagan.version import get_kagan_version
+from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -278,6 +278,7 @@ async def _mcp_lifespan(
             session_id=session_id,
             session_origin=session_origin,
             client_version=get_kagan_version(),
+            client_build_hash=get_kagan_runtime_hash(),
             capability_profile=capability_profile,
         ),
     )

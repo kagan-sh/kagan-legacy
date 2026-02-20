@@ -56,7 +56,7 @@ from kagan.core.services.runtime import (
     IdempotencyRecord,
     IdempotencyReservation,
 )
-from kagan.version import get_kagan_version
+from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,6 +121,7 @@ class CoreHost:
         self._idempotency_records: OrderedDict[tuple[str, str], IdempotencyRecord] = OrderedDict()
         self._idempotency_lock = asyncio.Lock()
         self._runtime_version = get_kagan_version()
+        self._runtime_build_hash = get_kagan_runtime_hash()
         self._instance_lock = CoreInstanceLock(
             get_core_instance_lock_path(),
             lease_path=_core_lease_path(),
@@ -348,7 +349,7 @@ class CoreHost:
             await self._record_audit_event(request, response)
             return response
 
-        incompatibility = self._validate_mcp_client_version(request, binding=binding)
+        incompatibility = self._validate_client_runtime_compatibility(request, binding=binding)
         if incompatibility is not None:
             await self._record_audit_event(request, incompatibility)
             return incompatibility
@@ -358,31 +359,57 @@ class CoreHost:
         await self._record_audit_event(request, response)
         return response
 
-    def _validate_mcp_client_version(
+    @staticmethod
+    def _client_restart_hint(origin: SessionOrigin) -> str:
+        if origin is SessionOrigin.TUI:
+            return "Restart the TUI session to reload the latest runtime."
+        if origin in (SessionOrigin.KAGAN, SessionOrigin.KAGAN_ADMIN):
+            return "Restart the MCP session to reload the latest runtime."
+        return "Restart the client session to reload the latest runtime."
+
+    def _validate_client_runtime_compatibility(
         self,
         request: CoreRequest,
         *,
         binding: SessionBinding,
     ) -> CoreResponse | None:
-        if binding.origin not in (SessionOrigin.KAGAN, SessionOrigin.KAGAN_ADMIN):
-            return None
         client_version = request.client_version.strip() if request.client_version else ""
+        restart_hint = self._client_restart_hint(binding.origin)
         if not client_version:
             return CoreResponse.failure(
                 request.request_id,
-                code="MCP_OUTDATED",
+                code="CLIENT_VERSION_REQUIRED",
                 message=(
-                    "MCP client did not report its version. Restart the MCP client/session "
-                    "to load the latest kagan package."
+                    "Client did not report a runtime version identifier. "
+                    f"{restart_hint}"
+                ),
+            )
+        client_build_hash = request.client_build_hash.strip() if request.client_build_hash else ""
+        if not client_build_hash:
+            return CoreResponse.failure(
+                request.request_id,
+                code="CLIENT_BUILD_HASH_REQUIRED",
+                message=(
+                    "Client did not report a runtime build hash. "
+                    f"{restart_hint}"
                 ),
             )
         if client_version != self._runtime_version:
             return CoreResponse.failure(
                 request.request_id,
-                code="MCP_OUTDATED",
+                code="CLIENT_OUTDATED",
                 message=(
-                    f"MCP client version '{client_version}' does not match core version "
-                    f"'{self._runtime_version}'. Restart the MCP client/session."
+                    f"Client version '{client_version}' does not match core version "
+                    f"'{self._runtime_version}'. {restart_hint}"
+                ),
+            )
+        if client_build_hash != self._runtime_build_hash:
+            return CoreResponse.failure(
+                request.request_id,
+                code="CLIENT_OUTDATED",
+                message=(
+                    f"Client build hash '{client_build_hash}' does not match core build hash "
+                    f"'{self._runtime_build_hash}'. {restart_hint}"
                 ),
             )
         return None

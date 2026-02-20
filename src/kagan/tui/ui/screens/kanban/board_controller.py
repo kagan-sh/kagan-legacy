@@ -21,7 +21,6 @@ from kagan.core.domain.enums import CardIndicator, TaskStatus, TaskType
 from kagan.core.plugins.github.models import build_github_context_index
 from kagan.tui.ui.screens.kanban.hints import build_kanban_hints
 from kagan.tui.ui.utils import state_attr, state_timestamp
-from kagan.tui.ui.widgets.card import TaskCard
 from kagan.tui.ui.widgets.column import KanbanColumn
 from kagan.tui.ui.widgets.keybinding_hint import KanbanHintBar
 from kagan.tui.ui.widgets.offline_banner import OfflineBanner
@@ -480,9 +479,11 @@ class KanbanBoardController:
         if not self.screen.is_mounted:
             return
         focused_task_id = None
-        focused = self.screen.app.focused
-        if isinstance(focused, TaskCard) and focused.task_model:
-            focused_task_id = focused.task_model.id
+        focused_card = self.screen.get_focused_card()
+        if focused_card and focused_card.task_model:
+            focused_task_id = focused_card.task_model.id
+        elif self.screen.last_focused_task_id is not None:
+            focused_task_id = self.screen.last_focused_task_id
 
         # Reconcile BEFORE list_tasks so runtime snapshots are fresh
         prev_auto_ids = [t.id for t in self.screen._tasks if t.task_type == TaskType.AUTO]

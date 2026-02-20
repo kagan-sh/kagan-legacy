@@ -122,7 +122,7 @@ class KanbanSessionController:
             self.screen.notify(f"Failed to create workspace: {exc}", severity="error")
             return WorkspaceProvisionResult(success=False, error=str(exc))
 
-        wt_path = await self.screen.ctx.api.get_workspace_path(task.id)
+        wt_path = await self.screen.ctx.api.get_task_workspace_path(task.id)
         if wt_path is None:
             self.screen.notify("Failed to provision workspace", severity="error")
             return WorkspaceProvisionResult(success=False, error="Workspace path missing")
@@ -389,7 +389,7 @@ class KanbanSessionController:
 
     async def _ensure_workspace_path(self, task: SessionTaskLike) -> Path | None:
         """Return existing workspace path or provision one from active repository."""
-        wt_path = await self.screen.ctx.api.get_workspace_path(task.id)
+        wt_path = await self.screen.ctx.api.get_task_workspace_path(task.id)
         if wt_path is not None:
             return wt_path
 
@@ -704,7 +704,7 @@ class KanbanSessionController:
             )
             return
 
-        wt_path = await self.screen.ctx.api.get_workspace_path(task.id)
+        wt_path = await self.screen.ctx.api.get_task_workspace_path(task.id)
         if wt_path is None:
             provision_result = await self.provision_workspace_for_active_repo(task)
             if not provision_result.success or provision_result.path is None:

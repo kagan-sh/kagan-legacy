@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -73,9 +74,34 @@ def _build[T: BaseModel](cls: type[T], data: dict[str, Any], **overrides: Any) -
     return cls.model_validate(data)
 
 
+@dataclass(frozen=True, slots=True)
+class _ModelCallSpec[T: BaseModel]:
+    capability: str
+    method: str
+    response_model: type[T]
+    mutating: bool = False
+
+
 if TYPE_CHECKING:
     from kagan.core.constants import CapabilityProfile
     from kagan.core.ipc.discovery import CoreEndpoint
+
+
+_JOBS_GET_CALL = _ModelCallSpec("jobs", "get", JobResponse)
+_JOBS_CANCEL_CALL = _ModelCallSpec("jobs", "cancel", JobResponse, mutating=True)
+_JOBS_WAIT_CALL = _ModelCallSpec("jobs", "wait", JobResponse, mutating=True)
+_JOBS_EVENTS_CALL = _ModelCallSpec("jobs", "events", JobListResponse)
+_AUTOMATION_RECONCILE_CALL = _ModelCallSpec(
+    "automation",
+    "reconcile_running_tasks",
+    TaskIdsResponse,
+    mutating=True,
+)
+_AUTOMATION_RUNNING_TASK_IDS_CALL = _ModelCallSpec(
+    "automation",
+    "get_running_task_ids",
+    TaskIdsResponse,
+)
 
 
 class KaganSDK:
@@ -99,6 +125,7 @@ class KaganSDK:
         session_id: str = "sdk-session",
         session_origin: str = "sdk",
         client_version: str = "0.0.0",
+        client_build_hash: str | None = None,
         capability_profile: CapabilityProfile | str = "operator",
         endpoint: CoreEndpoint | None = None,
     ) -> None:
@@ -107,6 +134,7 @@ class KaganSDK:
             session_id=session_id,
             session_origin=session_origin,
             client_version=client_version,
+            client_build_hash=client_build_hash,
             capability_profile=capability_profile,
         )
 
@@ -142,6 +170,18 @@ class KaganSDK:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._transport.query(capability, method, params)
+
+    async def _call_model[T: BaseModel](
+        self,
+        spec: _ModelCallSpec[T],
+        params: dict[str, Any] | None = None,
+    ) -> T:
+        raw = (
+            await self._request(spec.capability, spec.method, params)
+            if spec.mutating
+            else await self._query(spec.capability, spec.method, params)
+        )
+        return _build(spec.response_model, raw)
 
     async def tasks_get(self, task_id: str) -> TaskResponse:
         return _build(TaskResponse, await self._query("tasks", "get", {"task_id": task_id}))
@@ -387,16 +427,10 @@ class KaganSDK:
         return _build(JobResponse, await self._request("jobs", "submit", params))
 
     async def jobs_get(self, job_id: str, task_id: str) -> JobResponse:
-        return _build(
-            JobResponse,
-            await self._query("jobs", "get", {"job_id": job_id, "task_id": task_id}),
-        )
+        return await self._call_model(_JOBS_GET_CALL, {"job_id": job_id, "task_id": task_id})
 
     async def jobs_cancel(self, job_id: str, task_id: str) -> JobResponse:
-        return _build(
-            JobResponse,
-            await self._request("jobs", "cancel", {"job_id": job_id, "task_id": task_id}),
-        )
+        return await self._call_model(_JOBS_CANCEL_CALL, {"job_id": job_id, "task_id": task_id})
 
     async def jobs_wait(
         self,
@@ -404,13 +438,9 @@ class KaganSDK:
         task_id: str,
         timeout_seconds: float = 30.0,
     ) -> JobResponse:
-        return _build(
-            JobResponse,
-            await self._request(
-                "jobs",
-                "wait",
-                {"job_id": job_id, "task_id": task_id, "timeout_seconds": timeout_seconds},
-            ),
+        return await self._call_model(
+            _JOBS_WAIT_CALL,
+            {"job_id": job_id, "task_id": task_id, "timeout_seconds": timeout_seconds},
         )
 
     async def jobs_events(
@@ -420,13 +450,9 @@ class KaganSDK:
         limit: int = 50,
         offset: int = 0,
     ) -> JobListResponse:
-        return _build(
-            JobListResponse,
-            await self._query(
-                "jobs",
-                "events",
-                {"job_id": job_id, "task_id": task_id, "limit": limit, "offset": offset},
-            ),
+        return await self._call_model(
+            _JOBS_EVENTS_CALL,
+            {"job_id": job_id, "task_id": task_id, "limit": limit, "offset": offset},
         )
 
     async def sessions_create(
@@ -677,13 +703,10 @@ class KaganSDK:
         return BoolResponse(value=result.get("is_running", False))
 
     async def reconcile_running_tasks(self, task_ids: list[str]) -> TaskIdsResponse:
-        return _build(
-            TaskIdsResponse,
-            await self._request("automation", "reconcile_running_tasks", {"task_ids": task_ids}),
-        )
+        return await self._call_model(_AUTOMATION_RECONCILE_CALL, {"task_ids": task_ids})
 
     async def get_running_task_ids(self) -> TaskIdsResponse:
-        return _build(TaskIdsResponse, await self._query("automation", "get_running_task_ids", {}))
+        return await self._call_model(_AUTOMATION_RUNNING_TASK_IDS_CALL, {})
 
     async def get_workspace_diff(self, task_id: str, base_branch: str) -> WorkspaceDiffResponse:
         return _build(

@@ -31,7 +31,7 @@ from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.theme import KAGAN_THEME, KAGAN_THEME_256
 from kagan.tui.ui.screens.kanban import KanbanScreen
 from kagan.tui.ui.screens.setup_flow import OnboardingScreen
-from kagan.version import get_kagan_version
+from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -236,6 +236,7 @@ class KaganApp(App):
             session_id=session_id,
             session_origin=SessionOrigin.TUI.value,
             client_version=get_kagan_version(),
+            client_build_hash=get_kagan_runtime_hash(),
             capability_profile=CapabilityProfile.MAINTAINER,
             endpoint=endpoint,
         )
@@ -524,7 +525,7 @@ class KaganApp(App):
             if workspace_id:
                 valid_workspace_ids.add(workspace_id)
 
-        result = await ctx.api.run_workspace_janitor(valid_workspace_ids)
+        result = await ctx.api.cleanup_workspace_artifacts(valid_workspace_ids)
 
         if result is not None and result.total_cleaned > 0:
             details: list[str] = []

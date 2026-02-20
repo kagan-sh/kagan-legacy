@@ -226,7 +226,7 @@ class KanbanColumn(Widget):
 
     def _new_empty_container(self) -> _NSContainer:
         empty = _NSContainer(
-            _NSLabel("No tasks", classes="empty-message"),
+            _NSLabel("Clear", classes="empty-message"),
             classes="column-empty",
             id=self._empty_container_id(),
         )

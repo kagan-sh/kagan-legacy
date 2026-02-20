@@ -20,7 +20,14 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from kagan.core.config import KaganConfig
+from kagan.core.api_capabilities import (
+    AutomationQueueCapabilityFacade,
+    JobCapabilityFacade,
+    ProjectCapabilityFacade,
+    SessionCapabilityFacade,
+    SettingsCapabilityFacade,
+    WorkspaceCapabilityFacade,
+)
 from kagan.core.debug_log import log as debug_log
 from kagan.core.domain.enums import TaskStatus, TaskType
 from kagan.core.domain.task_rules import validate_transition
@@ -34,7 +41,6 @@ from kagan.core.plugins.ui_schema import UiCatalog, sanitize_plugin_ui_payload
 from kagan.core.policy import CapabilityProfile, command, get_request_context
 from kagan.core.scalars import non_empty_str
 from kagan.core.services.runtime import runtime_snapshot_for_task
-from kagan.core.settings import exposed_settings_snapshot, normalize_settings_updates
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
@@ -151,146 +157,6 @@ def _resolve_session_identity() -> tuple[str, CapabilityProfile]:
     return (ctx.request.session_id, CapabilityProfile(ctx.binding.policy.profile))
 
 
-@dataclass(frozen=True, slots=True)
-class _ProjectCapabilityFacade:
-    """Narrow project facade used to keep KaganAPI orchestration readable."""
-
-    project_service: Any
-
-    async def open_project(self, project_id: str) -> Any:
-        return await self.project_service.open_project(project_id)
-
-    async def create_project(
-        self,
-        *,
-        name: str,
-        repo_paths: list[str] | None,
-        description: str,
-    ) -> str:
-        return await self.project_service.create_project(
-            name=name,
-            repo_paths=repo_paths,
-            description=description,
-        )
-
-    async def add_repo_to_project(
-        self,
-        *,
-        project_id: str,
-        repo_path: str,
-        is_primary: bool,
-    ) -> str:
-        return await self.project_service.add_repo_to_project(
-            project_id=project_id,
-            repo_path=repo_path,
-            is_primary=is_primary,
-        )
-
-    async def get_project(self, project_id: str) -> Any:
-        return await self.project_service.get_project(project_id)
-
-    async def list_recent_projects(self, *, limit: int) -> list[Any]:
-        return await self.project_service.list_recent_projects(limit=limit)
-
-    async def get_project_repos(self, project_id: str) -> list[Any]:
-        return await self.project_service.get_project_repos(project_id)
-
-    async def get_project_repo_details(self, project_id: str) -> list[dict]:
-        return await self.project_service.get_project_repo_details(project_id)
-
-    async def find_project_by_repo_path(self, repo_path: str | Path) -> Any:
-        return await self.project_service.find_project_by_repo_path(repo_path)
-
-    async def update_repo_default_branch(
-        self,
-        repo_id: str,
-        branch: str,
-        *,
-        mark_configured: bool,
-    ) -> Any:
-        return await self.project_service.update_repo_default_branch(
-            repo_id,
-            branch,
-            mark_configured=mark_configured,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class _WorkspaceCapabilityFacade:
-    """Narrow workspace facade used to keep KaganAPI orchestration readable."""
-
-    workspace_service: Any
-
-    async def get_task_workspace_path(self, task_id: str) -> Path | None:
-        return await self.workspace_service.get_task_workspace_path(task_id)
-
-    async def provision_workspace(self, task_id: str, repos: list[RepoWorkspaceInput]) -> str:
-        return await self.workspace_service.provision(task_id, repos)
-
-    async def list_workspaces(self, *, task_id: str | None = None) -> list[Any]:
-        return await self.workspace_service.list_workspaces(task_id=task_id)
-
-    async def get_workspace_repos(self, workspace_id: str) -> list[dict[str, Any]]:
-        return await self.workspace_service.get_workspace_repos(workspace_id)
-
-    async def cleanup_orphaned_workspaces(self, valid_task_ids: set[str]) -> list[str]:
-        return await self.workspace_service.cleanup_orphaned_workspaces(valid_task_ids)
-
-    async def cleanup_workspace_artifacts(
-        self,
-        valid_workspace_ids: set[str],
-        *,
-        prune_worktrees: bool = True,
-        gc_branches: bool = True,
-    ) -> Any:
-        return await self.workspace_service.cleanup_workspace_artifacts(
-            valid_workspace_ids,
-            prune_worktrees=prune_worktrees,
-            gc_branches=gc_branches,
-        )
-
-    async def cleanup_stale_done_workspaces(self, *, older_than_days: int) -> int:
-        return await self.workspace_service.archive_stale_done_task_workspaces(
-            older_than_days=older_than_days
-        )
-
-
-@dataclass(slots=True)
-class _SettingsCapabilityFacade:
-    """Narrow settings facade used to isolate config mutation rules."""
-
-    ctx: AppContext
-
-    def snapshot(self) -> dict[str, object]:
-        return exposed_settings_snapshot(self.ctx.config)
-
-    async def update(self, fields: dict[str, object]) -> tuple[bool, str, dict[str, object]]:
-        if not fields:
-            return False, "fields must be a non-empty object", {}
-
-        try:
-            updates = normalize_settings_updates(fields)
-        except ValueError as exc:
-            return False, str(exc), {}
-
-        config_data = self.ctx.config.model_dump(mode="python")
-        for key, value in updates.items():
-            section, field = key.split(".", 1)
-            section_data = config_data.get(section)
-            if not isinstance(section_data, dict):
-                return False, f"Invalid settings section: {section}", {}
-            section_data[field] = value
-
-        try:
-            next_config = KaganConfig.model_validate(config_data)
-        except Exception as exc:
-            return False, f"Invalid settings update: {exc}", {}
-
-        await next_config.save(self.ctx.config_path)
-        self.ctx.config = next_config
-        return True, "Settings updated", updates
-
-
 class KaganAPI:
     """Typed orchestration API for all Kagan operations.
 
@@ -300,9 +166,12 @@ class KaganAPI:
 
     def __init__(self, ctx: AppContext) -> None:
         self._ctx = ctx
-        self._projects = _ProjectCapabilityFacade(ctx.project_service)
-        self._workspaces = _WorkspaceCapabilityFacade(ctx.workspace_service)
-        self._settings = _SettingsCapabilityFacade(ctx)
+        self._projects = ProjectCapabilityFacade(ctx.project_service)
+        self._workspaces = WorkspaceCapabilityFacade(ctx.workspace_service)
+        self._settings = SettingsCapabilityFacade(ctx)
+        self._jobs = JobCapabilityFacade(ctx.job_service)
+        self._sessions = SessionCapabilityFacade(ctx.session_service)
+        self._automation_queue = AutomationQueueCapabilityFacade(ctx.automation_service)
 
     # ── Tasks ──────────────────────────────────────────────────────────
 
@@ -1156,14 +1025,11 @@ class KaganAPI:
         arguments: dict[str, Any] | None = None,
     ) -> JobRecord:
         """Submit an asynchronous job for a task."""
-        payload: dict[str, Any] = {"task_id": task_id}
-        if arguments:
-            payload.update(arguments)
-        return await self._ctx.job_service.submit(task_id=task_id, action=action, params=payload)
+        return await self._jobs.submit(task_id, action, arguments=arguments)
 
     async def cancel_job(self, job_id: str, *, task_id: str) -> JobRecord | None:
         """Cancel a submitted job."""
-        return await self._ctx.job_service.cancel(job_id, task_id=task_id)
+        return await self._jobs.cancel(job_id, task_id=task_id)
 
     async def get_job(self, job_id: str, *, task_id: str | None = None) -> JobRecord | None:
         """Get job details, optionally verifying task ownership."""
@@ -1182,13 +1048,11 @@ class KaganAPI:
         timeout_seconds: float | None = None,
     ) -> JobRecord | None:
         """Wait for a job to reach terminal status."""
-        return await self._ctx.job_service.wait(
-            job_id, task_id=task_id, timeout_seconds=timeout_seconds
-        )
+        return await self._jobs.wait(job_id, task_id=task_id, timeout_seconds=timeout_seconds)
 
     async def get_job_events(self, job_id: str, *, task_id: str) -> list[JobEvent] | None:
         """List events emitted by a submitted job."""
-        return await self._ctx.job_service.events(job_id, task_id=task_id)
+        return await self._jobs.events(job_id, task_id=task_id)
 
     # ── Sessions ───────────────────────────────────────────────────────
 
@@ -1257,33 +1121,33 @@ class KaganAPI:
 
     async def attach_session(self, task_id: str) -> bool:
         """Attach to an existing PAIR session."""
-        return await self._ctx.session_service.attach_session(task_id)
+        return await self._sessions.attach(task_id)
 
     async def session_exists(self, task_id: str) -> bool:
         """Check if a session exists for a task."""
-        return await self._ctx.session_service.session_exists(task_id)
+        return await self._sessions.exists(task_id)
 
     async def kill_session(self, task_id: str) -> None:
         """Kill a PAIR session."""
-        await self._ctx.session_service.kill_session(task_id)
+        await self._sessions.kill(task_id)
 
     # ── Automation Operations ─────────────────────────────────────────
 
     def is_automation_running(self, task_id: str) -> bool:
         """Check if automation is running for a task (sync)."""
-        return self._ctx.automation_service.is_running(task_id)
+        return self._automation_queue.is_running(task_id)
 
     def get_running_agent(self, task_id: str) -> Any:
         """Get the running agent for a task (sync)."""
-        return self._ctx.automation_service.get_running_agent(task_id)
+        return self._automation_queue.get_running_agent(task_id)
 
     async def wait_for_running_agent(self, task_id: str, *, timeout: float = 2.0) -> Any:
         """Wait for a running agent to attach for a task."""
-        return await self._ctx.automation_service.wait_for_running_agent(task_id, timeout=timeout)
+        return await self._automation_queue.wait_for_running_agent(task_id, timeout=timeout)
 
     async def start_automation(self) -> None:
         """Start the automation service."""
-        await self._ctx.automation_service.start()
+        await self._automation_queue.start()
 
     async def queue_message(
         self,
@@ -1295,7 +1159,7 @@ class KaganAPI:
         metadata: dict[str, Any] | None = None,
     ) -> QueuedMessage:
         """Queue a follow-up message for implementation/review/planner lanes."""
-        return await self._ctx.automation_service.queue_message(
+        return await self._automation_queue.queue_message(
             session_id,
             content,
             lane=lane,
@@ -1310,7 +1174,7 @@ class KaganAPI:
         lane: QueueLane = "implementation",
     ) -> QueueStatus:
         """Get queue status for a specific lane."""
-        return await self._ctx.automation_service.get_status(session_id, lane=lane)
+        return await self._automation_queue.get_status(session_id, lane=lane)
 
     async def get_queued_messages(
         self,
@@ -1319,7 +1183,7 @@ class KaganAPI:
         lane: QueueLane = "implementation",
     ) -> list[QueuedMessage]:
         """List queued messages without consuming them."""
-        return await self._ctx.automation_service.get_queued(session_id, lane=lane)
+        return await self._automation_queue.get_queued(session_id, lane=lane)
 
     async def take_queued_message(
         self,
@@ -1328,7 +1192,7 @@ class KaganAPI:
         lane: QueueLane = "implementation",
     ) -> QueuedMessage | None:
         """Consume and return the next queued message payload for a lane."""
-        return await self._ctx.automation_service.take_queued(session_id, lane=lane)
+        return await self._automation_queue.take_queued(session_id, lane=lane)
 
     async def remove_queued_message(
         self,
@@ -1338,7 +1202,7 @@ class KaganAPI:
         lane: QueueLane = "implementation",
     ) -> bool:
         """Remove a queued message by index from a lane."""
-        return await self._ctx.automation_service.remove_message(session_id, index, lane=lane)
+        return await self._automation_queue.remove_message(session_id, index, lane=lane)
 
     # ── Execution Operations ──────────────────────────────────────────
 
@@ -1539,10 +1403,6 @@ class KaganAPI:
         """Get the filesystem path for a task's workspace."""
         return await self._workspaces.get_task_workspace_path(task_id)
 
-    async def get_workspace_path(self, task_id: str) -> Path | None:
-        """Backward-compatible alias for get_task_workspace_path()."""
-        return await self.get_task_workspace_path(task_id)
-
     async def provision_workspace(self, *, task_id: str, repos: list[RepoWorkspaceInput]) -> str:
         """Provision a workspace with worktrees for all repos."""
         return await self._workspaces.provision_workspace(task_id, repos)
@@ -1558,10 +1418,6 @@ class KaganAPI:
     async def cleanup_orphaned_workspaces(self, valid_task_ids: set[str]) -> list[str]:
         """Clean up workspaces whose tasks no longer exist."""
         return await self._workspaces.cleanup_orphaned_workspaces(valid_task_ids)
-
-    async def cleanup_orphan_workspaces(self, valid_task_ids: set[str]) -> list[str]:
-        """Backward-compatible alias for cleanup_orphaned_workspaces()."""
-        return await self.cleanup_orphaned_workspaces(valid_task_ids)
 
     async def cleanup_workspace_artifacts(
         self,
@@ -1580,20 +1436,6 @@ class KaganAPI:
             JanitorResult with worktrees_pruned, branches_deleted, repos_processed.
         """
         return await self._workspaces.cleanup_workspace_artifacts(
-            valid_workspace_ids,
-            prune_worktrees=prune_worktrees,
-            gc_branches=gc_branches,
-        )
-
-    async def run_workspace_janitor(
-        self,
-        valid_workspace_ids: set[str],
-        *,
-        prune_worktrees: bool = True,
-        gc_branches: bool = True,
-    ) -> Any:
-        """Backward-compatible alias for cleanup_workspace_artifacts()."""
-        return await self.cleanup_workspace_artifacts(
             valid_workspace_ids,
             prune_worktrees=prune_worktrees,
             gc_branches=gc_branches,

@@ -109,7 +109,7 @@ class WelcomeScreen(KaganScreen):
     def compose(self) -> ComposeResult:
         with Container(id="welcome-container"):
             yield Static(KAGAN_LOGO, id="logo")
-            yield Label("Your Development Cockpit", id="subtitle")
+            yield Label("Command Center", id="subtitle")
             if self._suggest_cwd and self._cwd_path:
                 with Container(id="cwd-suggestion-banner"):
                     if self._cwd_is_git_repo:

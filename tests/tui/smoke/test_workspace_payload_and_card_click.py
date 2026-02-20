@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from kagan.sdk._types import PluginUiCatalogResponse, PluginUiInvokeResponse
 from kagan.tui._api_adapter import CoreBackedApi, WorkspaceView
 from kagan.tui.app import KaganApp, resolve_tui_mouse_enabled
 from kagan.tui.ui.widgets.card import TaskCard
@@ -34,6 +35,15 @@ class _FakeWorkspaceSdk:
         )
 
 
+class _FakeWorkspaceCleanupSdk:
+    def __init__(self) -> None:
+        self.received_task_ids: list[set[str]] = []
+
+    async def cleanup_orphan_workspaces(self, valid_task_ids: list[str]) -> list[str]:
+        self.received_task_ids.append(set(valid_task_ids))
+        return ["ws-cleaned"]
+
+
 @pytest.mark.asyncio
 async def test_list_workspaces_normalizes_dict_payloads_to_workspace_views() -> None:
     api = CoreBackedApi(_FakeWorkspaceSdk())
@@ -44,6 +54,17 @@ async def test_list_workspaces_normalizes_dict_payloads_to_workspace_views() -> 
     assert [item.id for item in workspaces] == ["ws-1", "ws-2"]
     assert workspaces[0].branch_name == "task-abc"
     assert workspaces[1].status == "archived"
+
+
+@pytest.mark.asyncio
+async def test_workspace_cleanup_calls_sdk_method() -> None:
+    sdk = _FakeWorkspaceCleanupSdk()
+    api = CoreBackedApi(sdk)
+
+    cleaned = await api.cleanup_orphan_workspaces({"task-1", "task-2"})
+
+    assert cleaned == ["ws-cleaned"]
+    assert sdk.received_task_ids == [{"task-1", "task-2"}]
 
 
 class _JanitorApiStub:
@@ -58,9 +79,9 @@ class _JanitorApiStub:
             SimpleNamespace(id=""),
         ]
 
-    async def run_workspace_janitor(self, valid_workspace_ids: set[str]):
+    async def cleanup_workspace_artifacts(self, valid_workspace_ids: set[str]):
         self.received_ids = set(valid_workspace_ids)
-        return None
+        return SimpleNamespace(total_cleaned=0, worktrees_pruned=0, branches_deleted=[])
 
 
 @pytest.mark.asyncio
@@ -100,3 +121,81 @@ def test_resolve_tui_mouse_enabled_honors_disable_values(
 ) -> None:
     monkeypatch.setenv("KAGAN_TUI_MOUSE", value)
     assert resolve_tui_mouse_enabled() is False
+
+
+class _FakePluginUiSdk:
+    async def plugin_ui_catalog(
+        self,
+        project_id: str,
+        repo_id: str | None = None,
+    ) -> PluginUiCatalogResponse:
+        del project_id, repo_id
+        return PluginUiCatalogResponse(
+            schema_version="1",
+            actions=[
+                {
+                    "plugin_id": "official.github",
+                    "action_id": "sync_issues",
+                    "surface": "kanban.repo_actions",
+                }
+            ],
+            forms=[{"plugin_id": "official.github", "form_id": "github_repo_picker"}],
+            badges=[{"plugin_id": "official.github", "badge_id": "connection"}],
+            diagnostics=["sample diagnostic"],
+        )
+
+    async def plugin_ui_invoke(
+        self,
+        project_id: str,
+        plugin_id: str,
+        action_id: str,
+        repo_id: str | None = None,
+        inputs: dict[str, object] | None = None,
+    ) -> PluginUiInvokeResponse:
+        del project_id, plugin_id, action_id, repo_id, inputs
+        return PluginUiInvokeResponse(
+            ok=True,
+            code="OK",
+            message="Invoked",
+            data={"success": True},
+            refresh={"repo": True, "tasks": False, "sessions": True},
+        )
+
+
+@pytest.mark.asyncio
+async def test_plugin_ui_catalog_normalizes_sdk_response_to_dict_payload() -> None:
+    api = CoreBackedApi(_FakePluginUiSdk())
+
+    payload = await api.plugin_ui_catalog(project_id="proj-1", repo_id="repo-1")
+
+    assert payload["schema_version"] == "1"
+    assert payload["actions"] == [
+        {
+            "plugin_id": "official.github",
+            "action_id": "sync_issues",
+            "surface": "kanban.repo_actions",
+        }
+    ]
+    assert payload["forms"] == [{"plugin_id": "official.github", "form_id": "github_repo_picker"}]
+    assert payload["badges"] == [{"plugin_id": "official.github", "badge_id": "connection"}]
+    assert payload["diagnostics"] == ["sample diagnostic"]
+
+
+@pytest.mark.asyncio
+async def test_plugin_ui_invoke_normalizes_sdk_response_to_dict_payload() -> None:
+    api = CoreBackedApi(_FakePluginUiSdk())
+
+    payload = await api.plugin_ui_invoke(
+        project_id="proj-1",
+        repo_id="repo-1",
+        plugin_id="official.github",
+        action_id="sync_issues",
+    )
+
+    assert payload == {
+        "ok": True,
+        "code": "OK",
+        "message": "Invoked",
+        "data": {"success": True},
+        "refresh": {"repo": True, "tasks": False, "sessions": True},
+    }

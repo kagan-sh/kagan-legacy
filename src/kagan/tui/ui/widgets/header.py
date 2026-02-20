@@ -86,15 +86,15 @@ class KaganHeader(Widget):
         yield Label("", classes="header-spacer")
 
         yield Label("", id="header-github-status", classes="header-github-status")
-        yield Label(HEADER_SEPARATOR, id="sep-github", classes="header-branch")
+        yield Label(HEADER_SEPARATOR, id="sep-github", classes="header-separator")
         yield Label("", id="header-branch", classes="header-branch")
-        yield Label(HEADER_SEPARATOR, id="sep-branch", classes="header-branch")
+        yield Label(HEADER_SEPARATOR, id="sep-branch", classes="header-separator")
         yield Label("", id="header-sessions", classes="header-sessions")
-        yield Label(HEADER_SEPARATOR, id="sep-sessions", classes="header-branch")
+        yield Label(HEADER_SEPARATOR, id="sep-sessions", classes="header-separator")
         yield Label("", id="header-agent", classes="header-agent")
-        yield Label(HEADER_SEPARATOR, id="sep-agent", classes="header-branch")
+        yield Label(HEADER_SEPARATOR, id="sep-agent", classes="header-separator")
         yield Label("", id="header-stats", classes="header-stats")
-        yield Label(HEADER_SEPARATOR, id="sep-stats", classes="header-branch")
+        yield Label(HEADER_SEPARATOR, id="sep-stats", classes="header-separator")
         yield Label("? help", id="header-help", classes="header-branch")
 
     def on_mount(self) -> None:

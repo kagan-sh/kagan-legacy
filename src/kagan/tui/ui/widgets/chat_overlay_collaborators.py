@@ -5,9 +5,8 @@ import contextlib
 from typing import Any
 
 from kagan.core.agents.planner_parser import parse_proposed_plan
-from kagan.core.domain.enums import ChatRole, StreamPhase, TaskStatus, TaskType
+from kagan.core.domain.enums import ChatRole, StreamPhase, TaskStatus
 from kagan.core.safety import normalize_untrusted_text, redact_sensitive_text
-from textual.widgets import Input
 
 
 class ChatOverlayTargetManager:

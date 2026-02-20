@@ -28,7 +28,7 @@ async def list_workspaces(ctx: AppContext, params: dict[str, Any]) -> dict[str, 
 )
 async def get_workspace_path(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     task_id = params["task_id"]
-    path = await ctx.api.get_workspace_path(task_id)
+    path = await ctx.api.get_task_workspace_path(task_id)
     return {"path": str(path) if path else ""}
 
 
@@ -152,7 +152,7 @@ async def merge_repo(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
 )
 async def cleanup_orphan_workspaces(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     valid_task_ids = set(params.get("valid_task_ids", []))
-    cleaned = await ctx.api.cleanup_orphan_workspaces(valid_task_ids)
+    cleaned = await ctx.api.cleanup_orphaned_workspaces(valid_task_ids)
     return {"cleaned": cleaned, "count": len(cleaned)}
 
 

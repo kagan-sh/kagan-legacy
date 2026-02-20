@@ -8,7 +8,6 @@ import logging
 import shutil
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,6 +23,7 @@ from kagan.core.domain.enums import (
     WorkspaceStatus,
 )
 from kagan.core.paths import get_worktree_base_dir
+from kagan.core.services.workspaces._maintenance_helpers import WorkspaceMaintenanceMixin
 from kagan.core.services.workspaces._merge_helpers import WorkspaceInternalsMixin
 from kagan.core.time import utc_now
 
@@ -145,7 +145,7 @@ class MergeRisk:
 # ---------------------------------------------------------------------------
 
 
-class WorkspaceServiceImpl(WorkspaceInternalsMixin):
+class WorkspaceServiceImpl(WorkspaceInternalsMixin, WorkspaceMaintenanceMixin):
     """Unified implementation of workspace, diff, and merge operations."""
 
     _MERGE_QUIESCE_TIMEOUT_SECONDS = 5.0
@@ -180,6 +180,19 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin):
 
     def _get_workspace_base_dir(self, workspace_id: str) -> Path:
         return get_worktree_base_dir() / "worktrees" / workspace_id
+
+    def _make_janitor_result(
+        self,
+        *,
+        worktrees_pruned: int,
+        branches_deleted: list[str],
+        repos_processed: list[str],
+    ) -> JanitorResult:
+        return JanitorResult(
+            worktrees_pruned=worktrees_pruned,
+            branches_deleted=branches_deleted,
+            repos_processed=repos_processed,
+        )
 
     # ------------------------------------------------------------------
     # Provisioning and lifecycle
@@ -324,52 +337,6 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin):
             session.add(workspace)
             await session.commit()
 
-    async def archive_stale_done_task_workspaces(self, *, older_than_days: int) -> int:
-        """Archive stale DONE-task workspaces and clean up their local worktrees."""
-        from kagan.core.adapters.db.schema import Task, Workspace, WorkspaceRepo
-
-        if older_than_days < 0:
-            raise ValueError("older_than_days must be non-negative")
-
-        cutoff = utc_now() - timedelta(days=older_than_days)
-        async with get_session(self._session_factory) as session:
-            result = await session.execute(
-                select(Task, Workspace, WorkspaceRepo)
-                .join(Workspace, col(Workspace.task_id) == col(Task.id))
-                .join(WorkspaceRepo, col(WorkspaceRepo.workspace_id) == col(Workspace.id))
-                .where(Task.status == TaskStatus.DONE)
-                .where(Task.updated_at < cutoff)
-            )
-            rows = result.all()
-            if not rows:
-                return 0
-
-            now = utc_now()
-            workspaces: dict[str, DbWorkspace] = {}
-            for _task, workspace, workspace_repo in rows:
-                workspaces[workspace.id] = workspace
-                if workspace_repo.worktree_path:
-                    await self._git.delete_worktree(workspace_repo.worktree_path)
-                    workspace_repo.worktree_path = None
-                    workspace_repo.updated_at = now
-                    session.add(workspace_repo)
-
-            for workspace in workspaces.values():
-                if workspace.path and Path(workspace.path).exists():
-                    shutil.rmtree(workspace.path, ignore_errors=True)
-                if workspace.status != WorkspaceStatus.ARCHIVED:
-                    workspace.status = WorkspaceStatus.ARCHIVED
-                    workspace.updated_at = now
-                    session.add(workspace)
-
-            await session.commit()
-
-        return len(workspaces)
-
-    async def cleanup_done_workspaces_older_than(self, older_than_days: int) -> int:
-        """Backward-compatible alias for stale DONE-task workspace cleanup."""
-        return await self.archive_stale_done_task_workspaces(older_than_days=older_than_days)
-
     async def get_workspace_repos(self, workspace_id: str) -> list[dict]:
         """Get all repos for a workspace with paths and status."""
         from kagan.core.adapters.db.schema import Repo, WorkspaceRepo
@@ -443,129 +410,6 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin):
             result = await session.execute(statement)
             return list(result.scalars().all())
 
-    async def cleanup_orphaned_workspaces(self, valid_task_ids: set[str]) -> list[str]:
-        from kagan.core.adapters.db.schema import Workspace
-
-        async with get_session(self._session_factory) as session:
-            result = await session.execute(select(Workspace))
-            workspaces = result.scalars().all()
-
-        cleaned: list[str] = []
-        for workspace in workspaces:
-            if workspace.task_id and workspace.task_id not in valid_task_ids:
-                await self.release(workspace.id, cleanup=True)
-                cleaned.append(workspace.id)
-
-        return cleaned
-
-    async def cleanup_orphans(self, valid_task_ids: set[str]) -> list[str]:
-        """Backward-compatible alias for orphan workspace cleanup."""
-        return await self.cleanup_orphaned_workspaces(valid_task_ids)
-
-    async def cleanup_workspace_artifacts(
-        self,
-        valid_workspace_ids: set[str],
-        *,
-        prune_worktrees: bool = True,
-        gc_branches: bool = True,
-    ) -> JanitorResult:
-        """Run janitor cleanup for stale worktrees and orphan kagan/* branches.
-
-        This performs two cleanup operations:
-
-        1. **Worktree pruning**: Runs `git worktree prune` on all project repos
-           to clean up stale worktree administrative files for worktrees that
-           no longer exist on disk.
-
-        2. **Branch GC**: Deletes local `kagan/*` branches that are no longer
-           associated with an active workspace. Only deletes branches that:
-           - Match the `kagan/*` pattern (managed branches)
-           - Are not currently checked out in any worktree
-           - Do not belong to an active workspace in valid_workspace_ids
-
-        Args:
-            valid_workspace_ids: Set of workspace IDs that are still active.
-                Branches matching these IDs will be preserved.
-            prune_worktrees: If True, run git worktree prune on all repos.
-            gc_branches: If True, delete orphaned kagan/* branches.
-
-        Returns:
-            JanitorResult with counts of cleaned items.
-        """
-        from kagan.core.adapters.db.schema import Repo
-
-        async with get_session(self._session_factory) as session:
-            result = await session.execute(select(Repo))
-            repos = list(result.scalars().all())
-
-        total_pruned = 0
-        deleted_branches: list[str] = []
-        processed_repos: list[str] = []
-
-        for repo in repos:
-            if not Path(repo.path).exists():
-                continue
-
-            processed_repos.append(repo.name)
-
-            if prune_worktrees:
-                pruned = await self._git.prune_worktrees(repo.path)
-                total_pruned += pruned
-
-            if gc_branches:
-                branches = await self._git.list_kagan_branches(repo.path)
-                for branch in branches:
-                    workspace_id = self._extract_workspace_id_from_branch(branch)
-                    if workspace_id and workspace_id in valid_workspace_ids:
-                        continue
-
-                    worktree = await self._git.get_worktree_for_branch(repo.path, branch)
-                    if worktree is not None:
-                        continue
-
-                    deleted = await self._git.delete_branch(repo.path, branch, force=False)
-                    if deleted:
-                        deleted_branches.append(f"{repo.name}:{branch}")
-
-        return JanitorResult(
-            worktrees_pruned=total_pruned,
-            branches_deleted=deleted_branches,
-            repos_processed=processed_repos,
-        )
-
-    async def run_janitor(
-        self,
-        valid_workspace_ids: set[str],
-        *,
-        prune_worktrees: bool = True,
-        gc_branches: bool = True,
-    ) -> JanitorResult:
-        """Backward-compatible alias for workspace artifact cleanup."""
-        return await self.cleanup_workspace_artifacts(
-            valid_workspace_ids,
-            prune_worktrees=prune_worktrees,
-            gc_branches=gc_branches,
-        )
-
-    def _extract_workspace_id_from_branch(self, branch_name: str) -> str | None:
-        """Extract workspace ID from a kagan branch name.
-
-        Branch naming conventions:
-        - kagan/{workspace_id} -> workspace_id
-        - kagan/merge-worktree-{repo_id} -> None (merge worktrees handled separately)
-
-        Returns None if the branch doesn't match the expected pattern.
-        """
-        if not branch_name.startswith("kagan/"):
-            return None
-
-        suffix = branch_name[6:]
-
-        if suffix.startswith("merge-worktree-"):
-            return None
-
-        return suffix if suffix else None
-
     # ------------------------------------------------------------------
     # Git operations
     # ------------------------------------------------------------------
@@ -608,10 +452,6 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin):
         if workspace is None:
             return None
         return await self.get_agent_working_dir(workspace.id)
-
-    async def get_path(self, task_id: str) -> Path | None:
-        """Backward-compatible alias for task workspace path lookup."""
-        return await self.get_task_workspace_path(task_id)
 
     async def get_commit_log(self, task_id: str, base_branch: str = "main") -> list[str]:
         workspace = await self._get_latest_workspace_for_task(task_id)
@@ -1027,7 +867,7 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin):
             await self._sessions.kill_session(task.id)
             steps_completed.append("session_killed")
 
-            if await self.get_path(task.id):
+            if await self.get_task_workspace_path(task.id):
                 await self.delete(task.id, delete_branch=True)
             steps_completed.append("worktree_deleted")
 

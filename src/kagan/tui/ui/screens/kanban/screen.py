@@ -127,6 +127,7 @@ class KanbanScreen(KaganScreen):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._tasks: list[TaskView] = []
+        self._last_focused_task_id: str | None = None
         self._ui_state = KanbanUiState()
         self._refresh_timer: Timer | None = None
         self._board_sync_timer: Timer | None = None
@@ -218,7 +219,24 @@ class KanbanScreen(KaganScreen):
         from kagan.tui.ui.widgets.card import TaskCard
 
         focused = self.app.focused
-        return focused if isinstance(focused, TaskCard) else None
+        if isinstance(focused, TaskCard):
+            return focused
+        if focused is None:
+            return None
+        for ancestor in focused.ancestors:
+            if isinstance(ancestor, TaskCard):
+                return ancestor
+        return None
+
+    @property
+    def last_focused_task_id(self) -> str | None:
+        return self._last_focused_task_id
+
+    def _remember_focused_task(self) -> None:
+        card = self.get_focused_card()
+        if card is None or card.task_model is None:
+            return
+        self._last_focused_task_id = card.task_model.id
 
     def focus_first_card(self) -> None:
         for column in self.get_columns():
@@ -325,6 +343,8 @@ class KanbanScreen(KaganScreen):
         self._board.schedule_refresh()
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        del event
+        self._remember_focused_task()
         self._board.update_keybinding_hints()
         self.refresh_bindings()
 
@@ -347,10 +367,6 @@ class KanbanScreen(KaganScreen):
         self._clear_search_state(cancel_workers=True)
         await self._board.refresh_board()
         self._board.sync_agent_states()
-
-    async def prepare_for_planner_return(self) -> None:
-        """Backward-compatible alias for historical planner naming."""
-        await self.prepare_for_orchestrator_return()
 
     @on(OfflineBanner.Reconnect)
     def on_offline_banner_reconnect(self, event: OfflineBanner.Reconnect) -> None:
@@ -396,6 +412,7 @@ class KanbanScreen(KaganScreen):
             self._clear_search_state(cancel_workers=True)
             self.run_worker(self._board.refresh_board())
             return
+        self._last_focused_task_id = None
         self.app.set_focus(None)
 
     def action_quit(self) -> None:
@@ -546,10 +563,6 @@ class KanbanScreen(KaganScreen):
         """Alias with explicit orchestrator wording for fullscreen toggle."""
         self.action_open_chat_fullscreen()
 
-    def action_open_planner(self) -> None:
-        """Backward-compatible alias for opening fullscreen orchestrator overlay."""
-        self.action_open_chat_fullscreen()
-
     async def _toggle_peek_flow(self, task: TaskView) -> None:
         card = self.get_focused_card()
         if not card or not card.task_model:
@@ -605,8 +618,7 @@ class KanbanScreen(KaganScreen):
                     return
         except NoMatches:
             pass
-        has_focused_card = self.get_focused_card() is not None
-        if event.key == "enter" and has_focused_card and not self.search_visible:
+        if event.key == "enter" and not self.search_visible:
             if self._dispatch_kanban_action(KanbanActionId.OPEN_SESSION):
                 event.stop()
                 return
@@ -677,11 +689,19 @@ class KanbanScreen(KaganScreen):
 
     def _focused_task(self, *, notify_on_missing: bool = False) -> TaskView | None:
         card = self.get_focused_card()
-        if not card or not card.task_model:
-            if notify_on_missing:
-                self.notify("No task selected", severity="warning")
-            return None
-        return card.task_model
+        if card and card.task_model:
+            self._last_focused_task_id = card.task_model.id
+            return card.task_model
+        if self._last_focused_task_id is not None:
+            fallback = next(
+                (task for task in self._tasks if task.id == self._last_focused_task_id),
+                None,
+            )
+            if fallback is not None:
+                return fallback
+        if notify_on_missing:
+            self.notify("No task selected", severity="warning")
+        return None
 
     def _is_worker_group_active(self, group: str) -> bool:
         return any(

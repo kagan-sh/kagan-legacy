@@ -93,7 +93,7 @@ async def test_orchestrator_overlay_defaults_to_fullscreen_intro_on_empty_board(
         assert not bool(hint_bar.display)
         assert not overlay.has_class("has-content")
         heading = overlay.query_one("#chat-overlay-empty-heading", Static)
-        assert "Orchestrate Your Work" in str(heading.render())
+        assert str(overlay._INTRO_HEADING) in str(heading.render())
 
 
 @pytest.mark.asyncio
@@ -1088,6 +1088,57 @@ async def test_orchestrator_overlay_enter_routes_pair_task_to_session_flow(
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_overlay_enter_uses_last_focused_pair_task_when_focus_clears(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban, overlay = await _wait_for_kanban_overlay(pilot)
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        pair_task = await kanban.ctx.api.create_task(
+            "PAIR enter fallback target",
+            "Ensure Enter still opens the last focused PAIR task when focus clears",
+            project_id=project_id,
+            task_type=TaskType.PAIR,
+        )
+        await kanban._board.refresh_board()
+
+        await pilot.press("escape")
+        await wait_until(
+            lambda: not overlay.has_class("visible"),
+            timeout=5.0,
+            description="overlay to close before validating Enter fallback behavior",
+        )
+
+        pair_card = kanban.query_one(f"#card-{pair_task.id}", TaskCard)
+        pair_card.focus()
+        await wait_until(
+            lambda: kanban.last_focused_task_id == pair_task.id,
+            timeout=5.0,
+            description="PAIR card focus to update remembered task id",
+        )
+
+        kanban.app.set_focus(None)
+        await pilot.pause()
+
+        with patch.object(kanban._session, "open_session_flow", autospec=True) as open_session_mock:
+            await pilot.press("enter")
+            await wait_until(
+                lambda: open_session_mock.await_count >= 1,
+                timeout=10.0,
+                description="Enter to use remembered PAIR task when focus is temporarily cleared",
+            )
+            called_task = open_session_mock.await_args.args[0]
+            assert called_task.id == pair_task.id
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_overlay_enter_ignores_repeated_open_session_while_loading(
     e2e_app_with_tasks,
     mock_agent_factory,
@@ -1263,7 +1314,7 @@ async def test_orchestrator_overlay_enter_opens_auto_chat_session(
             embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
             await wait_until(
                 lambda: embedded_overlay.has_class("visible")
-                and embedded_overlay.has_class("embedded"),
+                and not embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
                 description="AUTO Enter to open embedded session overlay in Task Output modal",
             )
@@ -1321,7 +1372,7 @@ async def test_orchestrator_overlay_enter_opens_task_output_when_auto_idle(
             embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
             await wait_until(
                 lambda: embedded_overlay.has_class("visible")
-                and embedded_overlay.has_class("embedded"),
+                and not embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
                 description="AUTO Enter to open split task output even when idle",
             )

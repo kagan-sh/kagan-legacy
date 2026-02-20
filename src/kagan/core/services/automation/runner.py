@@ -346,7 +346,7 @@ class AutomationReviewer:
 
     async def _handle_complete(self, task: TaskLike) -> None:
         """Handle completion: move to REVIEW then run review if enabled."""
-        wt_path = await self._workspaces.get_path(task.id)
+        wt_path = await self._workspaces.get_task_workspace_path(task.id)
         if wt_path is not None and self._git is not None:
             if await self._git.has_uncommitted_changes(str(wt_path)):
                 short_id = task.id[:8]
@@ -377,7 +377,7 @@ class AutomationReviewer:
             log.info(f"Auto review disabled, skipping review for task {task.id}")
             return
 
-        wt_path = await self._workspaces.get_path(task.id)
+        wt_path = await self._workspaces.get_task_workspace_path(task.id)
         review_passed = False
         review_note = ""
         review_attempted = False
@@ -1046,7 +1046,7 @@ class AutomationEngine:
         session_id: str | None = None
 
         try:
-            wt_path = await self._workspaces.get_path(task.id)
+            wt_path = await self._workspaces.get_task_workspace_path(task.id)
             if wt_path is None:
                 log.info(f"Creating worktree for {task.id}")
                 try:

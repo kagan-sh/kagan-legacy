@@ -601,7 +601,7 @@ async def handle_session_exists(ctx: AppContext, params: dict[str, Any]) -> dict
     task_id = params["task_id"]
     task = await api.get_task(task_id)
     backend = resolve_pair_backend(ctx, task)
-    worktree_path = await ctx.workspace_service.get_path(task_id)
+    worktree_path = await ctx.workspace_service.get_task_workspace_path(task_id)
     prompt_path = str(worktree_path / SESSION_PROMPT_PATH) if worktree_path else None
     exists = await api.session_exists(task_id)
     return {

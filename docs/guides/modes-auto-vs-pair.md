@@ -32,6 +32,8 @@ You drive. The session is yours. Kagan tracks state and surfaces it at review ti
 PAIR `Enter` does not route to orchestrator chat overlay. It creates/attaches the PAIR session and
 redirects into the configured backend (tmux/Neovim suspend attach; VS Code/Cursor external handoff
 with startup-prompt guidance).
+If focus briefly clears during board refresh, `Enter` reuses the last focused task; use `Escape` to
+clear selection explicitly.
 
 When `default_pair_terminal_backend = "nvim"`, Kagan opens `.kagan/start_prompt.md` and attempts
 to open the first detected Neovim AI chat command:

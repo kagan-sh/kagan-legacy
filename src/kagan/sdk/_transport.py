@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from kagan.core.ipc.client import IPCClient
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
 from kagan.sdk._errors import ConnectionError, CoreFailureError, TimeoutError
+from kagan.version import get_kagan_runtime_hash
 
 if TYPE_CHECKING:
     from kagan.core.constants import CapabilityProfile
@@ -19,6 +20,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 30.0
 _AUTH_FAILED_CODE = "AUTH_FAILED"
 _MAX_ATTEMPTS = 3
+_STALE_CLIENT_CODES = frozenset(
+    {"MCP_OUTDATED", "CLIENT_OUTDATED", "CLIENT_VERSION_REQUIRED", "CLIENT_BUILD_HASH_REQUIRED"}
+)
 
 
 class SDKTransport:
@@ -36,12 +40,14 @@ class SDKTransport:
         session_id: str = "sdk-session",
         session_origin: str = "sdk",
         client_version: str = "0.0.0",
+        client_build_hash: str | None = None,
         capability_profile: CapabilityProfile | str = "operator",
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
         self._session_id = session_id
         self._session_origin = session_origin
         self._client_version = client_version
+        self._client_build_hash = client_build_hash or get_kagan_runtime_hash()
         self._capability_profile = capability_profile
         self._timeout = timeout
         self._client = client if (client is not None and client.is_connected) else None
@@ -167,6 +173,7 @@ class SDKTransport:
                     session_profile=self._capability_profile,
                     session_origin=self._session_origin,
                     client_version=self._client_version,
+                    client_build_hash=self._client_build_hash,
                     capability=capability,
                     method=method,
                     params=params or {},
@@ -201,6 +208,9 @@ class SDKTransport:
                     method=method,
                 )
 
+            if code in _STALE_CLIENT_CODES:
+                message = self._with_restart_hint(message)
+
             raise CoreFailureError(
                 message,
                 code=code,
@@ -214,6 +224,17 @@ class SDKTransport:
             capability=capability,
             method=method,
         )
+
+    def _with_restart_hint(self, message: str) -> str:
+        if self._session_origin == "tui":
+            restart_hint = "Restart the TUI session to reload the latest runtime."
+        elif self._session_origin in {"kagan", "kagan_admin"}:
+            restart_hint = "Restart the MCP session to reload the latest runtime."
+        else:
+            restart_hint = "Restart the client session to reload the latest runtime."
+        if restart_hint in message:
+            return message
+        return f"{message} {restart_hint}".strip()
 
     async def query(
         self,

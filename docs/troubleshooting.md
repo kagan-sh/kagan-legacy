@@ -21,6 +21,8 @@ Match symptom text below.
 | ------- | --- |
 | Runtime metadata incomplete | `kagan core stop` → `start` → `status` |
 | `AUTH_STALE_TOKEN` | Reconnect MCP client; `kagan core stop` → `start` |
+| `CLIENT_OUTDATED` | Restart MCP/TUI client session to reload latest runtime |
+| `CLIENT_BUILD_HASH_REQUIRED` | Update/restart MCP/TUI client to send runtime fingerprint |
 | `Unknown session origin 'tui'` | Close any other running Kagan instance (`kagan core stop`), then relaunch from your intended directory |
 | `DISCONNECTED` | Run `kagan` first, then `kagan mcp` |
 | `START_PENDING` | Wait a few seconds and check `kagan core status` again |

@@ -135,6 +135,14 @@ REVIEW_BINDINGS: list[BindingType] = [
     Binding("escape", "close_or_cancel", "Close/Cancel"),
 ]
 
+TASK_OUTPUT_BINDINGS: list[BindingType] = [
+    Binding("tab", "cycle_chat_session", "Next Session", show=False),
+    Binding("ctrl+p", "cycle_output_layout", "Task Output View", show=False),
+    Binding("a", "start_agent_output", "Start Agent"),
+    Binding("s", "stop_agent_output", "Stop Agent"),
+    Binding("escape", "close", "Close"),
+]
+
 SETTINGS_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel"),
     Binding("ctrl+s", "save", "Save", key_display="Ctrl+S"),

@@ -503,7 +503,7 @@ class SessionServiceImpl:
         try:
             if backend == PairTerminalBackend.TMUX.value:
                 return await self._attach_tmux_session(session_name)
-            worktree_path = await self._workspaces.get_path(task_id)
+            worktree_path = await self._workspaces.get_task_workspace_path(task_id)
             if worktree_path is None:
                 return False
             if backend == PairTerminalBackend.NVIM.value:
@@ -525,7 +525,7 @@ class SessionServiceImpl:
         session_name = f"kagan-{task_id}"
         backend = await self._resolve_terminal_backend_for_task_id(task_id)
         if backend in _BUNDLE_PAIR_BACKENDS:
-            worktree_path = await self._workspaces.get_path(task_id)
+            worktree_path = await self._workspaces.get_task_workspace_path(task_id)
             if worktree_path is None:
                 return False
             return bundle_json_path(worktree_path).exists()

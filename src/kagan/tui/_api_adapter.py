@@ -72,6 +72,66 @@ def _normalize_workspace_view(workspace: object) -> WorkspaceView:
     )
 
 
+def _normalize_dict_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _normalize_str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _normalize_plugin_ui_catalog(payload: object) -> dict[str, Any]:
+    catalog: dict[str, Any] = {
+        "schema_version": _normalize_optional_text(_value_from(payload, "schema_version")) or "1",
+        "actions": _normalize_dict_list(_value_from(payload, "actions")),
+        "forms": _normalize_dict_list(_value_from(payload, "forms")),
+        "badges": _normalize_dict_list(_value_from(payload, "badges")),
+    }
+    diagnostics = _normalize_str_list(_value_from(payload, "diagnostics"))
+    if diagnostics:
+        catalog["diagnostics"] = diagnostics
+    return catalog
+
+
+def _normalize_refresh_payload(value: object) -> dict[str, bool] | None:
+    if not isinstance(value, dict):
+        return None
+    normalized: dict[str, bool] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str):
+            continue
+        cleaned_key = key.strip()
+        if not cleaned_key:
+            continue
+        normalized[cleaned_key] = bool(raw)
+    return normalized or None
+
+
+def _normalize_plugin_ui_invoke(payload: object) -> dict[str, Any]:
+    data = _value_from(payload, "data")
+    response: dict[str, Any] = {
+        "ok": bool(_value_from(payload, "ok")),
+        "code": _normalize_optional_text(_value_from(payload, "code")) or "",
+        "message": _normalize_optional_text(_value_from(payload, "message")) or "",
+        "data": data if isinstance(data, dict) else None,
+    }
+    refresh = _normalize_refresh_payload(_value_from(payload, "refresh"))
+    if refresh is not None:
+        response["refresh"] = refresh
+    return response
+
+
 class CoreBackedApi:
     """API adapter that forwards calls to core via KaganSDK.
 
@@ -236,7 +296,8 @@ class CoreBackedApi:
         project_id: str,
         repo_id: str | None = None,
     ):
-        return await self._sdk.plugin_ui_catalog(project_id, repo_id)
+        result = await self._sdk.plugin_ui_catalog(project_id, repo_id)
+        return _normalize_plugin_ui_catalog(result)
 
     async def plugin_ui_invoke(
         self,
@@ -247,7 +308,14 @@ class CoreBackedApi:
         repo_id: str | None = None,
         inputs: dict[str, Any] | None = None,
     ):
-        return await self._sdk.plugin_ui_invoke(project_id, plugin_id, action_id, repo_id, inputs)
+        result = await self._sdk.plugin_ui_invoke(
+            project_id,
+            plugin_id,
+            action_id,
+            repo_id,
+            inputs,
+        )
+        return _normalize_plugin_ui_invoke(result)
 
     async def submit_job(
         self,
@@ -300,6 +368,9 @@ class CoreBackedApi:
         path = await self._sdk.get_workspace_path(task_id)
         return Path(path) if path else None
 
+    async def get_task_workspace_path(self, task_id: str):
+        return await self.get_workspace_path(task_id)
+
     async def provision_workspace(self, *, task_id: str, repos: list[Any]):
         return await self._sdk.get_workspace_path(task_id)
 
@@ -318,13 +389,14 @@ class CoreBackedApi:
         result = await self._sdk.cleanup_orphan_workspaces(list(valid_task_ids))
         return result
 
-    async def run_workspace_janitor(
+    async def cleanup_workspace_artifacts(
         self,
         valid_workspace_ids: set[str],
         *,
         prune_worktrees: bool = True,
         gc_branches: bool = True,
     ):
+        del valid_workspace_ids, prune_worktrees, gc_branches
         return None
 
     async def get_workspace_diff(self, task_id: str, *, base_branch: str):

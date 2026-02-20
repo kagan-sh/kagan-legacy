@@ -329,7 +329,6 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
                         )
                     yield Static("", id="session-state-note", classes="task-output-state-note")
                     yield ChatOverlay(
-                        embedded=True,
                         id="review-session-overlay",
                         classes="hidden",
                     )
@@ -1049,6 +1048,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         review_panel = self._stream_review_output_panel()
         agent_panel = self._stream_agent_output_panel()
         overlay = self._session_overlay()
+        overlay_only_mode = False
         if active == self._SESSION_REVIEW:
             if self._output_layout_mode != self._OUTPUT_LAYOUT_SPLIT:
                 self._output_layout_set(self._OUTPUT_LAYOUT_SPLIT)
@@ -1066,9 +1066,9 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
                 overlay is not None and self._task_model.task_type == TaskType.AUTO
             )
             if use_embedded_overlay:
+                overlay_only_mode = True
                 agent_panel.add_class("hidden")
                 overlay.remove_class("hidden")
-                overlay.add_class("has-content")
                 overlay.show(
                     task_id=self._task_model.id,
                     fullscreen=self._output_layout_mode == self._OUTPUT_LAYOUT_FULLSCREEN,
@@ -1089,6 +1089,10 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
             f"Session: {label} ({self._session_keys.index(active) + 1}/{len(self._session_keys)})"
         )
         self.query_one("#session-state-note", Static).update(note)
+        with contextlib.suppress(NoMatches):
+            self.query_one("#review-session-pane", Vertical).set_class(
+                overlay_only_mode, "overlay-only"
+            )
         self._session_sync_live_targets()
 
     def _session_cycle(self) -> None:
@@ -1326,7 +1330,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         """Spawn agent to generate code review."""
         from kagan.core.debug_log import log
 
-        wt_path = await self.ctx.api.get_workspace_path(self._task_model.id)
+        wt_path = await self.ctx.api.get_task_workspace_path(self._task_model.id)
         if not wt_path:
             await output.post_note("Error: Worktree not found", classes="error")
             self._state_set_phase(StreamPhase.IDLE)

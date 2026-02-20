@@ -13,7 +13,7 @@ $space-lg: 3;
 $space-xl: 4;
 
 /* Semantic Status Colors */
-$status-running: $secondary;      /* Gold - active/in-progress */
+$status-running: $secondary;      /* Green - active/in-progress (secondary = jade green) */
 $status-success: $success;        /* Green - passed/complete */
 $status-warning: $warning;        /* Yellow - needs attention */
 $status-error: $error;            /* Red - failed/blocked */
@@ -95,6 +95,7 @@ KaganHeader {
     layout: horizontal;
     padding: 0 1;
     align: left middle;
+    border-bottom: solid $border;
 }
 
 KaganHeader .header-logo {
@@ -180,9 +181,18 @@ KaganHeader .header-stats {
     color: $text;
 }
 
+/* Dim separator characters between header sections */
+KaganHeader .header-separator {
+    width: auto;
+    color: $text-disabled;
+    text-opacity: 50%;
+    padding: 0 1;
+}
+
 /* Footer styles - subtle appearance */
 Footer {
     background: $surface;
+    border-top: solid $border;
 }
 
 FooterKey > .footer-key--key {
@@ -301,6 +311,7 @@ KanbanColumn .column-header {
     height: 3;
     padding: 0 1;
     align: center middle;
+    border-bottom: solid $primary;
 }
 
 KanbanColumn .column-header-text {
@@ -318,7 +329,6 @@ KanbanColumn .column-content {
     width: 100%;
     height: 1fr;
     padding: 0;
-    border-top: solid $border;
 }
 
 KanbanColumn .column-empty {
@@ -330,7 +340,8 @@ KanbanColumn .column-empty {
 KanbanColumn .empty-message {
     width: 100%;
     text-align: center;
-    color: $text-muted;
+    color: $text-disabled;
+    text-style: italic;
     padding: 2;
 }
 
@@ -455,9 +466,8 @@ TaskCard .card-badge {
     height: 1;
     padding: 0 1;
     margin-right: 1;
-    text-style: bold;
     background: $surface;
-    color: $text;
+    color: $text-muted;
 }
 
 TaskCard .card-badge-type {
@@ -566,7 +576,7 @@ TaskDetailsModal .modal-title {
     text-style: bold;
     width: 100%;
     padding-bottom: 1;
-    color: $secondary;
+    color: $primary;
 }
 
 TaskDetailsModal Rule {
@@ -967,7 +977,7 @@ DescriptionEditorModal #description-editor-header {
 DescriptionEditorModal #editor-title {
     width: auto;
     text-style: bold;
-    color: $secondary;
+    color: $primary;
 }
 
 DescriptionEditorModal #header-spacer {
@@ -1110,7 +1120,7 @@ BaseBranchModal {
     text-align: center;
     width: 100%;
     padding-bottom: 1;
-    color: $secondary;
+    color: $primary;
 }
 
 #branch-modal-description {
@@ -1171,7 +1181,7 @@ PairInstructionsModal .modal-title {
     text-align: center;
     text-style: bold;
     width: 100%;
-    color: $secondary;
+    color: $primary;
     padding-bottom: 1;
 }
 
@@ -1362,7 +1372,7 @@ PlannerScreen {
 #planner-empty-heading {
     width: 100%;
     text-style: bold underline;
-    color: $secondary;
+    color: $primary;
     text-align: center;
     content-align: center middle;
     padding-bottom: 1;
@@ -1426,7 +1436,7 @@ PlannerScreen {
 .empty-card-title {
     width: 100%;
     text-style: bold underline;
-    color: $secondary;
+    color: $primary;
     text-align: center;
     content-align: center middle;
     padding-bottom: 1;
@@ -1452,6 +1462,7 @@ StatusBar {
     background: $panel;
     layout: horizontal;
     padding: 0 1;
+    border-top: solid $border;
 }
 
 /* StatusBar in planner - positioned above input via planner-bottom container */
@@ -1657,7 +1668,7 @@ ReviewModal {
 
 ReviewModal .modal-title {
     text-style: bold;
-    color: $secondary;
+    color: $primary;
 }
 
 ReviewModal #review-title {
@@ -1703,6 +1714,19 @@ ReviewModal .section-title {
     padding-top: 1;
 }
 
+ReviewModal #review-session-pane.overlay-only {
+    border-top: none;
+    padding-top: 0;
+}
+
+ReviewModal #review-session-pane.overlay-only #review-session-header {
+    display: none;
+}
+
+ReviewModal #review-session-pane.overlay-only #session-state-note {
+    display: none;
+}
+
 ReviewModal.review-terminal-fullscreen #review-tabs {
     display: none;
     height: 0;
@@ -1725,12 +1749,13 @@ ReviewModal.review-terminal-fullscreen ChatOverlay.embedded {
     margin: 0;
 }
 
-ReviewModal ChatOverlay.embedded {
+ReviewModal #review-session-pane ChatOverlay {
     layer: default;
     dock: none;
     width: 100%;
     height: 1fr;
     max-height: 1fr;
+    min-height: 0;
     border: round $border;
     border-top: solid $border;
     padding: 0;
@@ -1738,16 +1763,25 @@ ReviewModal ChatOverlay.embedded {
     offset-y: 0;
 }
 
-ReviewModal ChatOverlay.embedded.hidden {
+ReviewModal #review-session-pane ChatOverlay.hidden {
     display: none;
 }
 
-ReviewModal ChatOverlay.embedded #chat-overlay-main {
+ReviewModal #review-session-pane ChatOverlay #chat-overlay-main {
     padding: 0 1;
+    min-height: 0;
 }
 
-ReviewModal ChatOverlay.embedded #chat-overlay-empty-state {
+ReviewModal #review-session-pane ChatOverlay #chat-overlay-empty-state {
     display: none;
+}
+
+ReviewModal #review-session-pane ChatOverlay #chat-overlay-content {
+    min-height: 0;
+}
+
+ReviewModal #review-session-pane ChatOverlay #chat-overlay-output {
+    min-height: 0;
 }
 
 #review-session-header {
@@ -2657,6 +2691,7 @@ MarkdownContent {
     height: 1;
     margin: 1 0;
     background: $border;
+    color: $text-disabled;
 }
 
 /* Enhanced plan display */
@@ -2764,7 +2799,7 @@ HelpModal .modal-title {
 
 .help-section-title {
     text-style: bold underline;
-    color: $secondary;
+    color: $primary;
     padding-top: 1;
     padding-bottom: 1;
 }
@@ -2907,7 +2942,7 @@ HelpModal .modal-title {
 
 .plan-approval .plan-header {
     text-style: bold;
-    color: $secondary;
+    color: $primary;
     padding-bottom: 0;
 }
 
@@ -3038,6 +3073,7 @@ KanbanHintBar {
     height: 2;
     background: $surface;
     color: $text-muted;
+    border-top: solid $border;
 }
 
 KanbanHintBar .hint-bar-row {
@@ -3123,7 +3159,7 @@ NewProjectModal #dialog {
 NewProjectModal .dialog-title {
     text-align: center;
     text-style: bold;
-    color: $secondary;
+    color: $primary;
     padding-bottom: 1;
 }
 
@@ -3173,7 +3209,7 @@ FolderPickerModal #dialog {
 FolderPickerModal .dialog-title {
     text-align: center;
     text-style: bold;
-    color: $secondary;
+    color: $primary;
     padding-bottom: 1;
 }
 
@@ -3406,7 +3442,7 @@ OnboardingScreen {
 #onboarding-logo {
     width: 100%;
     text-align: center;
-    color: $secondary;
+    color: $primary;
     padding: 0;
 }
 
@@ -3608,7 +3644,7 @@ RepoPickerScreen {
 #repo-picker-logo {
     width: 100%;
     text-align: center;
-    color: $secondary;
+    color: $primary;
     text-style: bold;
 }
 
@@ -3890,8 +3926,8 @@ ChatOverlay .chat-overlay-empty-card {
 
 ChatOverlay #chat-overlay-empty-heading {
     width: 100%;
-    text-style: bold underline;
-    color: $secondary;
+    text-style: bold;
+    color: $primary;
     text-align: center;
     content-align: center middle;
     padding-bottom: 1;
@@ -4019,7 +4055,7 @@ PluginFormModal #dialog {
 PluginFormModal .dialog-title {
     text-align: center;
     text-style: bold;
-    color: $secondary;
+    color: $primary;
     padding-bottom: 1;
 }
 

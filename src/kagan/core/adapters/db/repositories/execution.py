@@ -16,13 +16,14 @@ from kagan.core.adapters.db.schema import (
     Session,
     Workspace,
 )
-from kagan.core.models.enums import ExecutionRunReason, ExecutionStatus
+from kagan.core.domain.enums import ExecutionRunReason, ExecutionStatus
+from kagan.core.safety import redact_sensitive_text
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
     from kagan.core.adapters.db.repositories.base import ClosingAwareSessionFactory
 
@@ -85,12 +86,13 @@ class ExecutionRepository:
 
     async def append_execution_log(self, execution_id: str, log_line: str) -> ExecutionProcessLog:
         """Append a JSONL log line for an execution."""
+        safe_log_line = redact_sensitive_text(log_line, redact_pii=True)
         async with self._lock:
             async with self._get_session() as session:
                 log_entry = ExecutionProcessLog(
                     execution_process_id=execution_id,
-                    logs=log_line,
-                    byte_size=len(log_line.encode("utf-8")),
+                    logs=safe_log_line,
+                    byte_size=len(safe_log_line.encode("utf-8")),
                     inserted_at=utc_now(),
                 )
                 session.add(log_entry)
@@ -101,7 +103,7 @@ class ExecutionRepository:
     async def get_execution_logs(self, execution_id: str) -> ExecutionProcessLog | None:
         """Return aggregated execution logs for an execution."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcessLog)
                 .where(ExecutionProcessLog.execution_process_id == execution_id)
                 .order_by(
@@ -109,7 +111,7 @@ class ExecutionRepository:
                     col(ExecutionProcessLog.id).asc(),
                 )
             )
-            entries = result.scalars().all()
+            entries = result.all()
             if not entries:
                 return None
 
@@ -127,7 +129,7 @@ class ExecutionRepository:
     async def get_execution_log_entries(self, execution_id: str) -> list[ExecutionProcessLog]:
         """Return ordered execution log entries for an execution."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcessLog)
                 .where(ExecutionProcessLog.execution_process_id == execution_id)
                 .order_by(
@@ -135,7 +137,7 @@ class ExecutionRepository:
                     col(ExecutionProcessLog.id).asc(),
                 )
             )
-            return list(result.scalars().all())
+            return list(result.all())
 
     async def get_execution(self, execution_id: str) -> ExecutionProcess | None:
         """Return execution record by ID."""
@@ -152,13 +154,19 @@ class ExecutionRepository:
         agent_message_id: str | None = None,
     ) -> CodingAgentTurn:
         """Append a coding agent turn."""
+        safe_prompt = (
+            redact_sensitive_text(prompt, redact_pii=True) if isinstance(prompt, str) else prompt
+        )
+        safe_summary = (
+            redact_sensitive_text(summary, redact_pii=True) if isinstance(summary, str) else summary
+        )
         async with self._lock:
             async with self._get_session() as session:
                 turn = CodingAgentTurn(
                     execution_process_id=execution_id,
                     agent_session_id=agent_session_id,
-                    prompt=prompt,
-                    summary=summary,
+                    prompt=safe_prompt,
+                    summary=safe_summary,
                     agent_message_id=agent_message_id,
                     seen=False,
                     created_at=utc_now(),
@@ -172,25 +180,25 @@ class ExecutionRepository:
     async def list_agent_turns(self, execution_id: str) -> Sequence[CodingAgentTurn]:
         """List coding agent turns for an execution."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(CodingAgentTurn)
                 .where(CodingAgentTurn.execution_process_id == execution_id)
                 .order_by(col(CodingAgentTurn.created_at).asc(), col(CodingAgentTurn.id).asc())
             )
-            return result.scalars().all()
+            return result.all()
 
     async def get_latest_agent_turn_for_execution(
         self, execution_id: str
     ) -> CodingAgentTurn | None:
         """Return the latest coding agent turn for an execution."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(CodingAgentTurn)
                 .where(CodingAgentTurn.execution_process_id == execution_id)
                 .order_by(col(CodingAgentTurn.created_at).desc(), col(CodingAgentTurn.id).desc())
                 .limit(1)
             )
-            return result.scalars().first()
+            return result.first()
 
     async def add_execution_repo_state(
         self,
@@ -221,7 +229,7 @@ class ExecutionRepository:
     async def get_latest_execution_for_task(self, task_id: str) -> ExecutionProcess | None:
         """Return most recent execution for a task."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcess)
                 .join(Session, col(ExecutionProcess.session_id) == col(Session.id))
                 .join(Workspace, col(Session.workspace_id) == col(Workspace.id))
@@ -229,38 +237,40 @@ class ExecutionRepository:
                 .order_by(col(ExecutionProcess.created_at).desc())
                 .limit(1)
             )
-            return result.scalars().first()
+            return result.first()
 
     async def list_executions_for_task(
-        self, task_id: str, *, limit: int = 5
+        self, task_id: str, *, limit: int = 5, offset: int = 0
     ) -> list[ExecutionProcess]:
         """Return most recent executions for a task."""
+        offset = max(0, offset)
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcess)
                 .join(Session, col(ExecutionProcess.session_id) == col(Session.id))
                 .join(Workspace, col(Session.workspace_id) == col(Workspace.id))
                 .where(Workspace.task_id == task_id)
                 .order_by(col(ExecutionProcess.created_at).desc())
+                .offset(offset)
                 .limit(limit)
             )
-            return list(result.scalars().all())
+            return list(result.all())
 
     async def get_latest_execution_for_session(self, session_id: str) -> ExecutionProcess | None:
         """Return most recent execution for a session."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcess)
                 .where(ExecutionProcess.session_id == session_id)
                 .order_by(col(ExecutionProcess.created_at).desc())
                 .limit(1)
             )
-            return result.scalars().first()
+            return result.first()
 
     async def get_running_execution_for_session(self, session_id: str) -> ExecutionProcess | None:
         """Return running execution for a session, if any."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ExecutionProcess)
                 .where(
                     ExecutionProcess.session_id == session_id,
@@ -269,7 +279,7 @@ class ExecutionRepository:
                 .order_by(col(ExecutionProcess.created_at).desc())
                 .limit(1)
             )
-            return result.scalars().first()
+            return result.first()
 
     async def get_latest_running_executions_for_tasks(
         self, task_ids: Sequence[str]

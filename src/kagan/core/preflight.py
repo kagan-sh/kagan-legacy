@@ -8,7 +8,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from kagan.core.command_utils import cached_which, split_command_string
-from kagan.core.models.enums import VALID_PAIR_BACKENDS
+from kagan.core.domain.enums import VALID_PAIR_BACKENDS
 
 if TYPE_CHECKING:
     from kagan.core.config import AgentConfig
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 class IssueType(Enum):
     WINDOWS_OS = "windows_os"
     TMUX_MISSING = "tmux_missing"
+    NVIM_MISSING = "nvim_missing"
     AGENT_MISSING = "agent_missing"
     NPX_MISSING = "npx_missing"
     ACP_AGENT_MISSING = "acp_agent_missing"
@@ -54,10 +55,10 @@ ISSUE_PRESETS: dict[IssueType, IssuePreset] = {
         icon="[~]",
         title="Windows Compatibility Notes",
         message=(
-            "Kagan runs on Windows, but PAIR mode relies on tmux.\n"
-            "Use AUTO mode for a no-tmux workflow, or run via WSL2 for full PAIR support."
+            "Kagan runs on Windows. PAIR mode supports Neovim, VS Code, Cursor, and tmux.\n"
+            "tmux usually runs via WSL2, while Neovim/VS Code/Cursor can run natively."
         ),
-        hint="Recommended: start with AUTO tickets on Windows. Use WSL2 for tmux PAIR sessions.",
+        hint="Recommended: use Neovim/VS Code/Cursor on Windows, or use WSL2 for tmux.",
         url="https://github.com/aorumbayev/kagan",
     ),
     IssueType.TMUX_MISSING: IssuePreset(
@@ -69,7 +70,18 @@ ISSUE_PRESETS: dict[IssueType, IssuePreset] = {
             "PAIR terminal backend is set to tmux, but tmux was not found in PATH.\n"
             "PAIR sessions will not open until tmux is installed."
         ),
-        hint="Install tmux or switch PAIR terminal backend to VS Code/Cursor",
+        hint="Install tmux or switch PAIR terminal backend to Neovim/VS Code/Cursor",
+    ),
+    IssueType.NVIM_MISSING: IssuePreset(
+        type=IssueType.NVIM_MISSING,
+        severity=IssueSeverity.WARNING,
+        icon="[~]",
+        title="Neovim Not Installed",
+        message=(
+            "PAIR terminal backend is set to nvim, but nvim was not found in PATH.\n"
+            "PAIR sessions will not open until Neovim is installed."
+        ),
+        hint="Install Neovim or switch PAIR terminal backend to tmux/VS Code/Cursor",
     ),
     IssueType.AGENT_MISSING: IssuePreset(
         type=IssueType.AGENT_MISSING,
@@ -224,6 +236,10 @@ def _resolve_pair_terminal_backend(
             for candidate, command in (
                 ("vscode", "code"),
                 ("cursor", "cursor"),
+                ("windsurf", "windsurf"),
+                ("kiro", "kiro"),
+                ("antigravity", "agy"),
+                ("nvim", "nvim"),
             ):
                 if _command_exists(command):
                     return candidate
@@ -240,12 +256,12 @@ def _tmux_install_hint() -> tuple[str, str | None]:
         return (
             "tmux is typically used via WSL2 on Windows. "
             "Install WSL2, then install tmux inside WSL, "
-            "or switch PAIR terminal backend to VS Code/Cursor.",
+            "or switch PAIR terminal backend to Neovim/VS Code/Cursor/Windsurf/Kiro/Antigravity.",
             "https://learn.microsoft.com/windows/wsl/install",
         )
     return (
         "Install tmux (for example: sudo apt install tmux), "
-        "or switch PAIR terminal backend to VS Code/Cursor.",
+        "or switch PAIR terminal backend to Neovim/VS Code/Cursor/Windsurf/Kiro/Antigravity.",
         "https://github.com/tmux/tmux/wiki/Installing",
     )
 
@@ -269,6 +285,34 @@ def _check_tmux() -> DetectedIssue | None:
     return None
 
 
+def _nvim_install_hint() -> tuple[str, str | None]:
+    system = platform.system()
+    if system == "Darwin":
+        return "Install Neovim: brew install neovim", "https://neovim.io"
+    if system == "Windows":
+        return "Install Neovim: winget install Neovim.Neovim", "https://neovim.io"
+    return "Install Neovim from your package manager (apt/dnf/pacman).", "https://neovim.io"
+
+
+def _check_nvim() -> DetectedIssue | None:
+    if not _command_exists("nvim"):
+        hint, url = _nvim_install_hint()
+        preset = IssuePreset(
+            type=IssueType.NVIM_MISSING,
+            severity=IssueSeverity.WARNING,
+            icon="[~]",
+            title="Neovim Not Installed",
+            message=(
+                "PAIR terminal backend is set to nvim, but nvim was not found in PATH.\n"
+                "PAIR sessions will not open until Neovim is installed."
+            ),
+            hint=hint,
+            url=url,
+        )
+        return DetectedIssue(preset=preset, details="nvim")
+    return None
+
+
 def _check_pair_terminal_backend(
     *,
     pair_terminal_backend: str | None,
@@ -277,6 +321,8 @@ def _check_pair_terminal_backend(
     backend = _resolve_pair_terminal_backend(pair_terminal_backend, default_pair_terminal_backend)
     if backend == "tmux":
         return _check_tmux()
+    if backend == "nvim":
+        return _check_nvim()
     return None
 
 

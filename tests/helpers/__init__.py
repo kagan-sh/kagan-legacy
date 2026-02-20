@@ -16,7 +16,6 @@ from tests.helpers.mocks import (
 from tests.helpers.wait import (
     type_text,
     wait_for_modal,
-    wait_for_planner_ready,
     wait_for_screen,
     wait_for_task_status,
     wait_for_text,
@@ -37,7 +36,6 @@ __all__ = [
     "install_fake_tmux",
     "type_text",
     "wait_for_modal",
-    "wait_for_planner_ready",
     "wait_for_screen",
     "wait_for_task_status",
     "wait_for_text",

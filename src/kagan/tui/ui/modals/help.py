@@ -53,13 +53,13 @@ class HelpModal(ModalScreen[None]):
         add_section("Global")
         global_keys: list[tuple[str, str]] = [
             ("? / F1", "Help"),
-            (". / Ctrl+P", "Actions palette"),
-            ("Ctrl+O", "Project selector"),
+            (". / Ctrl+Shift+P", "Actions palette"),
+            ("Ctrl+Shift+O", "Project selector"),
             ("Ctrl+R", "Repo selector"),
         ]
         if DEBUG_BUILD:
             global_keys.append(("F12", "Debug log"))
-        global_keys.append(("q", "Quit"))
+        global_keys.append(("Ctrl+Q", "Quit"))
         add_rows(global_keys)
         children.append(Rule())
 
@@ -97,46 +97,51 @@ class HelpModal(ModalScreen[None]):
         add_rows(
             [
                 ("Shift+H / Shift+L", "Move task left/right"),
-                ("p", "Plan mode"),
+                ("Ctrl+P", "Toggle fullscreen orchestrator"),
+                ("Ctrl+O", "Toggle docked orchestrator"),
                 ("a", "Start agent (AUTO)"),
                 ("s", "Stop agent (AUTO)"),
                 ("Shift+D", "View diff (REVIEW)"),
                 ("r", "Task Output (REVIEW)"),
                 ("m", "Merge (REVIEW)"),
                 ("b", "Set task branch"),
-                ("Shift+B", "Set default branch"),
                 (",", "Settings"),
-                ("Ctrl+C", "Quit"),
             ]
         )
         children.append(Rule())
 
-        add_section("Planner")
+        add_section("Orchestrator Overlay")
         add_subsection("Screen")
         add_rows(
             [
-                ("Esc", "Back to board"),
-                ("Ctrl+C", "Stop current run"),
-                ("F2", "Enhance prompt"),
-                ("b", "Set task branch"),
-                ("Shift+B", "Set default branch"),
+                ("Esc", "Close overlay"),
+                ("Ctrl+P", "Toggle fullscreen (switches from docked)"),
+                ("Ctrl+O", "Toggle docked (switches from fullscreen)"),
+                ("Tab", "Switch chat target (orchestrator/AUTO/PAIR)"),
             ]
         )
         add_subsection("Input")
         add_rows(
             [
-                ("Enter", "Send message"),
+                ("/", "Open slash command popup"),
+                ("Enter", "Send message / run highlighted slash command"),
                 ("Shift+Enter / Ctrl+J", "New line"),
+                ("Ctrl+C", "Clear chat input"),
+                ("Ctrl+C, Ctrl+C", "Interrupt active stream (when running here)"),
                 ("/clear", "Clear conversation"),
                 ("/help", "Show commands"),
+                ("/compact", "Compact context (native preferred, snapshot fallback)"),
+                ("/mode", "List agent modes"),
+                ("/mode <id>", "Switch orchestrator mode"),
+                ("/targets", "List available chat targets"),
             ]
         )
         add_subsection("Slash Complete")
         add_rows(
             [
                 ("Up / Down", "Navigate commands"),
-                ("Enter", "Select command"),
-                ("Esc", "Dismiss list"),
+                ("Enter", "Run highlighted command"),
+                ("Esc", "Dismiss popup (overlay stays open)"),
             ]
         )
         add_subsection("Plan Approval")
@@ -197,7 +202,7 @@ class HelpModal(ModalScreen[None]):
                 ("d", "Delete"),
                 ("f", "Expand description"),
                 ("F5", "Full editor"),
-                ("F2 / Alt+S", "Save (edit mode)"),
+                ("Ctrl+S / Alt+S", "Save (edit mode)"),
                 ("y", "Copy"),
                 ("Esc", "Close/Cancel"),
             ]
@@ -205,21 +210,21 @@ class HelpModal(ModalScreen[None]):
         add_subsection("Task Editor")
         add_rows(
             [
-                ("F2 / Alt+S", "Finish editing"),
+                ("Ctrl+S / Alt+S", "Finish editing"),
                 ("Esc", "Cancel"),
             ]
         )
         add_subsection("Description Editor")
         add_rows(
             [
-                ("F2 / Alt+S", "Save"),
+                ("Ctrl+S / Alt+S", "Save"),
                 ("Esc", "Cancel"),
             ]
         )
         add_subsection("Settings")
         add_rows(
             [
-                ("F2 / Alt+S", "Save"),
+                ("Ctrl+S / Alt+S", "Save"),
                 ("Esc", "Cancel"),
             ]
         )
@@ -290,9 +295,9 @@ class HelpModal(ModalScreen[None]):
         add_subsection("Permission Prompt")
         add_rows(
             [
-                ("Enter", "Allow once"),
+                ("y / Enter", "Allow once"),
                 ("a", "Allow always"),
-                ("Esc / n", "Deny"),
+                ("n / d / Esc", "Deny"),
             ]
         )
         add_subsection("No Dedicated Hotkeys")
@@ -325,20 +330,23 @@ class HelpModal(ModalScreen[None]):
             Rule(),
             Static("Actions Palette", classes="help-section-title"),
             Static(
-                "Press '.' (or Ctrl+P) to open the Actions palette. It lists commands for the "
-                "current screen and task context.",
+                "Press '.' (or Ctrl+Shift+P) to open the Actions palette. "
+                "It lists commands for the current screen and task context, "
+                "including popup actions.",
                 classes="help-paragraph",
             ),
             Static(""),
             Static("Palette Tips:", classes="help-subsection"),
             Static("  Type to filter commands", classes="help-code"),
             Static("  Enter to run selected action", classes="help-code"),
+            Static("  Esc closes the palette", classes="help-code"),
             Static(""),
             Rule(),
             Static("Focus & Selection", classes="help-section-title"),
             Static(
                 "Only task cards can receive focus. The focused card is highlighted "
-                "with a colored border. Double-click a card to view details.",
+                "with a colored border. Click a card to focus it, then press Enter "
+                "to open details.",
                 classes="help-paragraph",
             ),
             id="navigation-content",
@@ -351,9 +359,10 @@ class HelpModal(ModalScreen[None]):
             Static(""),
             Static("PAIR (Human-in-the-loop):", classes="help-subsection"),
             Static(
-                "  Opens a tmux session where you work alongside an AI agent. "
+                "  Opens an interactive session (tmux/Neovim/IDE) where you work alongside "
+                "an AI agent. "
                 "You control the pace and can intervene at any time. "
-                "Best for complex tasks requiring human judgment.",
+                "Best for complex tasks where you want to stay in control.",
                 classes="help-paragraph-indented",
             ),
             Static(""),
@@ -373,7 +382,8 @@ class HelpModal(ModalScreen[None]):
             Static(""),
             Static("IN PROGRESS", classes="help-subsection"),
             Static(
-                "  Active work. PAIR tasks have tmux sessions; AUTO tasks have agents running.",
+                "  Active work. PAIR tasks run in your selected terminal backend; "
+                "AUTO tasks have agents running.",
                 classes="help-paragraph-indented",
             ),
             Static(""),
@@ -394,7 +404,7 @@ class HelpModal(ModalScreen[None]):
             Static("Visual Indicators", classes="help-section-title"),
             Static(""),
             Static("Card Borders:", classes="help-subsection"),
-            Static("  Green border  - tmux session active", classes="help-code"),
+            Static("  Green border  - PAIR session active", classes="help-code"),
             Static("  Pulsing border - Agent actively working", classes="help-code"),
             Static(""),
             Static("Type Badges:", classes="help-subsection"),
@@ -411,14 +421,17 @@ class HelpModal(ModalScreen[None]):
             Static("Quick Create (n):", classes="help-subsection"),
             Static(
                 "  Press 'n' to open the task form. Fill in title, description, "
-                "priority, and type. Press F2 to save.",
+                "priority, and type. Press Ctrl+S to save.",
                 classes="help-paragraph-indented",
             ),
             Static(""),
-            Static("Plan Mode (p):", classes="help-subsection"),
+            Static("Orchestrator Overlay (Ctrl+P / Ctrl+O):", classes="help-subsection"),
             Static(
-                "  Press 'p' (or use the Actions palette) to enter Plan mode. Describe what "
-                "you want to build in natural language. The AI will break it down into tasks.",
+                "  Press 'Ctrl+P' for fullscreen or 'Ctrl+O' for docked overlay. "
+                "Press the same key again to close back to board. "
+                "Use '/' to open popup commands, Enter to run, and Esc to dismiss. "
+                "Describe what you want to build in natural language and orchestrator will "
+                "break it down into tasks.",
                 classes="help-paragraph-indented",
             ),
             Static(""),
@@ -428,8 +441,8 @@ class HelpModal(ModalScreen[None]):
             Static("PAIR Workflow:", classes="help-subsection"),
             Static(
                 "  1. Select task in BACKLOG, press Enter\n"
-                "  2. Kagan creates a git worktree and tmux session\n"
-                "  3. Work with your AI agent in the session\n"
+                "  2. Kagan creates a git worktree and opens your PAIR backend\n"
+                "  3. Work with your AI agent in tmux/Neovim/IDE\n"
                 "  4. When done, move to REVIEW with Shift+L",
                 classes="help-paragraph-indented",
             ),

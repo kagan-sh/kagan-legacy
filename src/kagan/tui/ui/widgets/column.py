@@ -12,13 +12,13 @@ from textual.widget import Widget
 from textual.widgets import Label
 
 from kagan.core.constants import STATUS_LABELS
-from kagan.core.models.enums import CardIndicator, TaskStatus
+from kagan.core.domain.enums import CardIndicator, TaskStatus
 from kagan.tui.ui.widgets.card import TaskCard
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.adapters.db.schema import Task
+    from kagan.tui.ui.types import TaskView
 
 
 # Column icons for each status
@@ -56,12 +56,13 @@ class KanbanColumn(Widget):
 
     status: reactive[TaskStatus] = reactive(TaskStatus.BACKLOG)
 
-    def __init__(self, status: TaskStatus, tasks: list[Task] | None = None, **kwargs) -> None:
+    def __init__(self, status: TaskStatus, tasks: list[TaskView] | None = None, **kwargs) -> None:
         super().__init__(id=f"column-{status.value.lower()}", **kwargs)
         self.status = status
-        self._tasks: list[Task] = tasks or []
+        self._tasks: list[TaskView] = tasks or []
         self._blocked_count: int = 0
         self._has_active_agents: bool = False
+        self._empty_offset_y: int = 0
 
     def compose(self) -> ComposeResult:
         with _NSVertical():
@@ -76,9 +77,8 @@ class KanbanColumn(Widget):
                     for task in self._tasks:
                         yield TaskCard(task)
                 else:
-                    empty_id = f"empty-{self.status.value.lower()}"
-                    with _NSContainer(classes="column-empty", id=empty_id):
-                        yield _NSLabel("No tasks", classes="empty-message")
+                    empty = self._new_empty_container()
+                    yield empty
 
     def get_cards(self) -> list[TaskCard]:
         """Return cards."""
@@ -101,7 +101,7 @@ class KanbanColumn(Widget):
     def focus_first_card(self) -> bool:
         return self.focus_card(0)
 
-    def update_tasks(self, tasks: list[Task]) -> None:
+    def update_tasks(self, tasks: list[TaskView]) -> None:
         """Update tasks with minimal DOM changes - no full recompose."""
         new_tasks = [t for t in tasks if t.status == self.status]
         self._tasks = new_tasks
@@ -164,12 +164,20 @@ class KanbanColumn(Widget):
             pass
 
         if not new_tasks and not has_empty:
-            empty = _NSContainer(
-                _NSLabel("No tasks", classes="empty-message"),
-                classes="column-empty",
-                id=empty_id,
-            )
+            empty = self._new_empty_container()
             content.mount(empty)
+        elif has_empty:
+            self._apply_empty_placeholder_offset()
+
+    def set_empty_placeholder_offset(self, offset_y: int) -> None:
+        """Set vertical offset for the empty placeholder container."""
+        normalized = int(offset_y)
+        if normalized > 0:
+            normalized = 0
+        if normalized == self._empty_offset_y:
+            return
+        self._empty_offset_y = normalized
+        self._apply_empty_placeholder_offset()
 
     def update_blocked_count(self, blocked_count: int) -> None:
         if self.status is not TaskStatus.BACKLOG:
@@ -212,3 +220,23 @@ class KanbanColumn(Widget):
         if self.status is TaskStatus.BACKLOG and self._blocked_count > 0:
             return f"{text} • blocked {self._blocked_count}"
         return text
+
+    def _empty_container_id(self) -> str:
+        return f"empty-{self.status.value.lower()}"
+
+    def _new_empty_container(self) -> _NSContainer:
+        empty = _NSContainer(
+            _NSLabel("Clear", classes="empty-message"),
+            classes="column-empty",
+            id=self._empty_container_id(),
+        )
+        self._apply_empty_placeholder_offset(empty)
+        return empty
+
+    def _apply_empty_placeholder_offset(self, empty: _NSContainer | None = None) -> None:
+        if empty is None:
+            try:
+                empty = self.query_one(f"#{self._empty_container_id()}", _NSContainer)
+            except NoMatches:
+                return
+        empty.styles.offset = (0, self._empty_offset_y)

@@ -3,7 +3,8 @@
 Provides utilities to check if coding agents are installed
 and install them via their official installation methods.
 
-Supports: Claude Code, OpenCode, Codex, Gemini CLI, Kimi CLI, GitHub Copilot.
+Supports: Claude Code, OpenCode, Codex, Gemini CLI, Kimi CLI, GitHub Copilot,
+          Goose, OpenHands, Auggie, Amp, Docker cagent, Stakpak, Mistral Vibe, VT Code.
 """
 
 from __future__ import annotations
@@ -45,15 +46,26 @@ class AgentType(StrEnum):
     GEMINI = "gemini"
     KIMI = "kimi"
     COPILOT = "copilot"
+    GOOSE = "goose"
+    OPENHANDS = "openhands"
+    AUGGIE = "auggie"
+    AMP = "amp"
+    CAGENT = "cagent"
+    STAKPAK = "stakpak"
+    VIBE = "vibe"
+    VTCODE = "vtcode"
 
 
 # Agents that require npm for installation
 _NPM_AGENTS: frozenset[AgentType] = frozenset(
-    {AgentType.OPENCODE, AgentType.CODEX, AgentType.GEMINI, AgentType.COPILOT}
+    {AgentType.OPENCODE, AgentType.CODEX, AgentType.GEMINI, AgentType.COPILOT, AgentType.AUGGIE}
 )
 
 # Agents that require uv for installation
-_UV_AGENTS: frozenset[AgentType] = frozenset({AgentType.KIMI})
+_UV_AGENTS: frozenset[AgentType] = frozenset({AgentType.KIMI, AgentType.OPENHANDS})
+
+# Agents that require cargo (Rust toolchain) for installation
+_CARGO_AGENTS: frozenset[AgentType] = frozenset({AgentType.STAKPAK, AgentType.VTCODE})
 
 
 class InstallerError(Exception):
@@ -112,7 +124,11 @@ def _check_prerequisites(agent: AgentType) -> str | None:
                 "uv is not installed. "
                 "Please install uv first: https://docs.astral.sh/uv/getting-started/installation/"
             )
-    # claude uses curl which is typically available on all systems
+    elif agent in _CARGO_AGENTS:
+        if _which("cargo") is None:
+            return "cargo is not installed. Please install Rust and Cargo first: https://rustup.rs/"
+    # curl-based agents (claude, goose, amp, vibe) rely on curl which is
+    # typically available on all Unix systems; no prerequisite check needed.
     return None
 
 
@@ -129,9 +145,10 @@ def _get_path_hint(agent: AgentType) -> str:
         return "You may need to add npm global bin directory to your PATH."
     elif agent in _UV_AGENTS:
         return "You may need to add ~/.local/bin to your PATH."
+    elif agent in _CARGO_AGENTS:
+        return "You may need to add ~/.cargo/bin to your PATH."
     else:
-        # claude
-        return "You may need to restart your shell or add claude to your PATH."
+        return "You may need to restart your shell or add the agent binary to your PATH."
 
 
 def get_install_command(agent: AgentType | str = AgentType.CLAUDE) -> str:

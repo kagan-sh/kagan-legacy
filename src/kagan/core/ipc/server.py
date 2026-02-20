@@ -8,6 +8,7 @@ import logging
 import secrets
 from typing import TYPE_CHECKING
 
+from kagan.core.ipc.constants import MAX_LINE_BYTES
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.transports import DefaultTransport, TCPLoopbackTransport, UnixSocketTransport
 
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TOKEN_BYTES = 32
-_MAX_LINE_BYTES = 4 * 1024 * 1024  # 4 MiB per JSON line
 
 _TRANSPORT_MAP: dict[str, type[TCPLoopbackTransport] | type[UnixSocketTransport]] = {
     "tcp": TCPLoopbackTransport,
@@ -40,22 +40,7 @@ def _transport_for_preference(preference: str) -> TCPLoopbackTransport | UnixSoc
 
 
 class IPCServer:
-    """Asynchronous IPC server for Kagan core.
-
-    Accepts connections over the configured transport, validates a bearer
-    token on every request, and delegates to a pluggable request handler.
-
-    Usage::
-
-        async def handle(req: CoreRequest) -> CoreResponse:
-            return CoreResponse.success(req.request_id, result={"echo": True})
-
-
-        server = IPCServer(handler=handle)
-        await server.start()
-        ...
-        await server.stop()
-    """
+    """Async IPC server: accepts connections, validates tokens, dispatches requests."""
 
     def __init__(
         self,
@@ -92,11 +77,7 @@ class IPCServer:
         return self._handle is not None
 
     async def start(self) -> ServerHandle:
-        """Start the server and begin accepting connections.
-
-        Returns:
-            A ``ServerHandle`` describing the listening endpoint.
-        """
+        """Start the server and begin accepting connections."""
         if self._handle is not None:
             msg = "Server is already running"
             raise RuntimeError(msg)
@@ -136,7 +117,7 @@ class IPCServer:
                 if not raw:
                     break  # Client disconnected
 
-                if len(raw) > _MAX_LINE_BYTES:
+                if len(raw) > MAX_LINE_BYTES:
                     logger.warning("Oversized message from %s (%d bytes)", peer, len(raw))
                     break
 

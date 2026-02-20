@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kagan.core.models.enums import CardIndicator, TaskStatus, TaskType
+from kagan.core.domain.enums import CardIndicator, TaskStatus, TaskType
 from kagan.core.services.jobs import JobStatus
 from kagan.tui.ui.modals import ConfirmModal, ModalAction, TaskDetailsModal
 from kagan.tui.ui.screen_result import await_screen_result
 from kagan.tui.ui.screens.branch_candidates import choose_branch_with_modal
 
 if TYPE_CHECKING:
-    from kagan.core.adapters.db.schema import Task
     from kagan.tui.ui.screens.kanban.screen import KanbanScreen
+    from kagan.tui.ui.types import TaskView
 
 
 BRANCH_LOOKUP_TIMEOUT_SECONDS = 1.0
@@ -23,7 +23,7 @@ class KanbanTaskController:
     async def open_task_details_modal(
         self,
         *,
-        task: Task | None = None,
+        task: TaskView | None = None,
         start_editing: bool = False,
         initial_type: TaskType | None = None,
     ) -> None:
@@ -80,7 +80,7 @@ class KanbanTaskController:
         await self.screen._board.refresh_board()
         self.screen.notify("Task updated")
 
-    async def create_task_from_payload(self, payload: dict) -> Task:
+    async def create_task_from_payload(self, payload: dict) -> TaskView:
         task = await self.screen.ctx.api.create_task(
             str(payload.get("title", "")),
             str(payload.get("description", "")),
@@ -95,7 +95,7 @@ class KanbanTaskController:
         return {key: value for key, value in payload.items() if key not in ("title", "description")}
 
     async def handle_task_type_transition(
-        self, task: Task, update_fields: dict[str, object]
+        self, task: TaskView, update_fields: dict[str, object]
     ) -> bool:
         next_type_obj = update_fields.get("task_type")
         if not isinstance(next_type_obj, TaskType):
@@ -165,7 +165,7 @@ class KanbanTaskController:
                 self.screen._board.set_card_indicator(task.id, CardIndicator.IDLE, is_active=False)
         return True
 
-    async def confirm_and_delete_task(self, task: Task) -> None:
+    async def confirm_and_delete_task(self, task: TaskView) -> None:
         self.screen._ui_state.pending_delete_task = task
         confirmed = await await_screen_result(
             self.screen.app, ConfirmModal(title="Delete Task?", message=f'"{task.title}"')
@@ -180,7 +180,7 @@ class KanbanTaskController:
         self.screen.notify(f"Deleted task: {pending_task.title}")
         self.screen.focus_first_card()
 
-    async def run_duplicate_task_flow(self, source_task: Task) -> None:
+    async def run_duplicate_task_flow(self, source_task: TaskView) -> None:
         """Run duplicate task flow."""
         payload: dict[str, object] = {
             "title": source_task.title,
@@ -198,7 +198,7 @@ class KanbanTaskController:
         self.screen.focus_column(TaskStatus.BACKLOG)
         await self.open_task_details_modal(task=task, start_editing=True)
 
-    async def stop_agent_flow(self, task: Task) -> None:
+    async def stop_agent_flow(self, task: TaskView) -> None:
         self.screen.notify("Stopping agent...", severity="information")
 
         submitted = await self.screen.ctx.api.submit_job(
@@ -238,12 +238,12 @@ class KanbanTaskController:
             severity="information",
         )
 
-    async def set_task_branch_flow(self, task: Task) -> None:
+    async def set_task_branch_flow(self, task: TaskView) -> None:
         """Set task branch flow."""
         branch = await choose_branch_with_modal(
             self.screen.app,
             project_root=self.screen.kagan_app.project_root,
-            current_value=task.base_branch or "",
+            current_value=(task.base_branch or "") if isinstance(task.base_branch, str) else "",
             title="Set Task Branch",
             description=f"Set base branch for: {task.title[:40]}",
             timeout_seconds=BRANCH_LOOKUP_TIMEOUT_SECONDS,
@@ -252,25 +252,7 @@ class KanbanTaskController:
         if branch is not None:
             await self.update_task_branch(task, branch)
 
-    async def update_task_branch(self, task: Task, branch: str) -> None:
+    async def update_task_branch(self, task: TaskView, branch: str) -> None:
         await self.screen.ctx.api.update_task(task.id, base_branch=branch or None)
         await self.screen._board.refresh_board()
         self.screen.notify(f"Branch set to: {branch or '(default)'}")
-
-    async def set_default_branch_flow(self) -> None:
-        """Set default branch flow."""
-        config = self.screen.kagan_app.config
-
-        branch = await choose_branch_with_modal(
-            self.screen.app,
-            project_root=self.screen.kagan_app.project_root,
-            current_value=config.general.default_base_branch,
-            title="Set Default Branch",
-            description="Set global default branch for new workspaces:",
-            timeout_seconds=BRANCH_LOOKUP_TIMEOUT_SECONDS,
-            warn=lambda message: self.screen.notify(message, severity="warning"),
-        )
-        if branch is not None:
-            config.general.default_base_branch = branch or "main"
-            await config.save(self.screen.kagan_app.config_path)
-            self.screen.notify(f"Default branch set to: {branch or 'main'}")

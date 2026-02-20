@@ -1,4 +1,4 @@
-"""Slash command autocomplete widget for planner input."""
+"""Slash command autocomplete widget for orchestrator input."""
 
 from __future__ import annotations
 
@@ -23,9 +23,14 @@ class SlashComplete(VerticalGroup):
     """Autocomplete dropdown for slash commands - just shows options."""
 
     DEFAULT_CLASSES = "slash-complete"
+    _DEFAULT_VISIBLE_ROWS = 6
 
     BINDINGS = [
         Binding("escape", "dismiss", "Dismiss", show=False),
+        Binding("pageup", "page_up", "Page Up", show=False),
+        Binding("pagedown", "page_down", "Page Down", show=False),
+        Binding("home", "first", "First", show=False),
+        Binding("end", "last", "Last", show=False),
         Binding("up", "cursor_up", "Up", show=False),
         Binding("down", "cursor_down", "Down", show=False),
         Binding("enter", "select", "Select", show=False),
@@ -82,8 +87,28 @@ class SlashComplete(VerticalGroup):
             option_text = f"/{cmd.command}  {cmd.help}"
             option_list.add_option(Option(option_text, id=cmd.command))
 
+        option_list.styles.height = self._DEFAULT_VISIBLE_ROWS
+        option_list.styles.min_height = self._DEFAULT_VISIBLE_ROWS
+        option_list.styles.max_height = self._DEFAULT_VISIBLE_ROWS
+
         if self._commands_list:
             option_list.highlighted = 0
+
+    def action_page_up(self) -> None:
+        """Page highlight up."""
+        self.query_one("#slash-options", OptionList).action_page_up()
+
+    def action_page_down(self) -> None:
+        """Page highlight down."""
+        self.query_one("#slash-options", OptionList).action_page_down()
+
+    def action_first(self) -> None:
+        """Move highlight to first option."""
+        self.query_one("#slash-options", OptionList).action_first()
+
+    def action_last(self) -> None:
+        """Move highlight to last option."""
+        self.query_one("#slash-options", OptionList).action_last()
 
     def action_cursor_up(self) -> None:
         """Move cursor up."""

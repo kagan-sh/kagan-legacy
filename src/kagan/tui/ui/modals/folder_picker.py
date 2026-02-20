@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DirectoryTree, Input, Label, Static
+from textual.widgets import DirectoryTree, Input, Label, Static
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -15,6 +16,15 @@ if TYPE_CHECKING:
 
 class FolderPickerModal(ModalScreen[str | None]):
     """Modal for selecting a folder path to open as a project."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", priority=True),
+        Binding("enter", "submit", "Open", priority=True),
+        Binding("tab", "next_field", "Next Field", priority=True),
+        Binding("shift+tab", "previous_field", "Previous Field", priority=True),
+    ]
+
+    _FIELD_SELECTOR = "Input, DirectoryTree"
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -35,11 +45,13 @@ class FolderPickerModal(ModalScreen[str | None]):
                 yield Label("Browse", classes="field-label")
                 yield DirectoryTree(Path.home(), id="folder-tree")
 
-            with Horizontal(id="dialog-actions"):
-                yield Button("Cancel", id="btn-cancel")
-                yield Button("Open", id="btn-open", variant="primary")
+            with Horizontal(id="dialog-actions", classes="modal-action-hint-row"):
+                yield Static(
+                    "Esc cancel  |  Enter open  |  Tab/Shift+Tab move",
+                    classes="modal-action-hint",
+                )
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         """Focus the input on mount."""
         self.query_one("#path-input", Input).focus()
 
@@ -47,12 +59,20 @@ class FolderPickerModal(ModalScreen[str | None]):
         """Update the input when a directory is selected in the tree."""
         self.query_one("#path-input", Input).value = str(event.path)
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "btn-cancel":
-            self.dismiss(None)
-        elif event.button.id == "btn-open":
-            await self._open_folder()
+    async def on_input_submitted(self, _: Input.Submitted) -> None:
+        await self.action_submit()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    async def action_submit(self) -> None:
+        await self._open_folder()
+
+    def action_next_field(self) -> None:
+        self.focus_next(self._FIELD_SELECTOR)
+
+    def action_previous_field(self) -> None:
+        self.focus_previous(self._FIELD_SELECTOR)
 
     async def _open_folder(self) -> None:
         """Validate and return the folder path."""

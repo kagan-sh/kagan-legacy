@@ -1,4 +1,4 @@
-"""Inline plan approval widget for the planner screen."""
+"""Inline plan approval widget for orchestrator-generated task plans."""
 
 from __future__ import annotations
 
@@ -9,12 +9,21 @@ from textual.containers import Horizontal, Vertical, VerticalGroup
 from textual.message import Message
 from textual.widgets import Button, Static
 
-from kagan.core.models.enums import TaskType
+from kagan.core.domain.enums import TaskType
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from textual.app import ComposeResult
 
-    from kagan.core.adapters.db.schema import Task
+    from kagan.core.domain.enums import TaskPriority
+
+    class PlanTaskLike(Protocol):
+        title: str
+        description: str
+        acceptance_criteria: list[str]
+        priority: TaskPriority
+        task_type: TaskType
 
 
 class PlanApprovalWidget(VerticalGroup):
@@ -32,14 +41,14 @@ class PlanApprovalWidget(VerticalGroup):
     class Approved(Message):
         """Message posted when the plan is approved."""
 
-        def __init__(self, tasks: list[Task]) -> None:
+        def __init__(self, tasks: list[PlanTaskLike]) -> None:
             super().__init__()
             self.tasks = tasks
 
     class EditRequested(Message):
         """Message posted when user wants to edit tasks."""
 
-        def __init__(self, tasks: list[Task]) -> None:
+        def __init__(self, tasks: list[PlanTaskLike]) -> None:
             super().__init__()
             self.tasks = tasks
 
@@ -50,7 +59,7 @@ class PlanApprovalWidget(VerticalGroup):
 
     def __init__(
         self,
-        tasks: list[Task],
+        tasks: list[PlanTaskLike],
         *,
         id: str | None = None,
         classes: str | None = None,
@@ -73,7 +82,7 @@ class PlanApprovalWidget(VerticalGroup):
             yield Button("[e] Edit", id="btn-edit", variant="warning")
             yield Button("[d] Dismiss", id="btn-dismiss", variant="error")
 
-    def _make_task_row(self, task: Task, index: int) -> Static:
+    def _make_task_row(self, task: PlanTaskLike, index: int) -> Static:
         """Create a row displaying a single task."""
         type_badge = "⚡ AUTO" if task.task_type == TaskType.AUTO else "👤 PAIR"
         priority_label = task.priority.label.upper()

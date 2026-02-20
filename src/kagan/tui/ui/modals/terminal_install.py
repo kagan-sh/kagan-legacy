@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, LoadingIndicator, Static
+from textual.widgets import Label, LoadingIndicator, Static
 
 from kagan.tui.terminals.installer import get_manual_install_fallback
 
@@ -22,7 +22,7 @@ class TerminalInstallModal(ModalScreen[bool]):
         True when install succeeds, False otherwise.
     """
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS = [("enter", "install", "Install"), ("escape", "cancel", "Cancel")]
 
     def __init__(self, backend: str = "tmux") -> None:
         super().__init__()
@@ -43,26 +43,26 @@ class TerminalInstallModal(ModalScreen[bool]):
             yield LoadingIndicator(id="terminal-install-spinner")
             yield Static("", id="terminal-install-status")
 
-            with Horizontal(id="terminal-install-buttons"):
-                yield Button("Install", variant="primary", id="install-btn")
-                yield Button("Cancel", id="cancel-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Label(
+                    "Press [bold]Enter[/bold] to install, [bold]Esc[/bold] to cancel",
+                    classes="modal-action-hint",
+                    id="terminal-install-action-hint",
+                )
 
     def on_mount(self) -> None:
         self.query_one("#terminal-install-spinner", LoadingIndicator).display = False
         self.query_one("#terminal-install-status", Static).display = False
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "install-btn":
-            self._do_install()
-        elif event.button.id == "cancel-btn":
-            self.dismiss(False)
+    def _set_action_hint(self, message: str) -> None:
+        self.query_one("#terminal-install-action-hint", Label).update(message)
 
     def _do_install(self) -> None:
         if self._installing:
             return
 
         self._installing = True
-        self.query_one("#terminal-install-buttons", Horizontal).display = False
+        self._set_action_hint("Installing terminal backend...")
         self.query_one("#terminal-install-spinner", LoadingIndicator).display = True
         status = self.query_one("#terminal-install-status", Static)
         status.update("Installing...")
@@ -84,9 +84,11 @@ class TerminalInstallModal(ModalScreen[bool]):
             return
 
         status.update(f"[red]{message}[/red]")
-        self.query_one("#terminal-install-buttons", Horizontal).display = True
-        self.query_one("#install-btn", Button).label = "Retry"
+        self._set_action_hint("Press [bold]Enter[/bold] to retry, [bold]Esc[/bold] to cancel")
         self._installing = False
+
+    def action_install(self) -> None:
+        self._do_install()
 
     def action_cancel(self) -> None:
         if not self._installing:

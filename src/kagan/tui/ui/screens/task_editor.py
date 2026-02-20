@@ -1,23 +1,42 @@
-"""Task editor screen for refining proposed tasks from planner."""
+"""Task editor screen for refining proposed tasks from orchestrator plans."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from textual import on
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, TabbedContent, TabPane, TextArea
 
-from kagan.core.adapters.db.schema import Task
-from kagan.core.models.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskType
+from kagan.core.domain.coercion import normalize_acceptance_criteria
+from kagan.core.domain.enums import TaskPriority, TaskType, resolve_pair_backend
 from kagan.tui.keybindings import TASK_EDITOR_BINDINGS
 from kagan.tui.ui.widgets.base import BaseBranchInput, PairTerminalBackendSelect
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from textual.app import ComposeResult
     from textual.widget import Widget
+
+
+class EditableTask(Protocol):
+    id: str
+    project_id: str
+    title: str
+    description: str
+    status: Any
+    priority: TaskPriority
+    task_type: TaskType
+    terminal_backend: object
+    agent_backend: str | None
+    parent_id: str | None
+    acceptance_criteria: list[str]
+    base_branch: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 PRIORITY_OPTIONS = [
@@ -55,17 +74,17 @@ class TaskFieldIds:
         )
 
 
-class TaskEditorScreen(ModalScreen[list[Task] | None]):
+class TaskEditorScreen(ModalScreen[list[EditableTask] | None]):
     """Edit proposed tasks before approval.
 
     Returns:
-        list[Task]: Edited tasks
+        list[EditableTask]: Edited tasks
         None: User cancelled
     """
 
     BINDINGS = TASK_EDITOR_BINDINGS
 
-    def __init__(self, tasks: list[Task]) -> None:
+    def __init__(self, tasks: list[EditableTask]) -> None:
         super().__init__()
         self._tasks = list(tasks)
 
@@ -85,9 +104,9 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
             first_input = self.query_one("#title-1", Input)
             first_input.focus()
 
-    def _collect_edited_tasks(self) -> list[Task]:
+    def _collect_edited_tasks(self) -> list[EditableTask]:
         """Collect all edited tasks from the form fields."""
-        edited_tasks: list[Task] = []
+        edited_tasks: list[EditableTask] = []
 
         for i, original in enumerate(self._tasks, 1):
             field_ids = TaskFieldIds.for_index(i)
@@ -95,9 +114,9 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
 
         return edited_tasks
 
-    def _build_task_widgets(self, task: Task, field_ids: TaskFieldIds) -> list[Widget]:
+    def _build_task_widgets(self, task: EditableTask, field_ids: TaskFieldIds) -> list[Widget]:
         ac_text = "\n".join(task.acceptance_criteria) if task.acceptance_criteria else ""
-        terminal_backend = self._normalize_terminal_backend(getattr(task, "terminal_backend", None))
+        terminal_backend = resolve_pair_backend(getattr(task, "terminal_backend", None))
         return [
             Input(
                 value=task.title,
@@ -142,7 +161,9 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
             ),
         ]
 
-    def _collect_task_from_fields(self, original: Task, field_ids: TaskFieldIds) -> Task:
+    def _collect_task_from_fields(
+        self, original: EditableTask, field_ids: TaskFieldIds
+    ) -> EditableTask:
         title_input = self.query_one(field_ids.title, Input)
         description_input = self.query_one(field_ids.description, TextArea)
         priority_select: Select[int] = self.query_one(field_ids.priority, Select)
@@ -151,8 +172,7 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
         base_branch_input = self.query_one(field_ids.base_branch, BaseBranchInput)
         ac_input = self.query_one(field_ids.acceptance_criteria, TextArea)
 
-        ac_lines = ac_input.text.strip().split("\n") if ac_input.text.strip() else []
-        acceptance_criteria = [line.strip() for line in ac_lines if line.strip()]
+        acceptance_criteria = normalize_acceptance_criteria(ac_input.text.splitlines()) or []
 
         title = title_input.value.strip() or original.title
         description = description_input.text or original.description
@@ -176,7 +196,7 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
             task_type = TaskType(type_value)
 
         terminal_backend_value = terminal_backend_select.value
-        terminal_backend = self._normalize_terminal_backend(terminal_backend_value)
+        terminal_backend = resolve_pair_backend(terminal_backend_value)
         if task_type == TaskType.AUTO:
             terminal_backend = None
 
@@ -197,14 +217,14 @@ class TaskEditorScreen(ModalScreen[list[Task] | None]):
             "created_at": original.created_at,
             "updated_at": original.updated_at,
         }
-        if "terminal_backend" in Task.model_fields:
+        model_fields = getattr(type(original), "model_fields", None)
+        if (isinstance(model_fields, dict) and "terminal_backend" in model_fields) or hasattr(
+            original, "terminal_backend"
+        ):
             task_payload["terminal_backend"] = terminal_backend
-        return Task(**task_payload)
 
-    def _normalize_terminal_backend(self, value: object) -> str:
-        if value is Select.BLANK or not isinstance(value, str):
-            return "tmux"
-        return value if value in VALID_PAIR_BACKENDS else "tmux"
+        task_factory = cast("Any", type(original))
+        return cast("EditableTask", task_factory(**task_payload))
 
     @on(Select.Changed)
     def on_type_changed(self, event: Select.Changed) -> None:

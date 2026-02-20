@@ -5,7 +5,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from kagan.core.runtime_helpers import runtime_snapshot_for_task
+from kagan.core.domain.errors import task_not_found_response
+from kagan.core.services.runtime import runtime_snapshot_for_task
 
 if TYPE_CHECKING:
     from kagan.core.bootstrap import AppContext
@@ -56,7 +57,7 @@ def _coerce_job_action(action: str) -> JobAction | None:
 
 
 async def _execute_start_agent(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
-    from kagan.core.models.enums import TaskType
+    from kagan.core.domain.enums import TaskType
 
     task_id = _task_id_from_params(params)
     if task_id is None:
@@ -68,12 +69,7 @@ async def _execute_start_agent(ctx: AppContext, params: dict[str, Any]) -> dict[
 
     task = await ctx.task_service.get_task(task_id)
     if task is None:
-        return {
-            "success": False,
-            "task_id": task_id,
-            "message": f"Task {task_id} not found",
-            "code": "TASK_NOT_FOUND",
-        }
+        return dict(task_not_found_response(task_id))
     if task.task_type is not TaskType.AUTO:
         return {
             "success": False,
@@ -84,15 +80,18 @@ async def _execute_start_agent(ctx: AppContext, params: dict[str, Any]) -> dict[
                 "Set task_type to AUTO before calling jobs.submit with "
                 f"action='{JobAction.START_AGENT.value}'."
             ),
-            "next_tool": "tasks_update",
-            "next_arguments": {"task_id": task_id, "task_type": TaskType.AUTO.value},
+            "next_tool": "task_patch",
+            "next_arguments": {
+                "task_id": task_id,
+                "transition": "set_task_type",
+                "set": {"task_type": TaskType.AUTO.value},
+            },
             "current_task_type": task.task_type.value,
         }
 
     started = await ctx.automation_service.spawn_for_task(task)
     runtime = _runtime_snapshot(ctx, task_id)
     runtime_is_running = bool(runtime.get("is_running"))
-    runtime_is_blocked = bool(runtime.get("is_blocked"))
     runtime_is_pending = bool(runtime.get("is_pending"))
 
     if runtime_is_running or ctx.automation_service.is_running(task_id):
@@ -101,17 +100,6 @@ async def _execute_start_agent(ctx: AppContext, params: dict[str, Any]) -> dict[
             "task_id": task_id,
             "message": "Agent running",
             "code": "STARTED",
-            "runtime": runtime,
-        }
-
-    if runtime_is_blocked:
-        return {
-            "success": True,
-            "task_id": task_id,
-            "message": runtime.get("blocked_reason")
-            or "Agent start is conflict-blocked and queued for auto-resume",
-            "code": "START_BLOCKED",
-            "hint": "Task will auto-resume when blocking tasks are no longer active.",
             "runtime": runtime,
         }
 
@@ -137,7 +125,7 @@ async def _execute_start_agent(ctx: AppContext, params: dict[str, Any]) -> dict[
     return {
         "success": False,
         "task_id": task_id,
-        "message": "Agent was not started",
+        "message": "Agent was not started. Check task status and workspace, then retry job_start.",
         "code": "NOT_STARTED",
         "runtime": runtime,
     }
@@ -154,12 +142,7 @@ async def _execute_stop_agent(ctx: AppContext, params: dict[str, Any]) -> dict[s
 
     task = await ctx.task_service.get_task(task_id)
     if task is None:
-        return {
-            "success": False,
-            "task_id": task_id,
-            "message": f"Task {task_id} not found",
-            "code": "TASK_NOT_FOUND",
-        }
+        return dict(task_not_found_response(task_id))
 
     stopped = await ctx.automation_service.stop_task(task_id)
     runtime = _runtime_snapshot(ctx, task_id)
@@ -188,9 +171,9 @@ async def execute_job_action(
         "success": False,
         "message": f"Unsupported job action '{action}'",
         "code": "UNSUPPORTED_ACTION",
-        "hint": "Call jobs_list_actions to discover valid action names.",
-        "next_tool": "jobs_list_actions",
-        "next_arguments": {},
+        "hint": f"Use one of: {', '.join(sorted(SUPPORTED_JOB_ACTIONS))}",
+        "next_tool": "job_start",
+        "next_arguments": {"task_id": _task_id_from_params(params), "action": "start_agent"},
         "supported_actions": sorted(SUPPORTED_JOB_ACTIONS),
     }
 

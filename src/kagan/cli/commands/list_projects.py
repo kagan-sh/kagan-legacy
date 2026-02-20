@@ -16,17 +16,20 @@ async def _list_projects_data(
     """Fetch project data with repos and task counts for display."""
     from sqlalchemy.ext.asyncio import async_sessionmaker
     from sqlmodel import col, func, select
+    from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
 
     from kagan.core.adapters.db.engine import create_db_engine
     from kagan.core.adapters.db.schema import Project, ProjectRepo, Repo, Task
-    from kagan.core.models.enums import TaskStatus
+    from kagan.core.domain.enums import TaskStatus
 
     engine = await create_db_engine(db_path)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        engine, class_=SQLModelAsyncSession, expire_on_commit=False
+    )
     try:
         async with session_factory() as session:
-            proj_result = await session.execute(select(Project).order_by(Project.name))
-            projects = proj_result.scalars().all()
+            proj_result = await session.exec(select(Project).order_by(Project.name))
+            projects = proj_result.all()
             if not projects:
                 return []
 
@@ -91,7 +94,7 @@ def list_cmd() -> None:
         click.secho("No projects found.", fg="yellow")
         return
 
-    from kagan.core.models.enums import TaskStatus
+    from kagan.core.domain.enums import TaskStatus
 
     click.echo()
     click.secho("Projects:", bold=True)

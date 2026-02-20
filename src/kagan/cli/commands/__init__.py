@@ -1,7 +1,3 @@
-"""CLI command modules."""
+"""CLI command package."""
 
 from __future__ import annotations
-
-from .root import cli
-
-__all__ = ["cli"]

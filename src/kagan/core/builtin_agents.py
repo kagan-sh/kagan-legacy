@@ -8,12 +8,20 @@ from dataclasses import dataclass, field
 
 from kagan.core.agents.backend_config import (
     AgentBackendConfig,
+    AmpAgentConfig,
+    AuggieAgentConfig,
+    CagentAgentConfig,
     ClaudeAgentConfig,
     CodexAgentConfig,
     CopilotAgentConfig,
     GeminiAgentConfig,
+    GooseAgentConfig,
     KimiAgentConfig,
     OpenCodeAgentConfig,
+    OpenHandsAgentConfig,
+    StakpakAgentConfig,
+    VibeAgentConfig,
+    VTCodeAgentConfig,
 )
 from kagan.core.config import AgentConfig, get_os_value
 
@@ -56,7 +64,22 @@ class AgentAvailability:
         return self.agent.docs_url
 
 
-AGENT_PRIORITY = ["claude", "opencode", "codex", "gemini", "kimi", "copilot"]
+AGENT_PRIORITY = [
+    "claude",
+    "opencode",
+    "codex",
+    "gemini",
+    "kimi",
+    "copilot",
+    "goose",
+    "openhands",
+    "auggie",
+    "amp",
+    "cagent",
+    "stakpak",
+    "vibe",
+    "vtcode",
+]
 
 BUILTIN_AGENTS: dict[str, BuiltinAgent] = {
     "claude": BuiltinAgent(
@@ -160,6 +183,137 @@ BUILTIN_AGENTS: dict[str, BuiltinAgent] = {
         mcp_config_file=".mcp.json",
         mcp_config_format="claude",
         backend_config=CopilotAgentConfig(),
+    ),
+    "goose": BuiltinAgent(
+        config=AgentConfig(
+            identity="goose.ai",
+            name="Goose",
+            short_name="goose",
+            run_command={"*": "goose acp"},
+            interactive_command={"*": "goose"},
+            active=True,
+            model_env_var="GOOSE_MODEL",
+        ),
+        author="Block",
+        description="Open-source, extensible AI agent that goes beyond code suggestions",
+        install_command=(
+            "curl -fsSL https://github.com/block/goose/releases/download/stable"
+            "/download_cli.sh | bash"
+        ),
+        docs_url="https://block.github.io/goose/",
+        backend_config=GooseAgentConfig(),
+    ),
+    "openhands": BuiltinAgent(
+        config=AgentConfig(
+            identity="openhands.dev",
+            name="OpenHands",
+            short_name="openhands",
+            run_command={"*": "openhands acp"},
+            interactive_command={"*": "openhands"},
+            active=True,
+            model_env_var="",
+        ),
+        author="OpenHands",
+        description="Open platform for cloud coding agents, model-agnostic and enterprise-ready",
+        install_command="uv tool install openhands -U --python 3.12",
+        docs_url="https://openhands.dev/",
+        backend_config=OpenHandsAgentConfig(),
+    ),
+    "auggie": BuiltinAgent(
+        config=AgentConfig(
+            identity="augmentcode.com",
+            name="Auggie",
+            short_name="auggie",
+            run_command={"*": "auggie --acp"},
+            interactive_command={"*": "auggie"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Augment Code",
+        description="AI agent with ACP support for terminal and editor integration",
+        install_command="npm install -g @augmentcode/auggie",
+        docs_url="https://docs.augmentcode.com/cli/setup-auggie/install-auggie-cli",
+        backend_config=AuggieAgentConfig(),
+    ),
+    "amp": BuiltinAgent(
+        config=AgentConfig(
+            identity="ampcode.com",
+            name="Amp",
+            short_name="amp",
+            run_command={"*": "npx -y amp-acp"},
+            interactive_command={"*": "amp"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Sourcegraph",
+        description="Frontier coding agent for the terminal built by Sourcegraph",
+        install_command="curl -fsSL https://ampcode.com/install.sh | bash",
+        docs_url="https://ampcode.com",
+        backend_config=AmpAgentConfig(),
+    ),
+    "cagent": BuiltinAgent(
+        config=AgentConfig(
+            identity="docker.com",
+            name="Docker cagent",
+            short_name="cagent",
+            run_command={"*": "cagent acp"},
+            interactive_command={"*": "cagent"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Docker",
+        description="Agent Builder and Runtime by Docker Engineering with MCP and ACP support",
+        install_command="Install Docker Desktop 4.49+ which includes cagent: https://www.docker.com/products/docker-desktop/",
+        docs_url="https://docs.docker.com/ai/cagent/",
+        backend_config=CagentAgentConfig(),
+    ),
+    "stakpak": BuiltinAgent(
+        config=AgentConfig(
+            identity="stakpak.dev",
+            name="Stakpak",
+            short_name="stakpak",
+            run_command={"*": "stakpak acp"},
+            interactive_command={"*": "stakpak"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Stakpak",
+        description="Terminal-native DevOps Agent in Rust with enterprise-grade security",
+        install_command="cargo install stakpak",
+        docs_url="https://stakpak.dev/",
+        backend_config=StakpakAgentConfig(),
+    ),
+    "vibe": BuiltinAgent(
+        config=AgentConfig(
+            identity="vibe.mistral.ai",
+            name="Mistral Vibe",
+            short_name="vibe",
+            run_command={"*": "vibe-acp"},
+            interactive_command={"*": "vibe"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Mistral",
+        description="State-of-the-art open-source agentic coding CLI backed by Devstral models",
+        install_command="curl -LsSf https://mistral.ai/vibe/install.sh | bash",
+        docs_url="https://mistral.ai/news/devstral-2-vibe-cli",
+        backend_config=VibeAgentConfig(),
+    ),
+    "vtcode": BuiltinAgent(
+        config=AgentConfig(
+            identity="vtcode.dev",
+            name="VT Code",
+            short_name="vtcode",
+            run_command={"*": "vtcode acp"},
+            interactive_command={"*": "vtcode"},
+            active=True,
+            model_env_var="",
+        ),
+        author="Vinh Nguyen",
+        description="Rust-based terminal coding agent with semantic code intelligence",
+        install_command="cargo install --git https://github.com/vinhnx/vtcode",
+        docs_url="https://github.com/vinhnx/vtcode",
+        backend_config=VTCodeAgentConfig(),
     ),
 }
 

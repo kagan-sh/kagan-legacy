@@ -9,6 +9,7 @@ from acp import RequestError
 
 from kagan.core.acp.terminal import TerminalRunner
 from kagan.core.debug_log import log
+from kagan.core.safety import redact_sensitive_text
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07|[@-Z\\^_-])")
 
@@ -49,8 +50,10 @@ class TerminalManager:
         self._count += 1
         terminal_id = f"terminal-{self._count}"
         cmd_display = command + (" " + " ".join(args) if args else "")
-        log.info(f"[RPC] terminal/create: id={terminal_id}, cmd={cmd_display}")
-        log.debug(f"[RPC] terminal/create: cwd={cwd}, env={env}")
+        safe_cmd_display = redact_sensitive_text(cmd_display)
+        env_keys = sorted(v.name for v in (env or []))
+        log.info(f"[RPC] terminal/create: id={terminal_id}, cmd={safe_cmd_display}")
+        log.debug(f"[RPC] terminal/create: cwd={cwd}, env_keys={env_keys}")
 
         env_dict = {v.name: v.value for v in (env or [])}
         terminal = TerminalRunner(

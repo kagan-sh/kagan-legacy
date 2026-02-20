@@ -31,12 +31,12 @@ Match symptom text below.
 
 ## PAIR / terminal
 
-| Symptom                        | Fix                                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| tmux not found                 | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                              |
-| nvim not found                 | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                        |
-| VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then reopen PAIR session; fallback is `.kagan/start_prompt.md` |
-| Unsupported PAIR launcher      | `default_pair_terminal_backend = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` in config                                           |
+| Symptom                        | Fix                                                                                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| tmux not found                 | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                   |
+| nvim not found                 | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                             |
+| VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then reopen PAIR session; fallback is `.kagan/start_prompt.md`      |
+| Unsupported PAIR launcher      | `default_pair_terminal_backend = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"` in config |
 
 ## Git
 

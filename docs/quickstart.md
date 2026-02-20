@@ -6,7 +6,9 @@ icon: material/timer
 
 # Quickstart
 
-**Prerequisites:** [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, a local repo.
+Board up. First task running. Under five minutes.
+
+**Prerequisites:** [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, a local repo, and at least one [supported agent](concepts/architecture-overview.md#supported-agents) installed.
 
 ## 1. Install
 
@@ -37,7 +39,7 @@ Welcome screen --> open/create project --> board appears (BACKLOG --> IN_PROGRES
   `Enter` opens a dedicated Task Output screen in split view: task/diff details on top, the same chat overlay UI as `Ctrl+O` in the lower half.
   `Ctrl+P` toggles fullscreen for that task overlay; `Ctrl+O` toggles docked overlay for that task.
   Use follow-up chat plus `a` (start) and `s` (stop) to steer iterations.
-- **PAIR:** Select task → `Enter` → work in tmux/Neovim/VS Code/Cursor.
+- **PAIR:** Select task → `Enter` → work in your configured backend (tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, or Antigravity).
 
 PAIR launch does not open the orchestrator chat overlay; it opens or redirects to your configured PAIR backend.
 

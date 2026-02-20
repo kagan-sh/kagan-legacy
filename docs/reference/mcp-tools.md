@@ -9,8 +9,7 @@ tags:
 
 # MCP tools reference
 
-This document defines the consolidated MCP toolset for Kagan.
-It is a breaking, non-backward-compatible contract.
+Consolidated MCP toolset. Breaking contract — not backward-compatible.
 
 ## Runtime module path
 

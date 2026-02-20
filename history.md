@@ -256,8 +256,6 @@ plugins.py:54-58 — tui_api_call() compatibility function importing from dead b
 
 Evaluation of Proposed Steps
 
-# 
-
 Proposed Step
 
 Verdict

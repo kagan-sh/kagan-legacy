@@ -31,17 +31,7 @@ tags:
 
 ### Need custom schema validation?
 
-Submit a feature request with your CI/CD use case and expected contract behavior:
-
-- Local template path in this checkout: `/Users/aorumbayev/experiments/kagan/.github/ISSUE_TEMPLATE/feature_request.md`
-- Repository template path: `.github/ISSUE_TEMPLATE/feature_request.md`
-- GitHub issue form: `https://github.com/aorumbayev/kagan/issues/new?template=feature_request.md`
-
-Revisit triggers for GA schema customization:
-
-1. 3+ independent feature requests for custom schema validation.
-1. 2+ real CI integration breakages caused by output drift.
-1. Partner/customer compliance requires explicit schema contracts.
+[Open a feature request](https://github.com/aorumbayev/kagan/issues/new?template=feature_request.md) with your CI/CD use case and expected contract behavior.
 
 ## `kagan tui`
 

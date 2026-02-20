@@ -6,13 +6,7 @@ from typing import TYPE_CHECKING, Any
 from kagan.core.policy import command
 
 from ._parsing import str_list
-from ._serialization import project_to_dict
-from ._transport_truncation import (
-    DEFAULT_AUDIT_FIELD_CHAR_LIMIT as _DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-)
-from ._transport_truncation import (
-    truncate_for_transport as _truncate_for_transport,
-)
+from ._serialization import build_audit_list_response, project_to_dict
 
 if TYPE_CHECKING:
     from kagan.core.bootstrap import AppContext
@@ -139,38 +133,7 @@ async def list_audit_events(ctx: AppContext, params: dict[str, Any]) -> dict[str
         limit=limit,
         cursor=cursor,
     )
-
-    result_events: list[dict[str, Any]] = []
-    truncated = False
-    for event in events:
-        payload = event.payload_json or ""
-        result = event.result_json or ""
-        payload, payload_truncated = _truncate_for_transport(
-            payload,
-            limit=_DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-        )
-        result, result_truncated = _truncate_for_transport(
-            result,
-            limit=_DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-        )
-        if payload_truncated or result_truncated:
-            truncated = True
-        result_events.append(
-            {
-                "id": event.id,
-                "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
-                "actor_type": event.actor_type,
-                "actor_id": event.actor_id,
-                "session_id": event.session_id,
-                "capability": event.capability,
-                "command_name": event.command_name,
-                "payload_json": payload,
-                "result_json": result,
-                "success": event.success,
-            }
-        )
-
-    return {"events": result_events, "count": len(result_events), "truncated": truncated}
+    return build_audit_list_response(list(events))
 
 
 @command(

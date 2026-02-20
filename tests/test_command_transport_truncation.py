@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from kagan.core.commands._serialization import build_audit_list_response
 from kagan.core.commands._transport_truncation import (
     DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
     truncate_for_transport,
 )
-from kagan.core.commands.automation import handle_audit_list
 from kagan.core.commands.projects import list_audit_events
 
 
@@ -43,29 +43,9 @@ class _AuditRepository:
         return self._events
 
 
-class _AutomationAPI:
-    def __init__(self, events: list[_AuditEvent]) -> None:
-        self._events = events
-
-    async def list_audit_events(
-        self,
-        *,
-        capability: object = None,
-        limit: int = 50,
-        cursor: object = None,
-    ) -> list[_AuditEvent]:
-        del capability, limit, cursor
-        return self._events
-
-
 class _ProjectsContext:
     def __init__(self, events: list[_AuditEvent]) -> None:
         self.audit_repository = _AuditRepository(events)
-
-
-class _AutomationContext:
-    def __init__(self, events: list[_AuditEvent]) -> None:
-        self.api = _AutomationAPI(events)
 
 
 def _base_event(*, payload_json: str | None, result_json: str | None) -> _AuditEvent:
@@ -126,12 +106,12 @@ async def test_projects_audit_list_uses_transport_truncation() -> None:
     _assert_transport_truncated(result["events"][0], payload_omitted=5, result_omitted=3)
 
 
-async def test_automation_audit_list_uses_transport_truncation() -> None:
+def test_shared_audit_formatter_uses_transport_truncation() -> None:
     event = _base_event(
         payload_json="p" * (DEFAULT_AUDIT_FIELD_CHAR_LIMIT + 2),
         result_json="r" * (DEFAULT_AUDIT_FIELD_CHAR_LIMIT + 7),
     )
-    result = await handle_audit_list(_AutomationContext([event]), params={})
+    result = build_audit_list_response([event])
 
     assert result["count"] == 1
     assert result["truncated"] is True

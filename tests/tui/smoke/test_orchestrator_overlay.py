@@ -466,6 +466,11 @@ async def test_orchestrator_overlay_disables_input_while_waiting_for_response(
             await send_task
             assert chat_input.disabled is False
             await wait_until(
+                lambda: app.focused is chat_input,
+                timeout=10.0,
+                description="chat input to regain focus after orchestrator response completes",
+            )
+            await wait_until(
                 lambda: status_bar.status == "ready",
                 timeout=10.0,
                 description="orchestrator status to return ready after delayed response",

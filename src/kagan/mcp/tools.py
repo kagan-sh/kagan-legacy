@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from kagan.core.domain.errors import TASK_NOT_FOUND_CODE, task_not_found_message
+from kagan.core.protocol_constants import (
+    TASK_WAIT_IPC_TIMEOUT_BUFFER_SECONDS,
+    TASK_WAIT_WINDOW_SECONDS,
+)
 from kagan.core.scalars import float_or_none
 
 if TYPE_CHECKING:
@@ -15,8 +19,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _AUTH_FAILED_CODE = "AUTH_FAILED"
 _QUERY_UNAVAILABLE_CODES = {"UNKNOWN_METHOD", "UNAUTHORIZED"}
-_TASK_WAIT_IPC_WINDOW_SECONDS = 45.0  # must match core _MAX_WAIT_WINDOW_SECONDS
-_TASK_WAIT_IPC_TIMEOUT_BUFFER_SECONDS = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +167,7 @@ async def mcp_wait_task(
         params["from_updated_at"] = from_updated_at
 
     # Each IPC call is bounded by a single wait-window + buffer.
-    per_call_timeout = _TASK_WAIT_IPC_WINDOW_SECONDS + _TASK_WAIT_IPC_TIMEOUT_BUFFER_SECONDS
+    per_call_timeout = TASK_WAIT_WINDOW_SECONDS + TASK_WAIT_IPC_TIMEOUT_BUFFER_SECONDS
 
     while True:
         result = await transport.query(

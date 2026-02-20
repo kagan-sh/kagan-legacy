@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import kagan.core.domain.models as domain_models
+from kagan.core.commands._transport_truncation import (
+    DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
+    truncate_for_transport,
+)
 from kagan.core.scalars import non_empty_str
 from kagan.core.services.jobs import JobStatus
 from kagan.core.services.runtime import runtime_snapshot_for_task
@@ -283,6 +287,48 @@ def build_job_response(job: JobRecord, *, timed_out: bool = False) -> dict[str, 
     return result
 
 
+def build_audit_list_response(
+    events: list[object],
+    *,
+    field_char_limit: int = DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
+) -> dict[str, Any]:
+    """Serialize audit events into a transport-safe response envelope."""
+    result_events: list[dict[str, Any]] = []
+    truncated = False
+
+    for event in events:
+        payload_raw = str(getattr(event, "payload_json", "") or "")
+        result_raw = str(getattr(event, "result_json", "") or "")
+        payload, payload_truncated = truncate_for_transport(payload_raw, limit=field_char_limit)
+        result, result_truncated = truncate_for_transport(result_raw, limit=field_char_limit)
+        if payload_truncated or result_truncated:
+            truncated = True
+
+        occurred_at_raw = getattr(event, "occurred_at", None)
+        occurred_at = (
+            occurred_at_raw.isoformat()
+            if hasattr(occurred_at_raw, "isoformat") and callable(occurred_at_raw.isoformat)
+            else None
+        )
+
+        result_events.append(
+            {
+                "id": getattr(event, "id", None),
+                "occurred_at": occurred_at,
+                "actor_type": getattr(event, "actor_type", None),
+                "actor_id": getattr(event, "actor_id", None),
+                "session_id": getattr(event, "session_id", None),
+                "capability": getattr(event, "capability", None),
+                "command_name": getattr(event, "command_name", None),
+                "payload_json": payload,
+                "result_json": result,
+                "success": bool(getattr(event, "success", False)),
+            }
+        )
+
+    return {"events": result_events, "count": len(result_events), "truncated": truncated}
+
+
 # Local alias preserves existing call sites while using shared coercion.
 _non_empty_str = non_empty_str
 
@@ -512,6 +558,7 @@ def serialize_tui_value(value: object, *, ctx: AppContext | None = None) -> Any:
 
 __all__ = [
     "SESSION_PROMPT_PATH",
+    "build_audit_list_response",
     "build_handoff_payload",
     "build_job_response",
     "execution_log_entry_to_dict",

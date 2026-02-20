@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from kagan.core.commands._exception_boundary import map_command_exceptions
 from kagan.core.commands._parsing import (
     parse_events_limit,
     parse_events_offset,
@@ -32,15 +33,10 @@ from kagan.core.commands._serialization import (
     session_create_error_response,
     startup_decision_to_dict,
 )
-from kagan.core.commands._transport_truncation import (
-    DEFAULT_AUDIT_FIELD_CHAR_LIMIT as _DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-)
-from kagan.core.commands._transport_truncation import (
-    truncate_for_transport as _truncate_for_transport,
-)
 from kagan.core.commands.job_action_executor import SUPPORTED_JOB_ACTIONS
 from kagan.core.domain.errors import task_not_found_response
 from kagan.core.policy import command
+from kagan.core.protocol_constants import TASK_WAIT_WINDOW_SECONDS
 from kagan.core.scalars import non_empty_str
 from kagan.core.services.runtime import runtime_snapshot_for_task
 
@@ -53,7 +49,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_MAX_WAIT_WINDOW_SECONDS: float = 45.0
+_MAX_WAIT_WINDOW_SECONDS: float = TASK_WAIT_WINDOW_SECONDS
 
 
 def _api(ctx: AppContext) -> KaganAPI:
@@ -69,6 +65,55 @@ def _api(ctx: AppContext) -> KaganAPI:
 
 def _task_not_found_response(task_id: str) -> dict[str, Any]:
     return dict(task_not_found_response(task_id))
+
+
+def _handler_params_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    if len(args) >= 2 and isinstance(args[1], dict):
+        return cast("dict[str, Any]", args[1])
+    params = kwargs.get("params")
+    return params if isinstance(params, dict) else {}
+
+
+def _session_create_not_found_response(
+    exc: Exception,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    del exc
+    params = _handler_params_from_call(args, kwargs)
+    return _task_not_found_response(str(params.get("task_id", "")))
+
+
+def _session_create_domain_error_response(
+    exc: Exception,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    from kagan.core.api import SessionCreateFailedError
+
+    params = _handler_params_from_call(args, kwargs)
+    task_id = str(params.get("task_id", ""))
+    if isinstance(exc, SessionCreateFailedError):
+        logger.warning("Failed to create PAIR session for %s: %s", task_id, exc.__cause__)
+    return session_create_error_response(task_id, exc)
+
+
+def _session_create_exception_map():
+    from kagan.core.api import (
+        InvalidWorktreePathError,
+        SessionCreateFailedError,
+        TaskNotFoundError,
+        TaskTypeMismatchError,
+        WorkspaceNotFoundError,
+    )
+
+    return {
+        TaskNotFoundError: _session_create_not_found_response,
+        TaskTypeMismatchError: _session_create_domain_error_response,
+        WorkspaceNotFoundError: _session_create_domain_error_response,
+        InvalidWorktreePathError: _session_create_domain_error_response,
+        SessionCreateFailedError: _session_create_domain_error_response,
+    }
 
 
 # Local alias preserves existing call sites while using shared coercion.
@@ -498,6 +543,7 @@ async def handle_job_events(ctx: AppContext, params: dict[str, Any]) -> dict[str
     }
 
 
+@map_command_exceptions(_session_create_exception_map)
 @command(
     "sessions",
     "create",
@@ -507,13 +553,6 @@ async def handle_job_events(ctx: AppContext, params: dict[str, Any]) -> dict[str
 )
 async def handle_session_create(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     api = _api(ctx)
-    from kagan.core.api import (
-        InvalidWorktreePathError,
-        SessionCreateFailedError,
-        TaskNotFoundError,
-        TaskTypeMismatchError,
-        WorkspaceNotFoundError,
-    )
 
     task_id = params["task_id"]
     reuse_if_exists = bool(params.get("reuse_if_exists", True))
@@ -525,30 +564,12 @@ async def handle_session_create(ctx: AppContext, params: dict[str, Any]) -> dict
     if worktree_error is not None:
         return worktree_error
 
-    result = None
-    error_response: dict[str, Any] | None = None
-    try:
-        result = await api.create_session(
-            task_id,
-            worktree_path=worktree_path,
-            reuse_if_exists=reuse_if_exists,
-        )
-    except TaskNotFoundError:
-        error_response = _task_not_found_response(task_id)
-    except (
-        TaskTypeMismatchError,
-        WorkspaceNotFoundError,
-        InvalidWorktreePathError,
-        SessionCreateFailedError,
-    ) as exc:
-        if isinstance(exc, SessionCreateFailedError):
-            logger.warning("Failed to create PAIR session for %s: %s", task_id, exc.__cause__)
-        error_response = session_create_error_response(task_id, exc)
+    result = await api.create_session(
+        task_id,
+        worktree_path=worktree_path,
+        reuse_if_exists=reuse_if_exists,
+    )
 
-    if error_response is not None:
-        return error_response
-
-    assert result is not None
     backend = resolve_pair_backend(ctx, result.task)
     return build_handoff_payload(
         task_id=task_id,
@@ -1090,160 +1111,8 @@ async def handle_automation_update_planner_draft_status(
     }
 
 
-async def handle_audit_list(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
-    api = _api(ctx)
-    capability = params.get("capability")
-    limit = params.get("limit", 50)
-    cursor = params.get("cursor")
-    events = await api.list_audit_events(capability=capability, limit=limit, cursor=cursor)
-    result_events = []
-    truncated = False
-    for event in events:
-        payload = event.payload_json or ""
-        result = event.result_json or ""
-        payload, payload_truncated = _truncate_for_transport(
-            payload,
-            limit=_DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-        )
-        result, result_truncated = _truncate_for_transport(
-            result,
-            limit=_DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
-        )
-        if payload_truncated or result_truncated:
-            truncated = True
-        result_events.append(
-            {
-                "id": event.id,
-                "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
-                "actor_type": event.actor_type,
-                "actor_id": event.actor_id,
-                "session_id": event.session_id,
-                "capability": event.capability,
-                "command_name": event.command_name,
-                "payload_json": payload,
-                "result_json": result,
-                "success": event.success,
-            }
-        )
-
-    return {
-        "events": result_events,
-        "count": len(result_events),
-        "truncated": truncated,
-    }
-
-
-async def dispatch_tui_automation_method(
-    ctx: AppContext,
-    method_name: str,
-    kwargs: dict[str, Any],
-) -> tuple[bool, Any]:
-    api = _api(ctx)
-
-    def _required_non_empty(key: str) -> str:
-        value = _non_empty_str(kwargs.get(key))
-        if value is None:
-            raise ValueError(f"{key} is required")
-        return value
-
-    match method_name:
-        case "is_automation_running":
-            task_id = _required_non_empty("task_id")
-            return True, api.is_automation_running(task_id)
-        case "submit_job":
-            task_id = _required_non_empty("task_id")
-            action = _required_non_empty("action")
-            arguments_raw = kwargs.get("arguments")
-            if arguments_raw is not None and not isinstance(arguments_raw, dict):
-                raise ValueError("arguments must be an object when provided")
-            arguments = dict(arguments_raw) if isinstance(arguments_raw, dict) else None
-            return True, await api.submit_job(task_id, action, arguments=arguments)
-        case "wait_job":
-            job_id = _required_non_empty("job_id")
-            task_id = _required_non_empty("task_id")
-            timeout = parse_timeout_seconds(kwargs.get("timeout_seconds"))
-            if isinstance(timeout, str):
-                raise ValueError(timeout)
-            return True, await api.wait_job(job_id, task_id=task_id, timeout_seconds=timeout)
-        case "cancel_job":
-            job_id = _required_non_empty("job_id")
-            task_id = _required_non_empty("task_id")
-            return True, await api.cancel_job(job_id, task_id=task_id)
-        case "create_session":
-            task_id = _required_non_empty("task_id")
-            reuse_if_exists = bool(kwargs.get("reuse_if_exists", True))
-            worktree_value = _non_empty_str(kwargs.get("worktree_path"))
-            worktree_path = (
-                Path(worktree_value).expanduser().resolve(strict=False)
-                if worktree_value is not None
-                else None
-            )
-            return True, await api.create_session(
-                task_id,
-                worktree_path=worktree_path,
-                reuse_if_exists=reuse_if_exists,
-            )
-        case "attach_session":
-            task_id = _required_non_empty("task_id")
-            return True, await api.attach_session(task_id)
-        case "session_exists":
-            task_id = _required_non_empty("task_id")
-            return True, await api.session_exists(task_id)
-        case "kill_session":
-            task_id = _required_non_empty("task_id")
-            await api.kill_session(task_id)
-            return True, None
-        case "queue_message":
-            session_id = _required_non_empty("session_id")
-            content = _required_non_empty("content")
-            lane = parse_queue_lane(kwargs.get("lane"))
-            if lane not in {"implementation", "review", "planner"}:
-                raise ValueError(lane)
-            author = _non_empty_str(kwargs.get("author"))
-            metadata = str_object_dict(kwargs.get("metadata"))
-            return True, await api.queue_message(
-                session_id,
-                content,
-                lane=lane,
-                author=author,
-                metadata=metadata,
-            )
-        case "get_queue_status":
-            session_id = _required_non_empty("session_id")
-            lane = parse_queue_lane(kwargs.get("lane"))
-            if lane not in {"implementation", "review", "planner"}:
-                raise ValueError(lane)
-            return True, await api.get_queue_status(session_id, lane=lane)
-        case "get_queued_messages":
-            session_id = _required_non_empty("session_id")
-            lane = parse_queue_lane(kwargs.get("lane"))
-            if lane not in {"implementation", "review", "planner"}:
-                raise ValueError(lane)
-            return True, await api.get_queued_messages(session_id, lane=lane)
-        case "take_queued_message":
-            session_id = _required_non_empty("session_id")
-            lane = parse_queue_lane(kwargs.get("lane"))
-            if lane not in {"implementation", "review", "planner"}:
-                raise ValueError(lane)
-            return True, await api.take_queued_message(session_id, lane=lane)
-        case "remove_queued_message":
-            session_id = _required_non_empty("session_id")
-            lane = parse_queue_lane(kwargs.get("lane"))
-            if lane not in {"implementation", "review", "planner"}:
-                raise ValueError(lane)
-            index_raw = kwargs.get("index")
-            if not isinstance(index_raw, int) or isinstance(index_raw, bool):
-                raise ValueError("index must be an integer")
-            return True, await api.remove_queued_message(session_id, index_raw, lane=lane)
-        case _:
-            return False, None
-
-
 __all__ = [
-    "_DEFAULT_AUDIT_FIELD_CHAR_LIMIT",
     "_MAX_WAIT_WINDOW_SECONDS",
-    "dispatch_tui_automation_method",
-    "handle_audit_list",
     "handle_automation_count_executions",
     "handle_automation_decide_startup",
     "handle_automation_dispatch_runtime_session",

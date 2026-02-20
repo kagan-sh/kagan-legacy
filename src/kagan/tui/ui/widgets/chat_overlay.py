@@ -29,7 +29,6 @@ from textual.widgets import Input, Static
 from kagan.core.acp import messages
 from kagan.core.agents.agent_factory import AgentFactory, create_agent
 from kagan.core.agents.orchestrator import build_orchestrator_prompt
-from kagan.core.agents.planner_parser import parse_proposed_plan
 from kagan.core.config import get_fallback_agent_config
 from kagan.core.constants import BOX_DRAWING, KAGAN_LOGO, KAGAN_LOGO_SMALL
 from kagan.core.domain.enums import ChatRole, MessageType, StreamPhase, TaskStatus, TaskType
@@ -53,6 +52,11 @@ from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
 from kagan.tui.ui.widgets.slash_complete import SlashComplete
 from kagan.tui.ui.widgets.status_bar import StatusBar
 from kagan.tui.ui.widgets.streaming_output import StreamingOutput
+from kagan.tui.ui.widgets.chat_overlay_collaborators import (
+    ChatOverlaySlashCommandExecutor,
+    ChatOverlayStreamCoordinator,
+    ChatOverlayTargetManager,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -2112,12 +2116,20 @@ class ChatOverlay(Vertical):
         with contextlib.suppress(NoMatches):
             self.status_bar.update_status(status, hint)
 
+    def _focus_chat_input(self) -> None:
+        with contextlib.suppress(NoMatches):
+            chat_input = self.query_one("#chat-overlay-input", Input)
+            if chat_input.disabled or not self.has_class("visible"):
+                return
+            chat_input.focus()
+
     def _set_chat_input_disabled(self, disabled: bool) -> None:
         with contextlib.suppress(NoMatches):
             chat_input = self.query_one("#chat-overlay-input", Input)
             chat_input.disabled = disabled
-            if not disabled and self.has_class("visible"):
-                chat_input.focus()
+        if not disabled:
+            self._focus_chat_input()
+            self.call_after_refresh(self._focus_chat_input)
 
     async def on_unmount(self) -> None:
         await self._hide_slash_complete()

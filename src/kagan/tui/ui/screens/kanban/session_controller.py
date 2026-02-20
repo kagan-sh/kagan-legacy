@@ -293,15 +293,28 @@ class KanbanSessionController:
         """Confirm start for AUTO task, then open implementation session output."""
         if not await self.confirm_start_auto_task(task):
             return
-        await self.start_agent_flow(task)
-        await self._open_auto_output_after_start(task)
+        start_requested = await self.start_agent_flow(task)
+        await self._open_auto_output_after_start(task, start_requested=start_requested)
 
-    async def _open_auto_output_after_start(self, task: SessionTaskLike) -> None:
+    async def _open_auto_output_after_start(
+        self,
+        task: SessionTaskLike,
+        *,
+        start_requested: bool = False,
+    ) -> None:
         """Open AUTO implementation output after a start request."""
         refreshed_after_start = await self.screen.ctx.api.get_task(task.id)
-        await self._resume_or_start_in_progress_auto(refreshed_after_start or task)
+        await self._resume_or_start_in_progress_auto(
+            refreshed_after_start or task,
+            start_requested=start_requested,
+        )
 
-    async def _resume_or_start_in_progress_auto(self, task: SessionTaskLike) -> None:
+    async def _resume_or_start_in_progress_auto(
+        self,
+        task: SessionTaskLike,
+        *,
+        start_requested: bool = False,
+    ) -> None:
         """Open AUTO implementation output and surface runtime status."""
         runtime_view = self.screen.ctx.api.get_runtime_view(task.id)
         is_running = self._state_bool(runtime_view, "is_running")
@@ -322,6 +335,30 @@ class KanbanSessionController:
         if is_pending:
             self.screen.notify(
                 "Agent start already queued; waiting for scheduler admission.",
+                severity="information",
+            )
+            return
+        if start_requested:
+            # Startup admission can lag shortly after user-confirmed start.
+            # Reconcile briefly before surfacing any manual-action guidance.
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 2.0
+            while loop.time() < deadline and not (is_running or is_pending):
+                await asyncio.sleep(0.2)
+                await self.screen.ctx.api.reconcile_running_tasks([task.id])
+                runtime_view = self.screen.ctx.api.get_runtime_view(task.id)
+                is_running = self._state_bool(runtime_view, "is_running")
+                is_pending = self._state_bool(runtime_view, "is_pending")
+            if is_running:
+                return
+            if is_pending:
+                self.screen.notify(
+                    "Agent start already queued; waiting for scheduler admission.",
+                    severity="information",
+                )
+                return
+            self.screen.notify(
+                "Agent start request submitted. Waiting for scheduler admission.",
                 severity="information",
             )
             return
@@ -688,7 +725,7 @@ class KanbanSessionController:
         with self.screen.app.suspend():
             return await self._attach_tmux_session_local(task.id)
 
-    async def start_agent_flow(self, task: SessionTaskLike) -> None:
+    async def start_agent_flow(self, task: SessionTaskLike) -> bool:
         await self.screen.ctx.api.reconcile_running_tasks([task.id])
         runtime_view = self.screen.ctx.api.get_runtime_view(task.id)
         is_running = self._state_bool(runtime_view, "is_running")
@@ -702,13 +739,13 @@ class KanbanSessionController:
                 wait_for_running=True,
                 quiet_unavailable=True,
             )
-            return
+            return True
 
         wt_path = await self.screen.ctx.api.get_task_workspace_path(task.id)
         if wt_path is None:
             provision_result = await self.provision_workspace_for_active_repo(task)
             if not provision_result.success or provision_result.path is None:
-                return
+                return False
             wt_path = provision_result.path
 
         if task.status == TaskStatus.BACKLOG:
@@ -728,7 +765,7 @@ class KanbanSessionController:
             terminal = await self.wait_for_job_terminal(submitted.job_id, task_id=task.id)
         except Exception as exc:
             self.screen.notify(f"Failed to start agent: {exc}", severity="error")
-            return
+            return False
 
         payload = job_result_payload(terminal)
         if payload is not None and not bool(payload.get("success", False)):
@@ -736,28 +773,29 @@ class KanbanSessionController:
                 job_message(terminal, "Failed to start agent"),
                 severity="warning",
             )
-            return
+            return False
         if terminal is not None and terminal.status in {JobStatus.FAILED, JobStatus.CANCELLED}:
             self.screen.notify(
                 job_message(terminal, "Failed to start agent"),
                 severity="warning",
             )
-            return
+            return False
         if payload is None:
             self.screen.notify(self.START_JOB_PENDING_MESSAGE, severity="information")
-            return
+            return True
 
         runtime = payload.get("runtime") if payload is not None else None
         runtime_running = isinstance(runtime, dict) and bool(runtime.get("is_running", False))
         if runtime_running or self.screen.ctx.api.is_automation_running(task.id):
             self.screen._board.set_card_indicator(task.id, CardIndicator.RUNNING, is_active=True)
             self.screen.notify(f"Agent started: {task.id[:8]}", severity="information")
-            return
+            return True
 
         self.screen.notify(
             job_message(terminal, "Agent start queued"),
             severity="information",
         )
+        return True
 
     async def apply_global_agent_selection(self, selected: str) -> None:
         from kagan.core.builtin_agents import get_builtin_agent

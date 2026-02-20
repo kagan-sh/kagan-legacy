@@ -1250,6 +1250,67 @@ async def test_orchestrator_overlay_enter_routes_backlog_auto_task_to_session_fl
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_overlay_backlog_auto_confirmed_start_passes_start_requested_flag(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO backlog confirm start",
+            "Ensure confirmed backlog start carries start_requested state to output opening",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban._session,
+                "confirm_start_auto_task",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                kanban._session,
+                "start_agent_flow",
+                AsyncMock(return_value=True),
+            ) as start_agent_mock,
+            patch.object(
+                kanban._session,
+                "_open_auto_output_after_start",
+                AsyncMock(),
+            ) as open_after_start_mock,
+        ):
+            await pilot.press("enter")
+            await wait_until(
+                lambda: open_after_start_mock.await_count >= 1,
+                timeout=10.0,
+                description="backlog AUTO Enter to open output after confirmed start",
+            )
+            called_task = start_agent_mock.await_args.args[0]
+            assert called_task.id == auto_task.id
+            called_after_task = open_after_start_mock.await_args.args[0]
+            assert called_after_task.id == auto_task.id
+            assert open_after_start_mock.await_args.kwargs["start_requested"] is True
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_overlay_enter_opens_auto_chat_session(
     e2e_app_with_tasks,
     mock_agent_factory,

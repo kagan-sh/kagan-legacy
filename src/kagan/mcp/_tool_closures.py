@@ -205,7 +205,7 @@ def _register_plugin_tools(
         mcp.tool(annotations=annotation)(handler)
 
 
-def _register_full_mode_tools(
+def _register_full_mode_tools(  # noqa: C901, RUF100
     mcp: FastMCP,
     *,
     allows_all: Callable[..., bool],

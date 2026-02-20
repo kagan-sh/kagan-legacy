@@ -5,16 +5,17 @@ from __future__ import annotations
 import json
 import re
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich.text import Text
 from textual import containers, events, on
+from textual.binding import Binding, BindingType
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.reactive import var
 from textual.widgets import Markdown, Static
 
-from kagan.core.models.enums import ToolCallStatus
+from kagan.core.domain.enums import ToolCallStatus
 from kagan.tui.ui.utils.helpers import colorize_diff, copy_with_notification
 
 if TYPE_CHECKING:
@@ -56,6 +57,13 @@ class ToolCall(containers.VerticalGroup):
     """Expandable widget showing tool call status and content."""
 
     DEFAULT_CLASSES = "tool-call"
+    can_focus = True
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("enter", "toggle_expand", "Open", key_display="Enter", show=False),
+        Binding("space", "toggle_expand", "Open", key_display="Space", show=False),
+        Binding("c", "copy", "Copy", show=False),
+        Binding("y", "copy", "Copy", show=False),
+    ]
     has_content: var[bool] = var(False, toggle_class="-has-content")
     expanded: var[bool] = var(False, toggle_class="-expanded")
 
@@ -134,14 +142,36 @@ class ToolCall(containers.VerticalGroup):
         with suppress(NoMatches):
             self.query_one(ToolCallHeader).update(self._header_content)
 
+    def action_toggle_expand(self) -> None:
+        """Toggle expand state when content is available."""
+        if self.has_content:
+            self.expanded = not self.expanded
+            return
+        self.app.bell()
+
+    def action_copy(self) -> None:
+        """Copy summary metadata for this tool call."""
+        copy_with_notification(self.app, self._build_copy_content(), "Tool call")
+
+    def _build_copy_content(self) -> str:
+        """Build copyable summary text for the tool call."""
+        title = self._tool_call.title
+        kind = self._tool_call.kind
+        status = self._tool_call.status
+
+        content = f"Tool: {title}"
+        if kind:
+            content += f" ({kind})"
+        if status:
+            content += f"\nStatus: {status}"
+        return content
+
     @on(events.Click, "ToolCallHeader")
     def on_click_header(self, event: events.Click) -> None:
         """Toggle expand state when header is clicked."""
         event.stop()
-        if self.has_content:
-            self.expanded = not self.expanded
-        else:
-            self.app.bell()
+        self.focus()
+        self.action_toggle_expand()
 
     def _compose_content(self, content_list: list[Any]) -> ComposeResult:
         for item in content_list:
@@ -187,17 +217,10 @@ class ToolCall(containers.VerticalGroup):
 
     async def _on_click(self, event: events.Click) -> None:
         """Handle click events - copy on double-click."""
-        if event.chain == 2:
-            title = self._tool_call.title
-            kind = self._tool_call.kind
-            status = self._tool_call.status
-
-            content = f"Tool: {title}"
-            if kind:
-                content += f" ({kind})"
-            if status:
-                content += f"\nStatus: {status}"
-            copy_with_notification(self.app, content, "Tool call")
+        if event.chain == 1:
+            self.focus()
+        elif event.chain == 2:
+            self.action_copy()
 
 
 def _format_payload(payload: Any) -> str:

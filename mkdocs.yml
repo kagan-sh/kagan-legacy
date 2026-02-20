@@ -20,23 +20,27 @@ theme:
 
   logo: assets/logo.svg
 
-  font:
-    text: JetBrains Mono
-    code: JetBrains Mono
+  font: false
 
   features:
     # Navigation
     - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.preview
     - navigation.tabs
+    - navigation.sections
     - navigation.path
     - navigation.indexes
     - navigation.tracking
+    - navigation.prune
     - navigation.top
     - navigation.footer
+    - header.autohide
 
     # Search
     - search.suggest
     - search.highlight
+    - search.share
 
     # Content
     - content.code.copy
@@ -45,6 +49,7 @@ theme:
     - content.tabs.link
     - content.action.edit
     - content.tooltips
+    - content.footnote.tooltips
 
     # Table of contents
     - toc.follow
@@ -56,6 +61,7 @@ extra_css:
   - stylesheets/extra.css
 
 extra_javascript:
+  - javascripts/layout.js
   - https://unpkg.com/mermaid@10/dist/mermaid.min.js
 
 extra:
@@ -106,30 +112,32 @@ markdown_extensions:
   - pymdownx.tilde
 
 plugins:
-  - search
+  - search:
+      separator: '[\s\-\.]+'
+  - tags
+  - social:
+      cards_layout_options:
+        background_color: "#000000"
+        color: "#FFFFFF"
+        font_family: Roboto
 
 exclude_docs: |
   standalone-mcp-core-refactor-execution.md
   standalone-mcp-core-refactor-scratchpad.md
+  internal/**
 
 nav:
   - Home: index.md
-  - Getting started:
-      - getting-started/index.md
-      - 5-Minute Quickstart: getting-started/quickstart.md
-      - Command Reference: getting-started/commands.md
-  - How-to:
-      - how-to/index.md
-      - AUTO vs PAIR: how-to/task-modes.md
-      - MCP Setup: how-to/mcp-setup.md
-      - Admin MCP for Editors: how-to/admin-mcp-editors.md
-      - Multi-Repo Guide: how-to/multi-repo.md
+  - Quickstart: quickstart.md
+  - Concepts:
+      - Architecture: concepts/architecture-overview.md
+      - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+  - Guides:
+      - MCP setup: guides/mcp-setup.md
+      - GitHub: guides/github.md
   - Reference:
-      - reference/index.md
-      - Architecture (Contributors): reference/architecture.md
-      - Plugin SDK Lifecycle: reference/plugin-sdk.md
-      - Keyboard Shortcuts: reference/keybindings.md
+      - CLI: reference/cli.md
       - Configuration: reference/configuration.md
-      - MCP Tools Reference: reference/mcp-tools.md
+      - Keybindings: reference/keybindings.md
+      - MCP tools: reference/mcp-tools.md
   - Troubleshooting: troubleshooting.md
-  - Contributing: contributing.md

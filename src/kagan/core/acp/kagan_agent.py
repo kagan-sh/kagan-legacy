@@ -43,13 +43,16 @@ from acp.schema import (
 from kagan.core.acp import messages
 from kagan.core.acp.messages import AgentBuffers
 from kagan.core.acp.terminals import TerminalManager
+from kagan.core.constants import MCP_IDENTITY_ADMIN, MCP_IDENTITY_DEFAULT
 from kagan.core.debug_log import log
 from kagan.core.limits import SHUTDOWN_TIMEOUT, SUBPROCESS_LIMIT
 from kagan.core.mcp_naming import get_mcp_server_name
-from kagan.core.services.permission_policy import (
+from kagan.core.policy import (
+    CapabilityProfile,
     resolve_mcp_capability,
     resolve_permission_decision,
 )
+from kagan.core.safety import prompt_digest, redact_sensitive_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -474,7 +477,9 @@ class KaganAgent:
                 {"details": "Terminal operations not permitted in read-only mode"}
             )
         if self._command_mentions_sensitive(command, args):
-            log.warning(f"[ACP] terminal/create: BLOCKED sensitive command {command}")
+            log.warning(
+                f"[ACP] terminal/create: BLOCKED sensitive command {redact_sensitive_text(command)}"
+            )
             raise RequestError.invalid_params(
                 {"details": "Terminal command blocked: references sensitive files"}
             )
@@ -486,7 +491,8 @@ class KaganAgent:
             env=env,
             output_byte_limit=output_byte_limit,
         )
-        self.post_message(messages.AgentUpdate("terminal", f"$ {cmd_display}"))
+        safe_cmd_display = redact_sensitive_text(cmd_display, redact_pii=True)
+        self.post_message(messages.AgentUpdate("terminal", f"$ {safe_cmd_display}"))
         return CreateTerminalResponse(terminalId=terminal_id)
 
     async def terminal_output(
@@ -529,7 +535,8 @@ class KaganAgent:
 
         final_output = self._terminals.get_final_output(terminal_id)
         if final_output.strip():
-            self.post_message(messages.AgentUpdate("terminal_output", final_output))
+            safe_output = redact_sensitive_text(final_output, redact_pii=True)
+            self.post_message(messages.AgentUpdate("terminal_output", safe_output))
         status = "success" if return_code == 0 else "error"
         self.post_message(messages.AgentUpdate("terminal_exit", f"[{status}] Exit: {return_code}"))
 
@@ -684,8 +691,13 @@ class KaganAgent:
         self.tool_calls.clear()
 
     async def send_prompt(self, prompt: str) -> str | None:
-        log.info(f"Sending prompt to agent (len={len(prompt)})")
-        log.debug(f"Prompt content: {prompt[:500]}...")
+        safe_prompt = redact_sensitive_text(prompt)
+        was_redacted = safe_prompt != prompt
+        digest = prompt_digest(safe_prompt)
+        log.info(
+            "Sending prompt to agent "
+            f"(len={len(safe_prompt)}, digest={digest}, redacted={was_redacted})"
+        )
         self._buffers.clear_response()
         self.tool_calls.clear()
 
@@ -694,7 +706,7 @@ class KaganAgent:
 
         try:
             result: PromptResponse = await self._connection.prompt(
-                prompt=[text_block(prompt)],
+                prompt=[text_block(safe_prompt)],
                 session_id=self.session_id,
             )
         except RequestError as exc:
@@ -763,11 +775,25 @@ def _build_mcp_args(*, task_id: str, read_only: bool) -> list[str]:
     """Build CLI arguments for the session-scoped Kagan MCP server."""
     from kagan.core.ipc.discovery import discover_core_endpoint
 
+    normalized_task_id = task_id.strip()
     capability = resolve_mcp_capability(task_id=task_id, read_only=read_only)
-    args = ["mcp", "--capability", str(capability), "--identity", "kagan"]
+    identity = (
+        MCP_IDENTITY_ADMIN if capability is CapabilityProfile.MAINTAINER else MCP_IDENTITY_DEFAULT
+    )
+    args = ["mcp", "--capability", str(capability), "--identity", identity]
 
-    if task_id:
-        session_id = task_id if task_id.startswith("task:") else f"task:{task_id}"
+    session_id: str | None = None
+    if normalized_task_id:
+        session_id = (
+            normalized_task_id
+            if normalized_task_id.startswith("task:")
+            else f"task:{normalized_task_id}"
+        )
+    elif capability is CapabilityProfile.MAINTAINER:
+        # Admin identity is restricted to ext:* sessions by binding policy.
+        session_id = "ext:orchestrator"
+
+    if session_id:
         args.extend(["--session-id", session_id])
 
     endpoint = discover_core_endpoint()

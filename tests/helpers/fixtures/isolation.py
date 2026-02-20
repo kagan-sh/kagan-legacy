@@ -9,12 +9,6 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 REAL_PRODUCTION_DB_PATH = (Path(user_data_dir("kagan")) / "kagan.db").expanduser().resolve()
-_REAL_STATE_HOME = (
-    Path(os.environ["XDG_STATE_HOME"])
-    if os.environ.get("XDG_STATE_HOME")
-    else Path.home() / ".local" / "state"
-)
-REAL_PRODUCTION_LOCKS_DIR = (_REAL_STATE_HOME / "kagan" / "locks").expanduser().resolve()
 
 TEST_BASE_DIR = Path(tempfile.mkdtemp(prefix="kagan-tests-"))
 _TEST_BASE_DIR_RESOLVED = TEST_BASE_DIR.resolve()
@@ -59,3 +53,18 @@ def is_production_db_path(path: Path) -> bool:
 
 def is_within_test_base(path: Path) -> bool:
     return path.expanduser().resolve().is_relative_to(_TEST_BASE_DIR_RESOLVED)
+
+
+def is_safe_test_db_path(path: Path) -> bool:
+    """Return True only if *path* is clearly inside the test temp tree or a pytest tmp_path."""
+    resolved = path.expanduser().resolve()
+    if resolved.is_relative_to(_TEST_BASE_DIR_RESOLVED):
+        return True
+    # pytest tmp_path directories live under the system tempdir
+    try:
+        tmp_root = Path(tempfile.gettempdir()).resolve()
+        if resolved.is_relative_to(tmp_root):
+            return True
+    except (OSError, ValueError):
+        pass
+    return False

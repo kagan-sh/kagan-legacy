@@ -6,23 +6,18 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from kagan.core.adapters.process import spawn_exec
+from kagan.core.adapters.process import run_exec_capture, spawn_exec
 from kagan.core.config import get_os_value
-from kagan.core.mcp_naming import get_mcp_server_name
-from kagan.core.models.enums import (
+from kagan.core.domain.enums import (
     PairTerminalBackend,
     SessionStatus,
     SessionType,
+    coerce_pair_backend,
     resolve_pair_backend,
 )
-from kagan.core.services.session_bundle import (
-    build_external_launcher_command,
-    bundle_dir,
-    bundle_json_path,
-    write_startup_bundle,
-)
+from kagan.core.mcp_naming import get_mcp_server_name
 from kagan.core.tmux import TmuxError, run_tmux
 from kagan.core.utils import BackgroundTasks
 
@@ -30,14 +25,23 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kagan.core.config import AgentConfig, KaganConfig
-    from kagan.core.services.tasks import TaskService
+    from kagan.core.services.tasks import TaskServiceImpl
     from kagan.core.services.types import TaskLike
-    from kagan.core.services.workspaces import WorkspaceService
+    from kagan.core.services.workspaces import WorkspaceServiceImpl
 
 log = logging.getLogger(__name__)
 
 _EXTERNAL_PAIR_BACKENDS: frozenset[str] = frozenset(
-    {PairTerminalBackend.VSCODE.value, PairTerminalBackend.CURSOR.value}
+    {
+        PairTerminalBackend.VSCODE.value,
+        PairTerminalBackend.CURSOR.value,
+        PairTerminalBackend.WINDSURF.value,
+        PairTerminalBackend.KIRO.value,
+        PairTerminalBackend.ANTIGRAVITY.value,
+    }
+)
+_BUNDLE_PAIR_BACKENDS: frozenset[str] = _EXTERNAL_PAIR_BACKENDS | frozenset(
+    {PairTerminalBackend.NVIM.value}
 )
 _AGENT_MODEL_CONFIG_KEY: dict[str, str] = {
     "claude": "default_model_claude",
@@ -47,6 +51,93 @@ _AGENT_MODEL_CONFIG_KEY: dict[str, str] = {
     "kimi": "default_model_kimi",
     "copilot": "default_model_copilot",
 }
+SESSION_BUNDLE_DIR = ".kagan"
+SESSION_BUNDLE_JSON = "session.json"
+SESSION_BUNDLE_PROMPT = "start_prompt.md"
+_EXTERNAL_LAUNCHER_BINARIES: dict[PairTerminalBackend, str] = {
+    PairTerminalBackend.VSCODE: "code",
+    PairTerminalBackend.CURSOR: "cursor",
+    PairTerminalBackend.WINDSURF: "windsurf",
+    PairTerminalBackend.KIRO: "kiro",
+    PairTerminalBackend.ANTIGRAVITY: "agy",
+}
+_VSCODE_COPILOT_CHAT_EXTENSION = "github.copilot-chat"
+_VSCODE_CHAT_SEED_PROMPT = (
+    "Open .kagan/start_prompt.md, follow it exactly, start the Kagan PAIR implementation session, "
+    "then acknowledge readiness and propose the first concrete step."
+)
+
+
+def bundle_dir(worktree_path: Path) -> Path:
+    return worktree_path / SESSION_BUNDLE_DIR
+
+
+def bundle_prompt_path(worktree_path: Path) -> Path:
+    return bundle_dir(worktree_path) / SESSION_BUNDLE_PROMPT
+
+
+def bundle_json_path(worktree_path: Path) -> Path:
+    return bundle_dir(worktree_path) / SESSION_BUNDLE_JSON
+
+
+async def write_startup_bundle(
+    *,
+    task_id: str,
+    worktree_path: Path,
+    session_name: str,
+    backend: str,
+    startup_prompt: str,
+) -> None:
+    startup_bundle_dir = bundle_dir(worktree_path)
+    await asyncio.to_thread(startup_bundle_dir.mkdir, parents=True, exist_ok=True)
+
+    prompt_file = bundle_prompt_path(worktree_path)
+    await asyncio.to_thread(prompt_file.write_text, startup_prompt, "utf-8")
+
+    session_file = bundle_json_path(worktree_path)
+    payload = {
+        "task_id": task_id,
+        "session_name": session_name,
+        "backend": backend,
+        "worktree": str(worktree_path),
+        "prompt_file": str(prompt_file),
+    }
+    await asyncio.to_thread(session_file.write_text, json.dumps(payload, indent=2), "utf-8")
+
+
+def build_external_launcher_command(backend: str, worktree_path: Path) -> list[str]:
+    prompt_file = bundle_prompt_path(worktree_path)
+    normalized_backend = coerce_pair_backend(backend)
+    if normalized_backend is None:
+        msg = f"Unsupported external PAIR launcher: {backend}"
+        raise RuntimeError(msg)
+
+    backend_kind = PairTerminalBackend(normalized_backend)
+    binary = _EXTERNAL_LAUNCHER_BINARIES.get(backend_kind)
+    if binary is not None:
+        return [binary, "--new-window", str(worktree_path), str(prompt_file)]
+
+    msg = f"Unsupported external PAIR launcher: {backend}"
+    raise RuntimeError(msg)
+
+
+def build_vscode_chat_launcher_command(worktree_path: Path) -> list[str]:
+    prompt_file = bundle_prompt_path(worktree_path)
+    return [
+        "code",
+        "chat",
+        "--mode",
+        "agent",
+        "--add-file",
+        str(prompt_file),
+        "--new-window",
+        _VSCODE_CHAT_SEED_PROMPT,
+    ]
+
+
+def has_extension_installed(extension_listing: str, extension_id: str) -> bool:
+    installed = {line.strip().lower() for line in extension_listing.splitlines() if line.strip()}
+    return extension_id.strip().lower() in installed
 
 
 def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> list[str]:
@@ -78,36 +169,14 @@ def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> li
     return args
 
 
-class SessionService(Protocol):
-    """Protocol boundary for PAIR session lifecycle operations."""
-
-    async def create_session(self, task: TaskLike, worktree_path: Path) -> str: ...
-
-    async def create_resolution_session(self, task: TaskLike, workdir: Path) -> str: ...
-
-    async def attach_session(self, task_id: str) -> bool: ...
-
-    async def attach_resolution_session(self, task_id: str) -> bool: ...
-
-    async def session_exists(self, task_id: str) -> bool: ...
-
-    async def resolution_session_exists(self, task_id: str) -> bool: ...
-
-    async def kill_session(self, task_id: str) -> None: ...
-
-    async def kill_resolution_session(self, task_id: str) -> None: ...
-
-    async def shutdown(self) -> None: ...
-
-
 class SessionServiceImpl:
     """Manages session launchers for PAIR tasks."""
 
     def __init__(
         self,
         project_root: Path,
-        task_service: TaskService,
-        workspace_service: WorkspaceService,
+        task_service: TaskServiceImpl,
+        workspace_service: WorkspaceServiceImpl,
         config: KaganConfig,
     ) -> None:
         self._root = project_root
@@ -116,6 +185,7 @@ class SessionServiceImpl:
         self._config = config
         self._launched_external: set[str] = set()
         self._external_proc: asyncio.subprocess.Process | None = None
+        self._vscode_chat_autostart_available: bool | None = None
         self._background_tasks = BackgroundTasks()
 
     def _resolve_terminal_backend(self, task: TaskLike | None) -> str:
@@ -139,7 +209,7 @@ class SessionServiceImpl:
         backend: str,
         worktree_path: Path,
     ) -> bool:
-        cmd = build_external_launcher_command(backend, worktree_path)
+        cmd = await self._build_external_launcher_command(backend, worktree_path)
         try:
             proc = await spawn_exec(
                 *cmd,
@@ -155,6 +225,37 @@ class SessionServiceImpl:
         # doesn't reap the process and trigger ResourceWarning.
         self._external_proc = proc
         return True
+
+    async def _build_external_launcher_command(
+        self, backend: str, worktree_path: Path
+    ) -> list[str]:
+        if backend == PairTerminalBackend.VSCODE.value:
+            if await self._is_vscode_chat_autostart_available():
+                return build_vscode_chat_launcher_command(worktree_path)
+        return build_external_launcher_command(backend, worktree_path)
+
+    async def _is_vscode_chat_autostart_available(self) -> bool:
+        cached = self._vscode_chat_autostart_available
+        if cached is not None:
+            return cached
+        detected = await self._detect_vscode_chat_autostart()
+        self._vscode_chat_autostart_available = detected
+        return detected
+
+    async def _detect_vscode_chat_autostart(self) -> bool:
+        try:
+            help_result = await run_exec_capture("code", "chat", "--help", timeout=5.0)
+            if help_result.returncode != 0:
+                return False
+            extensions_result = await run_exec_capture("code", "--list-extensions", timeout=5.0)
+            if extensions_result.returncode != 0:
+                return False
+        except (OSError, TimeoutError):
+            return False
+        return has_extension_installed(
+            extensions_result.stdout_text(),
+            _VSCODE_COPILOT_CHAT_EXTENSION,
+        )
 
     def _model_for_agent(self, agent_config: AgentConfig) -> str | None:
         key = _AGENT_MODEL_CONFIG_KEY.get(agent_config.short_name.strip().lower())
@@ -212,6 +313,10 @@ class SessionServiceImpl:
             )
             if launch_cmd:
                 await run_tmux("send-keys", "-t", session_name, launch_cmd, "Enter")
+        elif backend == PairTerminalBackend.NVIM.value:
+            # Neovim attaches from the interactive TUI process on demand.
+            # Session creation only prepares context and startup bundle.
+            pass
         else:
             if not await self._launch_external_launcher(backend, worktree_path):
                 raise RuntimeError(f"Failed to launch external PAIR session for task {task.id}")
@@ -357,6 +462,40 @@ class SessionServiceImpl:
         log.debug("Detached from session: %s", session_name)
         return True
 
+    async def _attach_nvim_session(self, worktree_path: Path) -> bool:
+        """Attach to a Neovim session in the task worktree."""
+        prompt_file = bundle_prompt_path(worktree_path)
+        target = str(prompt_file) if prompt_file.exists() else "."
+        chat_bootstrap = (
+            "if filereadable('.kagan/start_prompt.md') | "
+            "let g:kagan_start_prompt = join(readfile('.kagan/start_prompt.md'), \"\\n\") | "
+            "if has('clipboard') | let @+ = g:kagan_start_prompt | endif | "
+            "endif | "
+            "if exists(':CodeCompanionChat') | CodeCompanionChat | "
+            "elseif exists(':AvanteChat') | AvanteChat | "
+            "elseif exists(':CopilotChat') | "
+            "lua local p = vim.g.kagan_start_prompt or ''; local ok, chat = pcall(require, "
+            "'CopilotChat'); if ok and chat and chat.ask then chat.open(); chat.ask(p, {}) else "
+            "vim.cmd('CopilotChat') end | "
+            "elseif exists(':ClaudeCode') | ClaudeCode | "
+            "silent! execute 'ClaudeCodeAdd ' . fnameescape('.kagan/start_prompt.md') | endif"
+        )
+        log.debug("Attaching to Neovim in worktree: %s", worktree_path)
+        try:
+            proc = await spawn_exec("nvim", target, "-c", chat_bootstrap, cwd=str(worktree_path))
+        except OSError:
+            log.warning("Failed to launch Neovim in %s", worktree_path)
+            return False
+        returncode = await proc.wait()
+        if returncode != 0:
+            log.warning(
+                "Failed to attach to Neovim in %s (exit code: %d)",
+                worktree_path,
+                returncode,
+            )
+            return False
+        return True
+
     async def attach_session(self, task_id: str) -> bool:
         """Attach to session (blocks until detach, then returns to TUI)."""
         session_name = f"kagan-{task_id}"
@@ -364,9 +503,11 @@ class SessionServiceImpl:
         try:
             if backend == PairTerminalBackend.TMUX.value:
                 return await self._attach_tmux_session(session_name)
-            worktree_path = await self._workspaces.get_path(task_id)
+            worktree_path = await self._workspaces.get_task_workspace_path(task_id)
             if worktree_path is None:
                 return False
+            if backend == PairTerminalBackend.NVIM.value:
+                return await self._attach_nvim_session(worktree_path)
             if task_id in self._launched_external:
                 self._launched_external.discard(task_id)
                 return True
@@ -383,8 +524,8 @@ class SessionServiceImpl:
         """Check if session exists."""
         session_name = f"kagan-{task_id}"
         backend = await self._resolve_terminal_backend_for_task_id(task_id)
-        if backend in _EXTERNAL_PAIR_BACKENDS:
-            worktree_path = await self._workspaces.get_path(task_id)
+        if backend in _BUNDLE_PAIR_BACKENDS:
+            worktree_path = await self._workspaces.get_task_workspace_path(task_id)
             if worktree_path is None:
                 return False
             return bundle_json_path(worktree_path).exists()
@@ -436,7 +577,7 @@ class SessionServiceImpl:
 
         Note: We no longer create CLAUDE.md, AGENTS.md, or CONTEXT.md because:
         - CLAUDE.md/AGENTS.md: Already present in worktree from git clone
-        - CONTEXT.md: Redundant with MCP get_context tool
+        - CONTEXT.md: Redundant with MCP task_get(mode="context") tool
         """
         ignore_entries: list[str] = [".kagan/"]
 
@@ -493,6 +634,48 @@ class SessionServiceImpl:
                 cursor_entry,
             )
             files_written.append(".cursor/mcp.json")
+
+        if backend == PairTerminalBackend.WINDSURF.value:
+            windsurf_entry = {
+                "type": "stdio",
+                "command": "kagan",
+                "args": mcp_args,
+            }
+            await self._merge_json_config(
+                worktree_path / ".windsurf" / "mcp.json",
+                "mcpServers",
+                server_name,
+                windsurf_entry,
+            )
+            files_written.append(".windsurf/mcp.json")
+
+        if backend == PairTerminalBackend.KIRO.value:
+            kiro_entry = {
+                "type": "stdio",
+                "command": "kagan",
+                "args": mcp_args,
+            }
+            await self._merge_json_config(
+                worktree_path / ".kiro" / "mcp.json",
+                "mcpServers",
+                server_name,
+                kiro_entry,
+            )
+            files_written.append(".kiro/mcp.json")
+
+        if backend == PairTerminalBackend.ANTIGRAVITY.value:
+            agy_entry = {
+                "type": "stdio",
+                "command": "kagan",
+                "args": mcp_args,
+            }
+            await self._merge_json_config(
+                worktree_path / ".agy" / "mcp.json",
+                "mcpServers",
+                server_name,
+                agy_entry,
+            )
+            files_written.append(".agy/mcp.json")
 
         return files_written
 
@@ -674,7 +857,7 @@ class SessionServiceImpl:
             pass  # Best-effort background commit
 
     def _build_startup_prompt(self, task: TaskLike) -> str:
-        """Build startup prompt for pair mode using canonical v2 tool names."""
+        """Build startup prompt for pair mode using consolidated tool names."""
         desc = task.description or "No description provided."
         server_name = get_mcp_server_name()
         tool_format_note = (
@@ -695,7 +878,7 @@ Act as a Senior Developer collaborating with me on this implementation.
 - You are in a git worktree, NOT the main repository
 - Only modify files within this worktree
 - **COMMIT all changes before requesting review** (use semantic commits: feat:, fix:, docs:, etc.)
-- When complete: commit your work, then call `request_review`
+- When complete: commit your work, then call `task_patch(transition='request_review')`
 
 ## MCP Tools Available
 {tool_format_note}
@@ -703,32 +886,34 @@ Act as a Senior Developer collaborating with me on this implementation.
 This session uses capability profile `pair_worker` scoped to task `{task.id}`.
 
 **Context Tools:**
-- `get_context` - Full task details (acceptance criteria, scratchpad, linked tasks)
-- `get_task` - Look up any task's details by ID (useful for @mentioned tasks)
-- `update_scratchpad` - Record progress, decisions, and blockers
+- `task_get(mode="context")` - Full task details (acceptance criteria, scratchpad, linked tasks)
+- `task_get` - Look up any task's details by ID (useful for @mentioned tasks)
+- `task_patch(append_note=...)` - Record progress, decisions, and blockers
 
 **Coordination Tools (USE THESE):**
-- `tasks_list` - Discover concurrent work to avoid merge conflicts
-- `get_task(task_id, include_logs=true)` - Execution logs from prior work
+- `task_list` - Discover concurrent work to avoid merge conflicts
+- `task_get(task_id, include_logs=true)` - Execution logs from prior work
+- `task_logs(task_id, offset, limit)` - Page older run logs when task_get is truncated
 
 **Read-Only Browsing:**
-- `tasks_list` - List tasks with optional filter/project/exclusion controls
-- `projects_list` - List recent projects
-- `repos_list` - List repos for a project
-- `audit_tail` - Recent audit events
+- `task_list` - List tasks with optional filter/project/exclusion controls
+- `project_list` - List recent projects
+- `repo_list` - List repos for a project
+- `audit_list` - Recent audit events
 
 **Completion:**
-- `request_review` - Submit work for review (commit first!)
+- `task_patch(transition="request_review")` - Submit work for review (commit first!)
 
 ## Coordination Workflow
 
 Before implementing, check for parallel work and historical context:
 
 1. **Check parallel work**: Call
-   `tasks_list(filter="IN_PROGRESS", exclude_task_ids=["{task.id}"], include_scratchpad=true)`.
+   `task_list(filter="IN_PROGRESS", exclude_task_ids=["{task.id}"], include_scratchpad=true)`.
    Review concurrent tasks to identify overlapping file modifications or shared dependencies.
 
-2. **Learn from history**: Call `get_task(task_id, include_logs=true)` on related completed tasks.
+2. **Learn from history**: Call `task_get(task_id, include_logs=true)` on related completed tasks.
+   If logs are truncated or indicate more pages, call `task_logs(task_id, offset, limit)`.
    Avoid repeating failed approaches; reuse successful patterns.
 
 3. **Coordinate strategy**: If overlap exists, plan which files to modify first or wait for.
@@ -736,9 +921,9 @@ Before implementing, check for parallel work and historical context:
 ## Setup Verification
 
 Please confirm you have access to the Kagan MCP tools by:
-1. Calling `get_context` with task_id: `{task.id}`
+1. Calling `task_get` with `mode="context"` and task_id: `{task.id}`
 2. Calling
-   `tasks_list(filter="IN_PROGRESS", exclude_task_ids=["{task.id}"], include_scratchpad=true)`
+   `task_list(filter="IN_PROGRESS", exclude_task_ids=["{task.id}"], include_scratchpad=true)`
 
 After confirming MCP access, please:
 1. Summarize your understanding of this task (including acceptance criteria from MCP)

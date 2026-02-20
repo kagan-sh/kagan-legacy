@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 import anyio
 
@@ -82,32 +82,6 @@ class JobRecord:
             "code": self.code,
             "result": self.result,
         }
-
-
-class JobService(Protocol):
-    async def submit(
-        self,
-        *,
-        task_id: str,
-        action: str,
-        params: dict[str, Any] | None = None,
-    ) -> JobRecord: ...
-
-    async def get(self, job_id: str) -> JobRecord | None: ...
-
-    async def events(self, job_id: str, *, task_id: str) -> list[JobEvent] | None: ...
-
-    async def wait(
-        self,
-        job_id: str,
-        *,
-        task_id: str,
-        timeout_seconds: float | None = None,
-    ) -> JobRecord | None: ...
-
-    async def cancel(self, job_id: str, *, task_id: str) -> JobRecord | None: ...
-
-    async def shutdown(self) -> None: ...
 
 
 class JobServiceImpl:
@@ -443,7 +417,6 @@ class JobServiceImpl:
 __all__ = [
     "JobEvent",
     "JobRecord",
-    "JobService",
     "JobServiceImpl",
     "JobStatus",
 ]

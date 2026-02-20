@@ -16,7 +16,7 @@ from kagan.tui.ui.widgets.keybinding_hint import KeybindingHint
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.adapters.db.schema import Project, Repo
+    from kagan.tui.ui.types import ProjectView, RepoView
 
 
 class RepoListItem(ListItem):
@@ -24,7 +24,7 @@ class RepoListItem(ListItem):
 
     def __init__(
         self,
-        repo: Repo,
+        repo: RepoView,
         is_current: bool = False,
         task_count: int = 0,
     ) -> None:
@@ -59,8 +59,8 @@ class RepoPickerScreen(KaganModalScreen[str | None]):
 
     def __init__(
         self,
-        project: Project,
-        repositories: list[Repo],
+        project: ProjectView,
+        repositories: list[RepoView],
         current_repo_id: str | None = None,
         **kwargs,
     ) -> None:
@@ -117,7 +117,7 @@ class RepoPickerScreen(KaganModalScreen[str | None]):
 
     async def _render_repo_items(
         self,
-        repositories: list[Repo],
+        repositories: list[RepoView],
         *,
         highlight_repo_id: str | None,
         task_count: int,

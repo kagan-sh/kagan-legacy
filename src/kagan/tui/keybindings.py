@@ -8,12 +8,12 @@ APP_BINDINGS: list[BindingType] = [
     Binding(".", "command_palette", "Actions", key_display="."),
     Binding("question_mark", "show_help", "Help", key_display="?"),
     Binding("f1", "show_help", "", show=False, key_display="F1", priority=True),
-    Binding("q", "quit", "Quit", show=False),
+    Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q", show=False),
     Binding(
-        "ctrl+o",
+        "ctrl+shift+o",
         "open_project_selector",
         "Projects",
-        key_display="Ctrl+O",
+        key_display="Ctrl+Shift+O",
         show=False,
         priority=True,
     ),
@@ -25,7 +25,6 @@ APP_BINDINGS: list[BindingType] = [
         show=False,
         priority=True,
     ),
-    Binding("ctrl+p", "command_palette", "", show=False),
     Binding("f12", "toggle_debug_log", "Debug", show=False),
 ]
 
@@ -41,6 +40,20 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("y", "duplicate_task", "Duplicate", show=False),
     Binding("c", "copy_task_id", "Copy ID", show=False),
     Binding("space", "toggle_peek", "Peek", show=False),
+    Binding(
+        "ctrl+p",
+        "open_chat_fullscreen",
+        "Orchestrator Fullscreen",
+        key_display="Ctrl+P",
+        show=False,
+    ),
+    Binding(
+        "ctrl+o",
+        "toggle_chat_overlay",
+        "Orchestrator Overlay",
+        key_display="Ctrl+O",
+        show=False,
+    ),
     Binding("f", "expand_description", "Expand", show=False),
     Binding("f5", "expand_description", "Full Editor", key_display="F5", show=False),
     Binding("H", "move_backward", "Move Left", key_display="Shift+H", show=False),
@@ -51,11 +64,11 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("r", "open_review", "Review", show=False),
     Binding("m", "merge_direct", "Merge", show=False),
     Binding("R", "rebase", "Rebase", key_display="Shift+R", show=False),
-    Binding("p", "open_planner", "Plan Mode", show=False),
     Binding("b", "set_task_branch", "Set Task Branch", show=False),
-    Binding("B", "set_default_branch", "Set Default Branch", key_display="Shift+B", show=False),
     Binding("A", "switch_global_agent", "Switch Agent", key_display="Shift+A", show=False),
     Binding("comma", "open_settings", "Settings", key_display=",", show=False),
+    # Plugin-backed repo sync action from the UI catalog.
+    Binding("G", "repo_sync", "Repo Sync", key_display="Shift+G", show=False),
     Binding("h", "focus_left", "Left", show=False),
     Binding("j", "focus_down", "Down", show=False),
     Binding("k", "focus_up", "Up", show=False),
@@ -80,8 +93,9 @@ CONFIRM_BINDINGS: list[BindingType] = [
 
 DESCRIPTION_EDITOR_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel"),
-    Binding("f2", "save", "Save", key_display="F2"),
+    Binding("ctrl+s", "save", "Save", key_display="Ctrl+S"),
     Binding("alt+s", "save", "Save", show=False),
+    Binding("f2", "save", "Save", show=False),
 ]
 
 DIFF_BINDINGS: list[BindingType] = [
@@ -104,23 +118,37 @@ REJECTION_INPUT_BINDINGS: list[BindingType] = [
 REVIEW_BINDINGS: list[BindingType] = [
     Binding("1", "show_summary", "Summary", key_display="1"),
     Binding("2", "show_diff", "Diff Tab", key_display="2"),
-    Binding("3", "show_ai_review", "Review Tab", key_display="3"),
-    Binding("4", "show_agent_output", "Output Tab", key_display="4"),
+    Binding("3", "show_ai_review", "Review Session", key_display="3"),
+    Binding("4", "show_agent_output", "Agent Session", key_display="4"),
+    Binding("tab", "cycle_session", "Next Session", show=False),
+    Binding("ctrl+p", "cycle_output_layout", "Task Output View", show=False),
+    Binding("5", "show_pr_comments", "PR Comments", key_display="5"),
     Binding("enter", "approve", "Approve", key_display="Enter"),
     Binding("R", "rebase", "Rebase", key_display="Shift+R"),
     Binding("r", "reject", "Reject"),
     Binding("a", "start_agent_output", "Start Agent"),
     Binding("s", "stop_agent_output", "Stop Agent"),
+    Binding("t", "attach_session", "Attach", show=False),
     Binding("d", "view_diff", "Diff"),
     Binding("g", "generate_review", "Run Review"),
     Binding("y", "copy", "Copy"),
     Binding("escape", "close_or_cancel", "Close/Cancel"),
 ]
 
+TASK_OUTPUT_BINDINGS: list[BindingType] = [
+    Binding("tab", "cycle_chat_session", "Next Session", show=False),
+    Binding("ctrl+p", "open_chat_fullscreen", "Orchestrator Fullscreen", show=False),
+    Binding("ctrl+o", "toggle_chat_overlay", "Orchestrator Overlay", show=False),
+    Binding("a", "start_agent_output", "Start Agent"),
+    Binding("s", "stop_agent_output", "Stop Agent"),
+    Binding("escape", "close", "Close"),
+]
+
 SETTINGS_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel"),
-    Binding("f2", "save", "Save", key_display="F2"),
+    Binding("ctrl+s", "save", "Save", key_display="Ctrl+S"),
     Binding("alt+s", "save", "Save", show=False),
+    Binding("f2", "save", "Save", show=False),
 ]
 
 DEBUG_LOG_BINDINGS: list[BindingType] = [
@@ -135,8 +163,9 @@ TASK_DETAILS_BINDINGS: list[BindingType] = [
     Binding("d", "delete", "Delete"),
     Binding("f", "expand_description", "Expand"),
     Binding("f5", "full_editor", "Full Editor", key_display="F5"),
-    Binding("f2", "save", "Save", key_display="F2"),
+    Binding("ctrl+s", "save", "Save", key_display="Ctrl+S"),
     Binding("alt+s", "save", "Save", show=False),
+    Binding("f2", "save", "Save", show=False),
     Binding("y", "copy", "Copy", show=False),
 ]
 
@@ -156,15 +185,16 @@ APPROVAL_BINDINGS: list[BindingType] = [
 PLANNER_BINDINGS: list[BindingType] = [
     Binding("escape", "to_board", "Board"),
     Binding("ctrl+c", "cancel", "Stop", priority=True),
-    Binding("f2", "refine", "Enhance", key_display="F2", priority=True),
+    Binding("ctrl+e", "refine", "Enhance", key_display="Ctrl+E", priority=True),
+    Binding("f2", "refine", "Enhance", show=False),
     Binding("b", "set_task_branch", "Set Task Branch", show=False),
-    Binding("B", "set_default_branch", "Set Default Branch", key_display="Shift+B", show=False),
 ]
 
 TASK_EDITOR_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel"),
-    Binding("f2", "finish", "Finish Editing", key_display="F2"),
+    Binding("ctrl+s", "finish", "Finish Editing", key_display="Ctrl+S"),
     Binding("alt+s", "finish", "Finish Editing", show=False),
+    Binding("f2", "finish", "Finish Editing", show=False),
 ]
 
 WELCOME_BINDINGS: list[BindingType] = [
@@ -191,9 +221,11 @@ ONBOARDING_BINDINGS: list[BindingType] = [
 
 PERMISSION_PROMPT_BINDINGS: list[BindingType] = [
     Binding("enter", "allow_once", "Allow once", key_display="Enter"),
+    Binding("y", "allow_once", "Allow once", show=False),
     Binding("a", "allow_always", "Allow always", show=False),
     Binding("escape", "deny", "Deny"),
     Binding("n", "deny", "Deny", show=False),
+    Binding("d", "deny", "Deny", show=False),
 ]
 
 

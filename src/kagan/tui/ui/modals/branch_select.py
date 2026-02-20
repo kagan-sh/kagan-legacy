@@ -9,7 +9,7 @@ from textual import on
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Select, Static
+from textual.widgets import Input, Label, Select, Static
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -18,13 +18,14 @@ if TYPE_CHECKING:
 _CUSTOM_OPTION = "__custom__"
 
 
-_SELECT_BLANK: Any = Select.BLANK
+_SELECT_BLANK: Any = getattr(Select, "NULL", Select.BLANK)
 
 
 class BaseBranchModal(ModalScreen[str | None]):
     """Prompt the user to choose or enter a base branch."""
 
     BINDINGS = [
+        ("enter", "submit", "Set Branch"),
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -46,7 +47,7 @@ class BaseBranchModal(ModalScreen[str | None]):
         """Initialize modal copy and available branch choices."""
         super().__init__(**kwargs)
         self._branches = branches or []
-        self._current_value = current_value
+        self._current_value = current_value if isinstance(current_value, str) else ""
         self._title = title
         self._description = description
 
@@ -67,11 +68,18 @@ class BaseBranchModal(ModalScreen[str | None]):
 
             options.append(("+ Custom branch...", _CUSTOM_OPTION))
 
+            option_values = {v for _, v in options}
+            initial_value: str | Any = (
+                self._current_value
+                if self._current_value and self._current_value in option_values
+                else _SELECT_BLANK
+            )
             yield Select[str](
                 options,
-                value=self._current_value if self._current_value else _SELECT_BLANK,
+                value=initial_value,
                 id="branch-select",
                 prompt="Select a branch...",
+                allow_blank=True,
             )
 
             yield Input(
@@ -80,9 +88,8 @@ class BaseBranchModal(ModalScreen[str | None]):
                 classes="hidden",
             )
 
-            with Horizontal(id="branch-modal-buttons"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Set Branch", variant="primary", id="submit-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Static("Enter set branch  |  Esc cancel", classes="modal-action-hint")
 
     def on_mount(self) -> None:
         """Focus branch selector when the modal is mounted."""
@@ -103,19 +110,13 @@ class BaseBranchModal(ModalScreen[str | None]):
         """Submit the branch when Enter is pressed in custom input."""
         self._submit_branch()
 
-    @on(Button.Pressed, "#cancel-btn")
-    def on_cancel(self) -> None:
-        """Dismiss modal without selecting a branch."""
-        self.dismiss(None)
-
-    @on(Button.Pressed, "#submit-btn")
-    def on_submit(self) -> None:
-        """Submit currently selected or custom branch value."""
-        self._submit_branch()
-
     def action_cancel(self) -> None:
         """Handle escape binding by dismissing the modal."""
         self.dismiss(None)
+
+    def action_submit(self) -> None:
+        """Handle enter binding by submitting the selected branch value."""
+        self._submit_branch()
 
     def _submit_branch(self) -> None:
         select_widget = self.query_one("#branch-select", Select)

@@ -1,134 +1,181 @@
-/* Space Grotesk for headings — matches landing page --font-display */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+/* Fonts loaded via <link> in docs/overrides/main.html for non-blocking render */
 
 /* ===== KAGAN MKDOCS THEME ===== */
-/* Aligned with landing page (kagan-landing) Khagan Night Palette */
+/* Black + white + gold — aligned with landing page */
 :root,
 [data-md-color-scheme="slate"] {
-  /* Backgrounds — matches landing --bg, --surface, --panel, --border */
-  --md-default-bg-color: #0f1419;
-  --md-default-bg-color--light: #171c24;
-  --md-default-bg-color--lighter: #1e2530;
-  --md-default-bg-color--lightest: #2a3342;
+  /* Backgrounds — pure black */
+  --md-default-bg-color: #000000;
+  --md-default-bg-color--light: #0C0C0A;
+  --md-default-bg-color--lighter: #141210;
+  --md-default-bg-color--lightest: #1C1A16;
 
-  /* Text — matches landing --fg, --fg-muted */
-  --md-default-fg-color: #c5cdd9;
-  --md-default-fg-color--light: #8b949e;
-  --md-default-fg-color--lighter: #8b949e80;
-  --md-default-fg-color--lightest: #2a3342;
+  /* Text — white */
+  --md-default-fg-color: #FFFFFF;
+  --md-default-fg-color--light: #8A8278;
+  --md-default-fg-color--lighter: #8A827880;
+  --md-default-fg-color--lightest: #1C1A16;
 
-  /* Primary — Jade Green (matches landing --primary) */
-  --md-primary-fg-color: #3fb58e;
-  --md-primary-fg-color--light: #4ec9b0;
-  --md-primary-fg-color--dark: #2d8a6a;
-  --md-primary-bg-color: #0f1419;
-  --md-primary-bg-color--light: #171c24;
+  /* Primary — override to black so Material uses dark header/tabs backgrounds.
+     Gold accents applied explicitly on individual elements below. */
+  --md-primary-fg-color: #0C0C0A;
+  --md-primary-fg-color--light: #141210;
+  --md-primary-fg-color--dark: #000000;
+  --md-primary-bg-color: #FFFFFF;
+  --md-primary-bg-color--light: #8A8278;
 
-  /* Accent — Jade Green for nav active states */
-  --md-accent-fg-color: #3fb58e;
-  --md-accent-fg-color--transparent: #3fb58e20;
-  --md-accent-bg-color: #0f1419;
+  /* Accent — Gold for hover/active states */
+  --md-accent-fg-color: #d4a84b;
+  --md-accent-fg-color--transparent: #d4a84b20;
+  --md-accent-bg-color: #000000;
 
-  /* Code — matches landing --bg-darker for code bg */
-  --md-code-fg-color: #c5cdd9;
-  --md-code-bg-color: #0a0d11;
-  --md-code-hl-color: #3fb58e30;
-  --md-code-hl-number-color: #d4a84b;
+  /* Code */
+  --md-code-fg-color: #FFFFFF;
+  --md-code-bg-color: #0C0C0A;
+  --md-code-hl-color: #d4a84b30;
+  --md-code-hl-number-color: #C27C4E;
   --md-code-hl-keyword-color: #d4a84b;
   --md-code-hl-function-color: #3fb58e;
   --md-code-hl-string-color: #3fb58e;
   --md-code-hl-name-color: #6fa3d4;
-  --md-code-hl-comment-color: #8b949e;
+  --md-code-hl-comment-color: #8A8278;
 
-  /* Links */
+  /* Links — green for usability */
   --md-typeset-a-color: #3fb58e;
 
   /* Admonitions */
-  --md-admonition-fg-color: #c5cdd9;
-  --md-admonition-bg-color: #171c24;
+  --md-admonition-fg-color: #FFFFFF;
+  --md-admonition-bg-color: #0C0C0A;
 
-  /* Override Material's info admonition color (cyan -> jade green) */
+  /* Override Material's info admonition icon */
   --md-admonition-icon--info: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h-2V7h2m0 10h-2v-6h2m-1-9A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2Z"/></svg>');
 }
 
-/* ===== HEADER ===== */
-.md-header {
-  background-color: rgba(15, 20, 25, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid #2a3342;
+/* ===== TYPOGRAPHY ===== */
+/* Body text — Geist Mono, matching landing page */
+body,
+.md-typeset {
+  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
 }
 
-/* Logo styling - match landing */
-.md-header__button.md-logo {
-  color: #d4a84b; /* Gold symbol */
-}
-
-.md-header__title {
-  color: #3fb58e;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  font-size: 13px;
-}
-
-/* ===== NAVIGATION ===== */
-.md-nav__link {
-  color: #8b949e !important;
-  transition: color 0.15s ease;
-}
-
-.md-nav__link:hover {
-  color: #3fb58e !important;
-}
-
-.md-nav__link--active,
-.md-nav__item--active > .md-nav__link,
-.md-nav__link[href="."] {
-  color: #3fb58e !important;
-  font-weight: 500;
-}
-
-/* Left sidebar - primary nav */
-.md-nav--primary .md-nav__link--active,
-.md-nav--primary .md-nav__item--active > .md-nav__link {
-  color: #3fb58e !important;
-}
-
-/* TOC (right sidebar) */
-.md-nav--secondary .md-nav__link--active {
-  color: #3fb58e !important;
-}
-
-/* ===== CONTENT ===== */
-/* Headings — Space Grotesk matches landing page display font */
+/* Headings — Bodoni Moda, matching landing page */
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3,
 .md-typeset h4,
 .md-typeset h5,
 .md-typeset h6 {
-  font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-family: 'Bodoni Moda', Georgia, 'Times New Roman', serif !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
+/* Code — Geist Mono */
+.md-typeset code,
+.md-typeset pre,
+.md-typeset kbd {
+  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
+}
+
+/* ===== HEADER ===== */
+.md-header {
+  background-color: rgba(0, 0, 0, 0.92) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #1C1A16;
+  color: #FFFFFF;
+}
+
+.md-header__button.md-logo {
+  color: #d4a84b;
+}
+
+.md-header__title {
+  color: #d4a84b;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+/* Header icons and buttons — white by default, gold on hover */
+.md-header .md-header__button,
+.md-header .md-icon {
+  color: #8A8278;
+}
+
+.md-header .md-header__button:hover,
+.md-header .md-icon:hover {
+  color: #d4a84b;
+}
+
+/* ===== TABS BAR ===== */
+.md-tabs {
+  background-color: #0C0C0A !important;
+  border-bottom: 1px solid #1C1A16;
+}
+
+.md-tabs__link {
+  color: #8A8278 !important;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  opacity: 1 !important;
+  transition: color 0.15s ease;
+}
+
+.md-tabs__link:hover {
+  color: #FFFFFF !important;
+}
+
+.md-tabs__link--active,
+.md-tabs__item--active .md-tabs__link {
+  color: #d4a84b !important;
+  font-weight: 500;
+}
+
+/* ===== NAVIGATION ===== */
+.md-nav__link {
+  color: #8A8278 !important;
+  transition: color 0.15s ease;
+}
+
+.md-nav__link:hover {
+  color: #d4a84b !important;
+}
+
+.md-nav__link--active,
+.md-nav__item--active > .md-nav__link,
+.md-nav__link[href="."] {
+  color: #d4a84b !important;
+  font-weight: 500;
+}
+
+.md-nav--primary .md-nav__link--active,
+.md-nav--primary .md-nav__item--active > .md-nav__link {
+  color: #d4a84b !important;
+}
+
+.md-nav--secondary .md-nav__link--active {
+  color: #d4a84b !important;
+}
+
+/* ===== CONTENT ===== */
 .md-typeset h1 {
-  color: #c5cdd9 !important;
+  color: #FFFFFF !important;
+  font-style: italic;
 }
 
 .md-typeset h2 {
   color: #d4a84b !important;
-  border-bottom: 1px solid #2a3342;
+  border-bottom: 1px solid #1C1A16;
   padding-bottom: 0.4em;
 }
 
 .md-typeset h3,
 .md-typeset h4 {
-  color: #c5cdd9 !important;
+  color: #FFFFFF !important;
 }
 
-/* Links */
 .md-typeset a {
   color: #3fb58e;
 }
@@ -139,9 +186,9 @@
 
 /* ===== CODE BLOCKS ===== */
 .md-typeset code {
-  background-color: #171c24;
-  border: 1px solid #2a3342;
-  color: #3fb58e;
+  background-color: #0C0C0A;
+  border: 1px solid #1C1A16;
+  color: #d4a84b;
   border-radius: 0;
 }
 
@@ -150,27 +197,27 @@
 }
 
 .md-typeset pre > code {
-  border: 1px solid #2a3342;
+  border: 1px solid #1C1A16;
+  color: #FFFFFF;
 }
 
-/* Copy button */
 .md-clipboard {
-  color: #8b949e;
+  color: #8A8278;
 }
 
 .md-clipboard:hover {
-  color: #3fb58e;
+  color: #d4a84b;
 }
 
 /* ===== TABLES ===== */
 .md-typeset table:not([class]) {
-  border: 1px solid #2a3342;
+  border: 1px solid #1C1A16;
   border-radius: 0;
 }
 
 .md-typeset table:not([class]) th {
-  background-color: #171c24;
-  color: #8b949e;
+  background-color: #0C0C0A;
+  color: #8A8278;
   font-weight: 500;
   text-transform: uppercase;
   font-size: 0.75em;
@@ -178,55 +225,53 @@
 }
 
 .md-typeset table:not([class]) td {
-  border-top: 1px solid #2a3342;
+  border-top: 1px solid #1C1A16;
 }
 
 .md-typeset table:not([class]) tr:hover td {
-  background-color: #1e253020;
+  background-color: #14121020;
 }
 
-/* Keyboard keys in tables */
 .md-typeset kbd {
-  background-color: #171c24;
-  border: 1px solid #2a3342;
+  background-color: #0C0C0A;
+  border: 1px solid #1C1A16;
   border-radius: 0;
   color: #d4a84b;
   box-shadow: none;
 }
 
 /* ===== ADMONITIONS ===== */
-/* Base admonition styling */
 .md-typeset .admonition,
 .md-typeset details {
   border-left-width: 4px;
   border-left-style: solid;
+  background-color: #0C0C0A;
 }
 
-/* Info admonition - jade green instead of cyan */
+/* Info — gold */
 .md-typeset .admonition.info,
 .md-typeset details.info {
-  border-color: #3fb58e !important;
+  border-color: #d4a84b !important;
 }
 
 .md-typeset .info > .admonition-title,
 .md-typeset .info > summary {
-  background-color: rgba(63, 181, 142, 0.1) !important;
+  background-color: rgba(212, 168, 75, 0.1) !important;
 }
 
 .md-typeset .info > .admonition-title::before,
 .md-typeset .info > summary::before {
-  background-color: #3fb58e !important;
+  background-color: #d4a84b !important;
 }
 
-/* Also target the SVG icon directly */
 .md-typeset .admonition.info .admonition-title .twemoji svg,
 .md-typeset .admonition.info > .admonition-title::before {
-  color: #3fb58e !important;
-  fill: #3fb58e !important;
-  background-color: #3fb58e !important;
+  color: #d4a84b !important;
+  fill: #d4a84b !important;
+  background-color: #d4a84b !important;
 }
 
-/* Note admonition - Tengri Blue */
+/* Note — blue */
 .md-typeset .admonition.note,
 .md-typeset details.note {
   border-color: #6fa3d4 !important;
@@ -242,7 +287,7 @@
   background-color: #6fa3d4 !important;
 }
 
-/* Warning admonition - Pale Amber (matches landing --warning: #e6c07b) */
+/* Warning — amber */
 .md-typeset .admonition.warning,
 .md-typeset details.warning {
   border-color: #e6c07b !important;
@@ -258,23 +303,23 @@
   background-color: #e6c07b !important;
 }
 
-/* Tip admonition - Turquoise */
+/* Tip — green */
 .md-typeset .admonition.tip,
 .md-typeset details.tip {
-  border-color: #4ec9b0 !important;
+  border-color: #3fb58e !important;
 }
 
 .md-typeset .tip > .admonition-title,
 .md-typeset .tip > summary {
-  background-color: rgba(78, 201, 176, 0.1) !important;
+  background-color: rgba(63, 181, 142, 0.1) !important;
 }
 
 .md-typeset .tip > .admonition-title::before,
 .md-typeset .tip > summary::before {
-  background-color: #4ec9b0 !important;
+  background-color: #3fb58e !important;
 }
 
-/* Danger/Error - Red */
+/* Danger/Error — red */
 .md-typeset .admonition.danger,
 .md-typeset details.danger,
 .md-typeset .admonition.error,
@@ -297,43 +342,46 @@
 }
 
 /* ===== SEARCH ===== */
+.md-search__form {
+  background-color: #0C0C0A !important;
+  border: 1px solid #1C1A16;
+  border-radius: 0;
+}
+
 .md-search__input {
-  background-color: #171c24 !important;
-  border: 1px solid #2a3342;
-  color: #c5cdd9 !important;
-  caret-color: #3fb58e;
+  background-color: transparent !important;
+  color: #FFFFFF !important;
+  caret-color: #d4a84b;
 }
 
 .md-search__input::placeholder {
-  color: #8b949e !important;
+  color: #8A8278 !important;
 }
 
 .md-search__input:hover {
-  border-color: #3a4555;
+  border-color: #2A2620;
 }
 
 .md-search__input:focus {
-  border-color: #3fb58e;
+  border-color: #d4a84b;
 }
 
-/* Search icon */
 .md-search__icon {
-  color: #8b949e !important;
+  color: #8A8278 !important;
 }
 
-/* Search results */
 .md-search__output {
-  background-color: #171c24 !important;
-  border: 1px solid #2a3342;
+  background-color: #0C0C0A !important;
+  border: 1px solid #1C1A16;
 }
 
 .md-search-result__meta {
-  background-color: #1e2530 !important;
-  color: #8b949e !important;
+  background-color: #141210 !important;
+  color: #8A8278 !important;
 }
 
 .md-search-result__item {
-  border-bottom: 1px solid #2a3342;
+  border-bottom: 1px solid #1C1A16;
 }
 
 .md-search-result__link {
@@ -341,26 +389,54 @@
 }
 
 .md-search-result__link:hover {
-  background-color: #1e2530 !important;
+  background-color: #141210 !important;
 }
 
 .md-search-result__title {
-  color: #c5cdd9 !important;
+  color: #FFFFFF !important;
 }
 
 .md-search-result__teaser {
-  color: #8b949e !important;
+  color: #8A8278 !important;
 }
 
 /* ===== FOOTER ===== */
 .md-footer {
-  background-color: #0a0d11;
-  border-top: 1px solid #2a3342;
+  background-color: #000000;
+  border-top: 1px solid #1C1A16;
+}
+
+.md-footer__inner {
+  background-color: #000000 !important;
+}
+
+.md-footer-meta {
+  background-color: #000000 !important;
+}
+
+/* Footer nav links */
+.md-footer__link {
+  color: #8A8278;
+}
+
+.md-footer__link:hover {
+  color: #d4a84b;
+}
+
+.md-footer__title {
+  color: #FFFFFF;
+}
+
+.md-footer__direction {
+  color: #8A8278;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 /* ===== SIDEBAR SECTIONS ===== */
 .md-nav__title {
-  color: #8b949e;
+  color: #8A8278;
   font-size: 0.65rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -373,58 +449,70 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f1419;
+  background: #000000;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a3342;
+  background: #1C1A16;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3fb58e;
+  background: #d4a84b;
 }
 
 /* ===== SELECTION ===== */
 ::selection {
-  background: rgba(63, 181, 142, 0.65);
-  color: #0f1419;
+  background: rgba(212, 168, 75, 0.4);
+  color: #FFFFFF;
 }
 
-/* ===== REPO STATS (top right) ===== */
+/* ===== REPO STATS ===== */
 .md-source {
-  color: #8b949e;
+  color: #8A8278;
 }
 
 .md-source:hover {
-  color: #c5cdd9;
+  color: #FFFFFF;
 }
 
 .md-source__repository {
-  color: #c5cdd9;
+  color: #FFFFFF;
 }
 
 /* ===== BUTTONS ===== */
 .md-button--primary {
-  background-color: #3fb58e;
-  border-color: #3fb58e;
-  color: #0f1419;
+  background-color: #d4a84b !important;
+  border-color: #d4a84b !important;
+  color: #000000 !important;
   border-radius: 0;
+  font-weight: 500;
 }
 
 .md-button--primary:hover {
-  background-color: #4ec9b0;
-  border-color: #4ec9b0;
+  background-color: #e0bb62 !important;
+  border-color: #e0bb62 !important;
+  color: #000000 !important;
+}
+
+.md-button:not(.md-button--primary) {
+  border-color: #d4a84b;
+  color: #d4a84b;
+}
+
+.md-button:not(.md-button--primary):hover {
+  border-color: #e0bb62;
+  color: #e0bb62;
+  background-color: rgba(212, 168, 75, 0.08);
 }
 
 /* ===== TABBED CONTENT ===== */
-/* Matches landing page install tab aesthetics */
 .md-typeset .tabbed-labels {
-  border-bottom-color: #2a3342;
+  border-bottom-color: #1C1A16;
 }
 
 .md-typeset .tabbed-labels > label {
-  color: #8b949e;
+  color: #8A8278;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -432,26 +520,39 @@
 }
 
 .md-typeset .tabbed-labels > label:hover {
-  color: #c5cdd9;
+  color: #FFFFFF;
 }
 
 .md-typeset .tabbed-labels > .tabbed-labels__active,
 .md-typeset .tabbed-labels > label.active {
-  color: #c5cdd9;
-  border-bottom-color: #3fb58e;
+  color: #FFFFFF;
+  border-bottom-color: #d4a84b;
 }
 
-/* Tab indicator line */
 .md-typeset .tabbed-labels .tabbed-labels__active {
-  color: #c5cdd9;
+  color: #FFFFFF;
 }
 
 /* ===== HORIZONTAL RULES ===== */
 .md-typeset hr {
-  border-color: #2a3342;
+  border-color: #1C1A16;
 }
 
-/* Hide hr inside grid cards (Material uses hr as structural separator) */
 .md-typeset .grid.cards hr {
   border-color: transparent;
+}
+
+/* ===== CONTEXTUAL SIDEBAR COLLAPSE ===== */
+@media screen and (min-width: 76.25em) {
+  body.kagan-sidebar-collapsed .md-sidebar--primary {
+    display: none;
+  }
+
+  body.kagan-sidebar-collapsed .md-main__inner {
+    justify-content: center;
+  }
+
+  body.kagan-sidebar-collapsed .md-content {
+    max-width: 52rem;
+  }
 }

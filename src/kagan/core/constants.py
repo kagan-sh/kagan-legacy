@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from kagan.core.domain.enums import McpIdentity, TaskPriority, TaskStatus
 from kagan.core.limits import (
     AGENT_TIMEOUT,
     AGENT_TIMEOUT_LONG,
@@ -10,9 +11,8 @@ from kagan.core.limits import (
     SHUTDOWN_TIMEOUT,
     SUBPROCESS_LIMIT,
 )
-from kagan.core.models.enums import McpIdentity, TaskPriority, TaskStatus
 from kagan.core.paths import get_config_path, get_database_path
-from kagan.core.security import CapabilityProfile
+from kagan.core.policy import CapabilityProfile
 
 CARD_TITLE_LINE_WIDTH = 28
 CARD_DESC_MAX_LENGTH = 28
@@ -68,6 +68,7 @@ MCP_DEFAULT_SESSION_ID = "mcp-default"
 MCP_DEFAULT_READONLY_CAPABILITY = MCP_CAPABILITY_PLANNER
 MCP_DEFAULT_FULL_CAPABILITY = MCP_CAPABILITY_MAINTAINER
 MCP_FALLBACK_CAPABILITY = MCP_CAPABILITY_VIEWER
+KAGAN_BRANCH_CONFIGURED_KEY = "kagan.branch_configured"
 
 COLUMN_ORDER = [
     TaskStatus.BACKLOG,
@@ -142,6 +143,7 @@ __all__ = [
     "DEFAULT_CONFIG_PATH",
     "DEFAULT_DB_PATH",
     "DIFF_MAX_LENGTH",
+    "KAGAN_BRANCH_CONFIGURED_KEY",
     "KAGAN_GENERATED_PATTERNS",
     "KAGAN_LOGO",
     "KAGAN_LOGO_SMALL",

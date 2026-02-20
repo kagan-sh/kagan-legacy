@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from textual.containers import Horizontal, VerticalGroup
+from textual.containers import VerticalGroup
 from textual.css.query import NoMatches
 from textual.reactive import var
-from textual.widgets import Button, Static
+from textual.widgets import Static
 
 from kagan.tui.keybindings import PERMISSION_PROMPT_BINDINGS
 from kagan.tui.ui.user_messages import (
@@ -30,6 +30,7 @@ class PermissionPrompt(VerticalGroup):
     """Permission request widget with countdown and keyboard bindings."""
 
     DEFAULT_CLASSES = "permission-prompt"
+    can_focus = True
     BINDINGS = PERMISSION_PROMPT_BINDINGS
 
     remaining_seconds: var[int] = var(300)
@@ -59,11 +60,7 @@ class PermissionPrompt(VerticalGroup):
     def compose(self) -> ComposeResult:
         yield Static(f"⚠ {PERMISSION_HEADER}", classes="permission-header")
         yield Static(permission_tool_line(self.title), classes="permission-tool")
-        with Horizontal(classes="permission-buttons"):
-            yield Button("[Enter] Allow once", id="btn-allow-once", variant="success")
-            yield Button("[A] Allow always", id="btn-allow-always", variant="warning")
-            yield Button("[Esc] Deny", id="btn-deny", variant="error")
-        yield Static(PERMISSION_ACTION_HINT, classes="permission-tool")
+        yield Static(PERMISSION_ACTION_HINT, classes="permission-controls")
         yield Static(self._format_timer(), id="perm-timer", classes="permission-timer")
 
     def on_mount(self) -> None:
@@ -134,12 +131,3 @@ class PermissionPrompt(VerticalGroup):
 
     def action_deny(self) -> None:
         self._reject()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "btn-allow-once":
-            self.action_allow_once()
-        elif event.button.id == "btn-allow-always":
-            self.action_allow_always()
-        elif event.button.id == "btn-deny":
-            self.action_deny()

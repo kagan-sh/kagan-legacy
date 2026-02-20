@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Checkbox, Label, Select, Static
+from textual.widgets import Checkbox, Label, Select, Static
 
-from kagan.core.services.merges import MergeResult, MergeStrategy
+from kagan.core.services.workspaces import MergeResult, MergeStrategy
 from kagan.tui.ui.modals.base import KaganModalScreen
 
 if TYPE_CHECKING:
@@ -55,11 +56,24 @@ class RepoMergeRow(Static):
 class MergeDialog(KaganModalScreen[list[MergeResult] | None]):
     """Dialog for merging workspace changes."""
 
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", priority=True),
+        Binding("enter", "submit", "Merge", priority=True),
+        Binding("tab", "next_field", "Next Field", priority=True),
+        Binding("shift+tab", "previous_field", "Previous Field", priority=True),
+    ]
+
+    _FIELD_SELECTOR = "Checkbox, Select"
+
     def __init__(self, workspace_id: str, repos: list[dict]) -> None:
         super().__init__()
         self.workspace_id = workspace_id
         self.repos = repos
         self.results: list[MergeResult] | None = None
+        self._is_merging = False
+        self._repo_has_changes = {
+            str(repo["repo_id"]): bool(repo["has_changes"]) for repo in self.repos
+        }
 
     def compose(self) -> ComposeResult:
         with Vertical(id="merge-container"):
@@ -85,15 +99,47 @@ class MergeDialog(KaganModalScreen[list[MergeResult] | None]):
                 prompt="Merge Strategy",
             )
 
-            with Horizontal(id="button-row"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Merge Selected", variant="primary", id="merge-btn")
+            with Horizontal(id="button-row", classes="modal-action-hint-row"):
+                yield Static(
+                    "Esc cancel  |  Enter merge  |  Tab/Shift+Tab move",
+                    classes="modal-action-hint",
+                )
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel-btn":
-            self.dismiss(None)
-        elif event.button.id == "merge-btn":
+    def on_mount(self) -> None:
+        for repo in self.repos:
+            checkbox = self.query_one(f"#check-{repo['repo_id']}", Checkbox)
+            if not checkbox.disabled:
+                checkbox.focus()
+                return
+        self.query_one("#strategy-select", Select).focus()
+
+    def action_cancel(self) -> None:
+        if self._is_merging:
+            return
+        self.dismiss(None)
+
+    async def action_submit(self) -> None:
+        if self._is_merging:
+            return
+        self._set_busy(True)
+        try:
             await self._do_merge()
+        finally:
+            if self.is_attached:
+                self._set_busy(False)
+
+    def action_next_field(self) -> None:
+        self.focus_next(self._FIELD_SELECTOR)
+
+    def action_previous_field(self) -> None:
+        self.focus_previous(self._FIELD_SELECTOR)
+
+    def _set_busy(self, is_busy: bool) -> None:
+        self._is_merging = is_busy
+        self.query_one("#strategy-select", Select).disabled = is_busy
+        for repo_id, has_changes in self._repo_has_changes.items():
+            checkbox = self.query_one(f"#check-{repo_id}", Checkbox)
+            checkbox.disabled = is_busy or not has_changes
 
     async def _do_merge(self) -> None:
         """Perform the merge operation."""

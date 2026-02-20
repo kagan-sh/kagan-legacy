@@ -49,7 +49,7 @@ class DescriptionEditorModal(ModalScreen[str | None]):
             with Horizontal(id="description-editor-header"):
                 yield Label(self.modal_title, id="editor-title")
                 yield Static("", id="header-spacer")
-                yield Static("[Esc] Cancel | [F2] Save", id="editor-hint")
+                yield Static("[Esc] Cancel | [Ctrl+S] Save", id="editor-hint")
 
             if self.readonly:
                 yield TextArea(

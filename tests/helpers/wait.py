@@ -10,11 +10,14 @@ if TYPE_CHECKING:
     from textual.pilot import Pilot
     from textual.screen import Screen
 
-    from kagan.core.models.enums import TaskStatus
+    from kagan.core.domain.enums import TaskStatus
     from kagan.tui.app import KaganApp
 
 # CI runners are significantly slower; scale timeouts accordingly.
-_CI_MULTIPLIER: float = 5.0 if os.environ.get("CI") else 1.0
+# Windows CI is often slower than Linux/macOS for TUI tests.
+_CI_MULTIPLIER: float = (
+    8.0 if (os.environ.get("CI") and os.name == "nt") else (5.0 if os.environ.get("CI") else 1.0)
+)
 
 
 def _ci_timeout(timeout: float) -> float:
@@ -69,7 +72,6 @@ async def wait_for_screen(
     from textual.widgets import Label
 
     from kagan.tui.ui.screens.kanban import KanbanScreen
-    from kagan.tui.ui.screens.planner import PlannerScreen
     from kagan.tui.ui.widgets.column import KanbanColumn
     from kagan.tui.ui.widgets.header import KaganHeader
 
@@ -77,10 +79,14 @@ async def wait_for_screen(
     deadline = _deadline(timeout)
     while asyncio.get_running_loop().time() < deadline:
         await pilot.pause()
+        startup_worker = getattr(pilot.app, "_startup_worker", None)
+        startup_error = getattr(startup_worker, "error", None)
+        if startup_worker is not None and startup_worker.is_finished and startup_error is not None:
+            raise RuntimeError(f"startup worker failed: {startup_error}")
         current_screen = pilot.app.screen
         if isinstance(current_screen, screen_type):
             expected_agent = pilot.app.config.general.default_worker_agent.strip()
-            if isinstance(current_screen, (KanbanScreen, PlannerScreen)):
+            if isinstance(current_screen, KanbanScreen):
                 try:
                     header = current_screen.query_one(KaganHeader)
                     agent_text = str(header.query_one("#header-agent", Label).content)
@@ -91,7 +97,7 @@ async def wait_for_screen(
                     continue
 
             if isinstance(current_screen, KanbanScreen):
-                tasks = await pilot.app.ctx.task_service.list_tasks(
+                tasks = await pilot.app.ctx.api.list_tasks(
                     project_id=pilot.app.ctx.active_project_id
                 )
                 if tasks:
@@ -129,26 +135,6 @@ async def wait_for_widget(
             await pilot.pause(check_interval)
 
     raise TimeoutError(f"Widget '{selector}' not found within {timeout}s")
-
-
-async def wait_for_planner_ready(
-    pilot: Pilot,
-    timeout: float = 10.0,
-    check_interval: float = 0.1,
-) -> None:
-    from kagan.tui.ui.screens.planner import PlannerScreen
-
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        # Pump the Textual message queue so AgentReady messages are processed.
-        await pilot.pause()
-        screen = pilot.app.screen
-        if isinstance(screen, PlannerScreen) and screen._state.agent_ready:
-            return
-        await pilot.pause(check_interval)
-
-    raise TimeoutError(f"Planner agent not ready within {timeout}s")
 
 
 async def wait_for_text(
@@ -204,7 +190,7 @@ async def wait_for_task_status(
     deadline = _deadline(timeout)
     last_status = None
     while asyncio.get_running_loop().time() < deadline:
-        task = await app.ctx.task_service.get_task(task_id)
+        task = await app.ctx.api.get_task(task_id)
         if task:
             last_status = task.status
             if task.status == status:

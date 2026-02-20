@@ -6,6 +6,8 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING
 
+from textual.worker import NoActiveWorker
+
 if TYPE_CHECKING:
     from textual.app import App
     from textual.screen import Screen
@@ -23,6 +25,10 @@ async def await_screen_result[T](app: App, screen: Screen[T]) -> T | None:
             # Some tests monkeypatch push_screen with non-awaitable doubles.
             # Treat this as a dismissed/unsupported modal interaction.
             return None
+        except NoActiveWorker:
+            # Textual requires a worker for push_screen_wait(wait_for_dismiss=True).
+            # Fall back to callback-based push_screen from the current UI context.
+            pass
 
     future: asyncio.Future[T | None] = asyncio.get_running_loop().create_future()
 

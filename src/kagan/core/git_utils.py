@@ -14,6 +14,7 @@ from kagan.core.instrumentation import increment_counter, timed_operation
 
 MIN_GIT_VERSION = (2, 5, 0)
 GIT_QUERY_TIMEOUT_SECONDS = 5.0
+GIT_INIT_TIMEOUT_SECONDS = 15.0
 _GIT_RETRY_POLICY = ProcessRetryPolicy(
     max_attempts=2,
     delay_seconds=0.05,
@@ -303,10 +304,17 @@ async def init_git_repo(repo_root: Path, base_branch: str) -> GitInitResult:
 
     async def run_git(*args: str) -> tuple[int, str, str]:
         try:
-            result = await _run_git(*args, repo_root=repo_root)
+            result = await _run_git(*args, repo_root=repo_root, timeout=GIT_INIT_TIMEOUT_SECONDS)
             return result.returncode, result.stdout_text(), result.stderr_text()
         except FileNotFoundError:
             return 1, "", "Git is not installed"
+        except TimeoutError:
+            return (
+                1,
+                "",
+                "Git command timed out during repository initialization. "
+                "Disable hooks/signing prompts and retry.",
+            )
 
     version = await get_git_version()
     if version is None:
@@ -404,7 +412,14 @@ async def init_git_repo(repo_root: Path, base_branch: str) -> GitInitResult:
     else:
         commit_msg = "Add kagan to .gitignore"
 
-    code, _, stderr = await run_git("commit", "-m", commit_msg)
+    code, _, stderr = await run_git(
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--no-verify",
+        "-m",
+        commit_msg,
+    )
     if code != 0:
         if "nothing to commit" in stderr or "nothing added to commit" in stderr:
             return GitInitResult(

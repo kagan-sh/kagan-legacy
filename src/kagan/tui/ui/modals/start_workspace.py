@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.widgets import Button, Checkbox, Label, Select, Static
+from textual.widgets import Checkbox, Label, Select, Static
 
-from kagan.core.services.workspaces import RepoWorkspaceInput
 from kagan.tui.ui.modals.base import KaganModalScreen
+from kagan.tui.ui.utils.workspace_inputs import repo_details_to_workspace_inputs
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
+
+    from kagan.core.services.workspaces import RepoWorkspaceInput
 
 
 class RepoCheckboxItem(Static):
@@ -64,6 +67,7 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
         self.project_id = project_id
         self.suggested_repos = suggested_repos or []
         self.project_repos: list[dict] = []
+        self._is_starting = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -93,12 +97,15 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
 
             yield Label("", id="error-label", classes="error")
 
-            with Horizontal(id="actions"):
-                yield Button("Cancel", id="btn-cancel")
-                yield Button("Start Workspace", id="btn-start", variant="primary")
+            with Horizontal(id="actions", classes="modal-action-hint-row"):
+                yield Static(
+                    "Press [bold]Enter[/bold] to start workspace, [bold]Esc[/bold] to cancel",
+                    classes="modal-action-hint",
+                )
 
     async def on_mount(self) -> None:
         self.run_worker(self._load_repos(), exclusive=True)
+        self.query_one("#executor-select", Select).focus()
 
     async def _load_repos(self) -> None:
         repos = await self.ctx.api.get_project_repo_details(self.project_id)
@@ -119,31 +126,29 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
             self.project_repos.append({**repo_data, "item": item})
             await repo_list.mount(item)
 
+        if self.project_repos:
+            first_repo = self.project_repos[0]
+            item = first_repo["item"]
+            checkbox = item.query_one(f"#cb-{first_repo['id']}", Checkbox)
+            checkbox.focus()
+
     def _get_selected_repos(self) -> list[RepoWorkspaceInput]:
-        selected = []
+        selected_repo_details: list[dict[str, object]] = []
         for repo_data in self.project_repos:
             item = repo_data["item"]
             checkbox = item.query_one(f"#cb-{repo_data['id']}", Checkbox)
             if checkbox.value:
-                selected.append(
-                    RepoWorkspaceInput(
-                        repo_id=repo_data["id"],
-                        repo_path=repo_data["path"],
-                        target_branch=repo_data["default_branch"],
-                    )
-                )
-        return selected
-
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-cancel":
-            self.action_cancel()
-        elif event.button.id == "btn-start":
-            await self._start_workspace()
+                selected_repo_details.append(repo_data)
+        if not selected_repo_details:
+            return []
+        return repo_details_to_workspace_inputs(selected_repo_details)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         """Check action."""
         if action == "start_workspace":
-            return bool(self._get_selected_repos())
+            with contextlib.suppress(ValueError):
+                return bool(self._get_selected_repos())
+            return False
         return True
 
     def action_cancel(self) -> None:
@@ -153,12 +158,24 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
         await self._start_workspace()
 
     async def _start_workspace(self) -> None:
-        selected_repos = self._get_selected_repos()
+        if self._is_starting:
+            return
+
+        try:
+            selected_repos = self._get_selected_repos()
+        except ValueError as exc:
+            error_label = self.query_one("#error-label", Label)
+            error_label.update(str(exc))
+            return
 
         if not selected_repos:
             error_label = self.query_one("#error-label", Label)
             error_label.update("Please select at least one repository")
             return
+
+        self._is_starting = True
+        error_label = self.query_one("#error-label", Label)
+        error_label.update("Starting workspace...")
 
         try:
             workspace_id = await self.ctx.api.provision_workspace(
@@ -167,5 +184,5 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
             )
             self.dismiss(workspace_id)
         except Exception as exc:
-            error_label = self.query_one("#error-label", Label)
             error_label.update(f"Error: {exc}")
+            self._is_starting = False

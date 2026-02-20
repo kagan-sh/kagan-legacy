@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, NewType, Protocol
 
 if TYPE_CHECKING:
     from kagan.core.config import KaganConfig
-    from kagan.core.models.enums import TaskStatus, TaskType
+    from kagan.core.domain.enums import TaskStatus, TaskType
 
 _ProjectId = NewType("_ProjectId", str)
 _RepoId = NewType("_RepoId", str)

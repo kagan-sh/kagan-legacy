@@ -167,6 +167,9 @@ Thumbs.db
 # Project specific
 .kagan/
 
+# Fork lives in separate repo (kagan-sh/textual-terminal); do not vendor
+textual-terminal/
+
 references/
 
 snapshot_report.html

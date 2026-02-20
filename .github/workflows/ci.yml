@@ -27,18 +27,35 @@ jobs:
           enable-cache: true
       - run: uv sync --dev
       - run: uv run poe lint
+      - run: uv run poe check-guardrails
       - run: uv run poe typecheck
+      - run: uv run poe docs-check
+
+  fast-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --dev
+      - run: uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
 
   test:
-    needs: lint
+    needs: [lint, fast-gate]
     timeout-minutes: 15
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
@@ -52,9 +69,6 @@ jobs:
           git config --global user.email "test@kagan.local"
           git config --global user.name "Kagan Test"
           git config --global commit.gpgsign false
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
       - run: uv sync --dev
       - name: Test (with coverage)
         if: github.ref == 'refs/heads/main'
@@ -64,12 +78,9 @@ jobs:
         run: uv run pytest tests/ -m "not snapshot" -n auto
 
   test-windows:
-    needs: lint
-    timeout-minutes: 15
+    needs: [lint, fast-gate]
+    timeout-minutes: 30
     runs-on: windows-latest
-    # Windows tests are advisory — xdist/asyncio teardown can cause spurious
-    # KeyboardInterrupt on Windows, so failures here must not block the pipeline.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Install system dependencies
@@ -83,17 +94,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Test (sequential, with coverage)
-        id: wintest
-        if: github.ref == 'refs/heads/main'
-        run: uv run pytest tests/ -m "not snapshot" -n 0 --cov=src/kagan --cov-report=term-missing
-      - name: Test (sequential)
-        id: wintest_pr
-        if: github.ref != 'refs/heads/main'
-        run: uv run pytest tests/ -m "not snapshot" -n 0
-      - name: Warn on failure
-        if: failure()
-        run: echo "::warning::Windows tests failed — this is advisory and does not block the pipeline."
+      - name: Test (non-snapshot)
+        run: uv run pytest tests/ -m "not snapshot" -n 0 -v
 
   snapshot:
     needs: lint
@@ -126,7 +128,7 @@ jobs:
           enable-cache: true
       - run: uv sync --dev
       - name: Snapshot tests
-        run: uv run pytest tests/tui/snapshot/ -n 0 -v
+        run: uv run pytest tests/tui/snapshot/ -n auto -v
 
   test-all-platforms:
     needs: lint

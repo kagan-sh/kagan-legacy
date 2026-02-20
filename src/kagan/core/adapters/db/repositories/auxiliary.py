@@ -19,12 +19,13 @@ from kagan.core.adapters.db.schema import (
     Session,
     WorkspaceRepo,
 )
+from kagan.core.constants import KAGAN_BRANCH_CONFIGURED_KEY
+from kagan.core.domain.enums import ProposalStatus, ScratchType, SessionStatus, SessionType
 from kagan.core.limits import SCRATCHPAD_LIMIT
-from kagan.core.models.enums import ProposalStatus, ScratchType, SessionStatus, SessionType
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
     from kagan.core.adapters.db.repositories.base import ClosingAwareSessionFactory
 
@@ -88,8 +89,8 @@ class AuditRepository:
 
             stmt = stmt.order_by(col(AuditEvent.occurred_at).desc()).limit(limit)
 
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+            result = await session.exec(stmt)
+            return list(result.all())
 
 
 class ScratchRepository:
@@ -105,13 +106,13 @@ class ScratchRepository:
     async def get_scratchpad(self, task_id: str) -> str:
         """Get scratchpad content for a task."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(Scratch).where(
                     Scratch.id == task_id,
                     Scratch.scratch_type == ScratchType.WORKSPACE_NOTES,
                 )
             )
-            scratchpad = result.scalars().first()
+            scratchpad = result.first()
             if not scratchpad:
                 return ""
             payload = scratchpad.payload or {}
@@ -123,13 +124,13 @@ class ScratchRepository:
 
         async with self._lock:
             async with self._get_session() as session:
-                result = await session.execute(
+                result = await session.exec(
                     select(Scratch).where(
                         Scratch.id == task_id,
                         Scratch.scratch_type == ScratchType.WORKSPACE_NOTES,
                     )
                 )
-                scratchpad = result.scalars().first()
+                scratchpad = result.first()
                 if scratchpad:
                     scratchpad.payload = {"content": content}
                     scratchpad.updated_at = utc_now()
@@ -148,13 +149,13 @@ class ScratchRepository:
         """Delete scratchpad for a task."""
         async with self._lock:
             async with self._get_session() as session:
-                result = await session.execute(
+                result = await session.exec(
                     select(Scratch).where(
                         Scratch.id == task_id,
                         Scratch.scratch_type == ScratchType.WORKSPACE_NOTES,
                     )
                 )
-                scratchpad = result.scalars().first()
+                scratchpad = result.first()
                 if scratchpad:
                     await session.delete(scratchpad)
                     await session.commit()
@@ -219,10 +220,10 @@ class SessionRecordRepository:
         """Close a session record by external ID."""
         async with self._lock:
             async with self._get_session() as session:
-                result = await session.execute(
+                result = await session.exec(
                     select(Session).where(Session.external_id == external_id)
                 )
-                record = result.scalars().first()
+                record = result.first()
                 if record is None:
                     return None
                 record.status = status
@@ -284,8 +285,8 @@ class PlannerRepository:
             if repo_id is not None:
                 stmt = stmt.where(PlannerProposal.repo_id == repo_id)
             stmt = stmt.order_by(col(PlannerProposal.created_at).desc())
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+            result = await session.exec(stmt)
+            return list(result.all())
 
     async def update_status(
         self,
@@ -358,8 +359,8 @@ class RepoRepository:
         """Find a repo by its filesystem path."""
         resolved_path = str(Path(path).resolve())
         async with self._get_session() as session:
-            result = await session.execute(select(Repo).where(Repo.path == resolved_path))
-            return result.scalars().first()
+            result = await session.exec(select(Repo).where(Repo.path == resolved_path))
+            return result.first()
 
     async def get_or_create(
         self,
@@ -382,21 +383,21 @@ class RepoRepository:
     async def list_for_project(self, project_id: str) -> list[Repo]:
         """List all repos for a project via junction table."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(Repo)
                 .join(ProjectRepo, col(ProjectRepo.repo_id) == col(Repo.id))
                 .where(ProjectRepo.project_id == project_id)
                 .order_by(col(ProjectRepo.display_order).asc(), col(Repo.id).asc())
             )
-            return list(result.scalars().all())
+            return list(result.all())
 
     async def list_for_workspace(self, workspace_id: str) -> list[WorkspaceRepo]:
         """List all workspace-repo associations for a workspace."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(WorkspaceRepo).where(WorkspaceRepo.workspace_id == workspace_id)
             )
-            return list(result.scalars().all())
+            return list(result.all())
 
     async def add_to_project(
         self,
@@ -439,29 +440,51 @@ class RepoRepository:
     async def remove_from_project(self, project_id: str, repo_id: str) -> bool:
         """Remove a repo from a project. Returns True if removed."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(ProjectRepo).where(
                     ProjectRepo.project_id == project_id,
                     ProjectRepo.repo_id == repo_id,
                 )
             )
-            link = result.scalars().first()
+            link = result.first()
             if link:
                 await session.delete(link)
                 await session.commit()
                 return True
             return False
 
+    async def update_default_branch(
+        self,
+        repo_id: str,
+        branch: str,
+        *,
+        mark_configured: bool = False,
+    ) -> Repo | None:
+        """Update Repo.default_branch, optionally marking branch as configured."""
+        async with self._lock:
+            async with self._get_session() as session:
+                repo = await session.get(Repo, repo_id)
+                if repo is None:
+                    return None
+                repo.default_branch = branch
+                if mark_configured:
+                    next_scripts = dict(repo.scripts) if repo.scripts else {}
+                    next_scripts[KAGAN_BRANCH_CONFIGURED_KEY] = "true"
+                    repo.scripts = next_scripts
+                session.add(repo)
+                await session.commit()
+                return repo
+
     async def remove_from_workspace(self, workspace_id: str, repo_id: str) -> bool:
         """Remove a repo from a workspace. Returns True if removed."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(WorkspaceRepo).where(
                     WorkspaceRepo.workspace_id == workspace_id,
                     WorkspaceRepo.repo_id == repo_id,
                 )
             )
-            link = result.scalars().first()
+            link = result.first()
             if link:
                 await session.delete(link)
                 await session.commit()

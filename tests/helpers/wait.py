@@ -15,13 +15,16 @@ if TYPE_CHECKING:
 
 # CI runners are significantly slower; scale timeouts accordingly.
 # Windows CI is often slower than Linux/macOS for TUI tests.
-_CI_MULTIPLIER: float = (
-    8.0 if (os.environ.get("CI") and os.name == "nt") else (5.0 if os.environ.get("CI") else 1.0)
-)
+_IS_CI: bool = bool(os.environ.get("CI"))
+_CI_MULTIPLIER: float = 8.0 if (_IS_CI and os.name == "nt") else (5.0 if _IS_CI else 1.0)
+_CI_TIMEOUT_CAP_SECONDS: float = 50.0
 
 
 def _ci_timeout(timeout: float) -> float:
-    return timeout * _CI_MULTIPLIER
+    scaled_timeout = timeout * _CI_MULTIPLIER
+    if not _IS_CI:
+        return scaled_timeout
+    return min(scaled_timeout, _CI_TIMEOUT_CAP_SECONDS)
 
 
 def _deadline(timeout: float) -> float:

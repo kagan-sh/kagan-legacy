@@ -25,13 +25,13 @@ to steer iterations, then review output in REVIEW.
 
 ## Run PAIR
 
-`n` → set PAIR → `Enter` → work in tmux / Neovim / VS Code / Cursor → move through REVIEW manually.
+`n` → set PAIR → `Enter` → work in tmux / Neovim / VS Code / Cursor / Windsurf / Kiro / Antigravity → move through REVIEW manually.
 
 You drive. The session is yours. Kagan tracks state and surfaces it at review time.
 
 PAIR `Enter` does not route to orchestrator chat overlay. It creates/attaches the PAIR session and
-redirects into the configured backend (tmux/Neovim suspend attach; VS Code/Cursor external handoff
-with startup-prompt guidance).
+redirects into the configured backend (tmux/Neovim suspend attach; VS Code/Cursor/Windsurf/Kiro/Antigravity
+external handoff with startup-prompt guidance).
 If focus briefly clears during board refresh, `Enter` reuses the last focused task; use `Escape` to
 clear selection explicitly.
 

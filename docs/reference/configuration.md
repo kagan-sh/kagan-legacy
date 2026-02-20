@@ -50,7 +50,7 @@ max_concurrent_agents = 3
 | `worker_persona`                     | string         | Built-in implementer preset      | Global AUTO worker persona prompt                                                   |
 | `orchestrator_persona`               | string         | Built-in orchestrator preset     | Global orchestrator/planning persona prompt                                         |
 | `pr_reviewer_persona`                | string         | Built-in reviewer preset         | Global PR reviewer persona prompt                                                   |
-| `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`                                         |
+| `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`, `windsurf`, `kiro`, `antigravity`      |
 | `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
 | `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
 | `default_model_claude`               | string or null | `null`                           | Optional default model                                                              |
@@ -59,6 +59,14 @@ max_concurrent_agents = 3
 | `default_model_gemini`               | string or null | `null`                           | Optional default model                                                              |
 | `default_model_kimi`                 | string or null | `null`                           | Optional default model                                                              |
 | `default_model_copilot`              | string or null | `null`                           | Optional display preference                                                         |
+| `default_model_goose`                | string or null | `null`                           | Optional default model                                                              |
+| `default_model_openhands`            | string or null | `null`                           | Optional default model                                                              |
+| `default_model_auggie`               | string or null | `null`                           | Optional default model                                                              |
+| `default_model_amp`                  | string or null | `null`                           | Optional default model                                                              |
+| `default_model_cagent`               | string or null | `null`                           | Optional default model                                                              |
+| `default_model_stakpak`              | string or null | `null`                           | Optional default model                                                              |
+| `default_model_vibe`                 | string or null | `null`                           | Optional default model                                                              |
+| `default_model_vtcode`               | string or null | `null`                           | Optional default model                                                              |
 | `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                                   |
 | `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                       |
 | `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                    |

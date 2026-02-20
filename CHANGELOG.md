@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v0.6.0-beta.1 (2026-02-20)
+
+### Bug Fixes
+
+- Cap orchestrator smoke wait times and stabilize ci
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Include pending chat overlay collaborator wiring
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Resolve lint gate failure in mcp tool closures ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Stabilize auto backlog enter ci flows ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Stabilize orchestrator overlay ci smoke tests ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Unblock CI gates and commit workspace updates ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+### Chores
+
+- Commit all current workspace changes ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Commit all remaining workspace edits ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+### Documentation
+
+- Final copy pass — remove emojis, leaked paths, and tighten reference prose
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+### Features
+
+- Simplification ui and ux improvements; github integration; orchestrator > planner
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+### Refactoring
+
+- Align runtime reconcile responses and tui runtime cache
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+- Simplification ui and ux improvements; github integration; orchestrator > planner
+  ([#27](https://github.com/kagan-sh/kagan/pull/27),
+  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
+
+
 ## v0.6.0 (unreleased)
 
 > **Upgrade from v0.5.0:** No migration required. The database schema is unchanged.

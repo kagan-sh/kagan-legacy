@@ -1,0 +1,8 @@
+INHERIT: mkdocs.yml
+
+# Local dev override: drop social cards plugin (requires system libcairo).
+# Install cairo for full parity: brew install cairo
+plugins:
+  - search:
+      separator: '[\s\-\.]+'
+  - tags

@@ -2,6 +2,52 @@
 
 <!-- version list -->
 
+## v0.6.0 (unreleased)
+
+> **Upgrade from v0.5.0:** No migration required. The database schema is unchanged.
+> Run `kagan update` and restart — your data is safe.
+
+### Features
+
+- **Acceptance criteria coverage check** — tasks cannot transition to REVIEW unless all
+  acceptance criteria are addressed
+- **Resume Context panel** — task details modal now shows agent context for easy handoff
+- **Structured summary panel** in ReviewModal — surfaces agent-written summaries at review time
+- **MCP persona presets** — `kagan personas` lists and applies built-in agent personas;
+  `default_worker_agent` / `orchestrator_persona` config fields added
+- **`task_annotate` MCP tool** — agents can append structured reasoning notes to a task's
+  scratchpad mid-run
+- **Interaction verbosity** — global `interaction_verbosity` setting controls how much
+  user-facing UX output agents emit
+- **Doctor-driven startup checks** — deterministic, verbose doctor output; critical blockers
+  surface immediately on `kagan` launch
+- **Orchestrator slash commands** simplified; persona switching added to the chat overlay
+- **Ctrl+P fullscreen / Ctrl+O docked** orchestrator panel toggles
+- **Unified overlay chat targets** and consistent task terminology across TUI
+
+### Bug Fixes
+
+- Harden prompt-injection and privacy boundaries (redaction, tag escaping)
+- Restore planner chat UX with real-time streaming
+- Standardize canonical Pydantic domain models and rebuild MCP schemas
+- `poe dev` path corrections and local docs-serve fixes
+- TUI chat loading UX hardened: animated `initializing` during connection, chat input locked while requests are in-flight, and timeout recovery prevents indefinite thinking loops
+
+### Refactoring
+
+- Centralize task coercion and planner payload models
+- Dedupe task/review command logic via internal API layer
+- Unify truncation helpers and MCP constants
+- MCP policy helpers and settings field wiring consolidated
+- All DB repositories migrated to SQLModel `session.exec()` for SELECT queries
+  (replaces deprecated `session.execute()` for model queries — no behavior change for users)
+
+### Documentation
+
+- Comprehensive MkDocs overhaul: IA consolidation (17 → 12 files), features and content parity
+- Architecture doc invites plugin ecosystem discussion
+- Save bindings updated to Ctrl+S / Ctrl+E; F2 removed
+
 ## v0.5.0 (2026-02-12)
 
 ### Documentation

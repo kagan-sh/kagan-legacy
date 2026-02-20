@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
+import sys
 import tempfile
 from pathlib import Path
 
@@ -68,6 +70,16 @@ def get_debug_log_path() -> Path:
     return get_data_dir() / "debug.log"
 
 
+def _runtime_scope_suffix() -> str:
+    """Return a stable runtime scope suffix for the current Python executable."""
+    try:
+        executable = str(Path(sys.executable).expanduser().resolve(strict=False))
+    except OSError:
+        executable = sys.executable
+    digest = hashlib.sha256(executable.encode("utf-8")).hexdigest()[:12]
+    return f"scoped/{digest}"
+
+
 def get_core_runtime_dir() -> Path:
     """Get the runtime directory for the Kagan core process.
 
@@ -77,7 +89,7 @@ def get_core_runtime_dir() -> Path:
     override = os.environ.get("KAGAN_CORE_RUNTIME_DIR")
     if override:
         return Path(override).resolve()
-    return get_data_dir() / "core"
+    return get_data_dir() / "core" / _runtime_scope_suffix()
 
 
 def get_core_endpoint_path() -> Path:

@@ -29,15 +29,15 @@ class EmptyState(Widget):
 
                 yield Static("How it works:", classes="empty-card-section")
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} Describe your feature below",
+                    f"  {BOX_DRAWING['BULLET']} Describe the feature below",
                     classes="card-item-compact",
                 )
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} AI analyzes & asks questions",
+                    f"  {BOX_DRAWING['BULLET']} AI analyzes and asks clarifying questions",
                     classes="card-item-compact",
                 )
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} Generates tasks for review",
+                    f"  {BOX_DRAWING['BULLET']} Tasks are generated for your review",
                     classes="card-item-compact",
                 )
 
@@ -47,14 +47,14 @@ class EmptyState(Widget):
                     classes="card-item-compact",
                 )
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} Mention tech stack/constraints",
+                    f"  {BOX_DRAWING['BULLET']} Mention stack and constraints",
                     classes="card-item-compact",
                 )
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} Press Esc to return to board",
+                    f"  {BOX_DRAWING['BULLET']} Esc returns to board",
                     classes="card-item-compact",
                 )
                 yield Static(
-                    f"  {BOX_DRAWING['BULLET']} Use CTRL+e to AI enhance your input prompt",
+                    f"  {BOX_DRAWING['BULLET']} Ctrl+E enhances your prompt with AI",
                     classes="card-item-compact",
                 )

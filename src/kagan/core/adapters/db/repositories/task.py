@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import case, func, or_
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlmodel import col, delete, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from kagan.core.adapters.db.engine import create_db_engine, create_db_tables
 from kagan.core.adapters.db.repositories.base import ClosingAwareSessionFactory
@@ -28,7 +29,6 @@ class TaskRepository:
         db_path: str | Path | None = None,
         *,
         project_root: Path | None = None,
-        default_branch: str = "main",
         on_change: Callable[[str], None] | None = None,
     ) -> None:
         self.db_path = Path(db_path) if db_path else get_database_path()
@@ -40,7 +40,6 @@ class TaskRepository:
             Callable[[str, TaskStatus | None, TaskStatus | None], None] | None
         ) = None
         self._project_root = project_root or Path.cwd()
-        self._default_branch = default_branch
         self._default_project_id: str | None = None
 
     async def initialize(self) -> None:
@@ -83,8 +82,8 @@ class TaskRepository:
     async def ensure_test_project(self, name: str = "Test Project") -> str:
         """Create a test project and return its ID."""
         async with self._get_session() as session:
-            result = await session.execute(select(Project).order_by(col(Project.created_at).asc()))
-            project = result.scalars().first()
+            result = await session.exec(select(Project).order_by(col(Project.created_at).asc()))
+            project = result.first()
             if project is None:
                 project = Project(name=name, description="")
                 session.add(project)
@@ -138,7 +137,7 @@ class TaskRepository:
             query = select(Task)
             if project_id is not None:
                 query = query.where(Task.project_id == project_id)
-            result = await session.execute(
+            result = await session.exec(
                 query.order_by(
                     case(
                         (col(Task.status) == TaskStatus.BACKLOG, 0),
@@ -151,7 +150,7 @@ class TaskRepository:
                     col(Task.created_at).asc(),
                 )
             )
-            return result.scalars().all()
+            return result.all()
 
     async def get_by_status(
         self, status: TaskStatus, *, project_id: str | None = None
@@ -161,10 +160,10 @@ class TaskRepository:
             query = select(Task).where(Task.status == status)
             if project_id is not None:
                 query = query.where(Task.project_id == project_id)
-            result = await session.execute(
+            result = await session.exec(
                 query.order_by(col(Task.priority).desc(), col(Task.created_at).asc())
             )
-            return result.scalars().all()
+            return result.all()
 
     async def get_tasks_by_ids(
         self, task_ids: set[str], *, project_id: str | None = None
@@ -177,8 +176,8 @@ class TaskRepository:
             query = select(Task).where(col(Task.id).in_(task_ids))
             if project_id is not None:
                 query = query.where(Task.project_id == project_id)
-            result = await session.execute(query)
-            return result.scalars().all()
+            result = await session.exec(query)
+            return result.all()
 
     async def update(self, task_id: str, **kwargs: Any) -> Task | None:
         """Update a task with keyword arguments."""
@@ -252,7 +251,7 @@ class TaskRepository:
         pattern = f"%{query}%"
 
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(Task)
                 .where(
                     (col(Task.id) == query)
@@ -261,7 +260,7 @@ class TaskRepository:
                 )
                 .order_by(col(Task.updated_at).desc())
             )
-            return result.scalars().all()
+            return result.all()
 
     async def replace_task_links(self, task_id: str, ref_task_ids: set[str]) -> None:
         """Replace all references for a task."""
@@ -277,10 +276,10 @@ class TaskRepository:
     async def get_task_links(self, task_id: str) -> list[str]:
         """Return referenced task IDs for a task."""
         async with self._get_session() as session:
-            result = await session.execute(
+            result = await session.exec(
                 select(TaskLink.ref_task_id).where(TaskLink.task_id == task_id)
             )
-            return list(result.scalars().all())
+            return list(result.all())
 
     @property
     def default_project_id(self) -> str | None:
@@ -290,8 +289,3 @@ class TaskRepository:
     def set_default_project_id(self, project_id: str | None) -> None:
         """Set default project ID for task creation."""
         self._default_project_id = project_id
-
-    @property
-    def default_branch(self) -> str:
-        """Return default branch name."""
-        return self._default_branch

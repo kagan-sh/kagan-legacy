@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Label, RichLog, Rule, Static, TabbedContent, TabPane
+from textual.widgets import Footer, Label, RichLog, Rule, Static, TabbedContent, TabPane
 
 from kagan.tui.keybindings import DIFF_BINDINGS
 from kagan.tui.ui.utils.helpers import colorize_diff, copy_with_notification
@@ -14,8 +14,8 @@ from kagan.tui.ui.utils.helpers import colorize_diff, copy_with_notification
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core.adapters.db.schema import Task
-    from kagan.core.services.diffs import RepoDiff
+    from kagan.core.services.workspaces import RepoDiff
+    from kagan.tui.ui.types import TaskView
 
 
 class DiffModal(ModalScreen[str | None]):
@@ -36,7 +36,7 @@ class DiffModal(ModalScreen[str | None]):
         title: str | None = None,
         diff_text: str | None = None,
         diffs: list[RepoDiff] | None = None,
-        task: Task | None = None,
+        task: TaskView | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -59,17 +59,14 @@ class DiffModal(ModalScreen[str | None]):
             else:
                 yield RichLog(id="diff-log", wrap=True, highlight=True)
             yield Rule()
-            with Horizontal(classes="button-row"):
-                yield Button("Close", variant="primary", id="close-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Static(
+                    "Enter approve  |  r reject  |  y copy  |  Esc close",
+                    classes="modal-action-hint",
+                )
         yield Footer(show_command_palette=False)
 
     def on_mount(self) -> None:
-        button_row = self.query_one(".button-row", Horizontal)
-        button_row.styles.width = "100%"
-        button_row.styles.height = "auto"
-        button_row.styles.align = ("center", "middle")
-        button_row.styles.padding = (1, 0, 0, 0)
-
         if not self._diffs:
             log = self.query_one("#diff-log", RichLog)
 
@@ -105,10 +102,6 @@ class DiffModal(ModalScreen[str | None]):
         """Copy diff content to clipboard."""
         content = self._diff_text or self._build_unified_diff()
         copy_with_notification(self.app, content, "Diff")
-
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "close-btn":
-            self.dismiss(None)
 
     def _build_unified_diff(self) -> str:
         if not self._diffs:

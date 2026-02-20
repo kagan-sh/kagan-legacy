@@ -10,6 +10,7 @@ Kagan tests are organized by package first, then by test type.
 - `tests/mcp/smoke/`: minimal MCP transport smoke checks
 - `tests/tui/snapshot/`: Textual visual snapshot regressions
 - `tests/tui/smoke/`: critical TUI interaction journeys
+- `tests/plugins/`: plugin implementation tests (unit by default)
 - `tests/helpers/`: shared test helpers and fixtures
 
 ## Package/type policy
@@ -17,6 +18,7 @@ Kagan tests are organized by package first, then by test type.
 - Core defaults to `unit` tests. Keep these fast, isolated, and deterministic.
 - MCP defaults to `contract` tests. Validate schemas, errors, and compatibility behavior.
 - TUI defaults to `snapshot` tests for rendering regressions.
+- Plugin tests default to `unit`. Place them under `tests/plugins/<plugin-name>/`.
 - Smoke tests are allowed for critical cross-boundary paths only.
 
 ## Authoring standard
@@ -58,6 +60,7 @@ Kagan tests are organized by package first, then by test type.
 - `tests/mcp/smoke/*` => `@pytest.mark.mcp` + `@pytest.mark.smoke`
 - `tests/tui/snapshot/*` => `@pytest.mark.tui` + `@pytest.mark.snapshot`
 - `tests/tui/smoke/*` => `@pytest.mark.tui` + `@pytest.mark.smoke`
+- `tests/plugins/*` => `@pytest.mark.plugins` + `@pytest.mark.unit`
 
 Do not add these markers manually in test files. Marker ownership is path-based.
 
@@ -66,11 +69,11 @@ Snapshot tests are grouped into one xdist worker for deterministic output.
 ## Common commands
 
 ```bash
-uv run pytest tests/core/unit/ -m "core and unit" -v
-uv run pytest tests/mcp/contract/ -m "mcp and contract" -v
-uv run pytest tests/tui/snapshot/ -m "tui and snapshot" -n 0 -v
-uv run pytest tests/tui/smoke/ -m smoke -v
-uv run poe check        # quality-gate profile: core reliability + contract + smoke
-uv run poe check-full   # full gate + full test suite
-uv run poe test-quality
+uv run pytest
+uv run pytest tests/ -v
+uv run pytest tests/core/unit/ -v
+uv run pytest tests/mcp/contract/ -v
+uv run pytest tests/tui/snapshot/ -v
+uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
+uv run poe check        # lint + typecheck + all tests
 ```

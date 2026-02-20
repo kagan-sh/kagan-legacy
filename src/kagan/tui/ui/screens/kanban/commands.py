@@ -5,10 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
+from typing import TYPE_CHECKING, cast
 
 from textual.command import DiscoveryHit, Hit, Hits, Provider
 
 from kagan.tui.ui.screens.command_actions import run_screen_action, screen_allows_action
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class KanbanActionId(StrEnum):
@@ -29,11 +33,12 @@ class KanbanActionId(StrEnum):
     MERGE_DIRECT = "merge_direct"
     REBASE = "rebase"
     TOGGLE_SEARCH = "toggle_search"
-    OPEN_PLANNER = "open_planner"
+    TOGGLE_CHAT = "toggle_chat"
+    TOGGLE_ORCHESTRATOR_DOCK = "toggle_orchestrator_dock"
+    TOGGLE_ORCHESTRATOR_FULLSCREEN = "toggle_orchestrator_fullscreen"
     SWITCH_GLOBAL_AGENT = "switch_global_agent"
     OPEN_SETTINGS = "open_settings"
     SET_TASK_BRANCH = "set_task_branch"
-    SET_DEFAULT_BRANCH = "set_default_branch"
     MERGE = "merge"
 
 
@@ -64,7 +69,7 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction(
         "task open",
-        "Open session or start task",
+        "Open focused task context in docked orchestrator",
         KanbanActionId.OPEN_SESSION,
         requires_task=True,
         worker_group="open-session",
@@ -143,7 +148,7 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction(
         "task review",
-        "Open review modal",
+        "Open review context in fullscreen orchestrator",
         KanbanActionId.OPEN_REVIEW,
         requires_task=True,
         worker_group="review-open",
@@ -164,10 +169,19 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction("board search", "Toggle search bar", KanbanActionId.TOGGLE_SEARCH),
     KanbanAction(
-        "board plan mode",
-        "Open planner",
-        KanbanActionId.OPEN_PLANNER,
-        requires_agent=True,
+        "board orchestrator",
+        "Toggle docked orchestrator overlay (Ctrl+O)",
+        KanbanActionId.TOGGLE_CHAT,
+    ),
+    KanbanAction(
+        "board orchestrator docked",
+        "Toggle docked orchestrator overlay (Ctrl+O)",
+        KanbanActionId.TOGGLE_ORCHESTRATOR_DOCK,
+    ),
+    KanbanAction(
+        "board orchestrator fullscreen",
+        "Toggle fullscreen orchestrator overlay (Ctrl+P)",
+        KanbanActionId.TOGGLE_ORCHESTRATOR_FULLSCREEN,
     ),
     KanbanAction(
         "board switch agent",
@@ -191,14 +205,6 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
         KanbanActionId.SET_TASK_BRANCH,
         requires_task=True,
         worker_group="set-task-branch",
-        exclusive=True,
-        exit_on_error=False,
-    ),
-    KanbanAction(
-        "board set default branch",
-        "Set global default base branch",
-        KanbanActionId.SET_DEFAULT_BRANCH,
-        worker_group="set-default-branch",
         exclusive=True,
         exit_on_error=False,
     ),
@@ -240,6 +246,40 @@ class KanbanCommandProvider(Provider):
                 help=item.help,
             )
 
+        plugin_actions = getattr(screen, "get_plugin_ui_actions", None)
+        if callable(plugin_actions):
+            plugin_actions_fn = cast(
+                "Callable[..., Awaitable[list[dict[str, object]]]]",
+                plugin_actions,
+            )
+            for surface in ("kanban.repo_actions", "kanban.task_actions"):
+                for action in await plugin_actions_fn(surface=surface):
+                    command = str(
+                        action.get("command")
+                        or action.get("label")
+                        or f"{action.get('plugin_id', 'plugin')} {action.get('action_id', '')}"
+                    ).strip()
+                    if not command:
+                        continue
+                    score = matcher.match(command)
+                    if score <= 0:
+                        continue
+                    plugin_id = str(action.get("plugin_id", "")).strip()
+                    action_id = str(action.get("action_id", "")).strip()
+                    if not plugin_id or not action_id:
+                        continue
+                    help_text = str(action.get("help") or action.get("label") or "").strip()
+                    yield Hit(
+                        score,
+                        matcher.highlight(command),
+                        partial(
+                            screen.run_plugin_ui_action,
+                            plugin_id,
+                            action_id,
+                        ),
+                        help=help_text,
+                    )
+
     async def discover(self) -> Hits:
         screen = self.screen
         for item in KANBAN_ACTIONS:
@@ -259,3 +299,31 @@ class KanbanCommandProvider(Provider):
                 ),
                 help=item.help,
             )
+
+        plugin_actions = getattr(screen, "get_plugin_ui_actions", None)
+        if callable(plugin_actions):
+            plugin_actions_fn = cast(
+                "Callable[..., Awaitable[list[dict[str, object]]]]",
+                plugin_actions,
+            )
+            for surface in ("kanban.repo_actions", "kanban.task_actions"):
+                for action in await plugin_actions_fn(surface=surface):
+                    command = str(
+                        action.get("command")
+                        or action.get("label")
+                        or (f"{action.get('plugin_id', 'plugin')} {action.get('action_id', '')}")
+                    ).strip()
+                    plugin_id = str(action.get("plugin_id", "")).strip()
+                    action_id = str(action.get("action_id", "")).strip()
+                    if not command or not plugin_id or not action_id:
+                        continue
+                    help_text = str(action.get("help") or action.get("label") or "").strip()
+                    yield DiscoveryHit(
+                        command,
+                        partial(
+                            screen.run_plugin_ui_action,
+                            plugin_id,
+                            action_id,
+                        ),
+                        help=help_text,
+                    )

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>AI-powered Kanban TUI for autonomous development workflows</strong>
+  <strong>A terminal task board that runs AI agents on your code — you review, you decide, you merge.</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,10 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.kagan.sh">Documentation</a> •
-  <a href="https://docs.kagan.sh/install">Install</a> •
-  <a href="https://docs.kagan.sh/quickstart">Quickstart</a> •
+  <a href="https://docs.kagan.sh/">Documentation</a> •
+  <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> •
+  <a href="https://docs.kagan.sh/guides/mcp-setup/">MCP Setup</a> •
+  <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a> •
   <a href="https://github.com/aorumbayev/kagan/issues">Issues</a>
 </p>
 
@@ -35,7 +36,7 @@
   <img src=".github/assets/demo.gif" alt="Kagan Demo" width="700">
 </p>
 
-Terminal Kanban board with integrated AI agents for autonomous and collaborative development. Review mode surfaces merge readiness and conflict guidance.
+Create a task. Pick a mode. The agent works. You review, approve, and merge.
 
 ## Install
 
@@ -84,35 +85,35 @@ kagan reset        # Reset data (interactive)
 kagan --help       # Show all options
 ```
 
-## Ways To Use Kagan
+## Ways to Use Kagan
 
-### TUI-first (interactive)
+### TUI (interactive)
 
 Run `kagan` -- create tasks, run AUTO/PAIR workflows, review/rebase/merge, switch projects.
 
-### MCP delegation (admin lane)
+### Editor (MCP)
 
-Operate from your AI CLI while Kagan stays source of truth:
+Operate Kagan from Claude Code, Gemini CLI, or any MCP-compatible client -- no TUI required:
 
 ```bash
-kagan mcp --identity kagan_admin --capability maintainer --session-id ext:orchestrator
+kagan mcp --capability pair_worker
 ```
 
-Use `viewer`/`pair_worker` profiles for safer day-to-day automation.
+Start with `pair_worker`. Escalate to `maintainer` when needed. See [MCP setup](https://docs.kagan.sh/guides/mcp-setup/) for editor configs.
 
-## User-Facing Features
+## Features
 
-- Board lifecycle: `BACKLOG -> IN_PROGRESS -> REVIEW -> DONE`
-- Task CRUD, duplicate, inspect details
-- Work modes: `AUTO` (background agent), `PAIR` (interactive session)
+- Kanban lifecycle: `BACKLOG -> IN_PROGRESS -> REVIEW -> DONE`
+- Task CRUD, duplicate, inspect
+- Work modes: `AUTO` (background agent) / `PAIR` (interactive session)
 - Chat-driven planning with approval flow
-- Review: diff output, approve/reject/rebase/merge
-- Multi-repo: project/repo switching, base-branch controls
-- PAIR handoff: session management + human redirect (tmux/VS Code/Cursor)
+- Review: diff, approve/reject/rebase/merge
+- Multi-repo: project switching, base-branch controls
+- PAIR handoff: tmux / VS Code / Cursor session management
 - MCP: 23 tools spanning tasks, sessions, review, planning, projects, audit, settings
 - Core daemon management: run, inspect, stop
 
-## Supported AI CLIs
+## Supported Agents
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic)
 - [OpenCode](https://opencode.ai/docs) (SST)
@@ -121,9 +122,9 @@ Use `viewer`/`pair_worker` profiles for safer day-to-day automation.
 - [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) (Moonshot AI)
 - [GitHub Copilot](https://github.com/github/copilot-cli) (GitHub)
 
-## Documentation
+## Docs
 
-Full docs at **[docs.kagan.sh](https://docs.kagan.sh)** -- [User Guide](https://docs.kagan.sh/user-guide/) | [MCP Server](https://docs.kagan.sh/mcp/)
+**[docs.kagan.sh](https://docs.kagan.sh/)** -- [Quickstart](https://docs.kagan.sh/quickstart/) | [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/) | [Editor MCP Setup](https://docs.kagan.sh/guides/editor-mcp-setup/)
 
 ## License
 

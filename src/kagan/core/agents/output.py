@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from kagan.core.safety import redact_sensitive_payload, redact_sensitive_text
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -24,6 +26,11 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _redacted_json_safe(value: Any) -> Any:
+    json_safe = _json_safe(value)
+    return redact_sensitive_payload(json_safe, redact_pii=True)
+
+
 def _serialize_messages(
     buffered_messages: Sequence[object],
     *,
@@ -41,10 +48,20 @@ def _serialize_messages(
             # Compact mode stores streamed text via final response only.
             if compact_streamed_text and message.content_type == "text":
                 continue
-            serialized_messages.append({"type": "response", "content": message.text})
+            serialized_messages.append(
+                {
+                    "type": "response",
+                    "content": redact_sensitive_text(message.text, redact_pii=True),
+                }
+            )
         elif isinstance(message, msg_types.Thinking):
             if include_thinking and message.text:
-                serialized_messages.append({"type": "thinking", "content": message.text})
+                serialized_messages.append(
+                    {
+                        "type": "thinking",
+                        "content": redact_sensitive_text(message.text, redact_pii=True),
+                    }
+                )
         elif isinstance(message, msg_types.ToolCall):
             serialized_messages.append(
                 {
@@ -53,9 +70,9 @@ def _serialize_messages(
                     "title": message.tool_call.title,
                     "kind": message.tool_call.kind or "",
                     "status": message.tool_call.status or "",
-                    "content": _json_safe(message.tool_call.content) or [],
-                    "raw_input": _json_safe(message.tool_call.raw_input),
-                    "raw_output": _json_safe(message.tool_call.raw_output),
+                    "content": _redacted_json_safe(message.tool_call.content) or [],
+                    "raw_input": _redacted_json_safe(message.tool_call.raw_input),
+                    "raw_output": _redacted_json_safe(message.tool_call.raw_output),
                 }
             )
         elif isinstance(message, msg_types.ToolCallUpdate):
@@ -66,16 +83,23 @@ def _serialize_messages(
                     "status": message.update.status or "",
                     "title": message.tool_call.title,
                     "kind": message.tool_call.kind or "",
-                    "content": _json_safe(message.tool_call.content) or [],
-                    "raw_input": _json_safe(message.tool_call.raw_input),
-                    "raw_output": _json_safe(message.tool_call.raw_output),
+                    "content": _redacted_json_safe(message.tool_call.content) or [],
+                    "raw_input": _redacted_json_safe(message.tool_call.raw_input),
+                    "raw_output": _redacted_json_safe(message.tool_call.raw_output),
                 }
             )
         elif isinstance(message, msg_types.Plan):
             serialized_messages.append(
                 {
                     "type": "plan",
-                    "entries": [e.model_dump() for e in message.entries] if message.entries else [],
+                    "entries": (
+                        redact_sensitive_payload(
+                            [e.model_dump() for e in message.entries],
+                            redact_pii=True,
+                        )
+                        if message.entries
+                        else []
+                    ),
                 }
             )
         elif isinstance(message, msg_types.AgentReady):
@@ -84,8 +108,8 @@ def _serialize_messages(
             serialized_messages.append(
                 {
                     "type": "agent_fail",
-                    "message": message.message,
-                    "details": message.details,
+                    "message": redact_sensitive_text(message.message, redact_pii=True),
+                    "details": redact_sensitive_text(message.details, redact_pii=True),
                 }
             )
     return serialized_messages
@@ -105,7 +129,12 @@ def serialize_agent_output(agent: Agent, *, include_thinking: bool = False) -> s
 
     response_text = agent.get_response_text()
     if response_text:
-        serialized_messages.append({"type": "response", "content": response_text})
+        serialized_messages.append(
+            {
+                "type": "response",
+                "content": redact_sensitive_text(response_text, redact_pii=True),
+            }
+        )
 
     return json.dumps({"messages": serialized_messages})
 

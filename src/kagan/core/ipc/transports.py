@@ -1,8 +1,4 @@
-"""IPC transport implementations for Kagan core communication.
-
-Provides Unix socket transport on POSIX and TCP loopback fallback on Windows.
-``DefaultTransport`` is automatically set to the best choice for the current platform.
-"""
+"""IPC transport implementations (Unix socket + TCP loopback fallback)."""
 
 from __future__ import annotations
 
@@ -16,6 +12,7 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from kagan.core.ipc.constants import STREAM_LIMIT_BYTES
 from kagan.core.paths import get_core_runtime_dir
 
 if TYPE_CHECKING:
@@ -29,21 +26,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Shared types
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class ServerHandle:
-    """Handle returned after starting a transport server.
-
-    Attributes:
-        transport_type: Identifier string (``socket`` or ``tcp``).
-        address: The connection address (file path or hostname).
-        port: TCP port when applicable; ``None`` for socket transport.
-        close: Async callable to shut down the server gracefully.
-    """
+    """Handle returned after starting a transport server."""
 
     transport_type: str
     address: str
@@ -51,24 +37,15 @@ class ServerHandle:
     close: Callable[[], Coroutine[Any, Any, None]] | None = None
 
 
-# ---------------------------------------------------------------------------
-# Unix socket transport
-# ---------------------------------------------------------------------------
-
 _SOCKET_NAME = "core.sock"
 
 
 def _default_socket_path() -> str:
-    """Return the default path for the Unix domain socket."""
     return str(get_core_runtime_dir() / _SOCKET_NAME)
 
 
 class UnixSocketTransport:
-    """IPC transport over Unix domain sockets.
-
-    Only available on macOS and Linux.  On Windows this class raises
-    ``NotImplementedError`` at construction time.
-    """
+    """IPC transport over Unix domain sockets (macOS/Linux only)."""
 
     def __init__(self, path: str | None = None) -> None:
         if platform.system() == "Windows":
@@ -76,14 +53,8 @@ class UnixSocketTransport:
             raise NotImplementedError(msg)
         self._path = path or _default_socket_path()
 
-    async def start_server(
-        self,
-        handler: ClientHandler,
-    ) -> ServerHandle:
-        """Bind a Unix socket server at the configured path.
-
-        Any stale socket file is removed before binding.
-        """
+    async def start_server(self, handler: ClientHandler) -> ServerHandle:
+        """Bind a Unix socket server, removing any stale socket file."""
         with contextlib.suppress(FileNotFoundError):
             os.unlink(self._path)
 
@@ -91,7 +62,11 @@ class UnixSocketTransport:
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-        server = await asyncio.start_unix_server(handler, path=self._path)
+        server = await asyncio.start_unix_server(
+            handler,
+            path=self._path,
+            limit=STREAM_LIMIT_BYTES,
+        )
 
         if sys.platform != "win32":
             os.chmod(self._path, 0o600)
@@ -113,35 +88,23 @@ class UnixSocketTransport:
         )
 
     async def connect(
-        self,
-        address: str,
-        port: int | None = None,
+        self, address: str, port: int | None = None
     ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         """Open a connection to the Unix socket at *address*."""
-        reader, writer = await asyncio.open_unix_connection(address)
+        reader, writer = await asyncio.open_unix_connection(
+            address,
+            limit=STREAM_LIMIT_BYTES,
+        )
         logger.debug("Connected to Unix socket at %s", address)
         return reader, writer
 
-
-# ---------------------------------------------------------------------------
-# TCP loopback transport
-# ---------------------------------------------------------------------------
 
 _LOCALHOST = "127.0.0.1"
 _TOKEN_BYTES = 32
 
 
 class TCPLoopbackTransport:
-    """IPC transport over a TCP socket bound to localhost.
-
-    Used as a cross-platform fallback when Unix sockets or named pipes are
-    unavailable.  A random port is chosen by the OS, and a secret token is
-    generated so that only authorised clients can complete the handshake.
-
-    The handshake token is distinct from the per-request bearer token used
-    by ``IPCServer`` -- it proves the client discovered the endpoint through
-    a trusted channel (the endpoint file on disk).
-    """
+    """IPC transport over a TCP loopback socket with handshake token validation."""
 
     def __init__(self, host: str | None = None) -> None:
         self._host = host or _LOCALHOST
@@ -156,15 +119,8 @@ class TCPLoopbackTransport:
         """The secret handshake token generated when the server starts."""
         return self._handshake_token
 
-    async def start_server(
-        self,
-        handler: ClientHandler,
-    ) -> ServerHandle:
-        """Bind a TCP server on localhost with a random port.
-
-        A fresh handshake token is generated and stored on the instance so
-        the caller can persist it alongside the endpoint descriptor.
-        """
+    async def start_server(self, handler: ClientHandler) -> ServerHandle:
+        """Bind a TCP server on localhost with a random OS-assigned port."""
         if self._handshake_token is None:
             self._handshake_token = secrets.token_hex(_TOKEN_BYTES)
 
@@ -195,6 +151,7 @@ class TCPLoopbackTransport:
             _handshake_wrapper,
             host=self._host,
             port=0,  # OS picks a free port
+            limit=STREAM_LIMIT_BYTES,
         )
 
         addrs = server.sockets[0].getsockname() if server.sockets else (self._host, 0)
@@ -221,16 +178,7 @@ class TCPLoopbackTransport:
         *,
         handshake_token: str | None = None,
     ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Open a TCP connection and complete the handshake.
-
-        Args:
-            address: Hostname (should be ``127.0.0.1``).
-            port: TCP port advertised by the server.
-            handshake_token: The secret token obtained from the endpoint file.
-
-        Raises:
-            ConnectionError: If the handshake is rejected or times out.
-        """
+        """Open a TCP connection and complete the handshake."""
         if port is None:
             msg = "TCP transport requires a port"
             raise ValueError(msg)
@@ -238,7 +186,11 @@ class TCPLoopbackTransport:
             msg = "TCP transport requires a handshake token"
             raise ValueError(msg)
 
-        reader, writer = await asyncio.open_connection(address, port)
+        reader, writer = await asyncio.open_connection(
+            address,
+            port,
+            limit=STREAM_LIMIT_BYTES,
+        )
         writer.write((handshake_token + "\n").encode("utf-8"))
         await writer.drain()
 
@@ -253,10 +205,6 @@ class TCPLoopbackTransport:
         logger.debug("Connected to TCP server at %s:%d", address, port)
         return reader, writer
 
-
-# ---------------------------------------------------------------------------
-# Default transport selection
-# ---------------------------------------------------------------------------
 
 if sys.platform == "win32":
     DefaultTransport = TCPLoopbackTransport

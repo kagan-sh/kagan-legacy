@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
 
 from kagan.core.constants import NOTIFICATION_TITLE_MAX_LENGTH
-from kagan.core.models.enums import (
+from kagan.core.domain.enums import (
     CardIndicator,
     RejectionAction,
     ReviewResult,
@@ -13,23 +14,63 @@ from kagan.core.models.enums import (
 from kagan.core.services.jobs import JobStatus
 from kagan.core.time import utc_now
 from kagan.tui.ui.screen_result import await_screen_result
+from kagan.tui.ui.utils import state_attr, state_bool, state_int, state_tuple
 
 if TYPE_CHECKING:
-    from kagan.core.adapters.db.schema import Task
     from kagan.core.services.runtime import AutoOutputReadiness
     from kagan.tui.ui.screens.kanban.screen import KanbanScreen
+    from kagan.tui.ui.types import TaskView
     from kagan.tui.ui.widgets.card import TaskCard
+
+
+log = logging.getLogger(__name__)
 
 
 class KanbanReviewController:
     def __init__(self, screen: KanbanScreen) -> None:
         self.screen = screen
 
-    def get_review_task(self, card: TaskCard | None) -> Task | None:
+    @staticmethod
+    def _state_attr(state: object | None, name: str, default: Any = None) -> Any:
+        return state_attr(state, name, default)
+
+    @staticmethod
+    def _state_bool(state: object | None, name: str) -> bool:
+        return state_bool(state, name)
+
+    @staticmethod
+    def _state_tuple(state: object | None, name: str) -> tuple[str, ...]:
+        return state_tuple(state, name)
+
+    @staticmethod
+    def _state_int(state: object | None, name: str, default: int = 0) -> int:
+        return state_int(state, name, default)
+
+    @classmethod
+    def _stream_target(cls, state: object | None, name: str) -> object | None:
+        candidate = cls._state_attr(state, name)
+        if callable(getattr(candidate, "set_message_target", None)):
+            return candidate
+        return None
+
+    async def _resolve_base_branch(self, task: TaskView) -> str | None:
+        try:
+            return await self.screen.ctx.api.resolve_task_base_branch(task)
+        except ValueError as exc:
+            self.screen.notify(str(exc), severity="error")
+            return None
+        except RuntimeError as exc:
+            self.screen.notify(str(exc), severity="error")
+            return None
+
+    def get_review_task(self, card: TaskCard | None) -> TaskView | None:
         if not card or not card.task_model:
             return None
         if card.task_model.status != TaskStatus.REVIEW:
-            self.screen.notify("Task is not in REVIEW", severity="warning")
+            self.screen.notify(
+                "Task is not in REVIEW. Move task to REVIEW before performing review actions.",
+                severity="warning",
+            )
             return None
         return card.task_model
 
@@ -50,7 +91,9 @@ class KanbanReviewController:
         task = self.get_review_task(self.screen.get_focused_card())
         if not task:
             return
-        base = task.base_branch or self.screen.ctx.config.general.default_base_branch
+        base = await self._resolve_base_branch(task)
+        if base is None:
+            return
         self.screen.notify("Rebasing... (this may take a few seconds)", severity="information")
         (
             success,
@@ -65,7 +108,7 @@ class KanbanReviewController:
             self.screen.notify(f"Rebase failed: {message}", severity="error")
 
     async def handle_rebase_conflict(
-        self, task: Task, base_branch: str, conflict_files: list[str]
+        self, task: TaskView, base_branch: str, conflict_files: list[str]
     ) -> None:
         from kagan.core.agents.prompt_builders import build_conflict_resolution_instructions
 
@@ -172,7 +215,7 @@ class KanbanReviewController:
                 severity="warning",
             )
 
-    async def on_merge_confirmed(self, task: Task) -> None:
+    async def on_merge_confirmed(self, task: TaskView) -> None:
         from kagan.tui.ui.modals import ConfirmModal
 
         self.screen._ui_state.pending_merge_task = task
@@ -194,7 +237,7 @@ class KanbanReviewController:
             track_failures=True,
         )
 
-    async def on_close_confirmed(self, task: Task) -> None:
+    async def on_close_confirmed(self, task: TaskView) -> None:
         from kagan.tui.ui.modals import ConfirmModal
 
         self.screen._ui_state.pending_close_task = task
@@ -217,7 +260,7 @@ class KanbanReviewController:
             return
         self.screen.notify(message, severity="error")
 
-    async def on_advance_confirmed(self, task: Task) -> None:
+    async def on_advance_confirmed(self, task: TaskView) -> None:
         from kagan.tui.ui.modals import ConfirmModal
 
         self.screen._ui_state.pending_advance_task = task
@@ -235,7 +278,7 @@ class KanbanReviewController:
         self.screen.notify(f"Moved #{pending_task.id} to REVIEW")
         self.screen.focus_column(TaskStatus.REVIEW)
 
-    async def on_auto_move_confirmed(self, task: Task, new_status: TaskStatus) -> None:
+    async def on_auto_move_confirmed(self, task: TaskView, new_status: TaskStatus) -> None:
         """Handle auto move confirmed event."""
         from kagan.tui.ui.modals import ConfirmModal
 
@@ -314,8 +357,10 @@ class KanbanReviewController:
         title = f"Diff: {task.short_id} {task.title[:NOTIFICATION_TITLE_MAX_LENGTH]}"
         workspaces = await self.screen.ctx.api.list_workspaces(task_id=task.id)
 
-        if not workspaces or self.screen.ctx.api.diff_service is None:
-            base = self.screen.kagan_app.config.general.default_base_branch
+        if not workspaces:
+            base = await self._resolve_base_branch(task)
+            if base is None:
+                return
             diff_text = await self.screen.ctx.api.get_workspace_diff(task.id, base_branch=base)
             result = await await_screen_result(
                 self.screen.app, DiffModal(title=title, diff_text=diff_text, task=task)
@@ -323,13 +368,26 @@ class KanbanReviewController:
             await self.on_diff_result(task, result)
             return
 
-        diffs = await self.screen.ctx.api.get_all_diffs(workspaces[0].id)
+        try:
+            diffs = await self.screen.ctx.api.get_all_diffs(workspaces[0].id)
+        except RuntimeError:
+            base = await self._resolve_base_branch(task)
+            if base is None:
+                return
+            diff_text = await self.screen.ctx.api.get_workspace_diff(task.id, base_branch=base)
+            result = await await_screen_result(
+                self.screen.app, DiffModal(title=title, diff_text=diff_text, task=task)
+            )
+            await self.on_diff_result(task, result)
+            return
+
         result = await await_screen_result(
-            self.screen.app, DiffModal(title=title, diffs=diffs, task=task)
+            self.screen.app,
+            DiffModal(title=title, diffs=diffs, task=task),
         )
         await self.on_diff_result(task, result)
 
-    async def on_diff_result(self, task: Task, result: str | None) -> None:
+    async def on_diff_result(self, task: TaskView, result: str | None) -> None:
         if result == ReviewResult.APPROVE:
             if await self.screen.ctx.api.has_no_changes(task):
                 await self.confirm_close_no_changes(task)
@@ -346,15 +404,17 @@ class KanbanReviewController:
 
     async def open_task_output_for_task(
         self,
-        task: Task,
+        task: TaskView,
         *,
         read_only: bool = False,
         initial_tab: str | None = None,
         include_running_output: bool = False,
         auto_output_readiness: AutoOutputReadiness | None = None,
+        auto_start_requested: bool = False,
     ) -> None:
         """Open task output for task."""
         from kagan.tui.ui.modals import ReviewModal
+        from kagan.tui.ui.screens import TaskOutputScreen
 
         agent_config = task.get_agent_config(self.screen.kagan_app.config)
         task_id = task.id
@@ -362,20 +422,43 @@ class KanbanReviewController:
         api = self.screen.ctx.api
         runtime_view = api.get_runtime_view(task.id) if is_auto else None
 
-        if is_auto:
-            execution_id = runtime_view.execution_id if runtime_view is not None else None
-            run_count = runtime_view.run_count if runtime_view is not None else 0
-            is_running = runtime_view.is_running if runtime_view is not None else False
-            is_reviewing = runtime_view.is_reviewing if runtime_view is not None else False
-            is_blocked = runtime_view.is_blocked if runtime_view is not None else False
-            blocked_reason = runtime_view.blocked_reason if runtime_view is not None else None
-            blocked_by_task_ids = (
-                runtime_view.blocked_by_task_ids if runtime_view is not None else ()
+        open_live_task_output_screen = (
+            is_auto
+            and not read_only
+            and task.status
+            in (
+                TaskStatus.BACKLOG,
+                TaskStatus.IN_PROGRESS,
             )
-            overlap_hints = runtime_view.overlap_hints if runtime_view is not None else ()
-            is_pending = runtime_view.is_pending if runtime_view is not None else False
-            pending_reason = runtime_view.pending_reason if runtime_view is not None else None
-            review_agent = runtime_view.review_agent if runtime_view is not None else None
+        )
+        if open_live_task_output_screen:
+            resolved_base_branch = await self._resolve_base_branch(task)
+            if resolved_base_branch is None:
+                return
+            await await_screen_result(
+                self.screen.app,
+                TaskOutputScreen(
+                    task=task,
+                    base_branch=resolved_base_branch,
+                    auto_start_requested=auto_start_requested,
+                ),
+            )
+            await self.screen._board.refresh_board()
+            self.screen._board.sync_agent_states()
+            return
+
+        if is_auto:
+            execution_id = self._state_attr(runtime_view, "execution_id")
+            run_count = self._state_int(runtime_view, "run_count")
+            is_running = self._state_bool(runtime_view, "is_running")
+            is_reviewing = self._state_bool(runtime_view, "is_reviewing")
+            is_blocked = self._state_bool(runtime_view, "is_blocked")
+            blocked_reason = self._state_attr(runtime_view, "blocked_reason")
+            blocked_by_task_ids = self._state_tuple(runtime_view, "blocked_by_task_ids")
+            overlap_hints = self._state_tuple(runtime_view, "overlap_hints")
+            is_pending = self._state_bool(runtime_view, "is_pending")
+            pending_reason = self._state_attr(runtime_view, "pending_reason")
+            review_agent = self._stream_target(runtime_view, "review_agent")
         else:
             execution_id = None
             run_count = 0
@@ -391,17 +474,21 @@ class KanbanReviewController:
 
         running_agent = None
         if is_auto and include_running_output:
-            running_agent = runtime_view.running_agent if runtime_view is not None else None
-            if running_agent is None:
-                running_agent = self.screen.ctx.api.get_running_agent(task.id)
+            running_agent = self._stream_target(runtime_view, "running_agent")
             if running_agent is not None:
                 is_running = True
         if is_auto and auto_output_readiness is not None:
-            if auto_output_readiness.execution_id is not None:
-                execution_id = auto_output_readiness.execution_id
-            is_running = auto_output_readiness.is_running
-            if include_running_output and auto_output_readiness.running_agent is not None:
-                running_agent = auto_output_readiness.running_agent
+            readiness_execution_id = self._state_attr(auto_output_readiness, "execution_id")
+            if readiness_execution_id is not None:
+                execution_id = readiness_execution_id
+            is_running = self._state_bool(auto_output_readiness, "is_running")
+            if include_running_output:
+                readiness_running_agent = self._stream_target(
+                    auto_output_readiness,
+                    "running_agent",
+                )
+                if readiness_running_agent is not None:
+                    running_agent = readiness_running_agent
         if running_agent is not None:
             is_running = True
 
@@ -412,15 +499,17 @@ class KanbanReviewController:
                 if run_count == 0:
                     run_count = await self.screen.ctx.api.count_executions_for_task(task.id)
 
+        resolved_base_branch = await self._resolve_base_branch(task)
+        if resolved_base_branch is None:
+            return
+
         result = await await_screen_result(
             self.screen.app,
             ReviewModal(
                 task=task,
-                worktree_manager=self.screen.ctx.api.workspace_service,
                 agent_config=agent_config,
-                base_branch=self.screen.kagan_app.config.general.default_base_branch,
+                base_branch=resolved_base_branch,
                 agent_factory=self.screen.kagan_app._agent_factory,
-                execution_service=self.screen.ctx.api.execution_repo,
                 execution_id=execution_id,
                 run_count=run_count,
                 running_agent=running_agent,
@@ -436,7 +525,7 @@ class KanbanReviewController:
                 read_only=read_only,
                 initial_tab=initial_tab
                 or (
-                    "review-ai"
+                    "session:review"
                     if is_auto and task.status == TaskStatus.REVIEW
                     else "review-summary"
                 ),
@@ -450,7 +539,9 @@ class KanbanReviewController:
             return
 
         if result == "rebase_conflict":
-            base = task.base_branch or self.screen.ctx.config.general.default_base_branch
+            base = await self._resolve_base_branch(task)
+            if base is None:
+                return
             (
                 _success,
                 _msg,
@@ -477,13 +568,28 @@ class KanbanReviewController:
 
     async def execute_merge(
         self,
-        task: Task,
+        task: TaskView,
         *,
         success_msg: str,
         track_failures: bool = False,
     ) -> bool:
         self.screen.notify("Merging... (this may take a few seconds)", severity="information")
-        success, message = await self.screen.ctx.api.merge_task_direct(task)
+        try:
+            success, message = await self.screen.ctx.api.merge_task_direct(task)
+        except RuntimeError as exc:
+            log.error("Merge failed for task %s: %s", task.id, exc)
+            if track_failures:
+                self.screen._merge_failed_tasks.add(task.id)
+                self.screen._board.sync_agent_states()
+            self.screen.notify(f"Merge error: {exc}", severity="error")
+            return False
+        except (OSError, ConnectionError) as exc:  # quality-allow-broad-except
+            log.error("Merge transport error for task %s: %s", task.id, exc)
+            if track_failures:
+                self.screen._merge_failed_tasks.add(task.id)
+                self.screen._board.sync_agent_states()
+            self.screen.notify(f"Merge connection error: {exc}", severity="error")
+            return False
         if success:
             if track_failures:
                 self.screen._merge_failed_tasks.discard(task.id)
@@ -497,22 +603,22 @@ class KanbanReviewController:
         return success
 
     @staticmethod
-    def format_merge_failure(task: Task, message: str) -> str:
+    def format_merge_failure(task: TaskView, message: str) -> str:
         """Format merge failure."""
         if task.task_type == TaskType.AUTO:
             return f"Merge failed (AUTO): {message}"
         return f"Merge failed (PAIR): {message}"
 
-    async def confirm_close_no_changes(self, task: Task) -> None:
+    async def confirm_close_no_changes(self, task: TaskView) -> None:
         await self.on_close_confirmed(task)
 
-    async def handle_reject_with_feedback(self, task: Task) -> None:
+    async def handle_reject_with_feedback(self, task: TaskView) -> None:
         from kagan.tui.ui.modals import RejectionInputModal
 
         result = await await_screen_result(self.screen.app, RejectionInputModal(task.title))
         await self.apply_rejection_result(task, result)
 
-    async def apply_rejection_result(self, task: Task, result: tuple[str, str] | None) -> None:
+    async def apply_rejection_result(self, task: TaskView, result: tuple[str, str] | None) -> None:
         if result is None:
             await self.screen.ctx.api.apply_rejection_feedback(
                 task,

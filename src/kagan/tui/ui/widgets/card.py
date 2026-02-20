@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from textual.containers import Horizontal, Vertical
-from textual.message import Message
 from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Label
@@ -17,14 +15,37 @@ from kagan.core.constants import (
     CARD_ID_MAX_LENGTH,
     CARD_TITLE_LINE_WIDTH,
 )
-from kagan.core.models.enums import CardIndicator
+from kagan.core.domain.enums import CardIndicator
 from kagan.tui.ui.card_formatters import truncate_text
+
+
+def _resolve_agent_config(task: object, config: object) -> object:
+    """Resolve AgentConfig from task; supports both domain Task and SDK Task."""
+    if hasattr(task, "get_agent_config"):
+        return task.get_agent_config(config)
+    from kagan.core.builtin_agents import get_builtin_agent
+    from kagan.core.config import get_fallback_agent_config
+
+    agent_backend = getattr(task, "agent_backend", None)
+    if agent_backend:
+        if builtin := get_builtin_agent(agent_backend):
+            return builtin.config
+        if hasattr(config, "get_agent") and (agent_cfg := config.get_agent(agent_backend)):
+            return agent_cfg
+    general = getattr(config, "general", None)
+    default_agent = getattr(general, "default_worker_agent", "claude") if general else "claude"
+    if builtin := get_builtin_agent(default_agent):
+        return builtin.config
+    if hasattr(config, "get_agent") and (agent_cfg := config.get_agent(default_agent)):
+        return agent_cfg
+    return get_fallback_agent_config()
+
 
 if TYPE_CHECKING:
     from textual import events
     from textual.app import ComposeResult
 
-    from kagan.core.adapters.db.schema import Task
+    from kagan.tui.ui.types import TaskView
 
 
 class TaskCard(Widget):
@@ -32,15 +53,11 @@ class TaskCard(Widget):
 
     can_focus = True
 
-    task_model: reactive[Task | None] = reactive(None)
+    task_model: reactive[TaskView | None] = reactive(None)
     is_agent_active: var[bool] = var(False, toggle_class="agent-active", always_update=True)
     indicator: var[CardIndicator] = var(CardIndicator.NONE, always_update=True)
 
-    @dataclass
-    class Selected(Message):
-        task: Task
-
-    def __init__(self, task: Task, **kwargs) -> None:
+    def __init__(self, task: TaskView, **kwargs) -> None:
         super().__init__(id=f"card-{task.id}", **kwargs)
         self._indicator_label: Label | None = None
         self._title_label: Label | None = None
@@ -50,6 +67,10 @@ class TaskCard(Widget):
         self._branch_label: Label | None = None
         self._type_label: Label | None = None
         self._priority_label: Label | None = None
+        self._github_issue_label: Label | None = None
+        self._github_pr_label: Label | None = None
+        self._github_issue_number: int | None = None
+        self._github_pr_number: int | None = None
         self.task_model = task
 
     def compose(self) -> ComposeResult:
@@ -73,10 +94,16 @@ class TaskCard(Widget):
                 self._backend_label.display = False
                 self._branch_label = Label("", classes="card-badge card-branch")
                 self._branch_label.display = False
+                self._github_issue_label = Label("", classes="card-badge-gh")
+                self._github_issue_label.display = False
+                self._github_pr_label = Label("", classes="card-badge-gh")
+                self._github_pr_label.display = False
                 self._type_label = Label("", classes="card-badge card-badge-type")
                 self._priority_label = Label("", classes="card-badge card-badge-priority")
                 yield self._backend_label
                 yield self._branch_label
+                yield self._github_issue_label
+                yield self._github_pr_label
                 yield self._type_label
                 yield Label("", classes="card-spacer")
                 yield self._priority_label
@@ -90,20 +117,18 @@ class TaskCard(Widget):
             return ""
         config = getattr(self.app, "config", None)
         if config is None:
-            return self.task_model.agent_backend or ""
+            return str(self.task_model.agent_backend or "")
 
-        agent_config = self.task_model.get_agent_config(config)
-        label = agent_config.name if agent_config else ""
+        agent_config = _resolve_agent_config(self.task_model, config)
+        label = agent_config.name if agent_config else str(self.task_model.agent_backend or "")
         return label.removesuffix(" Code")
 
     def on_click(self, event: events.Click) -> None:
-        """Handle click: single-click focuses, double-click opens details."""
-        if event.chain == 1:
-            self.focus()
-        elif event.chain >= 2 and self.task_model:
-            self.post_message(self.Selected(self.task_model))
+        """Focus the card on click without triggering task actions."""
+        del event
+        self.focus()
 
-    def watch_task_model(self, task: Task | None) -> None:
+    def watch_task_model(self, task: TaskView | None) -> None:
         self._render_task_model()
 
     def watch_is_agent_active(self, active: bool) -> None:
@@ -162,6 +187,35 @@ class TaskCard(Widget):
         self._priority_label.remove_class("priority-medium")
         self._priority_label.remove_class("priority-high")
         self._priority_label.add_class(f"priority-{task.priority.css_class}")
+
+        self._render_github_badges()
+
+    def update_github_context(
+        self,
+        issue_number: int | None,
+        pr_number: int | None,
+    ) -> None:
+        """Update GitHub issue and PR numbers displayed on the card."""
+        self._github_issue_number = issue_number
+        self._github_pr_number = pr_number
+        self._render_github_badges()
+
+    def _render_github_badges(self) -> None:
+        if self._github_issue_label is not None:
+            if self._github_issue_number is not None:
+                self._github_issue_label.update(f"#{self._github_issue_number}")
+                self._github_issue_label.display = True
+            else:
+                self._github_issue_label.update("")
+                self._github_issue_label.display = False
+
+        if self._github_pr_label is not None:
+            if self._github_pr_number is not None:
+                self._github_pr_label.update(f"PR#{self._github_pr_number}")
+                self._github_pr_label.display = True
+            else:
+                self._github_pr_label.update("")
+                self._github_pr_label.display = False
 
     def _render_indicator(self) -> None:
         if self._indicator_label is None:

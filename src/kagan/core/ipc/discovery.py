@@ -9,9 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from kagan.core.paths import (
-    get_core_endpoint_path,
     get_core_runtime_dir,
-    get_core_token_path,
 )
 from kagan.core.process_liveness import pid_exists
 
@@ -23,15 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CoreEndpoint:
-    """Describes how to connect to a running core instance.
-
-    Attributes:
-        transport: The transport type (``socket`` or ``tcp``).
-        address: The connection address (file path for socket, host for tcp).
-        port: TCP port when *transport* is ``tcp``; ``None`` for socket transport.
-        pid: OS process ID of the core, used for liveness checks.
-        token: Bearer token for authenticating IPC requests.
-    """
+    """Connection descriptor for a running core instance."""
 
     transport: str
     address: str
@@ -60,26 +50,20 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
-def _read_pid_from_lease() -> int | None:
+def _read_pid_from_lease(runtime_dir: Path) -> int | None:
     """Read owner PID from the core lease file, when available."""
-    lease = _read_json(get_core_runtime_dir() / "core.lease.json")
+    lease = _read_json(runtime_dir / "core.lease.json")
     if not isinstance(lease, dict):
         return None
-    raw_owner_pid = lease.get("owner_pid")
-    if isinstance(raw_owner_pid, int):
-        owner_pid = raw_owner_pid
-    elif isinstance(raw_owner_pid, str):
-        try:
-            owner_pid = int(raw_owner_pid)
-        except ValueError:
-            return None
-    else:
+    raw = lease.get("owner_pid")
+    try:
+        pid = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
         return None
-    return owner_pid if owner_pid > 0 else None
+    return pid if pid > 0 else None
 
 
 def _is_process_alive(pid: int) -> bool:
-    """Check whether a process with the given PID is alive."""
     return pid_exists(pid)
 
 
@@ -91,14 +75,24 @@ def _is_tcp_endpoint_reachable(address: str, port: int) -> bool:
         return False
 
 
-def discover_core_endpoint() -> CoreEndpoint | None:
-    """Discover a running Kagan core by reading runtime files.
+def _is_socket_endpoint_reachable(address: str) -> bool:
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.25)
+            sock.connect(address)
+        return True
+    except OSError:
+        return False
 
-    Returns a ``CoreEndpoint`` when a live core is found, or ``None`` if
-    no endpoint file exists, the file is invalid, or the referenced process
-    is no longer running.
-    """
-    endpoint_path = get_core_endpoint_path()
+
+def discover_core_endpoint(*, runtime_dir: Path | None = None) -> CoreEndpoint | None:
+    """Discover a running Kagan core by reading runtime files."""
+    resolved_runtime_dir = (
+        runtime_dir.expanduser().resolve(strict=False)
+        if runtime_dir is not None
+        else get_core_runtime_dir()
+    )
+    endpoint_path = resolved_runtime_dir / "endpoint.json"
     data = _read_json(endpoint_path)
     if data is None:
         logger.debug("No endpoint file at %s", endpoint_path)
@@ -118,11 +112,18 @@ def discover_core_endpoint() -> CoreEndpoint | None:
         )
         return None
 
-    pid = _read_pid_from_lease()
+    pid = _read_pid_from_lease(resolved_runtime_dir)
     if pid is not None and not _is_process_alive(pid):
         logger.info("Core process (PID %d) is no longer running; stale endpoint", pid)
         return None
-    if normalized_transport == "tcp":
+    if normalized_transport == "socket":
+        if not _is_socket_endpoint_reachable(str(address)):
+            logger.info(
+                "Core endpoint socket://%s is unreachable; treating runtime metadata as stale",
+                address,
+            )
+            return None
+    else:
         raw_port = data.get("port")
         if not isinstance(raw_port, int) or raw_port <= 0:
             logger.warning("Malformed TCP endpoint file at %s", endpoint_path)
@@ -135,7 +136,7 @@ def discover_core_endpoint() -> CoreEndpoint | None:
             )
             return None
 
-    token = _read_text(get_core_token_path())
+    token = _read_text(resolved_runtime_dir / "token")
 
     return CoreEndpoint(
         transport=normalized_transport,

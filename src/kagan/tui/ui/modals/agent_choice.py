@@ -5,11 +5,10 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import TYPE_CHECKING, Final
 
-from textual import on
 from textual.containers import Container, Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, OptionList, Static
+from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 if TYPE_CHECKING:
@@ -47,7 +46,7 @@ class AgentChoiceModal(ModalScreen[str | None]):
         None                 - User cancelled
     """
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS = [("i", "install", "Install"), ("escape", "cancel", "Cancel")]
 
     def __init__(
         self,
@@ -73,13 +72,6 @@ class AgentChoiceModal(ModalScreen[str | None]):
             )
 
             with Vertical(id="agent-choice-options"):
-                if self._missing:
-                    yield Button(
-                        f"Install {name}",
-                        variant="primary",
-                        id="install-btn",
-                    )
-
                 if self._available:
                     yield Static("Or use a different agent:", id="fallback-label")
                     options = [
@@ -87,15 +79,34 @@ class AgentChoiceModal(ModalScreen[str | None]):
                     ]
                     yield OptionList(*options, id="agent-list")
 
+                if self._missing and self._available:
+                    hint = (
+                        "Press [bold]i[/bold] to install, "
+                        "[bold]Enter[/bold] to use selected fallback, "
+                        "[bold]Esc[/bold] to cancel"
+                    )
+                elif self._missing:
+                    hint = "Press [bold]i[/bold] to install, [bold]Esc[/bold] to cancel"
+                elif self._available:
+                    hint = (
+                        "Press [bold]Enter[/bold] to use selected fallback, "
+                        "[bold]Esc[/bold] to cancel"
+                    )
+                else:
+                    hint = "Press [bold]Esc[/bold] to cancel"
+                yield Label(hint, classes="modal-keyboard-hint", id="agent-choice-hint")
                 yield Static("", id="agent-choice-status")
-                yield Button("Cancel", variant="default", id="cancel-btn")
 
-    @on(Button.Pressed, "#install-btn")
-    def on_install_pressed(self) -> None:
+    def on_mount(self) -> None:
+        with suppress(NoMatches):
+            self.query_one("#agent-list", OptionList).focus()
+
+    def action_install(self) -> None:
         if self._missing is None or self._installing:
             return
         self._installing = True
         self._set_inputs_disabled(True)
+        self.query_one("#agent-choice-hint", Label).update("Installing agent...")
         self._set_status("[yellow]Installing agent...[/yellow]")
         self.run_worker(
             self._run_install(self._missing.config.short_name),
@@ -103,12 +114,6 @@ class AgentChoiceModal(ModalScreen[str | None]):
             exclusive=True,
             exit_on_error=False,
         )
-
-    @on(Button.Pressed, "#cancel-btn")
-    def on_cancel_pressed(self) -> None:
-        if self._installing:
-            return
-        self.dismiss(None)
 
     async def _run_install(self, agent_short_name: str) -> None:
         from kagan.core.agents.installer import install_agent
@@ -121,10 +126,13 @@ class AgentChoiceModal(ModalScreen[str | None]):
 
         self._set_status(f"[red]{message}[/red]")
         self._installing = False
+        self._reset_keyboard_hint()
         self._set_inputs_disabled(False)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle option list option selected event."""
+        if self._installing:
+            return
         if event.option.id:
             self.dismiss(AgentChoiceResult.fallback(event.option.id))
 
@@ -134,10 +142,25 @@ class AgentChoiceModal(ModalScreen[str | None]):
 
     def _set_inputs_disabled(self, disabled: bool) -> None:
         with suppress(NoMatches):
-            self.query_one("#install-btn", Button).disabled = disabled
-        self.query_one("#cancel-btn", Button).disabled = disabled
-        with suppress(NoMatches):
             self.query_one("#agent-list", OptionList).disabled = disabled
+
+    def _reset_keyboard_hint(self) -> None:
+        hint = self.query_one("#agent-choice-hint", Label)
+        if self._missing and self._available:
+            hint.update(
+                "Press [bold]i[/bold] to install, [bold]Enter[/bold] to use selected fallback, "
+                "[bold]Esc[/bold] to cancel"
+            )
+            return
+        if self._missing:
+            hint.update("Press [bold]i[/bold] to install, [bold]Esc[/bold] to cancel")
+            return
+        if self._available:
+            hint.update(
+                "Press [bold]Enter[/bold] to use selected fallback, [bold]Esc[/bold] to cancel"
+            )
+            return
+        hint.update("Press [bold]Esc[/bold] to cancel")
 
     def action_cancel(self) -> None:
         if not self._installing:

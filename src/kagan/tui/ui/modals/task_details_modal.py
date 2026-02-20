@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime
 from enum import Enum, StrEnum, auto
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy.exc import OperationalError
 from textual import on
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.widgets import Button, Footer, Input, Label, Rule, Select, Static, TextArea
+from textual.widgets import Footer, Input, Label, Rule, Select, Static, TextArea
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
-from kagan.core.models.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskStatus, TaskType
 from kagan.tui.keybindings import TASK_DETAILS_BINDINGS
 from kagan.tui.ui.modals.base import KaganModalScreen
 from kagan.tui.ui.modals.description_editor import DescriptionEditorModal
@@ -30,6 +31,10 @@ from kagan.tui.ui.widgets.base import (
     TaskTypeSelect,
     TitleInput,
 )
+from kagan.tui.ui.widgets.github_context import (
+    format_github_context,
+    resolve_github_context,
+)
 from kagan.tui.ui.widgets.task_mentions import (
     TaskMentionArea,
     TaskMentionComplete,
@@ -43,14 +48,29 @@ from kagan.tui.ui.widgets.workspace_repos import WorkspaceReposWidget
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
+    from textual.timer import Timer
 
-    from kagan.core.adapters.db.schema import Task
+    from kagan.tui.ui.types import TaskView
 
 
 TaskUpdateDict = dict[str, object]
 _TASK_DETAILS_LOAD_ERRORS = (RepositoryClosing, OperationalError, RuntimeError, ValueError)
 _DEFAULT_AGENT_KEY: Final = "claude"
 _DEFAULT_PAIR_TERMINAL_BACKEND: Final = "tmux"
+_RESUME_CONTEXT_CHARS: Final = 500
+
+
+def _format_timestamp(value: str | datetime, label: str) -> str:
+    """Format a timestamp for display, handling both str and datetime inputs."""
+    if isinstance(value, datetime):
+        return f"{label}: {value:%Y-%m-%d %H:%M}"
+    if isinstance(value, str) and value:
+        try:
+            dt = datetime.fromisoformat(value)
+            return f"{label}: {dt:%Y-%m-%d %H:%M}"
+        except ValueError:
+            return f"{label}: {value}"
+    return f"{label}: —"
 
 
 class ModalAction(Enum):
@@ -67,12 +87,13 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
     """Unified modal for viewing, editing, and creating tasks."""
 
     editing = reactive(False)
+    _scratchpad: reactive[str] = reactive("", recompose=False)
 
     BINDINGS = TASK_DETAILS_BINDINGS
 
     def __init__(
         self,
-        task: Task | None = None,
+        task: TaskView | None = None,
         *,
         start_editing: bool = False,
         initial_type: TaskType | None = None,
@@ -86,6 +107,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         self._is_done = False
         self._mention_items: list[TaskMentionItem] = []
         self._mention_complete: TaskMentionComplete | None = None
+        self._presence_timer: Timer | None = None
         if task is not None:
             status = task.status
             self._is_done = status == TaskStatus.DONE
@@ -112,6 +134,20 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                 exclusive=True,
                 exit_on_error=False,
             )
+            self.run_worker(
+                self._load_github_context,
+                group="task-details-github-context",
+                exclusive=True,
+                exit_on_error=False,
+            )
+            if self._task_model.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW):
+                self.run_worker(
+                    self._load_scratchpad,
+                    group="task-details-scratchpad",
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+            self._presence_timer = self.set_interval(1.0, self._poll_task_presence)
         if self.editing:
             self.run_worker(
                 self._load_mention_items,
@@ -121,6 +157,10 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             )
 
     def on_unmount(self) -> None:
+        if self._presence_timer is not None:
+            with contextlib.suppress(Exception):
+                self._presence_timer.stop()
+            self._presence_timer = None
         task_changed_signal = getattr(self.kagan_app, "task_changed_signal", None)
         if task_changed_signal is None:
             return
@@ -129,6 +169,11 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
 
     async def _on_task_changed(self, task_id: str) -> None:
         if not self.is_mounted or self._task_model is None or task_id != self._task_model.id:
+            return
+        self._poll_task_presence()
+
+    def _poll_task_presence(self) -> None:
+        if not self.is_mounted or self._task_model is None:
             return
         self.run_worker(
             self._refresh_task_presence,
@@ -175,6 +220,8 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
 
             yield Rule()
 
+            yield from self._compose_resume_context()
+
             yield from self._compose_description_field()
 
             yield from self._compose_acceptance_criteria()
@@ -182,6 +229,8 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             yield from self._compose_base_branch_field()
 
             yield from self._compose_workspace_repos_section()
+
+            yield from self._compose_github_section()
 
             yield from self._compose_meta_row()
 
@@ -253,6 +302,49 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         with Vertical(classes="form-field edit-fields", id="title-field"):
             yield TitleInput(value=title)
 
+    def _compose_resume_context(self) -> ComposeResult:
+        """Compose the Resume Context panel (view mode only, IN_PROGRESS/REVIEW tasks)."""
+        if self.is_create or not self._task_model:
+            return
+        status = self._task_model.status
+        if status not in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW):
+            return
+        with Vertical(classes="resume-context-section view-only", id="resume-context-section"):
+            yield Label("Resume Context", classes="section-title")
+            yield Rule(line_style="ascii")
+            with VerticalScroll(classes="resume-context-scroll", id="resume-context-scroll"):
+                yield Static(
+                    "[dim]Loading last notes…[/dim]",
+                    id="resume-context-content",
+                )
+
+    async def _load_scratchpad(self) -> None:
+        """Fetch scratchpad and update the Resume Context panel."""
+        if not self._task_model:
+            return
+        try:
+            content = await self.ctx.api.get_scratchpad(self._task_model.id)
+        except _TASK_DETAILS_LOAD_ERRORS as exc:
+            self.log(
+                "Scratchpad lookup failed",
+                task_id=self._task_model.id,
+                error=str(exc),
+            )
+            return
+
+        widget = safe_query_one(self, "#resume-context-content", Static)
+        if widget is None:
+            return
+
+        if not content or not content.strip():
+            widget.update("[dim](No notes yet)[/dim]")
+            return
+
+        tail = content[-_RESUME_CONTEXT_CHARS:]
+        if len(content) > _RESUME_CONTEXT_CHARS:
+            tail = f"…{tail}"
+        widget.update(f"[dim]Last notes:[/dim]\n[dim]{tail}[/dim]")
+
     def _compose_description_field(self) -> ComposeResult:
         """Compose the description field."""
         with Horizontal(classes="description-header"):
@@ -315,8 +407,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         if not self._task_model:
             return
         try:
-            workspace_service = self.ctx.api.workspace_service
-            workspaces = await workspace_service.list_workspaces(task_id=self._task_model.id)
+            workspaces = await self.ctx.api.list_workspaces(task_id=self._task_model.id)
         except _TASK_DETAILS_LOAD_ERRORS as exc:
             self.log(
                 "Workspace repo lookup failed",
@@ -338,31 +429,69 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         await container.mount(
             WorkspaceReposWidget(
                 workspaces[0].id,
-                workspace_service=self.ctx.api.workspace_service,
-                diff_service=self.ctx.api.diff_service,
+                load_repos=self._load_workspace_repo_rows,
+                load_repo_diff=self._load_workspace_repo_diff,
             )
         )
+
+    async def _load_workspace_repo_rows(self, workspace_id: str) -> list[dict[str, Any]]:
+        return await self.ctx.api.get_workspace_repos(workspace_id)
+
+    async def _load_workspace_repo_diff(self, workspace_id: str, repo_id: str) -> object | None:
+        return await self.ctx.api.get_repo_diff(workspace_id, repo_id)
+
+    def _compose_github_section(self) -> ComposeResult:
+        """Compose the GitHub context section (view mode only)."""
+        if self.is_create or not self._task_model:
+            return
+        with Vertical(classes="github-section view-only", id="github-section"):
+            yield Label("GitHub", classes="section-title")
+            yield Static("Loading…", id="github-context-content")
+        yield Rule()
+
+    async def _load_github_context(self) -> None:
+        """Load GitHub context from project repos (no API calls)."""
+        if not self._task_model:
+            return
+        project_id = self._task_model.project_id
+        if not project_id:
+            return
+        try:
+            repos = await self.ctx.api.get_project_repos(project_id)
+        except _TASK_DETAILS_LOAD_ERRORS as exc:
+            self.log(
+                "GitHub context lookup failed",
+                project_id=project_id,
+                error=str(exc),
+            )
+            return
+
+        gh_ctx = resolve_github_context(repos, self._task_model.id)
+        lines = format_github_context(gh_ctx)
+        content_widget = safe_query_one(self, "#github-context-content", Static)
+        if content_widget:
+            content_widget.update("\n".join(f"  {line}" for line in lines))
 
     def _compose_meta_row(self) -> ComposeResult:
         """Compose the metadata row."""
         with Horizontal(classes="meta-row", id="meta-row"):
             if self._task_model:
-                created = f"Created: {self._task_model.created_at:%Y-%m-%d %H:%M}"
-                updated = f"Updated: {self._task_model.updated_at:%Y-%m-%d %H:%M}"
+                created = _format_timestamp(self._task_model.created_at, "Created")
+                updated = _format_timestamp(self._task_model.updated_at, "Updated")
                 yield Label(created, classes="task-meta")
                 yield Static("  |  ", classes="meta-separator")
                 yield Label(updated, classes="task-meta")
 
     def _compose_buttons(self) -> ComposeResult:
         """Compose the button rows."""
-        with Horizontal(classes="button-row view-only", id="view-buttons"):
-            yield Button("[Esc] Close", id="close-btn")
-            yield Button("[e] Edit", id="edit-btn", disabled=self._is_done)
-            yield Button("[d] Delete", variant="error", id="delete-btn")
+        with Horizontal(classes="button-row modal-action-hint-row view-only", id="view-buttons"):
+            view_hint = "Esc close  |  e edit  |  d delete"
+            if self._is_done:
+                view_hint = "Esc close  |  d delete"
+            yield Static(view_hint, classes="modal-action-hint")
 
-        with Horizontal(classes="button-row edit-fields", id="edit-buttons"):
-            yield Button("[F2] Save", variant="primary", id="save-btn")
-            yield Button("[Esc] Cancel", id="cancel-btn")
+        with Horizontal(classes="button-row modal-action-hint-row edit-fields", id="edit-buttons"):
+            yield Static("Ctrl+S save  |  Esc cancel", classes="modal-action-hint")
 
     def watch_editing(self, editing: bool) -> None:
         self.set_class(editing, "editing")
@@ -403,26 +532,6 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         if binding_action is BindingAction.EXPAND_DESCRIPTION:
             return not self.editing
         return self.editing
-
-    @on(Button.Pressed, "#edit-btn")
-    def on_edit_btn(self) -> None:
-        self.action_toggle_edit()
-
-    @on(Button.Pressed, "#delete-btn")
-    def on_delete_btn(self) -> None:
-        self.action_delete()
-
-    @on(Button.Pressed, "#close-btn")
-    def on_close_btn(self) -> None:
-        self.dismiss(None)
-
-    @on(Button.Pressed, "#save-btn")
-    def on_save_btn(self) -> None:
-        self.action_save()
-
-    @on(Button.Pressed, "#cancel-btn")
-    def on_cancel_btn(self) -> None:
-        self.action_close_or_cancel()
 
     def action_toggle_edit(self) -> None:
         if self._is_done:
@@ -582,9 +691,12 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         return status.value.replace("_", " ")
 
     def _build_agent_options(self) -> list[tuple[str, str]]:
+        from kagan.core.builtin_agents import BUILTIN_AGENTS
+
         kagan_app = self.kagan_app
         default_agent = self._get_default_agent_key()
         options: list[tuple[str, str]] = []
+        seen: set[str] = set()
 
         if hasattr(kagan_app, "config") and kagan_app.config.agents:
             for name, agent in kagan_app.config.agents.items():
@@ -592,14 +704,14 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                     continue
                 label = self._format_agent_label(agent.name, name == default_agent)
                 options.append((label, name))
-            options.sort(key=lambda item: 0 if item[1] == default_agent else 1)
-            return options
-
-        from kagan.core.builtin_agents import BUILTIN_AGENTS
+                seen.add(name)
 
         for name, agent in BUILTIN_AGENTS.items():
+            if name in seen:
+                continue
             label = self._format_agent_label(agent.config.name, name == default_agent)
             options.append((label, name))
+
         options.sort(key=lambda item: 0 if item[1] == default_agent else 1)
         return options
 

@@ -9,6 +9,8 @@ tags:
 
 # MCP setup
 
+Kagan exposes its full task lifecycle over MCP. Any editor or CLI that speaks the protocol becomes a first-class client -- no TUI required.
+
 **Prerequisites:** Kagan installed, client supports MCP stdio.
 
 ## 1. Start server
@@ -180,6 +182,75 @@ Path: `~/.gemini/settings.json`
 
 ````
 Path: `~/.kimi/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
+    }
+  }
+}
+```
+````
+
+=== "GitHub Copilot"
+
+````
+Path: `.github/copilot/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
+    }
+  }
+}
+```
+````
+
+=== "Goose"
+
+````
+Path: `~/.config/goose/config.yaml`
+
+```yaml
+extensions:
+  kagan:
+    type: stdio
+    name: kagan
+    cmd: kagan
+    args:
+      - mcp
+      - --capability
+      - pair_worker
+```
+````
+
+=== "Amp"
+
+````
+Path: `~/.config/amp/settings.json`
+
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
+    }
+  }
+}
+```
+````
+
+=== "Auggie"
+
+````
+Path: `~/.augment/mcp.json`
 
 ```json
 {

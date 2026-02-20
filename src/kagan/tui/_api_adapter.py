@@ -135,12 +135,14 @@ def _normalize_plugin_ui_invoke(payload: object) -> dict[str, Any]:
 class CoreBackedApi:
     """API adapter that forwards calls to core via KaganSDK.
 
-    Wraps KaganSDK with result-unwrapping, error handling, and stub methods
-    that TUI screens depend on.
+    Wraps KaganSDK with result-unwrapping and a small runtime cache that
+    keeps synchronous TUI runtime helpers aligned with recent reconcile calls.
     """
 
     def __init__(self, sdk: KaganSDK) -> None:
         self._sdk = sdk
+        self._runtime_views: dict[str, dict[str, Any]] = {}
+        self._running_task_ids: set[str] = set()
 
     def is_agent_available(self) -> bool:
         return True
@@ -389,6 +391,9 @@ class CoreBackedApi:
         result = await self._sdk.cleanup_orphan_workspaces(list(valid_task_ids))
         return result
 
+    async def cleanup_orphaned_workspaces(self, valid_task_ids: set[str]):
+        return await self.cleanup_orphan_workspaces(valid_task_ids)
+
     async def cleanup_workspace_artifacts(
         self,
         valid_workspace_ids: set[str],
@@ -578,16 +583,40 @@ class CoreBackedApi:
         return self._sdk.get_runtime_state()
 
     def get_runtime_view(self, task_id: str):
-        return None
+        runtime_view = self._runtime_views.get(task_id)
+        if runtime_view is None:
+            return None
+        return dict(runtime_view)
 
     def get_running_task_ids(self):
-        return set()
+        return set(self._running_task_ids)
 
     def is_automation_running(self, task_id: str):
-        return False
+        runtime_view = self._runtime_views.get(task_id)
+        return bool(runtime_view and runtime_view.get("is_running", False))
 
     async def reconcile_running_tasks(self, task_ids: list[str]):
-        return await self._sdk.reconcile_running_tasks(task_ids)
+        result = await self._sdk.reconcile_running_tasks(task_ids)
+        requested_task_ids = {task_id.strip() for task_id in task_ids if task_id.strip()}
+        for task_id in requested_task_ids:
+            self._runtime_views.pop(task_id, None)
+
+        snapshots = result.tasks if isinstance(result.tasks, list) else []
+        for snapshot in snapshots:
+            task_id = _normalize_optional_text(_value_from(snapshot, "task_id"))
+            if task_id is None:
+                continue
+            runtime = _value_from(snapshot, "runtime")
+            if not isinstance(runtime, dict):
+                continue
+            self._runtime_views[task_id] = dict(runtime)
+
+        self._running_task_ids = {
+            task_id
+            for task_id, runtime in self._runtime_views.items()
+            if bool(runtime.get("is_running", False))
+        }
+        return result
 
     async def resolve_task_base_branch(self, task):
         task_id = task.id if hasattr(task, "id") else task

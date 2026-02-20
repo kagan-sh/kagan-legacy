@@ -531,7 +531,20 @@ class RuntimeStateResponse(_FrozenBase):
 class RuntimeViewResponse(_FrozenBase):
     """Response from runtime view operations."""
 
-    view: dict[str, Any] | None = None
+    task_id: str = ""
+    phase: str | None = None
+    execution_id: str | None = None
+    run_count: int = 0
+    has_running_agent: bool = False
+    has_review_agent: bool = False
+    runtime: dict[str, Any] = {}
+
+
+class RuntimeReconcileResponse(_FrozenBase):
+    """Response from runtime reconciliation operations."""
+
+    tasks: list[dict[str, Any]] = []
+    count: int = 0
 
 
 class TaskIdsResponse(_FrozenBase):
@@ -611,6 +624,7 @@ __all__ = [
     "RepoListResponse",
     "RepoUpdateResponse",
     "ReviewResponse",
+    "RuntimeReconcileResponse",
     "RuntimeStateResponse",
     "RuntimeViewResponse",
     "ScratchpadResponse",

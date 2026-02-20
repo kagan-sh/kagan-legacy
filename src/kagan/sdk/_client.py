@@ -36,6 +36,7 @@ from kagan.sdk._types import (
     RepoListResponse,
     RepoUpdateResponse,
     ReviewResponse,
+    RuntimeReconcileResponse,
     RuntimeStateResponse,
     RuntimeViewResponse,
     ScratchpadResponse,
@@ -95,7 +96,7 @@ _JOBS_EVENTS_CALL = _ModelCallSpec("jobs", "events", JobListResponse)
 _AUTOMATION_RECONCILE_CALL = _ModelCallSpec(
     "automation",
     "reconcile_running_tasks",
-    TaskIdsResponse,
+    RuntimeReconcileResponse,
     mutating=True,
 )
 _AUTOMATION_RUNNING_TASK_IDS_CALL = _ModelCallSpec(
@@ -706,7 +707,7 @@ class KaganSDK:
         result = await self._query("automation", "is_automation_running", {"task_id": task_id})
         return BoolResponse(value=result.get("is_running", False))
 
-    async def reconcile_running_tasks(self, task_ids: list[str]) -> TaskIdsResponse:
+    async def reconcile_running_tasks(self, task_ids: list[str]) -> RuntimeReconcileResponse:
         return await self._call_model(_AUTOMATION_RECONCILE_CALL, {"task_ids": task_ids})
 
     async def get_running_task_ids(self) -> TaskIdsResponse:

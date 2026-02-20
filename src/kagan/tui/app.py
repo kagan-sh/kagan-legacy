@@ -486,7 +486,7 @@ class KaganApp(App):
         ctx = self.ctx
         tasks = await ctx.api.list_tasks(project_id=ctx.active_project_id)
         valid_ids = {t.id for t in tasks}
-        cleaned = await ctx.api.cleanup_orphan_workspaces(valid_ids)
+        cleaned = await ctx.api.cleanup_orphaned_workspaces(valid_ids)
         if cleaned:
             self.log(f"Cleaned up {len(cleaned)} orphan worktree(s)")
 

@@ -44,6 +44,15 @@ class _FakeWorkspaceCleanupSdk:
         return ["ws-cleaned"]
 
 
+class _FakeRuntimeSdk:
+    def __init__(self) -> None:
+        self.snapshots: list[dict[str, object]] = []
+
+    async def reconcile_running_tasks(self, task_ids: list[str]) -> SimpleNamespace:
+        del task_ids
+        return SimpleNamespace(tasks=list(self.snapshots), count=len(self.snapshots))
+
+
 @pytest.mark.asyncio
 async def test_list_workspaces_normalizes_dict_payloads_to_workspace_views() -> None:
     api = CoreBackedApi(_FakeWorkspaceSdk())
@@ -61,10 +70,33 @@ async def test_workspace_cleanup_calls_sdk_method() -> None:
     sdk = _FakeWorkspaceCleanupSdk()
     api = CoreBackedApi(sdk)
 
-    cleaned = await api.cleanup_orphan_workspaces({"task-1", "task-2"})
+    cleaned = await api.cleanup_orphaned_workspaces({"task-1", "task-2"})
 
     assert cleaned == ["ws-cleaned"]
     assert sdk.received_task_ids == [{"task-1", "task-2"}]
+
+
+@pytest.mark.asyncio
+async def test_runtime_reconcile_updates_runtime_cache_for_sync_getters() -> None:
+    sdk = _FakeRuntimeSdk()
+    sdk.snapshots = [
+        {"task_id": "task-1", "runtime": {"is_running": True, "is_blocked": False}},
+        {"task_id": "task-2", "runtime": {"is_running": False, "is_blocked": True}},
+    ]
+    api = CoreBackedApi(sdk)
+
+    await api.reconcile_running_tasks(["task-1", "task-2"])
+
+    assert api.get_running_task_ids() == {"task-1"}
+    assert api.is_automation_running("task-1") is True
+    assert api.is_automation_running("task-2") is False
+    assert api.get_runtime_view("task-2") == {"is_running": False, "is_blocked": True}
+
+    sdk.snapshots = [{"task_id": "task-1", "runtime": {"is_running": False}}]
+    await api.reconcile_running_tasks(["task-1", "task-2"])
+
+    assert api.get_running_task_ids() == set()
+    assert api.get_runtime_view("task-2") is None
 
 
 class _JanitorApiStub:

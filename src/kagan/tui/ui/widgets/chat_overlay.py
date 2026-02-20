@@ -191,6 +191,9 @@ class ChatOverlay(Vertical):
         self._auto_stream_wait_noted: bool = False
         self._auto_stream_idle_noted: bool = False
         self._last_ctrl_c_press_at: float | None = None
+        self._target_manager = ChatOverlayTargetManager(self)
+        self._slash_executor = ChatOverlaySlashCommandExecutor(self)
+        self._stream_coordinator = ChatOverlayStreamCoordinator(self)
         self._intro_quote: str = self._build_intro_quote()
         self.set_class(bool(self._intro_quote), "chat-overlay-has-quote")
         self.set_class(self._embedded, "embedded")

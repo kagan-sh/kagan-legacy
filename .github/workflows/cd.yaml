@@ -76,28 +76,32 @@ jobs:
           uv run poe typecheck
           uv run pytest tests/ -m "not snapshot" -n auto
 
-      - name: Get branch name
-        shell: bash
-        run: echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-        id: get_branch
+      - name: Run Semantic Release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          rm -rf dist/
+          if [[ "${{ inputs.production_release }}" == "true" ]]; then
+            uv run semantic-release version
+          else
+            uv run semantic-release version --as-prerelease --prerelease-token beta
+          fi
+          # Detect whether a release was built
+          if ls dist/*.whl 1>/dev/null 2>&1; then
+            echo "released=true" >> $GITHUB_OUTPUT
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Python Semantic Release - Beta (non-prod)
-        id: release-beta
-        if: steps.get_branch.outputs.branch == 'main' && !inputs.production_release
-        uses: python-semantic-release/python-semantic-release@v10.5.3
-        with:
-          github_token: ${{ steps.app-token.outputs.token }}
-          prerelease: true
-
-      - name: Python Semantic Release - Production
-        id: release-prod
-        if: steps.get_branch.outputs.branch == 'main' && inputs.production_release
-        uses: python-semantic-release/python-semantic-release@v10.5.3
-        with:
-          github_token: ${{ steps.app-token.outputs.token }}
+      - name: Publish GitHub Release
+        if: steps.release.outputs.released == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: uv run semantic-release publish
 
       - name: Publish to PyPI
-        if: (steps.release-beta.outputs.released == 'true') || (steps.release-prod.outputs.released == 'true')
+        if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true

@@ -33,7 +33,7 @@
 ---
 
 <p align="center">
-  <img src=".github/assets/demo.gif" alt="Kagan Demo" width="700">
+  <img src=".github/assets/demo.png" alt="Kagan Demo" width="700">
 </p>
 
 Create a task. Pick a mode. The agent works. You review, approve, and merge.

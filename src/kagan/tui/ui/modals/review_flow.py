@@ -79,6 +79,8 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
     _SESSION_REVIEW = "review"
     _SESSION_IMPLEMENTATION = "implementation"
     _TOP_TAB_IDS = {"review-summary", "review-diff", "review-pr-comments"}
+    _OUTPUT_LAYOUT_SPLIT = "split"
+    _OUTPUT_LAYOUT_FULLSCREEN = "fullscreen"
 
     _agent: Agent | None
     _live_output_agent: object | None
@@ -153,6 +155,8 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         self._session_keys: list[str] = []
         self._active_session_key: str | None = None
         self._preferred_session_key = self._resolve_preferred_session(initial_tab)
+        self._output_layout_mode = self._OUTPUT_LAYOUT_SPLIT
+        self._ctrl_p_cycle_stage = 0
         self._agent_stream = AgentStreamRouter(
             get_output=self._stream_target_output,
             on_update=self._stream_on_update,
@@ -350,20 +354,24 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
 
             with Horizontal(classes="button-row hidden"):
                 if self._read_only:
-                    hint_text = "Tab session  |  Esc close  |  y copy"
+                    hint_text = "Tab session  |  Ctrl+P view cycle  |  Esc close  |  y copy"
                 elif self._task_model.status == TaskStatus.REVIEW:
                     if self._task_model.task_type == TaskType.PAIR:
                         hint_text = (
-                            "Tab session  |  t attach  |  g review  |  R rebase  |  "
+                            "Tab session  |  Ctrl+P view cycle  |  t attach  |  g review  |  "
+                            "R rebase  |  "
                             "Enter approve  |  r reject  |  Esc close"
                         )
                     else:
                         hint_text = (
-                            "Tab session  |  g review  |  R rebase  |  Enter approve  |  "
+                            "Tab session  |  Ctrl+P view cycle  |  g review  |  R rebase  |  "
+                            "Enter approve  |  "
                             "r reject  |  Esc close"
                         )
                 else:
-                    hint_text = "Tab session  |  a start  |  s stop  |  Esc close"
+                    hint_text = (
+                        "Tab session  |  Ctrl+P view cycle  |  a start  |  s stop  |  Esc close"
+                    )
                 yield Static(hint_text, id="review-keyboard-hint", classes="modal-action-hint")
                 with Horizontal(classes="button-group button-group-start"):
                     if self._task_model.task_type == TaskType.PAIR:
@@ -640,10 +648,46 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
             return
         overlay = self._session_overlay()
         if overlay is not None and overlay.has_class("visible") and not overlay.has_class("hidden"):
+            event.prevent_default()
+            event.stop()
+            overlay.cycle_chat_session()
             return
         event.prevent_default()
         event.stop()
         self.action_cycle_session()
+
+    def action_cycle_output_layout(self) -> None:
+        """Cycle AUTO task output layout: split -> terminal fullscreen -> split -> board."""
+        if self._task_model.task_type != TaskType.AUTO:
+            return
+
+        if self._session_current_key() != self._SESSION_IMPLEMENTATION:
+            self._session_select(self._SESSION_IMPLEMENTATION)
+        if self._session_current_key() != self._SESSION_IMPLEMENTATION:
+            self.notify("Implementation session is unavailable.", severity="warning")
+            return
+
+        if self._ctrl_p_cycle_stage == 0:
+            self._output_layout_set(self._OUTPUT_LAYOUT_FULLSCREEN)
+            self._ctrl_p_cycle_stage = 1
+            return
+        if self._ctrl_p_cycle_stage == 1:
+            self._output_layout_set(self._OUTPUT_LAYOUT_SPLIT)
+            self._ctrl_p_cycle_stage = 2
+            return
+        self._ctrl_p_cycle_stage = 0
+        self.dismiss(None)
+
+    def _output_layout_set(self, mode: str) -> None:
+        if mode not in {self._OUTPUT_LAYOUT_SPLIT, self._OUTPUT_LAYOUT_FULLSCREEN}:
+            return
+        self._output_layout_mode = mode
+        fullscreen = mode == self._OUTPUT_LAYOUT_FULLSCREEN
+        self.set_class(fullscreen, "review-terminal-fullscreen")
+
+        overlay = self._session_overlay()
+        if overlay is not None and overlay.has_class("visible") and not overlay.has_class("hidden"):
+            overlay.show(task_id=self._task_model.id, fullscreen=fullscreen)
 
     async def _refresh_runtime_state(self, *, wait_for_live_agent: bool = True) -> None:
         if not self.is_mounted:
@@ -1006,6 +1050,9 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         agent_panel = self._stream_agent_output_panel()
         overlay = self._session_overlay()
         if active == self._SESSION_REVIEW:
+            if self._output_layout_mode != self._OUTPUT_LAYOUT_SPLIT:
+                self._output_layout_set(self._OUTPUT_LAYOUT_SPLIT)
+            self._ctrl_p_cycle_stage = 0
             if overlay is not None:
                 overlay.add_class("hidden")
                 overlay.hide()
@@ -1022,8 +1069,14 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
                 agent_panel.add_class("hidden")
                 overlay.remove_class("hidden")
                 overlay.add_class("has-content")
-                overlay.show(task_id=self._task_model.id, fullscreen=False)
+                overlay.show(
+                    task_id=self._task_model.id,
+                    fullscreen=self._output_layout_mode == self._OUTPUT_LAYOUT_FULLSCREEN,
+                )
             else:
+                if self._output_layout_mode != self._OUTPUT_LAYOUT_SPLIT:
+                    self._output_layout_set(self._OUTPUT_LAYOUT_SPLIT)
+                self._ctrl_p_cycle_stage = 0
                 if overlay is not None:
                     overlay.add_class("hidden")
                     overlay.hide()

@@ -230,12 +230,17 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 
 ### Task Output
 
-| Key       | Action       |
-| --------- | ------------ |
-| ++enter++ | Approve      |
-| ++r++     | Reject       |
-| ++g++     | Run review   |
-| ++y++     | Copy         |
+| Key       | Action |
+| --------- | ------ |
+| ++tab++   | Next session |
+| ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
+| ++enter++ | Approve |
+| ++r++     | Reject |
+| ++R++     | Rebase |
+| ++g++     | Run review |
+| ++a++     | Start AUTO agent |
+| ++s++     | Stop AUTO agent |
+| ++y++     | Copy |
 | ++esc++   | Close/Cancel |
 
 ### Rejection input

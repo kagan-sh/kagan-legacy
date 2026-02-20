@@ -220,10 +220,11 @@ class KanbanSessionController:
 
         message = self._state_attr(readiness, "message")
         can_open_output = self._state_bool(readiness, "can_open_output")
+        force_open = task.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)
         if isinstance(message, str) and message and not (quiet_unavailable and not can_open_output):
             severity = "warning" if not can_open_output else "information"
             self.screen.notify(message, severity=severity)
-        if not can_open_output:
+        if not can_open_output and not force_open:
             return False
 
         await self.screen._review.open_task_output_for_task(

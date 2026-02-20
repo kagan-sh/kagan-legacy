@@ -121,6 +121,7 @@ REVIEW_BINDINGS: list[BindingType] = [
     Binding("3", "show_ai_review", "Review Session", key_display="3"),
     Binding("4", "show_agent_output", "Agent Session", key_display="4"),
     Binding("tab", "cycle_session", "Next Session", show=False),
+    Binding("ctrl+p", "cycle_output_layout", "Task Output View", show=False),
     Binding("5", "show_pr_comments", "PR Comments", key_display="5"),
     Binding("enter", "approve", "Approve", key_display="Enter"),
     Binding("R", "rebase", "Rebase", key_display="Shift+R"),

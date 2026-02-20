@@ -983,6 +983,16 @@ class ChatOverlay(Vertical):
         self.show(task_id, fullscreen=fullscreen)
         return True
 
+    def cycle_chat_session(self) -> None:
+        """Cycle active chat session target when overlay is visible."""
+        if not self.has_class("visible"):
+            return
+        self._run_overlay_worker(
+            self._cycle_chat_target,
+            group="chat-overlay-targets",
+            exclusive=True,
+        )
+
     def action_escape_overlay(self) -> None:
         """Handle Escape consistently from overlay context."""
         if not self.has_class("visible"):
@@ -2106,6 +2116,8 @@ class ChatOverlay(Vertical):
         with contextlib.suppress(NoMatches):
             chat_input = self.query_one("#chat-overlay-input", Input)
             chat_input.disabled = disabled
+            if not disabled and self.has_class("visible"):
+                chat_input.focus()
 
     async def on_unmount(self) -> None:
         await self._hide_slash_complete()

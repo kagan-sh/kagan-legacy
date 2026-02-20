@@ -1703,6 +1703,28 @@ ReviewModal .section-title {
     padding-top: 1;
 }
 
+ReviewModal.review-terminal-fullscreen #review-tabs {
+    display: none;
+    height: 0;
+    min-height: 0;
+}
+
+ReviewModal.review-terminal-fullscreen #review-session-pane {
+    height: 1fr;
+    min-height: 0;
+    border-top: none;
+    padding-top: 0;
+}
+
+ReviewModal.review-terminal-fullscreen #session-state-note {
+    display: none;
+}
+
+ReviewModal.review-terminal-fullscreen ChatOverlay.embedded {
+    border: none;
+    margin: 0;
+}
+
 ReviewModal ChatOverlay.embedded {
     layer: default;
     dock: none;

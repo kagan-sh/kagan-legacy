@@ -1265,6 +1265,142 @@ async def test_orchestrator_overlay_enter_opens_auto_chat_session(
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_overlay_enter_opens_task_output_when_auto_idle(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO enter opens idle task output",
+            "Ensure Enter opens split task output even before a live run starts",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban.ctx.api.move_task(auto_task.id, TaskStatus.IN_PROGRESS.value)
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+        readiness = SimpleNamespace(
+            can_open_output=False,
+            execution_id=None,
+            is_running=False,
+            message="No active AUTO run.",
+        )
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "prepare_auto_output",
+                AsyncMock(return_value=readiness),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            await pilot.press("enter")
+            review_modal = cast(
+                "ReviewModal",
+                await wait_for_screen(pilot, ReviewModal, timeout=10.0),
+            )
+            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+            await wait_until(
+                lambda: embedded_overlay.has_class("visible")
+                and embedded_overlay.has_class("embedded"),
+                timeout=10.0,
+                description="AUTO Enter to open split task output even when idle",
+            )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_and_board(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO output Ctrl+P cycle",
+            "Ensure Ctrl+P cycles split view, fullscreen session, then board",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban.ctx.api.move_task(auto_task.id, TaskStatus.IN_PROGRESS.value)
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+        readiness = SimpleNamespace(
+            can_open_output=True,
+            execution_id="exec-cycle-001",
+            is_running=True,
+        )
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "prepare_auto_output",
+                AsyncMock(return_value=readiness),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "get_execution_log_entries",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            await pilot.press("enter")
+            review_modal = cast(
+                "ReviewModal",
+                await wait_for_screen(pilot, ReviewModal, timeout=10.0),
+            )
+            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+
+            assert not review_modal.has_class("review-terminal-fullscreen")
+            assert not embedded_overlay.has_class("fullscreen")
+
+            await pilot.press("ctrl+p")
+            await wait_until(
+                lambda: review_modal.has_class("review-terminal-fullscreen")
+                and embedded_overlay.has_class("fullscreen"),
+                timeout=10.0,
+                description="Ctrl+P to switch split task output to fullscreen terminal",
+            )
+
+            await pilot.press("ctrl+p")
+            await wait_until(
+                lambda: not review_modal.has_class("review-terminal-fullscreen")
+                and not embedded_overlay.has_class("fullscreen"),
+                timeout=10.0,
+                description="Ctrl+P to return fullscreen terminal back to split task output",
+            )
+
+            await pilot.press("ctrl+p")
+            await wait_for_screen(pilot, KanbanScreen, timeout=10.0)
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_overlay_auto_session_streams_live_execution_logs(
     e2e_app_with_tasks,
     mock_agent_factory,

@@ -131,9 +131,7 @@ class KaganSDK:
         capability_profile: CapabilityProfile | str = "operator",
         endpoint: CoreEndpoint | None = None,
     ) -> None:
-        resolved_client_version = (
-            get_kagan_version() if client_version is None else client_version
-        )
+        resolved_client_version = get_kagan_version() if client_version is None else client_version
         self._transport = transport or SDKTransport(
             endpoint=endpoint,
             session_id=session_id,

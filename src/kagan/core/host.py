@@ -379,20 +379,14 @@ class CoreHost:
             return CoreResponse.failure(
                 request.request_id,
                 code="CLIENT_VERSION_REQUIRED",
-                message=(
-                    "Client did not report a runtime version identifier. "
-                    f"{restart_hint}"
-                ),
+                message=(f"Client did not report a runtime version identifier. {restart_hint}"),
             )
         client_build_hash = request.client_build_hash.strip() if request.client_build_hash else ""
         if not client_build_hash:
             return CoreResponse.failure(
                 request.request_id,
                 code="CLIENT_BUILD_HASH_REQUIRED",
-                message=(
-                    "Client did not report a runtime build hash. "
-                    f"{restart_hint}"
-                ),
+                message=(f"Client did not report a runtime build hash. {restart_hint}"),
             )
         if client_version != self._runtime_version:
             return CoreResponse.failure(

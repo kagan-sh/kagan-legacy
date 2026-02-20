@@ -8,13 +8,13 @@ icon: material/source-branch
 
 ## Components
 
-| Component        | Purpose                          |
-| ---------------- | -------------------------------- |
-| TUI              | Keyboard-first UI                |
-| MCP server       | AI tools read/mutate state       |
-| Core process     | Coordinates ops and state        |
-| SQLite           | Projects, tasks, reviews         |
-| Git worktrees    | Isolated task workspaces         |
+| Component     | Purpose                    |
+| ------------- | -------------------------- |
+| TUI           | Keyboard-first UI          |
+| MCP server    | AI tools read/mutate state |
+| Core process  | Coordinates ops and state  |
+| SQLite        | Projects, tasks, reviews   |
+| Git worktrees | Isolated task workspaces   |
 
 ## Flow
 

@@ -17,58 +17,58 @@ Match symptom text below.
 
 ## Core / MCP
 
-| Symptom | Fix |
-| ------- | --- |
-| Runtime metadata incomplete | `kagan core stop` → `start` → `status` |
-| `AUTH_STALE_TOKEN` | Reconnect MCP client; `kagan core stop` → `start` |
-| `CLIENT_OUTDATED` | Restart MCP/TUI client session to reload latest runtime |
-| `CLIENT_VERSION_REQUIRED` | Update/restart MCP/TUI client to send runtime version |
-| `CLIENT_BUILD_HASH_REQUIRED` | Update/restart MCP/TUI client to send runtime fingerprint |
+| Symptom                        | Fix                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Runtime metadata incomplete    | `kagan core stop` → `start` → `status`                                                                 |
+| `AUTH_STALE_TOKEN`             | Reconnect MCP client; `kagan core stop` → `start`                                                      |
+| `CLIENT_OUTDATED`              | Restart MCP/TUI client session to reload latest runtime                                                |
+| `CLIENT_VERSION_REQUIRED`      | Update/restart MCP/TUI client to send runtime version                                                  |
+| `CLIENT_BUILD_HASH_REQUIRED`   | Update/restart MCP/TUI client to send runtime fingerprint                                              |
 | `Unknown session origin 'tui'` | Close any other running Kagan instance (`kagan core stop`), then relaunch from your intended directory |
-| `DISCONNECTED` | Run `kagan` first, then `kagan mcp` |
-| `START_PENDING` | Wait a few seconds and check `kagan core status` again |
-| Logs cut off mid-output | Use `task_logs` with `offset` and `limit` to page through; follow `next_offset` |
+| `DISCONNECTED`                 | Run `kagan` first, then `kagan mcp`                                                                    |
+| `START_PENDING`                | Wait a few seconds and check `kagan core status` again                                                 |
+| Logs cut off mid-output        | Use `task_logs` with `offset` and `limit` to page through; follow `next_offset`                        |
 
 ## PAIR / terminal
 
-| Symptom | Fix |
-| ------- | --- |
-| tmux not found | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora) |
-| nvim not found | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora) |
+| Symptom                        | Fix                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| tmux not found                 | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                              |
+| nvim not found                 | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                        |
 | VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then reopen PAIR session; fallback is `.kagan/start_prompt.md` |
-| Unsupported PAIR launcher | `default_pair_terminal_backend = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` in config |
+| Unsupported PAIR launcher      | `default_pair_terminal_backend = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` in config                                           |
 
 ## Git
 
-| Symptom | Fix |
-| ------- | --- |
-| Git not found | `brew install git` / `apt install git` / `dnf install git` |
-| Git identity not configured | `git config --global user.name "…"` and `user.email "…"` |
+| Symptom                     | Fix                                                        |
+| --------------------------- | ---------------------------------------------------------- |
+| Git not found               | `brew install git` / `apt install git` / `dnf install git` |
+| Git identity not configured | `git config --global user.name "…"` and `user.email "…"`   |
 
 ## Other
 
-| Symptom | Fix |
-| ------- | --- |
-| Another instance running | Close other instance; if stale: `kagan reset` |
-| UI rendering issues | Resize ≥80×20; truecolor terminal; `F12` debug log |
-| Mouse copy inconsistent | Set `KAGAN_TUI_MOUSE=0` for keyboard-first mode. With mouse enabled (default or `KAGAN_TUI_MOUSE=1`): use `Option`-select (iTerm) or `Shift`-select (GNOME / Windows Terminal) |
+| Symptom                  | Fix                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Another instance running | Close other instance; if stale: `kagan reset`                                                                                                                                  |
+| UI rendering issues      | Resize ≥80×20; truecolor terminal; `F12` debug log                                                                                                                             |
+| Mouse copy inconsistent  | Set `KAGAN_TUI_MOUSE=0` for keyboard-first mode. With mouse enabled (default or `KAGAN_TUI_MOUSE=1`): use `Option`-select (iTerm) or `Shift`-select (GNOME / Windows Terminal) |
 
 ## Prompt safety / privacy
 
-| Symptom | Fix |
-| ------- | --- |
-| Escaped tags like `&lt;input&gt;` in prompts | Expected. Kagan escapes control-tag syntax to reduce prompt-injection risk. |
-| `[REDACTED]` in logs or agent output | Expected. Kagan redacts high-confidence secrets before prompt send/log persistence. Use placeholders; inject credentials through secure runtime channels. |
+| Symptom                                      | Fix                                                                                                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Escaped tags like `&lt;input&gt;` in prompts | Expected. Kagan escapes control-tag syntax to reduce prompt-injection risk.                                                                               |
+| `[REDACTED]` in logs or agent output         | Expected. Kagan redacts high-confidence secrets before prompt send/log persistence. Use placeholders; inject credentials through secure runtime channels. |
 
 ## GitHub plugin
 
-| Code | Fix |
-| ---- | --- |
-| `GH_CLI_NOT_AVAILABLE` | `brew install gh` / `apt install gh` / `dnf install gh` |
-| `GH_AUTH_REQUIRED` | `gh auth login` |
-| `GH_NOT_CONNECTED` | MCP `kagan_github_connect_repo` or TUI `.` → Connect GitHub |
-| `LEASE_HELD_BY_OTHER` | `force_takeover: true` if holder gone; 2h+ lease → auto-takeover |
-| Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login` |
+| Code                               | Fix                                                              |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `GH_CLI_NOT_AVAILABLE`             | `brew install gh` / `apt install gh` / `dnf install gh`          |
+| `GH_AUTH_REQUIRED`                 | `gh auth login`                                                  |
+| `GH_NOT_CONNECTED`                 | MCP `kagan_github_connect_repo` or TUI `.` → Connect GitHub      |
+| `LEASE_HELD_BY_OTHER`              | `force_takeover: true` if holder gone; 2h+ lease → auto-takeover |
+| Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login`       |
 
 ## Updates
 

@@ -118,9 +118,7 @@ class GeneralConfig(BaseModel):
     )
     worktree_base_ref_strategy: WorktreeBaseRefStrategyLiteral = Field(
         default="local_if_ahead",
-        description=(
-            "Worktree base ref preference: local_if_ahead (default), remote, or local"
-        ),
+        description=("Worktree base ref preference: local_if_ahead (default), remote, or local"),
     )
     auto_review: bool = Field(default=True, description="Run AI review on task completion")
     auto_approve: bool = Field(

@@ -64,4 +64,3 @@ async def test_stale_client_error_adds_mcp_restart_hint() -> None:
         await transport.request("tasks", "list", {})
 
     assert "Restart the MCP session to reload the latest runtime." in str(exc_info.value)
-

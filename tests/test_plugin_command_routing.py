@@ -145,4 +145,3 @@ async def test_plugins_commands_are_registered_and_dispatchable() -> None:
             "inputs": {"repo_id": "repo-1"},
         }
     ]
-

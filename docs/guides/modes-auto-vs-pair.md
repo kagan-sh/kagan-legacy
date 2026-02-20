@@ -9,11 +9,11 @@ tags:
 
 # AUTO vs PAIR
 
-| When… | Use |
-| ----- | --- |
-| Requirements clear, bounded | AUTO |
-| Evolving, exploratory | PAIR |
-| Async background progress | AUTO |
+| When…                            | Use  |
+| -------------------------------- | ---- |
+| Requirements clear, bounded      | AUTO |
+| Evolving, exploratory            | PAIR |
+| Async background progress        | AUTO |
 | Direct interactive collaboration | PAIR |
 
 ## Run AUTO
@@ -50,7 +50,7 @@ as context and asking for first-step acknowledgement.
 
 `v` (details) → `e` (edit) → change `task_type` → ++ctrl+s++ save.
 
----
+______________________________________________________________________
 
 ## Acceptance criteria gate
 
@@ -70,7 +70,7 @@ surfaced at review time. It never blocks an agent mid-run.
 
 Set criteria when creating or editing a task (`v` → `e` → Acceptance Criteria field).
 
----
+______________________________________________________________________
 
 ## Resume Context panel
 
@@ -81,7 +81,7 @@ This is the one screen you read after an interruption. No hunting through tabs o
 
 If the task has no notes yet, the panel shows `(No notes yet)` and stays out of the way.
 
----
+______________________________________________________________________
 
 ## Review Summary panel
 
@@ -93,7 +93,7 @@ When a task enters REVIEW, the review modal surfaces a structured summary tab:
 
 Reviewers read one screen instead of raw `git diff`. Approve, reject, or rebase from there.
 
----
+______________________________________________________________________
 
 ## Recording agent decisions
 
@@ -107,7 +107,7 @@ Each call appends a timestamped entry. Notes accumulate in the scratchpad and ap
 Resume Context panel when you reopen the task. They also inform the acceptance criteria coverage
 check when the run completes.
 
----
+______________________________________________________________________
 
 ## Config
 

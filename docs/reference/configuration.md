@@ -8,14 +8,14 @@ icon: material/cog
 
 `config.toml` in Kagan config dir. Paths: `platformdirs` + env overrides.
 
-| Purpose        | Override                 |
-| -------------- | ------------------------ |
-| Config         | `KAGAN_CONFIG_DIR`       |
-| Data           | `KAGAN_DATA_DIR`         |
-| Cache          | `KAGAN_CACHE_DIR`        |
-| Worktree base  | `KAGAN_WORKTREE_BASE`    |
-| Core runtime   | `KAGAN_CORE_RUNTIME_DIR` |
-| TUI mouse input| `KAGAN_TUI_MOUSE`        |
+| Purpose         | Override                 |
+| --------------- | ------------------------ |
+| Config          | `KAGAN_CONFIG_DIR`       |
+| Data            | `KAGAN_DATA_DIR`         |
+| Cache           | `KAGAN_CACHE_DIR`        |
+| Worktree base   | `KAGAN_WORKTREE_BASE`    |
+| Core runtime    | `KAGAN_CORE_RUNTIME_DIR` |
+| TUI mouse input | `KAGAN_TUI_MOUSE`        |
 
 Files: `config.toml`, `profiles.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
@@ -36,34 +36,34 @@ max_concurrent_agents = 3
 
 ## `[general]`
 
-| Key                                  | Type           | Default                          | Notes                                                                          |
-| ------------------------------------ | -------------- | -------------------------------- | ------------------------------------------------------------------------------ |
-| `max_concurrent_agents`              | integer        | `3`                              | Concurrent AUTO execution cap                                                  |
-| `mcp_server_name`                    | string         | `"kagan"`                        | MCP server registration name                                                   |
-| `worktree_base_ref_strategy`         | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local` |
-| `auto_review`                        | boolean        | `true`                           | Run AI review on completion                                                    |
-| `auto_approve`                       | boolean        | `true`                           | Skip planner permission prompts                                                |
-| `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`       |
-| `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                           |
-| `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                            |
-| `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                           |
-| `worker_persona`                     | string         | Built-in implementer preset      | Global AUTO worker persona prompt                                              |
-| `orchestrator_persona`               | string         | Built-in orchestrator preset     | Global orchestrator/planning persona prompt                                    |
-| `pr_reviewer_persona`                | string         | Built-in reviewer preset         | Global PR reviewer persona prompt                                              |
-| `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`                                    |
+| Key                                  | Type           | Default                          | Notes                                                                               |
+| ------------------------------------ | -------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| `max_concurrent_agents`              | integer        | `3`                              | Concurrent AUTO execution cap                                                       |
+| `mcp_server_name`                    | string         | `"kagan"`                        | MCP server registration name                                                        |
+| `worktree_base_ref_strategy`         | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local`      |
+| `auto_review`                        | boolean        | `true`                           | Run AI review on completion                                                         |
+| `auto_approve`                       | boolean        | `true`                           | Skip planner permission prompts                                                     |
+| `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`            |
+| `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
+| `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
+| `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                                |
+| `worker_persona`                     | string         | Built-in implementer preset      | Global AUTO worker persona prompt                                                   |
+| `orchestrator_persona`               | string         | Built-in orchestrator preset     | Global orchestrator/planning persona prompt                                         |
+| `pr_reviewer_persona`                | string         | Built-in reviewer preset         | Global PR reviewer persona prompt                                                   |
+| `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`                                         |
 | `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
 | `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
-| `default_model_claude`               | string or null | `null`                           | Optional default model                                                         |
-| `default_model_opencode`             | string or null | `null`                           | Optional default model                                                         |
-| `default_model_codex`                | string or null | `null`                           | Optional default model                                                         |
-| `default_model_gemini`               | string or null | `null`                           | Optional default model                                                         |
-| `default_model_kimi`                 | string or null | `null`                           | Optional default model                                                         |
-| `default_model_copilot`              | string or null | `null`                           | Optional display preference                                                    |
-| `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                              |
-| `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                  |
-| `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                               |
-| `tasks_wait_default_timeout_seconds` | integer        | `1800`                           | Default timeout for `task_wait` (30 minutes)                                   |
-| `tasks_wait_max_timeout_seconds`     | integer        | `3600`                           | Max allowed timeout for `task_wait` (60 minutes)                               |
+| `default_model_claude`               | string or null | `null`                           | Optional default model                                                              |
+| `default_model_opencode`             | string or null | `null`                           | Optional default model                                                              |
+| `default_model_codex`                | string or null | `null`                           | Optional default model                                                              |
+| `default_model_gemini`               | string or null | `null`                           | Optional default model                                                              |
+| `default_model_kimi`                 | string or null | `null`                           | Optional default model                                                              |
+| `default_model_copilot`              | string or null | `null`                           | Optional display preference                                                         |
+| `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                                   |
+| `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                       |
+| `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                    |
+| `tasks_wait_default_timeout_seconds` | integer        | `1800`                           | Default timeout for `task_wait` (30 minutes)                                        |
+| `tasks_wait_max_timeout_seconds`     | integer        | `3600`                           | Max allowed timeout for `task_wait` (60 minutes)                                    |
 
 ## `[agents.<name>]`
 
@@ -111,16 +111,16 @@ OS keys for command tables: `macos`, `linux`, `windows`, `*`.
 
 ## `[ui]`
 
-| Key                        | Type        | Default                | Notes                                                        |
-| -------------------------- | ----------- | ---------------------- | ------------------------------------------------------------ |
-| `skip_pair_instructions`   | boolean     | `false`                | Skip PAIR instruction modal                                  |
-| `tui_plugin_ui_allowlist`  | string list | `["official.github"]`  | Plugin IDs allowed to contribute declarative UI to the TUI   |
+| Key                       | Type        | Default               | Notes                                                      |
+| ------------------------- | ----------- | --------------------- | ---------------------------------------------------------- |
+| `skip_pair_instructions`  | boolean     | `false`               | Skip PAIR instruction modal                                |
+| `tui_plugin_ui_allowlist` | string list | `["official.github"]` | Plugin IDs allowed to contribute declarative UI to the TUI |
 
 ## `[plugins]`
 
-| Key         | Type        | Default (GitHub + NoOp) | Notes                    |
-| ----------- | ----------- | ----------------------- | ------------------------- |
-| `discovery` | string list | GitHub, NoOp plugins    | `module.path:ClassName`   |
+| Key         | Type        | Default (GitHub + NoOp) | Notes                   |
+| ----------- | ----------- | ----------------------- | ----------------------- |
+| `discovery` | string list | GitHub, NoOp plugins    | `module.path:ClassName` |
 
 Third-party: install plugin → add to `discovery` → restart core. No remote fetch; import-based from local packages.
 

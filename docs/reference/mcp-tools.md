@@ -30,8 +30,8 @@ Legacy bridge module paths `kagan.mcp.server` and `kagan.mcp.models` were remove
 
 ### Core task workflow
 
-| Tool               | Annotation    | Purpose                                                                           |
-| ------------------ | ------------- | --------------------------------------------------------------------------------- |
+| Tool                 | Annotation    | Purpose                                                                           |
+| -------------------- | ------------- | --------------------------------------------------------------------------------- |
 | `task_get(...)`      | `read-only`   | Read bounded task snapshot (`summary`/`full`) or bounded context (`mode=context`) |
 | `task_logs(...)`     | `read-only`   | Read paginated task execution logs (newest-first pages)                           |
 | `task_list(...)`     | `read-only`   | List tasks with optional filtering and scratchpad inclusion                       |
@@ -145,15 +145,15 @@ Use this during agent execution to record decisions, tradeoffs, and observations
 Each call appends a new entry — it never overwrites prior notes.
 
 !!! tip "When to use `task_annotate` vs `task_patch`"
-    Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
-    Use `task_patch(append_note=...)` for structured state transitions and status updates.
+Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
+Use `task_patch(append_note=...)` for structured state transitions and status updates.
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --------- | ---- | ----------- |
-| `task_id` | `string` | Target task |
-| `note` | `string` | Note content. Stored as `[YYYY-MM-DDTHH:MM:SSZ] <note>`. |
+| Parameter | Type     | Description                                              |
+| --------- | -------- | -------------------------------------------------------- |
+| `task_id` | `string` | Target task                                              |
+| `note`    | `string` | Note content. Stored as `[YYYY-MM-DDTHH:MM:SSZ] <note>`. |
 
 ### Scratchpad format
 
@@ -171,7 +171,7 @@ as input to the acceptance criteria coverage check at REVIEW transition time.
 
 `pair_worker` and above.
 
----
+______________________________________________________________________
 
 ## `task_wait` long-poll API
 
@@ -179,26 +179,26 @@ as input to the acceptance criteria coverage check at REVIEW transition time.
 
 ### Parameters
 
-| Parameter         | Type              | Default                | Description             |
-| ----------------- | ----------------- | ---------------------- | ----------------------- |
-| `task_id`         | `string`          | required               | Task to watch           |
-| `timeout_seconds` | `float \| string` | server default (1800s) | Maximum wait duration   |
+| Parameter         | Type              | Default                | Description                                            |
+| ----------------- | ----------------- | ---------------------- | ------------------------------------------------------ |
+| `task_id`         | `string`          | required               | Task to watch                                          |
+| `timeout_seconds` | `float \| string` | server default (1800s) | Maximum wait duration                                  |
 | `wait_for_status` | `list \| string`  | `null`                 | Optional status filter (empty list/string = no filter) |
-| `from_updated_at` | `string`          | `null`                 | Race-safe resume cursor |
+| `from_updated_at` | `string`          | `null`                 | Race-safe resume cursor                                |
 
 ### Response codes
 
-| Code                   | Meaning                               |
-| ---------------------- | ------------------------------------- |
-| `TASK_CHANGED`         | Task status changed                   |
-| `ALREADY_AT_STATUS`    | Task already matches filter           |
-| `CHANGED_SINCE_CURSOR` | Task changed after supplied cursor    |
-| `WAIT_WINDOW`         | Window elapsed; re-poll with `remaining_seconds` and `changed_at` cursor |
-| `WAIT_TIMEOUT`         | Timeout reached without status change |
-| `WAIT_INTERRUPTED`     | Wait cancelled/interrupted            |
-| `TASK_DELETED`         | Task deleted while waiting            |
-| `INVALID_TIMEOUT`      | Invalid timeout value                 |
-| `INVALID_PARAMS`       | Invalid parameter payload             |
+| Code                   | Meaning                                                                  |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `TASK_CHANGED`         | Task status changed                                                      |
+| `ALREADY_AT_STATUS`    | Task already matches filter                                              |
+| `CHANGED_SINCE_CURSOR` | Task changed after supplied cursor                                       |
+| `WAIT_WINDOW`          | Window elapsed; re-poll with `remaining_seconds` and `changed_at` cursor |
+| `WAIT_TIMEOUT`         | Timeout reached without status change                                    |
+| `WAIT_INTERRUPTED`     | Wait cancelled/interrupted                                               |
+| `TASK_DELETED`         | Task deleted while waiting                                               |
+| `INVALID_TIMEOUT`      | Invalid timeout value                                                    |
+| `INVALID_PARAMS`       | Invalid parameter payload                                                |
 
 ## `job_poll` API
 
@@ -257,16 +257,16 @@ Default and max timeouts are server-side configurable via settings:
 
 ## Common recovery codes
 
-| Code               | Meaning                                     | Typical action                      |
-| ------------------ | ------------------------------------------- | ----------------------------------- |
-| `START_PENDING`    | Job accepted, pending scheduler admission   | Poll with `job_poll(wait=true)`     |
-| `DISCONNECTED`     | Core unavailable                            | Start/restart core, retry           |
-| `AUTH_STALE_TOKEN` | MCP token is stale after core restart       | Reconnect MCP client                |
-| `CLIENT_OUTDATED`  | Client version/build hash mismatches core   | Restart MCP/TUI session             |
-| `CLIENT_VERSION_REQUIRED` | Client did not send runtime version      | Restart MCP/TUI session             |
-| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash | Restart MCP/TUI session             |
-| `WAIT_TIMEOUT`     | `task_wait` timed out without status change | Retry with same or adjusted timeout |
-| `WAIT_INTERRUPTED` | `task_wait` was interrupted/cancelled       | Retry with `from_updated_at` cursor |
+| Code                         | Meaning                                     | Typical action                      |
+| ---------------------------- | ------------------------------------------- | ----------------------------------- |
+| `START_PENDING`              | Job accepted, pending scheduler admission   | Poll with `job_poll(wait=true)`     |
+| `DISCONNECTED`               | Core unavailable                            | Start/restart core, retry           |
+| `AUTH_STALE_TOKEN`           | MCP token is stale after core restart       | Reconnect MCP client                |
+| `CLIENT_OUTDATED`            | Client version/build hash mismatches core   | Restart MCP/TUI session             |
+| `CLIENT_VERSION_REQUIRED`    | Client did not send runtime version         | Restart MCP/TUI session             |
+| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash      | Restart MCP/TUI session             |
+| `WAIT_TIMEOUT`               | `task_wait` timed out without status change | Retry with same or adjusted timeout |
+| `WAIT_INTERRUPTED`           | `task_wait` was interrupted/cancelled       | Retry with `from_updated_at` cursor |
 
 ## Capability profiles
 

@@ -4,7 +4,7 @@ Based on 106 user stories across 11 epics. This document defines the domain mode
 bounded contexts, Wire protocol, client architecture, and aggregate designs that
 satisfy the full requirements catalog.
 
----
+______________________________________________________________________
 
 ## 1. System Overview
 
@@ -57,25 +57,25 @@ satisfy the full requirements catalog.
    Multiple TUI and MCP instances connect concurrently. Real-time sync
    via Wire event broadcast. (US-005)
 
-2. **TUI orchestrator overlay has full admin parity** — Every operation
+1. **TUI orchestrator overlay has full admin parity** — Every operation
    available via MCP tools is performable from the TUI orchestrator overlay
    via natural language or slash commands. Planning, agent I/O, task CRUD,
    reviews, settings, GitHub operations, project/repo management — all
    from native Textual widgets (Input + StreamingOutput). (US-046–071)
 
-3. **TUI is a visual management surface** — Board, modals, review diffs.
+1. **TUI is a visual management surface** — Board, modals, review diffs.
    Read-only or form-input only. The orchestrator overlay provides
    admin/streaming capabilities via native Textual widgets. (US-018–027, US-072)
 
-4. **Wire protocol decouples logic from rendering** — Strongly-typed events
+1. **Wire protocol decouples logic from rendering** — Strongly-typed events
    on a BroadcastQueue. Any client subscribes independently. Same events
    render differently per client. (US-046)
 
-5. **Hexagonal / Ports & Adapters** — Core defines ports (interfaces).
+1. **Hexagonal / Ports & Adapters** — Core defines ports (interfaces).
    Agents, git, GitHub, storage are adapters. Plugins are anti-corruption
    layers that translate external domains into Kagan's ubiquitous language.
 
----
+______________________________________________________________________
 
 ## 2. Bounded Context Map
 
@@ -126,18 +126,18 @@ Relationship types:
 
 ### Context Responsibilities
 
-| Context | Owns | Key Invariants |
-|---------|------|----------------|
-| Project | Projects, repos, branch config | Repo path uniqueness, active repo state |
-| Task | Tasks, lifecycle, scratchpad, priority | Status transitions (BACKLOG→IP→REVIEW→DONE), DONE only via review/merge/close |
-| Session | PAIR sessions, MCP credentials, terminals | One active session per task, credential scoping |
-| Workspace | Worktrees, agent runtimes, jobs | Worktree isolation, job state machine |
-| Review | Diffs, review verdicts, merge ops | Merge safety, serialize option, approval gating |
-| Planning | Plans, plan items, drafts | Draft persistence, approval before creation |
-| Event Bus | Wire protocol, broadcast | Delivery to all subscribers, typed events |
-| GitHub (plugin) | Issue sync, PR ops, leases, CI | Issue↔task mapping, lease exclusivity, status sync |
+| Context         | Owns                                      | Key Invariants                                                                |
+| --------------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
+| Project         | Projects, repos, branch config            | Repo path uniqueness, active repo state                                       |
+| Task            | Tasks, lifecycle, scratchpad, priority    | Status transitions (BACKLOG→IP→REVIEW→DONE), DONE only via review/merge/close |
+| Session         | PAIR sessions, MCP credentials, terminals | One active session per task, credential scoping                               |
+| Workspace       | Worktrees, agent runtimes, jobs           | Worktree isolation, job state machine                                         |
+| Review          | Diffs, review verdicts, merge ops         | Merge safety, serialize option, approval gating                               |
+| Planning        | Plans, plan items, drafts                 | Draft persistence, approval before creation                                   |
+| Event Bus       | Wire protocol, broadcast                  | Delivery to all subscribers, typed events                                     |
+| GitHub (plugin) | Issue sync, PR ops, leases, CI            | Issue↔task mapping, lease exclusivity, status sync                            |
 
----
+______________________________________________________________________
 
 ## 3. Aggregate Designs
 
@@ -301,7 +301,7 @@ Aggregate: Review
     MergeStrategy { merge, squash, rebase }
 ```
 
----
+______________________________________________________________________
 
 ## 4. Wire Protocol
 
@@ -398,12 +398,13 @@ class Wire:
         queue = self._broadcast.subscribe()
         return WireSubscription(queue, merge=merge)
 
+
 class WireSubscription:
     async def receive(self) -> WireEvent: ...
     async def __aiter__(self) -> AsyncIterator[WireEvent]: ...
 ```
 
----
+______________________________________________________________________
 
 ## 5. Client Architecture
 
@@ -457,7 +458,7 @@ Rendering contract:
   - No streaming to client — poll-based with timeout
 ```
 
----
+______________________________________________________________________
 
 ## 6. Data Flow: Key Scenarios
 
@@ -556,7 +557,7 @@ Instance A (TUI) creates a task
   All instances reflect same state within event delivery latency
 ```
 
----
+______________________________________________________________________
 
 ## 7. Package Structure
 
@@ -628,77 +629,84 @@ src/kagan/
     └── session.py
 ```
 
----
+______________________________________________________________________
 
 ## 8. Technology Choices
 
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| Core domain | Pure Python + Pydantic | No framework lock-in, serializable events |
-| Event bus | Wire + BroadcastQueue | Proven pattern (Kimi CLI), async native |
-| Persistence | SQLite (via adapters) | Single-file, no server, concurrent-read safe |
-| TUI | Textual | Existing investment, CSS styling, native widgets |
-| TUI overlay | Textual Input + StreamingOutput | Native widgets, Wire subscription, asyncio.create_task |
-| CLI framework | Click/Typer | Existing investment, argument parsing |
-| MCP server | FastMCP | Existing investment, stdio/SSE |
-| Git operations | subprocess (git) | Direct, no abstraction needed |
-| GitHub API | gh CLI / httpx | gh for user-facing, httpx for automation |
+| Layer          | Technology                      | Rationale                                              |
+| -------------- | ------------------------------- | ------------------------------------------------------ |
+| Core domain    | Pure Python + Pydantic          | No framework lock-in, serializable events              |
+| Event bus      | Wire + BroadcastQueue           | Proven pattern (Kimi CLI), async native                |
+| Persistence    | SQLite (via adapters)           | Single-file, no server, concurrent-read safe           |
+| TUI            | Textual                         | Existing investment, CSS styling, native widgets       |
+| TUI overlay    | Textual Input + StreamingOutput | Native widgets, Wire subscription, asyncio.create_task |
+| CLI framework  | Click/Typer                     | Existing investment, argument parsing                  |
+| MCP server     | FastMCP                         | Existing investment, stdio/SSE                         |
+| Git operations | subprocess (git)                | Direct, no abstraction needed                          |
+| GitHub API     | gh CLI / httpx                  | gh for user-facing, httpx for automation               |
 
----
+______________________________________________________________________
 
 ## 9. Key Architecture Decisions
 
 ### ADR-001: Singleton Core with Event-Based Multi-Client Sync
+
 All state lives in one daemon. Clients subscribe to Wire events for
 real-time updates. No distributed state, no conflicts, no locks.
 Satisfies US-005.
 
 ### ADR-002: TUI Orchestrator Overlay as Universal Control Surface with Admin MCP Parity
+
 The orchestrator overlay is a native Textual widget embedded in the TUI.
 Every MCP operation is available via natural language or slash commands.
 Input and streaming output use native Textual widgets (Input, StreamingOutput).
 No separate REPL, no prompt_toolkit. Satisfies US-047, US-061–066.
 
 ### ADR-003: Wire Protocol for All Domain Events
+
 All aggregate state changes and agent I/O emit typed WireEvents through
 a BroadcastQueue. Clients subscribe independently. Supports merge mode
 for TUI overlay (block appends) and raw mode for fine-grained streaming.
 Inspired by Kimi CLI's Wire pattern. Satisfies US-046.
 
 ### ADR-004: Review Modal as Static Decision Surface
+
 Review modal shows only completed/static content (diff, summary, verdict,
 PR comments). Live review-agent output streams in chat overlay. Modal
 has no streaming, no workers, no waiting states. Satisfies US-066.
 
 ### ADR-005: Task Aggregate Enforces Lifecycle Invariants
+
 DONE status only reachable via review_apply(merge) or close_exploratory.
 Direct DONE mutation rejected at aggregate level. Type changes trigger
 side effects (stop agent, kill session). Satisfies US-028–033.
 
 ### ADR-006: GitHub Plugin as Anti-Corruption Layer
+
 GitHub concepts (issues, PRs, checks, labels) translated into Kagan
 domain (tasks, reviews, status, metadata) at the plugin boundary.
 Core domain never imports GitHub types. Satisfies US-076–087.
 
 ### ADR-007: No Instance Locking
+
 Multiple TUI and MCP instances coexist freely. Concurrency handled by
 singleton core + event broadcast, not locks. The only locks are
 GitHub issue leases for distributed team coordination. Satisfies US-005.
 
----
+______________________________________________________________________
 
 ## 10. Story-to-Architecture Traceability
 
-| Epic | Stories | Primary Context | Client Surface |
-|------|---------|----------------|----------------|
-| 1. Onboarding | US-001–009 | Config, Preflight | CLI, TUI |
-| 2. Project/Repo | US-010–017 | Project | TUI, MCP |
-| 3. Kanban Board | US-018–027 | Task | TUI, MCP |
-| 4. Task Lifecycle | US-028–033 | Task (invariants) | Core (enforced) |
-| 5. AUTO Execution | US-034–037 | Workspace, Job | TUI (trigger), MCP |
-| 6. PAIR Execution | US-038–045 | Session | TUI, MCP |
-| 7. Orchestrator Overlay | US-046–071 | All contexts (admin parity) | TUI overlay |
-| 8. Review/Merge | US-072–081 | Review | TUI modal, TUI overlay, MCP |
-| 9. GitHub | US-082–093 | GitHub plugin (ACL) | TUI, TUI overlay, MCP |
-| 10. MCP Access | US-094–096 | MCP capabilities | MCP |
-| 11. CLI Ops | US-097–106 | CLI commands | CLI |
+| Epic                    | Stories    | Primary Context             | Client Surface              |
+| ----------------------- | ---------- | --------------------------- | --------------------------- |
+| 1. Onboarding           | US-001–009 | Config, Preflight           | CLI, TUI                    |
+| 2. Project/Repo         | US-010–017 | Project                     | TUI, MCP                    |
+| 3. Kanban Board         | US-018–027 | Task                        | TUI, MCP                    |
+| 4. Task Lifecycle       | US-028–033 | Task (invariants)           | Core (enforced)             |
+| 5. AUTO Execution       | US-034–037 | Workspace, Job              | TUI (trigger), MCP          |
+| 6. PAIR Execution       | US-038–045 | Session                     | TUI, MCP                    |
+| 7. Orchestrator Overlay | US-046–071 | All contexts (admin parity) | TUI overlay                 |
+| 8. Review/Merge         | US-072–081 | Review                      | TUI modal, TUI overlay, MCP |
+| 9. GitHub               | US-082–093 | GitHub plugin (ACL)         | TUI, TUI overlay, MCP       |
+| 10. MCP Access          | US-094–096 | MCP capabilities            | MCP                         |
+| 11. CLI Ops             | US-097–106 | CLI commands                | CLI                         |

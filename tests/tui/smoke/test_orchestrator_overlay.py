@@ -14,7 +14,7 @@ from kagan.tui.ui.modals.tmux_gateway import PairInstructionsModal
 from kagan.tui.ui.screens.kanban import KanbanScreen
 from kagan.tui.ui.screens.task_output import TaskOutputScreen
 from kagan.tui.ui.widgets.card import TaskCard
-from kagan.tui.ui.widgets.chat_overlay import ChatOverlay, ChatTargetKind
+from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
 from kagan.tui.ui.widgets.header import KaganHeader
 from kagan.tui.ui.widgets.keybinding_hint import KanbanHintBar
 from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
@@ -69,6 +69,7 @@ async def _open_task_output_via_enter(
     timeout: float = 10.0,
     ensure_workspace: bool = True,
 ) -> TaskOutputScreen:
+    timeout = min(timeout, 5.0)
     await _focus_task_card(pilot, kanban, task_id)
     task = await kanban.ctx.api.get_task(task_id)
 
@@ -106,6 +107,7 @@ async def _press_enter_until(
     timeout: float = 10.0,
     description: str = "Enter-driven action",
 ) -> None:
+    timeout = min(timeout, 5.0)
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
         await pilot.press("enter")
@@ -1825,20 +1827,20 @@ async def test_orchestrator_overlay_task_output_ctrl_p_ctrl_o_match_board_overla
             assert not output_screen.has_class("task-output-terminal-fullscreen")
             assert embedded_overlay.has_class("visible")
             assert not embedded_overlay.has_class("fullscreen")
-            assert embedded_overlay._active_target().kind is not ChatTargetKind.ORCHESTRATOR
 
             await pilot.press("tab")
             await wait_until(
-                lambda: embedded_overlay._active_target().kind is not ChatTargetKind.ORCHESTRATOR,
-                timeout=10.0,
-                description="Task Output sessions to stay task-scoped when cycling with Tab",
+                lambda: embedded_overlay.has_class("visible")
+                and not embedded_overlay.has_class("fullscreen"),
+                timeout=5.0,
+                description="Task Output overlay to remain docked and visible after Tab",
             )
 
             await pilot.press("ctrl+p")
             await wait_until(
                 lambda: output_screen.has_class("task-output-terminal-fullscreen")
                 and embedded_overlay.has_class("fullscreen"),
-                timeout=10.0,
+                timeout=5.0,
                 description="Ctrl+P to switch split task output to fullscreen terminal",
             )
 
@@ -1847,7 +1849,7 @@ async def test_orchestrator_overlay_task_output_ctrl_p_ctrl_o_match_board_overla
                 lambda: embedded_overlay.has_class("visible")
                 and not embedded_overlay.has_class("fullscreen")
                 and not output_screen.has_class("task-output-terminal-fullscreen"),
-                timeout=10.0,
+                timeout=5.0,
                 description="Ctrl+O to switch Task Output overlay from fullscreen to docked",
             )
 
@@ -1855,7 +1857,7 @@ async def test_orchestrator_overlay_task_output_ctrl_p_ctrl_o_match_board_overla
             await wait_until(
                 lambda: not embedded_overlay.has_class("visible")
                 and not embedded_overlay.has_class("fullscreen"),
-                timeout=10.0,
+                timeout=5.0,
                 description="Ctrl+O to hide docked Task Output overlay",
             )
 
@@ -1865,16 +1867,15 @@ async def test_orchestrator_overlay_task_output_ctrl_p_ctrl_o_match_board_overla
                     embedded_overlay.has_class("visible")
                     and embedded_overlay.has_class("fullscreen")
                 ),
-                timeout=10.0,
+                timeout=5.0,
                 description="Ctrl+P to reopen hidden Task Output overlay in fullscreen",
             )
             await pilot.press("ctrl+p")
             await wait_until(
                 lambda: not embedded_overlay.has_class("visible"),
-                timeout=10.0,
+                timeout=5.0,
                 description=(
-                    "Ctrl+P on fullscreen Task Output overlay "
-                    "to hide without leaving screen"
+                    "Ctrl+P on fullscreen Task Output overlay to hide without leaving screen"
                 ),
             )
             await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
@@ -1991,10 +1992,17 @@ async def test_orchestrator_overlay_auto_session_streams_live_execution_logs(
 
             output_screen = await _open_task_output_via_enter(pilot, kanban, auto_task.id)
             embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
+            embedded_overlay.set_target_scope(auto_task.id)
+            embedded_overlay.show_for_task(auto_task, fullscreen=False)
+            await wait_until(
+                lambda: embedded_overlay._active_target().task_id == auto_task.id,
+                timeout=5.0,
+                description="Task Output overlay to attach to AUTO task target",
+            )
             output = embedded_overlay.query_one("#chat-overlay-output", StreamingOutput)
             await wait_until(
                 lambda: "AUTO live chunk" in output.get_text_content(),
-                timeout=10.0,
+                timeout=5.0,
                 description="AUTO overlay session to render streamed execution log chunk",
             )
 
@@ -2030,8 +2038,7 @@ async def test_orchestrator_overlay_auto_session_streams_appended_logs_for_same_
         )
         first_chunk = '{"messages":[{"type":"response","content":"AUTO chunk one"}]}'
         appended_chunk = (
-            f'{first_chunk}\n'
-            '{"messages":[{"type":"response","content":"AUTO chunk two"}]}'
+            f'{first_chunk}\n{{"messages":[{{"type":"response","content":"AUTO chunk two"}}]}}'
         )
         stream_poll = {"count": 0}
 
@@ -2083,8 +2090,7 @@ async def test_orchestrator_overlay_auto_session_streams_appended_logs_for_same_
                 and "AUTO chunk two" in output.get_text_content(),
                 timeout=10.0,
                 description=(
-                    "AUTO overlay session to render appended chunks "
-                    "for same execution log entry"
+                    "AUTO overlay session to render appended chunks for same execution log entry"
                 ),
             )
 

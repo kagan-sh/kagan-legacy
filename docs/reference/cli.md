@@ -11,17 +11,17 @@ tags:
 
 `kagan` with no subcommand → `kagan tui` (default).
 
-| Command | Description |
-| ------- | ----------- |
-| `core` | Manage core process |
-| `doctor` | Environment diagnostics |
-| `list` | List projects and repos |
-| `mcp` | Run MCP server (stdio) |
+| Command    | Description              |
+| ---------- | ------------------------ |
+| `core`     | Manage core process      |
+| `doctor`   | Environment diagnostics  |
+| `list`     | List projects and repos  |
+| `mcp`      | Run MCP server (stdio)   |
 | `profiles` | List MCP access profiles |
-| `reset` | Remove local state |
-| `tools` | Stateless utilities |
-| `tui` | Run TUI explicitly |
-| `update` | Check/install updates |
+| `reset`    | Remove local state       |
+| `tools`    | Stateless utilities      |
+| `tui`      | Run TUI explicitly       |
+| `update`   | Check/install updates    |
 
 ## Machine-readable output guarantees
 
@@ -40,26 +40,26 @@ Submit a feature request with your CI/CD use case and expected contract behavior
 Revisit triggers for GA schema customization:
 
 1. 3+ independent feature requests for custom schema validation.
-2. 2+ real CI integration breakages caused by output drift.
-3. Partner/customer compliance requires explicit schema contracts.
+1. 2+ real CI integration breakages caused by output drift.
+1. Partner/customer compliance requires explicit schema contracts.
 
 ## `kagan tui`
 
-| Option | Description |
-| ------ | ----------- |
-| `--db TEXT` | SQLite database path |
-| `--skip-preflight` | Skip startup doctor checks (dev only) |
-| `--skip-update-check` | Skip update check on startup |
+| Option                | Description                           |
+| --------------------- | ------------------------------------- |
+| `--db TEXT`           | SQLite database path                  |
+| `--skip-preflight`    | Skip startup doctor checks (dev only) |
+| `--skip-update-check` | Skip update check on startup          |
 
 ## `kagan doctor`
 
 Runs startup diagnostics (Python, git, agent backend availability, tooling).
 `kagan` runs these checks silently on boot and only surfaces output when critical blockers are detected.
 
-| Option | Description |
-| ------ | ----------- |
-| `--verbosity tldr` | Warnings and failures only |
-| `--verbosity short` | Concise guidance + one source pointer (default) |
+| Option                  | Description                                     |
+| ----------------------- | ----------------------------------------------- |
+| `--verbosity tldr`      | Warnings and failures only                      |
+| `--verbosity short`     | Concise guidance + one source pointer (default) |
 | `--verbosity technical` | Full rationale, commands, official source links |
 
 ## `kagan list`
@@ -68,38 +68,38 @@ No options.
 
 ## `kagan core`
 
-| Subcommand | Description |
-| ---------- | ----------- |
-| `start` | Start core (if not running) |
-| `status` | Show core status |
-| `stop` | Stop core |
+| Subcommand | Description                 |
+| ---------- | --------------------------- |
+| `start`    | Start core (if not running) |
+| `status`   | Show core status            |
+| `stop`     | Stop core                   |
 
 `kagan core start`: `--foreground` for foreground run.
 
 ## `kagan mcp`
 
-| Option | Description |
-| ------ | ----------- |
-| `--readonly` | Read-only tools only |
-| `--session-id TEXT` | Bind to session/task |
-| `--capability TEXT` | `viewer` \| `planner` \| `pair_worker` \| `operator` \| `maintainer` |
-| `--identity TEXT` | `kagan` \| `kagan_admin` |
-| `--preset TEXT` | Named profile (see below). Overridden by explicit `--capability`/`--identity`. |
-| `--endpoint TEXT` | Override core endpoint |
-| `--enable-internal-instrumentation` | Enable diagnostics tool |
+| Option                              | Description                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `--readonly`                        | Read-only tools only                                                           |
+| `--session-id TEXT`                 | Bind to session/task                                                           |
+| `--capability TEXT`                 | `viewer` \| `planner` \| `pair_worker` \| `operator` \| `maintainer`           |
+| `--identity TEXT`                   | `kagan` \| `kagan_admin`                                                       |
+| `--preset TEXT`                     | Named profile (see below). Overridden by explicit `--capability`/`--identity`. |
+| `--endpoint TEXT`                   | Override core endpoint                                                         |
+| `--enable-internal-instrumentation` | Enable diagnostics tool                                                        |
 
 ### Presets
 
 `--preset` applies a pre-built `--capability` + `--identity` combination.
 
-| Preset | capability | identity | Use |
-| ------ | ---------- | -------- | --- |
-| `security-reviewer` | `viewer` | `kagan` | Read-only auditing |
-| `test-writer` | `pair_worker` | `kagan` | Scoped test generation |
-| `refactoring-agent` | `pair_worker` | `kagan` | Bounded refactors with review gate |
-| `pair-worker` | `pair_worker` | `kagan` | Interactive PAIR workflow |
-| `orchestrator` | `operator` | `kagan_admin` | AUTO pipeline orchestration |
-| `maintainer` | `maintainer` | `kagan_admin` | Admin / CI lane |
+| Preset              | capability    | identity      | Use                                |
+| ------------------- | ------------- | ------------- | ---------------------------------- |
+| `security-reviewer` | `viewer`      | `kagan`       | Read-only auditing                 |
+| `test-writer`       | `pair_worker` | `kagan`       | Scoped test generation             |
+| `refactoring-agent` | `pair_worker` | `kagan`       | Bounded refactors with review gate |
+| `pair-worker`       | `pair_worker` | `kagan`       | Interactive PAIR workflow          |
+| `orchestrator`      | `operator`    | `kagan_admin` | AUTO pipeline orchestration        |
+| `maintainer`        | `maintainer`  | `kagan_admin` | Admin / CI lane                    |
 
 ```bash
 kagan mcp --preset orchestrator
@@ -118,24 +118,24 @@ kagan profiles
 
 ## `kagan update`
 
-| Option | Description |
-| ------ | ----------- |
-| `-f, --force` | Skip confirmation |
-| `--check` | Check only, don't install |
-| `--prerelease` | Include pre-releases |
+| Option         | Description               |
+| -------------- | ------------------------- |
+| `-f, --force`  | Skip confirmation         |
+| `--check`      | Check only, don't install |
+| `--prerelease` | Include pre-releases      |
 
 ## `kagan reset`
 
-| Option | Description |
-| ------ | ----------- |
+| Option        | Description       |
+| ------------- | ----------------- |
 | `-f, --force` | Skip confirmation |
 
 ## `kagan tools`
 
-| Subcommand | Description |
-| ---------- | ----------- |
-| `enhance` | Enhance prompts for AI tools |
+| Subcommand | Description                  |
+| ---------- | ---------------------------- |
+| `enhance`  | Enhance prompts for AI tools |
 
 ### `kagan tools enhance`
 
-`[PROMPT]` or `-f PATH`. `-t, --tool`: `claude` \| `opencode` (auto-detects if omitted).
+`[PROMPT]` or `-f PATH`. `-t, --tool`: `claude` | `opencode` (auto-detects if omitted).

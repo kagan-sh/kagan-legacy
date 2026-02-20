@@ -36,37 +36,37 @@ task_get(task_id, include_logs=true) → task detail
 task_logs(task_id, offset, limit)   → if truncated
 ```
 
----
+______________________________________________________________________
 
 ## Capability profiles
 
-| Profile | Use |
-| ------- | --- |
-| `viewer` | Read-only. Inspect tasks, flag concerns. |
-| `planner` | Read + plan submission. |
+| Profile       | Use                                                   |
+| ------------- | ----------------------------------------------------- |
+| `viewer`      | Read-only. Inspect tasks, flag concerns.              |
+| `planner`     | Read + plan submission.                               |
 | `pair_worker` | Task automation — create, update, annotate. No merge. |
-| `operator` | Day-to-day ops — sessions, reviews. |
-| `maintainer` | Admin/destructive actions. Trusted pipelines only. |
+| `operator`    | Day-to-day ops — sessions, reviews.                   |
+| `maintainer`  | Admin/destructive actions. Trusted pipelines only.    |
 
 ```bash
 kagan mcp --capability pair_worker
 kagan mcp --identity kagan_admin --capability maintainer
 ```
 
----
+______________________________________________________________________
 
 ## Access profile presets
 
 `--preset` applies a named capability + identity combination. Run `kagan profiles` to list all.
 
-| Preset | Equivalent flags | Use |
-| ------ | ---------------- | --- |
-| `security-reviewer` | `--capability viewer --identity kagan` | Read-only auditing |
-| `test-writer` | `--capability pair_worker --identity kagan` | Scoped test generation |
-| `refactoring-agent` | `--capability pair_worker --identity kagan` | Bounded refactors |
-| `pair-worker` | `--capability pair_worker --identity kagan` | Interactive PAIR workflow |
-| `orchestrator` | `--capability operator --identity kagan_admin` | AUTO pipeline orchestration |
-| `maintainer` | `--capability maintainer --identity kagan_admin` | Admin / CI lane |
+| Preset              | Equivalent flags                                 | Use                         |
+| ------------------- | ------------------------------------------------ | --------------------------- |
+| `security-reviewer` | `--capability viewer --identity kagan`           | Read-only auditing          |
+| `test-writer`       | `--capability pair_worker --identity kagan`      | Scoped test generation      |
+| `refactoring-agent` | `--capability pair_worker --identity kagan`      | Bounded refactors           |
+| `pair-worker`       | `--capability pair_worker --identity kagan`      | Interactive PAIR workflow   |
+| `orchestrator`      | `--capability operator --identity kagan_admin`   | AUTO pipeline orchestration |
+| `maintainer`        | `--capability maintainer --identity kagan_admin` | Admin / CI lane             |
 
 ```bash
 kagan mcp --preset orchestrator
@@ -75,111 +75,125 @@ kagan mcp --preset security-reviewer --session-id task:abc123
 
 Explicit `--capability` / `--identity` flags always override a preset.
 
----
+______________________________________________________________________
 
 ## Editor configs
 
 === "Claude Code"
 
-    Path: `~/.claude.json` (global) or `.mcp.json` (project)
+````
+Path: `~/.claude.json` (global) or `.mcp.json` (project)
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
 === "VS Code"
 
-    Path: `.vscode/mcp.json`
+````
+Path: `.vscode/mcp.json`
 
-    ```json
-    {
-      "servers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "servers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
 === "Cursor"
 
-    Path: `.cursor/mcp.json`
+````
+Path: `.cursor/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
 === "OpenCode"
 
-    Path: `~/.config/opencode/opencode.json`
+````
+Path: `~/.config/opencode/opencode.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
 === "Codex"
 
-    Path: `~/.codex/config.toml`
+````
+Path: `~/.codex/config.toml`
 
-    ```toml
-    [mcp_servers.kagan]
-    command = "kagan"
-    args = ["mcp", "--capability", "pair_worker"]
-    ```
+```toml
+[mcp_servers.kagan]
+command = "kagan"
+args = ["mcp", "--capability", "pair_worker"]
+```
+````
 
 === "Gemini CLI"
 
-    Path: `~/.gemini/settings.json`
+````
+Path: `~/.gemini/settings.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
 === "Kimi CLI"
 
-    Path: `~/.kimi/mcp.json`
+````
+Path: `~/.kimi/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp", "--capability", "pair_worker"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--capability", "pair_worker"]
     }
-    ```
+  }
+}
+```
+````
 
----
+______________________________________________________________________
 
 ## Multi-repo
 
@@ -193,17 +207,17 @@ Explicit `--capability` / `--identity` flags always override a preset.
 
 **State:** External to repos — `kagan.db`, `config.toml`, worktrees. No `.kagan/` in repos.
 
----
+______________________________________________________________________
 
 ## Error recovery
 
-| Code | Action |
-| ---- | ------ |
-| `AUTH_STALE_TOKEN` | Reconnect client; `kagan core stop` → `start` |
-| `CLIENT_OUTDATED` | Restart MCP/TUI session to reload latest runtime |
-| `CLIENT_VERSION_REQUIRED` | Update/restart client so it sends runtime version |
+| Code                         | Action                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| `AUTH_STALE_TOKEN`           | Reconnect client; `kagan core stop` → `start`         |
+| `CLIENT_OUTDATED`            | Restart MCP/TUI session to reload latest runtime      |
+| `CLIENT_VERSION_REQUIRED`    | Update/restart client so it sends runtime version     |
 | `CLIENT_BUILD_HASH_REQUIRED` | Update/restart client so it sends runtime fingerprint |
-| `DISCONNECTED` | Start Kagan or restart core |
-| `START_PENDING` | Poll `job_poll(wait=false)` |
+| `DISCONNECTED`               | Start Kagan or restart core                           |
+| `START_PENDING`              | Poll `job_poll(wait=false)`                           |
 
 [MCP tools reference](../reference/mcp-tools.md)

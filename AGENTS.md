@@ -138,27 +138,32 @@ Path mapping:
 ### Module Map
 
 **Domain layer** — `src/kagan/core/domain/`
+
 - `enums.py` — canonical enums (TaskStatus, TaskType, etc.)
 - `errors.py` — domain-specific error types
 - `task_rules.py` — task lifecycle/transition rules
 
 **Command dispatch** — `src/kagan/core/commands/`
+
 - `tasks.py`, `projects.py`, `automation.py`, `workspaces.py`, `plugins.py` — command handlers by capability
 - `_parsing.py` — input parsing helpers (limits, offsets, timeouts)
 - `_serialization.py` — response building and output formatting
 - `__init__.py` — `CommandRouter` dispatches `(capability, method)` pairs to handlers
 
 **Policy** — `src/kagan/core/policy.py`
+
 - Consolidated auth/security: `CapabilityProfile`, `AuthorizationPolicy`, `SessionBinding`, `@command` decorator, `RequestContext`
 - Merged from the former `security.py`, `session_binding.py`, `expose.py`, `request_context.py`
 
 **SDK** — `src/kagan/sdk/`
+
 - `_client.py` — `KaganSDK` typed client
 - `_transport.py` — `SDKTransport` (IPC communication)
 - `_types.py` — response dataclasses
 - `_errors.py` — `SDKError` hierarchy
 
 **MCP server** — `src/kagan/mcp/`
+
 - `server.py` — FastMCP server setup
 - `tools.py` — MCP tool definitions (bridge layer)
 - `_tool_gen.py` — tool registration/generation
@@ -168,6 +173,7 @@ Path mapping:
 ### Compatibility Shims (transitional)
 
 These modules delegate to `core/commands/` and exist only for backward-compatible imports in tests:
+
 - `core/request_handlers/` — handler facades wrapping command functions
 - `core/request_dispatch_map/` — dispatch map built from `CommandRouter`
 - `core/request_handler_support.py` — re-exports from `commands/_parsing.py` and `commands/_serialization.py`

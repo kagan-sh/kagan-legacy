@@ -75,6 +75,32 @@ class PairInstructionsModal(ModalScreen[str | None]):
                     yield self._hotkey_row("Ctrl+b ?", "Show all tmux bindings")
                 yield Rule()
                 yield CopyableLink(TMUX_DOCS_URL)
+            elif self._backend == "nvim":
+                yield Static(
+                    "Kagan will open [bold]Neovim[/bold] in this task worktree.\n"
+                    "Startup prompt opens first for fast handoff into your AI plugin.",
+                    classes="tmux-intro",
+                )
+                yield Rule(line_style="heavy")
+                yield Label("Recommended Flow", classes="section-title")
+                with Vertical(classes="hotkey-list"):
+                    yield Static(
+                        f"1. Neovim opens with startup prompt:\n{self._prompt_path}",
+                        classes="tmux-desc",
+                    )
+                    yield Static(
+                        "2. Kagan attempts to open chat automatically if one is installed.",
+                        classes="tmux-desc",
+                    )
+                    yield Static(
+                        "3. If needed, run one manually: :CodeCompanionChat / :AvanteChat / "
+                        ":CopilotChat / :ClaudeCode",
+                        classes="tmux-desc",
+                    )
+                    yield Static(
+                        "4. Keep task in IN_PROGRESS while pairing; move to REVIEW when ready.",
+                        classes="tmux-desc",
+                    )
             else:
                 tool_name = "VS Code" if self._backend == "vscode" else "Cursor"
                 chat_name = "Copilot Chat" if self._backend == "vscode" else "Cursor Chat"

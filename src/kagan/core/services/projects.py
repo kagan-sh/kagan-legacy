@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, literal, or_
 from sqlmodel import col, select
@@ -20,60 +21,6 @@ if TYPE_CHECKING:
     from kagan.core.services.types import ProjectId, RepoId
 
 
-class ProjectService(Protocol):
-    """Service interface for project operations."""
-
-    async def create_project(
-        self,
-        name: str,
-        repo_paths: list[str | Path] | None = None,
-        description: str | None = None,
-    ) -> str:
-        """Create a project with repos, return project_id."""
-        ...
-
-    async def open_project(self, project_id: ProjectId) -> Project:
-        """Open project (update last_opened_at, publish ProjectOpened event)."""
-        ...
-
-    async def get_project(self, project_id: ProjectId) -> Project | None:
-        """Return a project by ID."""
-        ...
-
-    async def list_recent_projects(self, limit: int = 10) -> list[Project]:
-        """Get recently opened projects sorted by last_opened_at desc."""
-        ...
-
-    async def add_repo_to_project(
-        self,
-        project_id: ProjectId,
-        repo_path: str | Path,
-        is_primary: bool = False,
-    ) -> str:
-        """Add repo to project, return repo_id."""
-        ...
-
-    async def remove_repo_from_project(
-        self,
-        project_id: ProjectId,
-        repo_id: RepoId,
-    ) -> None:
-        """Remove repo from project."""
-        ...
-
-    async def get_project_repos(self, project_id: ProjectId) -> list[Repo]:
-        """Get all repos for a project."""
-        ...
-
-    async def get_project_repo_details(self, project_id: ProjectId) -> list[dict]:
-        """Get all repos for a project with junction metadata."""
-        ...
-
-    async def find_project_by_repo_path(self, repo_path: str | Path) -> Project | None:
-        """Find project containing the repo."""
-        ...
-
-
 class ProjectServiceImpl:
     """Concrete ProjectService backed by session factory, EventBus, and RepoRepository."""
 
@@ -86,6 +33,7 @@ class ProjectServiceImpl:
         self._session_factory = session_factory
         self._events = event_bus
         self._repo_repository = repo_repository
+        self._repo_scripts_lock = asyncio.Lock()
 
     async def create_project(
         self,
@@ -242,6 +190,71 @@ class ProjectServiceImpl:
                 }
                 for project_repo, repo in result.all()
             ]
+
+    async def update_repo_default_branch(
+        self,
+        repo_id: str,
+        branch: str,
+        *,
+        mark_configured: bool = False,
+    ) -> Repo | None:
+        """Update Repo.default_branch, optionally marking branch as configured."""
+        return await self._repo_repository.update_default_branch(
+            repo_id, branch, mark_configured=mark_configured
+        )
+
+    async def get_repo_script_value(
+        self,
+        repo_id: str,
+        script_key: str,
+    ) -> str | None:
+        """Read a script value by key from Repo.scripts."""
+        from kagan.core.adapters.db.schema import Repo
+
+        normalized_key = script_key.strip()
+        if not normalized_key:
+            raise ValueError("script_key cannot be empty")
+
+        async with get_session(self._session_factory) as session:
+            repo = await session.get(Repo, repo_id)
+            if repo is None:
+                raise ValueError(f"Repo not found: {repo_id}")
+            if not repo.scripts:
+                return None
+            return repo.scripts.get(normalized_key)
+
+    async def update_repo_script_values(
+        self,
+        repo_id: str,
+        script_updates: dict[str, str],
+    ) -> dict[str, str]:
+        """Merge script key-values into Repo.scripts and return updated scripts."""
+        from kagan.core.adapters.db.schema import Repo
+
+        if not script_updates:
+            raise ValueError("script_updates cannot be empty")
+
+        normalized_updates: dict[str, str] = {}
+        for key, value in script_updates.items():
+            normalized_key = key.strip()
+            if not normalized_key:
+                raise ValueError("script_updates keys cannot be empty")
+            normalized_updates[normalized_key] = value
+
+        async with self._repo_scripts_lock:
+            async with get_session(self._session_factory) as session:
+                repo = await session.get(Repo, repo_id)
+                if repo is None:
+                    raise ValueError(f"Repo not found: {repo_id}")
+
+                next_scripts = dict(repo.scripts) if repo.scripts else {}
+                for key in sorted(normalized_updates):
+                    next_scripts[key] = normalized_updates[key]
+                repo.scripts = next_scripts
+
+                session.add(repo)
+                await session.commit()
+                return next_scripts
 
     async def find_project_by_repo_path(self, repo_path: str | Path) -> Project | None:
         """Find project containing the repo."""

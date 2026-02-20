@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 from textual.widgets import Input, Select, TextArea
 
 from kagan.core.constants import PRIORITY_LABELS
-from kagan.core.models.enums import PairTerminalBackend, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.coercion import normalize_acceptance_criteria
+from kagan.core.domain.enums import (
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+    resolve_pair_backend,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -77,8 +83,8 @@ class AcceptanceCriteriaArea(TextArea):
 
     def get_criteria(self) -> list[str]:
         """Parse and return acceptance criteria as list."""
-        lines = self.text.strip().split("\n") if self.text.strip() else []
-        return [line.strip() for line in lines if line.strip()]
+        parsed = normalize_acceptance_criteria(self.text.splitlines())
+        return parsed or []
 
 
 class PrioritySelect(Select[int]):
@@ -169,6 +175,9 @@ class AgentBackendSelect(Select[str]):
         **kwargs,
     ) -> None:
         opts = options if options is not None else []
+        valid_values = {v for _, v in opts}
+        if value and value not in valid_values:
+            value = opts[0][1] if opts else ""
         super().__init__(
             options=opts,
             value=value,
@@ -183,8 +192,12 @@ class PairTerminalBackendSelect(Select[str]):
 
     OPTIONS: Sequence[tuple[str, str]] = [
         ("tmux", "tmux"),
+        ("Neovim", "nvim"),
         ("VS Code", "vscode"),
         ("Cursor", "cursor"),
+        ("Windsurf", "windsurf"),
+        ("Kiro", "kiro"),
+        ("Antigravity", "antigravity"),
     ]
 
     def __init__(
@@ -195,8 +208,7 @@ class PairTerminalBackendSelect(Select[str]):
         widget_id: str = "pair-terminal-backend-select",
         **kwargs,
     ) -> None:
-        valid_values = {backend.value for backend in PairTerminalBackend}
-        initial_value = value if value in valid_values else "tmux"
+        initial_value = resolve_pair_backend(value)
         super().__init__(
             options=self.OPTIONS,
             value=initial_value,

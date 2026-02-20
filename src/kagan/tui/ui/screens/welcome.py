@@ -109,7 +109,7 @@ class WelcomeScreen(KaganScreen):
     def compose(self) -> ComposeResult:
         with Container(id="welcome-container"):
             yield Static(KAGAN_LOGO, id="logo")
-            yield Label("Your Development Cockpit", id="subtitle")
+            yield Label("Command Center", id="subtitle")
             if self._suggest_cwd and self._cwd_path:
                 with Container(id="cwd-suggestion-banner"):
                     if self._cwd_is_git_repo:
@@ -153,7 +153,7 @@ class WelcomeScreen(KaganScreen):
 
             yield Label(
                 "Control Kagan from your editor via Admin MCP"
-                " — docs.kagan.sh/how-to/admin-mcp-editors",
+                " — docs.kagan.sh/guides/editor-mcp-setup/",
                 id="admin-mcp-hint",
             )
 
@@ -279,7 +279,7 @@ class WelcomeScreen(KaganScreen):
         try:
             tasks = await self.ctx.api.list_tasks(project_id=project_id)
 
-            from kagan.core.models.enums import TaskStatus
+            from kagan.core.domain.enums import TaskStatus
 
             in_progress = sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS)
             in_review = sum(1 for t in tasks if t.status == TaskStatus.REVIEW)
@@ -323,50 +323,66 @@ class WelcomeScreen(KaganScreen):
         return True
 
     def action_new_project(self) -> None:
-        """Create a new project via NewProjectModal."""
-        self.app.run_worker(
-            self._open_new_project_modal(),
-            group="welcome-new-project",
-            exclusive=True,
-            exit_on_error=False,
-        )
+        """Create a new project via NewProjectModal.
 
-    async def _open_new_project_modal(self) -> None:
+        Uses push_screen with callback instead of run_worker+push_screen_wait
+        to avoid UI freeze when awaiting modal result from within a worker.
+        """
         from kagan.tui.ui.modals.new_project import NewProjectModal
 
-        result = await self.app.push_screen_wait(NewProjectModal())
-        if result and "project_id" in result:
-            await self._open_project(result["project_id"])
+        def on_dismiss(result: dict | None) -> None:
+            if result and isinstance(result, dict) and "project_id" in result:
+                self.app.run_worker(
+                    self._open_project(result["project_id"]),
+                    group="welcome-open-project",
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+
+        self.app.push_screen(NewProjectModal(), callback=on_dismiss)
 
     def action_open_folder(self) -> None:
-        """Open a folder as a new project or find existing project."""
-        self.app.run_worker(
-            self._open_folder_modal(),
-            group="welcome-open-folder",
-            exclusive=True,
-            exit_on_error=False,
-        )
+        """Open a folder as a new project or find existing project.
 
-    async def _open_folder_modal(self) -> None:
+        Uses push_screen with callback to avoid UI freeze from worker+push_screen_wait.
+        """
         from kagan.tui.ui.modals.folder_picker import FolderPickerModal
 
-        folder_path = await self.app.push_screen_wait(FolderPickerModal())
-        if not folder_path:
-            return
+        def on_dismiss(folder_path: str | None) -> None:
+            if not folder_path:
+                return
+            self.app.run_worker(
+                self._open_folder_after_pick(folder_path),
+                group="welcome-open-folder",
+                exclusive=True,
+                exit_on_error=False,
+            )
 
+        self.app.push_screen(FolderPickerModal(), callback=on_dismiss)
+
+    async def _open_folder_after_pick(self, folder_path: str) -> None:
+        """Open or create project from folder path (runs in worker)."""
         api = self.ctx.api
-
         existing = await api.find_project_by_repo_path(folder_path)
         if existing:
-            await self._open_project(existing.id)
+            self.app.run_worker(
+                self._open_project(existing.id),
+                group="welcome-open-project",
+                exclusive=True,
+                exit_on_error=False,
+            )
             return
-
         project_name = Path(folder_path).name
         project_id = await api.create_project(
             name=project_name,
             repo_paths=[folder_path],
         )
-        await self._open_project(project_id)
+        self.app.run_worker(
+            self._open_project(project_id),
+            group="welcome-open-project",
+            exclusive=True,
+            exit_on_error=False,
+        )
 
     def action_open_selected(self) -> None:
         """Open the currently selected project."""
@@ -393,7 +409,7 @@ class WelcomeScreen(KaganScreen):
         await self.app.push_screen(
             SettingsModal(
                 config=self.ctx.config,
-                config_path=self.ctx.config_path,
+                api=self.ctx.api,
             )
         )
 
@@ -472,6 +488,7 @@ class WelcomeScreen(KaganScreen):
         When the CWD is not a git repo, initializes one with an initial commit
         before creating the project.
         """
+        await asyncio.sleep(0)  # Yield so UI can update (e.g. button disabled state)
         if not self._cwd_path:
             return
 
@@ -498,7 +515,12 @@ class WelcomeScreen(KaganScreen):
             name=project_name,
             repo_paths=[self._cwd_path],
         )
-        await self._open_project(project_id)
+        self.app.run_worker(
+            self._open_project(project_id),
+            group="welcome-open-project",
+            exclusive=True,
+            exit_on_error=False,
+        )
 
     def _dismiss_cwd_banner(self) -> None:
         """Dismiss the CWD suggestion banner."""

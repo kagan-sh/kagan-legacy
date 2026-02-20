@@ -12,7 +12,7 @@ from kagan.core.time import utc_now
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from kagan.core.models.enums import TaskStatus
+    from kagan.core.domain.enums import TaskStatus
 
 
 def _new_event_id() -> str:

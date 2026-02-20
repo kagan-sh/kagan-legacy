@@ -2,29 +2,126 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
+from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Input, Label, Rule, Select, Switch
+from textual.widgets import Footer, Input, Label, Rule, Select, Static, Switch
 
 from kagan.core.builtin_agents import BUILTIN_AGENTS
+from kagan.core.config import (
+    DEFAULT_ORCHESTRATOR_PERSONA,
+    DEFAULT_PR_REVIEWER_PERSONA,
+    DEFAULT_WORKER_PERSONA,
+)
 from kagan.tui.keybindings import SETTINGS_BINDINGS
+from kagan.tui.ui.modals.description_editor import DescriptionEditorModal
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from textual.app import ComposeResult
 
-    from kagan.core.config import KaganConfig, PairTerminalBackendLiteral
+    from kagan.core.config import (
+        DoctorVerbosityLiteral,
+        KaganConfig,
+        PairTerminalBackendLiteral,
+        WorktreeBaseRefStrategyLiteral,
+    )
 
 
 def _normalize_pair_terminal_backend(value: object) -> PairTerminalBackendLiteral:
     match value:
-        case "tmux" | "vscode" | "cursor" as backend:
+        case "tmux" | "nvim" | "vscode" | "cursor" as backend:
             return backend
         case _:
             return "tmux"
+
+
+def _normalize_worktree_base_ref_strategy(value: object) -> WorktreeBaseRefStrategyLiteral:
+    match value:
+        case "remote" | "local_if_ahead" | "local" as strategy:
+            return strategy
+        case _:
+            return "local_if_ahead"
+
+
+def _normalize_doctor_verbosity(value: object) -> DoctorVerbosityLiteral:
+    match value:
+        case "tldr" | "short" | "technical" as verbosity:
+            return verbosity
+        case _:
+            return "short"
+
+
+def _normalize_persona(value: str, *, default: str) -> str:
+    cleaned = value.strip()
+    return cleaned or default
+
+
+def _truncate_persona(text: str, max_len: int = 60) -> str:
+    """Return a single-line truncation of a persona string for preview."""
+    first_line = text.split("\n", 1)[0].strip()
+    if len(first_line) > max_len:
+        return first_line[: max_len - 1] + "\u2026"
+    if "\n" in text:
+        return first_line + " \u2026"
+    return first_line
+
+
+class PersonaField(Static, can_focus=True):
+    """Focusable preview that opens a fullscreen editor on Enter.
+
+    Shows a truncated single-line preview of the persona text.
+    Press Enter to open the full-screen editor; Esc or Ctrl+S in the
+    editor returns the edited value.
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("enter", "open_editor", "Edit", show=False),
+    ]
+
+    def __init__(
+        self,
+        text: str,
+        *,
+        field_id: str,
+        editor_title: str = "Edit Persona",
+        default: str = "",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__("", id=field_id, **kwargs)
+        self._text = text
+        self._editor_title = editor_title
+        self._default = default
+
+    @property
+    def persona_value(self) -> str:
+        return self._text
+
+    def on_mount(self) -> None:
+        self._refresh_preview()
+
+    def _refresh_preview(self) -> None:
+        display = self._text or self._default
+        preview = _truncate_persona(display)
+        line_count = display.count("\n") + 1 if display else 0
+        suffix = f"  [{line_count}L]" if line_count > 1 else ""
+        hint = "  [dim][Enter] edit[/dim]"
+        self.update(f"{preview}{suffix}{hint}")
+
+    def action_open_editor(self) -> None:
+        self.app.push_screen(
+            DescriptionEditorModal(
+                description=self._text,
+                title=self._editor_title,
+            ),
+            callback=self._on_editor_dismiss,
+        )
+
+    def _on_editor_dismiss(self, result: str | None) -> None:
+        if result is not None:
+            self._text = result
+            self._refresh_preview()
 
 
 class SettingsModal(ModalScreen[bool]):
@@ -32,10 +129,11 @@ class SettingsModal(ModalScreen[bool]):
 
     BINDINGS = SETTINGS_BINDINGS
 
-    def __init__(self, config: KaganConfig, config_path: Path, **kwargs) -> None:
+    def __init__(self, config: KaganConfig, api: Any, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
-        self._config_path = config_path
+        self._api = api
+        self._is_saving = False
 
     def compose(self) -> ComposeResult:
         with Container(id="settings-container"):
@@ -51,14 +149,23 @@ class SettingsModal(ModalScreen[bool]):
                 yield Label("Enable auto review", classes="setting-label")
 
             yield Rule()
-            yield Label("Planner Permissions", classes="section-title")
+            yield Label("Orchestrator Permissions", classes="section-title")
             with Horizontal(classes="setting-row"):
                 yield Switch(
                     value=self._config.general.auto_approve,
                     id="auto-approve-switch",
                 )
                 yield Label(
-                    "Auto-approve planner tool calls",
+                    "Auto-approve orchestrator tool calls",
+                    classes="setting-label",
+                )
+            with Horizontal(classes="setting-row"):
+                yield Switch(
+                    value=self._config.general.auto_skill_discovery,
+                    id="auto-skill-discovery-switch",
+                )
+                yield Label(
+                    "Enable local auto skill discovery (trusted metadata only)",
                     classes="setting-label",
                 )
 
@@ -80,13 +187,6 @@ class SettingsModal(ModalScreen[bool]):
             yield Rule()
             yield Label("General", classes="section-title")
             with Vertical(classes="input-group"):
-                yield Label("Base branch", classes="input-label")
-                yield Input(
-                    value=self._config.general.default_base_branch,
-                    id="base-branch-input",
-                    placeholder="main",
-                )
-            with Vertical(classes="input-group"):
                 yield Label("Max concurrent agents", classes="input-label")
                 yield Input(
                     value=str(self._config.general.max_concurrent_agents),
@@ -106,15 +206,76 @@ class SettingsModal(ModalScreen[bool]):
                     allow_blank=False,
                 )
             with Vertical(classes="input-group"):
+                yield Label("Worker persona", classes="input-label")
+                yield PersonaField(
+                    self._config.general.worker_persona,
+                    field_id="worker-persona-field",
+                    editor_title="Edit Worker Persona",
+                    default=DEFAULT_WORKER_PERSONA,
+                )
+            with Vertical(classes="input-group"):
+                yield Label("Orchestrator persona", classes="input-label")
+                yield PersonaField(
+                    self._config.general.orchestrator_persona,
+                    field_id="orchestrator-persona-field",
+                    editor_title="Edit Orchestrator Persona",
+                    default=DEFAULT_ORCHESTRATOR_PERSONA,
+                )
+            with Vertical(classes="input-group"):
+                yield Label("PR reviewer persona", classes="input-label")
+                yield PersonaField(
+                    self._config.general.pr_reviewer_persona,
+                    field_id="pr-reviewer-persona-field",
+                    editor_title="Edit PR Reviewer Persona",
+                    default=DEFAULT_PR_REVIEWER_PERSONA,
+                )
+            with Vertical(classes="input-group"):
                 yield Label("PAIR terminal", classes="input-label")
                 yield Select[str](
                     options=[
                         ("tmux", "tmux"),
+                        ("Neovim", "nvim"),
                         ("VS Code", "vscode"),
                         ("Cursor", "cursor"),
                     ],
                     value=self._config.general.default_pair_terminal_backend,
                     id="default-pair-terminal-select",
+                    allow_blank=False,
+                )
+            with Vertical(classes="input-group"):
+                yield Label("Worktree base ref", classes="input-label")
+                yield Select[str](
+                    options=[
+                        ("Remote (origin/<base>)", "remote"),
+                        ("Local if ahead", "local_if_ahead"),
+                        ("Local", "local"),
+                    ],
+                    value=self._config.general.worktree_base_ref_strategy,
+                    id="worktree-base-ref-strategy-select",
+                    allow_blank=False,
+                )
+            with Vertical(classes="input-group"):
+                yield Label("Doctor verbosity", classes="input-label")
+                yield Select[str](
+                    options=[
+                        ("TL;DR", "tldr"),
+                        ("Short", "short"),
+                        ("Technical", "technical"),
+                    ],
+                    value=self._config.general.doctor_verbosity,
+                    id="doctor-verbosity-select",
+                    allow_blank=False,
+                )
+            with Vertical(classes="input-group"):
+                yield Label("Interaction verbosity", classes="input-label")
+                yield Select[str](
+                    options=[
+                        ("TL;DR", "tldr"),
+                        ("Short", "short"),
+                        ("Technical", "technical"),
+                    ],
+                    value=self._config.general.interaction_verbosity,
+                    id="interaction-verbosity-select",
                     allow_blank=False,
                 )
 
@@ -171,34 +332,104 @@ class SettingsModal(ModalScreen[bool]):
                     id="skip-pair-instructions-switch",
                 )
                 yield Label("Skip PAIR instructions popup", classes="setting-label")
+            with Vertical(classes="input-group"):
+                yield Label("Theme", classes="input-label")
+                theme_options: list[tuple[str, str]] = [
+                    ("Auto (Kagan Night)", ""),
+                    ("Kagan Night", "kagan"),
+                    ("Kagan 256-color", "kagan-256"),
+                    ("Dracula", "dracula"),
+                    ("Tokyo Night", "tokyo-night"),
+                    ("Catppuccin Mocha", "catppuccin-mocha"),
+                    ("Catppuccin Latte", "catppuccin-latte"),
+                    ("Nord", "nord"),
+                    ("Gruvbox", "gruvbox"),
+                    ("Monokai", "monokai"),
+                    ("Solarized Dark", "solarized-dark"),
+                    ("Solarized Light", "solarized-light"),
+                    ("Rose Pine", "rose-pine"),
+                    ("Rose Pine Moon", "rose-pine-moon"),
+                    ("Rose Pine Dawn", "rose-pine-dawn"),
+                    ("Atom One Dark", "atom-one-dark"),
+                    ("Atom One Light", "atom-one-light"),
+                    ("Flexoki", "flexoki"),
+                    ("Textual Dark", "textual-dark"),
+                    ("Textual Light", "textual-light"),
+                    ("Textual ANSI", "textual-ansi"),
+                ]
+                yield Select[str](
+                    options=theme_options,
+                    value=self._config.ui.theme or "",
+                    id="theme-select",
+                    allow_blank=False,
+                )
 
             yield Rule()
-            with Horizontal(classes="button-row"):
-                yield Button("Save", variant="primary", id="save-btn")
-                yield Button("Cancel", variant="default", id="cancel-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Label(
+                    "Press [bold]Ctrl+S[/bold] to save, [bold]Esc[/bold] to cancel",
+                    classes="modal-action-hint",
+                    id="settings-action-hint",
+                )
 
         yield Footer(show_command_palette=False)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "save-btn":
-            self.action_save()
-        elif event.button.id == "cancel-btn":
-            self.action_cancel()
+    def on_mount(self) -> None:
+        self.query_one("#auto-review-switch", Switch).focus()
+
+    def _set_action_hint(self, message: str) -> None:
+        self.query_one("#settings-action-hint", Label).update(message)
 
     def action_save(self) -> None:
         """Save settings to config file."""
+        if self._is_saving:
+            return
+
+        updates = self._collect_updates()
+        if updates is None:
+            return
+
+        self._is_saving = True
+        self._set_action_hint("Saving settings...")
+        self.run_worker(
+            self._save_updates(updates),
+            group="settings-save",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    def _collect_updates(self) -> dict[str, object] | None:
         auto_review = self.query_one("#auto-review-switch", Switch).value
         auto_approve = self.query_one("#auto-approve-switch", Switch).value
+        auto_skill_discovery = self.query_one("#auto-skill-discovery-switch", Switch).value
         require_review_approval = self.query_one("#require-review-approval-switch", Switch).value
         serialize_merges = self.query_one("#serialize-merges-switch", Switch).value
         skip_pair_instructions = self.query_one("#skip-pair-instructions-switch", Switch).value
-        base_branch = self.query_one("#base-branch-input", Input).value
         max_agents_str = self.query_one("#max-agents-input", Input).value
         default_agent_select = self.query_one("#default-agent-select", Select)
         default_agent = str(default_agent_select.value) if default_agent_select.value else "claude"
+        worker_persona = _normalize_persona(
+            self.query_one("#worker-persona-field", PersonaField).persona_value,
+            default=DEFAULT_WORKER_PERSONA,
+        )
+        orchestrator_persona = _normalize_persona(
+            self.query_one("#orchestrator-persona-field", PersonaField).persona_value,
+            default=DEFAULT_ORCHESTRATOR_PERSONA,
+        )
+        pr_reviewer_persona = _normalize_persona(
+            self.query_one("#pr-reviewer-persona-field", PersonaField).persona_value,
+            default=DEFAULT_PR_REVIEWER_PERSONA,
+        )
         pair_terminal_select = self.query_one("#default-pair-terminal-select", Select)
         pair_terminal_backend = _normalize_pair_terminal_backend(pair_terminal_select.value)
+        base_ref_strategy_select = self.query_one("#worktree-base-ref-strategy-select", Select)
+        worktree_base_ref_strategy = _normalize_worktree_base_ref_strategy(
+            base_ref_strategy_select.value
+        )
+        doctor_verbosity_select = self.query_one("#doctor-verbosity-select", Select)
+        doctor_verbosity = _normalize_doctor_verbosity(doctor_verbosity_select.value)
+        interaction_verbosity_select = self.query_one("#interaction-verbosity-select", Select)
+        interaction_verbosity = _normalize_doctor_verbosity(interaction_verbosity_select.value)
         default_model_claude = self.query_one("#default-model-claude-input", Input).value
         default_model_claude = default_model_claude.strip() or None
         default_model_opencode = self.query_one("#default-model-opencode-input", Input).value
@@ -212,125 +443,81 @@ class SettingsModal(ModalScreen[bool]):
         default_model_copilot = self.query_one("#default-model-copilot-input", Input).value
         default_model_copilot = default_model_copilot.strip() or None
 
+        theme_select = self.query_one("#theme-select", Select)
+        theme = str(theme_select.value) if theme_select.value else ""
+
         try:
             max_agents = int(max_agents_str) if max_agents_str else 3
         except ValueError:
             self.app.notify("Invalid numeric value", severity="error")
+            return None
+
+        return {
+            "general.auto_review": auto_review,
+            "general.auto_approve": auto_approve,
+            "general.auto_skill_discovery": auto_skill_discovery,
+            "general.require_review_approval": require_review_approval,
+            "general.serialize_merges": serialize_merges,
+            "general.max_concurrent_agents": max_agents,
+            "general.default_worker_agent": default_agent,
+            "general.worker_persona": worker_persona,
+            "general.orchestrator_persona": orchestrator_persona,
+            "general.pr_reviewer_persona": pr_reviewer_persona,
+            "general.default_pair_terminal_backend": pair_terminal_backend,
+            "general.worktree_base_ref_strategy": worktree_base_ref_strategy,
+            "general.doctor_verbosity": doctor_verbosity,
+            "general.interaction_verbosity": interaction_verbosity,
+            "general.default_model_claude": default_model_claude,
+            "general.default_model_opencode": default_model_opencode,
+            "general.default_model_codex": default_model_codex,
+            "general.default_model_gemini": default_model_gemini,
+            "general.default_model_kimi": default_model_kimi,
+            "general.default_model_copilot": default_model_copilot,
+            "ui.skip_pair_instructions": skip_pair_instructions,
+            "ui.theme": theme or None,
+        }
+
+    @staticmethod
+    def _apply_updates(config: KaganConfig, updates: dict[str, object]) -> None:
+        for key, value in updates.items():
+            section_name, field_name = key.split(".", 1)
+            section = getattr(config, section_name, None)
+            if section is None:
+                continue
+            if hasattr(section, field_name):
+                setattr(section, field_name, value)
+
+    async def _save_updates(self, updates: dict[str, object]) -> None:
+        try:
+            success, message, *_rest = await self._api.update_settings(updates)
+        except Exception as exc:
+            self.app.notify(f"Failed to save settings: {exc}", severity="error")
+            self._is_saving = False
+            self._set_action_hint("Press [bold]Ctrl+S[/bold] to save, [bold]Esc[/bold] to cancel")
             return
 
-        self._config.general.auto_review = auto_review
-        self._config.general.auto_approve = auto_approve
-        self._config.general.require_review_approval = require_review_approval
-        self._config.general.serialize_merges = serialize_merges
-        self._config.general.default_base_branch = base_branch
-        self._config.general.max_concurrent_agents = max_agents
-        self._config.general.default_worker_agent = default_agent
-        self._config.general.default_pair_terminal_backend = pair_terminal_backend
-        self._config.general.default_model_claude = default_model_claude
-        self._config.general.default_model_opencode = default_model_opencode
-        self._config.general.default_model_codex = default_model_codex
-        self._config.general.default_model_gemini = default_model_gemini
-        self._config.general.default_model_kimi = default_model_kimi
-        self._config.general.default_model_copilot = default_model_copilot
-        self._config.ui.skip_pair_instructions = skip_pair_instructions
+        if not success:
+            self.app.notify(message or "Failed to save settings", severity="error")
+            self._is_saving = False
+            self._set_action_hint("Press [bold]Ctrl+S[/bold] to save, [bold]Esc[/bold] to cancel")
+            return
 
-        self.run_worker(self._write_config(), exclusive=True, exit_on_error=False)
+        self._apply_updates(self._config, updates)
+
+        # Apply theme change live so the user sees it immediately.
+        theme_value = updates.get("ui.theme")
+        if theme_value and isinstance(theme_value, str):
+            if theme_value in self.app.available_themes:
+                self.app.theme = theme_value
+        elif theme_value is None and "ui.theme" in updates:
+            # User chose "Auto" — reset to default detection.
+            from kagan.core.terminal import supports_truecolor
+
+            self.app.theme = "kagan" if supports_truecolor() else "kagan-256"
+
         self.dismiss(True)
 
-    async def _write_config(self) -> None:
-        """Write config to TOML file."""
-        import aiofiles
-
-        from kagan.core.builtin_agents import BUILTIN_AGENTS
-
-        kagan_dir = self._config_path.parent
-        kagan_dir.mkdir(exist_ok=True)
-
-        agent_sections = []
-        for key, agent in BUILTIN_AGENTS.items():
-            cfg = agent.config
-            run_cmd = cfg.run_command.get("*", key)
-            agent_sections.append(
-                f'''[agents.{key}]
-identity = "{cfg.identity}"
-name = "{cfg.name}"
-short_name = "{cfg.short_name}"
-run_command."*" = "{run_cmd}"
-active = true'''
-            )
-
-        general = self._config.general
-        ui = self._config.ui
-
-        model_claude_line = (
-            f'default_model_claude = "{general.default_model_claude}"'
-            if general.default_model_claude
-            else ""
-        )
-        model_opencode_line = (
-            f'default_model_opencode = "{general.default_model_opencode}"'
-            if general.default_model_opencode
-            else ""
-        )
-        model_codex_line = (
-            f'default_model_codex = "{general.default_model_codex}"'
-            if general.default_model_codex
-            else ""
-        )
-        model_gemini_line = (
-            f'default_model_gemini = "{general.default_model_gemini}"'
-            if general.default_model_gemini
-            else ""
-        )
-        model_kimi_line = (
-            f'default_model_kimi = "{general.default_model_kimi}"'
-            if general.default_model_kimi
-            else ""
-        )
-        model_copilot_line = (
-            f'default_model_copilot = "{general.default_model_copilot}"'
-            if general.default_model_copilot
-            else ""
-        )
-
-        general_lines = [
-            f"auto_review = {str(general.auto_review).lower()}",
-            f"auto_approve = {str(general.auto_approve).lower()}",
-            f"require_review_approval = {str(general.require_review_approval).lower()}",
-            f"serialize_merges = {str(general.serialize_merges).lower()}",
-            f'default_base_branch = "{general.default_base_branch}"',
-            f'default_worker_agent = "{general.default_worker_agent}"',
-            f'default_pair_terminal_backend = "{general.default_pair_terminal_backend}"',
-            f"max_concurrent_agents = {general.max_concurrent_agents}",
-        ]
-        if model_claude_line:
-            general_lines.append(model_claude_line)
-        if model_opencode_line:
-            general_lines.append(model_opencode_line)
-        if model_codex_line:
-            general_lines.append(model_codex_line)
-        if model_gemini_line:
-            general_lines.append(model_gemini_line)
-        if model_kimi_line:
-            general_lines.append(model_kimi_line)
-        if model_copilot_line:
-            general_lines.append(model_copilot_line)
-
-        general_section = "\n".join(general_lines)
-
-        config_content = f"""# Kagan Configuration
-
-[general]
-{general_section}
-
-[ui]
-skip_pair_instructions = {str(ui.skip_pair_instructions).lower()}
-
-{chr(10).join(agent_sections)}
-"""
-
-        async with aiofiles.open(self._config_path, "w", encoding="utf-8") as f:
-            await f.write(config_content)
-
     def action_cancel(self) -> None:
+        if self._is_saving:
+            return
         self.dismiss(False)

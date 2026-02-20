@@ -7,7 +7,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from kagan.core.host import CoreHost
+from kagan.core.services.runtime import run_core_host
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +30,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run(config_path: Path | None, db_path: Path | None) -> None:
-    host = CoreHost(config_path=config_path, db_path=db_path)
-    await host.start()
-    await host.wait_until_stopped()
+    await run_core_host(config_path=config_path, db_path=db_path)
 
 
 def main() -> int:

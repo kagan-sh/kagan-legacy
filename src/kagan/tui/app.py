@@ -4,33 +4,34 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from textual.app import App, SystemCommand
+from textual.app import App, SeverityLevel, SystemCommand
 from textual.signal import Signal
 
 from kagan.core.agents.agent_factory import AgentFactory, create_agent
-from kagan.core.bootstrap import (
-    AppContext,
-    create_app_context,
-    create_signal_bridge,
-    wire_default_signals,
-)
 from kagan.core.config import KaganConfig
 from kagan.core.constants import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_DB_PATH,
+    KAGAN_BRANCH_CONFIGURED_KEY,
 )
 from kagan.core.debug_log import setup_debug_logging
-from kagan.core.instance_lock import InstanceLock, LockInfo
+from kagan.core.git_utils import get_current_branch
+from kagan.core.policy import CapabilityProfile, SessionNamespace, SessionOrigin
 from kagan.core.services.runtime import RuntimeContextState, RuntimeSessionEvent
 from kagan.core.terminal import supports_truecolor
+from kagan.core.ux_text import format_interaction_notification, normalize_interaction_verbosity
+from kagan.sdk import KaganSDK
+from kagan.tui._api_adapter import CoreBackedApi, CoreBackedContext
 from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.theme import KAGAN_THEME, KAGAN_THEME_256
 from kagan.tui.ui.screens.kanban import KanbanScreen
-from kagan.tui.ui.screens.onboarding import OnboardingScreen
+from kagan.tui.ui.screens.setup_flow import OnboardingScreen
+from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -38,9 +39,25 @@ if TYPE_CHECKING:
     from textual.screen import Screen
     from textual.worker import Worker
 
-    from kagan.core.adapters.db.schema import Project, Repo
+    from kagan.core.bootstrap import AppContext
     from kagan.core.ipc.client import IPCClient
-    from kagan.tui.ui.screens.planner.state import PersistentPlannerState
+    from kagan.tui.ui.types import ProjectView, RepoView
+
+_logger = logging.getLogger(__name__)
+
+
+def resolve_tui_mouse_enabled() -> bool:
+    """Return whether terminal mouse reporting should be enabled for TUI sessions.
+
+    Mouse reporting is enabled by default so Kanban cards can be focused via click.
+    Set ``KAGAN_TUI_MOUSE=0`` (or ``false``, ``no``, ``off``) to disable it for
+    terminal-native text selection workflows.
+    """
+    raw = os.environ.get("KAGAN_TUI_MOUSE")
+    if raw is None or not raw.strip():
+        return True
+    value = raw.strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 
 class KaganApp(App):
@@ -48,6 +65,8 @@ class KaganApp(App):
 
     TITLE = "ᘚᘛ KAGAN"
     CSS_PATH = "styles/kagan.tcss"
+    # Keep '.' available for command palette entry from any screen.
+    COMMAND_PALETTE_BINDING = "ctrl+shift+p"
 
     BINDINGS = APP_BINDINGS
 
@@ -64,22 +83,28 @@ class KaganApp(App):
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)
 
-        if supports_truecolor():
+        # Load persisted theme preference early (before full init) so the
+        # correct theme is visible from the first paint.
+        _early_config = KaganConfig.load(Path(config_path))
+        persisted_theme = _early_config.ui.theme
+        if persisted_theme and persisted_theme in self.available_themes:
+            self.theme = persisted_theme
+        elif supports_truecolor():
             self.theme = "kagan"
         else:
             self.theme = "kagan-256"
+
+        self._theme_persist_ready = False
 
         self.task_changed_signal: Signal[str] = Signal(self, "task_changed")
 
         self.db_path = Path(db_path)
         self.config_path = Path(config_path)
         self.project_root = Path(project_root) if project_root else Path.cwd()
-        self._ctx: AppContext | None = None
+        self._ctx: Any | None = None
         self._core_client: IPCClient | None = None
         self.config: KaganConfig = KaganConfig()
-        self.planner_state: PersistentPlannerState | None = None
         self._agent_factory = agent_factory
-        self._instance_lock: InstanceLock | None = None
         self._startup_worker: Worker[None] | None = None
         self._core_status: str = "DISCONNECTED"
 
@@ -89,20 +114,60 @@ class KaganApp(App):
         assert self._ctx is not None, "AppContext not initialized"
         return self._ctx
 
+    def _interaction_verbosity(self) -> str:
+        config = getattr(self, "config", None)
+        general = getattr(config, "general", None)
+        configured = getattr(general, "interaction_verbosity", None)
+        return normalize_interaction_verbosity(configured)
+
+    def watch_theme(self, new_theme: str) -> None:
+        """Persist theme changes so the choice survives restarts."""
+        if not getattr(self, "_theme_persist_ready", False):
+            return
+        ctx = getattr(self, "_ctx", None)
+        if ctx is None:
+            return
+        self.config.ui.theme = new_theme
+        self.run_worker(
+            self._persist_theme(new_theme),
+            group="theme-persist",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    async def _persist_theme(self, theme_name: str) -> None:
+        """Save the theme preference through the settings API."""
+        try:
+            await self.ctx.api.update_settings({"ui.theme": theme_name})
+        except Exception:  # quality-allow-broad-except
+            self.log("Failed to persist theme preference", theme=theme_name)
+
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "information",
+        timeout: float | None = None,
+        markup: bool = True,
+    ) -> None:
+        """Render app notifications with globally configured interaction verbosity."""
+        formatted = format_interaction_notification(
+            message,
+            verbosity=self._interaction_verbosity(),
+            severity=severity,
+        )
+        super().notify(
+            formatted,
+            title=title,
+            severity=severity,
+            timeout=timeout,
+            markup=markup,
+        )
+
     async def on_mount(self) -> None:
         """Initialize app on mount."""
         setup_debug_logging()
-
-        self._instance_lock = InstanceLock(self.project_root)
-        if not self._instance_lock.acquire():
-            lock_info = self._instance_lock.get_holder_info()
-            if lock_info is not None and lock_info.pid == os.getpid():
-                self.log("Reusing same-process instance lock for startup")
-            else:
-                from kagan.tui.ui.modals.instance_locked import InstanceLockedModal
-
-                await self.push_screen(InstanceLockedModal(lock_info))
-                return
 
         if not self._config_exists():
             await self.push_screen(OnboardingScreen())
@@ -126,52 +191,72 @@ class KaganApp(App):
         )
 
     async def _initialize_app(self) -> None:
-        """Initialize all app components."""
+        """Initialize all app components.
+
+        Wraps the full startup sequence in error handling so failures are
+        logged and surfaced to the user instead of producing a blank screen.
+        """
+        try:
+            await self._initialize_app_inner()
+        except Exception as exc:  # quality-allow-broad-except
+            _logger.exception("TUI initialization failed: %s", exc)
+            self.log("STARTUP ERROR", error=str(exc))
+            self.notify(
+                f"Startup failed: {exc}",
+                severity="error",
+                timeout=15,
+            )
+
+    async def _initialize_app_inner(self) -> None:
+        """Core initialization logic (extracted for error boundary)."""
         self.config = KaganConfig.load(self.config_path)
         self.log("Config loaded", path=str(self.config_path))
 
-        from kagan.core.ipc.discovery import discover_core_endpoint
+        from kagan.core.ipc.client import IPCClient
+        from kagan.core.services.runtime import ensure_core_running
 
-        endpoint = discover_core_endpoint()
-        if endpoint is not None:
-            from kagan.core.ipc.client import IPCClient
+        endpoint = await ensure_core_running(
+            config=self.config,
+            config_path=self.config_path,
+            db_path=self.db_path,
+        )
+        client = IPCClient(endpoint)
+        await client.connect()
 
-            try:
-                client = IPCClient(endpoint)
-                await client.connect()
-                self._core_client = client
-                self._core_status = "CONNECTED"
-                self.log(
-                    "Attached to running core",
-                    transport=endpoint.transport,
-                    address=endpoint.address,
-                )
-            except Exception as exc:
-                self.log(
-                    "Could not attach to core, using direct context",
-                    error=str(exc),
-                )
+        self._core_client = client
+        self._core_status = "CONNECTED"
+        self.log(
+            "Attached to core",
+            transport=endpoint.transport,
+            address=endpoint.address,
+        )
 
-        if self._ctx is None:
-            self._ctx = await create_app_context(
-                self.config_path,
-                self.db_path,
-                config=self.config,
-                project_root=self.project_root,
-                agent_factory=self._agent_factory,
-            )
-            ctx = self._ctx
+        session_id = f"{SessionNamespace.TUI.value}:{os.getpid()}-{id(self):x}"
+        sdk = KaganSDK(
+            session_id=session_id,
+            session_origin=SessionOrigin.TUI.value,
+            client_version=get_kagan_version(),
+            client_build_hash=get_kagan_runtime_hash(),
+            capability_profile=CapabilityProfile.MAINTAINER,
+            endpoint=endpoint,
+        )
+        await sdk.connect()
+        self._ctx = CoreBackedContext(
+            config=self.config,
+            config_path=self.config_path,
+            db_path=self.db_path,
+            api=CoreBackedApi(sdk),
+            sdk=sdk,
+        )
+        self.log("Core-backed context initialized", session_id=session_id)
 
-            bridge = create_signal_bridge(ctx.event_bus)
-            wire_default_signals(bridge, self)
-            ctx.signal_bridge = bridge
-            self.log("AppContext initialized with SignalBridge")
+        await self._reconcile_worktrees()
+        await self._reconcile_sessions()
+        await self._run_janitor()
 
-            await self._reconcile_worktrees()
-            await self._reconcile_sessions()
-
-            await ctx.api.start_automation()
-            self.log("Automation service initialized (reactive mode)")
+        # Enable theme auto-persistence now that the core is connected and
+        # settings can be persisted via the SDK.
+        self._theme_persist_ready = True
 
         await self._startup_screen_decision()
 
@@ -283,7 +368,7 @@ class KaganApp(App):
 
     async def _set_active_repo_for_project(
         self,
-        project: Project,
+        project: ProjectView,
         *,
         preferred_repo_id: str | None = None,
         preferred_path: Path | None = None,
@@ -307,12 +392,12 @@ class KaganApp(App):
 
     async def _select_repo_for_project(
         self,
-        project: Project,
+        project: ProjectView,
         *,
         preferred_repo_id: str | None = None,
         preferred_path: Path | None = None,
         allow_picker: bool = True,
-    ) -> Repo | None:
+    ) -> RepoView | None:
         """Return the repo to use for a project, optionally using a picker."""
         repos = await self.ctx.api.get_project_repos(project.id)
         if not repos:
@@ -348,7 +433,7 @@ class KaganApp(App):
             return None
         return next((repo for repo in repos if repo.id == selected_repo_id), None)
 
-    def _match_repo_for_path(self, repos: list[Repo], path: Path) -> Repo | None:
+    def _match_repo_for_path(self, repos: list[RepoView], path: Path) -> RepoView | None:
         """Return the repo whose path contains the given path."""
         resolved_path = path.resolve()
         for repo in repos:
@@ -357,79 +442,40 @@ class KaganApp(App):
                 return repo
         return None
 
-    async def _try_switch_lock(self, new_repo_path: Path) -> LockInfo | None:
-        """Attempt to switch lock to a new repo path.
-
-        Returns None on success, or LockInfo of the holder if the repo is locked.
-        This implements Option D: lock follows the active repo.
-        """
-        new_lock = InstanceLock(new_repo_path)
-
-        if not new_lock.acquire():
-            holder = new_lock.get_holder_info()
-            # Treat same-process lock ownership as current-instance ownership.
-            # This prevents false-positive lock modals when repository selection
-            # re-enters a path that this running app already holds.
-            if holder is not None and holder.pid == os.getpid():
-                return None
-            return holder
-
-        if self._instance_lock:
-            self._instance_lock.release()
-
-        self._instance_lock = new_lock
-        return None
-
-    async def _apply_active_repo(self, repo: Repo, *, project_id: str | None = None) -> bool:
-        """Apply repo selection to app context and services.
-
-        Returns True if successful, False if the repo is locked by another instance.
-        """
-        new_path = Path(repo.path)
-
-        if self._instance_lock and new_path.resolve() != self.project_root.resolve():
-            lock_holder = await self._try_switch_lock(new_path)
-            if lock_holder is not None:
-                from kagan.tui.ui.modals.instance_locked import InstanceLockedModal
-
-                await self.push_screen(InstanceLockedModal(lock_holder, is_startup=False))
-                return False
-
-        self.project_root = new_path
+    async def _apply_active_repo(self, repo: RepoView, *, project_id: str | None = None) -> bool:
+        """Apply repo selection to app context and services."""
+        self.project_root = Path(repo.path)
         await self._dispatch_runtime_session(
             RuntimeSessionEvent.REPO_SELECTED,
             project_id=project_id or self.ctx.active_project_id,
             repo_id=repo.id,
         )
 
-        self.ctx.api.bootstrap_session_service(self.project_root, self.config)
+        if not (repo.scripts or {}).get(KAGAN_BRANCH_CONFIGURED_KEY):
+            await self._first_time_branch_setup(repo)
+
         return True
+
+    async def _first_time_branch_setup(self, repo: RepoView) -> None:
+        """Sync repo base branch from the currently checked out branch."""
+        branch = await get_current_branch(self.project_root)
+        if not branch:
+            self.log("Skipped first-time branch setup: no checked-out branch detected")
+            return
+        await self.ctx.api.update_repo_default_branch(repo.id, branch, mark_configured=True)
 
     def _clear_active_repo(self) -> None:
         """Clear active repo selection when a project has no repos."""
         self.ctx.active_repo_id = None
 
     async def _show_main_screen(self, *, mode: Literal["push", "switch"] = "push") -> None:
-        """Navigate to the main screen (Planner if empty, Kanban otherwise)."""
-        ctx = self.ctx
-        tasks = await ctx.api.list_tasks(project_id=ctx.active_project_id)
-
-        if not tasks:
-            from kagan.tui.ui.screens.planner import PlannerScreen
-
-            screen = PlannerScreen(agent_factory=self._agent_factory)
-            if mode == "switch":
-                await self.switch_screen(screen)
-            else:
-                await self.push_screen(screen)
-            self.log("PlannerScreen shown (empty board)", mode=mode)
+        """Navigate to the main screen (Kanban with chat overlay fullscreen)."""
+        screen = KanbanScreen()
+        if mode == "switch":
+            await self.switch_screen(screen)
         else:
-            screen = KanbanScreen()
-            if mode == "switch":
-                await self.switch_screen(screen)
-            else:
-                await self.push_screen(screen)
-            self.log("KanbanScreen shown, app ready", mode=mode)
+            await self.push_screen(screen)
+        self.log("KanbanScreen shown, app ready", mode=mode)
 
     async def on_unmount(self) -> None:
         """Clean up on unmount."""
@@ -440,7 +486,7 @@ class KaganApp(App):
         ctx = self.ctx
         tasks = await ctx.api.list_tasks(project_id=ctx.active_project_id)
         valid_ids = {t.id for t in tasks}
-        cleaned = await ctx.api.cleanup_orphan_workspaces(valid_ids)
+        cleaned = await ctx.api.cleanup_orphaned_workspaces(valid_ids)
         if cleaned:
             self.log(f"Cleaned up {len(cleaned)} orphan worktree(s)")
 
@@ -465,31 +511,41 @@ class KaganApp(App):
         except TmuxError:
             pass
 
+    async def _run_janitor(self) -> None:
+        """Run janitor to prune stale worktrees and clean up orphan kagan/* branches."""
+        ctx = self.ctx
+        workspaces = await ctx.api.list_workspaces()
+        valid_workspace_ids: set[str] = set()
+        for workspace in workspaces:
+            if isinstance(workspace, dict):
+                raw_workspace_id = workspace.get("id") or workspace.get("workspace_id")
+            else:
+                raw_workspace_id = getattr(workspace, "id", None)
+            workspace_id = str(raw_workspace_id or "").strip()
+            if workspace_id:
+                valid_workspace_ids.add(workspace_id)
+
+        result = await ctx.api.cleanup_workspace_artifacts(valid_workspace_ids)
+
+        if result is not None and result.total_cleaned > 0:
+            details: list[str] = []
+            if result.worktrees_pruned > 0:
+                details.append(f"{result.worktrees_pruned} stale worktree ref(s)")
+            if result.branches_deleted:
+                details.append(f"{len(result.branches_deleted)} orphan branch(es)")
+            self.log(f"Janitor cleaned: {', '.join(details)}")
+
     async def cleanup(self) -> None:
         """Terminate all agents and close resources.
 
         Shutdown order:
-        1. Stop planner agents.
+        1. Stop orchestrator agents.
         2. Mark the DB repository as closing (prevents new sessions).
         3. Unbind signals (prevents new workers being scheduled).
         4. Cancel all in-flight Textual workers and wait for them to finish.
         5. Close the AppContext (stops automation, disposes DB engine).
         6. Release the instance lock.
         """
-        if self.planner_state and self.planner_state.agent:
-            await self.planner_state.agent.stop()
-        if self.planner_state and self.planner_state.refiner:
-            await self.planner_state.refiner.stop()
-
-        if self._ctx:
-            # Mark repo closing early so any still-running worker gets a clean
-            # RepositoryClosing error instead of an opaque OperationalError.
-            if self._ctx._task_repo is not None:
-                self._ctx._task_repo.mark_closing()
-            # Unbind signals so no new workers are scheduled.
-            if self._ctx.signal_bridge:
-                self._ctx.signal_bridge.unbind_all()
-
         # Cancel in-flight workers and wait for them to settle before
         # disposing the DB engine.  During shutdown, workers that were
         # already mid-flight may fail with RepositoryClosing, ValueError
@@ -507,10 +563,6 @@ class KaganApp(App):
                 await self._core_client.close()
             self._core_client = None
             self._core_status = "DISCONNECTED"
-
-        if self._instance_lock:
-            self._instance_lock.release()
-            self._instance_lock = None
 
     async def action_open_project_selector(self) -> None:
         """Return to the project selector screen."""
@@ -571,12 +623,11 @@ class KaganApp(App):
             return
 
         from kagan.tui.ui.screens.kanban import KanbanScreen
-        from kagan.tui.ui.screens.planner import PlannerScreen
 
         reset_target = None
-        if isinstance(invoking_screen, (PlannerScreen, KanbanScreen)):
+        if isinstance(invoking_screen, KanbanScreen):
             reset_target = invoking_screen
-        elif isinstance(self.screen, (PlannerScreen, KanbanScreen)):
+        elif isinstance(self.screen, KanbanScreen):
             reset_target = self.screen
         if reset_target is not None:
             await reset_target.reset_for_repo_change()
@@ -589,7 +640,7 @@ class KaganApp(App):
         from textual.css.query import NoMatches
 
         from kagan.tui.ui.screens.base import KaganScreen
-        from kagan.tui.ui.widgets.header import KaganHeader, _get_git_branch
+        from kagan.tui.ui.widgets.header import KaganHeader
 
         screen = self.screen
         if not isinstance(screen, KaganScreen):
@@ -603,7 +654,7 @@ class KaganApp(App):
         if self.ctx.active_repo_id is None:
             header.update_branch("")
             return
-        branch = await _get_git_branch(self.project_root)
+        branch = await get_current_branch(self.project_root)
         header.update_branch(branch)
 
     def _run_action(self, action: str, *, target: str = "screen") -> None:
@@ -636,6 +687,17 @@ class KaganApp(App):
             "Open repo selector",
             lambda: self._run_action("open_repo_selector", target="app"),
         )
+        if isinstance(screen, KanbanScreen):
+            yield SystemCommand(
+                "Orchestrator Docked",
+                "Toggle docked orchestrator popup (Ctrl+O)",
+                lambda: self._run_action("toggle_orchestrator_dock"),
+            )
+            yield SystemCommand(
+                "Orchestrator Fullscreen",
+                "Toggle fullscreen orchestrator popup (Ctrl+P)",
+                lambda: self._run_action("toggle_orchestrator_fullscreen"),
+            )
         yield SystemCommand(
             "Debug Log",
             "Open debug log viewer",
@@ -665,7 +727,7 @@ class KaganApp(App):
 def run() -> None:
     """Run the Kagan application."""
     app = KaganApp()
-    app.run()
+    app.run(mouse=resolve_tui_mouse_enabled())
 
 
 if __name__ == "__main__":

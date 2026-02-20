@@ -36,13 +36,48 @@ def atomic_write(path: Path, content: str) -> None:
 type OS = Literal["linux", "macos", "windows", "*"]
 type PairTerminalBackendLiteral = Literal[
     "tmux",
+    "nvim",
     "vscode",
     "cursor",
+    "windsurf",
+    "kiro",
+    "antigravity",
+]
+type DoctorVerbosityLiteral = Literal[
+    "tldr",
+    "short",
+    "technical",
+]
+type InteractionVerbosityLiteral = Literal[
+    "tldr",
+    "short",
+    "technical",
+]
+type WorktreeBaseRefStrategyLiteral = Literal[
+    "remote",
+    "local_if_ahead",
+    "local",
 ]
 
 _OS_MAP = {"Linux": "linux", "Darwin": "macos", "Windows": "windows"}
 CURRENT_OS: str = _OS_MAP.get(platform.system(), "linux")
-PAIR_TERMINAL_BACKEND_VALUES = frozenset({"tmux", "vscode", "cursor"})
+PAIR_TERMINAL_BACKEND_VALUES = frozenset(
+    {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}
+)
+DOCTOR_VERBOSITY_VALUES = frozenset({"tldr", "short", "technical"})
+INTERACTION_VERBOSITY_VALUES = frozenset({"tldr", "short", "technical"})
+WORKTREE_BASE_REF_STRATEGY_VALUES = frozenset({"remote", "local_if_ahead", "local"})
+DEFAULT_WORKER_PERSONA = (
+    "Implementer: ship the smallest correct change, verify with tests, "
+    "and keep commits clean and auditable."
+)
+DEFAULT_ORCHESTRATOR_PERSONA = (
+    "Orchestrator: clarify intent, plan concrete tasks, and communicate decisions concisely."
+)
+DEFAULT_PR_REVIEWER_PERSONA = (
+    "PR Reviewer: validate requirements, correctness, regressions, and tests; "
+    "reject when evidence is insufficient."
+)
 
 
 def _default_pair_terminal_backend() -> PairTerminalBackendLiteral:
@@ -81,11 +116,21 @@ class GeneralConfig(BaseModel):
         default="kagan",
         description="MCP server name for tool registration and config entries",
     )
-    default_base_branch: str = Field(default="main")
+    worktree_base_ref_strategy: WorktreeBaseRefStrategyLiteral = Field(
+        default="local_if_ahead",
+        description=("Worktree base ref preference: local_if_ahead (default), remote, or local"),
+    )
     auto_review: bool = Field(default=True, description="Run AI review on task completion")
     auto_approve: bool = Field(
-        default=False,
+        default=True,
         description="Skip permission prompts in the planner agent (workers always auto-approve)",
+    )
+    auto_skill_discovery: bool = Field(
+        default=False,
+        description=(
+            "Discover local Agent Skills metadata for orchestrator chat commands. "
+            "Disabled by default for security."
+        ),
     )
     require_review_approval: bool = Field(
         default=False, description="Require approved review before merge actions"
@@ -94,9 +139,29 @@ class GeneralConfig(BaseModel):
         default=True, description="Serialize manual merges to reduce conflicts"
     )
     default_worker_agent: str = Field(default="claude")
+    worker_persona: str = Field(
+        default=DEFAULT_WORKER_PERSONA,
+        description="Global persona preset applied to AUTO worker task runs",
+    )
+    orchestrator_persona: str = Field(
+        default=DEFAULT_ORCHESTRATOR_PERSONA,
+        description="Global persona preset applied to orchestrator/planning chat behavior",
+    )
+    pr_reviewer_persona: str = Field(
+        default=DEFAULT_PR_REVIEWER_PERSONA,
+        description="Global persona preset applied to PR review agents",
+    )
     default_pair_terminal_backend: PairTerminalBackendLiteral = Field(
         default_factory=_default_pair_terminal_backend,
         description="Default terminal backend for PAIR tasks",
+    )
+    doctor_verbosity: DoctorVerbosityLiteral = Field(
+        default="short",
+        description="Default verbosity for doctor diagnostics output",
+    )
+    interaction_verbosity: InteractionVerbosityLiteral = Field(
+        default="short",
+        description="Default verbosity for user-facing TUI interaction messages",
     )
     default_model_claude: str | None = Field(
         default=None, description="Default Claude model alias or full name (None = agent default)"
@@ -117,6 +182,48 @@ class GeneralConfig(BaseModel):
         default=None,
         description="Preferred Copilot model label for display (runtime set via /model)",
     )
+    default_model_goose: str | None = Field(
+        default=None,
+        description="Default Goose model passed via GOOSE_MODEL (None = agent default)",
+    )
+    default_model_openhands: str | None = Field(
+        default=None, description="Default OpenHands model (None = agent default)"
+    )
+    default_model_auggie: str | None = Field(
+        default=None, description="Default Auggie model (None = agent default)"
+    )
+    default_model_amp: str | None = Field(
+        default=None, description="Default Amp model (None = agent default)"
+    )
+    default_model_cagent: str | None = Field(
+        default=None, description="Default Docker cagent model (None = agent default)"
+    )
+    default_model_stakpak: str | None = Field(
+        default=None, description="Default Stakpak model (None = agent default)"
+    )
+    default_model_vibe: str | None = Field(
+        default=None, description="Default Mistral Vibe model (None = agent default)"
+    )
+    default_model_vtcode: str | None = Field(
+        default=None, description="Default VT Code model (None = agent default)"
+    )
+
+    @field_validator("max_concurrent_agents", mode="before")
+    @classmethod
+    def validate_max_concurrent_agents(cls, value: object) -> int:
+        """Gracefully coerce invalid max-concurrency values to default."""
+        if isinstance(value, bool):
+            return 3
+        if isinstance(value, int):
+            return value if 1 <= value <= 10 else 3
+        if isinstance(value, str):
+            cleaned = value.strip()
+            try:
+                parsed = int(cleaned)
+            except ValueError:
+                return 3
+            return parsed if 1 <= parsed <= 10 else 3
+        return 3
 
     # Core process settings
     core_idle_timeout_seconds: int = Field(
@@ -131,6 +238,25 @@ class GeneralConfig(BaseModel):
         default="auto",
         description="IPC transport preference: auto|socket|tcp",
     )
+    tasks_wait_default_timeout_seconds: int = Field(
+        default=1800,
+        description="Default timeout in seconds for tasks_wait long-poll (30 minutes)",
+    )
+    tasks_wait_max_timeout_seconds: int = Field(
+        default=3600,
+        description="Maximum allowed timeout in seconds for tasks_wait long-poll (60 minutes)",
+    )
+
+    @field_validator("worktree_base_ref_strategy", mode="before")
+    @classmethod
+    def validate_worktree_base_ref_strategy(cls, value: object) -> str:
+        """Gracefully coerce invalid base-ref strategy values to local_if_ahead."""
+        match value:
+            case str() as strategy if strategy in WORKTREE_BASE_REF_STRATEGY_VALUES:
+                return strategy
+            case _:
+                pass
+        return "local_if_ahead"
 
     @field_validator("default_pair_terminal_backend", mode="before")
     @classmethod
@@ -142,6 +268,62 @@ class GeneralConfig(BaseModel):
             case _:
                 pass
         return _default_pair_terminal_backend()
+
+    @field_validator("doctor_verbosity", mode="before")
+    @classmethod
+    def validate_doctor_verbosity(cls, value: object) -> str:
+        """Gracefully coerce invalid doctor verbosity values to short."""
+        match value:
+            case str() as verbosity:
+                normalized = verbosity.strip().lower()
+                if normalized in DOCTOR_VERBOSITY_VALUES:
+                    return normalized
+            case _:
+                pass
+        return "short"
+
+    @field_validator("interaction_verbosity", mode="before")
+    @classmethod
+    def validate_interaction_verbosity(cls, value: object) -> str:
+        """Gracefully coerce invalid interaction verbosity values to short."""
+        match value:
+            case str() as verbosity:
+                normalized = verbosity.strip().lower()
+                if normalized in INTERACTION_VERBOSITY_VALUES:
+                    return normalized
+            case _:
+                pass
+        return "short"
+
+    @field_validator("worker_persona", mode="before")
+    @classmethod
+    def validate_worker_persona(cls, value: object) -> str:
+        """Coerce empty worker persona values to default preset."""
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+        return DEFAULT_WORKER_PERSONA
+
+    @field_validator("orchestrator_persona", mode="before")
+    @classmethod
+    def validate_orchestrator_persona(cls, value: object) -> str:
+        """Coerce empty orchestrator persona values to default preset."""
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+        return DEFAULT_ORCHESTRATOR_PERSONA
+
+    @field_validator("pr_reviewer_persona", mode="before")
+    @classmethod
+    def validate_pr_reviewer_persona(cls, value: object) -> str:
+        """Coerce empty PR reviewer persona values to default preset."""
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+        return DEFAULT_PR_REVIEWER_PERSONA
 
     @field_validator("core_transport_preference", mode="before")
     @classmethod
@@ -155,6 +337,23 @@ class GeneralConfig(BaseModel):
                 pass
         return "auto"
 
+    @model_validator(mode="after")
+    def validate_tasks_wait_bounds(self) -> GeneralConfig:
+        """Ensure task wait timeouts are positive and ordered."""
+        if self.tasks_wait_default_timeout_seconds <= 0:
+            msg = "general.tasks_wait_default_timeout_seconds must be > 0"
+            raise ValueError(msg)
+        if self.tasks_wait_max_timeout_seconds <= 0:
+            msg = "general.tasks_wait_max_timeout_seconds must be > 0"
+            raise ValueError(msg)
+        if self.tasks_wait_max_timeout_seconds < self.tasks_wait_default_timeout_seconds:
+            msg = (
+                "general.tasks_wait_max_timeout_seconds must be >= "
+                "general.tasks_wait_default_timeout_seconds"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class UIConfig(BaseModel):
     """UI-related user preferences."""
@@ -162,6 +361,20 @@ class UIConfig(BaseModel):
     skip_pair_instructions: bool = Field(
         default=False,
         description="Skip pair mode instructions popup when opening PAIR sessions",
+    )
+    theme: str | None = Field(
+        default=None,
+        description=(
+            "Persisted Textual theme name (e.g. 'kagan', 'dracula', 'tokyo-night'). "
+            "None means auto-detect based on terminal capabilities."
+        ),
+    )
+    tui_plugin_ui_allowlist: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Allowlisted plugin IDs that may contribute declarative UI definitions to the TUI. "
+            "Empty list means all registered plugins are allowed."
+        ),
     )
 
     @model_validator(mode="before")
@@ -199,6 +412,17 @@ class AgentConfig(BaseModel):
     model_env_var: str = Field(default="", description="Environment variable for model selection")
 
 
+class PluginsConfig(BaseModel):
+    """Plugin discovery configuration."""
+
+    discovery: list[str] = Field(
+        default_factory=lambda: [
+            "kagan.core.plugins.github.plugin:GitHubPlugin",
+        ],
+        description="Plugin entrypoints to discover and register (module:Class format).",
+    )
+
+
 class KaganConfig(BaseModel):
     """Root configuration model."""
 
@@ -206,6 +430,7 @@ class KaganConfig(BaseModel):
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
+    plugins: PluginsConfig = Field(default_factory=PluginsConfig)
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> KaganConfig:
@@ -264,6 +489,12 @@ class KaganConfig(BaseModel):
             if value is not None:
                 ui_table[key] = value
         doc["ui"] = ui_table
+
+        plugins_table = tomlkit.table()
+        for key, value in self.plugins.model_dump().items():
+            if value is not None:
+                plugins_table[key] = value
+        doc["plugins"] = plugins_table
 
         content = tomlkit.dumps(doc)
         await asyncio.to_thread(atomic_write, path, content)

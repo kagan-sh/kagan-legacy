@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from textual import on
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Label, Rule, TextArea
+from textual.widgets import Footer, Label, Rule, Static, TextArea
 
 from kagan.core.constants import MODAL_TITLE_MAX_LENGTH
 from kagan.tui.keybindings import REJECTION_INPUT_BINDINGS
@@ -43,23 +42,17 @@ class RejectionInputModal(ModalScreen[tuple[str, str] | None]):
             yield Label("What needs to be fixed?", classes="prompt-label")
             yield TextArea(id="feedback-input")
             yield Rule()
-            with Horizontal(classes="button-row"):
-                yield Button("Back to In Progress", variant="primary", id="return-btn")
-                yield Button("Backlog", variant="error", id="backlog-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Static(
+                    "Enter back to in progress  |  Esc backlog",
+                    classes="modal-action-hint",
+                )
 
         yield Footer(show_command_palette=False)
 
     def on_mount(self) -> None:
         """Focus the text area on mount."""
         self.query_one("#feedback-input", TextArea).focus()
-
-    @on(Button.Pressed, "#return-btn")
-    def on_return_btn(self) -> None:
-        self.action_send_back()
-
-    @on(Button.Pressed, "#backlog-btn")
-    def on_backlog_btn(self) -> None:
-        self.action_backlog()
 
     def _get_feedback(self) -> str:
         """Get the feedback text from the input area."""

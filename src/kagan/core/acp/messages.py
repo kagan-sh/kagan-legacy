@@ -11,6 +11,7 @@ from textual.message import Message
 
 from kagan.core.debug_log import log
 from kagan.core.limits import MESSAGE_BUFFER, RESPONSE_BUFFER
+from kagan.core.safety import prompt_digest
 
 if TYPE_CHECKING:
     from acp.schema import (
@@ -173,7 +174,7 @@ class AgentBuffers:
         self.messages: deque[Message] = deque(maxlen=MESSAGE_BUFFER)
 
     def append_response(self, text: str) -> None:
-        log.debug(f"[AGENT] {text}")
+        log.debug(f"[AGENT] chunk len={len(text)} digest={prompt_digest(text, length=10)}")
         self.response.append(text)
 
     def buffer_message(self, message: Message) -> None:

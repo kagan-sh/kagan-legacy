@@ -9,11 +9,11 @@ from kagan.tui.ui.modals.diff import DiffModal
 from kagan.tui.ui.modals.folder_picker import FolderPickerModal
 from kagan.tui.ui.modals.global_agent_picker import GlobalAgentPickerModal
 from kagan.tui.ui.modals.help import HelpModal
-from kagan.tui.ui.modals.instance_locked import InstanceLockedModal
 from kagan.tui.ui.modals.merge_dialog import MergeDialog
 from kagan.tui.ui.modals.new_project import NewProjectModal
+from kagan.tui.ui.modals.plugin_form import PluginFormModal
 from kagan.tui.ui.modals.rejection_input import RejectionInputModal
-from kagan.tui.ui.modals.review import ReviewModal
+from kagan.tui.ui.modals.review_flow import ReviewModal
 from kagan.tui.ui.modals.settings import SettingsModal
 from kagan.tui.ui.modals.start_workspace import StartWorkspaceModal
 from kagan.tui.ui.modals.task_details_modal import ModalAction, TaskDetailsModal
@@ -29,11 +29,11 @@ __all__ = [
     "FolderPickerModal",
     "GlobalAgentPickerModal",
     "HelpModal",
-    "InstanceLockedModal",
     "MergeDialog",
     "ModalAction",
     "NewProjectModal",
     "PairInstructionsModal",
+    "PluginFormModal",
     "RejectionInputModal",
     "ReviewModal",
     "SettingsModal",

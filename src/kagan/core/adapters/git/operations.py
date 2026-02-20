@@ -14,7 +14,7 @@ from kagan.core.adapters.process import (
     run_exec_checked,
 )
 from kagan.core.constants import KAGAN_GENERATED_PATTERNS
-from kagan.core.services.diffs import FileDiff
+from kagan.core.services.workspaces import FileDiff
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

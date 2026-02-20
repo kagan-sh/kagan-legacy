@@ -19,18 +19,18 @@ Mirrors the in-app help (press ++question++).
 | ++question++ | Help               |
 | ++period++   | Actions palette    |
 | ++comma++    | Settings           |
-| ++q++        | Quit               |
+| ++ctrl+q++   | Quit               |
 
 ## Global
 
-| Key                     | Action           |
-| ----------------------- | ---------------- |
-| ++question++ / ++f1++   | Help             |
-| ++period++ / ++ctrl+p++ | Actions palette  |
-| ++ctrl+o++              | Project selector |
-| ++ctrl+r++              | Repo selector    |
-| ++f12++                 | Debug log        |
-| ++q++                   | Quit             |
+| Key                           | Action           |
+| ----------------------------- | ---------------- |
+| ++question++ / ++f1++         | Help             |
+| ++period++ / ++ctrl+shift+p++ | Actions palette  |
+| ++ctrl+shift+o++              | Project selector |
+| ++ctrl+r++                    | Repo selector    |
+| ++f12++                       | Debug log        |
+| ++ctrl+q++                    | Quit             |
 
 ## Board (Kanban)
 
@@ -48,58 +48,73 @@ Mirrors the in-app help (press ++question++).
 
 ### Tasks
 
-| Key         | Action                             |
-| ----------- | ---------------------------------- |
-| ++n++       | New task                           |
-| ++shift+n++ | New AUTO task                      |
-| ++enter++   | Open session (PAIR) or Task Output |
-| ++slash++   | Search tasks                       |
-| ++v++       | View details                       |
-| ++e++       | Edit task                          |
-| ++x++       | Delete task                        |
-| ++y++       | Duplicate task                     |
-| ++c++       | Copy task ID                       |
-| ++space++   | Peek overlay                       |
-| ++f++       | Expand description                 |
-| ++f5++      | Full editor                        |
+| Key         | Action                                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ++n++       | New task                                                                                                                                   |
+| ++shift+n++ | New AUTO task                                                                                                                              |
+| ++enter++   | Open focused task session (AUTO Task Output session / PAIR backend / REVIEW output). Repeated presses are ignored while the session opens. |
+| ++slash++   | Search tasks                                                                                                                               |
+| ++v++       | View details                                                                                                                               |
+| ++e++       | Edit task                                                                                                                                  |
+| ++x++       | Delete task                                                                                                                                |
+| ++y++       | Duplicate task                                                                                                                             |
+| ++c++       | Copy task ID                                                                                                                               |
+| ++space++   | Peek overlay                                                                                                                               |
+| ++f++       | Expand description                                                                                                                         |
+| ++f5++      | Full editor                                                                                                                                |
 
 ### Workflow and agents
 
-| Key         | Action               |
-| ----------- | -------------------- |
-| ++shift+h++ | Move task left       |
-| ++shift+l++ | Move task right      |
-| ++a++       | Start agent (AUTO)   |
-| ++s++       | Stop agent (AUTO)    |
-| ++shift+d++ | View diff (REVIEW)   |
-| ++r++       | Task Output (REVIEW) |
-| ++m++       | Merge (REVIEW)       |
-| ++p++       | Plan mode            |
-| ++b++       | Set task branch      |
-| ++shift+b++ | Set default branch   |
-| ++comma++   | Settings             |
-| ++ctrl+c++  | Quit                 |
+| Key         | Action                         |
+| ----------- | ------------------------------ |
+| ++shift+h++ | Move task left                 |
+| ++shift+l++ | Move task right                |
+| ++a++       | Start agent (AUTO)             |
+| ++s++       | Stop agent (AUTO)              |
+| ++shift+d++ | View diff (REVIEW)             |
+| ++r++       | Open review stream (REVIEW)    |
+| ++m++       | Merge (REVIEW)                 |
+| ++ctrl+p++  | Toggle fullscreen orchestrator |
+| ++ctrl+o++  | Toggle docked orchestrator     |
+| ++b++       | Set task branch                |
+| ++shift+g++ | Repo Sync                      |
+| ++comma++   | Settings                       |
 
-## Planner
+## Orchestrator overlay
+
+The empty-state intro can occasionally show a random Kagan quote (funny or wise).
+Startup behavior: if at least one task exists on the board, Kagan opens board-first with the
+overlay closed. On empty boards, the fullscreen intro opens automatically.
 
 ### Screen
 
-| Key         | Action             |
-| ----------- | ------------------ |
-| ++esc++     | Back to board      |
-| ++ctrl+c++  | Stop current run   |
-| ++f2++      | Enhance prompt     |
-| ++b++       | Set task branch    |
-| ++shift+b++ | Set default branch |
+| Key        | Action                                        |
+| ---------- | --------------------------------------------- |
+| ++esc++    | Close overlay                                 |
+| ++ctrl+p++ | Toggle fullscreen (switches from docked)      |
+| ++ctrl+o++ | Toggle docked (switches from fullscreen)      |
+| ++tab++    | Switch chat target (orchestrator/AUTO/REVIEW) |
 
 ### Input
 
-| Key                          | Action             |
-| ---------------------------- | ------------------ |
-| ++enter++                    | Send message       |
-| ++shift+enter++ / ++ctrl+j++ | New line           |
-| `/help`                      | Show commands      |
-| `/clear`                     | Clear conversation |
+| Key                          | Action                                                      |
+| ---------------------------- | ----------------------------------------------------------- |
+| ++enter++                    | Send message                                                |
+| ++shift+enter++ / ++ctrl+j++ | New line                                                    |
+| ++ctrl+c++                   | Clear chat input                                            |
+| ++ctrl+c++, ++ctrl+c++       | Interrupt active stream (only when running in this session) |
+| `/help`                      | Show commands                                               |
+| `/clear`                     | Clear conversation                                          |
+| `/clear all sessions`        | Clear all local chat sessions and reset target focus        |
+| `/new session`               | Start a fresh local chat session                            |
+| `/compact`                   | Compact context (native preferred, snapshot fallback)       |
+| `/mode`                      | List agent modes                                            |
+| `/mode <id>`                 | Switch orchestrator mode                                    |
+| `/browse`                    | List available chat sessions/targets                        |
+| \`/attach \<task-id          | kind                                                        |
+| `/targets`                   | List available chat targets                                 |
+| `/restart [extra context]`   | Restart active AUTO run (optional injected context)         |
+| `/stop`                      | Stop active AUTO run                                        |
 
 ### Slash complete
 
@@ -166,36 +181,36 @@ Mirrors the in-app help (press ++question++).
 
 ### Task details
 
-| Key                | Action             |
-| ------------------ | ------------------ |
-| ++e++              | Toggle edit        |
-| ++d++              | Delete             |
-| ++f++              | Expand description |
-| ++f5++             | Full editor        |
-| ++f2++ / ++alt+s++ | Save (edit mode)   |
-| ++y++              | Copy               |
-| ++esc++            | Close/Cancel       |
+| Key                    | Action             |
+| ---------------------- | ------------------ |
+| ++e++                  | Toggle edit        |
+| ++d++                  | Delete             |
+| ++f++                  | Expand description |
+| ++f5++                 | Full editor        |
+| ++ctrl+s++ / ++alt+s++ | Save (edit mode)   |
+| ++y++                  | Copy               |
+| ++esc++                | Close/Cancel       |
 
 ### Task editor
 
-| Key                | Action         |
-| ------------------ | -------------- |
-| ++f2++ / ++alt+s++ | Finish editing |
-| ++esc++            | Cancel         |
+| Key                    | Action         |
+| ---------------------- | -------------- |
+| ++ctrl+s++ / ++alt+s++ | Finish editing |
+| ++esc++                | Cancel         |
 
 ### Description editor
 
-| Key                | Action |
-| ------------------ | ------ |
-| ++f2++ / ++alt+s++ | Save   |
-| ++esc++            | Cancel |
+| Key                    | Action |
+| ---------------------- | ------ |
+| ++ctrl+s++ / ++alt+s++ | Save   |
+| ++esc++                | Cancel |
 
 ### Settings
 
-| Key                | Action |
-| ------------------ | ------ |
-| ++f2++ / ++alt+s++ | Save   |
-| ++esc++            | Cancel |
+| Key                    | Action |
+| ---------------------- | ------ |
+| ++ctrl+s++ / ++alt+s++ | Save   |
+| ++esc++                | Cancel |
 
 ### Duplicate task
 
@@ -213,15 +228,31 @@ Mirrors the in-app help (press ++question++).
 | ++y++     | Copy    |
 | ++esc++   | Close   |
 
-### Task Output
+### Task Output (AUTO live screen)
 
-| Key       | Action       |
-| --------- | ------------ |
-| ++enter++ | Approve      |
-| ++r++     | Reject       |
-| ++g++     | Run review   |
-| ++y++     | Copy         |
-| ++esc++   | Close/Cancel |
+| Key        | Action                         |
+| ---------- | ------------------------------ |
+| ++tab++    | Next chat session target       |
+| ++ctrl+p++ | Toggle fullscreen task overlay |
+| ++ctrl+o++ | Toggle docked task overlay     |
+| ++a++      | Start AUTO agent               |
+| ++s++      | Stop AUTO agent                |
+| ++esc++    | Close                          |
+
+### Task Output (REVIEW modal)
+
+| Key        | Action                                                        |
+| ---------- | ------------------------------------------------------------- |
+| ++tab++    | Next session                                                  |
+| ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
+| ++enter++  | Approve                                                       |
+| ++r++      | Reject                                                        |
+| ++R++      | Rebase                                                        |
+| ++g++      | Run review                                                    |
+| ++a++      | Start AUTO agent                                              |
+| ++s++      | Stop AUTO agent                                               |
+| ++y++      | Copy                                                          |
+| ++esc++    | Close/Cancel                                                  |
 
 ### Rejection input
 
@@ -262,11 +293,11 @@ Mirrors the in-app help (press ++question++).
 
 ### Permission prompt
 
-| Key             | Action       |
-| --------------- | ------------ |
-| ++enter++       | Allow once   |
-| ++a++           | Allow always |
-| ++esc++ / ++n++ | Deny         |
+| Key                     | Action       |
+| ----------------------- | ------------ |
+| ++y++ / ++enter++       | Allow once   |
+| ++a++                   | Allow always |
+| ++n++ / ++d++ / ++esc++ | Deny         |
 
 ### No dedicated hotkeys
 

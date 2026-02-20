@@ -421,8 +421,9 @@ class KanbanReviewController:
         api = self.screen.ctx.api
         runtime_view = api.get_runtime_view(task.id) if is_auto else None
 
-        open_live_task_output_screen = (
-            is_auto and task.status == TaskStatus.IN_PROGRESS and not read_only
+        open_live_task_output_screen = is_auto and not read_only and task.status in (
+            TaskStatus.BACKLOG,
+            TaskStatus.IN_PROGRESS,
         )
         if open_live_task_output_screen:
             resolved_base_branch = await self._resolve_base_branch(task)

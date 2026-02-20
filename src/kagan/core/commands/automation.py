@@ -1058,7 +1058,10 @@ async def handle_automation_list_pending_planner_drafts(
         if val is None:
             return None
         iso = getattr(val, "isoformat", None)
-        return iso() if callable(iso) else str(val)
+        if callable(iso):
+            serialized = iso()
+            return serialized if isinstance(serialized, str) else str(serialized)
+        return str(val)
 
     return {
         "success": True,

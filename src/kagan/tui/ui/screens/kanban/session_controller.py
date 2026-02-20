@@ -186,6 +186,7 @@ class KanbanSessionController:
         wait_for_running: bool = False,
         quiet_unavailable: bool = False,
         read_only: bool = False,
+        force_open: bool = False,
     ) -> bool:
         """Open auto output for task."""
         api = self.screen.ctx.api
@@ -220,7 +221,7 @@ class KanbanSessionController:
 
         message = self._state_attr(readiness, "message")
         can_open_output = self._state_bool(readiness, "can_open_output")
-        force_open = task.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)
+        force_open = force_open or task.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)
         if isinstance(message, str) and message and not (quiet_unavailable and not can_open_output):
             severity = "warning" if not can_open_output else "information"
             self.screen.notify(message, severity=severity)
@@ -323,6 +324,7 @@ class KanbanSessionController:
             task,
             quiet_unavailable=True,
             read_only=False,
+            force_open=start_requested,
         )
         if not opened:
             self.screen.notify(

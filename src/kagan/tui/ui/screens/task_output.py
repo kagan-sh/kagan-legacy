@@ -66,7 +66,7 @@ class TaskOutputScreen(KaganScreen):
                     classes="modal-title",
                 )
                 yield Label(
-                    f"Branch: task-{self._task_model.short_id} \u2192 {self._base_branch}",
+                    f"Branch: task-{self._task_model.short_id} -> {self._base_branch}",
                     id="task-output-branch",
                     classes="branch-info",
                 )
@@ -109,7 +109,7 @@ class TaskOutputScreen(KaganScreen):
             )
         with contextlib.suppress(NoMatches):
             self.query_one("#task-output-branch", Label).update(
-                f"Branch: task-{self._task_model.short_id} \u2192 {self._base_branch}"
+                f"Branch: task-{self._task_model.short_id} -> {self._base_branch}"
             )
 
     async def _hydrate_top_panel(self) -> None:

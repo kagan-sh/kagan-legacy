@@ -1311,6 +1311,63 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_passes_start_re
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_overlay_backlog_auto_confirmed_start_force_opens_output(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO backlog force open output",
+            "Ensure confirmed start force-opens output even before runtime readiness settles",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban._session,
+                "confirm_start_auto_task",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                kanban._session,
+                "start_agent_flow",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                kanban._session,
+                "open_auto_output_for_task",
+                AsyncMock(return_value=True),
+            ) as open_output_mock,
+        ):
+            await pilot.press("enter")
+            await wait_until(
+                lambda: open_output_mock.await_count >= 1,
+                timeout=10.0,
+                description="confirmed backlog AUTO start to force-open task output",
+            )
+            assert open_output_mock.await_args.kwargs["force_open"] is True
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_overlay_enter_opens_auto_chat_session(
     e2e_app_with_tasks,
     mock_agent_factory,

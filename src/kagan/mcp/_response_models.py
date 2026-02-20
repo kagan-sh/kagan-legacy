@@ -10,11 +10,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from kagan.core.domain.coercion import (
-    TASK_PRIORITY_INPUT_VALUES,
-    TASK_STATUS_INPUT_VALUES,
-    TASK_TYPE_INPUT_VALUES,
-)
 from kagan.core.domain.models import (
     PlanItem,
     PlanTodo,
@@ -314,10 +309,19 @@ class PluginToolResponse(MutatingResponse):
     )
 
 
-WorkflowStatusInput = Literal[*TASK_STATUS_INPUT_VALUES]
-TaskTypeInput = Literal[*TASK_TYPE_INPUT_VALUES]
-TaskStatusInput = Literal[*TASK_STATUS_INPUT_VALUES]
-TaskPriorityInput = Literal[*TASK_PRIORITY_INPUT_VALUES]
+WorkflowStatusInput = Literal[
+    "BACKLOG",
+    "IN_PROGRESS",
+    "REVIEW",
+    "DONE",
+    "backlog",
+    "in_progress",
+    "review",
+    "done",
+]
+TaskTypeInput = Literal["AUTO", "PAIR", "auto", "pair"]
+TaskStatusInput = WorkflowStatusInput
+TaskPriorityInput = Literal["LOW", "MED", "MEDIUM", "HIGH", "low", "med", "medium", "high"]
 JobActionInput = Literal["start_agent", "stop_agent"]
 TerminalBackendInput = Literal["tmux", "nvim", "vscode", "cursor"]
 ReviewActionInput = Literal["approve", "reject", "merge", "rebase"]

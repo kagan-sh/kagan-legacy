@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from time import monotonic
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from acp.schema import ToolCall as AcpToolCall
 from textual import on
@@ -106,7 +106,7 @@ class DiscoveredSkill:
 class ChatOverlay(Vertical):
     """Orchestrator overlay with fullscreen default and mode cycling support."""
 
-    BINDINGS: list[BindingType] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("escape", "escape_overlay", show=False, priority=True),
         Binding("ctrl+c", "ctrl_c", show=False, priority=True),
     ]

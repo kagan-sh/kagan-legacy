@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import click
 
@@ -120,7 +120,9 @@ def resolve_doctor_verbosity(override: str | None = None) -> DoctorVerbosity:
     """Resolve effective doctor verbosity from explicit override or persisted config."""
     if override is not None:
         normalized = override.strip().lower()
-        return normalized if normalized in DOCTOR_VERBOSITY_VALUES else "short"
+        if normalized in DOCTOR_VERBOSITY_VALUES:
+            return cast("DoctorVerbosity", normalized)
+        return "short"
 
     try:
         config = KaganConfig.load(get_config_path())
@@ -128,7 +130,9 @@ def resolve_doctor_verbosity(override: str | None = None) -> DoctorVerbosity:
         return "short"
 
     configured = str(config.general.doctor_verbosity).strip().lower()
-    return configured if configured in DOCTOR_VERBOSITY_VALUES else "short"
+    if configured in DOCTOR_VERBOSITY_VALUES:
+        return cast("DoctorVerbosity", configured)
+    return "short"
 
 
 def _check_python_version() -> DoctorCheckResult:

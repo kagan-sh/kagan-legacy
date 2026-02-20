@@ -165,7 +165,7 @@ typecheck = "pyrefly check src/ tests/"
 check = ["lint", "typecheck", "test"]
 docs-dev = "mkdocs serve -f mkdocs.local.yml"
 docs-build = "mkdocs build"
-docs-check = "pytest tests/test_docs_drift.py -v"
+docs-check = "mkdocs build"
 
 [tool.poe.tasks.install-local]
 help = "Install kagan as a local CLI tool (replaces any existing install)"

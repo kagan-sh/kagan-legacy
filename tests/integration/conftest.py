@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -48,7 +48,8 @@ def _make_anthropic_response(content: str = "ok") -> dict:
 
 
 class _MockLLMHandler(BaseHTTPRequestHandler):
-    def log_message(self, *args: object) -> None:  # silence access logs
+    def log_message(self, format: str, *args: Any) -> None:  # silence access logs
+        del format, args
         pass
 
     def do_POST(self) -> None:

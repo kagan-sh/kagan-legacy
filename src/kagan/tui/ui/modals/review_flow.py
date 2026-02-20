@@ -1011,8 +1011,9 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         return keys
 
     def _session_current_key(self) -> str:
-        if self._active_session_key in self._session_keys:
-            return self._active_session_key
+        active_session_key = self._active_session_key
+        if isinstance(active_session_key, str) and active_session_key in self._session_keys:
+            return active_session_key
         return self._session_keys[0] if self._session_keys else self._SESSION_REVIEW
 
     def _session_sync_live_targets(self) -> None:

@@ -19,7 +19,7 @@ class CoreRequest(BaseModel):
     session_id: str
     session_profile: str | None = None
     session_origin: str
-    client_version: str
+    client_version: str | None = None
     client_build_hash: str | None = None
     capability: str
     method: str

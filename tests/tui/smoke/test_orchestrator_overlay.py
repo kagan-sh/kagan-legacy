@@ -9,8 +9,8 @@ import pytest
 from textual.widgets import Input, OptionList, Static
 
 from kagan.core.domain.enums import StreamPhase, TaskStatus, TaskType
-from kagan.tui.ui.modals import ReviewModal
 from kagan.tui.ui.screens.kanban import KanbanScreen
+from kagan.tui.ui.screens.task_output import TaskOutputScreen
 from kagan.tui.ui.widgets.card import TaskCard
 from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
 from kagan.tui.ui.widgets.header import KaganHeader
@@ -1307,16 +1307,16 @@ async def test_orchestrator_overlay_enter_opens_auto_chat_session(
             ),
         ):
             await pilot.press("enter")
-            review_modal = cast(
-                "ReviewModal",
-                await wait_for_screen(pilot, ReviewModal, timeout=10.0),
+            output_screen = cast(
+                "TaskOutputScreen",
+                await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0),
             )
-            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+            embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
             await wait_until(
                 lambda: embedded_overlay.has_class("visible")
                 and not embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
-                description="AUTO Enter to open embedded session overlay in Task Output modal",
+                description="AUTO Enter to open session overlay in Task Output screen",
             )
 
 
@@ -1365,11 +1365,11 @@ async def test_orchestrator_overlay_enter_opens_task_output_when_auto_idle(
             ),
         ):
             await pilot.press("enter")
-            review_modal = cast(
-                "ReviewModal",
-                await wait_for_screen(pilot, ReviewModal, timeout=10.0),
+            output_screen = cast(
+                "TaskOutputScreen",
+                await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0),
             )
-            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+            embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
             await wait_until(
                 lambda: embedded_overlay.has_class("visible")
                 and not embedded_overlay.has_class("fullscreen"),
@@ -1427,18 +1427,18 @@ async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_a
             ),
         ):
             await pilot.press("enter")
-            review_modal = cast(
-                "ReviewModal",
-                await wait_for_screen(pilot, ReviewModal, timeout=10.0),
+            output_screen = cast(
+                "TaskOutputScreen",
+                await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0),
             )
-            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+            embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
 
-            assert not review_modal.has_class("review-terminal-fullscreen")
+            assert not output_screen.has_class("task-output-terminal-fullscreen")
             assert not embedded_overlay.has_class("fullscreen")
 
             await pilot.press("ctrl+p")
             await wait_until(
-                lambda: review_modal.has_class("review-terminal-fullscreen")
+                lambda: output_screen.has_class("task-output-terminal-fullscreen")
                 and embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
                 description="Ctrl+P to switch split task output to fullscreen terminal",
@@ -1446,7 +1446,7 @@ async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_a
 
             await pilot.press("ctrl+p")
             await wait_until(
-                lambda: not review_modal.has_class("review-terminal-fullscreen")
+                lambda: not output_screen.has_class("task-output-terminal-fullscreen")
                 and not embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
                 description="Ctrl+P to return fullscreen terminal back to split task output",
@@ -1520,15 +1520,16 @@ async def test_orchestrator_overlay_auto_session_streams_live_execution_logs(
             await pilot.pause()
             await pilot.press("enter")
 
-            review_modal = cast(
-                "ReviewModal", await wait_for_screen(pilot, ReviewModal, timeout=10.0)
+            output_screen = cast(
+                "TaskOutputScreen",
+                await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0),
             )
-            embedded_overlay = review_modal.query_one("#review-session-overlay", ChatOverlay)
+            embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
             output = embedded_overlay.query_one("#chat-overlay-output", StreamingOutput)
             await wait_until(
                 lambda: "AUTO live chunk" in output.get_text_content(),
                 timeout=10.0,
-                description="embedded AUTO overlay session to render streamed execution log chunk",
+                description="AUTO overlay session to render streamed execution log chunk",
             )
 
 

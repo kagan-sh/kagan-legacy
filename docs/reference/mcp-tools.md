@@ -263,6 +263,8 @@ Default and max timeouts are server-side configurable via settings:
 | `DISCONNECTED`     | Core unavailable                            | Start/restart core, retry           |
 | `AUTH_STALE_TOKEN` | MCP token is stale after core restart       | Reconnect MCP client                |
 | `CLIENT_OUTDATED`  | Client version/build hash mismatches core   | Restart MCP/TUI session             |
+| `CLIENT_VERSION_REQUIRED` | Client did not send runtime version      | Restart MCP/TUI session             |
+| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash | Restart MCP/TUI session             |
 | `WAIT_TIMEOUT`     | `task_wait` timed out without status change | Retry with same or adjusted timeout |
 | `WAIT_INTERRUPTED` | `task_wait` was interrupted/cancelled       | Retry with `from_updated_at` cursor |
 

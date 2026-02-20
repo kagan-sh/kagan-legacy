@@ -228,20 +228,30 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 | ++y++     | Copy    |
 | ++esc++   | Close   |
 
-### Task Output
+### Task Output (AUTO live screen)
 
-| Key       | Action |
-| --------- | ------ |
-| ++tab++   | Next session |
+| Key        | Action |
+| ---------- | ------ |
+| ++tab++    | Next chat session target |
 | ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
-| ++enter++ | Approve |
-| ++r++     | Reject |
-| ++R++     | Rebase |
-| ++g++     | Run review |
-| ++a++     | Start AUTO agent |
-| ++s++     | Stop AUTO agent |
-| ++y++     | Copy |
-| ++esc++   | Close/Cancel |
+| ++a++      | Start AUTO agent |
+| ++s++      | Stop AUTO agent |
+| ++esc++    | Close |
+
+### Task Output (REVIEW modal)
+
+| Key        | Action |
+| ---------- | ------ |
+| ++tab++    | Next session |
+| ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
+| ++enter++  | Approve |
+| ++r++      | Reject |
+| ++R++      | Rebase |
+| ++g++      | Run review |
+| ++a++      | Start AUTO agent |
+| ++s++      | Stop AUTO agent |
+| ++y++      | Copy |
+| ++esc++    | Close/Cancel |
 
 ### Rejection input
 

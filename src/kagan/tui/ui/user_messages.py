@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 PERMISSION_HEADER = "Permission required"
-PERMISSION_ACTION_HINT = "Y/Enter allow \u00b7 A always \u00b7 N/Esc deny"
+PERMISSION_ACTION_HINT = "Y/Enter allow once \u00b7 A always \u00b7 N/Esc deny"
 
 
 def permission_tool_line(title: str) -> str:

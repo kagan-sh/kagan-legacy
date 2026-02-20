@@ -34,7 +34,7 @@ Welcome screen → open/create project → board appears (BACKLOG → IN_PROGRES
 ## 4. Run task
 
 - **AUTO:** Select task → `a` or `Enter`.
-  `Enter` opens Task Output in a split view: diff/changes on top, the same chat overlay UI as `Ctrl+O` in the lower half.
+  `Enter` opens a dedicated Task Output screen in split view: task/diff details on top, the same chat overlay UI as `Ctrl+O` in the lower half.
   `Ctrl+P` cycles output layouts (`split -> terminal fullscreen -> split -> board`).
   Use follow-up chat plus `a` (start) and `s` (stop) to steer iterations.
 - **PAIR:** Select task → `Enter` → work in tmux/Neovim/VS Code/Cursor.

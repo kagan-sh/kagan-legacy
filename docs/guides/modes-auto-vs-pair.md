@@ -18,7 +18,7 @@ tags:
 
 ## Run AUTO
 
-`n` → set AUTO → `a` or `Enter` → Task Output split view with the same `Ctrl+O` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
+`n` → set AUTO → `a` or `Enter` → dedicated Task Output screen in split view with the same `Ctrl+O` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
 
 Agent runs in the background. Use implementation session follow-ups plus `a`/`s`
 to steer iterations, then review output in REVIEW.

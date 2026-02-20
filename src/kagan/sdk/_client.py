@@ -60,6 +60,7 @@ from kagan.sdk._types import (
     WorkspaceMergeResponse,
     WorkspaceRebaseResponse,
 )
+from kagan.version import get_kagan_version
 
 
 def _build[T: BaseModel](cls: type[T], data: dict[str, Any], **overrides: Any) -> T:
@@ -124,16 +125,19 @@ class KaganSDK:
         *,
         session_id: str = "sdk-session",
         session_origin: str = "sdk",
-        client_version: str = "0.0.0",
+        client_version: str | None = None,
         client_build_hash: str | None = None,
         capability_profile: CapabilityProfile | str = "operator",
         endpoint: CoreEndpoint | None = None,
     ) -> None:
+        resolved_client_version = (
+            get_kagan_version() if client_version is None else client_version
+        )
         self._transport = transport or SDKTransport(
             endpoint=endpoint,
             session_id=session_id,
             session_origin=session_origin,
-            client_version=client_version,
+            client_version=resolved_client_version,
             client_build_hash=client_build_hash,
             capability_profile=capability_profile,
         )

@@ -201,6 +201,7 @@ Explicit `--capability` / `--identity` flags always override a preset.
 | ---- | ------ |
 | `AUTH_STALE_TOKEN` | Reconnect client; `kagan core stop` → `start` |
 | `CLIENT_OUTDATED` | Restart MCP/TUI session to reload latest runtime |
+| `CLIENT_VERSION_REQUIRED` | Update/restart client so it sends runtime version |
 | `CLIENT_BUILD_HASH_REQUIRED` | Update/restart client so it sends runtime fingerprint |
 | `DISCONNECTED` | Start Kagan or restart core |
 | `START_PENDING` | Poll `job_poll(wait=false)` |

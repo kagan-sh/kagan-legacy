@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, Any
 
+from textual.containers import Vertical
 from textual.css.query import NoMatches
 from textual.widgets import Label, Rule, Static
 
@@ -57,8 +58,8 @@ class TaskOutputScreen(KaganScreen):
         return bool(value)
 
     def compose(self) -> ComposeResult:
-        with Static(id="task-output-screen-root"):
-            with Static(id="task-output-top"):
+        with Vertical(id="task-output-screen-root"):
+            with Vertical(id="task-output-top"):
                 yield Label(
                     f"Task Output: {self._task_model.title[:MODAL_TITLE_MAX_LENGTH]}",
                     id="task-output-title",

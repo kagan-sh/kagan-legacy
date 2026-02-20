@@ -39,7 +39,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - run: uv run pytest tests/core/fast/ -n auto -q
+      - run: uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
 
   test:
     needs: [lint, fast-gate]
@@ -94,25 +94,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      # --- Required: core fast tests must pass on Windows ---
-      - name: Core fast tests (required)
-        run: uv run pytest tests/core/fast/ -m "core and fast" -n 0 -v
-      # --- Required: core unit tests must pass on Windows ---
-      - name: Core unit tests (required)
-        run: uv run pytest tests/core/unit/ -m "core and unit" -n 0 -v
-      # --- Required: MCP contract tests must pass on Windows ---
-      - name: MCP contract tests (required)
-        run: uv run pytest tests/mcp/contract/ -m "mcp and contract" -n 0 -v
-      # --- Required: core/MCP smoke tests must pass on Windows ---
-      - name: Core and MCP smoke tests (required)
-        run: uv run pytest tests/core/smoke/ tests/mcp/smoke/ -m smoke -n 0 -v
-      # --- Advisory: TUI smoke tests may fail on Windows ---
-      - name: TUI smoke tests (advisory)
-        continue-on-error: true
-        run: uv run pytest tests/tui/smoke/ -m "tui and smoke" -n 0 -v
-      - name: Warn on TUI failure
-        if: failure()
-        run: echo "::warning::Windows TUI smoke tests failed — this is advisory and does not block the pipeline."
+      - name: Test (non-snapshot)
+        run: uv run pytest tests/ -m "not snapshot" -n 0 -v
 
   snapshot:
     needs: lint

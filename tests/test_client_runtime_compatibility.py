@@ -22,7 +22,7 @@ def _binding_for(origin: SessionOrigin) -> SessionBinding:
 def _request_for(
     origin: SessionOrigin,
     *,
-    version: str,
+    version: str | None,
     build_hash: str | None,
 ) -> CoreRequest:
     return CoreRequest(
@@ -36,9 +36,24 @@ def _request_for(
     )
 
 
+def test_core_request_accepts_omitted_client_version_for_guarded_rejection() -> None:
+    request = CoreRequest.model_validate(
+        {
+            "session_id": "tui:session",
+            "session_origin": "tui",
+            "client_build_hash": "abcd1234",
+            "capability": "tasks",
+            "method": "list",
+            "params": {},
+        }
+    )
+
+    assert request.client_version is None
+
+
 def test_runtime_guard_requires_client_version_for_tui() -> None:
     host = CoreHost()
-    request = _request_for(SessionOrigin.TUI, version="", build_hash="abcd1234")
+    request = _request_for(SessionOrigin.TUI, version=None, build_hash="abcd1234")
 
     response = host._validate_client_runtime_compatibility(
         request,
@@ -49,6 +64,26 @@ def test_runtime_guard_requires_client_version_for_tui() -> None:
     assert response.error is not None
     assert response.error.code == "CLIENT_VERSION_REQUIRED"
     assert "Restart the TUI session" in response.error.message
+
+
+def test_runtime_guard_rejects_version_mismatch_for_mcp() -> None:
+    host = CoreHost()
+    request = _request_for(
+        SessionOrigin.KAGAN_ADMIN,
+        version="0.0.0-outdated",
+        build_hash=host._runtime_build_hash,
+    )
+
+    response = host._validate_client_runtime_compatibility(
+        request,
+        binding=_binding_for(SessionOrigin.KAGAN_ADMIN),
+    )
+
+    assert response is not None
+    assert response.error is not None
+    assert response.error.code == "CLIENT_OUTDATED"
+    assert "does not match core version" in response.error.message
+    assert "Restart the MCP session" in response.error.message
 
 
 def test_runtime_guard_requires_build_hash_for_mcp() -> None:

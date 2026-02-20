@@ -413,12 +413,31 @@ class KanbanReviewController:
     ) -> None:
         """Open task output for task."""
         from kagan.tui.ui.modals import ReviewModal
+        from kagan.tui.ui.screens import TaskOutputScreen
 
         agent_config = task.get_agent_config(self.screen.kagan_app.config)
         task_id = task.id
         is_auto = task.task_type == TaskType.AUTO
         api = self.screen.ctx.api
         runtime_view = api.get_runtime_view(task.id) if is_auto else None
+
+        open_live_task_output_screen = (
+            is_auto and task.status == TaskStatus.IN_PROGRESS and not read_only
+        )
+        if open_live_task_output_screen:
+            resolved_base_branch = await self._resolve_base_branch(task)
+            if resolved_base_branch is None:
+                return
+            await await_screen_result(
+                self.screen.app,
+                TaskOutputScreen(
+                    task=task,
+                    base_branch=resolved_base_branch,
+                ),
+            )
+            await self.screen._board.refresh_board()
+            self.screen._board.sync_agent_states()
+            return
 
         if is_auto:
             execution_id = self._state_attr(runtime_view, "execution_id")

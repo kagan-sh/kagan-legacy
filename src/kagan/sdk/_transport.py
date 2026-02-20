@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from kagan.core.ipc.client import IPCClient
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
 from kagan.sdk._errors import ConnectionError, CoreFailureError, TimeoutError
-from kagan.version import get_kagan_runtime_hash
+from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
 if TYPE_CHECKING:
     from kagan.core.constants import CapabilityProfile
@@ -39,14 +39,14 @@ class SDKTransport:
         client: IPCClient | None = None,
         session_id: str = "sdk-session",
         session_origin: str = "sdk",
-        client_version: str = "0.0.0",
+        client_version: str | None = None,
         client_build_hash: str | None = None,
         capability_profile: CapabilityProfile | str = "operator",
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
         self._session_id = session_id
         self._session_origin = session_origin
-        self._client_version = client_version
+        self._client_version = get_kagan_version() if client_version is None else client_version
         self._client_build_hash = client_build_hash or get_kagan_runtime_hash()
         self._capability_profile = capability_profile
         self._timeout = timeout

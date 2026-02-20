@@ -67,15 +67,17 @@ async def _open_task_output_via_enter(
     task_id: str,
     *,
     timeout: float = 10.0,
+    ensure_workspace: bool = True,
 ) -> TaskOutputScreen:
     await _focus_task_card(pilot, kanban, task_id)
     task = await kanban.ctx.api.get_task(task_id)
 
-    workspace_path = await kanban.ctx.api.get_task_workspace_path(task_id)
-    if workspace_path is None and task is not None:
-        with contextlib.suppress(Exception):
-            await kanban._session.provision_workspace_for_active_repo(task)
-        await pilot.pause()
+    if ensure_workspace:
+        workspace_path = await kanban.ctx.api.get_task_workspace_path(task_id)
+        if workspace_path is None and task is not None:
+            with contextlib.suppress(Exception):
+                await kanban._session.provision_workspace_for_active_repo(task)
+            await pilot.pause()
 
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -95,6 +97,23 @@ async def _open_task_output_via_enter(
             exit_on_error=False,
         )
     return cast("TaskOutputScreen", await wait_for_screen(pilot, TaskOutputScreen, timeout=timeout))
+
+
+async def _press_enter_until(
+    pilot: Pilot,
+    predicate,
+    *,
+    timeout: float = 10.0,
+    description: str = "Enter-driven action",
+) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        await pilot.press("enter")
+        await pilot.pause()
+        if predicate():
+            return
+        await asyncio.sleep(0.1)
+    raise TimeoutError(f"Timed out after {timeout}s waiting for {description}")
 
 
 def _has_slash_complete(overlay: ChatOverlay) -> bool:
@@ -1392,9 +1411,7 @@ async def test_orchestrator_overlay_enter_routes_backlog_auto_task_to_session_fl
             description="overlay to close before pressing Enter on AUTO backlog task",
         )
 
-        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
-        auto_card.focus()
-        await pilot.pause()
+        await _focus_task_card(pilot, kanban, auto_task.id)
 
         with patch.object(kanban._session, "open_session_flow", autospec=True) as open_session_mock:
             await pilot.press("enter")
@@ -1447,26 +1464,19 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_passes_start_re
             ),
             patch.object(
                 kanban._session,
-                "start_agent_flow",
+                "open_auto_output_for_task",
                 AsyncMock(return_value=True),
-            ) as start_agent_mock,
-            patch.object(
-                kanban._session,
-                "_open_auto_output_after_start",
-                AsyncMock(),
-            ) as open_after_start_mock,
+            ) as open_output_mock,
         ):
-            await pilot.press("enter")
-            await wait_until(
-                lambda: open_after_start_mock.await_count >= 1,
+            await _press_enter_until(
+                pilot,
+                lambda: open_output_mock.await_count >= 1,
                 timeout=10.0,
                 description="backlog AUTO Enter to open output after confirmed start",
             )
-            called_task = start_agent_mock.await_args.args[0]
+            called_task = open_output_mock.await_args.args[0]
             assert called_task.id == auto_task.id
-            called_after_task = open_after_start_mock.await_args.args[0]
-            assert called_after_task.id == auto_task.id
-            assert open_after_start_mock.await_args.kwargs["start_requested"] is True
+            assert open_output_mock.await_args.kwargs["auto_start_requested"] is True
 
 
 @pytest.mark.asyncio
@@ -1491,9 +1501,7 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_force_opens_out
         )
         await kanban._board.refresh_board()
 
-        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
-        auto_card.focus()
-        await pilot.pause()
+        await _focus_task_card(pilot, kanban, auto_task.id)
 
         with (
             patch.object(
@@ -1517,8 +1525,8 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_force_opens_out
                 AsyncMock(return_value=True),
             ) as open_output_mock,
         ):
-            await pilot.press("enter")
-            await wait_until(
+            await _press_enter_until(
+                pilot,
                 lambda: open_output_mock.await_count >= 1,
                 timeout=10.0,
                 description="confirmed backlog AUTO start to force-open task output",
@@ -1548,9 +1556,7 @@ async def test_orchestrator_overlay_backlog_auto_start_failure_still_opens_task_
         )
         await kanban._board.refresh_board()
 
-        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
-        auto_card.focus()
-        await pilot.pause()
+        await _focus_task_card(pilot, kanban, auto_task.id)
         readiness = SimpleNamespace(
             can_open_output=False,
             execution_id=None,
@@ -1579,8 +1585,7 @@ async def test_orchestrator_overlay_backlog_auto_start_failure_still_opens_task_
                 AsyncMock(return_value=False),
             ),
         ):
-            await pilot.press("enter")
-            await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
+            await _open_task_output_via_enter(pilot, kanban, auto_task.id)
 
 
 @pytest.mark.asyncio
@@ -1605,9 +1610,7 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_submits_without
         )
         await kanban._board.refresh_board()
 
-        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
-        auto_card.focus()
-        await pilot.pause()
+        await _focus_task_card(pilot, kanban, auto_task.id)
         readiness = SimpleNamespace(
             can_open_output=False,
             execution_id=None,
@@ -1646,8 +1649,12 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_submits_without
                 AsyncMock(),
             ) as provision_mock,
         ):
-            await pilot.press("enter")
-            await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
+            await _open_task_output_via_enter(
+                pilot,
+                kanban,
+                auto_task.id,
+                ensure_workspace=False,
+            )
             assert submit_job_mock.await_count >= 1
             assert provision_mock.await_count == 0
 
@@ -2078,6 +2085,82 @@ async def test_orchestrator_overlay_auto_session_streams_appended_logs_for_same_
                 description=(
                     "AUTO overlay session to render appended chunks "
                     "for same execution log entry"
+                ),
+            )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_overlay_auto_session_shows_wait_note_before_first_log_chunk(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        board_overlay = kanban.query_one("#chat-overlay", ChatOverlay)
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO wait note before first stream chunk",
+            "Ensure users see a waiting note while execution has no log chunks yet",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban.ctx.api.move_task(auto_task.id, TaskStatus.IN_PROGRESS.value)
+        await kanban._board.refresh_board()
+
+        readiness = SimpleNamespace(
+            can_open_output=True,
+            execution_id="exec-wait-001",
+            is_running=True,
+        )
+
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "prepare_auto_output",
+                AsyncMock(return_value=readiness),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "get_execution_log_entries",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            if board_overlay.has_class("visible"):
+                await pilot.press("escape")
+                await wait_until(
+                    lambda: not board_overlay.has_class("visible"),
+                    timeout=5.0,
+                    description="overlay to close before AUTO wait-note stream test",
+                )
+
+            auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+            auto_card.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+
+            output_screen = cast(
+                "TaskOutputScreen",
+                await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0),
+            )
+            embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
+            output = embedded_overlay.query_one("#chat-overlay-output", StreamingOutput)
+            await wait_until(
+                lambda: "waiting for first output chunk" in output.get_text_content().lower(),
+                timeout=10.0,
+                description=(
+                    "AUTO overlay session to show waiting note "
+                    "when execution has no persisted chunks yet"
                 ),
             )
 

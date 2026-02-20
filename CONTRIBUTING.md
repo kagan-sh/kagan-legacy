@@ -1,7 +1,6 @@
 # Contributing to Kagan
 
-Thanks for your interest in contributing! This document is the canonical guide for
-developers working on the codebase. User documentation lives in `docs/`.
+Canonical guide for developers working on the codebase. User documentation lives in `docs/`.
 
 ## Prerequisites
 
@@ -13,7 +12,7 @@ developers working on the codebase. User documentation lives in `docs/`.
 
 ## Getting Started
 
-Clone the repo and install dependencies:
+Clone and install:
 
 ```bash
 git clone https://github.com/aorumbayev/kagan.git
@@ -33,7 +32,7 @@ uv run kagan
 uv run poe dev
 ```
 
-This runs with hot reload enabled for faster iteration.
+Hot reload enabled.
 
 ## Linting, Formatting, Typecheck, Tests
 
@@ -45,7 +44,7 @@ uv run poe typecheck  # Pyrefly type checker
 uv run pytest tests/ -v
 ```
 
-Run the fast quality gate:
+Fast quality gate:
 
 ```bash
 uv run poe check
@@ -91,7 +90,7 @@ Open `http://127.0.0.1:8000/` in your browser.
 
 ## GitHub Actions Workflow Validation
 
-Before pushing changes to GitHub Actions workflows, validate them locally using [act](https://github.com/nektos/act):
+Before pushing workflow changes, validate locally with [act](https://github.com/nektos/act):
 
 ```bash
 # Install act (macOS)
@@ -103,42 +102,42 @@ uv run poe workflows-check
 
 This command:
 
-1. Lists all workflows and their triggers
-1. Dry-runs CI workflow (`ci.yml`)
-1. Dry-runs CD workflow (`cd.yaml`)
-1. Dry-runs Post-Release Update Test (`post-release-update-test.yaml`)
+1. Lists all workflows and triggers
+1. Dry-runs CI (`ci.yml`)
+1. Dry-runs CD (`cd.yaml`)
+1. Dry-runs post-release update test (`post-release-update-test.yaml`)
 
-The `--dryrun` flag validates workflow syntax and structure without actually running containers.
+`--dryrun` validates syntax and structure without running containers.
 
-## Quick Architecture Orientation
+## Architecture
 
-Kagan is a single Python package (`src/kagan/`) with four top-level modules:
+Kagan is a single Python package (`src/kagan/`) with four modules:
 
 ```
 src/kagan/
-  core/   — domain models, services, adapters, IPC, agents
-  tui/    — Textual UI (screens, widgets, modals, styles)
-  mcp/    — MCP server bridge and tool registration
-  cli/    — CLI entry points
+  core/   -- domain models, services, adapters, IPC, agents
+  tui/    -- Textual UI (screens, widgets, modals, styles)
+  mcp/    -- MCP server bridge and tool registration
+  cli/    -- CLI entry points
 ```
 
-### Architecture Contract
+### Contract
 
-Read and follow the architecture contract before making structural changes:
+Read the architecture contract before making structural changes:
 
 - [`docs/concepts/architecture-overview.md`](docs/concepts/architecture-overview.md)
 
 **Dependency rule:** `core` has no dependency on `tui`, `mcp`, or `cli`.
 `tui` and `mcp` depend only on `core`. `cli` assembles entry points.
 
-### 30-Minute Onboarding Path
+### Onboarding (30 min)
 
 1. **Clone and install** (2 min): `git clone ... && cd kagan && uv sync --dev`
-1. **Read this file** (5 min): Understand prerequisites, linting, test commands
-1. **Skim architecture** (5 min): Read `docs/concepts/architecture-overview.md`
-1. **Run the app** (2 min): `uv run kagan` to see the Kanban TUI
+1. **Read this file** (5 min): Prerequisites, linting, tests
+1. **Skim architecture** (5 min): `docs/concepts/architecture-overview.md`
+1. **Run the app** (2 min): `uv run kagan`
 1. **Run the quality gate** (30 sec): `uv run poe check`
-1. **Pick a task** and explore the relevant module for orientation (10 min)
+1. **Pick a task** and explore the relevant module (10 min)
 
 ### Source Layout
 
@@ -146,22 +145,22 @@ Read and follow the architecture contract before making structural changes:
 src/kagan/
   core/                    # Domain models, services, adapters, agents, IPC
   tui/                     # app.py, ui/, styles/, keybindings, theme
-  mcp/                     # mcp/server.py, mcp/tools.py, registrars
+  mcp/                     # server.py, tools.py, registrars
   cli/                     # CLI commands
   __main__.py              # Entry point
 tests/
-  core/                    # Unit + smoke tests for kagan.core
-  mcp/                     # Contract + smoke tests for kagan.mcp
-  tui/                     # Snapshot + smoke tests for kagan.tui
+  core/                    # Unit + smoke
+  mcp/                     # Contract + smoke
+  tui/                     # Snapshot + smoke
 ```
 
-### Where to Put Things
+### Placement
 
-- New domain models, services, persistence adapters, IPC/runtime contracts: `src/kagan/core/`
-- New MCP tool bindings/bridge behavior: `src/kagan/mcp/`
-- New Textual screens/widgets/modals/styles/keybindings: `src/kagan/tui/`
-- CLI entrypoints/commands: `src/kagan/cli/`
-- Cross-cutting tests belong under `tests/{core,mcp,tui}/` by boundary, not implementation detail.
+- Domain models, services, persistence, IPC/runtime contracts: `src/kagan/core/`
+- MCP tool bindings/bridge: `src/kagan/mcp/`
+- Textual screens/widgets/modals/styles/keybindings: `src/kagan/tui/`
+- CLI commands: `src/kagan/cli/`
+- Tests: `tests/{core,mcp,tui}/` by boundary, not implementation detail.
 
 ## Code Style
 
@@ -225,9 +224,9 @@ def __init__(self, task: Task, **kwargs) -> None:
 
 All styles go in `src/kagan/tui/styles/kagan.tcss`. Never use `DEFAULT_CSS` in Python.
 
-## Git Commit Rules
+## Commits
 
-Disable GPG signing in agent workflows to avoid timeouts:
+Disable GPG signing in agent workflows:
 
 ```bash
 git config commit.gpgsign false

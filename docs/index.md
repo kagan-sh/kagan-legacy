@@ -6,9 +6,9 @@ hide:
   - toc
 ---
 
-# Provider agnostic orchestration layer for AI-assisted software development.
+# AI agents on your code. You in the decision seat.
 
-Kagan is a keyboard-first Kanban board that orchestrates AI agents across the full task lifecycle — plan, run, review, merge — with you in the decision seat at every gate.
+A keyboard-first Kanban board that orchestrates AI agents across the full task lifecycle -- plan, run, review, merge.
 
 ```bash
 uvx kagan
@@ -28,7 +28,7 @@ uvx kagan
 
     ---
 
-    Autonomous background agents or hands-on interactive sessions. Switch per task, per moment.
+    Background agents or interactive sessions. Switch per task.
 
     [:octicons-arrow-right-24: Choose your mode](guides/modes-auto-vs-pair.md)
 
@@ -36,7 +36,7 @@ uvx kagan
 
     ---
 
-    Connect Claude Code, Gemini CLI, or any MCP-compatible client. Operate Kagan without leaving your editor.
+    Claude Code, Gemini CLI, or any MCP client. No TUI required.
 
     [:octicons-arrow-right-24: MCP setup](guides/mcp-setup.md)
 
@@ -44,7 +44,7 @@ uvx kagan
 
     ---
 
-    Every task surfaces a structured review: diff summary, criteria checklist, your decision.
+    Structured review: diff summary, criteria checklist, your call.
 
     [:octicons-arrow-right-24: Architecture](concepts/architecture-overview.md)
 
@@ -57,10 +57,10 @@ uvx kagan
 | Goal | Page |
 | ---- | ---- |
 | First run in under 5 minutes | [Quickstart](quickstart.md) |
-| Understand AUTO vs PAIR execution | [AUTO vs PAIR](guides/modes-auto-vs-pair.md) |
+| Understand AUTO vs PAIR | [AUTO vs PAIR](guides/modes-auto-vs-pair.md) |
 | Connect an AI client via MCP | [MCP setup](guides/mcp-setup.md) |
-| Work across multiple repos | [MCP setup → Multi-repo](guides/mcp-setup.md#multi-repo) |
+| Work across multiple repos | [MCP setup - Multi-repo](guides/mcp-setup.md#multi-repo) |
 | Connect GitHub issues and PRs | [GitHub plugin](guides/github.md) |
-| Fix a known issue fast | [Troubleshooting](troubleshooting.md) |
-| See all CLI flags | [CLI reference](reference/cli.md) |
-| Browse all MCP tools | [MCP tools reference](reference/mcp-tools.md) |
+| Fix a known issue | [Troubleshooting](troubleshooting.md) |
+| All CLI flags | [CLI reference](reference/cli.md) |
+| All MCP tools | [MCP tools reference](reference/mcp-tools.md) |

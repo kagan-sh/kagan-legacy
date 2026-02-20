@@ -36,7 +36,7 @@
   <img src=".github/assets/demo.gif" alt="Kagan Demo" width="700">
 </p>
 
-Create a task. Pick a mode. An AI agent does the work while you stay in control — reviewing output, approving changes, and merging when you're satisfied.
+Create a task. Pick a mode. The agent works. You review, approve, and merge.
 
 ## Install
 
@@ -85,43 +85,35 @@ kagan reset        # Reset data (interactive)
 kagan --help       # Show all options
 ```
 
-## Ways To Use Kagan
+## Ways to Use Kagan
 
-### TUI-first (interactive)
+### TUI (interactive)
 
 Run `kagan` -- create tasks, run AUTO/PAIR workflows, review/rebase/merge, switch projects.
 
-### From your editor (MCP)
+### Editor (MCP)
 
-Operate Kagan from Claude Code, Gemini CLI, or any MCP-compatible client — without opening the TUI:
+Operate Kagan from Claude Code, Gemini CLI, or any MCP-compatible client -- no TUI required:
 
 ```bash
 kagan mcp --capability pair_worker
 ```
 
-Start with `pair_worker` for day-to-day use. Escalate to `maintainer` only when needed. See [MCP setup](https://docs.kagan.sh/guides/mcp-setup/) for editor configs.
+Start with `pair_worker`. Escalate to `maintainer` when needed. See [MCP setup](https://docs.kagan.sh/guides/mcp-setup/) for editor configs.
 
-### Advanced CI contract requests
+## Features
 
-User-tunable CLI schema validation is not GA today (`--output-schema`, schema overlays, repair controls). If your CI/CD flow needs this, submit a feature request via:
-
-- Local template path in this checkout: `/Users/aorumbayev/experiments/kagan/.github/ISSUE_TEMPLATE/feature_request.md`
-- Repository template path: `.github/ISSUE_TEMPLATE/feature_request.md`
-- GitHub issue form: [feature request](https://github.com/aorumbayev/kagan/issues/new?template=feature_request.md)
-
-## User-Facing Features
-
-- Board lifecycle: `BACKLOG -> IN_PROGRESS -> REVIEW -> DONE`
-- Task CRUD, duplicate, inspect details
-- Work modes: `AUTO` (background agent), `PAIR` (interactive session)
+- Kanban lifecycle: `BACKLOG -> IN_PROGRESS -> REVIEW -> DONE`
+- Task CRUD, duplicate, inspect
+- Work modes: `AUTO` (background agent) / `PAIR` (interactive session)
 - Chat-driven planning with approval flow
-- Review: diff output, approve/reject/rebase/merge
-- Multi-repo: project/repo switching, base-branch controls
-- PAIR handoff: session management + human redirect (tmux/VS Code/Cursor)
+- Review: diff, approve/reject/rebase/merge
+- Multi-repo: project switching, base-branch controls
+- PAIR handoff: tmux / VS Code / Cursor session management
 - MCP: 23 tools spanning tasks, sessions, review, planning, projects, audit, settings
 - Core daemon management: run, inspect, stop
 
-## Supported AI CLIs
+## Supported Agents
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic)
 - [OpenCode](https://opencode.ai/docs) (SST)
@@ -130,9 +122,9 @@ User-tunable CLI schema validation is not GA today (`--output-schema`, schema ov
 - [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) (Moonshot AI)
 - [GitHub Copilot](https://github.com/github/copilot-cli) (GitHub)
 
-## Documentation
+## Docs
 
-Full docs at **[docs.kagan.sh](https://docs.kagan.sh/)** -- [5-Minute Quickstart](https://docs.kagan.sh/quickstart/) | [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/) | [Editor MCP Setup](https://docs.kagan.sh/guides/editor-mcp-setup/)
+**[docs.kagan.sh](https://docs.kagan.sh/)** -- [Quickstart](https://docs.kagan.sh/quickstart/) | [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/) | [Editor MCP Setup](https://docs.kagan.sh/guides/editor-mcp-setup/)
 
 ## License
 

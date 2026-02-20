@@ -680,7 +680,24 @@ class ChatOverlay(Vertical):
             entries = await ctx.api.get_execution_log_entries(execution_id_str)
         except Exception:
             return
+        if not entries:
+            if is_running and not self._auto_stream_wait_noted:
+                await self.output.post_note(
+                    "Connected to AUTO stream; waiting for first output chunk...",
+                    classes="warning",
+                )
+                self._auto_stream_wait_noted = True
+                self._auto_stream_idle_noted = False
+            elif not is_running and not self._auto_stream_idle_noted:
+                await self.output.post_note(
+                    "AUTO run is idle. Send a follow-up or `/restart` to run a new iteration.",
+                    classes="info",
+                )
+                self._auto_stream_idle_noted = True
+                self._auto_stream_wait_noted = False
+            return
 
+        rendered = False
         for index, entry in enumerate(entries):
             entry_id = self._state_attr(entry, "id", f"idx-{index}")
             normalized_id = str(entry_id)
@@ -695,7 +712,11 @@ class ChatOverlay(Vertical):
             if not new_chunk:
                 continue
             for line in new_chunk.splitlines():
+                rendered = True
                 await self._render_auto_log_line(line)
+        if rendered:
+            self._auto_stream_wait_noted = False
+            self._auto_stream_idle_noted = False
 
     async def _render_auto_log_line(self, log_line: str) -> None:
         normalized_line = log_line.strip()

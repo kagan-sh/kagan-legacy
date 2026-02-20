@@ -12,7 +12,7 @@ from kagan.core.domain.enums import StreamPhase, TaskStatus, TaskType
 from kagan.tui.ui.screens.kanban import KanbanScreen
 from kagan.tui.ui.screens.task_output import TaskOutputScreen
 from kagan.tui.ui.widgets.card import TaskCard
-from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
+from kagan.tui.ui.widgets.chat_overlay import ChatOverlay, ChatTargetKind
 from kagan.tui.ui.widgets.header import KaganHeader
 from kagan.tui.ui.widgets.keybinding_hint import KanbanHintBar
 from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
@@ -211,32 +211,57 @@ async def test_orchestrator_overlay_escape_closes_while_thinking(
         chat_input = overlay.query_one("#chat-overlay-input", Input)
         status_bar = overlay.query_one("#chat-overlay-status", StatusBar)
         hint_bar = kanban.query_one("#kanban-hint-bar", KanbanHintBar)
+        prompt_gate = asyncio.Event()
 
-        chat_input.focus()
-        chat_input.value = "Plan task changes"
-        await pilot.pause()
-        await pilot.press("enter")
+        class _DelayedResponseAgent:
+            async def send_prompt(self, _prompt: str) -> str | None:
+                await prompt_gate.wait()
+                return "end_turn"
 
-        await wait_until(
-            lambda: status_bar.status == "thinking",
-            timeout=5.0,
-            description="orchestrator status to enter thinking mode",
-        )
+            def get_response_text(self) -> str:
+                return ""
 
-        await pilot.press("escape")
-        await wait_until(
-            lambda: not overlay.has_class("visible"),
-            timeout=5.0,
-            description="overlay to close with escape during thinking",
-        )
-        assert bool(hint_bar.display)
+            def set_message_target(self, _target: object) -> None:
+                return None
 
-        await pilot.press("ctrl+p")
-        await wait_until(
-            lambda: overlay.has_class("visible") and overlay.has_class("fullscreen"),
-            timeout=5.0,
-            description="overlay to reopen after thinking-mode escape",
-        )
+            async def stop(self) -> None:
+                return None
+
+        overlay._agent = _DelayedResponseAgent()
+
+        try:
+            chat_input.focus()
+            chat_input.value = "Plan task changes"
+            await pilot.pause()
+            await pilot.press("enter")
+
+            await wait_until(
+                lambda: status_bar.status == "thinking",
+                timeout=10.0,
+                description="orchestrator status to enter thinking mode",
+            )
+
+            await pilot.press("escape")
+            await wait_until(
+                lambda: not overlay.has_class("visible"),
+                timeout=5.0,
+                description="overlay to close with escape during thinking",
+            )
+            assert bool(hint_bar.display)
+
+            await pilot.press("ctrl+p")
+            await wait_until(
+                lambda: overlay.has_class("visible") and overlay.has_class("fullscreen"),
+                timeout=5.0,
+                description="overlay to reopen after thinking-mode escape",
+            )
+        finally:
+            prompt_gate.set()
+            await wait_until(
+                lambda: status_bar.status in {"ready", "error"},
+                timeout=10.0,
+                description="orchestrator status to settle after delayed escape test",
+            )
 
 
 @pytest.mark.asyncio
@@ -253,40 +278,65 @@ async def test_orchestrator_overlay_ctrl_c_single_clear_double_interrupts_stream
         _kanban, overlay = await _wait_for_kanban_overlay(pilot)
         chat_input = overlay.query_one("#chat-overlay-input", Input)
         status_bar = overlay.query_one("#chat-overlay-status", StatusBar)
+        prompt_gate = asyncio.Event()
 
-        chat_input.focus()
-        chat_input.value = "Plan task changes"
-        await pilot.pause()
-        await pilot.press("enter")
+        class _DelayedResponseAgent:
+            async def send_prompt(self, _prompt: str) -> str | None:
+                await prompt_gate.wait()
+                return "end_turn"
 
-        await wait_until(
-            lambda: status_bar.status == "thinking",
-            timeout=5.0,
-            description="orchestrator status to enter thinking mode before Ctrl+C interrupt",
-        )
+            def get_response_text(self) -> str:
+                return ""
 
-        chat_input.focus()
-        chat_input.value = "temporary draft"
-        await pilot.pause()
+            def set_message_target(self, _target: object) -> None:
+                return None
 
-        cancel_mock = AsyncMock()
-        with (
-            patch.object(overlay, "_cancel_active_prompt", cancel_mock),
-            patch.object(overlay, "_is_double_ctrl_c_press", side_effect=[False, True]),
-            patch.object(overlay, "_is_interruptible_stream_active", return_value=True),
-        ):
-            await pilot.press("ctrl+c")
+            async def stop(self) -> None:
+                return None
+
+        overlay._agent = _DelayedResponseAgent()
+
+        try:
+            chat_input.focus()
+            chat_input.value = "Plan task changes"
+            await pilot.pause()
+            await pilot.press("enter")
+
             await wait_until(
-                lambda: chat_input.value == "",
-                timeout=5.0,
-                description="single Ctrl+C to clear chat input",
+                lambda: status_bar.status == "thinking",
+                timeout=10.0,
+                description="orchestrator status to enter thinking mode before Ctrl+C interrupt",
             )
 
-            await pilot.press("ctrl+c")
+            chat_input.focus()
+            chat_input.value = "temporary draft"
+            await pilot.pause()
+
+            cancel_mock = AsyncMock()
+            with (
+                patch.object(overlay, "_cancel_active_prompt", cancel_mock),
+                patch.object(overlay, "_is_double_ctrl_c_press", side_effect=[False, True]),
+                patch.object(overlay, "_is_interruptible_stream_active", return_value=True),
+            ):
+                await pilot.press("ctrl+c")
+                await wait_until(
+                    lambda: chat_input.value == "",
+                    timeout=5.0,
+                    description="single Ctrl+C to clear chat input",
+                )
+
+                await pilot.press("ctrl+c")
+                await wait_until(
+                    lambda: cancel_mock.await_count >= 1,
+                    timeout=5.0,
+                    description="double Ctrl+C to interrupt active orchestrator stream",
+                )
+        finally:
+            prompt_gate.set()
             await wait_until(
-                lambda: cancel_mock.await_count >= 1,
-                timeout=5.0,
-                description="double Ctrl+C to interrupt active orchestrator stream",
+                lambda: status_bar.status in {"ready", "error"},
+                timeout=10.0,
+                description="orchestrator status to settle after Ctrl+C interrupt test",
             )
 
 
@@ -1368,6 +1418,63 @@ async def test_orchestrator_overlay_backlog_auto_confirmed_start_force_opens_out
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_overlay_backlog_auto_start_failure_still_opens_task_output(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO backlog start failure opens output",
+            "Ensure confirmed start still opens Task Output when start request fails",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+        readiness = SimpleNamespace(
+            can_open_output=False,
+            execution_id=None,
+            is_running=False,
+            message="No active AUTO run.",
+        )
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "prepare_auto_output",
+                AsyncMock(return_value=readiness),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban._session,
+                "confirm_start_auto_task",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                kanban._session,
+                "start_agent_flow",
+                AsyncMock(return_value=False),
+            ),
+        ):
+            await pilot.press("enter")
+            await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_overlay_enter_opens_auto_chat_session(
     e2e_app_with_tasks,
     mock_agent_factory,
@@ -1497,7 +1604,7 @@ async def test_orchestrator_overlay_enter_opens_task_output_when_auto_idle(
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_and_board(
+async def test_orchestrator_overlay_task_output_ctrl_p_ctrl_o_match_board_overlay_behavior(
     e2e_app_with_tasks,
     mock_agent_factory,
 ) -> None:
@@ -1511,8 +1618,8 @@ async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_a
         assert project_id is not None
 
         auto_task = await kanban.ctx.api.create_task(
-            "AUTO output Ctrl+P cycle",
-            "Ensure Ctrl+P cycles split view, fullscreen session, then board",
+            "AUTO output Ctrl+P/Ctrl+O behavior",
+            "Ensure Task Output overlay controls match board overlay semantics",
             project_id=project_id,
             task_type=TaskType.AUTO,
         )
@@ -1552,7 +1659,16 @@ async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_a
             embedded_overlay = output_screen.query_one("#task-output-chat-overlay", ChatOverlay)
 
             assert not output_screen.has_class("task-output-terminal-fullscreen")
+            assert embedded_overlay.has_class("visible")
             assert not embedded_overlay.has_class("fullscreen")
+            assert embedded_overlay._active_target().kind is not ChatTargetKind.ORCHESTRATOR
+
+            await pilot.press("tab")
+            await wait_until(
+                lambda: embedded_overlay._active_target().kind is not ChatTargetKind.ORCHESTRATOR,
+                timeout=10.0,
+                description="Task Output sessions to stay task-scoped when cycling with Tab",
+            )
 
             await pilot.press("ctrl+p")
             await wait_until(
@@ -1562,15 +1678,95 @@ async def test_orchestrator_overlay_task_output_ctrl_p_cycles_split_fullscreen_a
                 description="Ctrl+P to switch split task output to fullscreen terminal",
             )
 
-            await pilot.press("ctrl+p")
+            await pilot.press("ctrl+o")
             await wait_until(
-                lambda: not output_screen.has_class("task-output-terminal-fullscreen")
+                lambda: embedded_overlay.has_class("visible")
+                and not embedded_overlay.has_class("fullscreen")
+                and not output_screen.has_class("task-output-terminal-fullscreen"),
+                timeout=10.0,
+                description="Ctrl+O to switch Task Output overlay from fullscreen to docked",
+            )
+
+            await pilot.press("ctrl+o")
+            await wait_until(
+                lambda: not embedded_overlay.has_class("visible")
                 and not embedded_overlay.has_class("fullscreen"),
                 timeout=10.0,
-                description="Ctrl+P to return fullscreen terminal back to split task output",
+                description="Ctrl+O to hide docked Task Output overlay",
             )
 
             await pilot.press("ctrl+p")
+            await wait_until(
+                lambda: (
+                    embedded_overlay.has_class("visible")
+                    and embedded_overlay.has_class("fullscreen")
+                ),
+                timeout=10.0,
+                description="Ctrl+P to reopen hidden Task Output overlay in fullscreen",
+            )
+            await pilot.press("ctrl+p")
+            await wait_until(
+                lambda: not embedded_overlay.has_class("visible"),
+                timeout=10.0,
+                description=(
+                    "Ctrl+P on fullscreen Task Output overlay "
+                    "to hide without leaving screen"
+                ),
+            )
+            await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_overlay_task_output_escape_returns_to_board(
+    e2e_app_with_tasks,
+    mock_agent_factory,
+) -> None:
+    app = e2e_app_with_tasks
+    app._agent_factory = mock_agent_factory
+    mock_agent_factory.set_default_response("Ready.")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        kanban = cast("KanbanScreen", await wait_for_screen(pilot, KanbanScreen, timeout=15.0))
+        project_id = app.ctx.active_project_id
+        assert project_id is not None
+
+        auto_task = await kanban.ctx.api.create_task(
+            "AUTO task output Esc returns board",
+            "Ensure Escape closes Task Output and returns to board screen",
+            project_id=project_id,
+            task_type=TaskType.AUTO,
+        )
+        await kanban.ctx.api.move_task(auto_task.id, TaskStatus.IN_PROGRESS.value)
+        await kanban._board.refresh_board()
+
+        auto_card = kanban.query_one(f"#card-{auto_task.id}", TaskCard)
+        auto_card.focus()
+        await pilot.pause()
+        readiness = SimpleNamespace(
+            can_open_output=True,
+            execution_id="exec-escape-001",
+            is_running=True,
+        )
+        with (
+            patch.object(
+                kanban.ctx.api,
+                "prepare_auto_output",
+                AsyncMock(return_value=readiness),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "get_execution_log_entries",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                kanban.ctx.api,
+                "reconcile_running_tasks",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            await pilot.press("enter")
+            await wait_for_screen(pilot, TaskOutputScreen, timeout=10.0)
+            await pilot.press("escape")
             await wait_for_screen(pilot, KanbanScreen, timeout=10.0)
 
 

@@ -179,6 +179,7 @@ class ChatOverlay(Vertical):
         self._requested_task_id: str | None = None
         self._requested_task_context: TaskContext | None = None
         self._focused_task_context: TaskContext | None = None
+        self._target_scope_task_id: str | None = None
         self._focus_return_target: Widget | None = None
         self._agent_stream_router: AgentStreamRouter | None = None
         self._pending_compact_snapshot: str | None = None
@@ -487,6 +488,15 @@ class ChatOverlay(Vertical):
             task_id=None,
         )
 
+    def _fallback_scoped_target(self, task_id: str) -> ChatTarget:
+        short_id = task_id[:8]
+        return ChatTarget(
+            key=f"{ChatTargetKind.AUTO.value}:{task_id}",
+            kind=ChatTargetKind.AUTO,
+            label=f"AUTO #{short_id}",
+            task_id=task_id,
+        )
+
     def _active_target(self) -> ChatTarget:
         if not self._chat_targets:
             return self._orchestrator_target()
@@ -594,10 +604,13 @@ class ChatOverlay(Vertical):
         if target.kind is not ChatTargetKind.AUTO or not target.task_id:
             self._reset_auto_stream_state()
             return
+        if not self.has_class("visible"):
+            self._reset_auto_stream_state()
+            return
         self._show_output()
         await self._refresh_auto_stream_for_task(target.task_id)
         self._run_overlay_worker(
-            self._run_auto_stream_loop(target.task_id),
+            lambda: self._run_auto_stream_loop(target.task_id),
             group="chat-overlay-auto-stream",
             exclusive=True,
         )
@@ -841,6 +854,19 @@ class ChatOverlay(Vertical):
             self.show(task_id=context.task_id, fullscreen=fullscreen)
             return
         self.show(fullscreen=fullscreen)
+
+    def set_target_scope(self, task_id: str | None) -> None:
+        """Restrict discoverable chat targets to a single task when provided."""
+        normalized_task_id = str(task_id or "").strip() or None
+        self._target_scope_task_id = normalized_task_id
+        if normalized_task_id is not None:
+            self._requested_task_id = normalized_task_id
+        if self.has_class("visible"):
+            self._run_overlay_worker(
+                self._refresh_chat_targets,
+                group="chat-overlay-targets",
+                exclusive=True,
+            )
 
     def show(self, task_id: str | None = None, *, fullscreen: bool = False) -> None:
         """Show overlay and activate orchestrator session."""

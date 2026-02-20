@@ -38,8 +38,6 @@ class TaskOutputScreen(KaganScreen):
         super().__init__(**kwargs)
         self._task_model = task
         self._base_branch = base_branch
-        self._output_layout_mode = self._OUTPUT_LAYOUT_SPLIT
-        self._ctrl_p_cycle_stage = 0
         self._runtime_poll_timer: Timer | None = None
 
     @staticmethod
@@ -74,7 +72,7 @@ class TaskOutputScreen(KaganScreen):
                 yield Rule()
                 yield Static("[dim]Loading diff stats...[/dim]", id="task-output-diff-stats")
                 yield Static("[dim]Loading changed files...[/dim]", id="task-output-files")
-            yield ChatOverlay(
+            yield TaskOutputChatOverlay(
                 agent_factory=self.kagan_app._agent_factory,
                 id="task-output-chat-overlay",
             )
@@ -82,7 +80,9 @@ class TaskOutputScreen(KaganScreen):
     async def on_mount(self) -> None:
         self._refresh_header_labels()
         overlay = self._overlay()
+        overlay.set_target_scope(self._task_model.id)
         overlay.show_for_task(self._task_model, fullscreen=False)
+        self._sync_overlay_layout_class()
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)
         self.run_worker(
             self._hydrate_top_panel(),
@@ -97,7 +97,9 @@ class TaskOutputScreen(KaganScreen):
             self._runtime_poll_timer.stop()
             self._runtime_poll_timer = None
         with contextlib.suppress(NoMatches):
-            self._overlay().hide()
+            overlay = self._overlay()
+            overlay.hide()
+            overlay.set_target_scope(None)
 
     def _overlay(self) -> ChatOverlay:
         return self.query_one("#task-output-chat-overlay", ChatOverlay)
@@ -211,27 +213,42 @@ class TaskOutputScreen(KaganScreen):
         if overlay.has_class("visible"):
             overlay.cycle_chat_session()
 
-    def action_cycle_output_layout(self) -> None:
-        """Cycle split -> terminal fullscreen -> split -> board."""
-        if self._ctrl_p_cycle_stage == 0:
-            self._set_output_layout(self._OUTPUT_LAYOUT_FULLSCREEN)
-            self._ctrl_p_cycle_stage = 1
-            return
-        if self._ctrl_p_cycle_stage == 1:
-            self._set_output_layout(self._OUTPUT_LAYOUT_SPLIT)
-            self._ctrl_p_cycle_stage = 2
-            return
-        self._ctrl_p_cycle_stage = 0
-        self.dismiss(None)
-
-    def _set_output_layout(self, mode: str) -> None:
-        if mode not in {self._OUTPUT_LAYOUT_SPLIT, self._OUTPUT_LAYOUT_FULLSCREEN}:
-            return
-        self._output_layout_mode = mode
-        fullscreen = mode == self._OUTPUT_LAYOUT_FULLSCREEN
-        self.set_class(fullscreen, "task-output-terminal-fullscreen")
+    def _sync_overlay_layout_class(self) -> None:
         overlay = self._overlay()
-        overlay.show_for_task(self._task_model, fullscreen=fullscreen)
+        self.set_class(
+            overlay.has_class("visible") and overlay.has_class("fullscreen"),
+            "task-output-terminal-fullscreen",
+        )
+
+    def action_cycle_output_layout(self) -> None:
+        """Backward-compatible alias for fullscreen toggle."""
+        self.action_open_chat_fullscreen()
+
+    def action_toggle_chat_overlay(self) -> None:
+        overlay = self._overlay()
+        if overlay.has_class("visible"):
+            if overlay.has_class("fullscreen"):
+                overlay.show_for_task(self._task_model, fullscreen=False)
+                self._sync_overlay_layout_class()
+                return
+            overlay.hide()
+            self._sync_overlay_layout_class()
+            return
+        overlay.show_for_task(self._task_model, fullscreen=False)
+        self._sync_overlay_layout_class()
+
+    def action_open_chat_fullscreen(self) -> None:
+        overlay = self._overlay()
+        if overlay.has_class("visible") and overlay.has_class("fullscreen"):
+            overlay.hide()
+            self._sync_overlay_layout_class()
+            return
+        if overlay.has_class("visible"):
+            overlay.show_for_task(self._task_model, fullscreen=True)
+            self._sync_overlay_layout_class()
+            return
+        overlay.show_for_task(self._task_model, fullscreen=True)
+        self._sync_overlay_layout_class()
 
     async def action_start_agent_output(self) -> None:
         if self._task_model.task_type is not TaskType.AUTO:
@@ -278,3 +295,16 @@ class TaskOutputScreen(KaganScreen):
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+
+class TaskOutputChatOverlay(ChatOverlay):
+    """Task Output variant: Escape closes the Task Output screen."""
+
+    def action_escape_overlay(self) -> None:
+        if not self.has_class("visible"):
+            return
+        close_action = getattr(self.screen, "action_close", None)
+        if callable(close_action):
+            close_action()
+            return
+        super().action_escape_overlay()

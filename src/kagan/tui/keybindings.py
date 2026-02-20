@@ -137,7 +137,8 @@ REVIEW_BINDINGS: list[BindingType] = [
 
 TASK_OUTPUT_BINDINGS: list[BindingType] = [
     Binding("tab", "cycle_chat_session", "Next Session", show=False),
-    Binding("ctrl+p", "cycle_output_layout", "Task Output View", show=False),
+    Binding("ctrl+p", "open_chat_fullscreen", "Orchestrator Fullscreen", show=False),
+    Binding("ctrl+o", "toggle_chat_overlay", "Orchestrator Overlay", show=False),
     Binding("a", "start_agent_output", "Start Agent"),
     Binding("s", "stop_agent_output", "Stop Agent"),
     Binding("escape", "close", "Close"),

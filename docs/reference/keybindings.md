@@ -233,7 +233,8 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 | Key        | Action |
 | ---------- | ------ |
 | ++tab++    | Next chat session target |
-| ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
+| ++ctrl+p++ | Toggle fullscreen task overlay |
+| ++ctrl+o++ | Toggle docked task overlay |
 | ++a++      | Start AUTO agent |
 | ++s++      | Stop AUTO agent |
 | ++esc++    | Close |

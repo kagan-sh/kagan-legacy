@@ -18,10 +18,13 @@ class ChatOverlayTargetManager:
     async def refresh_chat_targets(self) -> None:
         overlay = self._overlay
         current_key = overlay._active_target().key
-        targets: list[Any] = [overlay._orchestrator_target()]
+        target_scope_task_id = overlay._target_scope_task_id
+        targets: list[Any] = []
+        if target_scope_task_id is None:
+            targets.append(overlay._orchestrator_target())
         overlay._task_context_by_id = {}
         ctx = getattr(overlay.app, "ctx", None)
-        requested_task_id = overlay._requested_task_id
+        requested_task_id = target_scope_task_id or overlay._requested_task_id
         requested_context = overlay._requested_task_context
 
         if ctx is not None and getattr(ctx, "active_project_id", None):
@@ -52,12 +55,16 @@ class ChatOverlayTargetManager:
                 context = overlay._task_context(task)
                 if context is None:
                     continue
+                if target_scope_task_id is not None and context.task_id != target_scope_task_id:
+                    continue
                 overlay._task_context_by_id[context.task_id] = context
                 overlay._append_target_if_missing(targets, overlay._target_from_context(context))
 
             for task in in_review:
                 context = overlay._task_context(task)
                 if context is None:
+                    continue
+                if target_scope_task_id is not None and context.task_id != target_scope_task_id:
                     continue
                 overlay._task_context_by_id[context.task_id] = context
                 overlay._append_target_if_missing(targets, overlay._target_from_context(context))
@@ -86,6 +93,10 @@ class ChatOverlayTargetManager:
                 if target.task_id == requested_task_id:
                     preferred_key = target.key
                     break
+
+        if target_scope_task_id is not None and not targets:
+            targets.append(overlay._fallback_scoped_target(target_scope_task_id))
+            preferred_key = targets[0].key
 
         overlay._chat_targets = targets
         selected_index: int | None = None

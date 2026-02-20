@@ -7,8 +7,8 @@ import platform
 import shutil
 
 INSTALL_TIMEOUT_SECONDS = 180
-WINDOWS_FALLBACK_ORDER = ("vscode", "cursor")
-UNIX_FALLBACK_ORDER = ("vscode", "cursor")
+WINDOWS_FALLBACK_ORDER = ("vscode", "cursor", "windsurf", "kiro", "antigravity", "nvim")
+UNIX_FALLBACK_ORDER = ("nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity")
 
 
 def _which(command: str) -> str | None:
@@ -32,8 +32,12 @@ def check_terminal_installed(backend: str) -> bool:
     """Return whether the requested terminal backend executable exists in PATH."""
     executable_map = {
         "tmux": "tmux",
+        "nvim": "nvim",
         "vscode": "code",
         "cursor": "cursor",
+        "windsurf": "windsurf",
+        "kiro": "kiro",
+        "antigravity": "agy",
     }
     executable = executable_map.get(backend)
     if executable is None:
@@ -49,20 +53,34 @@ def get_manual_install_fallback(backend: str) -> str:
         if system == "Darwin":
             return (
                 "Install tmux: brew install tmux. "
-                "Or use VS Code/Cursor: https://code.visualstudio.com/download "
-                "https://cursor.com/downloads"
+                "Or use Neovim/VS Code/Cursor: https://neovim.io "
+                "https://code.visualstudio.com/download https://cursor.com/downloads"
             )
         if system == "Linux":
             return (
                 "Install tmux from your package manager. "
-                "Or use VS Code/Cursor: https://code.visualstudio.com/download "
-                "https://cursor.com/downloads"
+                "Or use Neovim/VS Code/Cursor: https://neovim.io "
+                "https://code.visualstudio.com/download https://cursor.com/downloads"
             )
         return "Install tmux manually and retry."
+    if backend == "nvim":
+        if system == "Darwin":
+            return "Install Neovim: brew install neovim"
+        if system == "Linux":
+            return "Install Neovim from your package manager (apt/dnf/pacman)."
+        if system == "Windows":
+            return "Install Neovim: winget install Neovim.Neovim"
+        return "Install Neovim manually and retry."
     if backend == "vscode":
         return "Install VS Code: https://code.visualstudio.com/download"
     if backend == "cursor":
         return "Install Cursor: https://cursor.com/downloads"
+    if backend == "windsurf":
+        return "Install Windsurf: https://windsurf.com/download"
+    if backend == "kiro":
+        return "Install Kiro: https://kiro.dev/downloads"
+    if backend == "antigravity":
+        return "Install Antigravity: https://antigravity.dev"
     return "Install the selected terminal backend manually and retry."
 
 

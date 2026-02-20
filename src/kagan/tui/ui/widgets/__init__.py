@@ -10,6 +10,7 @@ from kagan.tui.ui.widgets.base import (
     TitleInput,
 )
 from kagan.tui.ui.widgets.card import TaskCard
+from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
 from kagan.tui.ui.widgets.chat_panel import ChatPanel
 from kagan.tui.ui.widgets.column import KanbanColumn
 from kagan.tui.ui.widgets.empty_state import EmptyState
@@ -29,6 +30,7 @@ from kagan.tui.ui.widgets.workspace_repos import WorkspaceReposWidget
 __all__ = [
     "AcceptanceCriteriaArea",
     "AgentBackendSelect",
+    "ChatOverlay",
     "ChatPanel",
     "DescriptionArea",
     "EmptyState",

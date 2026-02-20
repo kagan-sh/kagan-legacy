@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, OptionList, Static
+from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from kagan.core.builtin_agents import AGENT_PRIORITY, BUILTIN_AGENTS
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class GlobalAgentPickerModal(ModalScreen[str | None]):
-    """Pick the default global agent used by planner and AUTO tasks."""
+    """Pick the default global agent used by orchestrator and AUTO tasks."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
@@ -31,7 +31,7 @@ class GlobalAgentPickerModal(ModalScreen[str | None]):
         with Container(id="agent-picker-container"):
             yield Label("Switch Global Agent", classes="modal-title")
             yield Static(
-                "Select the default agent for new planner and AUTO runs.",
+                "Select the default agent for new orchestrator and AUTO runs.",
                 id="agent-picker-description",
             )
 
@@ -46,8 +46,11 @@ class GlobalAgentPickerModal(ModalScreen[str | None]):
             with Vertical(id="agent-picker-body"):
                 yield OptionList(*options, id="agent-picker-options")
 
-            with Horizontal(classes="button-row"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
+            with Horizontal(classes="modal-action-hint-row"):
+                yield Static(
+                    "Enter select agent  |  Esc cancel",
+                    classes="modal-action-hint",
+                )
 
     def on_mount(self) -> None:
         """Focus option list and highlight current selection."""
@@ -62,10 +65,6 @@ class GlobalAgentPickerModal(ModalScreen[str | None]):
         """Apply the selected agent."""
         if event.option.id:
             self.dismiss(event.option.id)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel-btn":
-            self.dismiss(None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

@@ -1,0 +1,62 @@
+---
+title: Quickstart
+description: Install Kagan and complete your first task in under 5 minutes
+icon: material/timer
+---
+
+# Quickstart
+
+**Prerequisites:** [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, a local repo.
+
+## 1. Install
+
+```bash
+# Don't have uv? One line:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+uv tool install kagan
+kagan --version   # e.g. 0.5.0
+```
+
+## 2. Launch
+
+```bash
+cd your-project-directory
+kagan
+```
+
+Welcome screen → open/create project → board appears (BACKLOG → IN_PROGRESS → REVIEW → DONE).
+
+## 3. Create task
+
+`n` → title + description → AUTO or PAIR → `Ctrl+S` save. Task appears in BACKLOG.
+
+## 4. Run task
+
+- **AUTO:** Select task → `a` or `Enter`.
+  `Enter` opens Task Output in a split view: diff/changes on top, the same chat overlay UI as `Ctrl+O` in the lower half.
+  Use follow-up chat plus `a` (start) and `s` (stop) to steer iterations.
+- **PAIR:** Select task → `Enter` → work in tmux/Neovim/VS Code/Cursor.
+
+PAIR launch does not open the orchestrator chat overlay; it opens or redirects to your configured PAIR backend.
+
+[AUTO vs PAIR](guides/modes-auto-vs-pair.md)
+
+## 5. Review
+
+Move to REVIEW → `Enter` (Task Output) → approve/reject → merge.
+
+## Keys
+
+`?` Help · `.` Actions · `,` Settings · `F12` Debug
+
+## Failures
+
+Startup runs doctor checks automatically in silent mode. If a critical blocker is found,
+Kagan prints the doctor report and exits.
+
+```bash
+kagan doctor
+```
+
+[Troubleshooting](troubleshooting.md)

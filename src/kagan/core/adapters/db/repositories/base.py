@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class RepositoryClosing(Exception):
@@ -29,4 +30,4 @@ class ClosingAwareSessionFactory:
     def __call__(self) -> AsyncSession:
         if self._closing:
             raise RepositoryClosing("Repository is shutting down")
-        return self._inner()
+        return self._inner()  # type: ignore[return-value]

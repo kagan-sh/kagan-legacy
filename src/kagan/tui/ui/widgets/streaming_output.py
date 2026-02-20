@@ -15,8 +15,21 @@ from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
 from textual.widgets import Rule, Static
 
+from kagan.core.domain.enums import StreamPhase, StreamRole
 from kagan.core.limits import MAX_TOOL_CALLS
-from kagan.core.models.enums import StreamPhase, StreamRole
+from kagan.core.ux_text import normalize_interaction_verbosity, preview_text_for_interaction
+from kagan.core.wire.events import (
+    AgentCompleted,
+    AgentFailed,
+    AgentStatus,
+    FollowUpDelivered,
+    FollowUpQueued,
+    JobStarted,
+    ReviewRequested,
+    StreamChunk,
+    ToolExecution,
+    WireEvent,
+)
 from kagan.tui.ui.utils.helpers import WAVE_FRAMES, WAVE_INTERVAL_MS
 from kagan.tui.ui.widgets.permission_prompt import PermissionPrompt
 from kagan.tui.ui.widgets.plan_approval import PlanApprovalWidget
@@ -32,7 +45,7 @@ if TYPE_CHECKING:
     from textual.widget import Widget
 
     from kagan.core.acp.messages import Answer
-    from kagan.core.adapters.db.schema import Task
+    from kagan.tui.ui.widgets.plan_approval import PlanTaskLike
 
 
 # Regex to strip plan/todos XML blocks from response text
@@ -89,6 +102,8 @@ class StreamingOutput(VerticalScroll):
         self._thinking_indicator: ThinkingIndicator | None = None
         self._phase: StreamPhase = StreamPhase.IDLE
         self._xml_buffer: str = ""
+        self._last_agent_status: str | None = None
+        self._scroll_scheduled: bool = False
 
     @property
     def phase(self) -> StreamPhase:
@@ -101,6 +116,12 @@ class StreamingOutput(VerticalScroll):
     def compose(self) -> ComposeResult:
         yield from ()
 
+    def _interaction_verbosity(self) -> str:
+        config = getattr(self.app, "config", None)
+        general = getattr(config, "general", None)
+        configured = getattr(general, "interaction_verbosity", None)
+        return normalize_interaction_verbosity(configured)
+
     async def post_user_input(self, text: str) -> UserInput:
         """Post user input as a separate widget."""
         widget = UserInput(text)
@@ -108,14 +129,22 @@ class StreamingOutput(VerticalScroll):
         self._scroll_to_end()
         return widget
 
-    async def post_thinking_indicator(self) -> ThinkingIndicator:
+    async def post_thinking_indicator(self, *, label: str = "Thinking...") -> ThinkingIndicator:
         """Mount a thinking indicator, removed when streaming starts."""
         await self._remove_thinking_indicator()
-        self._thinking_indicator = ThinkingIndicator(classes="thinking-indicator")
+        self._thinking_indicator = ThinkingIndicator(label=label, classes="thinking-indicator")
         await self.mount(self._thinking_indicator)
         self._scroll_to_end()
         self._phase = StreamPhase.THINKING
         return self._thinking_indicator
+
+    async def clear_thinking_indicator(self, *, phase: StreamPhase | None = None) -> None:
+        """Clear thinking indicator and optionally update phase."""
+        await self._remove_thinking_indicator()
+        if phase is not None:
+            self._phase = phase
+        elif self._phase == StreamPhase.THINKING:
+            self._phase = StreamPhase.IDLE
 
     async def _remove_thinking_indicator(self) -> None:
         """Remove thinking indicator if present."""
@@ -124,7 +153,12 @@ class StreamingOutput(VerticalScroll):
             self._thinking_indicator = None
 
     async def post_response(self, fragment: str = "") -> StreamingMarkdown:
-        """Get or create agent response widget."""
+        """Get or create agent response widget.
+
+        Uses a local reference to guard against concurrent nullification of
+        ``_agent_response`` by ``post_tool_call`` during the
+        ``await self.mount(...)`` yield point.
+        """
         await self._remove_thinking_indicator()
         self._agent_thought = None
         self._phase = StreamPhase.STREAMING
@@ -133,14 +167,15 @@ class StreamingOutput(VerticalScroll):
             fragment = self._filter_xml_content(fragment)
 
         if self._agent_response is None:
-            self._agent_response = StreamingMarkdown(role=StreamRole.RESPONSE)
-            await self.mount(self._agent_response)
-            if fragment:
-                await self._agent_response.append_content(fragment)
-        elif fragment:
-            await self._agent_response.append_content(fragment)
+            response = StreamingMarkdown(role=StreamRole.RESPONSE)
+            self._agent_response = response
+            await self.mount(response)
+        else:
+            response = self._agent_response
+        if fragment:
+            await response.append_content(fragment)
         self._scroll_to_end()
-        return self._agent_response
+        return response
 
     def _filter_xml_content(self, fragment: str) -> str:
         """Filter XML blocks from fragment, buffering partial tags."""
@@ -179,16 +214,22 @@ class StreamingOutput(VerticalScroll):
         return content
 
     async def post_thought(self, fragment: str) -> StreamingMarkdown:
-        """Get or create agent thought widget."""
+        """Get or create agent thought widget.
+
+        Uses a local reference to guard against concurrent nullification of
+        ``_agent_thought`` by ``post_response`` / ``post_tool_call`` during
+        the ``await self.mount(...)`` yield point.
+        """
         await self._remove_thinking_indicator()
         if self._agent_thought is None:
-            self._agent_thought = StreamingMarkdown(role=StreamRole.THOUGHT)
-            await self.mount(self._agent_thought)
-            await self._agent_thought.append_content(fragment)
+            thought = StreamingMarkdown(role=StreamRole.THOUGHT)
+            self._agent_thought = thought
+            await self.mount(thought)
         else:
-            await self._agent_thought.append_content(fragment)
+            thought = self._agent_thought
+        await thought.append_content(fragment)
         self._scroll_to_end()
-        return self._agent_thought
+        return thought
 
     async def post_tool_call(
         self,
@@ -309,7 +350,7 @@ class StreamingOutput(VerticalScroll):
         widget.focus()
         return widget
 
-    async def post_plan_approval(self, tasks: list[Task]) -> PlanApprovalWidget:
+    async def post_plan_approval(self, tasks: list[PlanTaskLike]) -> PlanApprovalWidget:
         """Display inline plan approval widget.
 
         Args:
@@ -331,6 +372,74 @@ class StreamingOutput(VerticalScroll):
         await self.mount(rule)
         self._scroll_to_end()
         return rule
+
+    async def dispatch_wire_event(self, event: WireEvent) -> bool:
+        """Dispatch a Wire event to the appropriate output method.
+
+        Returns True if the event was handled.
+        """
+        if isinstance(event, StreamChunk):
+            if event.text.strip():
+                await self.post_response(event.text)
+            return True
+        if isinstance(event, AgentStatus):
+            status = (event.status or "running").strip().lower()
+            if status in {"initializing", "running", "thinking"}:
+                # Clear loading signal until the first response chunk arrives.
+                indicator_label = "Initializing..." if status == "initializing" else "Thinking..."
+                await self.post_thinking_indicator(label=indicator_label)
+                self._phase = StreamPhase.THINKING
+                if status != self._last_agent_status:
+                    await self.post_note(event.message or "Agent is thinking…", classes="info")
+            elif status == "ready":
+                await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+                if status != self._last_agent_status:
+                    await self.post_note(event.message or "Agent ready", classes="success")
+            else:
+                await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+                if status != self._last_agent_status:
+                    await self.post_note(
+                        event.message or f"Agent status: {status}",
+                        classes="info",
+                    )
+            self._last_agent_status = status
+            return True
+        if isinstance(event, ToolExecution):
+            msg = f"Tool: {event.tool_name}"
+            if event.result:
+                result_str = str(event.result)[:300]
+                msg += f" → {result_str}"
+            await self.post_note(msg, classes="info")
+            return True
+        if isinstance(event, AgentCompleted):
+            await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+            await self.post_note(f"Agent completed: {event.outcome or 'done'}", classes="success")
+            return True
+        if isinstance(event, AgentFailed):
+            await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+            await self.post_note(f"Agent failed: {event.error}", classes="error")
+            return True
+        if isinstance(event, JobStarted):
+            await self.post_note(f"Job started: {event.job_id}", classes="info")
+            return True
+        if isinstance(event, ReviewRequested):
+            await self.post_note("Review requested", classes="info")
+            return True
+        if isinstance(event, FollowUpQueued):
+            preview = preview_text_for_interaction(
+                event.message,
+                verbosity=self._interaction_verbosity(),
+            )
+            await self.post_note(f"Follow-up queued: {preview}", classes="dim")
+            return True
+        if isinstance(event, FollowUpDelivered):
+            preview = preview_text_for_interaction(
+                event.message,
+                verbosity=self._interaction_verbosity(),
+            )
+            await self.post_note(f"Follow-up delivered: {preview}", classes="success")
+            return True
+        return False
 
     def reset_turn(self) -> None:
         """Reset state for a new conversation turn.
@@ -356,10 +465,21 @@ class StreamingOutput(VerticalScroll):
         self._thinking_indicator = None
         self._xml_buffer = ""
         self._phase = StreamPhase.IDLE
+        self._last_agent_status = None
+        self._scroll_scheduled = False
 
     def _scroll_to_end(self) -> None:
         """Scroll to the bottom of the container."""
-        self.scroll_end(animate=False)
+        if self._scroll_scheduled:
+            return
+        self._scroll_scheduled = True
+
+        def _do_scroll() -> None:
+            self._scroll_scheduled = False
+            if self.is_mounted:
+                self.scroll_end(animate=False)
+
+        self.call_after_refresh(_do_scroll)
 
     def get_text_content(self) -> str:
         """Extract all text content from the streaming output.

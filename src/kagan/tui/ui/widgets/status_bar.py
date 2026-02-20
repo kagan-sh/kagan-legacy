@@ -33,7 +33,7 @@ class StatusBar(Widget):
     def __init__(self, **kwargs) -> None:
         """Initialize status bar with a stable widget id and animation state."""
         if "id" not in kwargs:
-            kwargs["id"] = "planner-status-bar"
+            kwargs["id"] = "agent-status-bar"
         super().__init__(**kwargs)
         self._frame_index = 0
         self._timer = None

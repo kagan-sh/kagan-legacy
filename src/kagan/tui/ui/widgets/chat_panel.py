@@ -14,7 +14,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Button, Label, Static, TextArea
 
-from kagan.core.models.enums import MessageType
+from kagan.core.domain.enums import MessageType
 from kagan.tui.ui.widgets.streaming_output import StreamingOutput
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from textual.app import ComposeResult
 
-    from kagan.core.services.queued_messages import QueuedMessage
+    from kagan.core.services.automation.runner import QueuedMessage
 
 
 class ChatInput(TextArea):

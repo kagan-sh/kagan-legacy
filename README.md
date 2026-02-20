@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>AI-powered Kanban TUI for autonomous development workflows</strong>
+  <strong>A terminal task board that runs AI agents on your code — you review, you decide, you merge.</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,10 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.kagan.sh">Documentation</a> •
-  <a href="https://docs.kagan.sh/install">Install</a> •
-  <a href="https://docs.kagan.sh/quickstart">Quickstart</a> •
+  <a href="https://docs.kagan.sh/">Documentation</a> •
+  <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> •
+  <a href="https://docs.kagan.sh/guides/mcp-setup/">MCP Setup</a> •
+  <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a> •
   <a href="https://github.com/aorumbayev/kagan/issues">Issues</a>
 </p>
 
@@ -35,7 +36,7 @@
   <img src=".github/assets/demo.gif" alt="Kagan Demo" width="700">
 </p>
 
-Terminal Kanban board with integrated AI agents for autonomous and collaborative development. Review mode surfaces merge readiness and conflict guidance.
+Create a task. Pick a mode. An AI agent does the work while you stay in control — reviewing output, approving changes, and merging when you're satisfied.
 
 ## Install
 
@@ -90,15 +91,23 @@ kagan --help       # Show all options
 
 Run `kagan` -- create tasks, run AUTO/PAIR workflows, review/rebase/merge, switch projects.
 
-### MCP delegation (admin lane)
+### From your editor (MCP)
 
-Operate from your AI CLI while Kagan stays source of truth:
+Operate Kagan from Claude Code, Gemini CLI, or any MCP-compatible client — without opening the TUI:
 
 ```bash
-kagan mcp --identity kagan_admin --capability maintainer --session-id ext:orchestrator
+kagan mcp --capability pair_worker
 ```
 
-Use `viewer`/`pair_worker` profiles for safer day-to-day automation.
+Start with `pair_worker` for day-to-day use. Escalate to `maintainer` only when needed. See [MCP setup](https://docs.kagan.sh/guides/mcp-setup/) for editor configs.
+
+### Advanced CI contract requests
+
+User-tunable CLI schema validation is not GA today (`--output-schema`, schema overlays, repair controls). If your CI/CD flow needs this, submit a feature request via:
+
+- Local template path in this checkout: `/Users/aorumbayev/experiments/kagan/.github/ISSUE_TEMPLATE/feature_request.md`
+- Repository template path: `.github/ISSUE_TEMPLATE/feature_request.md`
+- GitHub issue form: [feature request](https://github.com/aorumbayev/kagan/issues/new?template=feature_request.md)
 
 ## User-Facing Features
 
@@ -123,7 +132,7 @@ Use `viewer`/`pair_worker` profiles for safer day-to-day automation.
 
 ## Documentation
 
-Full docs at **[docs.kagan.sh](https://docs.kagan.sh)** -- [User Guide](https://docs.kagan.sh/user-guide/) | [MCP Server](https://docs.kagan.sh/mcp/)
+Full docs at **[docs.kagan.sh](https://docs.kagan.sh/)** -- [5-Minute Quickstart](https://docs.kagan.sh/quickstart/) | [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/) | [Editor MCP Setup](https://docs.kagan.sh/guides/editor-mcp-setup/)
 
 ## License
 

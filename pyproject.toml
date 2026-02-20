@@ -16,13 +16,14 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Terminals",
     "Topic :: Utilities",
     "Typing :: Typed",
 ]
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
     "agent-client-protocol>=0.7.0,<1.0.0",
@@ -70,8 +71,9 @@ dev = [
     "pyrefly>=0.50.0",
     "pytest-textual-snapshot>=1.0.0",
     "mkdocs>=1.6.1",
-    "mkdocs-material>=9.5.0",
+    "mkdocs-material[imaging]>=9.7.0",
     "pytest-cov>=7.0.0",
+    "pytest-sugar>=1.1.1",
     "pytest-xdist>=3.8.0",
     "python-semantic-release>=10.5.3",
     "hypothesis>=6.100.0",
@@ -91,6 +93,9 @@ ignore = [
     "SIM117", # Allow nested with statements for Textual compose patterns
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 60
+
 [tool.ruff.lint.per-file-ignores]
 "tests/property/*.py" = ["E402"]  # Hypothesis settings must be configured before imports
 
@@ -108,6 +113,9 @@ permissive-ignores = true
 missing-import = false
 missing-attribute = false
 missing-module-attribute = false
+bad-argument-type = false
+no-matching-overload = false
+bad-assignment = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -116,14 +124,18 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_cases.py"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "fast: pure-logic tests with no I/O, no DB, no subprocess",
     "unit: pure logic tests with no I/O",
     "contract: protocol/schema boundary tests",
     "smoke: critical user-path and transport checks",
     "snapshot: visual regression tests",
     "property: property-based tests with hypothesis",
+    "e2e: end-to-end tests requiring real agent binaries (set KAGAN_INTEGRATION_TESTS=1)",
     "core: tests scoped to kagan-core behaviors",
     "mcp: tests scoped to kagan-mcp protocol boundary",
     "tui: tests scoped to textual UI flows and rendering",
+    "plugins: tests scoped to plugin implementations",
+    "integration: tests scoped to real agent binary integration",
     "mock_platform_system(name): override platform.system() for the test",
 ]
 addopts = "-n auto --dist=loadgroup"
@@ -142,23 +154,18 @@ exclude_lines = [
 ]
 
 [tool.poe.tasks]
-dev = "textual run --dev src/kagan/app.py"
+dev = "python -m textual run --dev src/kagan/tui/app.py"
 test = "pytest tests/"
 lint = "ruff check src/ tests/"
+check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
+check-complexity = "ruff check src/ tests/ --select C90"
+check-guardrails = ["check-loc", "check-complexity"]
 format = "ruff format src/ tests/"
 typecheck = "pyrefly check src/ tests/"
-check = ["lint", "typecheck", "test-core", "test-mcp", "test-smoke"]
-docs-serve = "mkdocs serve"
+check = ["lint", "typecheck", "test"]
+docs-dev = "mkdocs serve -f mkdocs.local.yml"
 docs-build = "mkdocs build"
-# Snapshot tests (run sequentially - parallel can cause issues with snapshots)
-test-core = "pytest tests/core/unit/ -m \"core and unit\" -v"
-test-mcp = "pytest tests/mcp/contract/ -m \"mcp and contract\" -v"
-test-tui-snapshot = "pytest tests/tui/snapshot/ -m \"tui and snapshot\" -n 0 -v"
-test-smoke-core = "pytest tests/core/smoke/ tests/mcp/smoke/ -m smoke -v"
-test-smoke-tui = "pytest tests/tui/smoke/ -m \"tui and smoke\" -n 0 -v"
-test-smoke = ["test-smoke-core", "test-smoke-tui"]
-test-snapshot = "pytest tests/tui/snapshot/ -n 0 -v"
-test-snapshot-update = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
+docs-check = "pytest tests/test_docs_drift.py -v"
 
 [tool.poe.tasks.install-local]
 help = "Install kagan as a local CLI tool (replaces any existing install)"
@@ -189,6 +196,10 @@ help = "Preview current and next prerelease version"
 [tool.poe.tasks.release-dry-run-beta]
 shell = "uv run semantic-release --noop -vv version --as-prerelease --prerelease-token beta --print-tag"
 help = "Dry-run beta release (no changes made)"
+
+[tool.poe.tasks.snapshot-update]
+help = "Update TUI snapshot tests (run sequentially)"
+cmd = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
 
 [tool.poe.tasks.workflows-check]
 help = "Validate GitHub Actions workflows using act (requires act installed)"

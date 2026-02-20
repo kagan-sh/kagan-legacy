@@ -1,51 +1,66 @@
 ---
-title: Home
+title: Kagan
 description: AI-powered Kanban TUI for autonomous development workflows
-icon: material/home
 hide:
-
   - navigation
+  - toc
 ---
 
-# Kagan Docs
+# Provider agnostic orchestration layer for AI-assisted software development.
 
-Build faster with a keyboard-first AI Kanban workflow.
-
-## TL;DR
+Kagan is a keyboard-first Kanban board that orchestrates AI agents across the full task lifecycle — plan, run, review, merge — with you in the decision seat at every gate.
 
 ```bash
-uv tool install kagan
-cd your-project
-kagan
+uvx kagan
 ```
 
-Press ++question++ anytime in the app for context-aware shortcuts.
+<div class="grid cards" markdown>
 
-## I Want To...
+-   :material-lightning-bolt:{ .lg .middle } **60-second start**
 
-| Goal                                | Open This                                            | Time      |
-| ----------------------------------- | ---------------------------------------------------- | --------- |
-| Install and run Kagan fast          | [5-Minute Quickstart](getting-started/quickstart.md) | 5 min     |
-| Choose the right working mode       | [AUTO vs PAIR](how-to/task-modes.md)                 | 2 min     |
-| Connect external agents over MCP    | [MCP Setup](how-to/mcp-setup.md)                     | 5 min     |
-| Work across multiple repositories   | [Multi-Repo Guide](how-to/multi-repo.md)             | 4 min     |
-| Fix common issues                   | [Troubleshooting](troubleshooting.md)                | 3 min     |
-| Understand contributor architecture | [Architecture](reference/architecture.md)            | reference |
-| See all shortcuts                   | [Keyboard Shortcuts](reference/keybindings.md)       | reference |
-| Tune behavior and defaults          | [Configuration](reference/configuration.md)          | reference |
-| Browse CLI commands quickly         | [Command Reference](getting-started/commands.md)     | reference |
+    ---
 
-## Fast paths
+    One command. Any repo. Board up, first task running.
 
-**From zero:** [Quickstart](getting-started/quickstart.md) -> create task (`n`) -> pick mode ([AUTO vs PAIR](how-to/task-modes.md))
+    [:octicons-arrow-right-24: Quickstart](quickstart.md)
 
-**Already using Kagan:** [Commands](getting-started/commands.md) -> [MCP Setup](how-to/mcp-setup.md) -> [Configuration](reference/configuration.md)
+-   :material-robot:{ .lg .middle } **AUTO vs PAIR**
 
-## Product model
+    ---
 
-Kagan has one shared core process and two interfaces:
+    Autonomous background agents or hands-on interactive sessions. Switch per task, per moment.
 
-- **TUI**: keyboard-first day-to-day workflow
-- **MCP server**: external AI agents read/update the same task state
+    [:octicons-arrow-right-24: Choose your mode](guides/modes-auto-vs-pair.md)
 
-Task status, review state, and project context stay consistent regardless of where actions originate. Contributor architecture: [Architecture](reference/architecture.md).
+-   :material-server-network:{ .lg .middle } **Run from your editor**
+
+    ---
+
+    Connect Claude Code, Gemini CLI, or any MCP-compatible client. Operate Kagan without leaving your editor.
+
+    [:octicons-arrow-right-24: MCP setup](guides/mcp-setup.md)
+
+-   :material-source-branch:{ .lg .middle } **Review before merge**
+
+    ---
+
+    Every task surfaces a structured review: diff summary, criteria checklist, your decision.
+
+    [:octicons-arrow-right-24: Architecture](concepts/architecture-overview.md)
+
+</div>
+
+---
+
+## Find what you need
+
+| Goal | Page |
+| ---- | ---- |
+| First run in under 5 minutes | [Quickstart](quickstart.md) |
+| Understand AUTO vs PAIR execution | [AUTO vs PAIR](guides/modes-auto-vs-pair.md) |
+| Connect an AI client via MCP | [MCP setup](guides/mcp-setup.md) |
+| Work across multiple repos | [MCP setup → Multi-repo](guides/mcp-setup.md#multi-repo) |
+| Connect GitHub issues and PRs | [GitHub plugin](guides/github.md) |
+| Fix a known issue fast | [Troubleshooting](troubleshooting.md) |
+| See all CLI flags | [CLI reference](reference/cli.md) |
+| Browse all MCP tools | [MCP tools reference](reference/mcp-tools.md) |

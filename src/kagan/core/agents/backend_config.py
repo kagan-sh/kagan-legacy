@@ -50,13 +50,77 @@ class CodexAgentConfig(BaseModel):
     model: str = "o3"
 
 
+class GooseAgentConfig(BaseModel):
+    """Configuration for the Goose (Block) agent backend."""
+
+    type: Literal["goose"] = "goose"
+    model: str = ""
+
+
+class OpenHandsAgentConfig(BaseModel):
+    """Configuration for the OpenHands agent backend."""
+
+    type: Literal["openhands"] = "openhands"
+    model: str = ""
+
+
+class AuggieAgentConfig(BaseModel):
+    """Configuration for the Auggie (Augment Code) agent backend."""
+
+    type: Literal["auggie"] = "auggie"
+    model: str = ""
+
+
+class AmpAgentConfig(BaseModel):
+    """Configuration for the Amp (AmpCode) agent backend."""
+
+    type: Literal["amp"] = "amp"
+    model: str = ""
+
+
+class CagentAgentConfig(BaseModel):
+    """Configuration for the Docker cagent backend."""
+
+    type: Literal["cagent"] = "cagent"
+    model: str = ""
+
+
+class StakpakAgentConfig(BaseModel):
+    """Configuration for the Stakpak agent backend."""
+
+    type: Literal["stakpak"] = "stakpak"
+    model: str = ""
+
+
+class VibeAgentConfig(BaseModel):
+    """Configuration for the Mistral Vibe agent backend."""
+
+    type: Literal["vibe"] = "vibe"
+    model: str = ""
+
+
+class VTCodeAgentConfig(BaseModel):
+    """Configuration for the VT Code agent backend."""
+
+    type: Literal["vtcode"] = "vtcode"
+    model: str = ""
+
+
 AgentBackendConfig = Annotated[
     ClaudeAgentConfig
     | OpenCodeAgentConfig
     | CopilotAgentConfig
     | GeminiAgentConfig
     | KimiAgentConfig
-    | CodexAgentConfig,
+    | CodexAgentConfig
+    | GooseAgentConfig
+    | OpenHandsAgentConfig
+    | AuggieAgentConfig
+    | AmpAgentConfig
+    | CagentAgentConfig
+    | StakpakAgentConfig
+    | VibeAgentConfig
+    | VTCodeAgentConfig,
     Field(discriminator="type"),
 ]
 
@@ -67,6 +131,14 @@ BACKEND_CONFIG_DEFAULTS: dict[str, type[BaseModel]] = {
     "gemini": GeminiAgentConfig,
     "kimi": KimiAgentConfig,
     "codex": CodexAgentConfig,
+    "goose": GooseAgentConfig,
+    "openhands": OpenHandsAgentConfig,
+    "auggie": AuggieAgentConfig,
+    "amp": AmpAgentConfig,
+    "cagent": CagentAgentConfig,
+    "stakpak": StakpakAgentConfig,
+    "vibe": VibeAgentConfig,
+    "vtcode": VTCodeAgentConfig,
 }
 
 _BACKEND_CONFIG_TYPES = (
@@ -76,6 +148,14 @@ _BACKEND_CONFIG_TYPES = (
     GeminiAgentConfig,
     KimiAgentConfig,
     CodexAgentConfig,
+    GooseAgentConfig,
+    OpenHandsAgentConfig,
+    AuggieAgentConfig,
+    AmpAgentConfig,
+    CagentAgentConfig,
+    StakpakAgentConfig,
+    VibeAgentConfig,
+    VTCodeAgentConfig,
 )
 
 
@@ -105,11 +185,19 @@ def get_backend_config(agent_type: str) -> AgentBackendConfig:
 __all__ = [
     "BACKEND_CONFIG_DEFAULTS",
     "AgentBackendConfig",
+    "AmpAgentConfig",
+    "AuggieAgentConfig",
+    "CagentAgentConfig",
     "ClaudeAgentConfig",
     "CodexAgentConfig",
     "CopilotAgentConfig",
     "GeminiAgentConfig",
+    "GooseAgentConfig",
     "KimiAgentConfig",
     "OpenCodeAgentConfig",
+    "OpenHandsAgentConfig",
+    "StakpakAgentConfig",
+    "VTCodeAgentConfig",
+    "VibeAgentConfig",
     "get_backend_config",
 ]

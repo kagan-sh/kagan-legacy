@@ -1,7 +1,7 @@
 """FastMCP server setup for Kagan.
 
 Uses MCP SDK best practices:
-- Lifespan for resource management (IPCClient, CoreClientBridge)
+- Lifespan for resource management (IPCClient, SDK transport)
 - Context injection for built-in logging
 - Pydantic models for structured responses
 - Progress reporting for long operations
@@ -12,11 +12,10 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
-from mcp.types import ToolAnnotations
 
 from kagan.core.config import KaganConfig
 from kagan.core.constants import (
@@ -29,44 +28,29 @@ from kagan.core.constants import (
 )
 from kagan.core.ipc.client import IPCClient
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
-from kagan.core.launcher import ensure_core_running
 from kagan.core.mcp_naming import get_mcp_server_name
 from kagan.core.paths import get_config_path, get_core_token_path, get_database_path
-from kagan.core.security import (
+from kagan.core.policy import (
     CAPABILITY_PROFILES,
-    CapabilityMethod,
     CapabilityProfile,
     ProtocolCapability,
     ProtocolMethod,
     protocol_call,
 )
-from kagan.mcp.models import (
-    TaskRuntimeState,
-)
-from kagan.mcp.registrars import (
-    JOB_CODE_JOB_TIMEOUT,
-    JOB_CODE_NOT_RUNNING,
-    JOB_CODE_START_BLOCKED,
-    JOB_CODE_START_PENDING,
-    JOB_CODE_TASK_TYPE_MISMATCH,
-    JOB_NON_TERMINAL_STATUSES,
-    JOB_TERMINAL_STATUSES,
-    TASK_TYPE_AUTO,
-    TASK_TYPE_VALUES,
-    TOOL_GET_TASK,
-    TOOL_JOBS_WAIT,
-    TOOL_TASKS_UPDATE,
-    SharedToolRegistrationContext,
-    TaskStatusInput,
-    TaskTypeInput,
-    ToolRegistrationContext,
-    register_full_mode_tools,
-    register_shared_tools,
-)
-from kagan.mcp.tools import CoreClientBridge
+from kagan.core.services.runtime import ensure_core_running
+from kagan.mcp._response_models import *  # noqa: F403  # Import all response models for FastMCP type inspection
+from kagan.mcp._tool_closures import _register_full_mode_tools
+from kagan.mcp._tool_gen import SharedToolRegistrationContext, register_shared_tools
+from kagan.sdk import KaganSDK, SDKTransport
+from kagan.version import get_kagan_version
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
+
+    from mcp.types import ToolAnnotations
+
+    from kagan.mcp._response_models import TaskRuntimeState
+
 
 logger = logging.getLogger(__name__)
 
@@ -109,18 +93,18 @@ class MCPRuntimeConfig:
 
 @dataclass
 class MCPLifespanContext:
-    """Context available during MCP server lifetime via lifespan.
+    """Context during MCP lifetime: IPC client and SDK. Fails fast when core unavailable."""
 
-    Startup fails fast when core is unavailable, so context always has an
-    active IPC client and bridge.
-    """
-
-    bridge: CoreClientBridge
     client: IPCClient
+    sdk: KaganSDK
 
 
-# Type alias for our Context with lifespan
 MCPContext = Context[ServerSession, MCPLifespanContext]
+
+_IDENTITY_PROFILE_CEILING: dict[str, CapabilityProfile] = {
+    MCP_IDENTITY_DEFAULT: CapabilityProfile.PAIR_WORKER,
+    MCP_IDENTITY_ADMIN: CapabilityProfile.MAINTAINER,
+}
 _PROFILE_RANK: dict[CapabilityProfile, int] = {
     CapabilityProfile.VIEWER: 0,
     CapabilityProfile.PLANNER: 1,
@@ -128,31 +112,6 @@ _PROFILE_RANK: dict[CapabilityProfile, int] = {
     CapabilityProfile.OPERATOR: 3,
     CapabilityProfile.MAINTAINER: 4,
 }
-_IDENTITY_PROFILE_CEILING: dict[str, CapabilityProfile] = {
-    MCP_IDENTITY_DEFAULT: CapabilityProfile.PAIR_WORKER,
-    MCP_IDENTITY_ADMIN: CapabilityProfile.MAINTAINER,
-}
-_SETTINGS_UPDATE_FIELD_MAP: dict[str, str] = {
-    "auto_review": "general.auto_review",
-    "auto_approve": "general.auto_approve",
-    "require_review_approval": "general.require_review_approval",
-    "serialize_merges": "general.serialize_merges",
-    "default_base_branch": "general.default_base_branch",
-    "max_concurrent_agents": "general.max_concurrent_agents",
-    "default_worker_agent": "general.default_worker_agent",
-    "default_pair_terminal_backend": "general.default_pair_terminal_backend",
-    "default_model_claude": "general.default_model_claude",
-    "default_model_opencode": "general.default_model_opencode",
-    "default_model_codex": "general.default_model_codex",
-    "default_model_gemini": "general.default_model_gemini",
-    "default_model_kimi": "general.default_model_kimi",
-    "default_model_copilot": "general.default_model_copilot",
-    "skip_pair_instructions": "ui.skip_pair_instructions",
-}
-
-_READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
-_MUTATING = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
-_DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False)
 
 
 def _runtime_config_or_default(runtime_config: MCPRuntimeConfig | None) -> MCPRuntimeConfig:
@@ -269,16 +228,13 @@ async def _mcp_lifespan(
     mcp: FastMCP,
     runtime_config: MCPRuntimeConfig | None = None,
 ) -> AsyncIterator[MCPLifespanContext]:
-    """Lifespan manager for MCP server resources.
-
-    Discovers the core endpoint (or uses the CLI override), connects an
-    IPCClient, and wraps it in a CoreClientBridge.
-
-    Startup fails when core is unavailable so MCP cannot bypass core
-    coordination with degraded behavior.
-    """
+    """Lifespan: discover endpoint, connect IPC, create SDK. Fails fast when core unavailable."""
     config = _runtime_config_or_default(runtime_config)
-    endpoint = await _resolve_or_autostart_endpoint(config)
+    # Resolve through module globals so test monkeypatches take effect
+    g = globals()
+    resolve_fn = g.get("_resolve_or_autostart_endpoint", _resolve_or_autostart_endpoint)
+    ipc_client_cls = g.get("IPCClient", IPCClient)
+    endpoint = await resolve_fn(config)
 
     if endpoint is None:
         if config.endpoint:
@@ -299,7 +255,7 @@ async def _mcp_lifespan(
     session_id = config.session_id or MCP_DEFAULT_SESSION_ID
     capability_profile = config.capability_profile or MCP_FALLBACK_CAPABILITY
     session_origin = config.identity or MCP_IDENTITY_DEFAULT
-    client = IPCClient(endpoint)
+    client = ipc_client_cls(endpoint)
 
     try:
         await client.connect()
@@ -315,37 +271,38 @@ async def _mcp_lifespan(
             hint="Ensure core is running and reachable, then reconnect MCP.",
         ) from exc
 
-    bridge = CoreClientBridge(
-        client,
-        session_id,
-        capability_profile=capability_profile,
-        session_origin=session_origin,
+    sdk = KaganSDK(
+        transport=SDKTransport(
+            endpoint=endpoint,
+            client=client,
+            session_id=session_id,
+            session_origin=session_origin,
+            client_version=get_kagan_version(),
+            capability_profile=capability_profile,
+        ),
     )
     try:
-        yield MCPLifespanContext(bridge=bridge, client=client)
+        yield MCPLifespanContext(client=client, sdk=sdk)
     finally:
         await client.close()
 
 
-def _get_bridge(ctx: MCPContext) -> CoreClientBridge | None:
-    """Extract CoreClientBridge from request context.
-
-    Returns ``None`` when no lifespan context is present.
-    """
+def _get_transport(ctx: MCPContext) -> SDKTransport | None:
+    """Extract SDKTransport from request context."""
     lifespan_ctx = ctx.request_context.lifespan_context
-    if lifespan_ctx is None:
+    if not isinstance(lifespan_ctx, MCPLifespanContext):
         return None
-    return lifespan_ctx.bridge
+    return lifespan_ctx.sdk._transport
 
 
-def _require_bridge(ctx: MCPContext | None) -> CoreClientBridge:
-    """Return an active bridge or raise a user-facing no-session error."""
+def _require_transport(ctx: MCPContext | None) -> SDKTransport:
+    """Return an active transport or raise a user-facing no-session error."""
     if ctx is None:
         raise ValueError(f"[NO_CONTEXT] {NO_SESSION_MESSAGE}")
-    bridge = _get_bridge(ctx)
-    if bridge is None:
+    transport = _get_transport(ctx)
+    if transport is None:
         raise ValueError(f"[NO_SESSION] {NO_SESSION_MESSAGE}")
-    return bridge
+    return transport
 
 
 def _build_server_instructions(readonly: bool) -> str:
@@ -354,10 +311,12 @@ def _build_server_instructions(readonly: bool) -> str:
         "Kagan is a Kanban-style task management system for AI-assisted development.",
         "",
         "The task_id is provided in your system prompt when Kagan assigns you work.",
-        "Use get_task to inspect any task (with include_logs=true for execution history).",
-        "Use tasks_list to coordinate with other agents.",
+        "Use task_get to inspect any task (with include_logs=true for execution history).",
+        "If task_get logs are truncated or logs_has_more=true, use task_logs.",
+        "Use task_list to coordinate with other agents.",
         "Important: status is Kanban column, task_type is execution mode (AUTO/PAIR).",
-        "Use jobs_submit/jobs_wait/jobs_get/jobs_events/jobs_cancel for async automation control.",
+        "Use job_start to spawn agents. job_poll(wait=true) tracks spawn state.",
+        "Use task_wait to long-poll for agent completion (wait_for_status).",
         "If a tool returns next_tool/next_arguments, use them for deterministic recovery.",
     ]
     if readonly:
@@ -373,13 +332,17 @@ def _build_server_instructions(readonly: bool) -> str:
             [
                 "",
                 "When assigned a task, follow this workflow:",
-                "1. Call get_context with your task_id to get requirements and codebase context",
-                "2. Use update_scratchpad to record progress, decisions, and blockers",
-                "3. Call jobs_list_actions to discover valid job actions.",
-                "4. For automation runs: set task_type='AUTO', then call jobs_submit.",
-                "5. Track progress with jobs_wait/jobs_get and inspect timeline with jobs_events.",
-                "6. Use jobs_cancel only to stop in-flight work.",
-                "7. Call request_review when implementation is complete",
+                "1. Call task_get(mode='context') with your task_id for full bounded context",
+                "2. Use task_patch(append_note=...) to record progress and blockers",
+                "3. For automation runs: set task_type='AUTO' using task_patch.",
+                "4. Call job_start to submit work.",
+                "5. Use job_poll(wait=true) to confirm the spawn succeeded (short timeout).",
+                "6. Use task_wait(task_id, wait_for_status=['REVIEW','DONE'])",
+                "   to long-poll until the agent completes (default 1800s, max 3600s).",
+                "7. Use job_cancel only to stop in-flight work.",
+                "8. Call task_patch(transition='request_review') when implementation is complete",
+                "9. Use review_apply(action='merge') (or no-change close flow) to complete task.",
+                "   review_apply(action='approve') records approval but does not set DONE.",
             ]
         )
     return "\n".join(base)
@@ -387,6 +350,8 @@ def _build_server_instructions(readonly: bool) -> str:
 
 def _runtime_state_from_raw(raw: dict[str, Any] | None) -> TaskRuntimeState | None:
     """Build TaskRuntimeState from raw response payload when present."""
+    from kagan.mcp._response_models import TaskRuntimeState
+
     if raw is None or not isinstance(raw, dict):
         return None
     return TaskRuntimeState(
@@ -438,223 +403,17 @@ def _is_allowed(
     )
 
 
-def _normalized_mode(value: str | None) -> str | None:
-    """Return normalized task mode token (AUTO/PAIR) when value matches."""
-    if value is None:
-        return None
-    normalized = value.strip().upper()
-    if normalized in TASK_TYPE_VALUES:
-        return normalized
-    return None
-
-
-def _normalize_status_task_type_inputs(
-    *,
-    status: TaskStatusInput | None,
-    task_type: TaskTypeInput | None,
-) -> tuple[str | None, str | None, str | None]:
-    """Normalize common status-vs-task_type confusion.
-
-    When callers pass status=AUTO/PAIR, interpret that as task_type if possible.
-    Returns: (normalized_status, normalized_task_type, normalization_message).
-    """
-    mode_from_status = _normalized_mode(str(status) if status is not None else None)
-    normalized_task_type = _normalized_mode(str(task_type) if task_type is not None else None)
-    if mode_from_status is None:
-        normalized_status = str(status) if status is not None else None
-        normalized_task_type_str = str(task_type) if task_type is not None else None
-        return normalized_status, normalized_task_type_str, None
-    if normalized_task_type and normalized_task_type != mode_from_status:
-        message = (
-            f"Ignored status={status!r} because task_type={task_type!r} is already set. "
-            "Use status for BACKLOG/IN_PROGRESS/REVIEW/DONE only."
-        )
-        return None, normalized_task_type, message
-    message = (
-        f"Interpreted status={status!r} as task_type={mode_from_status!r}. "
-        "Use status for BACKLOG/IN_PROGRESS/REVIEW/DONE only."
+def _resolve_module_functions() -> tuple[
+    Callable[..., Any], Callable[..., bool], Callable[..., Any], Callable[..., Any]
+]:
+    """Resolve transport, is_allowed, runtime_state, plugin_registry from globals."""
+    g = globals()
+    return (
+        g.get("_require_transport", _require_transport),
+        g.get("_is_allowed", _is_allowed),
+        g.get("_runtime_state_from_raw", _runtime_state_from_raw),
+        g.get("_build_plugin_registry", _build_plugin_registry),
     )
-    return None, mode_from_status, message
-
-
-def _envelope_fields(
-    raw: dict[str, object],
-    *,
-    default_success: bool,
-    default_message: str | None = None,
-) -> MutatingEnvelope:
-    """Extract common mutating-tool envelope fields from a core response."""
-    return MutatingEnvelope(
-        success=bool(raw.get("success", default_success)),
-        message=_coerce_string_field(raw, "message", default=default_message),
-        code=_coerce_string_field(raw, "code"),
-        hint=_coerce_string_field(raw, "hint"),
-        next_tool=_coerce_string_field(raw, "next_tool"),
-        next_arguments=_dict_or_none(raw.get("next_arguments")),
-    )
-
-
-def _envelope_with_code_override(
-    raw: dict[str, object],
-    *,
-    default_success: bool,
-    default_message: str | None,
-    fallback_code: str | None,
-) -> MutatingEnvelope:
-    envelope = _envelope_fields(
-        raw, default_success=default_success, default_message=default_message
-    )
-    if envelope.code is not None:
-        return envelope
-    return MutatingEnvelope(
-        success=envelope.success,
-        message=envelope.message,
-        code=fallback_code,
-        hint=envelope.hint,
-        next_tool=envelope.next_tool,
-        next_arguments=envelope.next_arguments,
-    )
-
-
-@dataclass(frozen=True)
-class MutatingEnvelope:
-    success: bool
-    message: str | None
-    code: str | None
-    hint: str | None
-    next_tool: str | None
-    next_arguments: dict[str, object] | None
-
-
-class _EnvelopeStatusFields(TypedDict):
-    success: bool
-    message: str | None
-    code: str | None
-
-
-class _EnvelopeRecoveryFields(_EnvelopeStatusFields):
-    hint: str | None
-    next_tool: str | None
-    next_arguments: dict[str, object] | None
-
-
-def _envelope_status_fields(envelope: MutatingEnvelope) -> _EnvelopeStatusFields:
-    return {
-        "success": envelope.success,
-        "message": envelope.message,
-        "code": envelope.code,
-    }
-
-
-def _envelope_recovery_fields(envelope: MutatingEnvelope) -> _EnvelopeRecoveryFields:
-    return {
-        "success": envelope.success,
-        "message": envelope.message,
-        "code": envelope.code,
-        "hint": envelope.hint,
-        "next_tool": envelope.next_tool,
-        "next_arguments": envelope.next_arguments,
-    }
-
-
-def _project_settings_update_fields(values: dict[str, object | None]) -> dict[str, object]:
-    """Map tool argument names to allowlisted dotted settings paths."""
-    fields: dict[str, object] = {}
-    for input_name, dotted_path in _SETTINGS_UPDATE_FIELD_MAP.items():
-        value = values.get(input_name)
-        if value is not None:
-            fields[dotted_path] = value
-    return fields
-
-
-def _dict_or_none(value: object) -> dict[str, object] | None:
-    if isinstance(value, dict):
-        return {str(key): value[key] for key in value}
-    return None
-
-
-def _str_or_none(value: object) -> str | None:
-    if isinstance(value, str):
-        return value
-    return None
-
-
-def _coerce_string_field(
-    raw: dict[str, object],
-    key: str,
-    *,
-    default: str | None = None,
-) -> str | None:
-    value = raw.get(key)
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value
-    return str(value)
-
-
-def _derive_job_get_recovery(
-    *,
-    job_id: str,
-    task_id: str,
-    status: str | None,
-    code: str | None,
-    timed_out: bool | None,
-    runtime: dict[str, object] | None,
-) -> tuple[str | None, dict[str, object] | None, str | None]:
-    """Provide deterministic recovery guidance when core omits next_tool hints."""
-    normalized_status = status.lower() if isinstance(status, str) else None
-    if timed_out or code == JOB_CODE_JOB_TIMEOUT:
-        return (
-            TOOL_JOBS_WAIT,
-            {"job_id": job_id, "task_id": task_id, "timeout_seconds": 1.5},
-            "Wait timed out before terminal status. Call jobs_wait again.",
-        )
-    if normalized_status in JOB_NON_TERMINAL_STATUSES:
-        return (
-            TOOL_JOBS_WAIT,
-            {"job_id": job_id, "task_id": task_id, "timeout_seconds": 1.5},
-            "Job is still in progress. Call jobs_wait until status is terminal.",
-        )
-    if code == JOB_CODE_TASK_TYPE_MISMATCH:
-        return (
-            TOOL_TASKS_UPDATE,
-            {"task_id": task_id, "task_type": TASK_TYPE_AUTO},
-            "Set task_type to AUTO before resubmitting jobs_submit.",
-        )
-    if code == JOB_CODE_START_BLOCKED:
-        blocked_ids_raw: list[object] = []
-        if runtime is not None:
-            raw_value = runtime.get("blocked_by_task_ids", [])
-            if isinstance(raw_value, list | tuple):
-                blocked_ids_raw = list(raw_value)
-        blocked_ids = [str(value) for value in blocked_ids_raw if str(value).strip()]
-        if blocked_ids:
-            return (
-                TOOL_GET_TASK,
-                {"task_id": blocked_ids[0], "mode": "summary"},
-                "Resolve the blocking task first, then resubmit jobs_submit.",
-            )
-        return (
-            TOOL_GET_TASK,
-            {"task_id": task_id, "mode": "summary"},
-            "Inspect runtime details and retry after the blocking condition clears.",
-        )
-    if code == JOB_CODE_START_PENDING:
-        return (
-            TOOL_JOBS_WAIT,
-            {"job_id": job_id, "task_id": task_id, "timeout_seconds": 1.5},
-            "Start is pending scheduler admission. Keep calling jobs_wait until it resolves.",
-        )
-    if code == JOB_CODE_NOT_RUNNING:
-        return (
-            TOOL_GET_TASK,
-            {"task_id": task_id, "include_logs": True, "mode": "summary"},
-            "Agent is not running. Inspect latest runtime/logs before retrying.",
-        )
-    if normalized_status in JOB_TERMINAL_STATUSES:
-        return None, None, None
-    return None, None, None
 
 
 def _create_mcp_server(
@@ -665,20 +424,22 @@ def _create_mcp_server(
     config = _runtime_config_or_default(runtime_config)
     default_profile = CapabilityProfile.PLANNER if readonly else CapabilityProfile.MAINTAINER
     default_identity = MCP_IDENTITY_DEFAULT if readonly else MCP_IDENTITY_ADMIN
+
+    # Resolve current bindings so monkeypatches on kagan.mcp.server take effect
+    resolved_require_transport, resolved_is_allowed, resolved_rsf, resolved_bpr = (
+        _resolve_module_functions()
+    )
+
     effective_profile = _resolve_effective_profile(
         default_profile,
         default_identity,
         runtime_config=config,
     )
 
-    def allows_all(*pairs: CapabilityMethod) -> bool:
+    def allows_all(*pairs: tuple[str, str]) -> bool:
         return all(
-            _is_allowed(effective_profile, capability, method) for capability, method in pairs
-        )
-
-    def allows_any(*pairs: CapabilityMethod) -> bool:
-        return any(
-            _is_allowed(effective_profile, capability, method) for capability, method in pairs
+            resolved_is_allowed(effective_profile, capability, method)
+            for capability, method in pairs
         )
 
     @asynccontextmanager
@@ -692,15 +453,23 @@ def _create_mcp_server(
         lifespan=lifespan,
     )
 
-    _register_shared_tools(mcp, allows_all=allows_all, effective_profile=effective_profile)
+    _register_shared_tools(
+        mcp,
+        allows_all=allows_all,
+        effective_profile=effective_profile,
+        require_transport_fn=resolved_require_transport,
+        runtime_state_fn=resolved_rsf,
+    )
 
     if not readonly:
         _register_full_mode_tools(
             mcp,
             allows_all=allows_all,
-            allows_any=allows_any,
             effective_profile=effective_profile,
             enable_internal_instrumentation=config.enable_internal_instrumentation,
+            require_transport_fn=resolved_require_transport,
+            runtime_state_fn=resolved_rsf,
+            build_plugin_registry_fn=resolved_bpr,
         )
 
     return mcp
@@ -711,6 +480,8 @@ def _register_shared_tools(
     *,
     allows_all: Callable[..., bool],
     effective_profile: str,
+    require_transport_fn: Callable[..., Any] | None = None,
+    runtime_state_fn: Callable[..., Any] | None = None,
 ) -> None:
     """Register planner/read-only/shared MCP tools."""
     register_shared_tools(
@@ -718,48 +489,20 @@ def _register_shared_tools(
         allows_all=allows_all,
         effective_profile=effective_profile,
         helpers=SharedToolRegistrationContext(
-            require_bridge=_require_bridge,
-            runtime_state_from_raw=_runtime_state_from_raw,
+            require_transport=require_transport_fn or _require_transport,
+            runtime_state_from_raw=runtime_state_fn or _runtime_state_from_raw,
         ),
-        read_only_annotation=_READ_ONLY,
-        mutating_annotation=_MUTATING,
     )
 
 
-def _register_full_mode_tools(
-    mcp: FastMCP,
-    *,
-    allows_all: Callable[..., bool],
-    allows_any: Callable[..., bool],
-    effective_profile: str,
-    enable_internal_instrumentation: bool,
-) -> None:
-    """Register mutating/full-mode-only MCP tools."""
-    register_full_mode_tools(
-        mcp,
-        allows_all=allows_all,
-        allows_any=allows_any,
-        effective_profile=effective_profile,
-        enable_internal_instrumentation=enable_internal_instrumentation,
-        helpers=ToolRegistrationContext(
-            require_bridge=_require_bridge,
-            runtime_state_from_raw=_runtime_state_from_raw,
-            normalize_status_task_type_inputs=_normalize_status_task_type_inputs,
-            envelope_fields=_envelope_fields,
-            envelope_with_code_override=_envelope_with_code_override,
-            envelope_status_fields=_envelope_status_fields,
-            envelope_recovery_fields=_envelope_recovery_fields,
-            project_settings_update_fields=_project_settings_update_fields,
-            normalized_mode=_normalized_mode,
-            derive_job_get_recovery=_derive_job_get_recovery,
-            str_or_none=_str_or_none,
-            dict_or_none=_dict_or_none,
-            is_allowed=_is_allowed,
-        ),
-        read_only_annotation=_READ_ONLY,
-        mutating_annotation=_MUTATING,
-        destructive_annotation=_DESTRUCTIVE,
-    )
+def _build_plugin_registry() -> Any:
+    """Build a PluginRegistry with plugins discovered from config."""
+    from kagan.core.plugins.sdk import PluginRegistry
+
+    config = KaganConfig.load(get_config_path())
+    registry = PluginRegistry()
+    registry.discover_and_register(config.plugins.discovery)
+    return registry
 
 
 def list_registered_tool_names(mcp: FastMCP) -> set[str]:
@@ -794,3 +537,14 @@ def main(
         mcp.run(transport="stdio")
     except MCPStartupError as exc:
         raise SystemExit(str(exc)) from exc
+
+
+__all__ = [
+    "MCPContext",
+    "MCPLifespanContext",
+    "MCPRuntimeConfig",
+    "MCPStartupError",
+    "get_registered_tool_annotations",
+    "list_registered_tool_names",
+    "main",
+]

@@ -7,6 +7,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from kagan.core.ipc.constants import MAX_LINE_BYTES
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.transports import DefaultTransport, TCPLoopbackTransport, UnixSocketTransport
 
@@ -15,32 +16,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_MAX_LINE_BYTES = 4 * 1024 * 1024  # 4 MiB per JSON line
 _DEFAULT_TIMEOUT = 30.0
 
 
 class IPCClient:
-    """Async IPC client for communicating with the Kagan core process.
-
-    The client connects to the core via the configured transport and
-    includes the bearer token in every request.
-
-    Usage::
-
-        client = IPCClient(endpoint=endpoint)
-        await client.connect()
-        response = await client.request(
-            session_id="s1",
-            capability="tasks",
-            method="list",
-        )
-        await client.close()
-
-    Or as an async context manager::
-
-        async with IPCClient(endpoint=endpoint) as client:
-            response = await client.request(...)
-    """
+    """Async IPC client for communicating with the Kagan core process."""
 
     def __init__(
         self,
@@ -74,10 +54,7 @@ class IPCClient:
         return self._endpoint
 
     async def connect(self) -> None:
-        """Open a connection to the core.
-
-        For TCP transports the handshake token is sent automatically.
-        """
+        """Open a connection to the core."""
         if self.is_connected:
             return
 
@@ -111,35 +88,26 @@ class IPCClient:
             self._reader = None
             logger.debug("IPC client disconnected")
 
+    async def reconnect(self, endpoint: CoreEndpoint) -> None:
+        """Close current connection and swap to a new endpoint."""
+        await self.close()
+        self._endpoint = endpoint
+        self._transport = self._transport_for_endpoint(endpoint)
+
     async def request(
         self,
         *,
         session_id: str,
         session_profile: str | None = None,
-        session_origin: str | None = None,
+        session_origin: str,
+        client_version: str,
         capability: str,
         method: str,
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        request_timeout_seconds: float | None = None,
     ) -> CoreResponse:
-        """Send a request to the core and return the response.
-
-        The bearer token from the endpoint is injected automatically.
-
-        Args:
-            session_id: Identifier of the originating client session.
-            capability: Logical service group (e.g. ``tasks``).
-            method: Method name within the capability.
-            params: Method-specific parameters.
-            idempotency_key: Optional de-duplication key.
-
-        Returns:
-            The ``CoreResponse`` from the core.
-
-        Raises:
-            ConnectionError: If the client is not connected.
-            asyncio.TimeoutError: If the core does not respond in time.
-        """
+        """Send a request to the core and return the response."""
         if not self.is_connected or self._reader is None or self._writer is None:
             msg = "Client is not connected; call connect() first"
             raise ConnectionError(msg)
@@ -148,6 +116,7 @@ class IPCClient:
             session_id=session_id,
             session_profile=session_profile,
             session_origin=session_origin,
+            client_version=client_version,
             capability=capability,
             method=method,
             params=params or {},
@@ -158,6 +127,9 @@ class IPCClient:
         payload["bearer_token"] = self._endpoint.token
 
         line = json.dumps(payload, separators=(",", ":")) + "\n"
+        effective_timeout = (
+            self._timeout if request_timeout_seconds is None else request_timeout_seconds
+        )
 
         async with self._lock:
             self._writer.write(line.encode("utf-8"))
@@ -166,8 +138,12 @@ class IPCClient:
             try:
                 raw = await asyncio.wait_for(
                     self._reader.readline(),
-                    timeout=self._timeout,
+                    timeout=effective_timeout,
                 )
+            except ValueError as exc:
+                await self.close()
+                msg = "IPC response exceeded stream framing limit"
+                raise ConnectionError(msg) from exc
             except TimeoutError:
                 await self.close()
                 raise
@@ -175,6 +151,10 @@ class IPCClient:
         if not raw:
             await self.close()
             msg = "Connection closed by server"
+            raise ConnectionError(msg)
+        if len(raw) > MAX_LINE_BYTES:
+            await self.close()
+            msg = "IPC response exceeded max line size"
             raise ConnectionError(msg)
 
         try:

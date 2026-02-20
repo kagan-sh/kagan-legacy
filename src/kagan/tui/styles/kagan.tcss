@@ -104,6 +104,15 @@ KaganHeader .header-logo {
     padding-right: 1;
 }
 
+KaganHeader .header-logo.logo-connected {
+    color: $secondary;
+}
+
+KaganHeader .header-logo.logo-disconnected {
+    color: $text-muted;
+    text-opacity: 60%;
+}
+
 KaganHeader .header-title {
     width: auto;
     color: $primary;
@@ -140,10 +149,29 @@ KaganHeader .header-sessions {
     color: $text-muted;
 }
 
+KaganHeader .header-github-status {
+    width: auto;
+    padding-right: 2;
+    color: $text-muted;
+}
+
+KaganHeader .header-github-status.github-synced {
+    color: $success;
+}
+
+KaganHeader .header-github-status.github-pending {
+    color: $warning;
+}
+
 KaganHeader .header-agent {
     width: auto;
     color: $secondary;
     text-style: bold;
+    padding-right: 2;
+}
+
+KaganHeader .core-status {
+    width: auto;
     padding-right: 2;
 }
 
@@ -170,6 +198,70 @@ FooterKey > .footer-key--description {
 /* Modal Footer - dock to bottom of screen */
 ModalScreen Footer {
     dock: bottom;
+}
+
+/* =============================================================================
+   SHARED MODAL HINTS (keyboard-first popups)
+   ============================================================================= */
+
+/* Centered, dimmed keyboard-controls copy for popup/modals. */
+.modal-keyboard-hint,
+.modal-action-hint,
+ConfirmModal .confirm-hint,
+PairInstructionsModal .tmux-hint,
+ReviewModal .hint-label,
+RejectionInputModal .hint-label {
+    width: 100%;
+    text-align: center;
+    color: $text-disabled;
+    text-opacity: 85%;
+}
+
+/* Bottom-docked action hint strip for keyboard-only modal actions. */
+.modal-action-hint-row {
+    dock: bottom;
+    width: 100%;
+    height: auto;
+    align: center middle;
+    border-top: solid $border;
+    background: $surface;
+    margin-top: 1;
+    padding: 1 1 0 1;
+}
+
+/* Single centered action-hint label. */
+.modal-action-hint-row .modal-action-hint {
+    width: 100%;
+    text-align: center;
+}
+
+/* Optional three-slot layout when hints are split by left/center/right. */
+.modal-action-hint-row .modal-action-hint-start,
+.modal-action-hint-row .modal-action-hint-center,
+.modal-action-hint-row .modal-action-hint-end {
+    width: 1fr;
+    color: $text-disabled;
+    text-opacity: 85%;
+}
+
+.modal-action-hint-row .modal-action-hint-start {
+    text-align: left;
+}
+
+.modal-action-hint-row .modal-action-hint-center {
+    text-align: center;
+}
+
+.modal-action-hint-row .modal-action-hint-end {
+    text-align: right;
+}
+
+.modal-action-hint-key {
+    color: $secondary;
+}
+
+.modal-action-hint-separator {
+    color: $border;
 }
 
 /* =============================================================================
@@ -342,6 +434,14 @@ TaskCard .card-branch {
     height: 1;
     color: $text-muted;
     text-style: italic;
+    margin-left: 1;
+}
+
+/* GitHub context badges (issue #, PR #) */
+TaskCard .card-badge-gh {
+    width: auto;
+    height: 1;
+    color: $text-muted;
     margin-left: 1;
 }
 
@@ -661,6 +761,38 @@ TaskDetailsModal #audit-content {
     padding: 1;
 }
 
+/* Resume Context section (IN_PROGRESS / REVIEW tasks) */
+TaskDetailsModal .resume-context-section {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+TaskDetailsModal .resume-context-scroll {
+    max-height: 6;
+    height: auto;
+    background: $background;
+}
+
+TaskDetailsModal #resume-context-content {
+    color: $text-muted;
+    padding: 0 1;
+    height: auto;
+}
+
+/* GitHub context section */
+TaskDetailsModal .github-section {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+TaskDetailsModal #github-context-content {
+    color: $text-muted;
+    padding: 0 1;
+    height: auto;
+}
+
 TaskDetailsModal .meta-row {
     width: 100%;
     height: auto;
@@ -954,8 +1086,7 @@ ConfirmModal .confirm-message {
 }
 
 ConfirmModal .confirm-hint {
-    text-align: center;
-    color: $text-muted;
+    padding-top: 1;
 }
 
 /* =============================================================================
@@ -1095,9 +1226,6 @@ PairInstructionsModal .section-title {
 }
 
 .tmux-hint {
-    width: 100%;
-    text-align: center;
-    color: $text-muted;
     padding-top: 1;
 }
 
@@ -1520,6 +1648,7 @@ ReviewModal {
 #review-modal-container {
     width: 95%;
     height: 90%;
+    layout: vertical;
     background: $surface;
     border: round $primary;
     padding: 1 2;
@@ -1559,6 +1688,60 @@ ReviewModal .section-title {
 
 #review-tabs {
     height: 1fr;
+    min-height: 10;
+}
+
+#review-split {
+    height: 1fr;
+    layout: vertical;
+}
+
+#review-session-pane {
+    height: 1fr;
+    min-height: 10;
+    border-top: solid $border;
+    padding-top: 1;
+}
+
+ReviewModal ChatOverlay.embedded {
+    layer: default;
+    dock: none;
+    width: 100%;
+    height: 1fr;
+    max-height: 1fr;
+    border: round $border;
+    border-top: solid $border;
+    padding: 0;
+    margin: 0 0 1 0;
+    offset-y: 0;
+}
+
+ReviewModal ChatOverlay.embedded.hidden {
+    display: none;
+}
+
+ReviewModal ChatOverlay.embedded #chat-overlay-main {
+    padding: 0 1;
+}
+
+ReviewModal ChatOverlay.embedded #chat-overlay-empty-state {
+    display: none;
+}
+
+#review-session-header {
+    width: 100%;
+    height: auto;
+    align: left middle;
+}
+
+#review-session-header .spacer {
+    width: 1fr;
+}
+
+.session-badge {
+    width: auto;
+    color: $text-muted;
+    margin-left: 1;
 }
 
 ReviewModal TabbedContent {
@@ -1576,6 +1759,14 @@ ReviewModal TabPane {
 #review-summary-scroll {
     height: 1fr;
     padding-right: 1;
+}
+
+#review-task-summary {
+    padding: 1 1;
+    background: $background;
+    border: round $primary;
+    height: auto;
+    margin-bottom: 1;
 }
 
 #review-stats {
@@ -1719,10 +1910,19 @@ ReviewModal TabPane {
 /* ChatPanel inside ReviewModal - must fill available space */
 #ai-review-chat {
     height: 1fr;
-    min-height: 8;
+    min-height: 6;
 }
 
 #ai-review-chat.hidden {
+    display: none;
+}
+
+#review-agent-output-chat {
+    height: 1fr;
+    min-height: 6;
+}
+
+#review-agent-output-chat.hidden {
     display: none;
 }
 
@@ -1735,8 +1935,6 @@ ReviewModal TabPane {
 }
 
 ReviewModal .hint-label {
-    text-align: center;
-    color: $text-muted;
     padding-top: 1;
 }
 
@@ -1750,13 +1948,22 @@ ReviewModal .button-row {
     background: $surface;
 }
 
+ReviewModal #review-keyboard-hint {
+    width: 100%;
+    text-align: center;
+    color: $text-disabled;
+    text-opacity: 85%;
+}
+
 ReviewModal .button-row .button-group {
     height: auto;
     align: center middle;
+    display: none;
 }
 
 ReviewModal .button-row .spacer {
     width: 1fr;
+    display: none;
 }
 
 ReviewModal .button-row .button-group-start Button {
@@ -1773,6 +1980,44 @@ ReviewModal .button-row .button-group-end Button {
 
 #review-agent-output-chat.queue-disabled .chat-input {
     display: none;
+}
+
+/* PR Comments tab */
+#pr-comments-scroll {
+    height: 1fr;
+    padding-right: 1;
+}
+
+#pr-comments-loading {
+    height: 3;
+}
+
+#pr-comments-loading.hidden {
+    display: none;
+}
+
+.pr-comment-item {
+    padding: 1;
+    margin-bottom: 1;
+    background: $background;
+    border: round $border;
+    height: auto;
+}
+
+.pr-comment-resolve-btn {
+    dock: bottom;
+    width: auto;
+    min-width: 0;
+    margin-top: 1;
+    background: transparent;
+    border: none;
+    color: $text-disabled;
+    text-opacity: 85%;
+}
+
+.pr-comment-resolve-btn:focus {
+    color: $secondary;
+    text-style: bold;
 }
 
 /* =============================================================================
@@ -1819,8 +2064,6 @@ RejectionInputModal .prompt-label {
 }
 
 RejectionInputModal .hint-label {
-    text-align: center;
-    color: $text-muted;
     padding-top: 1;
 }
 
@@ -2027,6 +2270,24 @@ SettingsModal .button-row {
 
 SettingsModal .button-row Button {
     margin: 0 1;
+}
+
+SettingsModal PersonaField {
+    width: 100%;
+    height: 3;
+    background: $background;
+    color: $text-muted;
+    border: solid $border;
+    padding: 0 1;
+}
+
+SettingsModal PersonaField:focus {
+    border: solid $primary;
+    color: $text;
+}
+
+SettingsModal PersonaField:hover {
+    background: $panel;
 }
 
 /* TaskEditorScreen styles */
@@ -2422,13 +2683,11 @@ MarkdownContent {
     color: $text-muted;
 }
 
-.permission-prompt .permission-buttons {
+.permission-prompt .permission-controls {
     margin-top: 1;
-    height: auto;
-}
-
-.permission-prompt .permission-buttons Button {
-    margin-right: 1;
+    text-align: center;
+    color: $text-muted;
+    text-style: dim;
 }
 
 .permission-prompt .permission-timer {
@@ -2530,22 +2789,24 @@ HelpModal .modal-title {
    SLASH COMPLETE WIDGET (Autocomplete Overlay)
    ============================================================================= */
 
-/* Slash command autocomplete dropdown overlay - full width, above status bar */
+/* Slash command autocomplete popup - overlays chat footer region. */
 .slash-complete {
+    layer: overlay;
     dock: bottom;
+    /* Keep popup above the input row while still overlaying footer chrome. */
+    offset-y: -3;
     width: 100%;
     height: auto;
-    max-height: 6;
     background: $surface;
-    border-top: solid $primary;
-    padding: 0;
+    border: round $primary;
     margin: 0;
+    padding: 0;
 }
 
 .slash-complete #slash-options {
     width: 100%;
     height: auto;
-    max-height: 5;
+    max-height: 6;
     background: $surface;
     scrollbar-gutter: stable;
 }
@@ -2553,6 +2814,7 @@ HelpModal .modal-title {
 .slash-complete #slash-options > .option-list--option {
     padding: 0 1;
     color: $text;
+    text-wrap: nowrap;
 }
 
 .slash-complete #slash-options > .option-list--option-highlighted {
@@ -2809,6 +3071,15 @@ KanbanHintBar .hint-global {
     text-align: right;
     padding: 0 1;
     color: $text-disabled;
+}
+
+/* When orchestrator overlay is visible, hide board chrome under it. */
+KanbanScreen.chat-overlay-visible KanbanHintBar {
+    display: none;
+}
+
+KanbanScreen.chat-overlay-visible #review-queue-hint {
+    display: none;
 }
 
 /* =============================================================================
@@ -3469,49 +3740,6 @@ AgentChoiceModal {
     min-height: 1;
     color: $text-muted;
 }
-
-/* =============================================================================
-   INSTANCE LOCKED MODAL
-   ============================================================================= */
-
-/* Instance Locked Modal */
-InstanceLockedModal {
-    align: center middle;
-}
-
-#instance-locked-container {
-    width: 60;
-    height: auto;
-    max-height: 16;
-    background: $surface;
-    border: thick $error;
-    padding: 1 2;
-}
-
-#instance-locked-title {
-    text-align: center;
-    text-style: bold;
-    color: $error;
-    margin-bottom: 1;
-}
-
-#instance-locked-message,
-#instance-locked-note {
-    text-align: center;
-    margin-bottom: 1;
-}
-
-#instance-locked-info {
-    text-align: center;
-    color: $text-muted;
-    margin-bottom: 1;
-}
-
-#instance-locked-quit {
-    width: 100%;
-    margin-top: 1;
-}
-
 /* =============================================================================
    PEEK OVERLAY
    ============================================================================= */
@@ -3545,4 +3773,252 @@ PeekOverlay .peek-status {
 
 PeekOverlay .peek-content {
     color: $text-muted;
+}
+
+/* =============================================================================
+   CHAT OVERLAY (bottom dock, expand from bottom)
+   ============================================================================= */
+
+ChatOverlay {
+    layer: overlay;
+    dock: bottom;
+    width: 100%;
+    height: 24;
+    max-height: 50%;
+    background: $surface;
+    border-top: heavy $primary;
+    padding: 0 1 0 1;
+    display: none;
+    offset-y: 100%;
+}
+
+ChatOverlay.visible {
+    display: block;
+    offset-y: 0;
+}
+
+/* Fullscreen overlay state when fullscreen mode is active. */
+ChatOverlay.visible.fullscreen {
+    height: 1fr;
+    max-height: 1fr;
+    border-top: none;
+    border: none;
+    padding: 0;
+    background: $background;
+    overflow: hidden;
+}
+
+ChatOverlay #chat-overlay-logo {
+    width: 100%;
+    color: $primary;
+    text-align: center;
+    content-align: center middle;
+    padding-bottom: 0;
+}
+
+ChatOverlay.visible.fullscreen #chat-overlay-logo {
+    padding-bottom: 1;
+}
+
+ChatOverlay #chat-overlay-main {
+    width: 100%;
+    height: 1fr;
+    min-height: 8;
+    background: $background;
+    layout: vertical;
+    layers: default overlay;
+    padding: 0 1 0 1;
+}
+
+ChatOverlay.visible.fullscreen #chat-overlay-main {
+    padding: 1;
+}
+
+ChatOverlay #chat-overlay-content {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+}
+
+ChatOverlay #chat-overlay-empty-state {
+    width: 100%;
+    height: 1fr;
+    align: center middle;
+    content-align: center middle;
+    padding: 1;
+}
+
+ChatOverlay .chat-overlay-empty-content {
+    width: auto;
+    min-width: 56;
+    max-width: 90;
+    height: auto;
+    align: center middle;
+    content-align: center middle;
+}
+
+ChatOverlay .chat-overlay-empty-card {
+    width: 100%;
+    height: auto;
+    background: transparent;
+    border: none;
+    align: center middle;
+    padding: 1 2;
+}
+
+ChatOverlay #chat-overlay-empty-heading {
+    width: 100%;
+    text-style: bold underline;
+    color: $secondary;
+    text-align: center;
+    content-align: center middle;
+    padding-bottom: 1;
+}
+
+ChatOverlay #chat-overlay-empty-quote {
+    display: none;
+    width: 100%;
+    text-style: italic;
+    text-align: center;
+    color: $primary;
+    padding-bottom: 1;
+}
+
+ChatOverlay.chat-overlay-has-quote #chat-overlay-empty-quote {
+    display: block;
+}
+
+ChatOverlay #chat-overlay-empty-description {
+    display: none;
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+ChatOverlay #chat-overlay-empty-examples {
+    display: none;
+    width: 100%;
+    align: center middle;
+}
+
+ChatOverlay .chat-overlay-empty-section-title {
+    width: 100%;
+    text-style: bold;
+    text-align: center;
+    color: $text-muted;
+    padding-top: 1;
+}
+
+ChatOverlay .chat-overlay-empty-example {
+    width: 100%;
+    text-align: center;
+    color: $text;
+}
+
+ChatOverlay.visible.fullscreen .chat-overlay-empty-content {
+    min-width: 70;
+    max-width: 90;
+}
+
+ChatOverlay.visible.fullscreen #chat-overlay-empty-description {
+    display: block;
+}
+
+ChatOverlay.visible.fullscreen #chat-overlay-empty-examples {
+    display: block;
+}
+
+ChatOverlay #chat-overlay-output {
+    width: 100%;
+    height: 1fr;
+    min-height: 8;
+    background: $background;
+    display: none;
+}
+
+ChatOverlay #chat-overlay-output > ScrollableContainer {
+    height: 1fr;
+    padding: 0 1;
+    scrollbar-gutter: stable;
+}
+
+ChatOverlay #chat-overlay-bottom {
+    dock: bottom;
+    height: auto;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+ChatOverlay #chat-overlay-status {
+    margin: 0 1;
+}
+
+ChatOverlay #chat-overlay-input {
+    width: 100%;
+    padding: 0 1;
+    height: auto;
+    min-height: 1;
+    max-height: 6;
+    border: solid $border;
+    background: transparent;
+    color: $text;
+}
+
+ChatOverlay #chat-overlay-input:focus {
+    border: solid $primary;
+}
+
+ChatOverlay.has-content #chat-overlay-empty-state {
+    display: none;
+}
+
+ChatOverlay.has-content #chat-overlay-output {
+    display: block;
+}
+
+/* =============================================================================
+   PLUGIN FORM MODAL
+   ============================================================================= */
+
+PluginFormModal {
+    align: center middle;
+}
+
+PluginFormModal #dialog {
+    width: 60;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 2 3;
+}
+
+PluginFormModal .dialog-title {
+    text-align: center;
+    text-style: bold;
+    color: $secondary;
+    padding-bottom: 1;
+}
+
+PluginFormModal .field {
+    height: auto;
+    margin: 1 0 0 0;
+}
+
+PluginFormModal .field-label {
+    margin-bottom: 0;
+    color: $text;
+    text-style: bold;
+}
+
+PluginFormModal #dialog-actions {
+    height: auto;
+    margin-top: 2;
+    align: center middle;
+}
+
+PluginFormModal #dialog-actions Button {
+    margin: 0 1;
+    min-width: 16;
 }

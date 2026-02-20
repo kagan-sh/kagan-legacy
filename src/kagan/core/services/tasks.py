@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from kagan.core.models.enums import (
+from kagan.core.domain.enums import (
     SessionStatus,
     SessionType,
+)
+from kagan.core.domain.task_rules import (
     transition_status_from_agent_complete,
     transition_status_from_review_pass,
     transition_status_from_review_reject,
@@ -22,8 +24,8 @@ if TYPE_CHECKING:
         SessionRecordRepository,
     )
     from kagan.core.adapters.db.schema import Session, Task
+    from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
     from kagan.core.events import EventBus
-    from kagan.core.models.enums import TaskPriority, TaskStatus, TaskType
     from kagan.core.services.types import ProjectId, TaskId
 
 
@@ -34,96 +36,6 @@ def _extract_task_mentions(description: str) -> set[str]:
     if not description:
         return set()
     return {match.group(1) for match in _TASK_MENTION_RE.finditer(description)}
-
-
-class TaskService(Protocol):
-    """Protocol boundary for task operations."""
-
-    async def create_task(
-        self,
-        title: str,
-        description: str,
-        *,
-        project_id: ProjectId | None = None,
-        created_by: str | None = None,
-    ) -> Task: ...
-
-    async def update_task(
-        self,
-        task_id: TaskId,
-        *,
-        title: str | None = None,
-        description: str | None = None,
-        priority: TaskPriority | None = None,
-        task_type: TaskType | None = None,
-        agent_backend: str | None = None,
-        acceptance_criteria: list[str] | None = None,
-    ) -> Task | None: ...
-
-    async def set_status(
-        self,
-        task_id: TaskId,
-        to_status: TaskStatus,
-        *,
-        reason: str | None = None,
-    ) -> Task | None: ...
-
-    async def get_task(self, task_id: TaskId) -> Task | None: ...
-
-    async def list_tasks(
-        self,
-        *,
-        project_id: ProjectId | None = None,
-        status: TaskStatus | None = None,
-    ) -> list[Task]: ...
-
-    async def delete_task(self, task_id: TaskId) -> bool: ...
-
-    async def update_fields(self, task_id: TaskId, **kwargs: object) -> Task | None: ...
-
-    async def move(self, task_id: TaskId, new_status: TaskStatus) -> Task | None: ...
-
-    async def create_session_record(
-        self,
-        *,
-        workspace_id: str,
-        session_type: SessionType,
-        external_id: str | None = None,
-    ) -> Session: ...
-
-    async def close_session_record(
-        self,
-        session_id: str,
-        *,
-        status: SessionStatus = SessionStatus.CLOSED,
-    ) -> Session | None: ...
-
-    async def close_session_by_external_id(
-        self,
-        external_id: str,
-        *,
-        status: SessionStatus = SessionStatus.CLOSED,
-    ) -> Session | None: ...
-
-    async def get_by_status(self, status: TaskStatus) -> Sequence[Task]: ...
-
-    async def search(self, query: str) -> Sequence[Task]: ...
-
-    async def get_task_links(self, task_id: TaskId) -> list[str]: ...
-
-    async def get_scratchpad(self, task_id: TaskId) -> str: ...
-
-    async def update_scratchpad(self, task_id: TaskId, content: str) -> None: ...
-
-    async def sync_status_from_agent_complete(
-        self, task_id: TaskId, success: bool
-    ) -> Task | None: ...
-
-    async def sync_status_from_review_pass(self, task_id: TaskId) -> Task | None: ...
-
-    async def sync_status_from_review_reject(
-        self, task_id: TaskId, reason: str | None = None
-    ) -> Task | None: ...
 
 
 class TaskServiceImpl:

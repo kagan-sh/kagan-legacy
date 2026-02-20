@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, ClassVar, Literal
 
+from textual.binding import Binding, BindingType
 from textual.containers import VerticalGroup
 from textual.widgets import Static
 
-from kagan.core.models.enums import PlanStatus
+from kagan.core.domain.enums import PlanStatus
 from kagan.tui.ui.utils.helpers import copy_with_notification
 
 if TYPE_CHECKING:
@@ -20,6 +21,11 @@ class PlanEntry(Static):
     """Single plan entry with double-click to copy."""
 
     DEFAULT_CLASSES = "plan-entry"
+    can_focus = True
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("enter", "copy", "Copy", key_display="Enter", show=False),
+        Binding("y", "copy", "Copy", show=False),
+    ]
 
     def __init__(self, entry_content: str, status: PlanStatus) -> None:
         super().__init__()
@@ -42,10 +48,16 @@ class PlanEntry(Static):
         icon = self._status.icon
         return f"  {icon} {self._entry_content}"
 
+    def action_copy(self) -> None:
+        """Copy the plan entry content."""
+        copy_with_notification(self.app, self._entry_content, "Plan entry")
+
     async def _on_click(self, event: Click) -> None:
         """Handle click events - copy on double-click."""
-        if event.chain == 2:
-            copy_with_notification(self.app, self._entry_content, "Plan entry")
+        if event.chain == 1:
+            self.focus()
+        elif event.chain == 2:
+            self.action_copy()
 
 
 class PlanDisplay(VerticalGroup):

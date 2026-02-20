@@ -8,7 +8,7 @@ Uses canonical Project and Repo models from SDK for attribute access (.id, .path
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -70,6 +70,44 @@ def _normalize_workspace_view(workspace: object) -> WorkspaceView:
         created_at=_normalize_optional_text(_value_from(workspace, "created_at")),
         updated_at=_normalize_optional_text(_value_from(workspace, "updated_at")),
     )
+
+
+def _normalize_project_repo_detail(repo: object, *, index: int) -> dict[str, object]:
+    repo_id = _normalize_optional_text(_value_from(repo, "id")) or ""
+    repo_name = _normalize_optional_text(_value_from(repo, "name")) or ""
+    repo_path = _normalize_optional_text(_value_from(repo, "path")) or ""
+    default_branch = _normalize_optional_text(_value_from(repo, "default_branch")) or "main"
+    is_primary = bool(_value_from(repo, "is_primary"))
+    raw_display_order = _value_from(repo, "display_order")
+    if isinstance(raw_display_order, int) and not isinstance(raw_display_order, bool):
+        display_order = raw_display_order
+    else:
+        display_order = index
+
+    return {
+        "id": repo_id,
+        "name": repo_name,
+        "path": repo_path,
+        "default_branch": default_branch,
+        "is_primary": is_primary,
+        "display_order": display_order,
+    }
+
+
+def _normalize_repo_workspace_input(repo: object) -> dict[str, str]:
+    source: object = asdict(repo) if is_dataclass(repo) else repo
+    repo_id = _normalize_optional_text(_value_from(source, "repo_id"))
+    repo_path = _normalize_optional_text(_value_from(source, "repo_path"))
+    target_branch = _normalize_optional_text(_value_from(source, "target_branch"))
+    if repo_id is None or repo_path is None or target_branch is None:
+        raise ValueError(
+            "Each repo input must include non-empty repo_id, repo_path, and target_branch"
+        )
+    return {
+        "repo_id": repo_id,
+        "repo_path": repo_path,
+        "target_branch": target_branch,
+    }
 
 
 def _normalize_dict_list(value: object) -> list[dict[str, Any]]:
@@ -259,7 +297,10 @@ class CoreBackedApi:
 
     async def get_project_repo_details(self, project_id: str):
         result = await self._sdk.projects_repos(project_id)
-        return result.repos
+        return [
+            _normalize_project_repo_detail(repo, index=index)
+            for index, repo in enumerate(result.repos)
+        ]
 
     async def find_project_by_repo_path(self, repo_path: str | Path):
         result = await self._sdk.projects_find_by_repo_path(str(repo_path))
@@ -374,7 +415,8 @@ class CoreBackedApi:
         return await self.get_workspace_path(task_id)
 
     async def provision_workspace(self, *, task_id: str, repos: list[Any]):
-        return await self._sdk.get_workspace_path(task_id)
+        payload = [_normalize_repo_workspace_input(repo) for repo in repos]
+        return await self._sdk.workspaces_provision(task_id, payload)
 
     async def list_workspaces(self, *, task_id: str | None = None):
         result = await self._sdk.workspaces_list(task_id)

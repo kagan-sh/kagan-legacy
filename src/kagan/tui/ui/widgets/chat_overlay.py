@@ -188,7 +188,7 @@ class ChatOverlay(Vertical):
         self._skills_loaded: bool = False
         self._auto_stream_task_id: str | None = None
         self._auto_stream_execution_id: str | None = None
-        self._auto_stream_entry_ids: set[str] = set()
+        self._auto_stream_entry_offsets: dict[str, int] = {}
         self._auto_stream_wait_noted: bool = False
         self._auto_stream_idle_noted: bool = False
         self._last_ctrl_c_press_at: float | None = None
@@ -303,7 +303,8 @@ class ChatOverlay(Vertical):
 
     @staticmethod
     def _parse_skill_frontmatter(text: str) -> dict[str, str]:
-        content = text.lstrip("\ufeff")
+        # Normalize line endings so frontmatter parsing is consistent on Windows and POSIX.
+        content = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
         if not content.startswith("---\n"):
             return {}
         terminator = "\n---"
@@ -595,7 +596,7 @@ class ChatOverlay(Vertical):
             return
         self._auto_stream_task_id = None
         self._auto_stream_execution_id = None
-        self._auto_stream_entry_ids.clear()
+        self._auto_stream_entry_offsets.clear()
         self._auto_stream_wait_noted = False
         self._auto_stream_idle_noted = False
 
@@ -631,7 +632,7 @@ class ChatOverlay(Vertical):
         if self._auto_stream_task_id != task_id:
             self._auto_stream_task_id = task_id
             self._auto_stream_execution_id = None
-            self._auto_stream_entry_ids.clear()
+            self._auto_stream_entry_offsets.clear()
             self._auto_stream_wait_noted = False
             self._auto_stream_idle_noted = False
 
@@ -667,7 +668,7 @@ class ChatOverlay(Vertical):
 
         if self._auto_stream_execution_id != execution_id_str:
             self._auto_stream_execution_id = execution_id_str
-            self._auto_stream_entry_ids.clear()
+            self._auto_stream_entry_offsets.clear()
             self._auto_stream_wait_noted = False
             self._auto_stream_idle_noted = False
             await self.output.post_note(
@@ -683,19 +684,27 @@ class ChatOverlay(Vertical):
         for index, entry in enumerate(entries):
             entry_id = self._state_attr(entry, "id", f"idx-{index}")
             normalized_id = str(entry_id)
-            if normalized_id in self._auto_stream_entry_ids:
-                continue
-            self._auto_stream_entry_ids.add(normalized_id)
             logs = self._state_attr(entry, "logs")
             if not isinstance(logs, str) or not logs:
                 continue
-            for line in logs.splitlines():
+            offset = self._auto_stream_entry_offsets.get(normalized_id, 0)
+            if offset < 0 or offset > len(logs):
+                offset = 0
+            new_chunk = logs[offset:]
+            self._auto_stream_entry_offsets[normalized_id] = len(logs)
+            if not new_chunk:
+                continue
+            for line in new_chunk.splitlines():
                 await self._render_auto_log_line(line)
 
     async def _render_auto_log_line(self, log_line: str) -> None:
+        normalized_line = log_line.strip()
+        if not normalized_line:
+            return
         try:
-            data = json.loads(log_line)
+            data = json.loads(normalized_line)
         except json.JSONDecodeError:
+            await self.output.post_note(normalized_line, classes="info")
             return
 
         message_entries = data.get("messages", [])

@@ -35,6 +35,38 @@ class _FakeWorkspaceSdk:
         )
 
 
+class _FakeProjectRepoSdk:
+    async def projects_repos(self, project_id: str) -> SimpleNamespace:
+        del project_id
+        return SimpleNamespace(
+            repos=[
+                SimpleNamespace(
+                    id="repo-1",
+                    name="Repo One",
+                    path="/tmp/repo-one",
+                    default_branch="main",
+                ),
+                {
+                    "id": "repo-2",
+                    "name": "Repo Two",
+                    "path": "/tmp/repo-two",
+                    "default_branch": "develop",
+                    "is_primary": True,
+                    "display_order": 7,
+                },
+            ]
+        )
+
+
+class _FakeWorkspaceProvisionSdk:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[dict[str, str]]]] = []
+
+    async def workspaces_provision(self, task_id: str, repos: list[dict[str, str]]) -> str:
+        self.calls.append((task_id, repos))
+        return "ws-123"
+
+
 class _FakeWorkspaceCleanupSdk:
     def __init__(self) -> None:
         self.received_task_ids: list[set[str]] = []
@@ -63,6 +95,75 @@ async def test_list_workspaces_normalizes_dict_payloads_to_workspace_views() -> 
     assert [item.id for item in workspaces] == ["ws-1", "ws-2"]
     assert workspaces[0].branch_name == "task-abc"
     assert workspaces[1].status == "archived"
+
+
+@pytest.mark.asyncio
+async def test_get_project_repo_details_normalizes_payload_shape() -> None:
+    api = CoreBackedApi(_FakeProjectRepoSdk())
+
+    repo_details = await api.get_project_repo_details("proj-1")
+
+    assert repo_details == [
+        {
+            "id": "repo-1",
+            "name": "Repo One",
+            "path": "/tmp/repo-one",
+            "default_branch": "main",
+            "is_primary": False,
+            "display_order": 0,
+        },
+        {
+            "id": "repo-2",
+            "name": "Repo Two",
+            "path": "/tmp/repo-two",
+            "default_branch": "develop",
+            "is_primary": True,
+            "display_order": 7,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_provision_workspace_sends_repo_payload_to_sdk() -> None:
+    from kagan.core.services.workspaces import RepoWorkspaceInput
+
+    sdk = _FakeWorkspaceProvisionSdk()
+    api = CoreBackedApi(sdk)
+
+    workspace_id = await api.provision_workspace(
+        task_id="task-1",
+        repos=[
+            RepoWorkspaceInput(
+                repo_id="repo-1",
+                repo_path="/tmp/repo-one",
+                target_branch="main",
+            ),
+            {
+                "repo_id": "repo-2",
+                "repo_path": "/tmp/repo-two",
+                "target_branch": "develop",
+            },
+        ],
+    )
+
+    assert workspace_id == "ws-123"
+    assert sdk.calls == [
+        (
+            "task-1",
+            [
+                {
+                    "repo_id": "repo-1",
+                    "repo_path": "/tmp/repo-one",
+                    "target_branch": "main",
+                },
+                {
+                    "repo_id": "repo-2",
+                    "repo_path": "/tmp/repo-two",
+                    "target_branch": "develop",
+                },
+            ],
+        )
+    ]
 
 
 @pytest.mark.asyncio

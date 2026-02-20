@@ -498,6 +498,19 @@ class KaganSDK:
             params["task_id"] = task_id
         return _build(WorkspaceListResponse, await self._query("workspaces", "list", params))
 
+    async def workspaces_provision(
+        self,
+        task_id: str,
+        repos: list[dict[str, str]],
+    ) -> str:
+        result = await self._request(
+            "workspaces",
+            "provision_workspace",
+            {"task_id": task_id, "repos": repos},
+        )
+        workspace_id = result.get("workspace_id")
+        return str(workspace_id) if workspace_id is not None else ""
+
     async def audit_list(
         self,
         capability: str | None = None,

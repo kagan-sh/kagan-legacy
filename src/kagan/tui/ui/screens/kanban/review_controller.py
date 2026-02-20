@@ -410,6 +410,7 @@ class KanbanReviewController:
         initial_tab: str | None = None,
         include_running_output: bool = False,
         auto_output_readiness: AutoOutputReadiness | None = None,
+        auto_start_requested: bool = False,
     ) -> None:
         """Open task output for task."""
         from kagan.tui.ui.modals import ReviewModal
@@ -434,6 +435,7 @@ class KanbanReviewController:
                 TaskOutputScreen(
                     task=task,
                     base_branch=resolved_base_branch,
+                    auto_start_requested=auto_start_requested,
                 ),
             )
             await self.screen._board.refresh_board()

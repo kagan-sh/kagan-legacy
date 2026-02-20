@@ -187,6 +187,7 @@ class KanbanSessionController:
         quiet_unavailable: bool = False,
         read_only: bool = False,
         force_open: bool = False,
+        auto_start_requested: bool = False,
     ) -> bool:
         """Open auto output for task."""
         api = self.screen.ctx.api
@@ -234,6 +235,7 @@ class KanbanSessionController:
             initial_tab="session:implementation",
             include_running_output=True,
             auto_output_readiness=readiness,
+            auto_start_requested=auto_start_requested,
         )
         return True
 
@@ -294,16 +296,25 @@ class KanbanSessionController:
         """Confirm start for AUTO task, then open implementation session output."""
         if not await self.confirm_start_auto_task(task):
             return
-        start_requested = await self.start_agent_flow(task)
-        if not start_requested:
-            await self.open_auto_output_for_task(
-                task,
-                quiet_unavailable=True,
-                read_only=False,
-                force_open=True,
+        if task.status == TaskStatus.BACKLOG:
+            await self.screen.ctx.api.move_task(task.id, TaskStatus.IN_PROGRESS)
+            refreshed = await self.screen.ctx.api.get_task(task.id)
+            if refreshed is not None:
+                task = refreshed
+            await self.screen._board.refresh_board()
+        opened = await self.open_auto_output_for_task(
+            task,
+            quiet_unavailable=True,
+            read_only=False,
+            force_open=True,
+            auto_start_requested=True,
+        )
+        if not opened:
+            self.screen.notify(
+                "AUTO output is unavailable right now. Start the run with 'a'.",
+                severity="warning",
             )
             return
-        await self._open_auto_output_after_start(task, start_requested=start_requested)
 
     async def _open_auto_output_after_start(
         self,
@@ -757,13 +768,6 @@ class KanbanSessionController:
             if refreshed:
                 task = refreshed
             await self.screen._board.refresh_board()
-
-        wt_path = await self.screen.ctx.api.get_task_workspace_path(task.id)
-        if wt_path is None:
-            provision_result = await self.provision_workspace_for_active_repo(task)
-            if not provision_result.success or provision_result.path is None:
-                return False
-            wt_path = provision_result.path
 
         self.screen.notify("Starting agent...", severity="information")
 

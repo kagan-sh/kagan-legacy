@@ -34,10 +34,18 @@ class TaskOutputScreen(KaganScreen):
     START_JOB_PENDING_MESSAGE = "Agent start requested; waiting for scheduler."
     STOP_JOB_PENDING_MESSAGE = "Agent stop requested; waiting for scheduler."
 
-    def __init__(self, task: TaskView, base_branch: str = "main", **kwargs) -> None:
+    def __init__(
+        self,
+        task: TaskView,
+        base_branch: str = "main",
+        *,
+        auto_start_requested: bool = False,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self._task_model = task
         self._base_branch = base_branch
+        self._auto_start_requested = auto_start_requested
         self._runtime_poll_timer: Timer | None = None
 
     @staticmethod
@@ -79,10 +87,8 @@ class TaskOutputScreen(KaganScreen):
 
     async def on_mount(self) -> None:
         self._refresh_header_labels()
-        overlay = self._overlay()
-        overlay.set_target_scope(self._task_model.id)
-        overlay.show_for_task(self._task_model, fullscreen=False)
-        self._sync_overlay_layout_class()
+        if not self._initialize_overlay():
+            self.call_after_refresh(self._initialize_overlay)
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)
         self.run_worker(
             self._hydrate_top_panel(),
@@ -90,6 +96,13 @@ class TaskOutputScreen(KaganScreen):
             exclusive=True,
             exit_on_error=False,
         )
+        if self._auto_start_requested and self._task_model.task_type is TaskType.AUTO:
+            self.run_worker(
+                self._auto_start_if_needed(),
+                group="task-output-auto-start",
+                exclusive=True,
+                exit_on_error=False,
+            )
         self._schedule_runtime_refresh()
 
     async def on_unmount(self) -> None:
@@ -103,6 +116,15 @@ class TaskOutputScreen(KaganScreen):
 
     def _overlay(self) -> ChatOverlay:
         return self.query_one("#task-output-chat-overlay", ChatOverlay)
+
+    def _initialize_overlay(self) -> bool:
+        with contextlib.suppress(NoMatches):
+            overlay = self._overlay()
+            overlay.set_target_scope(self._task_model.id)
+            overlay.show_for_task(self._task_model, fullscreen=False)
+            self._sync_overlay_layout_class()
+            return True
+        return False
 
     def _refresh_header_labels(self) -> None:
         with contextlib.suppress(NoMatches):
@@ -259,6 +281,16 @@ class TaskOutputScreen(KaganScreen):
             failure_msg="Failed to start agent",
             success_msg="Starting agent...",
         )
+
+    async def _auto_start_if_needed(self) -> None:
+        with contextlib.suppress(Exception):
+            await self.ctx.api.reconcile_running_tasks([self._task_model.id])
+        runtime_view = self.ctx.api.get_runtime_view(self._task_model.id)
+        if self._state_bool(runtime_view, "is_running") or self._state_bool(
+            runtime_view, "is_pending"
+        ):
+            return
+        await self.action_start_agent_output()
 
     async def action_stop_agent_output(self) -> None:
         if self._task_model.task_type is not TaskType.AUTO:

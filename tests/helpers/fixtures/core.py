@@ -3,15 +3,30 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
-    from kagan.core.adapters.db.repositories import TaskRepository
+    from collections.abc import AsyncIterator
+
+    from kagan.core.adapters.db.repositories import RepoRepository, TaskRepository
+    from kagan.core.adapters.db.schema import Repo
     from kagan.core.bootstrap import InMemoryEventBus
     from kagan.core.services.tasks import TaskServiceImpl
+
+
+@dataclass(slots=True)
+class RepoWithProjectFixture:
+    """Shared fixture payload for a task repository linked to a git repo/project."""
+
+    task_repo: TaskRepository
+    repo_repo: RepoRepository
+    project_id: str
+    repo_path: Path
+    repo: Repo
 
 
 @pytest.fixture
@@ -84,3 +99,33 @@ async def git_repo(tmp_path: Path) -> Path:
     from tests.helpers.git import init_git_repo_with_commit
 
     return await init_git_repo_with_commit(tmp_path)
+
+
+@pytest.fixture
+async def repo_with_project(
+    tmp_path: Path, git_repo: Path
+) -> AsyncIterator[RepoWithProjectFixture]:
+    """Create a TaskRepository with a project and linked git repo."""
+    from kagan.core.adapters.db.repositories import RepoRepository, TaskRepository
+
+    repo_path = git_repo
+    db_path = tmp_path / "test.db"
+    task_repo = TaskRepository(db_path, project_root=repo_path)
+    await task_repo.initialize()
+    project_id = await task_repo.ensure_test_project("Test Project")
+
+    assert task_repo._session_factory is not None
+    repo_repo = RepoRepository(task_repo._session_factory)
+    repo, _ = await repo_repo.get_or_create(repo_path, default_branch="main")
+    if repo.id:
+        await repo_repo.update_default_branch(repo.id, "main", mark_configured=True)
+        await repo_repo.add_to_project(project_id, repo.id, is_primary=True)
+
+    yield RepoWithProjectFixture(
+        task_repo=task_repo,
+        repo_repo=repo_repo,
+        project_id=project_id,
+        repo_path=repo_path,
+        repo=repo,
+    )
+    await task_repo.close()

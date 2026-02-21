@@ -13,7 +13,7 @@ from kagan.tui.ui.widgets.card import TaskCard
 from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
 from kagan.tui.ui.widgets.chat_panel import ChatPanel
 from kagan.tui.ui.widgets.column import KanbanColumn
-from kagan.tui.ui.widgets.empty_state import EmptyState
+from kagan.tui.ui.widgets.diff_browser import DiffBrowserWidget
 from kagan.tui.ui.widgets.header import KaganHeader
 from kagan.tui.ui.widgets.peek_overlay import PeekOverlay
 from kagan.tui.ui.widgets.permission_prompt import PermissionPrompt
@@ -33,7 +33,7 @@ __all__ = [
     "ChatOverlay",
     "ChatPanel",
     "DescriptionArea",
-    "EmptyState",
+    "DiffBrowserWidget",
     "KaganHeader",
     "KanbanColumn",
     "PeekOverlay",

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from kagan.core.config import KaganConfig
+from kagan.core.domain.enums import QueueLane
 from kagan.core.settings import exposed_settings_snapshot, normalize_settings_updates
 
 if TYPE_CHECKING:
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
     from kagan.core.bootstrap import AppContext
     from kagan.core.services.automation.runner import QueuedMessage as QueueMessage
-    from kagan.core.services.automation.runner import QueueLane, QueueStatus
+    from kagan.core.services.automation.runner import QueueStatus
     from kagan.core.services.jobs import JobEvent, JobRecord
     from kagan.core.services.workspaces import RepoWorkspaceInput
 
@@ -229,7 +230,7 @@ class AutomationQueueCapabilityFacade:
         session_id: str,
         content: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
         author: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> QueueMessage:
@@ -245,7 +246,7 @@ class AutomationQueueCapabilityFacade:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> QueueStatus:
         return await self.automation_service.get_status(session_id, lane=lane)
 
@@ -253,7 +254,7 @@ class AutomationQueueCapabilityFacade:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> list[QueueMessage]:
         return await self.automation_service.get_queued(session_id, lane=lane)
 
@@ -261,7 +262,7 @@ class AutomationQueueCapabilityFacade:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> QueueMessage | None:
         return await self.automation_service.take_queued(session_id, lane=lane)
 
@@ -270,7 +271,7 @@ class AutomationQueueCapabilityFacade:
         session_id: str,
         index: int,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> bool:
         return await self.automation_service.remove_message(session_id, index, lane=lane)
 

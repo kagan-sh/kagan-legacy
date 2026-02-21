@@ -14,6 +14,39 @@ if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
 
+_APP_FIXTURE_PATTERNS: tuple[str, ...] = ("e2e_app", "app", "welcome_app", "_fresh_app")
+
+
+def _uses_app_fixture(fixture_names: list[str]) -> bool:
+    return any(
+        name.startswith(_APP_FIXTURE_PATTERNS) or name in _APP_FIXTURE_PATTERNS
+        for name in fixture_names
+    )
+
+
+def _patch_terminal_boundaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch app session boundaries so tests never invoke real terminal integration."""
+    # Safety: never spawn real terminal attach/external launcher subprocesses in app tests.
+    monkeypatch.setattr(
+        "kagan.core.services.sessions.SessionServiceImpl._attach_tmux_session",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "kagan.core.services.sessions.SessionServiceImpl._launch_external_launcher",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "kagan.tui.ui.screens.kanban.session_controller.KanbanSessionController._attach_tmux_session_local",
+        AsyncMock(return_value=False),
+    )
+
+    # Assume terminals are available in app tests unless a test overrides this explicitly.
+    monkeypatch.setattr(
+        "kagan.tui.terminals.installer.check_terminal_installed",
+        lambda _name: True,
+    )
+
+
 @pytest.fixture
 def app() -> KaganApp:
     """Create app with in-memory database."""
@@ -37,21 +70,10 @@ async def e2e_project(tmp_path: Path):
     data_dir = tmp_path / "kagan-data"
     data_dir.mkdir()
 
-    config_content = """# Kagan Test Configuration
-[general]
-auto_review = false
-default_worker_agent = "claude"
-
-[agents.claude]
-identity = "claude.ai"
-name = "Claude"
-short_name = "claude"
-run_command."*" = "echo mock-claude"
-interactive_command."*" = "echo mock-claude-interactive"
-active = true
-"""
     config_path = config_dir / "config.toml"
-    config_path.write_text(config_content)
+    from tests.helpers.config import write_test_config
+
+    write_test_config(config_path, header_comment="Kagan Test Configuration")
 
     return SimpleNamespace(
         root=project,
@@ -144,36 +166,12 @@ async def e2e_app_without_tasks(e2e_project):
 @pytest.fixture(autouse=True)
 def auto_mock_terminals_for_app_tests(request, monkeypatch):
     """Auto-mock terminal backends for app-driven tests (external system boundary)."""
-    from tests.helpers.mocks import install_fake_tmux
-
-    app_fixture_patterns = ("e2e_app", "app", "welcome_app", "_fresh_app")
-    uses_app_fixture = any(
-        n.startswith(app_fixture_patterns) or n in app_fixture_patterns
-        for n in request.fixturenames
-    )
-    if not uses_app_fixture:
+    if not _uses_app_fixture(request.fixturenames):
         return
 
-    install_fake_tmux(monkeypatch)
-
-    # Safety: never spawn real terminal attach/external launcher subprocesses in app tests.
-    monkeypatch.setattr(
-        "kagan.core.services.sessions.SessionServiceImpl._attach_tmux_session",
-        AsyncMock(return_value=True),
-    )
-    monkeypatch.setattr(
-        "kagan.core.services.sessions.SessionServiceImpl._launch_external_launcher",
-        AsyncMock(return_value=True),
-    )
-    monkeypatch.setattr(
-        "kagan.tui.ui.screens.kanban.session_controller.KanbanSessionController._attach_tmux_session_local",
-        AsyncMock(return_value=False),
-    )
-
-    # Assume terminals are available in app tests unless a test overrides this explicitly.
-    monkeypatch.setattr(
-        "kagan.tui.terminals.installer.check_terminal_installed", lambda _name: True
-    )
+    # Reuse the shared tmux fixture so all app tests observe one consistent fake state shape.
+    request.getfixturevalue("global_mock_tmux")
+    _patch_terminal_boundaries(monkeypatch)
 
 
 @pytest.fixture

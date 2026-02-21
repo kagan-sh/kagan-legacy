@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kagan.sdk._types import PluginUiCatalogResponse, PluginUiInvokeResponse
+from kagan.sdk._types import PluginUiCatalogResponse, PluginUiInvokeResponse, QueueMessageResponse
 from kagan.tui._api_adapter import CoreBackedApi, WorkspaceView
 from kagan.tui.app import KaganApp, resolve_tui_mouse_enabled
 from kagan.tui.ui.widgets.card import TaskCard
@@ -83,6 +83,43 @@ class _FakeRuntimeSdk:
     async def reconcile_running_tasks(self, task_ids: list[str]) -> SimpleNamespace:
         del task_ids
         return SimpleNamespace(tasks=list(self.snapshots), count=len(self.snapshots))
+
+
+class _FakeQueueSdk:
+    async def take_queued_message(
+        self,
+        session_id: str,
+        lane: str = "implementation",
+    ) -> QueueMessageResponse:
+        del session_id, lane
+        return QueueMessageResponse.model_validate(
+            {
+                "success": True,
+                "message": {
+                    "content": "Please include risk notes.",
+                    "author": "orchestrator-overlay",
+                    "metadata": {"target": "review"},
+                    "queued_at": "2026-02-20T12:43:00.673142+00:00",
+                },
+                "code": "MESSAGE_TAKEN",
+            }
+        )
+
+
+class _FakeQueueEmptySdk:
+    async def take_queued_message(
+        self,
+        session_id: str,
+        lane: str = "implementation",
+    ) -> QueueMessageResponse:
+        del session_id, lane
+        return QueueMessageResponse.model_validate(
+            {
+                "success": True,
+                "message": None,
+                "code": "QUEUE_EMPTY",
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -200,6 +237,26 @@ async def test_runtime_reconcile_updates_runtime_cache_for_sync_getters() -> Non
     assert api.get_runtime_view("task-2") is None
 
 
+@pytest.mark.asyncio
+async def test_take_queued_message_returns_payload_object_from_sdk_response() -> None:
+    api = CoreBackedApi(_FakeQueueSdk())
+
+    queued = await api.take_queued_message("task-1", lane="review")
+
+    assert queued is not None
+    assert queued.content == "Please include risk notes."
+    assert queued.author == "orchestrator-overlay"
+
+
+@pytest.mark.asyncio
+async def test_take_queued_message_returns_none_when_queue_empty() -> None:
+    api = CoreBackedApi(_FakeQueueEmptySdk())
+
+    queued = await api.take_queued_message("task-1", lane="review")
+
+    assert queued is None
+
+
 class _JanitorApiStub:
     def __init__(self) -> None:
         self.received_ids: set[str] | None = None
@@ -226,6 +283,51 @@ async def test_run_janitor_handles_workspace_dict_payloads_without_crashing() ->
     await app._run_janitor()
 
     assert api_stub.received_ids == {"ws-dict", "ws-alias", "ws-object"}
+
+
+class _StartupMaintenanceApiStub:
+    def __init__(self) -> None:
+        self.list_tasks_calls = 0
+
+    async def list_tasks(self, project_id: str | None = None) -> list[SimpleNamespace]:
+        del project_id
+        self.list_tasks_calls += 1
+        return [SimpleNamespace(id="task-1"), SimpleNamespace(id="task-2")]
+
+
+@pytest.mark.asyncio
+async def test_run_startup_maintenance_reuses_single_task_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = KaganApp(db_path=":memory:")
+    api_stub = _StartupMaintenanceApiStub()
+    app._ctx = SimpleNamespace(api=api_stub, active_project_id="proj-1")
+
+    worktree_seen_ids: list[set[str]] = []
+    session_seen_ids: list[set[str]] = []
+    janitor_calls: list[None] = []
+
+    async def _fake_reconcile_worktrees(*, valid_task_ids: set[str] | None = None) -> None:
+        assert valid_task_ids is not None
+        worktree_seen_ids.append(set(valid_task_ids))
+
+    async def _fake_reconcile_sessions(*, valid_task_ids: set[str] | None = None) -> None:
+        assert valid_task_ids is not None
+        session_seen_ids.append(set(valid_task_ids))
+
+    async def _fake_run_janitor() -> None:
+        janitor_calls.append(None)
+
+    monkeypatch.setattr(app, "_reconcile_worktrees", _fake_reconcile_worktrees)
+    monkeypatch.setattr(app, "_reconcile_sessions", _fake_reconcile_sessions)
+    monkeypatch.setattr(app, "_run_janitor", _fake_run_janitor)
+
+    await app._run_startup_maintenance()
+
+    assert api_stub.list_tasks_calls == 1
+    assert worktree_seen_ids == [{"task-1", "task-2"}]
+    assert session_seen_ids == [{"task-1", "task-2"}]
+    assert len(janitor_calls) == 1
 
 
 def test_task_card_double_click_does_not_emit_selected_message() -> None:

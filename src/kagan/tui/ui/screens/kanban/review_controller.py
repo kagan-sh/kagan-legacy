@@ -412,126 +412,24 @@ class KanbanReviewController:
         auto_output_readiness: AutoOutputReadiness | None = None,
         auto_start_requested: bool = False,
     ) -> None:
-        """Open task output for task."""
-        from kagan.tui.ui.modals import ReviewModal
+        """Open the dedicated task output screen with stats + chat overlay."""
         from kagan.tui.ui.screens import TaskOutputScreen
 
-        agent_config = task.get_agent_config(self.screen.kagan_app.config)
-        task_id = task.id
-        is_auto = task.task_type == TaskType.AUTO
-        api = self.screen.ctx.api
-        runtime_view = api.get_runtime_view(task.id) if is_auto else None
-
-        open_live_task_output_screen = (
-            is_auto
-            and not read_only
-            and task.status
-            in (
-                TaskStatus.BACKLOG,
-                TaskStatus.IN_PROGRESS,
-            )
-        )
-        if open_live_task_output_screen:
-            resolved_base_branch = await self._resolve_base_branch(task)
-            if resolved_base_branch is None:
-                return
-            await await_screen_result(
-                self.screen.app,
-                TaskOutputScreen(
-                    task=task,
-                    base_branch=resolved_base_branch,
-                    auto_start_requested=auto_start_requested,
-                ),
-            )
-            await self.screen._board.refresh_board()
-            self.screen._board.sync_agent_states()
-            return
-
-        if is_auto:
-            execution_id = self._state_attr(runtime_view, "execution_id")
-            run_count = self._state_int(runtime_view, "run_count")
-            is_running = self._state_bool(runtime_view, "is_running")
-            is_reviewing = self._state_bool(runtime_view, "is_reviewing")
-            is_blocked = self._state_bool(runtime_view, "is_blocked")
-            blocked_reason = self._state_attr(runtime_view, "blocked_reason")
-            blocked_by_task_ids = self._state_tuple(runtime_view, "blocked_by_task_ids")
-            overlap_hints = self._state_tuple(runtime_view, "overlap_hints")
-            is_pending = self._state_bool(runtime_view, "is_pending")
-            pending_reason = self._state_attr(runtime_view, "pending_reason")
-            review_agent = self._stream_target(runtime_view, "review_agent")
-        else:
-            execution_id = None
-            run_count = 0
-            is_running = False
-            is_reviewing = False
-            is_blocked = False
-            blocked_reason = None
-            blocked_by_task_ids = ()
-            overlap_hints = ()
-            is_pending = False
-            pending_reason = None
-            review_agent = None
-
-        running_agent = None
-        if is_auto and include_running_output:
-            running_agent = self._stream_target(runtime_view, "running_agent")
-            if running_agent is not None:
-                is_running = True
-        if is_auto and auto_output_readiness is not None:
-            readiness_execution_id = self._state_attr(auto_output_readiness, "execution_id")
-            if readiness_execution_id is not None:
-                execution_id = readiness_execution_id
-            is_running = self._state_bool(auto_output_readiness, "is_running")
-            if include_running_output:
-                readiness_running_agent = self._stream_target(
-                    auto_output_readiness,
-                    "running_agent",
-                )
-                if readiness_running_agent is not None:
-                    running_agent = readiness_running_agent
-        if running_agent is not None:
-            is_running = True
-
-        if execution_id is None:
-            latest = await self.screen.ctx.api.get_latest_execution_for_task(task.id)
-            if latest is not None:
-                execution_id = latest.id
-                if run_count == 0:
-                    run_count = await self.screen.ctx.api.count_executions_for_task(task.id)
-
+        del initial_tab, include_running_output, auto_output_readiness
         resolved_base_branch = await self._resolve_base_branch(task)
         if resolved_base_branch is None:
             return
 
-        result = await await_screen_result(
+        await await_screen_result(
             self.screen.app,
-            ReviewModal(
+            TaskOutputScreen(
                 task=task,
-                agent_config=agent_config,
                 base_branch=resolved_base_branch,
-                agent_factory=self.screen.kagan_app._agent_factory,
-                execution_id=execution_id,
-                run_count=run_count,
-                running_agent=running_agent,
-                review_agent=review_agent,
-                is_reviewing=is_reviewing,
-                is_running=is_running,
-                is_blocked=is_blocked,
-                blocked_reason=blocked_reason,
-                blocked_by_task_ids=blocked_by_task_ids,
-                overlap_hints=overlap_hints,
-                is_pending=is_pending,
-                pending_reason=pending_reason,
-                read_only=read_only,
-                initial_tab=initial_tab
-                or (
-                    "session:review"
-                    if is_auto and task.status == TaskStatus.REVIEW
-                    else "review-summary"
-                ),
+                auto_start_requested=auto_start_requested and not read_only,
             ),
         )
-        await self.on_review_result(task_id, result)
+        await self.screen._board.refresh_board()
+        self.screen._board.sync_agent_states()
 
     async def on_review_result(self, task_id: str, result: str | None) -> None:
         task = await self.screen.ctx.api.get_task(task_id)
@@ -625,12 +523,20 @@ class KanbanReviewController:
                 None,
                 RejectionAction.BACKLOG,
             )
-            action = RejectionAction.BACKLOG
+            resolved_action = RejectionAction.BACKLOG
         else:
             feedback, action = result
             await self.screen.ctx.api.apply_rejection_feedback(task, feedback, action)
+            resolved_action = (
+                RejectionAction.BACKLOG
+                if action == RejectionAction.BACKLOG
+                else RejectionAction.IN_PROGRESS
+            )
         await self.screen._board.refresh_board()
-        if action == RejectionAction.BACKLOG:
+        if resolved_action == RejectionAction.BACKLOG:
             self.screen.notify(f"Moved to BACKLOG: {task.title}")
         else:
             self.screen.notify(f"Returned to IN_PROGRESS: {task.title}")
+            refreshed = await self.screen.ctx.api.get_task(task.id)
+            if refreshed is not None and refreshed.task_type == TaskType.AUTO:
+                await self.screen._session.start_agent_flow(refreshed)

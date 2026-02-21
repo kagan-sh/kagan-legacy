@@ -10,9 +10,8 @@ from kagan.core.domain.enums import (
     SessionType,
 )
 from kagan.core.domain.task_rules import (
-    transition_status_from_agent_complete,
-    transition_status_from_review_pass,
-    transition_status_from_review_reject,
+    resolve_status_after_agent_complete,
+    resolve_status_after_review,
 )
 
 if TYPE_CHECKING:
@@ -256,7 +255,7 @@ class TaskServiceImpl:
         task = await self._repo.get(task_id)
         if task is None:
             return None
-        next_status = transition_status_from_agent_complete(task.status, success)
+        next_status = resolve_status_after_agent_complete(task.status, success=success)
         if next_status == task.status:
             return task
         task = await self.set_status(task_id, next_status, reason="agent_complete")
@@ -266,7 +265,7 @@ class TaskServiceImpl:
         task = await self._repo.get(task_id)
         if task is None:
             return None
-        next_status = transition_status_from_review_pass(task.status)
+        next_status = resolve_status_after_review("pass", task.status)
         if next_status == task.status:
             return task
         task = await self.set_status(task_id, next_status, reason="review_passed")
@@ -278,7 +277,7 @@ class TaskServiceImpl:
         task = await self._repo.get(task_id)
         if task is None:
             return None
-        next_status = transition_status_from_review_reject(task.status)
+        next_status = resolve_status_after_review("reject", task.status)
         if next_status == task.status:
             return task
         task = await self.set_status(task_id, next_status, reason=reason)

@@ -172,10 +172,30 @@ class GitHubPlugin(PluginCapabilityProvider):
         )
 
     def register(self, api: PluginRegistrationApi) -> None:
-        api.register_operation(
-            PluginOperation(
+        def _operation(
+            *,
+            method: str,
+            handler: Any,
+            minimum_profile: CapabilityProfile,
+            mutating: bool,
+            description: str,
+            mcp_tool_schema: McpToolSchema | None = None,
+        ) -> PluginOperation:
+            return PluginOperation(
                 plugin_id=self.manifest.id,
                 capability=GITHUB_CAPABILITY,
+                method=method,
+                handler=handler,
+                minimum_profile=minimum_profile,
+                mutating=mutating,
+                description=description,
+                mcp_tool_schema=mcp_tool_schema,
+            )
+
+        register_operation = api.register_operation
+
+        register_operation(
+            _operation(
                 method=GITHUB_CONTRACT_PROBE_METHOD,
                 handler=_contract_probe,
                 minimum_profile=CapabilityProfile.PAIR_WORKER,
@@ -204,10 +224,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_CONNECT_REPO,
                 handler=_connect_repo,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -248,10 +266,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_SYNC_ISSUES,
                 handler=_sync_issues,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -293,10 +309,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_ACQUIRE_LEASE,
                 handler=_acquire_lease,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -338,10 +352,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_RELEASE_LEASE,
                 handler=_release_lease,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -375,10 +387,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_GET_LEASE_STATE,
                 handler=_get_lease_state,
                 minimum_profile=CapabilityProfile.PAIR_WORKER,
@@ -416,10 +426,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_CREATE_PR_FOR_TASK,
                 handler=_create_pr_for_task,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -477,10 +485,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_LINK_PR_TO_TASK,
                 handler=_link_pr_to_task,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -529,10 +535,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_RECONCILE_PR_STATUS,
                 handler=_reconcile_pr_status,
                 minimum_profile=CapabilityProfile.PAIR_WORKER,
@@ -571,10 +575,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_CHECK_CI,
                 handler=_check_ci_status,
                 minimum_profile=CapabilityProfile.PAIR_WORKER,
@@ -613,10 +615,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_MERGE_PR,
                 handler=_merge_pr,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -657,10 +657,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_GET_PR_REVIEW_COMMENTS,
                 handler=_get_pr_review_comments,
                 minimum_profile=CapabilityProfile.PAIR_WORKER,
@@ -700,10 +698,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_VALIDATE_REVIEW_TRANSITION,
                 handler=_validate_review_transition,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -711,10 +707,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 description="Validate REVIEW transition guardrails for GitHub-connected repos.",
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=GITHUB_METHOD_SYNC_TASK_STATUS,
                 handler=_sync_task_status,
                 minimum_profile=CapabilityProfile.MAINTAINER,
@@ -759,10 +753,8 @@ class GitHubPlugin(PluginCapabilityProvider):
                 ),
             )
         )
-        api.register_operation(
-            PluginOperation(
-                plugin_id=self.manifest.id,
-                capability=GITHUB_CAPABILITY,
+        register_operation(
+            _operation(
                 method=PLUGIN_UI_DESCRIBE_METHOD,
                 handler=_ui_describe,
                 minimum_profile=CapabilityProfile.VIEWER,

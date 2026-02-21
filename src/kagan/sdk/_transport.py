@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 from kagan.core.ipc.client import IPCClient
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
+from kagan.core.protocol_constants import DEFAULT_IPC_TIMEOUT_SECONDS
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 from kagan.sdk._errors import ConnectionError, CoreFailureError, TimeoutError
 from kagan.version import get_kagan_runtime_hash, get_kagan_version
 
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT = 30.0
+_DEFAULT_TIMEOUT = DEFAULT_IPC_TIMEOUT_SECONDS
 _AUTH_FAILED_CODE = "AUTH_FAILED"
 _MAX_ATTEMPTS = 3
 _STALE_CLIENT_CODES = frozenset(
@@ -36,6 +38,7 @@ class SDKTransport:
         self,
         endpoint: CoreEndpoint | None = None,
         *,
+        runtime_context: CoreRuntimeContext | None = None,
         client: IPCClient | None = None,
         session_id: str = "sdk-session",
         session_origin: str = "sdk",
@@ -52,6 +55,7 @@ class SDKTransport:
         self._timeout = timeout
         self._client = client if (client is not None and client.is_connected) else None
         self._endpoint = endpoint
+        self._runtime_context = runtime_context or resolve_runtime_context()
         self._recover_lock = asyncio.Lock()
 
     @property
@@ -66,7 +70,9 @@ class SDKTransport:
 
         endpoint = self._endpoint
         if endpoint is None:
-            endpoint = await asyncio.to_thread(discover_core_endpoint)
+            endpoint = await asyncio.to_thread(
+                discover_core_endpoint, runtime_context=self._runtime_context
+            )
 
         if endpoint is None:
             raise ConnectionError(
@@ -97,7 +103,9 @@ class SDKTransport:
 
     async def _refresh_client_from_discovery(self) -> bool:
         """Discover a new endpoint and replace the current client."""
-        endpoint = await asyncio.to_thread(discover_core_endpoint)
+        endpoint = await asyncio.to_thread(
+            discover_core_endpoint, runtime_context=self._runtime_context
+        )
         if endpoint is None:
             return False
 

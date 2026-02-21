@@ -8,18 +8,24 @@ icon: material/keyboard
 
 Mirrors the in-app help (press ++question++).
 
+## Accessibility
+
+- Header, footer, modal hint, and AI Assistant overlay text are tuned for WCAG AA contrast in both the full and 256-color themes.
+- Focused controls always use a visible border change (primary accent) instead of dim-only states.
+- If your terminal uses background transparency, turning it off improves practical contrast consistency.
+
 ## Essential
 
-| Key          | Action             |
-| ------------ | ------------------ |
-| ++n++        | New task           |
-| ++enter++    | Open / confirm     |
-| ++a++        | Start agent (AUTO) |
-| ++s++        | Stop agent         |
-| ++question++ | Help               |
-| ++period++   | Actions palette    |
-| ++comma++    | Settings           |
-| ++ctrl+q++   | Quit               |
+| Key          | Action                 |
+| ------------ | ---------------------- |
+| ++n++        | New task               |
+| ++enter++    | Open details / confirm |
+| ++a++        | Start agent (AUTO)     |
+| ++s++        | Stop agent             |
+| ++question++ | Help                   |
+| ++period++   | Actions palette        |
+| ++comma++    | Settings               |
+| ++ctrl+q++   | Quit                   |
 
 ## Global
 
@@ -48,81 +54,115 @@ Mirrors the in-app help (press ++question++).
 
 ### Tasks
 
-| Key         | Action                                                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ++n++       | New task                                                                                                                                   |
-| ++shift+n++ | New AUTO task                                                                                                                              |
-| ++enter++   | Open focused task session (AUTO Task Output session / PAIR backend / REVIEW output). Repeated presses are ignored while the session opens. |
-| ++slash++   | Search tasks                                                                                                                               |
-| ++v++       | View details                                                                                                                               |
-| ++e++       | Edit task                                                                                                                                  |
-| ++x++       | Delete task                                                                                                                                |
-| ++y++       | Duplicate task                                                                                                                             |
-| ++c++       | Copy task ID                                                                                                                               |
-| ++space++   | Peek overlay                                                                                                                               |
-| ++f++       | Expand description                                                                                                                         |
-| ++f5++      | Full editor                                                                                                                                |
+| Key         | Action                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| ++n++       | New task                                                                                                                                |
+| ++shift+n++ | New AUTO task                                                                                                                           |
+| ++enter++   | Open task details                                                                                                                       |
+| ++o++       | Open focused task session/output (AUTO Task Output session / PAIR backend / REVIEW output). Repeated presses are ignored while opening. |
+| ++slash++   | Search tasks                                                                                                                            |
+| ++v++       | View details                                                                                                                            |
+| ++e++       | Edit task                                                                                                                               |
+| ++x++       | Delete task                                                                                                                             |
+| ++y++       | Duplicate task                                                                                                                          |
+| ++c++       | Copy task ID                                                                                                                            |
+| ++space++   | Peek overlay                                                                                                                            |
+| ++f++       | Expand description                                                                                                                      |
+| ++f5++      | Full editor                                                                                                                             |
 
 ### Workflow and agents
 
-| Key         | Action                         |
-| ----------- | ------------------------------ |
-| ++shift+h++ | Move task left                 |
-| ++shift+l++ | Move task right                |
-| ++a++       | Start agent (AUTO)             |
-| ++s++       | Stop agent (AUTO)              |
-| ++shift+d++ | View diff (REVIEW)             |
-| ++r++       | Open review stream (REVIEW)    |
-| ++m++       | Merge (REVIEW)                 |
-| ++ctrl+p++  | Toggle fullscreen orchestrator |
-| ++ctrl+o++  | Toggle docked orchestrator     |
-| ++b++       | Set task branch                |
-| ++shift+g++ | Repo Sync                      |
-| ++comma++   | Settings                       |
+| Key                           | Action                                 |
+| ----------------------------- | -------------------------------------- |
+| ++shift+left++ / ++shift+h++  | Move task left                         |
+| ++shift+right++ / ++shift+l++ | Move task right                        |
+| ++a++                         | Start agent (AUTO)                     |
+| ++s++                         | Stop agent (AUTO)                      |
+| ++shift+d++                   | View diff (REVIEW)                     |
+| ++r++                         | Open Task Output screen (REVIEW)       |
+| ++m++                         | Merge (REVIEW)                         |
+| ++ctrl+p++                    | Toggle fullscreen AI Assistant overlay |
+| ++ctrl+o++                    | Toggle docked AI Assistant overlay     |
+| ++b++                         | Set task branch                        |
+| ++shift+g++                   | Repo Sync                              |
+| ++comma++                     | Settings                               |
 
-## Orchestrator overlay
+## AI Assistant overlay
 
 The empty-state intro can occasionally show a random Kagan quote (funny or wise).
 Startup behavior: if at least one task exists on the board, Kagan opens board-first with the
 overlay closed. On empty boards, the fullscreen intro opens automatically.
+The footer includes a session indicator and quick session palette so you can switch active
+chat sessions directly at any scale.
+Session quick-pick is two-pane: left side for orchestrator/task groups, right side for
+session targets (worker/reviewer/orchestrator session).
+Session quick-pick includes a Recent sessions group and a live `N sessions` filter match count.
+In docked mode, board columns shrink above the overlay; when tickets exceed visible space, the
+column list scrolls.
 
 ### Screen
 
-| Key        | Action                                        |
-| ---------- | --------------------------------------------- |
-| ++esc++    | Close overlay                                 |
-| ++ctrl+p++ | Toggle fullscreen (switches from docked)      |
-| ++ctrl+o++ | Toggle docked (switches from fullscreen)      |
-| ++tab++    | Switch chat target (orchestrator/AUTO/REVIEW) |
+| Key        | Action                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------- |
+| ++esc++    | Interrupt active stream; close overlay when idle                                                                |
+| ++ctrl+p++ | Toggle fullscreen (switches from docked)                                                                        |
+| ++ctrl+o++ | Toggle docked (switches from fullscreen)                                                                        |
+| ++tab++    | Cycle sessions in scope (linear in task scope); opens session quick-pick when only one target is available |
+| ++ctrl+k++ | Open session quick-pick palette                                                                                 |
 
 ### Input
 
-| Key                          | Action                                                      |
-| ---------------------------- | ----------------------------------------------------------- |
-| ++enter++                    | Send message                                                |
-| ++shift+enter++ / ++ctrl+j++ | New line                                                    |
-| ++ctrl+c++                   | Clear chat input                                            |
-| ++ctrl+c++, ++ctrl+c++       | Interrupt active stream (only when running in this session) |
-| `/help`                      | Show commands                                               |
-| `/clear`                     | Clear conversation                                          |
-| `/clear all sessions`        | Clear all local chat sessions and reset target focus        |
-| `/new session`               | Start a fresh local chat session                            |
-| `/compact`                   | Compact context (native preferred, snapshot fallback)       |
-| `/mode`                      | List agent modes                                            |
-| `/mode <id>`                 | Switch orchestrator mode                                    |
-| `/browse`                    | List available chat sessions/targets                        |
-| \`/attach \<task-id          | kind                                                        |
-| `/targets`                   | List available chat targets                                 |
-| `/restart [extra context]`   | Restart active AUTO run (optional injected context)         |
-| `/stop`                      | Stop active AUTO run                                        |
+| Key                          | Action                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| ++enter++                    | Send message                                          |
+| ++shift+enter++ / ++ctrl+j++ | New line                                              |
+| ++up++                       | Recall the last submitted prompt when input is empty  |
+| ++ctrl+c++                   | Clear chat input                                      |
+| `/help`                      | Show commands                                         |
+| `/clear`                     | Clear conversation                                    |
+| `/clear all sessions`        | Clear all local chat sessions and reset target focus  |
+| `/new session`               | Create and switch to a new orchestrator session       |
+| `/close session`             | Close the active orchestrator session                 |
+| `/export`                    | Copy active session transcript to clipboard           |
+| `/compact`                   | Compact context (native preferred, snapshot fallback) |
+| `/mode`                      | List agent modes                                      |
+| `/mode <id>`                 | Switch AI Assistant mode                              |
+| `/sessions`                  | Open session quick-pick palette                       |
+| `/agent`                     | List grouped agent commands                           |
+| `/agent <command> [args]`    | Run a grouped agent command                           |
+| `/restart [extra context]`   | Restart active AUTO runtime task (optional injected context) |
+| `/stop`                      | Stop active AUTO runtime task                                 |
 
 ### Slash complete
 
-| Key               | Action         |
-| ----------------- | -------------- |
-| ++up++ / ++down++ | Navigate list  |
-| ++enter++         | Select command |
-| ++esc++           | Dismiss list   |
+| Key               | Action                              |
+| ----------------- | ----------------------------------- |
+| Typing after `/`  | Filter list by command/alias prefix |
+| ++up++ / ++down++ | Navigate list                       |
+| ++enter++         | Select command                      |
+| ++esc++           | Dismiss list                        |
+
+### Session quick-pick
+
+| Key                            | Action                                                       |
+| ------------------------------ | ------------------------------------------------------------ |
+| ++tab++                        | Cycle focus: filter → sessions → agents → filter            |
+| ++up++ / ++down++              | Move selection in focused list                              |
+| ++left++ / ++right++           | Move focus between sessions and agents lists                |
+| ++ctrl+f++                     | Return focus to filter input                                |
+| ++enter++                      | Select highlighted agent session                            |
+| ++esc++ (with active filter)   | Clear filter and keep quick-pick open                       |
+| ++esc++ (with empty filter)    | Close quick-pick                                             |
+
+When switching sessions, unsent input is cleared by design to avoid cross-session draft confusion.
+
+### Stream output
+
+| UI Element          | Behavior                                                               |
+| ------------------- | ---------------------------------------------------------------------- |
+| Current Action rail | Shows what the agent is doing now, with confidence labels              |
+| Jump to Live        | Appears when new output arrives while you are reading older scrollback |
+| Run Summary card    | Posted on completion/failure with outcome, status, and next-step hint  |
 
 ### Plan approval
 
@@ -138,20 +178,23 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 
 ### Welcome screen
 
-| Key            | Action                 |
-| -------------- | ---------------------- |
-| ++enter++      | Open selected project  |
-| ++n++          | New project            |
-| ++o++          | Open folder            |
-| ++s++          | Settings               |
-| ++1++ to ++9++ | Open project by number |
-| ++esc++        | Quit                   |
+| Key                     | Action                                                |
+| ----------------------- | ----------------------------------------------------- |
+| ++enter++               | Open selected project                                 |
+| ++n++                   | New project                                           |
+| ++o++                   | Open folder                                           |
+| ++s++                   | Settings                                              |
+| ++ctrl+p++ / ++ctrl+o++ | After opening a board: fullscreen/docked AI Assistant |
+| ++1++ to ++9++          | Open project by number                                |
+| ++esc++                 | Back (from board) / Quit                              |
 
 ### Onboarding
 
-| Key     | Action |
-| ------- | ------ |
-| ++esc++ | Quit   |
+| Key                     | Action                            |
+| ----------------------- | --------------------------------- |
+| ++tab++ / ++shift+tab++ | Move focus between setup controls |
+| ++enter++ / ++ctrl+s++  | Save setup and continue           |
+| ++esc++                 | Quit                              |
 
 ## Repo picker
 
@@ -166,9 +209,11 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 
 ### Help
 
-| Key             | Action |
-| --------------- | ------ |
-| ++esc++ / ++q++ | Close  |
+| Key                      | Action                               |
+| ------------------------ | ------------------------------------ |
+| ++ctrl+f++               | Focus help search                    |
+| ++esc++ (with query)     | Clear search query                   |
+| ++esc++ / ++q++ (no query) | Close                                |
 
 ### Confirm
 
@@ -207,10 +252,11 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 
 ### Settings
 
-| Key                    | Action |
-| ---------------------- | ------ |
-| ++ctrl+s++ / ++alt+s++ | Save   |
-| ++esc++                | Cancel |
+| Key                    | Action                            |
+| ---------------------- | --------------------------------- |
+| ++ctrl+s++ / ++alt+s++ | Save                              |
+| ++ctrl+f++ / ++/++     | Focus settings search             |
+| ++esc++                | Cancel                            |
 
 ### Duplicate task
 
@@ -228,31 +274,16 @@ overlay closed. On empty boards, the fullscreen intro opens automatically.
 | ++y++     | Copy    |
 | ++esc++   | Close   |
 
-### Task Output (AUTO live screen)
+### Task Output screen
 
-| Key        | Action                         |
-| ---------- | ------------------------------ |
-| ++tab++    | Next chat session target       |
-| ++ctrl+p++ | Toggle fullscreen task overlay |
-| ++ctrl+o++ | Toggle docked task overlay     |
-| ++a++      | Start AUTO agent               |
-| ++s++      | Stop AUTO agent                |
-| ++esc++    | Close                          |
-
-### Task Output (REVIEW modal)
-
-| Key        | Action                                                        |
-| ---------- | ------------------------------------------------------------- |
-| ++tab++    | Next session                                                  |
-| ++ctrl+p++ | Cycle view (`split -> terminal fullscreen -> split -> board`) |
-| ++enter++  | Approve                                                       |
-| ++r++      | Reject                                                        |
-| ++R++      | Rebase                                                        |
-| ++g++      | Run review                                                    |
-| ++a++      | Start AUTO agent                                              |
-| ++s++      | Stop AUTO agent                                               |
-| ++y++      | Copy                                                          |
-| ++esc++    | Close/Cancel                                                  |
+| Key        | Action                                           |
+| ---------- | ------------------------------------------------ |
+| ++tab++    | Next scoped chat target (worker/reviewer)        |
+| ++ctrl+p++ | Toggle fullscreen task overlay                   |
+| ++ctrl+o++ | Toggle docked task overlay                       |
+| ++a++      | Start AUTO agent (`IN_PROGRESS` AUTO tasks only) |
+| ++s++      | Stop AUTO agent (`IN_PROGRESS` AUTO tasks only)  |
+| ++esc++    | Close                                            |
 
 ### Rejection input
 

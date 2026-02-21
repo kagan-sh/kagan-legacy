@@ -9,7 +9,9 @@ tags:
 
 # CLI reference
 
-`kagan` with no subcommand → `kagan tui` (default).
+`kagan` (alias: `kg`) with no subcommand → `kagan tui` (default).
+
+All commands shown with `kagan` also work with `kg`.
 
 | Command    | Description              |
 | ---------- | ------------------------ |
@@ -40,6 +42,14 @@ tags:
 | `--db TEXT`           | SQLite database path                  |
 | `--skip-preflight`    | Skip startup doctor checks (dev only) |
 | `--skip-update-check` | Skip update check on startup          |
+
+Startup UX notes:
+
+- Non-critical maintenance cleanup runs after first screen render to reduce perceived startup latency.
+- AI Assistant chat uses a simplified input rail; mode/meta chips are not part of the compose row.
+- In docked mode, board and chat are split top/bottom at roughly 50/50; docked chat keeps output
+  visible with the input rail anchored at the bottom.
+- Chat no longer appends a run-summary card after each response.
 
 ## `kagan doctor`
 

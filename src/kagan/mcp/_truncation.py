@@ -3,50 +3,87 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-_SUMMARY_TEXT_LIMIT = 8_000
-_FULL_TEXT_LIMIT = 32_000
-_SUMMARY_DESCRIPTION_LIMIT = 2_000
-_FULL_DESCRIPTION_LIMIT = 8_000
-_SUMMARY_ACCEPTANCE_ITEM_LIMIT = 400
-_FULL_ACCEPTANCE_ITEM_LIMIT = 1_000
-_SUMMARY_ACCEPTANCE_ITEMS = 20
-_FULL_ACCEPTANCE_ITEMS = 50
-_SUMMARY_LOG_ENTRY_LIMIT = 2_500
-_FULL_LOG_ENTRY_LIMIT = 10_000
-_SUMMARY_LOG_ENTRIES = 3
-_FULL_LOG_ENTRIES = 10
-_SUMMARY_LOG_BUDGET = 7_500
-_FULL_LOG_BUDGET = 24_000
-_SUMMARY_RESPONSE_BUDGET = 12_000
-_FULL_RESPONSE_BUDGET = 24_000
-_SUMMARY_TITLE_LIMIT = 400
-_FULL_TITLE_LIMIT = 1_000
-_SUMMARY_SCRATCHPAD_FETCH_LIMIT = 6_000
-_FULL_SCRATCHPAD_FETCH_LIMIT = 14_000
-_SUMMARY_LOG_FETCH_ENTRY_LIMIT = 2_000
-_FULL_LOG_FETCH_ENTRY_LIMIT = 6_000
-_SUMMARY_LOG_FETCH_BUDGET = 6_000
-_FULL_LOG_FETCH_BUDGET = 18_000
 _LOG_ENTRY_OVERHEAD_CHARS = 256
-_COMPACT_ACCEPTANCE_ITEMS_FULL = 20
-_COMPACT_ACCEPTANCE_ITEMS_SUMMARY = 8
-_COMPACT_ACCEPTANCE_ITEM_LIMIT_FULL = 320
-_COMPACT_ACCEPTANCE_ITEM_LIMIT_SUMMARY = 160
-_COMPACT_RUNTIME_REASON_LIMIT_FULL = 600
-_COMPACT_RUNTIME_REASON_LIMIT_SUMMARY = 240
-_COMPACT_RUNTIME_HINT_LIMIT_FULL = 240
-_COMPACT_RUNTIME_HINT_LIMIT_SUMMARY = 120
-_COMPACT_RUNTIME_BLOCKED_IDS_FULL = 16
-_COMPACT_RUNTIME_BLOCKED_IDS_SUMMARY = 8
-_COMPACT_RUNTIME_OVERLAP_HINTS_FULL = 12
-_COMPACT_RUNTIME_OVERLAP_HINTS_SUMMARY = 6
 _MINIMAL_TITLE_LIMIT = 120
 _MINIMAL_TITLE_HARD_LIMIT = 32
+
+
+@dataclass(frozen=True, slots=True)
+class TruncationProfile:
+    text_limit: int
+    description_limit: int
+    acceptance_item_limit: int
+    acceptance_items: int
+    log_entry_limit: int
+    log_entries: int
+    log_budget: int
+    response_budget: int
+    title_limit: int
+    scratchpad_fetch_limit: int
+    log_fetch_entry_limit: int
+    log_fetch_budget: int
+    compact_acceptance_items: int
+    compact_acceptance_item_limit: int
+    compact_reason_limit: int
+    compact_hint_limit: int
+    compact_blocked_ids: int
+    compact_overlap_hints: int
+
+
+SUMMARY_PROFILE = TruncationProfile(
+    text_limit=8_000,
+    description_limit=2_000,
+    acceptance_item_limit=400,
+    acceptance_items=20,
+    log_entry_limit=2_500,
+    log_entries=3,
+    log_budget=7_500,
+    response_budget=12_000,
+    title_limit=400,
+    scratchpad_fetch_limit=6_000,
+    log_fetch_entry_limit=2_000,
+    log_fetch_budget=6_000,
+    compact_acceptance_items=8,
+    compact_acceptance_item_limit=160,
+    compact_reason_limit=240,
+    compact_hint_limit=120,
+    compact_blocked_ids=8,
+    compact_overlap_hints=6,
+)
+
+FULL_PROFILE = TruncationProfile(
+    text_limit=32_000,
+    description_limit=8_000,
+    acceptance_item_limit=1_000,
+    acceptance_items=50,
+    log_entry_limit=10_000,
+    log_entries=10,
+    log_budget=24_000,
+    response_budget=24_000,
+    title_limit=1_000,
+    scratchpad_fetch_limit=14_000,
+    log_fetch_entry_limit=6_000,
+    log_fetch_budget=18_000,
+    compact_acceptance_items=20,
+    compact_acceptance_item_limit=320,
+    compact_reason_limit=600,
+    compact_hint_limit=240,
+    compact_blocked_ids=16,
+    compact_overlap_hints=12,
+)
+
+_PROFILES: dict[str, TruncationProfile] = {"summary": SUMMARY_PROFILE, "full": FULL_PROFILE}
+
+
+def get_profile(mode: str) -> TruncationProfile:
+    """Return the TruncationProfile for the given mode, defaulting to SUMMARY_PROFILE."""
+    return _PROFILES.get(mode, SUMMARY_PROFILE)
 
 
 def serialized_size(payload: dict[str, Any]) -> int:
@@ -95,8 +132,9 @@ def truncate_acceptance_criteria(value: object, *, mode: str) -> list[str] | Non
     if not isinstance(value, list):
         return None
 
-    item_limit = _FULL_ACCEPTANCE_ITEM_LIMIT if mode == "full" else _SUMMARY_ACCEPTANCE_ITEM_LIMIT
-    max_items = _FULL_ACCEPTANCE_ITEMS if mode == "full" else _SUMMARY_ACCEPTANCE_ITEMS
+    profile = get_profile(mode)
+    item_limit = profile.acceptance_item_limit
+    max_items = profile.acceptance_items
 
     criteria = [truncate_text(str(item), limit=item_limit) or "" for item in value]
     if len(criteria) <= max_items:
@@ -123,25 +161,13 @@ def compact_string_list(
 
 def compact_runtime(runtime: dict[str, Any], *, mode: str) -> dict[str, Any]:
     """Compact runtime info to fit within limits."""
+    profile = get_profile(mode)
     compact = dict(runtime)
-    reason_limit = (
-        _COMPACT_RUNTIME_REASON_LIMIT_FULL
-        if mode == "full"
-        else _COMPACT_RUNTIME_REASON_LIMIT_SUMMARY
-    )
-    hint_limit = (
-        _COMPACT_RUNTIME_HINT_LIMIT_FULL if mode == "full" else _COMPACT_RUNTIME_HINT_LIMIT_SUMMARY
-    )
-    blocked_ids = (
-        _COMPACT_RUNTIME_BLOCKED_IDS_FULL
-        if mode == "full"
-        else _COMPACT_RUNTIME_BLOCKED_IDS_SUMMARY
-    )
-    overlap_hints = (
-        _COMPACT_RUNTIME_OVERLAP_HINTS_FULL
-        if mode == "full"
-        else _COMPACT_RUNTIME_OVERLAP_HINTS_SUMMARY
-    )
+
+    reason_limit = profile.compact_reason_limit
+    hint_limit = profile.compact_hint_limit
+    blocked_ids = profile.compact_blocked_ids
+    overlap_hints = profile.compact_overlap_hints
 
     for key in ("blocked_reason", "pending_reason"):
         value = compact.get(key)
@@ -171,7 +197,8 @@ def compact_runtime(runtime: dict[str, Any], *, mode: str) -> dict[str, Any]:
 
 def fit_task_payload_budget(payload: dict[str, Any], *, mode: str) -> dict[str, Any]:
     """Fit task payload within transport budget."""
-    budget = _FULL_RESPONSE_BUDGET if mode == "full" else _SUMMARY_RESPONSE_BUDGET
+    profile = get_profile(mode)
+    budget = profile.response_budget
     if serialized_size(payload) <= budget:
         return payload
 
@@ -198,19 +225,14 @@ def fit_task_payload_budget(payload: dict[str, Any], *, mode: str) -> dict[str, 
         trimmed["logs"] = trim_logs_to_budget(trimmed["logs"], budget_chars=logs_budget)
 
     if isinstance(trimmed.get("title"), str):
-        title_limit = _FULL_TITLE_LIMIT if mode == "full" else _SUMMARY_TITLE_LIMIT
-        trimmed["title"] = truncate_text(trimmed["title"], limit=title_limit) or ""
+        trimmed["title"] = truncate_text(trimmed["title"], limit=profile.title_limit) or ""
 
     if isinstance(trimmed.get("runtime"), dict):
         trimmed["runtime"] = compact_runtime(trimmed["runtime"], mode=mode)
 
     if isinstance(trimmed.get("acceptance_criteria"), list):
-        if mode == "full":
-            max_items = _COMPACT_ACCEPTANCE_ITEMS_FULL
-            item_limit = _COMPACT_ACCEPTANCE_ITEM_LIMIT_FULL
-        else:
-            max_items = _COMPACT_ACCEPTANCE_ITEMS_SUMMARY
-            item_limit = _COMPACT_ACCEPTANCE_ITEM_LIMIT_SUMMARY
+        max_items = profile.compact_acceptance_items
+        item_limit = profile.compact_acceptance_item_limit
         trimmed["acceptance_criteria"] = compact_string_list(
             trimmed["acceptance_criteria"],
             max_items=max_items,
@@ -252,9 +274,13 @@ def fit_task_payload_budget(payload: dict[str, Any], *, mode: str) -> dict[str, 
 
 
 __all__ = [
+    "FULL_PROFILE",
+    "SUMMARY_PROFILE",
+    "TruncationProfile",
     "compact_runtime",
     "compact_string_list",
     "fit_task_payload_budget",
+    "get_profile",
     "serialized_size",
     "trim_logs_to_budget",
     "truncate_acceptance_criteria",

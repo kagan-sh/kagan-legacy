@@ -13,6 +13,7 @@ from kagan.core.domain.coercion import (
     coerce_task_priority,
     coerce_task_status,
     coerce_task_type,
+    normalize_acceptance_criteria,
 )
 from kagan.core.domain.enums import TaskPriority, TaskStatus, TaskType
 
@@ -64,24 +65,12 @@ class PlanItem(FrozenDomainModel):
 
     @field_validator("acceptance_criteria", mode="before")
     @classmethod
-    def coerce_criteria(cls, value: object) -> list[object]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            return value
-        return [value]
-
-    @field_validator("acceptance_criteria")
-    @classmethod
-    def clean_criteria(cls, value: list[object]) -> list[str]:
-        cleaned: list[str] = []
-        for item in value:
-            text = str(item).strip()
-            if text:
-                cleaned.append(text)
-        return cleaned
+    def coerce_criteria(cls, value: object) -> list[str]:
+        normalized = normalize_acceptance_criteria(value)
+        if normalized is not None:
+            return normalized
+        text = str(value).strip()
+        return [text] if text else []
 
 
 class PlanTodo(FrozenDomainModel):
@@ -222,6 +211,14 @@ class TaskSummary(FrozenDomainModel):
     runtime: TaskRuntimeState | None = None
 
 
+class AgentLogEntry(FrozenDomainModel):
+    """Compact agent log entry payload shared by SDK/MCP task log responses."""
+
+    run: int = 0
+    content: str = ""
+    created_at: str = ""
+
+
 class Execution(FrozenDomainModel):
     """Execution process payload."""
 
@@ -289,6 +286,7 @@ _CANONICAL_DOMAIN_MODELS: tuple[type[FrozenDomainModel], ...] = (
     TaskRuntimeState,
     Task,
     TaskSummary,
+    AgentLogEntry,
     Execution,
     ExecutionLogEntry,
     RuntimeContext,
@@ -303,6 +301,7 @@ del _model
 
 
 __all__ = [
+    "AgentLogEntry",
     "Execution",
     "ExecutionLogEntry",
     "FrozenDomainModel",

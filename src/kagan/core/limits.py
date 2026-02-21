@@ -1,4 +1,4 @@
-"""Numeric limits and timeouts - no circular dependencies."""
+"""Runtime limits for core internals (agent/process/logging), not wire protocol defaults."""
 
 from __future__ import annotations
 

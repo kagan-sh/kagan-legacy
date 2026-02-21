@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 
     from kagan.core.services.automation.runner import QueuedMessage
 
+_QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 80
+_ELLIPSIS_TEXT = "..."
+_QUEUED_MESSAGE_PREVIEW_TRUNCATED_CHARS = _QUEUED_MESSAGE_PREVIEW_MAX_CHARS - len(_ELLIPSIS_TEXT)
+
 
 class ChatInput(TextArea):
     """Text input that submits on Enter (Shift+Enter/Ctrl+J for newline)."""
@@ -79,8 +83,8 @@ class QueuedMessageRow(Horizontal):
     def compose(self) -> ComposeResult:
         # Truncate long messages for display
         display_text = self._content
-        if len(display_text) > 80:
-            display_text = display_text[:77] + "..."
+        if len(display_text) > _QUEUED_MESSAGE_PREVIEW_MAX_CHARS:
+            display_text = display_text[:_QUEUED_MESSAGE_PREVIEW_TRUNCATED_CHARS] + _ELLIPSIS_TEXT
         yield Label(display_text, classes="queued-message-text")
         yield Button("✗", classes="queued-message-remove", id=f"remove-{self._index}")
 

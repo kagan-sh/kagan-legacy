@@ -9,6 +9,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from kagan.core.adapters.process import run_exec_capture, spawn_exec
+from kagan.core.command_utils import build_kagan_mcp_command_args
 from kagan.core.config import get_os_value
 from kagan.core.domain.enums import (
     PairTerminalBackend,
@@ -20,6 +21,7 @@ from kagan.core.domain.enums import (
 from kagan.core.mcp_naming import get_mcp_server_name
 from kagan.core.tmux import TmuxError, run_tmux
 from kagan.core.utils import BackgroundTasks
+from kagan.core.workspace_env import workspace_env_overrides
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -140,6 +142,31 @@ def has_extension_installed(extension_listing: str, extension_id: str) -> bool:
     return extension_id.strip().lower() in installed
 
 
+def build_kagan_session_env(
+    *,
+    task_id: str,
+    task_title: str,
+    worktree_path: Path,
+    project_root: Path,
+) -> dict[str, str]:
+    """Build environment variables for a PAIR tmux session."""
+    env = {
+        "KAGAN_TASK_ID": task_id,
+        "KAGAN_TASK_TITLE": task_title,
+        "KAGAN_WORKTREE_PATH": str(worktree_path),
+        "KAGAN_PROJECT_ROOT": str(project_root),
+    }
+    env.update(workspace_env_overrides(worktree_path))
+    return env
+
+
+def _tmux_env_flags(env_vars: dict[str, str]) -> list[str]:
+    flags: list[str] = []
+    for key, value in env_vars.items():
+        flags.extend(["-e", f"{key}={value}"])
+    return flags
+
+
 def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> list[str]:
     """Build MCP CLI args with session scoping and endpoint discovery.
 
@@ -147,6 +174,7 @@ def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> li
     agents and the local TUI can operate concurrently.
     """
     from kagan.core.ipc.discovery import discover_core_endpoint
+    from kagan.core.runtime_context import resolve_runtime_context
 
     session_id = task_id if task_id.startswith("task:") else f"task:{task_id}"
     args = [
@@ -159,7 +187,7 @@ def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> li
         "kagan",
     ]
 
-    endpoint = discover_core_endpoint()
+    endpoint = discover_core_endpoint(runtime_context=resolve_runtime_context())
     if endpoint is not None:
         if endpoint.port is not None:
             args.extend(["--endpoint", f"{endpoint.address}:{endpoint.port}"])
@@ -167,6 +195,15 @@ def _build_session_mcp_args(task_id: str, capability: str = "pair_worker") -> li
             args.extend(["--endpoint", endpoint.address])
 
     return args
+
+
+def _build_session_mcp_stdio_command(
+    task_id: str,
+    capability: str = "pair_worker",
+) -> tuple[str, list[str]]:
+    """Build stdio command/args for invoking Kagan MCP reliably."""
+    mcp_args = _build_session_mcp_args(task_id, capability)
+    return build_kagan_mcp_command_args(mcp_args)
 
 
 class SessionServiceImpl:
@@ -295,6 +332,12 @@ class SessionServiceImpl:
             worktree_path=worktree_path,
         )
         if backend == PairTerminalBackend.TMUX.value:
+            tmux_env = build_kagan_session_env(
+                task_id=task.id,
+                task_title=task.title,
+                worktree_path=worktree_path,
+                project_root=self._root,
+            )
             await run_tmux(
                 "new-session",
                 "-d",
@@ -302,14 +345,7 @@ class SessionServiceImpl:
                 session_name,
                 "-c",
                 str(worktree_path),
-                "-e",
-                f"KAGAN_TASK_ID={task.id}",
-                "-e",
-                f"KAGAN_TASK_TITLE={task.title}",
-                "-e",
-                f"KAGAN_WORKTREE_PATH={worktree_path}",
-                "-e",
-                f"KAGAN_PROJECT_ROOT={self._root}",
+                *_tmux_env_flags(tmux_env),
             )
             if launch_cmd:
                 await run_tmux("send-keys", "-t", session_name, launch_cmd, "Enter")
@@ -340,6 +376,12 @@ class SessionServiceImpl:
         """Create session for manual conflict resolution."""
         session_name = self._resolve_session_name(task.id)
         backend = self._resolve_terminal_backend(task)
+        tmux_env = build_kagan_session_env(
+            task_id=task.id,
+            task_title=task.title,
+            worktree_path=workdir,
+            project_root=self._root,
+        )
 
         await run_tmux(
             "new-session",
@@ -348,14 +390,7 @@ class SessionServiceImpl:
             session_name,
             "-c",
             str(workdir),
-            "-e",
-            f"KAGAN_TASK_ID={task.id}",
-            "-e",
-            f"KAGAN_TASK_TITLE={task.title}",
-            "-e",
-            f"KAGAN_WORKTREE_PATH={workdir}",
-            "-e",
-            f"KAGAN_PROJECT_ROOT={self._root}",
+            *_tmux_env_flags(tmux_env),
         )
 
         await run_tmux("send-keys", "-t", session_name, "git status", "Enter")
@@ -395,21 +430,15 @@ class SessionServiceImpl:
         """
         import shlex
 
+        import mslex
+
         from kagan.core.command_utils import is_windows
 
         base_cmd = get_os_value(agent_config.interactive_command)
         if not base_cmd:
             return None
 
-        if is_windows():
-            try:
-                import mslex
-
-                quote_value = mslex.quote
-            except Exception:  # quality-allow-broad-except
-                quote_value = shlex.quote
-        else:
-            quote_value = shlex.quote
+        quote_value = mslex.quote if is_windows() else shlex.quote
 
         escaped_prompt = quote_value(prompt)
         model_flag = f"--model {model} " if model else ""
@@ -431,10 +460,10 @@ class SessionServiceImpl:
             case "codex":
                 mcp_override_flags = ""
                 if task_id:
-                    mcp_args = _build_session_mcp_args(task_id)
+                    mcp_command, mcp_args = _build_session_mcp_stdio_command(task_id)
                     server_name = self._codex_mcp_server_name()
                     codex_overrides = [
-                        f'mcp_servers.{server_name}.command="kagan"',
+                        f"mcp_servers.{server_name}.command={json.dumps(mcp_command)}",
                         f"mcp_servers.{server_name}.args={json.dumps(mcp_args)}",
                         f"mcp_servers.{server_name}.enabled=true",
                     ]
@@ -605,13 +634,13 @@ class SessionServiceImpl:
             return []
 
         server_name = get_mcp_server_name()
-        mcp_args = _build_session_mcp_args(task_id)
+        mcp_command, mcp_args = _build_session_mcp_stdio_command(task_id)
         files_written: list[str] = []
 
         if backend == PairTerminalBackend.VSCODE.value:
             vscode_entry = {
                 "type": "stdio",
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             await self._merge_json_config(
@@ -624,7 +653,7 @@ class SessionServiceImpl:
 
         if backend == PairTerminalBackend.CURSOR.value:
             cursor_entry = {
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             await self._merge_json_config(
@@ -638,7 +667,7 @@ class SessionServiceImpl:
         if backend == PairTerminalBackend.WINDSURF.value:
             windsurf_entry = {
                 "type": "stdio",
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             await self._merge_json_config(
@@ -652,7 +681,7 @@ class SessionServiceImpl:
         if backend == PairTerminalBackend.KIRO.value:
             kiro_entry = {
                 "type": "stdio",
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             await self._merge_json_config(
@@ -666,7 +695,7 @@ class SessionServiceImpl:
         if backend == PairTerminalBackend.ANTIGRAVITY.value:
             agy_entry = {
                 "type": "stdio",
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             await self._merge_json_config(
@@ -718,20 +747,20 @@ class SessionServiceImpl:
             return None
 
         server_name = get_mcp_server_name()
-        mcp_args = _build_session_mcp_args(task_id)
+        mcp_command, mcp_args = _build_session_mcp_stdio_command(task_id)
 
         if builtin and builtin.mcp_config_format == "opencode":
             filename = "opencode.json"
             kagan_entry = {
                 "type": "local",
-                "command": ["kagan", *mcp_args],
+                "command": [mcp_command, *mcp_args],
                 "enabled": True,
             }
             mcp_key = "mcp"
         else:
             filename = ".mcp.json"
             kagan_entry = {
-                "command": "kagan",
+                "command": mcp_command,
                 "args": mcp_args,
             }
             mcp_key = "mcpServers"
@@ -766,9 +795,9 @@ class SessionServiceImpl:
             return None
 
         server_name = get_mcp_server_name()
-        mcp_args = _build_session_mcp_args(task_id)
+        mcp_command, mcp_args = _build_session_mcp_stdio_command(task_id)
         entry = {
-            "command": "kagan",
+            "command": mcp_command,
             "args": mcp_args,
         }
         await self._merge_json_config(
@@ -789,10 +818,10 @@ class SessionServiceImpl:
             return
 
         server_name = get_mcp_server_name()
-        mcp_args = _build_session_mcp_args(task_id)
+        mcp_command, mcp_args = _build_session_mcp_stdio_command(task_id)
         config_path = bundle_dir(worktree_path) / "kimi-mcp.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config = {"mcpServers": {server_name: {"command": "kagan", "args": mcp_args}}}
+        config = {"mcpServers": {server_name: {"command": mcp_command, "args": mcp_args}}}
 
         async with aiofiles.open(config_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(config, indent=2))

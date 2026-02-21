@@ -11,6 +11,7 @@ from typing import Any
 
 from kagan.core.plugins.github.gh_adapter import (
     GhRepoView,
+    load_connection_metadata,
     parse_gh_repo_view,
 )
 
@@ -39,3 +40,31 @@ class TestRepoMetadataParsing:
         raw: dict[str, Any] = {"name": "repo", "url": "https://github.com/user/repo"}
         result = parse_gh_repo_view(raw)
         assert not isinstance(result, GhRepoView)
+
+
+class TestConnectionMetadataParsing:
+    """Connection metadata compatibility parsing."""
+
+    def test_load_connection_metadata_accepts_legacy_name_key(self) -> None:
+        raw: dict[str, Any] = {
+            "owner": "user",
+            "name": "repo",
+            "full_name": "user/repo",
+            "default_branch": "main",
+        }
+        parsed = load_connection_metadata(raw)
+        assert parsed is not None
+        assert parsed["repo"] == "repo"
+        assert "name" not in parsed
+
+    def test_load_connection_metadata_prefers_repo_over_name(self) -> None:
+        raw: dict[str, Any] = {
+            "owner": "user",
+            "repo": "canonical-repo",
+            "name": "legacy-repo",
+            "full_name": "user/canonical-repo",
+            "default_branch": "main",
+        }
+        parsed = load_connection_metadata(raw)
+        assert parsed is not None
+        assert parsed["repo"] == "canonical-repo"

@@ -12,6 +12,13 @@ from tests.helpers.mocks.agents import (
     build_repo_routed_smart_agent_factory,
     build_smart_agent_factory,
 )
+from tests.helpers.mocks.commands import (
+    TaskCommandApiStub,
+    TaskCommandContextStub,
+    TaskResultStub,
+    build_task_command_context,
+    build_task_result,
+)
 from tests.helpers.mocks.core import (
     create_fake_tmux,
     create_mock_agent,
@@ -27,8 +34,13 @@ __all__ = [
     "MockAgentFactory",
     "NoopMessageAgent",
     "SmartMockAgent",
+    "TaskCommandApiStub",
+    "TaskCommandContextStub",
+    "TaskResultStub",
     "build_repo_routed_smart_agent_factory",
     "build_smart_agent_factory",
+    "build_task_command_context",
+    "build_task_result",
     "create_fake_tmux",
     "create_mock_agent",
     "create_mock_process",

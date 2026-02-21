@@ -69,7 +69,7 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction(
         "task open",
-        "Open focused task context in docked orchestrator",
+        "Open focused task session/output (shortcut: o)",
         KanbanActionId.OPEN_SESSION,
         requires_task=True,
         worker_group="open-session",
@@ -148,7 +148,7 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction(
         "task review",
-        "Open review context in fullscreen orchestrator",
+        "Open review context in fullscreen AI Assistant",
         KanbanActionId.OPEN_REVIEW,
         requires_task=True,
         worker_group="review-open",
@@ -169,18 +169,18 @@ KANBAN_ACTIONS: tuple[KanbanAction, ...] = (
     ),
     KanbanAction("board search", "Toggle search bar", KanbanActionId.TOGGLE_SEARCH),
     KanbanAction(
-        "board orchestrator",
-        "Toggle docked orchestrator overlay (Ctrl+O)",
+        "board ai assistant",
+        "Toggle docked AI Assistant overlay (Ctrl+O)",
         KanbanActionId.TOGGLE_CHAT,
     ),
     KanbanAction(
-        "board orchestrator docked",
-        "Toggle docked orchestrator overlay (Ctrl+O)",
+        "board ai assistant docked",
+        "Toggle docked AI Assistant overlay (Ctrl+O)",
         KanbanActionId.TOGGLE_ORCHESTRATOR_DOCK,
     ),
     KanbanAction(
-        "board orchestrator fullscreen",
-        "Toggle fullscreen orchestrator overlay (Ctrl+P)",
+        "board ai assistant fullscreen",
+        "Toggle fullscreen AI Assistant overlay (Ctrl+P)",
         KanbanActionId.TOGGLE_ORCHESTRATOR_FULLSCREEN,
     ),
     KanbanAction(

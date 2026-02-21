@@ -19,11 +19,13 @@ from kagan.core.constants import (
 )
 from kagan.core.domain.enums import CardIndicator, TaskStatus, TaskType
 from kagan.core.plugins.github.models import build_github_context_index
+from kagan.tui.keybindings import APP_BINDINGS, KANBAN_BINDINGS, get_key_for_action
 from kagan.tui.ui.screens.kanban.hints import build_kanban_hints
 from kagan.tui.ui.utils import state_attr, state_timestamp
 from kagan.tui.ui.widgets.column import KanbanColumn
 from kagan.tui.ui.widgets.keybinding_hint import KanbanHintBar
 from kagan.tui.ui.widgets.offline_banner import OfflineBanner
+from kagan.tui.ui.widgets.search_bar import SearchBar
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -81,6 +83,34 @@ class BoardRefreshModel:
     diff: BoardTaskDiff
     display_tasks_by_status: dict[TaskStatus, list[TaskView]]
     backlog_blocked_count: int
+
+
+def build_search_filter_hint(
+    *,
+    query: str,
+    filtered_count: int | None,
+    clear_key: str,
+    hide_key: str,
+) -> str:
+    """Build a user-facing status line for active board search/filter state."""
+    normalized_query = query.strip()
+    if not normalized_query:
+        return (
+            "Search active. Type to filter tasks. "
+            f"{clear_key} clears query, {hide_key} hides search."
+        )
+    if filtered_count is None:
+        return f'Searching for "{normalized_query}"... {clear_key} clear, {hide_key} hide.'
+    if filtered_count == 0:
+        return (
+            f'No tasks match "{normalized_query}". Try fewer words or a broader term. '
+            f"{clear_key} clear, {hide_key} hide."
+        )
+    task_word = "task" if filtered_count == 1 else "tasks"
+    return (
+        f'Search "{normalized_query}": {filtered_count} {task_word}. '
+        f"{clear_key} clear, {hide_key} hide."
+    )
 
 
 def transition_board_sync_state(
@@ -178,6 +208,14 @@ class KanbanBoardController:
     def __init__(self, screen: KanbanScreen) -> None:
         self.screen = screen
 
+    def _passive_event_mode(self) -> bool:
+        has_bridge = getattr(self.screen.kagan_app, "has_passive_task_event_bridge", None)
+        if not callable(has_bridge):
+            return False
+        with suppress(Exception):
+            return bool(has_bridge())
+        return False
+
     @staticmethod
     def _runtime_attr(runtime_view: object | None, name: str, default: Any = None) -> Any:
         return state_attr(runtime_view, name, default)
@@ -210,6 +248,9 @@ class KanbanBoardController:
         self.stop_background_sync()
 
     def start_background_sync(self) -> None:
+        if self._passive_event_mode():
+            self._set_background_sync_interval(self.screen.BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS)
+            return
         self._set_fast_sync_window()
 
     def stop_background_sync(self) -> None:
@@ -220,6 +261,9 @@ class KanbanBoardController:
         self.screen._board_fast_ticks_remaining = 0
 
     def _set_fast_sync_window(self) -> None:
+        if self._passive_event_mode():
+            self._set_background_sync_interval(self.screen.BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS)
+            return
         transition = transition_board_sync_state(
             current_state=self._sync_state(),
             fast_ticks_remaining=self.screen._board_fast_ticks_remaining,
@@ -254,6 +298,25 @@ class KanbanBoardController:
         )
 
     def _background_sync_tick(self) -> None:
+        if self._passive_event_mode():
+            if (
+                self.screen._board_sync_interval_seconds
+                != self.screen.BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS
+            ):
+                self._set_background_sync_interval(
+                    self.screen.BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS
+                )
+            if self.screen.is_orchestrator_fullscreen_visible():
+                return
+            if not self.screen.is_board_refresh_stale():
+                return
+            if self.screen._refresh_timer is not None:
+                return
+            if self._has_active_refresh_worker():
+                return
+            self.run_refresh()
+            return
+
         running_tasks = self.screen.ctx.api.get_running_task_ids()
         has_auto_in_progress = any(
             task.task_type == TaskType.AUTO and task.status == TaskStatus.IN_PROGRESS
@@ -265,6 +328,14 @@ class KanbanBoardController:
             has_activity=bool(running_tasks) or has_auto_in_progress,
         )
         self._apply_sync_transition(transition)
+
+        if self.screen.is_orchestrator_fullscreen_visible():
+            return
+        if (
+            not (bool(running_tasks) or has_auto_in_progress)
+            and not self.screen.is_board_refresh_stale()
+        ):
+            return
 
         # Event-driven refreshes remain primary; avoid stacking duplicate work.
         if self.screen._refresh_timer is not None:
@@ -460,12 +531,16 @@ class KanbanBoardController:
                 display_tasks_by_status=model.display_tasks_by_status,
                 backlog_blocked_count=model.backlog_blocked_count,
             )
+            self.update_review_queue_hint()
+            self.update_keybinding_hints()
             return
 
         self._refresh_backlog_projection(
             display_tasks_by_status=model.display_tasks_by_status,
             backlog_blocked_count=model.backlog_blocked_count,
         )
+        self.update_review_queue_hint()
+        self.update_keybinding_hints()
 
     def check_screen_size(self) -> None:
         """Check screen size."""
@@ -512,6 +587,7 @@ class KanbanBoardController:
         self._apply_refresh_model(model, focused_task_id=focused_task_id)
         self.sync_agent_states()
         await self._sync_github_badges(new_tasks)
+        self.screen.mark_board_refreshed()
 
     def notify_status_changes(
         self,
@@ -559,7 +635,10 @@ class KanbanBoardController:
         await self.refresh_board()
 
     def schedule_refresh(self) -> None:
-        self._set_fast_sync_window()
+        if self.screen.is_orchestrator_fullscreen_visible():
+            return
+        if not self._passive_event_mode():
+            self._set_fast_sync_window()
         if self.screen._refresh_timer:
             self.screen._refresh_timer.stop()
         self.screen._refresh_timer = self.screen.set_timer(0.15, self.run_refresh)
@@ -568,6 +647,8 @@ class KanbanBoardController:
         self.screen._refresh_timer = None
         if not self.screen.is_mounted:
             return
+        if self.screen.is_orchestrator_fullscreen_visible():
+            return
         self.screen.run_worker(
             self.refresh_and_sync(),
             group="kanban-refresh",
@@ -575,12 +656,37 @@ class KanbanBoardController:
             exit_on_error=False,
         )
 
+    def cancel_refresh_work(self) -> None:
+        if self.screen._refresh_timer is not None:
+            self.screen._refresh_timer.stop()
+            self.screen._refresh_timer = None
+        for worker in self.screen.workers:
+            if (
+                worker.node == self.screen
+                and worker.group == "kanban-refresh"
+                and not worker.is_finished
+            ):
+                worker.cancel()
+
     def update_review_queue_hint(self) -> None:
         """Update review queue hint."""
         try:
             hint = self.screen.query_one("#review-queue-hint", Static)
         except NoMatches:
             return
+
+        search_hint = self._search_hint_message()
+        if search_hint is not None:
+            hint.update(search_hint)
+            hint.add_class("visible")
+            return
+
+        onboarding_hint = self._empty_board_hint_message()
+        if onboarding_hint is not None:
+            hint.update(onboarding_hint)
+            hint.add_class("visible")
+            return
+
         review_count = sum(1 for task in self.screen._tasks if task.status == TaskStatus.REVIEW)
         if review_count > 1:
             hint.update("Hint: multiple tasks are in REVIEW. Merging in order reduces conflicts.")
@@ -588,6 +694,48 @@ class KanbanBoardController:
         else:
             hint.update("")
             hint.remove_class("visible")
+
+    def _search_hint_message(self) -> str | None:
+        if not self.screen.search_visible:
+            return None
+        try:
+            search_bar = self.screen.query_one("#search-bar", SearchBar)
+        except NoMatches:
+            return None
+
+        clear_key = get_key_for_action(KANBAN_BINDINGS, "deselect", default="Esc")
+        hide_key = get_key_for_action(KANBAN_BINDINGS, "toggle_search", default="/")
+        filtered_tasks = self.screen._ui_state.filtered_tasks
+        filtered_count = None if filtered_tasks is None else len(filtered_tasks)
+        return build_search_filter_hint(
+            query=search_bar.search_query,
+            filtered_count=filtered_count,
+            clear_key=clear_key,
+            hide_key=hide_key,
+        )
+
+    def _empty_board_hint_message(self) -> str | None:
+        if self.screen.search_visible or self.screen._tasks:
+            return None
+        show_beginner_hints = bool(
+            getattr(getattr(self.screen.kagan_app.config, "ui", None), "show_beginner_hints", True)
+        )
+        if not show_beginner_hints:
+            return None
+        new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
+        search_key = get_key_for_action(KANBAN_BINDINGS, "toggle_search", default="/")
+        details_key = get_key_for_action(KANBAN_BINDINGS, "view_details", default="Enter")
+        assistant_key = get_key_for_action(
+            KANBAN_BINDINGS, "open_chat_fullscreen", default="Ctrl+P"
+        )
+        docked_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat_overlay", default="Ctrl+O")
+        actions_key = get_key_for_action(APP_BINDINGS, "command_palette", default=".")
+        help_key = get_key_for_action(APP_BINDINGS, "show_help", default="?")
+        return (
+            f"Quick start: 1) {new_key} new task  2) {search_key} search  "
+            f"3) {details_key} details  4) {assistant_key} assistant ({docked_key} docked)  "
+            f"5) {actions_key} actions  6) {help_key} help."
+        )
 
     def update_keybinding_hints(self) -> None:
         try:
@@ -604,7 +752,18 @@ class KanbanBoardController:
                 card.task_model.task_type,
             )
 
-        hint_bar.show_kanban_hints(hints.navigation, hints.actions, hints.global_hints)
+        mode_label = "Board"
+        current_mode_label = getattr(self.screen, "_current_mode_label", None)
+        if callable(current_mode_label):
+            computed_mode = current_mode_label()
+            if isinstance(computed_mode, str) and computed_mode.strip():
+                mode_label = computed_mode.strip()
+        hint_bar.show_kanban_hints(
+            hints.navigation,
+            hints.actions,
+            hints.global_hints,
+            mode_label=mode_label,
+        )
 
     async def _sync_github_badges(self, tasks: list[TaskView]) -> None:
         """Sync GitHub issue/PR badges on all visible cards."""

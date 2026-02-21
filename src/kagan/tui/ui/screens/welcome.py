@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.exc import OperationalError
 from textual.containers import Container, Horizontal
 from textual.css.query import NoMatches
-from textual.widgets import Button, Footer, Label, ListItem, ListView, Static, Switch
+from textual.widgets import Button, Checkbox, Footer, Label, ListItem, ListView, Static
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
 from kagan.core.constants import KAGAN_LOGO
@@ -22,6 +22,8 @@ from kagan.tui.ui.widgets.keybinding_hint import KeybindingHint
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
+
+    from kagan.tui.ui.types import ProjectView
 
 _PROJECT_LOAD_ERRORS = (RepositoryClosing, OperationalError, RuntimeError, ValueError)
 
@@ -135,16 +137,18 @@ class WelcomeScreen(KaganScreen):
             yield ListView(id="project-list")
 
             yield Label(
-                "No recent projects. Create a new project or open a folder.",
+                self._default_empty_state_message(),
                 id="empty-state",
             )
 
             with Horizontal(classes="toggle-row"):
-                yield Switch(
+                yield Checkbox(
+                    "Enable auto review",
                     id="auto-review-switch",
                     value=self.ctx.config.general.auto_review,
+                    compact=True,
+                    classes="toggle-checkbox",
                 )
-                yield Label("Enable auto review", classes="toggle-text")
 
             with Horizontal(id="actions"):
                 yield Button("New Project", id="btn-new", variant="primary")
@@ -172,12 +176,15 @@ class WelcomeScreen(KaganScreen):
 
     def _update_keybinding_hints(self) -> None:
         hint_widget = self.query_one("#welcome-hint", KeybindingHint)
+        escape_label = "back" if self.ctx.active_project_id is not None else "quit"
         hint_widget.show_hints(
             [
                 (get_key_for_action(WELCOME_BINDINGS, "open_selected"), "open"),
+                (get_key_for_action(WELCOME_BINDINGS, "move_selection_down"), "navigate"),
+                (get_key_for_action(WELCOME_BINDINGS, "focus_next"), "next"),
                 (get_key_for_action(WELCOME_BINDINGS, "new_project"), "new"),
                 (get_key_for_action(WELCOME_BINDINGS, "open_folder"), "open folder"),
-                (get_key_for_action(WELCOME_BINDINGS, "settings"), "settings"),
+                (get_key_for_action(WELCOME_BINDINGS, "quit"), escape_label),
             ]
         )
 
@@ -217,7 +224,7 @@ class WelcomeScreen(KaganScreen):
 
         if not projects:
             list_view.display = False
-            empty_state.update("No recent projects. Create a new project or open a folder.")
+            empty_state.update(self._default_empty_state_message())
             empty_state.display = True
             self._hide_continue_highlight()
             return
@@ -226,35 +233,51 @@ class WelcomeScreen(KaganScreen):
         list_view.display = True
         self._project_items.clear()
 
-        for idx, project in enumerate(projects):
-            try:
-                repos = await api.get_project_repos(project.id)
-                repo_paths = [r.path for r in repos]
-            except _PROJECT_LOAD_ERRORS as exc:
-                self.log(
-                    "Project repo lookup failed",
-                    project_id=project.id,
-                    error=str(exc),
-                )
-                repo_paths = []
-
-            task_summary = await self._get_task_summary(project.id)
-
-            item = ProjectListItem(
-                project_id=project.id,
-                name=project.name,
-                repo_paths=repo_paths,
-                last_opened=project.last_opened_at,
-                task_summary=task_summary,
-                index=idx,
-            )
-            self._project_items.append(item)
+        items = await asyncio.gather(
+            *(self._build_project_item(project, idx) for idx, project in enumerate(projects))
+        )
+        if not self.is_mounted:
+            return
+        self._project_items = list(items)
+        for item in items:
             await list_view.append(item)
+        if self._project_items:
+            list_view.index = 0
+            list_view.focus()
 
         if self._highlight_recent and projects:
             self._show_continue_highlight(projects[0].name, self._project_items[0].task_summary)
         else:
             self._hide_continue_highlight()
+
+    async def _build_project_item(self, project: ProjectView, index: int) -> ProjectListItem:
+        project_id = project.id
+        project_name = project.name
+        last_opened = project.last_opened_at
+        repo_paths, task_summary = await asyncio.gather(
+            self._get_repo_paths(project_id),
+            self._get_task_summary(project_id),
+        )
+        return ProjectListItem(
+            project_id=project_id,
+            name=project_name,
+            repo_paths=repo_paths,
+            last_opened=last_opened,
+            task_summary=task_summary,
+            index=index,
+        )
+
+    async def _get_repo_paths(self, project_id: str) -> list[str]:
+        try:
+            repos = await self.ctx.api.get_project_repos(project_id)
+            return [repo.path for repo in repos]
+        except _PROJECT_LOAD_ERRORS as exc:
+            self.log(
+                "Project repo lookup failed",
+                project_id=project_id,
+                error=str(exc),
+            )
+            return []
 
     def _show_continue_highlight(self, project_name: str, task_summary: str) -> None:
         """Show the 'Continue where you left off' highlight box."""
@@ -312,6 +335,44 @@ class WelcomeScreen(KaganScreen):
         except NoMatches:
             return
 
+    @staticmethod
+    def _default_empty_state_message() -> str:
+        return "No recent projects yet. Press n to create your first project or o to open a folder."
+
+    def _focusable_selector(self) -> str:
+        return (
+            "#project-list, #btn-new, #btn-open, #btn-settings, "
+            "#auto-review-switch, #btn-cwd-create, #btn-cwd-dismiss"
+        )
+
+    def _move_project_selection(self, delta: int) -> None:
+        try:
+            list_view = self.query_one("#project-list", ListView)
+        except NoMatches:
+            return
+        if not bool(list_view.display) or not self._project_items:
+            return
+
+        current_index = list_view.index
+        if current_index is None:
+            next_index = 0 if delta > 0 else len(self._project_items) - 1
+        else:
+            next_index = max(0, min(len(self._project_items) - 1, current_index + delta))
+        list_view.index = next_index
+        list_view.focus()
+
+    def action_move_selection_up(self) -> None:
+        self._move_project_selection(-1)
+
+    def action_move_selection_down(self) -> None:
+        self._move_project_selection(1)
+
+    def action_focus_next(self) -> None:
+        self.focus_next(self._focusable_selector())
+
+    def action_focus_previous(self) -> None:
+        self.focus_previous(self._focusable_selector())
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         """Enable actions only when valid."""
         if action == "open_selected":
@@ -332,12 +393,15 @@ class WelcomeScreen(KaganScreen):
 
         def on_dismiss(result: dict | None) -> None:
             if result and isinstance(result, dict) and "project_id" in result:
+                self.notify("Project created. Opening board...", severity="success")
                 self.app.run_worker(
                     self._open_project(result["project_id"]),
                     group="welcome-open-project",
                     exclusive=True,
                     exit_on_error=False,
                 )
+                return
+            self.notify("Project setup canceled", severity="information")
 
         self.app.push_screen(NewProjectModal(), callback=on_dismiss)
 
@@ -414,8 +478,30 @@ class WelcomeScreen(KaganScreen):
         )
 
     async def action_quit(self) -> None:
-        """Quit the application."""
-        self.app.exit()
+        """Return to board when context exists; confirm quit otherwise."""
+        active_project_id = self.ctx.active_project_id
+        if active_project_id is not None:
+            try:
+                opened = await self.kagan_app.open_project_session(
+                    active_project_id,
+                    preferred_repo_id=self.ctx.active_repo_id,
+                    allow_picker=False,
+                    screen_mode="switch",
+                )
+            except _PROJECT_LOAD_ERRORS:
+                self.notify("Unable to return to board right now", severity="warning")
+                return
+            if opened:
+                return
+            self.notify("Unable to return to board right now", severity="warning")
+            return
+        from kagan.tui.ui.modals.confirm import ConfirmModal
+
+        confirmed = await self.app.push_screen_wait(
+            ConfirmModal(title="Quit Kagan?", message="No project is open.")
+        )
+        if confirmed:
+            self.kagan_app.exit()
 
     def _open_project_by_index(self, index: int) -> None:
         """Open project by 0-based index."""
@@ -470,17 +556,26 @@ class WelcomeScreen(KaganScreen):
         elif event.button.id == "btn-cwd-dismiss":
             self._dismiss_cwd_banner()
 
-    def on_switch_changed(self, event: Switch.Changed) -> None:
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         """Persist auto review preference from the welcome screen."""
-        if event.switch.id != "auto-review-switch":
+        if event.checkbox.id != "auto-review-switch":
             return
-        self.ctx.config.general.auto_review = event.value
         self.app.run_worker(
-            self.ctx.config.save(self.ctx.config_path),
+            self._persist_auto_review_preference(event.value),
             group="welcome-save-auto-review",
             exclusive=True,
             exit_on_error=False,
         )
+
+    async def _persist_auto_review_preference(self, enabled: bool) -> None:
+        try:
+            success, message = await self.kagan_app.persist_settings_updates(
+                {"general.auto_review": enabled}
+            )
+            if not success:
+                self.log("Failed to persist auto review preference", error=message)
+        except Exception as exc:  # quality-allow-broad-except
+            self.log("Failed to persist auto review preference", error=str(exc))
 
     async def _create_project_from_cwd(self) -> None:
         """Create a new project from the current working directory.
@@ -527,6 +622,7 @@ class WelcomeScreen(KaganScreen):
         try:
             banner = self.query_one("#cwd-suggestion-banner", Container)
             banner.display = False
+            self.notify("Setup suggestion dismissed", severity="information")
         except NoMatches:
             return
 

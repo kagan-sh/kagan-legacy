@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import json
 import os
-import shlex
 from typing import TYPE_CHECKING, Any
 
 import aiofiles
@@ -43,6 +42,11 @@ from acp.schema import (
 from kagan.core.acp import messages
 from kagan.core.acp.messages import AgentBuffers
 from kagan.core.acp.terminals import TerminalManager
+from kagan.core.command_utils import (
+    build_kagan_mcp_command_args,
+    format_command_for_shell,
+    split_command_string,
+)
 from kagan.core.constants import MCP_IDENTITY_ADMIN, MCP_IDENTITY_DEFAULT
 from kagan.core.debug_log import log
 from kagan.core.limits import SHUTDOWN_TIMEOUT, SUBPROCESS_LIMIT
@@ -53,6 +57,7 @@ from kagan.core.policy import (
     resolve_permission_decision,
 )
 from kagan.core.safety import prompt_digest, redact_sensitive_text
+from kagan.core.workspace_env import workspace_env_overrides
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -120,6 +125,7 @@ class KaganAgent:
         self._agent_config = agent_config
         self._read_only = read_only
         self._task_id: str | None = None
+        self._external_session_scope_id: str | None = None
         self._model_override: str | None = None
 
         self._connection = None
@@ -153,7 +159,11 @@ class KaganAgent:
         resolution = resolve_acp_command(raw_command, self._agent_config.name)
         if resolution.resolved_command is None:
             return None
-        return shlex.join(resolution.resolved_command)
+        if not resolution.resolved_command:
+            return None
+        return format_command_for_shell(
+            resolution.resolved_command[0], resolution.resolved_command[1:]
+        )
 
     def on_connect(self, conn) -> None:
         self._connection = conn
@@ -185,18 +195,11 @@ class KaganAgent:
         """Set task scope for MCP session wiring."""
         self._task_id = task_id
 
-    def start(self, message_target: MessagePump | None = None) -> None:
-        log.info(f"Starting agent for project: {self.project_root}")
-        log.debug(f"Agent config: {self._agent_config}")
-        self._message_target = message_target
-        self._stop_requested = False
-        self._prompt_completed = False
-        self._ready_event.clear()
-        self._done_event.clear()
-        self._agent_task = asyncio.create_task(self._run_agent())
+    def set_external_session_scope(self, scope_id: str | None) -> None:
+        """Set external scope used for unscoped maintainer MCP sessions."""
+        self._external_session_scope_id = scope_id
 
-    async def _run_agent(self) -> None:
-        log.info(f"[_run_agent] Starting for project: {self.project_root}")
+    def _build_process_env(self) -> dict[str, str]:
         env = os.environ.copy()
         env["KAGAN_CWD"] = str(self.project_root.absolute())
 
@@ -210,6 +213,23 @@ class KaganAgent:
                 env["OPENCODE_CONFIG_CONTENT"] = config_content
                 log.info(f"[_run_agent] OpenCode model override: {self._model_override}")
 
+        env.update(workspace_env_overrides(self.project_root, base_env=env))
+        return env
+
+    def start(self, message_target: MessagePump | None = None) -> None:
+        log.info(f"Starting agent for project: {self.project_root}")
+        log.debug(f"Agent config: {self._agent_config}")
+        self._message_target = message_target
+        self._stop_requested = False
+        self._prompt_completed = False
+        self._ready_event.clear()
+        self._done_event.clear()
+        self._agent_task = asyncio.create_task(self._run_agent())
+
+    async def _run_agent(self) -> None:
+        log.info(f"[_run_agent] Starting for project: {self.project_root}")
+        env = self._build_process_env()
+
         command = self.command
         if command is None:
             log.error("[_run_agent] No run command for this OS")
@@ -217,7 +237,7 @@ class KaganAgent:
             return
 
         try:
-            parts = shlex.split(command)
+            parts = split_command_string(command)
         except ValueError as exc:
             log.error(f"[_run_agent] Failed to parse command: {exc}")
             self.post_message(messages.AgentFail("Failed to parse run command", str(exc)))
@@ -592,7 +612,7 @@ class KaganAgent:
         shell_tokens: list[str] = []
         for candidate in token_candidates:
             try:
-                shell_tokens.extend(shlex.split(candidate))
+                shell_tokens.extend(split_command_string(candidate))
             except ValueError:
                 shell_tokens.append(candidate)
 
@@ -655,12 +675,17 @@ class KaganAgent:
         log.info(f"[_acp_new_session] Sending session/new request with cwd={cwd}")
 
         task_id = self._task_id or os.environ.get("KAGAN_TASK_ID", "")
-        mcp_args = _build_mcp_args(task_id=task_id, read_only=self._read_only)
+        mcp_args = _build_mcp_args(
+            task_id=task_id,
+            read_only=self._read_only,
+            external_session_scope_id=self._external_session_scope_id,
+        )
+        mcp_command, mcp_command_args = build_kagan_mcp_command_args(mcp_args)
 
         kagan_mcp = McpServerStdio(
             name=get_mcp_server_name(),
-            command="kagan",
-            args=mcp_args,
+            command=mcp_command,
+            args=mcp_command_args,
             env=[],
         )
 
@@ -771,9 +796,15 @@ class KaganAgent:
         return code == -15 and (self._stop_requested or self._prompt_completed)
 
 
-def _build_mcp_args(*, task_id: str, read_only: bool) -> list[str]:
+def _build_mcp_args(
+    *,
+    task_id: str,
+    read_only: bool,
+    external_session_scope_id: str | None = None,
+) -> list[str]:
     """Build CLI arguments for the session-scoped Kagan MCP server."""
     from kagan.core.ipc.discovery import discover_core_endpoint
+    from kagan.core.runtime_context import resolve_runtime_context
 
     normalized_task_id = task_id.strip()
     capability = resolve_mcp_capability(task_id=task_id, read_only=read_only)
@@ -791,12 +822,19 @@ def _build_mcp_args(*, task_id: str, read_only: bool) -> list[str]:
         )
     elif capability is CapabilityProfile.MAINTAINER:
         # Admin identity is restricted to ext:* sessions by binding policy.
-        session_id = "ext:orchestrator"
+        normalized_scope = external_session_scope_id.strip() if external_session_scope_id else ""
+        if normalized_scope:
+            if normalized_scope.startswith("ext:"):
+                session_id = normalized_scope
+            else:
+                session_id = f"ext:{normalized_scope}"
+        else:
+            session_id = "ext:orchestrator"
 
     if session_id:
         args.extend(["--session-id", session_id])
 
-    endpoint = discover_core_endpoint()
+    endpoint = discover_core_endpoint(runtime_context=resolve_runtime_context())
     if endpoint is not None:
         if endpoint.port is not None:
             args.extend(["--endpoint", f"{endpoint.address}:{endpoint.port}"])

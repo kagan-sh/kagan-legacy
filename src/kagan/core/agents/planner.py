@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from kagan.core.domain.enums import ChatRole
 from kagan.core.safety import literalize_for_prompt
 
+from .conversation_context import build_conversation_context_lines, build_persona_section
 from .planner_models import PlanProposal, ProposedTask, ProposedTodo
 from .planner_parser import parse_proposed_plan
 
@@ -211,23 +211,12 @@ def build_planner_prompt(
 ) -> str:
     """Build the prompt for the planner agent."""
     context_section = ""
-    persona_section = ""
-    if isinstance(persona, str):
-        cleaned = persona.strip()
-        if cleaned:
-            persona_section = f"## Persona Preset\n\n{literalize_for_prompt(cleaned)}\n"
-    if conversation_history:
-        context_parts = []
-        for role, content in conversation_history:
-            safe_content = literalize_for_prompt(content)
-            if role == ChatRole.USER:
-                context_parts.append(f"User: {safe_content}")
-            else:
-                truncated = (
-                    safe_content[:2000] + "..." if len(safe_content) > 2000 else safe_content
-                )
-                context_parts.append(f"Assistant: {truncated}")
-
+    persona_section = build_persona_section(persona)
+    if persona_section:
+        # Keep historical planner formatting stable for existing prompt snapshots.
+        persona_section = f"{persona_section}\n"
+    context_parts = build_conversation_context_lines(conversation_history)
+    if context_parts:
         context_section = f"""
 ## Previous Conversation
 

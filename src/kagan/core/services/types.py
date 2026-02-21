@@ -2,27 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NewType, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from kagan.core.config import KaganConfig
     from kagan.core.domain.enums import TaskStatus, TaskType
 
-_ProjectId = NewType("_ProjectId", str)
-_RepoId = NewType("_RepoId", str)
-_TaskId = NewType("_TaskId", str)
-_WorkspaceId = NewType("_WorkspaceId", str)
-_SessionId = NewType("_SessionId", str)
-_ExecutionId = NewType("_ExecutionId", str)
-_MergeId = NewType("_MergeId", str)
-
-type ProjectId = _ProjectId | str
-type RepoId = _RepoId | str
-type TaskId = _TaskId | str
-type WorkspaceId = _WorkspaceId | str
-type SessionId = _SessionId | str
-type ExecutionId = _ExecutionId | str
-type MergeId = _MergeId | str
+# Semantic ID aliases used to keep service signatures self-descriptive.
+type ProjectId = str
+type RepoId = str
+type TaskId = str
+type WorkspaceId = str
+type SessionId = str
+type ExecutionId = str
+type MergeId = str
 
 
 class TaskLike(Protocol):

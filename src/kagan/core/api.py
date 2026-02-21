@@ -29,7 +29,7 @@ from kagan.core.api_capabilities import (
     WorkspaceCapabilityFacade,
 )
 from kagan.core.debug_log import log as debug_log
-from kagan.core.domain.enums import TaskStatus, TaskType
+from kagan.core.domain.enums import QueueLane, TaskStatus, TaskType
 from kagan.core.domain.task_rules import validate_transition
 from kagan.core.instrumentation import snapshot as instrumentation_snapshot
 from kagan.core.plugins.sdk import (
@@ -39,6 +39,7 @@ from kagan.core.plugins.sdk import (
 )
 from kagan.core.plugins.ui_schema import UiCatalog, sanitize_plugin_ui_payload
 from kagan.core.policy import CapabilityProfile, command, get_request_context
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT
 from kagan.core.scalars import non_empty_str
 from kagan.core.services.runtime import runtime_snapshot_for_task
 from kagan.core.time import utc_now
@@ -51,7 +52,7 @@ if TYPE_CHECKING:
     from kagan.core.bootstrap import AppContext
     from kagan.core.domain.enums import PairTerminalBackend, TaskPriority
     from kagan.core.plugins.sdk import PluginOperation, PluginRegistry
-    from kagan.core.services.automation.runner import QueuedMessage, QueueLane, QueueStatus
+    from kagan.core.services.automation.runner import QueuedMessage, QueueStatus
     from kagan.core.services.jobs import JobEvent, JobRecord
     from kagan.core.services.runtime import (
         AutoOutputReadiness,
@@ -93,10 +94,6 @@ _REVIEW_GUARDRAIL_TIMEOUT_SECONDS: float = 30.0
 # ── Plugin UI helpers (moved from _plugin_ui.py) ─────────────────────
 
 _DEFAULT_REFRESH_FALSE = {"repo": False, "tasks": False, "sessions": False}
-
-
-# Local alias preserves existing call sites while using shared coercion.
-_non_empty_str = non_empty_str
 
 
 def _merge_catalogs(target: UiCatalog, incoming: UiCatalog, *, plugin_id: str) -> UiCatalog:
@@ -1005,7 +1002,7 @@ class KaganAPI:
         self,
         *,
         capability: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_EVENTS_LIMIT,
         cursor: str | None = None,
     ) -> list[AuditEvent]:
         """List audit events with optional filtering."""
@@ -1154,7 +1151,7 @@ class KaganAPI:
         session_id: str,
         content: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
         author: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> QueuedMessage:
@@ -1171,7 +1168,7 @@ class KaganAPI:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> QueueStatus:
         """Get queue status for a specific lane."""
         return await self._automation_queue.get_status(session_id, lane=lane)
@@ -1180,7 +1177,7 @@ class KaganAPI:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> list[QueuedMessage]:
         """List queued messages without consuming them."""
         return await self._automation_queue.get_queued(session_id, lane=lane)
@@ -1189,7 +1186,7 @@ class KaganAPI:
         self,
         session_id: str,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> QueuedMessage | None:
         """Consume and return the next queued message payload for a lane."""
         return await self._automation_queue.take_queued(session_id, lane=lane)
@@ -1199,7 +1196,7 @@ class KaganAPI:
         session_id: str,
         index: int,
         *,
-        lane: QueueLane = "implementation",
+        lane: QueueLane = QueueLane.IMPLEMENTATION,
     ) -> bool:
         """Remove a queued message by index from a lane."""
         return await self._automation_queue.remove_message(session_id, index, lane=lane)
@@ -1302,60 +1299,6 @@ class KaganAPI:
     async def get_all_diffs(self, workspace_id: str) -> Any:
         """Retrieve all diffs for a workspace during task review."""
         return await self._ctx.workspace_service.get_all_diffs(workspace_id)
-
-    # ── Planner ───────────────────────────────────────────────────────
-
-    async def save_plan_proposal(self, proposal: Any) -> Any:
-        """Save a planner proposal."""
-        repo = getattr(self._ctx, "planner_repository", None)
-        if repo is None:
-            raise RuntimeError("Planner repository not available")
-        return await repo.save(proposal)
-
-    async def get_plan_proposal(self, task_id: str) -> Any:
-        """Get the latest planner proposal for a task."""
-        repo = getattr(self._ctx, "planner_repository", None)
-        if repo is None:
-            return None
-        return await repo.get_latest(task_id)
-
-    async def save_planner_draft(
-        self,
-        *,
-        project_id: str,
-        repo_id: str | None = None,
-        tasks_json: list[dict[str, Any]],
-        todos_json: list[dict[str, Any]] | None = None,
-    ) -> Any | None:
-        """Persist a planner draft proposal."""
-        repo = getattr(self._ctx, "planner_repository", None)
-        if repo is None:
-            return None
-        return await repo.save_proposal(
-            project_id=project_id,
-            repo_id=repo_id,
-            tasks_json=tasks_json,
-            todos_json=todos_json,
-        )
-
-    async def list_pending_planner_drafts(
-        self,
-        project_id: str,
-        *,
-        repo_id: str | None = None,
-    ) -> list[Any]:
-        """List pending planner draft proposals for a project/repo scope."""
-        repo = getattr(self._ctx, "planner_repository", None)
-        if repo is None:
-            return []
-        return await repo.list_pending(project_id, repo_id=repo_id)
-
-    async def update_planner_draft_status(self, proposal_id: str, status: Any) -> Any | None:
-        """Update planner draft status (approved/rejected)."""
-        repo = getattr(self._ctx, "planner_repository", None)
-        if repo is None:
-            return None
-        return await repo.update_status(proposal_id, status)
 
     # ── Merge Operations ────────────────────────────────────────────────
 
@@ -1634,8 +1577,8 @@ class KaganAPI:
         inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         cleaned_project_id, cleaned_repo_id = self._clean_project_repo_args(project_id, repo_id)
-        cleaned_plugin_id = _non_empty_str(plugin_id)
-        cleaned_action_id = _non_empty_str(action_id)
+        cleaned_plugin_id = non_empty_str(plugin_id)
+        cleaned_action_id = non_empty_str(action_id)
         if cleaned_plugin_id is None:
             raise ValueError("plugin_id is required")
         if cleaned_action_id is None:
@@ -1718,8 +1661,8 @@ class KaganAPI:
         operation = action.get("operation")
         if not isinstance(operation, dict):
             raise ValueError("Action operation must be an object")
-        capability = _non_empty_str(operation.get("capability"))
-        method = _non_empty_str(operation.get("method"))
+        capability = non_empty_str(operation.get("capability"))
+        method = non_empty_str(operation.get("method"))
         if capability is None or method is None:
             raise ValueError("Action operation requires capability and method")
 

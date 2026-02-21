@@ -15,8 +15,9 @@ from mcp.server.session import ServerSession
 from mcp.types import ToolAnnotations
 
 from kagan.core.agents import planner as planner_models
-from kagan.core.domain.models import PlanItem, PlanTodo, Task
+from kagan.core.domain.models import AgentLogEntry, PlanItem, PlanTodo, Task
 from kagan.core.policy import CapabilityProfile
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT, DEFAULT_TASK_LOG_LIMIT
 from kagan.core.scalars import (
     dict_str_keys_or_none,
     int_or_none,
@@ -74,15 +75,9 @@ def _normalize_mode(mode: str) -> str:
     return "full" if mode.lower() == "full" else "summary"
 
 
-# Local aliases preserve existing call sites while sharing implementation.
-_int_or_none = int_or_none
-_str_or_none = str_or_none
-_dict_or_none = dict_str_keys_or_none
-
-
-def _normalize_agent_log_entries(logs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize_agent_log_entries(logs: list[dict[str, Any]]) -> list[AgentLogEntry]:
     """Normalize log entries from raw response."""
-    normalized = []
+    normalized: list[AgentLogEntry] = []
     for log in logs:
         if not isinstance(log, dict):
             continue
@@ -92,11 +87,11 @@ def _normalize_agent_log_entries(logs: list[dict[str, Any]]) -> list[dict[str, A
         if run is None or content is None or created_at is None:
             continue
         normalized.append(
-            {
-                "run": int(run),
-                "content": str(content),
-                "created_at": str(created_at),
-            }
+            AgentLogEntry(
+                run=int(run),
+                content=str(content),
+                created_at=str(created_at),
+            )
         )
     return normalized
 
@@ -203,7 +198,10 @@ def register_shared_tools(
             if include_logs:
                 raw_logs = raw.get("logs")
                 if isinstance(raw_logs, list):
-                    raw["logs"] = _normalize_agent_log_entries(raw_logs)
+                    raw["logs"] = [
+                        entry.model_dump(mode="json")
+                        for entry in _normalize_agent_log_entries(raw_logs)
+                    ]
             return raw
 
     if allows_all(_PROTOCOL_CALLS["tasks_logs"]):
@@ -213,7 +211,7 @@ def register_shared_tools(
         @mcp.tool(annotations=_READ_ONLY)
         async def task_logs(
             task_id: str,
-            limit: int = 5,
+            limit: int = DEFAULT_TASK_LOG_LIMIT,
             offset: int = 0,
             ctx: MCPContext | None = None,
         ) -> TaskLogsResponse:
@@ -224,18 +222,18 @@ def register_shared_tools(
             )
             normalized_logs = _normalize_agent_log_entries(raw.get("logs"))
 
-            total_runs = _int_or_none(raw.get("total_runs"))
-            returned_runs = _int_or_none(raw.get("returned_runs"))
-            page_offset = _int_or_none(raw.get("offset"))
-            page_limit = _int_or_none(raw.get("limit"))
-            next_offset = _int_or_none(raw.get("next_offset"))
+            total_runs = int_or_none(raw.get("total_runs"))
+            returned_runs = int_or_none(raw.get("returned_runs"))
+            page_offset = int_or_none(raw.get("offset"))
+            page_limit = int_or_none(raw.get("limit"))
+            next_offset = int_or_none(raw.get("next_offset"))
             has_more_raw = raw.get("has_more")
             has_more = has_more_raw if isinstance(has_more_raw, bool) else next_offset is not None
 
             return TaskLogsResponse(
                 task_id=raw.get("task_id", task_id),
                 logs=normalized_logs,
-                count=_int_or_none(raw.get("count")) or len(normalized_logs),
+                count=int_or_none(raw.get("count")) or len(normalized_logs),
                 total_runs=total_runs if total_runs is not None else len(normalized_logs),
                 returned_runs=returned_runs if returned_runs is not None else len(normalized_logs),
                 offset=page_offset if page_offset is not None else offset,
@@ -243,11 +241,11 @@ def register_shared_tools(
                 has_more=has_more,
                 next_offset=next_offset,
                 truncated=bool(raw.get("truncated", False)),
-                message=_str_or_none(raw.get("message")),
-                code=_str_or_none(raw.get("code")),
-                hint=_str_or_none(raw.get("hint")),
-                next_tool=_str_or_none(raw.get("next_tool")),
-                next_arguments=_dict_or_none(raw.get("next_arguments")),
+                message=str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
+                hint=str_or_none(raw.get("hint")),
+                next_tool=str_or_none(raw.get("next_tool")),
+                next_arguments=dict_str_keys_or_none(raw.get("next_arguments")),
             )
 
     if allows_all(_PROTOCOL_CALLS["tasks_list"]):
@@ -319,12 +317,12 @@ def register_shared_tools(
                 changed=bool(raw.get("changed", False)),
                 timed_out=bool(raw.get("timed_out", False)),
                 task_id=raw.get("task_id", task_id),
-                previous_status=_str_or_none(raw.get("previous_status")),
-                current_status=_str_or_none(raw.get("current_status")),
-                changed_at=_str_or_none(raw.get("changed_at")),
+                previous_status=str_or_none(raw.get("previous_status")),
+                current_status=str_or_none(raw.get("current_status")),
+                changed_at=str_or_none(raw.get("changed_at")),
                 task=task,
-                code=_str_or_none(raw.get("code")),
-                message=_str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
+                message=str_or_none(raw.get("message")),
             )
 
     if allows_all(_PROTOCOL_CALLS["projects_list"]):
@@ -376,7 +374,7 @@ def register_shared_tools(
         @mcp.tool(annotations=_READ_ONLY)
         async def audit_list(
             capability: str | None = None,
-            limit: int = 50,
+            limit: int = DEFAULT_EVENTS_LIMIT,
             ctx: MCPContext | None = None,
         ) -> AuditTailResponse:
             """List recent audit events."""

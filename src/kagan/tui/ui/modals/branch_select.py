@@ -80,6 +80,7 @@ class BaseBranchModal(ModalScreen[str | None]):
                 id="branch-select",
                 prompt="Select a branch...",
                 allow_blank=True,
+                compact=True,
             )
 
             yield Input(

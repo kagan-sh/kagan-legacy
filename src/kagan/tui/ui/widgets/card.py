@@ -94,9 +94,15 @@ class TaskCard(Widget):
                 self._backend_label.display = False
                 self._branch_label = Label("", classes="card-badge card-branch")
                 self._branch_label.display = False
-                self._github_issue_label = Label("", classes="card-badge-gh")
+                self._github_issue_label = Label(
+                    "",
+                    classes="card-badge card-badge-gh card-badge-gh-issue",
+                )
                 self._github_issue_label.display = False
-                self._github_pr_label = Label("", classes="card-badge-gh")
+                self._github_pr_label = Label(
+                    "",
+                    classes="card-badge card-badge-gh card-badge-gh-pr",
+                )
                 self._github_pr_label.display = False
                 self._type_label = Label("", classes="card-badge card-badge-type")
                 self._priority_label = Label("", classes="card-badge card-badge-priority")
@@ -203,7 +209,7 @@ class TaskCard(Widget):
     def _render_github_badges(self) -> None:
         if self._github_issue_label is not None:
             if self._github_issue_number is not None:
-                self._github_issue_label.update(f"#{self._github_issue_number}")
+                self._github_issue_label.update(f"GH#{self._github_issue_number}")
                 self._github_issue_label.display = True
             else:
                 self._github_issue_label.update("")
@@ -211,7 +217,7 @@ class TaskCard(Widget):
 
         if self._github_pr_label is not None:
             if self._github_pr_number is not None:
-                self._github_pr_label.update(f"PR#{self._github_pr_number}")
+                self._github_pr_label.update(f"PR #{self._github_pr_number}")
                 self._github_pr_label.display = True
             else:
                 self._github_pr_label.update("")

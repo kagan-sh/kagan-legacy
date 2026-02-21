@@ -10,8 +10,8 @@
   --md-default-bg-color--lighter: #141210;
   --md-default-bg-color--lightest: #1C1A16;
 
-  /* Text — white */
-  --md-default-fg-color: #FFFFFF;
+  /* Text — creamy white, matching landing page */
+  --md-default-fg-color: #F5F0E8;
   --md-default-fg-color--light: #8A8278;
   --md-default-fg-color--lighter: #8A827880;
   --md-default-fg-color--lightest: #1C1A16;
@@ -21,7 +21,7 @@
   --md-primary-fg-color: #0C0C0A;
   --md-primary-fg-color--light: #141210;
   --md-primary-fg-color--dark: #000000;
-  --md-primary-bg-color: #FFFFFF;
+  --md-primary-bg-color: #F5F0E8;
   --md-primary-bg-color--light: #8A8278;
 
   /* Accent — Gold for hover/active states */
@@ -30,7 +30,7 @@
   --md-accent-bg-color: #000000;
 
   /* Code */
-  --md-code-fg-color: #FFFFFF;
+  --md-code-fg-color: #F5F0E8;
   --md-code-bg-color: #0C0C0A;
   --md-code-hl-color: #d4a84b30;
   --md-code-hl-number-color: #C27C4E;
@@ -44,7 +44,7 @@
   --md-typeset-a-color: #3fb58e;
 
   /* Admonitions */
-  --md-admonition-fg-color: #FFFFFF;
+  --md-admonition-fg-color: #F5F0E8;
   --md-admonition-bg-color: #0C0C0A;
 
   /* Override Material's info admonition icon */
@@ -58,16 +58,16 @@ body,
   font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
 }
 
-/* Headings — Bodoni Moda, matching landing page */
+/* Headings — Geist Mono everywhere, matching landing page */
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3,
 .md-typeset h4,
 .md-typeset h5,
 .md-typeset h6 {
-  font-family: 'Bodoni Moda', Georgia, 'Times New Roman', serif !important;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 /* Code — Geist Mono */
@@ -83,7 +83,7 @@ body,
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid #1C1A16;
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 .md-header__button.md-logo {
@@ -124,7 +124,7 @@ body,
 }
 
 .md-tabs__link:hover {
-  color: #FFFFFF !important;
+  color: #F5F0E8 !important;
 }
 
 .md-tabs__link--active,
@@ -161,8 +161,7 @@ body,
 
 /* ===== CONTENT ===== */
 .md-typeset h1 {
-  color: #FFFFFF !important;
-  font-style: italic;
+  color: #F5F0E8 !important;
 }
 
 .md-typeset h2 {
@@ -173,7 +172,7 @@ body,
 
 .md-typeset h3,
 .md-typeset h4 {
-  color: #FFFFFF !important;
+  color: #F5F0E8 !important;
 }
 
 .md-typeset a {
@@ -198,7 +197,7 @@ body,
 
 .md-typeset pre > code {
   border: 1px solid #1C1A16;
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 .md-clipboard {
@@ -350,7 +349,7 @@ body,
 
 .md-search__input {
   background-color: transparent !important;
-  color: #FFFFFF !important;
+  color: #F5F0E8 !important;
   caret-color: #d4a84b;
 }
 
@@ -393,7 +392,7 @@ body,
 }
 
 .md-search-result__title {
-  color: #FFFFFF !important;
+  color: #F5F0E8 !important;
 }
 
 .md-search-result__teaser {
@@ -424,7 +423,7 @@ body,
 }
 
 .md-footer__title {
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 .md-footer__direction {
@@ -464,7 +463,7 @@ body,
 /* ===== SELECTION ===== */
 ::selection {
   background: rgba(212, 168, 75, 0.4);
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 /* ===== REPO STATS ===== */
@@ -473,11 +472,11 @@ body,
 }
 
 .md-source:hover {
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 .md-source__repository {
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 /* ===== BUTTONS ===== */
@@ -520,17 +519,17 @@ body,
 }
 
 .md-typeset .tabbed-labels > label:hover {
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 .md-typeset .tabbed-labels > .tabbed-labels__active,
 .md-typeset .tabbed-labels > label.active {
-  color: #FFFFFF;
+  color: #F5F0E8;
   border-bottom-color: #d4a84b;
 }
 
 .md-typeset .tabbed-labels .tabbed-labels__active {
-  color: #FFFFFF;
+  color: #F5F0E8;
 }
 
 /* ===== HORIZONTAL RULES ===== */

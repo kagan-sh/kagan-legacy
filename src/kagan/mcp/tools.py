@@ -70,6 +70,21 @@ class MCPBridgeError(ValueError):
         )
 
 
+def _recovery_payload(
+    raw: dict[str, Any],
+    *,
+    default_message: str,
+) -> dict[str, Any]:
+    """Normalize optional recovery fields shared by mutating MCP wrappers."""
+    return {
+        "message": raw.get("message", default_message),
+        "code": raw.get("code"),
+        "hint": raw.get("hint"),
+        "next_tool": raw.get("next_tool"),
+        "next_arguments": raw.get("next_arguments"),
+    }
+
+
 # --- Standalone transport-based functions for MCP tools ---
 
 
@@ -86,11 +101,7 @@ async def mcp_update_scratchpad(transport: SDKTransport, task_id: str, content: 
     )
     return {
         "success": bool(raw.get("success", True)),
-        "message": raw.get("message", "Scratchpad updated"),
-        "code": raw.get("code"),
-        "hint": raw.get("hint"),
-        "next_tool": raw.get("next_tool"),
-        "next_arguments": raw.get("next_arguments"),
+        **_recovery_payload(raw, default_message="Scratchpad updated"),
         "task_id": raw.get("task_id", task_id),
     }
 
@@ -111,11 +122,7 @@ async def mcp_append_task_note(transport: SDKTransport, task_id: str, note: str)
     )
     return {
         "success": bool(raw.get("success", True)),
-        "message": raw.get("message", "Note appended"),
-        "code": raw.get("code"),
-        "hint": raw.get("hint"),
-        "next_tool": raw.get("next_tool"),
-        "next_arguments": raw.get("next_arguments"),
+        **_recovery_payload(raw, default_message="Note appended"),
         "task_id": raw.get("task_id", task_id),
     }
 
@@ -125,14 +132,12 @@ async def mcp_request_review(transport: SDKTransport, task_id: str, summary: str
     raw = await transport.request("review", "request", {"task_id": task_id, "summary": summary})
     success = bool(raw.get("success", False))
     status = str(raw.get("status") or ("review" if success else "error"))
-    message = raw.get("message", "Ready for merge" if success else "Review request failed")
     return {
         "success": success,
-        "message": message,
-        "code": raw.get("code"),
-        "hint": raw.get("hint"),
-        "next_tool": raw.get("next_tool"),
-        "next_arguments": raw.get("next_arguments"),
+        **_recovery_payload(
+            raw,
+            default_message="Ready for merge" if success else "Review request failed",
+        ),
         "status": status,
     }
 

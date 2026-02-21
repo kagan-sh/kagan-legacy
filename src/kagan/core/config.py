@@ -12,7 +12,16 @@ from typing import TYPE_CHECKING, Literal
 import tomlkit
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from kagan.core.domain.pair_terminal_backends import (
+    PAIR_TERMINAL_BACKEND_VALUE_SET,
+    PairTerminalBackendLiteral,
+    default_pair_terminal_backend_for_os,
+)
 from kagan.core.paths import ensure_directories, get_config_path
+from kagan.core.settings_bounds import (
+    DEFAULT_MAX_CONCURRENT_AGENTS,
+    coerce_max_concurrent_agents,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,15 +43,6 @@ def atomic_write(path: Path, content: str) -> None:
 
 
 type OS = Literal["linux", "macos", "windows", "*"]
-type PairTerminalBackendLiteral = Literal[
-    "tmux",
-    "nvim",
-    "vscode",
-    "cursor",
-    "windsurf",
-    "kiro",
-    "antigravity",
-]
 type DoctorVerbosityLiteral = Literal[
     "tldr",
     "short",
@@ -61,9 +61,7 @@ type WorktreeBaseRefStrategyLiteral = Literal[
 
 _OS_MAP = {"Linux": "linux", "Darwin": "macos", "Windows": "windows"}
 CURRENT_OS: str = _OS_MAP.get(platform.system(), "linux")
-PAIR_TERMINAL_BACKEND_VALUES = frozenset(
-    {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}
-)
+PAIR_TERMINAL_BACKEND_VALUES = PAIR_TERMINAL_BACKEND_VALUE_SET
 DOCTOR_VERBOSITY_VALUES = frozenset({"tldr", "short", "technical"})
 INTERACTION_VERBOSITY_VALUES = frozenset({"tldr", "short", "technical"})
 WORKTREE_BASE_REF_STRATEGY_VALUES = frozenset({"remote", "local_if_ahead", "local"})
@@ -81,7 +79,7 @@ DEFAULT_PR_REVIEWER_PERSONA = (
 
 
 def _default_pair_terminal_backend() -> PairTerminalBackendLiteral:
-    return "vscode" if CURRENT_OS == "windows" else "tmux"
+    return default_pair_terminal_backend_for_os(CURRENT_OS)
 
 
 def get_os_value[T](matrix: Mapping[str, T]) -> T | None:
@@ -111,7 +109,7 @@ class RefinementConfig(BaseModel):
 class GeneralConfig(BaseModel):
     """General configuration settings."""
 
-    max_concurrent_agents: int = Field(default=3)
+    max_concurrent_agents: int = Field(default=DEFAULT_MAX_CONCURRENT_AGENTS)
     mcp_server_name: str = Field(
         default="kagan",
         description="MCP server name for tool registration and config entries",
@@ -124,6 +122,10 @@ class GeneralConfig(BaseModel):
     auto_approve: bool = Field(
         default=True,
         description="Skip permission prompts in the planner agent (workers always auto-approve)",
+    )
+    auto_commit_changes: bool = Field(
+        default=False,
+        description="Allow automation to auto-commit changes and push linked task branches",
     )
     auto_skill_discovery: bool = Field(
         default=False,
@@ -212,18 +214,7 @@ class GeneralConfig(BaseModel):
     @classmethod
     def validate_max_concurrent_agents(cls, value: object) -> int:
         """Gracefully coerce invalid max-concurrency values to default."""
-        if isinstance(value, bool):
-            return 3
-        if isinstance(value, int):
-            return value if 1 <= value <= 10 else 3
-        if isinstance(value, str):
-            cleaned = value.strip()
-            try:
-                parsed = int(cleaned)
-            except ValueError:
-                return 3
-            return parsed if 1 <= parsed <= 10 else 3
-        return 3
+        return coerce_max_concurrent_agents(value)
 
     # Core process settings
     core_idle_timeout_seconds: int = Field(
@@ -368,6 +359,10 @@ class UIConfig(BaseModel):
             "Persisted Textual theme name (e.g. 'kagan', 'dracula', 'tokyo-night'). "
             "None means auto-detect based on terminal capabilities."
         ),
+    )
+    show_beginner_hints: bool = Field(
+        default=True,
+        description="Show beginner quick-start hints and first-empty-board guidance in the TUI",
     )
     tui_plugin_ui_allowlist: list[str] = Field(
         default_factory=list,

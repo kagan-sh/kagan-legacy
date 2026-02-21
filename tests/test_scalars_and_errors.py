@@ -7,6 +7,7 @@ from kagan.core.domain.errors import (
 )
 from kagan.core.scalars import (
     dict_str_keys_or_none,
+    float_or_none,
     int_or_none,
     non_empty_str,
     str_or_none,
@@ -22,7 +23,12 @@ def test_scalar_helpers() -> None:
     assert dict_str_keys_or_none({"a": 1, 2: "b"}) == {"a": 1, "2": "b"}
     assert dict_str_keys_or_none([]) is None
     assert int_or_none("42") == 42
+    assert int_or_none(1.5) is None
     assert int_or_none(True) is None
+    assert float_or_none(2) == 2.0
+    assert float_or_none(" 2.5 ") == 2.5
+    assert float_or_none("  ") is None
+    assert float_or_none(True) is None
     assert strict_int_or_none(42) == 42
     assert strict_int_or_none("42") is None
 

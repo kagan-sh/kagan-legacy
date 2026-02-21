@@ -11,6 +11,16 @@ import click
 
 from kagan.core.command_utils import cached_which
 from kagan.core.config import DOCTOR_VERBOSITY_VALUES, KaganConfig
+from kagan.core.domain.pair_terminal_backends import (
+    ANTIGRAVITY_BACKEND,
+    CURSOR_BACKEND,
+    KIRO_BACKEND,
+    NVIM_BACKEND,
+    TMUX_BACKEND,
+    VSCODE_BACKEND,
+    WINDSURF_BACKEND,
+    coerce_pair_terminal_backend,
+)
 from kagan.core.paths import get_config_path
 
 
@@ -526,30 +536,27 @@ def _configured_pair_terminal_backend() -> str:
         config = KaganConfig.load(get_config_path())
         backend = str(config.general.default_pair_terminal_backend).strip().lower()
     except Exception:  # quality-allow-broad-except
-        return "tmux"
-    if backend in {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}:
-        return backend
-    return "tmux"
+        return TMUX_BACKEND
+    normalized = coerce_pair_terminal_backend(backend)
+    return normalized if normalized is not None else TMUX_BACKEND
+
+
+_PAIR_BACKEND_DOCTOR_CHECKS = {
+    TMUX_BACKEND: _check_tmux,
+    NVIM_BACKEND: _check_nvim,
+    VSCODE_BACKEND: _check_vscode_cli,
+    CURSOR_BACKEND: _check_cursor_cli,
+    WINDSURF_BACKEND: _check_windsurf_cli,
+    KIRO_BACKEND: _check_kiro_cli,
+    ANTIGRAVITY_BACKEND: _check_antigravity_cli,
+}
 
 
 def _check_pair_terminal_backend() -> DoctorCheckResult:
     """Check the currently selected PAIR terminal backend."""
     backend = _configured_pair_terminal_backend()
-    if backend == "tmux":
-        return _check_tmux()
-    if backend == "nvim":
-        return _check_nvim()
-    if backend == "vscode":
-        return _check_vscode_cli()
-    if backend == "cursor":
-        return _check_cursor_cli()
-    if backend == "windsurf":
-        return _check_windsurf_cli()
-    if backend == "kiro":
-        return _check_kiro_cli()
-    if backend == "antigravity":
-        return _check_antigravity_cli()
-    return _check_cursor_cli()
+    check = _PAIR_BACKEND_DOCTOR_CHECKS.get(backend, _check_tmux)
+    return check()
 
 
 def _check_npx() -> DoctorCheckResult:

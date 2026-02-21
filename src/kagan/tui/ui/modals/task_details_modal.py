@@ -12,7 +12,7 @@ from textual import on
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.widgets import Footer, Input, Label, Rule, Select, Static, TextArea
+from textual.widgets import Button, Footer, Input, Label, Rule, Select, Static, TextArea
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
 from kagan.core.domain.enums import VALID_PAIR_BACKENDS, TaskPriority, TaskStatus, TaskType
@@ -202,7 +202,6 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                 classes="modal-title",
                 id="modal-title-label",
             )
-            yield Rule(line_style="heavy")
 
             yield from self._compose_badge_row()
 
@@ -214,11 +213,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
                     yield Label("Status:", classes="form-label")
                     yield StatusSelect()
 
-            yield Rule()
-
             yield from self._compose_title_field()
-
-            yield Rule()
 
             yield from self._compose_resume_context()
 
@@ -233,8 +228,6 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             yield from self._compose_github_section()
 
             yield from self._compose_meta_row()
-
-            yield Rule()
 
             yield from self._compose_buttons()
 
@@ -350,8 +343,8 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         with Horizontal(classes="description-header"):
             yield Label("Description", classes="section-title")
             yield Static("", classes="header-spacer")
-            expand_text = "[f] Expand" if not self.editing else "[F5] Full Editor"
-            yield Static(expand_text, classes="expand-hint", id="expand-btn")
+            expand_text = "Expand [f]" if not self.editing else "Full Editor [F5]"
+            yield Button(expand_text, id="expand-btn", classes="expand-action")
 
         description = (
             self._task_model.description if self._task_model else ""
@@ -400,8 +393,7 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             return
         with Vertical(classes="workspace-repos-section view-only", id="workspace-repos-section"):
             yield Label("Workspace Repos", classes="section-title")
-            yield Static("Loading workspace repos...", id="workspace-repos-loading")
-        yield Rule()
+            yield Static("Loading workspace repositories...", id="workspace-repos-loading")
 
     async def _load_workspace_repos(self) -> None:
         if not self._task_model:
@@ -422,13 +414,30 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
             return
 
         if not workspaces:
-            loading.update("No workspace yet")
+            loading.update("[i]No repositories connected.[/i]")
+            loading.add_class("workspace-empty-state")
+            return
+
+        workspace_id = workspaces[0].id
+        try:
+            repo_rows = await self._load_workspace_repo_rows(workspace_id)
+        except _TASK_DETAILS_LOAD_ERRORS as exc:
+            self.log(
+                "Workspace repo rows lookup failed",
+                workspace_id=workspace_id,
+                error=str(exc),
+            )
+            return
+
+        if not repo_rows:
+            loading.update("[i]No repositories connected.[/i]")
+            loading.add_class("workspace-empty-state")
             return
 
         loading.display = False
         await container.mount(
             WorkspaceReposWidget(
-                workspaces[0].id,
+                workspace_id,
                 load_repos=self._load_workspace_repo_rows,
                 load_repo_diff=self._load_workspace_repo_diff,
             )
@@ -445,16 +454,26 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         if self.is_create or not self._task_model:
             return
         with Vertical(classes="github-section view-only", id="github-section"):
-            yield Label("GitHub", classes="section-title")
+            with Horizontal(classes="section-header-row"):
+                yield Label("GitHub", classes="section-title")
+                yield Static("", classes="header-spacer")
+                yield Button("+ Connect GitHub", id="connect-github-btn", classes="connect-github")
             yield Static("Loading…", id="github-context-content")
-        yield Rule()
 
     async def _load_github_context(self) -> None:
         """Load GitHub context from project repos (no API calls)."""
         if not self._task_model:
             return
         project_id = self._task_model.project_id
+        content_widget = safe_query_one(self, "#github-context-content", Static)
+        connect_button = safe_query_one(self, "#connect-github-btn", Button)
         if not project_id:
+            if content_widget:
+                content_widget.update(
+                    "  GitHub is not connected. Use Connect GitHub to link a repository."
+                )
+            if connect_button:
+                connect_button.display = True
             return
         try:
             repos = await self.ctx.api.get_project_repos(project_id)
@@ -468,9 +487,77 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
 
         gh_ctx = resolve_github_context(repos, self._task_model.id)
         lines = format_github_context(gh_ctx)
-        content_widget = safe_query_one(self, "#github-context-content", Static)
         if content_widget:
             content_widget.update("\n".join(f"  {line}" for line in lines))
+        if connect_button:
+            connect_button.display = not gh_ctx.connected
+
+    async def _connect_github_repo(self) -> None:
+        if self._task_model is None:
+            self.notify("Task context is unavailable", severity="warning")
+            return
+        project_id = self._task_model.project_id
+        if not project_id:
+            self.notify("No project selected for this task", severity="warning")
+            return
+
+        try:
+            catalog = await self.ctx.api.plugin_ui_catalog(
+                project_id=project_id,
+                repo_id=self.ctx.active_repo_id,
+            )
+        except Exception as exc:
+            self.notify(f"Unable to load plugin actions: {exc}", severity="warning")
+            return
+
+        actions = catalog.get("actions", []) if isinstance(catalog, dict) else []
+        if not isinstance(actions, list):
+            self.notify("Plugin actions unavailable", severity="warning")
+            return
+
+        action = next(
+            (
+                item
+                for item in actions
+                if isinstance(item, dict) and item.get("action_id") == "connect_repo"
+            ),
+            None,
+        )
+        if action is None:
+            self.notify("Connect GitHub action is not available", severity="warning")
+            return
+
+        plugin_id = str(action.get("plugin_id") or "").strip()
+        if not plugin_id:
+            self.notify("Connect GitHub action is misconfigured", severity="warning")
+            return
+
+        try:
+            result = await self.ctx.api.plugin_ui_invoke(
+                project_id=project_id,
+                repo_id=self.ctx.active_repo_id,
+                plugin_id=plugin_id,
+                action_id="connect_repo",
+                inputs=None,
+            )
+        except Exception as exc:
+            self.notify(f"Connect GitHub failed: {exc}", severity="error")
+            return
+
+        ok = bool(result.get("ok")) if isinstance(result, dict) else False
+        message = "GitHub connection updated"
+        if isinstance(result, dict):
+            raw_message = str(result.get("message") or "").strip()
+            if raw_message:
+                message = raw_message
+            hint = (
+                result.get("data", {}).get("hint") if isinstance(result.get("data"), dict) else None
+            )
+            if isinstance(hint, str) and hint.strip() and hint.strip() not in message:
+                message = f"{message} ({hint.strip()})"
+        self.notify(message, severity="information" if ok else "warning")
+
+        await self._load_github_context()
 
     def _compose_meta_row(self) -> ComposeResult:
         """Compose the metadata row."""
@@ -500,8 +587,8 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
         if title_label := safe_query_one(self, "#modal-title-label", Label):
             title_label.update(self._get_modal_title())
 
-        if expand_btn := safe_query_one(self, "#expand-btn", Static):
-            expand_btn.update("[F5] Full Editor" if editing else "[f] Expand")
+        if expand_btn := safe_query_one(self, "#expand-btn", Button):
+            expand_btn.label = "Full Editor [F5]" if editing else "Expand [f]"
 
         self.refresh_bindings()
 
@@ -518,6 +605,22 @@ class TaskDetailsModal(KaganModalScreen[ModalAction | TaskUpdateDict | None]):
     @on(Select.Changed, "#type-select")
     def on_type_changed(self) -> None:
         self._sync_pair_terminal_visibility()
+
+    @on(Button.Pressed, "#expand-btn")
+    def on_expand_pressed(self) -> None:
+        if self.editing:
+            self.action_full_editor()
+            return
+        self.action_expand_description()
+
+    @on(Button.Pressed, "#connect-github-btn")
+    def on_connect_github_pressed(self) -> None:
+        self.run_worker(
+            self._connect_github_repo(),
+            group="task-details-connect-github",
+            exclusive=True,
+            exit_on_error=False,
+        )
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Control which bindings are shown based on editing state.

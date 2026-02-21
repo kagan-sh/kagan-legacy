@@ -347,6 +347,24 @@ _PROFILE_RANK: dict[CapabilityProfile, int] = {
 }
 
 
+def profile_rank(profile: CapabilityProfile | str) -> int:
+    """Return numeric privilege rank for a capability profile."""
+    return _PROFILE_RANK[normalize_profile(profile)]
+
+
+def apply_profile_ceiling(
+    requested_profile: CapabilityProfile | str,
+    *,
+    ceiling_profile: CapabilityProfile | str,
+) -> CapabilityProfile:
+    """Return requested profile bounded by a maximum allowed ceiling."""
+    normalized_requested = normalize_profile(requested_profile)
+    normalized_ceiling = normalize_profile(ceiling_profile)
+    if _PROFILE_RANK[normalized_requested] <= _PROFILE_RANK[normalized_ceiling]:
+        return normalized_requested
+    return normalized_ceiling
+
+
 class SessionOrigin(StrEnum):
     KAGAN = "kagan"
     KAGAN_ADMIN = "kagan_admin"
@@ -446,7 +464,7 @@ def get_binding(bindings: dict[str, SessionBinding], request: CoreRequest) -> Se
     except ValueError as exc:
         raise SessionBindingError("INVALID_PROFILE", str(exc)) from exc
     ceiling_profile = _ORIGIN_PROFILE_CEILING[origin]
-    effective_profile = _effective_profile(requested_profile, ceiling_profile=ceiling_profile)
+    effective_profile = apply_profile_ceiling(requested_profile, ceiling_profile=ceiling_profile)
 
     namespace, scope_id = _parse_session_scope(request.session_id)
     allowed_namespaces = _ORIGIN_ALLOWED_NAMESPACES[origin]
@@ -524,18 +542,8 @@ def _parse_session_scope(session_id: str) -> tuple[SessionNamespace, str]:
     return SessionNamespace.DEFAULT, session_id
 
 
-def _effective_profile(
-    requested_profile: CapabilityProfile,
-    *,
-    ceiling_profile: CapabilityProfile,
-) -> CapabilityProfile:
-    if _PROFILE_RANK[requested_profile] <= _PROFILE_RANK[ceiling_profile]:
-        return requested_profile
-    return ceiling_profile
-
-
 # ---------------------------------------------------------------------------
-# Command decorator (formerly @expose)
+# Command decorator
 # ---------------------------------------------------------------------------
 
 COMMAND_ATTR = "_kagan_expose"
@@ -647,7 +655,7 @@ def require_request_context() -> RequestContext:
 
 
 # ---------------------------------------------------------------------------
-# Agent permission policy (formerly services/permission_policy.py)
+# Agent permission policy
 # ---------------------------------------------------------------------------
 
 
@@ -738,6 +746,7 @@ __all__ = [
     "SessionBindingError",
     "SessionNamespace",
     "SessionOrigin",
+    "apply_profile_ceiling",
     "coerce_profile",
     "collect_command_methods",
     "command",
@@ -745,6 +754,7 @@ __all__ = [
     "get_binding",
     "get_request_context",
     "normalize_profile",
+    "profile_rank",
     "protocol_call",
     "request_context",
     "require_request_context",

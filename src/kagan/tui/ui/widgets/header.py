@@ -30,7 +30,7 @@ _AGENT_MODEL_CONFIG_KEY: dict[str, str] = {
 }
 
 
-HEADER_SEPARATOR = "│"
+HEADER_SEPARATOR = "·"
 
 
 @dataclass
@@ -70,6 +70,7 @@ class KaganHeader(Widget):
     project_name: reactive[str] = reactive("")
     repo_name: reactive[str] = reactive("")
     agent_display: reactive[str] = reactive("")
+    interaction_mode: reactive[str] = reactive("Board")
     core_status: reactive[str] = reactive("DISCONNECTED")
     plugin_badges_text: reactive[str] = reactive("")
 
@@ -95,7 +96,7 @@ class KaganHeader(Widget):
         yield Label(HEADER_SEPARATOR, id="sep-agent", classes="header-separator")
         yield Label("", id="header-stats", classes="header-stats")
         yield Label(HEADER_SEPARATOR, id="sep-stats", classes="header-separator")
-        yield Label("? help", id="header-help", classes="header-branch")
+        yield Label("[?]", id="header-help", classes="header-branch")
 
     def on_mount(self) -> None:
         """Initialize display state on mount."""
@@ -226,7 +227,7 @@ class KaganHeader(Widget):
         if labels is None:
             return
         if self.active_sessions > 0:
-            labels.sessions.update(f"● {self.active_sessions} active")
+            labels.sessions.update(f"{self.active_sessions} sessions")
             labels.sessions.display = True
             labels.sep_sessions.display = True
             return
@@ -239,7 +240,7 @@ class KaganHeader(Widget):
         labels = self._cache_labels()
         if labels is None:
             return
-        labels.stats.update(f"📋 {self.task_count} tasks")
+        labels.stats.update(f"Mode: {self.interaction_mode} · {self.task_count} tasks")
 
     def _update_agent_display(self) -> None:
         """Update selected global agent label and separator visibility."""
@@ -291,6 +292,9 @@ class KaganHeader(Widget):
     def watch_plugin_badges_text(self, value: str) -> None:
         self._update_github_status_display()
 
+    def watch_interaction_mode(self, value: str) -> None:
+        self._update_stats_display()
+
     def update_count(self, count: int) -> None:
         self.task_count = count
 
@@ -311,6 +315,11 @@ class KaganHeader(Widget):
     def update_agent(self, display: str) -> None:
         """Update the displayed global agent label."""
         self.agent_display = display
+
+    def update_mode(self, mode: str) -> None:
+        """Update current interaction mode shown in header stats."""
+        normalized = mode.strip() if isinstance(mode, str) else ""
+        self.interaction_mode = normalized or "Board"
 
     def update_core_status(self, status: str) -> None:
         """Update the core connection status display."""
@@ -359,4 +368,4 @@ class KaganHeader(Widget):
             model = ""
 
         model_suffix = f" ({model})" if model else ""
-        self.update_agent(f"AI: {name}{model_suffix}")
+        self.update_agent(f"🤖 {name}{model_suffix}")

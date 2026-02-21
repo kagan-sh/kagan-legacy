@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kagan.core.policy import CapabilityProfile
+from kagan.core.policy import CapabilityProfile, profile_rank
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -21,14 +21,6 @@ if TYPE_CHECKING:
 _PLUGIN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{2,63}$")
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 _METHOD_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
-
-_PROFILE_RANK: dict[CapabilityProfile, int] = {
-    CapabilityProfile.VIEWER: 0,
-    CapabilityProfile.PLANNER: 1,
-    CapabilityProfile.PAIR_WORKER: 2,
-    CapabilityProfile.OPERATOR: 3,
-    CapabilityProfile.MAINTAINER: 4,
-}
 
 PLUGIN_UI_DESCRIBE_METHOD = "ui_describe"
 PLUGIN_HOOK_VALIDATE_REVIEW: Final = "validate_review_transition"
@@ -284,7 +276,7 @@ class PluginRegistry(PluginRegistrationApi):
         if operation is None:
             return None
 
-        if _PROFILE_RANK[profile] < _PROFILE_RANK[operation.minimum_profile]:
+        if profile_rank(profile) < profile_rank(operation.minimum_profile):
             return PluginPolicyDecision(
                 allowed=False,
                 code="AUTHORIZATION_DENIED",

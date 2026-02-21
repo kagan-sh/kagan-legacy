@@ -1,7 +1,6 @@
 """AutomationEngine: high-level lifecycle orchestration for AUTO tasks.
 
-Includes queued-message service (formerly queued_messages.py) and the unified
-AutomationServiceImpl wrapper (formerly orchestrator.py).
+Includes queued-message service and the unified AutomationServiceImpl wrapper.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ import contextlib
 import weakref
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from kagan.core.adapters.db.repositories.base import RepositoryClosing
 from kagan.core.agents.output import serialize_agent_messages, serialize_agent_output
@@ -344,17 +343,98 @@ class AutomationReviewer:
             self._runtime_service.clear_review_agent(task.id)
             await agent.stop()
 
+    async def _push_linked_github_pr_branches(self, task: TaskLike) -> None:
+        """Push task branch for repos where GitHub is connected and PR is linked."""
+        if not self._config.general.auto_commit_changes:
+            return
+
+        if self._git is None:
+            return
+
+        project_id = getattr(task, "project_id", None)
+        if not isinstance(project_id, str) or not project_id:
+            return
+
+        project_service = getattr(self._workspaces, "_projects", None)
+        get_project_repos = getattr(project_service, "get_project_repos", None)
+        if not callable(get_project_repos):
+            return
+        get_project_repos = cast("Callable[[str], Awaitable[list[object]]]", get_project_repos)
+
+        try:
+            project_repos = await get_project_repos(project_id)
+        except Exception as exc:  # quality-allow-broad-except
+            log.debug("Skipping GitHub push for task %s: %s", task.id, exc)
+            return
+
+        repos_scripts = {
+            getattr(repo, "id", ""): getattr(repo, "scripts", None) for repo in project_repos
+        }
+        workspaces = await self._workspaces.list_workspaces(task_id=task.id)
+        if not workspaces:
+            return
+
+        workspace = workspaces[0]
+        branch_name = str(getattr(workspace, "branch_name", "")).strip()
+        if not branch_name:
+            return
+
+        workspace_repos = await self._workspaces.get_workspace_repos(workspace.id)
+
+        from kagan.core.plugins.github.models import load_connection_state, load_pr_mapping_state
+
+        for workspace_repo in workspace_repos:
+            if not isinstance(workspace_repo, dict):
+                continue
+            repo_id = workspace_repo.get("repo_id")
+            worktree_path = workspace_repo.get("worktree_path")
+            if not isinstance(repo_id, str) or not repo_id:
+                continue
+            if not isinstance(worktree_path, str) or not worktree_path:
+                continue
+
+            scripts = repos_scripts.get(repo_id)
+            if not scripts:
+                continue
+
+            connection_state = load_connection_state(scripts)
+            if connection_state.normalized is None:
+                continue
+
+            pr_mapping = load_pr_mapping_state(scripts)
+            if not pr_mapping.has_pr(task.id):
+                continue
+
+            try:
+                await self._git.push(worktree_path, branch_name)
+                log.info(
+                    "Pushed task branch %s for task %s (repo %s)",
+                    branch_name,
+                    task.id,
+                    repo_id,
+                )
+            except RuntimeError as exc:
+                log.warning(
+                    "Failed to push task branch %s for task %s (repo %s): %s",
+                    branch_name,
+                    task.id,
+                    repo_id,
+                    exc,
+                )
+
     async def _handle_complete(self, task: TaskLike) -> None:
         """Handle completion: move to REVIEW then run review if enabled."""
-        wt_path = await self._workspaces.get_task_workspace_path(task.id)
-        if wt_path is not None and self._git is not None:
-            if await self._git.has_uncommitted_changes(str(wt_path)):
-                short_id = task.id[:8]
-                await self._git.commit_all(
-                    str(wt_path),
-                    f"chore: adding uncommitted agent changes ({short_id})",
-                )
-                log.info(f"Auto-committed leftover changes for task {task.id}")
+        if self._config.general.auto_commit_changes:
+            wt_path = await self._workspaces.get_task_workspace_path(task.id)
+            if wt_path is not None and self._git is not None:
+                if await self._git.has_uncommitted_changes(str(wt_path)):
+                    short_id = task.id[:8]
+                    await self._git.commit_all(
+                        str(wt_path),
+                        f"chore: adding uncommitted agent changes ({short_id})",
+                    )
+                    log.info(f"Auto-committed leftover changes for task {task.id}")
+            await self._push_linked_github_pr_branches(task)
 
         await self._tasks.update_fields(task.id, status=TaskStatus.REVIEW)
         self._notify_task_changed()
@@ -1413,7 +1493,7 @@ class AutomationEngine:
 
 
 # ---------------------------------------------------------------------------
-# AutomationService protocol + impl (formerly orchestrator.py)
+# AutomationService protocol + implementation
 # ---------------------------------------------------------------------------
 
 

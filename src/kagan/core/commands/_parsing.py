@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from kagan.core.domain.coercion import (
     TASK_STATUS_VALUES,
@@ -13,18 +14,31 @@ from kagan.core.domain.coercion import (
 )
 from kagan.core.domain.enums import (
     PairTerminalBackend,
+    QueueLane,
     TaskPriority,
     TaskStatus,
     TaskType,
     coerce_pair_backend,
+    coerce_queue_lane,
 )
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT
 from kagan.core.scalars import dict_str_keys_or_none, float_or_none, non_empty_str
 
 if TYPE_CHECKING:
     from kagan.core.services.workspaces import RepoWorkspaceInput
 
-DEFAULT_EVENTS_LIMIT = 50
-MAX_EVENTS_LIMIT = 100
+PAIR_TERMINAL_BACKEND_OPTIONS = ", ".join(backend.value for backend in PairTerminalBackend)
+QUEUE_LANE_OPTIONS = ", ".join(lane.value for lane in QueueLane)
+
+
+@dataclass(frozen=True, slots=True)
+class ParseError:
+    message: str
+    code: str = "INVALID_PARAMS"
+
+
+def is_parse_error(v: object) -> TypeGuard[ParseError]:
+    return isinstance(v, ParseError)
 
 
 def require_str(params: dict[str, Any], key: str) -> str:
@@ -86,7 +100,8 @@ def parse_terminal_backend(value: object) -> PairTerminalBackend | None:
     if coerced := coerce_pair_backend(value):
         return PairTerminalBackend(coerced)
     raise ValueError(
-        f"Invalid terminal backend value: {value!r}. Expected one of: tmux, nvim, vscode, cursor."
+        "Invalid terminal backend value: "
+        f"{value!r}. Expected one of: {PAIR_TERMINAL_BACKEND_OPTIONS}."
     )
 
 
@@ -118,21 +133,25 @@ def build_task_update_fields(params: dict[str, Any]) -> dict[str, object]:
     return fields
 
 
-def parse_workspace_repo_inputs(value: object) -> list[RepoWorkspaceInput] | str:
+def parse_workspace_repo_inputs(value: object) -> list[RepoWorkspaceInput] | ParseError:
     from kagan.core.services.workspaces import RepoWorkspaceInput
 
     if not isinstance(value, list) or not value:
-        return "repos must be a non-empty list"
+        return ParseError("repos must be a non-empty list")
 
     parsed: list[RepoWorkspaceInput] = []
     for item in value:
         if not isinstance(item, dict):
-            return "Each repos item must be an object with repo_id, repo_path, and target_branch"
+            return ParseError(
+                "Each repos item must be an object with repo_id, repo_path, and target_branch"
+            )
         repo_id = optional_str(item.get("repo_id"))
         repo_path = optional_str(item.get("repo_path"))
         target_branch = optional_str(item.get("target_branch"))
         if repo_id is None or repo_path is None or target_branch is None:
-            return "Each repos item must include non-empty repo_id, repo_path, and target_branch"
+            return ParseError(
+                "Each repos item must include non-empty repo_id, repo_path, and target_branch"
+            )
         parsed.append(
             RepoWorkspaceInput(
                 repo_id=repo_id,
@@ -143,34 +162,34 @@ def parse_workspace_repo_inputs(value: object) -> list[RepoWorkspaceInput] | str
     return parsed
 
 
-def parse_timeout_seconds(value: object) -> float | None | str:
+def parse_timeout_seconds(value: object) -> float | None | ParseError:
     if value is None:
         return None
     timeout = float_or_none(value)
     if timeout is None:
-        return "timeout_seconds must be a non-negative number"
+        return ParseError("timeout_seconds must be a non-negative number", code="INVALID_TIMEOUT")
     if timeout < 0:
-        return "timeout_seconds must be >= 0"
+        return ParseError("timeout_seconds must be >= 0", code="INVALID_TIMEOUT")
     return timeout
 
 
-def parse_events_limit(value: object) -> int | str:
+def parse_events_limit(value: object) -> int | ParseError:
     if value is None:
         return DEFAULT_EVENTS_LIMIT
     if isinstance(value, bool) or not isinstance(value, int):
-        return f"limit must be an integer between 1 and {MAX_EVENTS_LIMIT}"
+        return ParseError(f"limit must be an integer between 1 and {MAX_EVENTS_LIMIT}")
     if value < 1 or value > MAX_EVENTS_LIMIT:
-        return f"limit must be an integer between 1 and {MAX_EVENTS_LIMIT}"
+        return ParseError(f"limit must be an integer between 1 and {MAX_EVENTS_LIMIT}")
     return value
 
 
-def parse_events_offset(value: object) -> int | str:
+def parse_events_offset(value: object) -> int | ParseError:
     if value is None:
         return 0
     if isinstance(value, bool) or not isinstance(value, int):
-        return "offset must be an integer >= 0"
+        return ParseError("offset must be an integer >= 0")
     if value < 0:
-        return "offset must be an integer >= 0"
+        return ParseError("offset must be an integer >= 0")
     return value
 
 
@@ -179,21 +198,23 @@ def parse_wait_timeout_seconds(
     *,
     default_timeout: int,
     max_timeout: int,
-) -> float | str:
+) -> float | ParseError:
     if value is None:
         return float(default_timeout)
     timeout_seconds = float_or_none(value)
     if timeout_seconds is None:
-        return "timeout_seconds must be a positive number"
+        return ParseError("timeout_seconds must be a positive number", code="INVALID_TIMEOUT")
 
     if timeout_seconds <= 0:
-        return "timeout_seconds must be > 0"
+        return ParseError("timeout_seconds must be > 0", code="INVALID_TIMEOUT")
     if timeout_seconds > max_timeout:
-        return f"timeout_seconds exceeds server maximum of {max_timeout}s"
+        return ParseError(
+            f"timeout_seconds exceeds server maximum of {max_timeout}s", code="INVALID_TIMEOUT"
+        )
     return timeout_seconds
 
 
-def parse_wait_for_status_filter(value: object) -> set[str] | str | None:
+def parse_wait_for_status_filter(value: object) -> set[str] | ParseError | None:
     if value is None:
         return None
 
@@ -208,21 +229,21 @@ def parse_wait_for_status_filter(value: object) -> set[str] | str | None:
             try:
                 parsed = json.loads(normalized)
             except json.JSONDecodeError:
-                return "wait_for_status JSON string must decode to a list of statuses"
+                return ParseError("wait_for_status JSON string must decode to a list of statuses")
             if not isinstance(parsed, list):
-                return "wait_for_status JSON string must decode to a list of statuses"
+                return ParseError("wait_for_status JSON string must decode to a list of statuses")
             values = parsed
         else:
             values = [part for part in normalized.split(",") if part.strip()]
     else:
-        return "wait_for_status must be a list of status strings"
+        return ParseError("wait_for_status must be a list of status strings")
 
     valid_statuses = frozenset(TASK_STATUS_VALUES)
     parsed_statuses: set[str] = set()
     for raw_value in values:
         status = coerce_task_status(raw_value)
         if status is None:
-            return (
+            return ParseError(
                 f"Invalid status filter value: {raw_value!r}. "
                 f"Expected one of: {', '.join(sorted(valid_statuses))}"
             )
@@ -233,14 +254,12 @@ def parse_wait_for_status_filter(value: object) -> set[str] | str | None:
     return parsed_statuses
 
 
-def parse_queue_lane(value: object) -> str:
+def parse_queue_lane(value: object) -> QueueLane:
     if value is None:
-        return "implementation"
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"implementation", "review", "planner"}:
-            return normalized
-    return "lane must be one of: implementation, review, planner"
+        return QueueLane.IMPLEMENTATION
+    if (lane := coerce_queue_lane(value)) is not None:
+        return lane
+    raise ValueError(f"lane must be one of: {QUEUE_LANE_OPTIONS}")
 
 
 def parse_runtime_session_event(value: object):
@@ -261,27 +280,13 @@ def parse_runtime_session_event(value: object):
     return None
 
 
-def parse_proposal_status(value: object):
-    from kagan.core.domain.enums import ProposalStatus
-
-    if isinstance(value, ProposalStatus):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        try:
-            return ProposalStatus(normalized)
-        except ValueError:
-            return None
-    return None
-
-
-def parse_json_dict_list(value: object, *, field_name: str) -> list[dict[str, Any]] | str:
+def parse_json_dict_list(value: object, *, field_name: str) -> list[dict[str, Any]] | ParseError:
     if not isinstance(value, list):
-        return f"{field_name} must be a list"
+        return ParseError(f"{field_name} must be a list")
     parsed: list[dict[str, Any]] = []
     for item in value:
         if not isinstance(item, dict):
-            return f"{field_name} items must be objects"
+            return ParseError(f"{field_name} items must be objects")
         parsed.append({str(key): val for key, val in item.items()})
     return parsed
 
@@ -289,7 +294,9 @@ def parse_json_dict_list(value: object, *, field_name: str) -> list[dict[str, An
 __all__ = [
     "DEFAULT_EVENTS_LIMIT",
     "MAX_EVENTS_LIMIT",
+    "ParseError",
     "build_task_update_fields",
+    "is_parse_error",
     "optional_str",
     "parse_acceptance_criteria",
     "parse_events_limit",

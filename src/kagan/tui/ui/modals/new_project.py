@@ -36,6 +36,10 @@ class NewProjectModal(KaganModalScreen[dict | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Static("New Project", classes="dialog-title")
+            yield Label(
+                "Enter creates from any field (default). Esc cancels.",
+                classes="hint",
+            )
 
             with Vertical(classes="field"):
                 yield Label("Project Name", classes="field-label")
@@ -48,7 +52,7 @@ class NewProjectModal(KaganModalScreen[dict | None]):
 
             with Horizontal(id="dialog-actions", classes="modal-action-hint-row"):
                 yield Static(
-                    "Esc cancel  |  Enter create  |  Tab/Shift+Tab move",
+                    "Esc cancel  |  Enter create (default)  |  Tab/Shift+Tab move",
                     classes="modal-action-hint",
                 )
 

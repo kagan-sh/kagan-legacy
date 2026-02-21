@@ -24,6 +24,7 @@ from kagan.core.plugins.github.gh_adapter import (
     run_gh_pr_create,
     run_gh_pr_merge,
     run_gh_pr_view,
+    run_git_push_branch,
     run_preflight_checks,
 )
 from kagan.core.plugins.github.lease import (
@@ -73,6 +74,10 @@ class AppContextCoreGateway:
 
     async def update_repo_scripts(self, repo_id: str, updates: dict[str, str]) -> None:
         await self._ctx.project_service.update_repo_script_values(repo_id, updates)
+
+    def is_auto_commit_changes_enabled(self) -> bool:
+        general = getattr(getattr(self._ctx, "config", None), "general", None)
+        return bool(getattr(general, "auto_commit_changes", False))
 
 
 class GhCliClientAdapter:
@@ -136,6 +141,13 @@ class GhCliClientAdapter:
             body=body,
             draft=draft,
         )
+
+    def run_git_push_branch(
+        self,
+        repo_path: str,
+        branch: str,
+    ) -> str | None:
+        return run_git_push_branch(repo_path, branch)
 
     def run_gh_pr_view(
         self,

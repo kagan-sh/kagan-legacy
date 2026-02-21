@@ -83,26 +83,6 @@ def resolve_status_after_agent_complete(current_status: TaskStatus, *, success: 
 
 
 # ---------------------------------------------------------------------------
-# Compat shims — keep old names importable during migration
-# ---------------------------------------------------------------------------
-
-
-def transition_status_from_agent_complete(current_status: TaskStatus, success: bool) -> TaskStatus:
-    """Return next status after an implementation agent run completes."""
-    return resolve_status_after_agent_complete(current_status, success=success)
-
-
-def transition_status_from_review_pass(current_status: TaskStatus) -> TaskStatus:
-    """Return next status after review approval."""
-    return _TASK_LIFECYCLE_TRANSITIONS["review_pass"][current_status]
-
-
-def transition_status_from_review_reject(current_status: TaskStatus) -> TaskStatus:
-    """Return next status after review rejection."""
-    return _TASK_LIFECYCLE_TRANSITIONS["review_reject"][current_status]
-
-
-# ---------------------------------------------------------------------------
 # Acceptance-criteria coverage helpers
 # ---------------------------------------------------------------------------
 

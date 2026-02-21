@@ -13,6 +13,12 @@ from kagan.core.config import (
     WORKTREE_BASE_REF_STRATEGY_VALUES,
 )
 from kagan.core.domain.enums import VALID_PAIR_BACKENDS
+from kagan.core.settings_bounds import (
+    MAX_MAX_CONCURRENT_AGENTS,
+    MAX_TASK_WAIT_TIMEOUT_SECONDS,
+    MIN_MAX_CONCURRENT_AGENTS,
+    MIN_TASK_WAIT_TIMEOUT_SECONDS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -32,6 +38,12 @@ class _SettingBinding:
 _EXPOSED_SETTING_BINDINGS: tuple[_SettingBinding, ...] = (
     _SettingBinding("general.auto_review", "general", "auto_review", mcp_param="auto_review"),
     _SettingBinding("general.auto_approve", "general", "auto_approve", mcp_param="auto_approve"),
+    _SettingBinding(
+        "general.auto_commit_changes",
+        "general",
+        "auto_commit_changes",
+        mcp_param="auto_commit_changes",
+    ),
     _SettingBinding(
         "general.auto_skill_discovery",
         "general",
@@ -213,6 +225,11 @@ _EXPOSED_SETTING_BINDINGS: tuple[_SettingBinding, ...] = (
         mcp_param="theme",
     ),
     _SettingBinding(
+        "ui.show_beginner_hints",
+        "ui",
+        "show_beginner_hints",
+    ),
+    _SettingBinding(
         "ui.tui_plugin_ui_allowlist",
         "ui",
         "tui_plugin_ui_allowlist",
@@ -232,10 +249,12 @@ for _binding in _EXPOSED_SETTING_BINDINGS:
 _BOOL_FIELDS: set[str] = {
     "general.auto_review",
     "general.auto_approve",
+    "general.auto_commit_changes",
     "general.auto_skill_discovery",
     "general.require_review_approval",
     "general.serialize_merges",
     "ui.skip_pair_instructions",
+    "ui.show_beginner_hints",
 }
 _PLUGIN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{2,63}$")
 _TIMEOUT_SECONDS_FIELDS: set[str] = {
@@ -318,15 +337,21 @@ def _normalize_value(key: str, value: object) -> object:
     if key == "general.max_concurrent_agents":
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError("general.max_concurrent_agents must be an integer")
-        if value < 1 or value > 10:
-            raise ValueError("general.max_concurrent_agents must be between 1 and 10")
+        if value < MIN_MAX_CONCURRENT_AGENTS or value > MAX_MAX_CONCURRENT_AGENTS:
+            raise ValueError(
+                "general.max_concurrent_agents must be between "
+                f"{MIN_MAX_CONCURRENT_AGENTS} and {MAX_MAX_CONCURRENT_AGENTS}"
+            )
         return value
 
     if key in _TIMEOUT_SECONDS_FIELDS:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"{key} must be a positive integer")
-        if value < 1 or value > 3600:
-            raise ValueError(f"{key} must be between 1 and 3600")
+        if value < MIN_TASK_WAIT_TIMEOUT_SECONDS or value > MAX_TASK_WAIT_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"{key} must be between {MIN_TASK_WAIT_TIMEOUT_SECONDS} "
+                f"and {MAX_TASK_WAIT_TIMEOUT_SECONDS}"
+            )
         return value
 
     if key == "general.default_worker_agent":

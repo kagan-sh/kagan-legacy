@@ -41,7 +41,7 @@ class RepoCheckboxItem(Static):
     def compose(self) -> ComposeResult:
         with Horizontal(classes="repo-row"):
             label = self.repo_name + (" (primary)" if self.is_primary else "")
-            yield Checkbox(label, value=self.preselected, id=f"cb-{self.repo_id}")
+            yield Checkbox(label, value=self.preselected, compact=True, id=f"cb-{self.repo_id}")
             yield Label(self.repo_path, classes="repo-path")
             yield Label(f"→ {self.default_branch}", classes="repo-branch")
 
@@ -93,6 +93,7 @@ class StartWorkspaceModal(KaganModalScreen[str | None]):
                     ],
                     id="executor-select",
                     value="auto",
+                    compact=True,
                 )
 
             yield Label("", id="error-label", classes="error")

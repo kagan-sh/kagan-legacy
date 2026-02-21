@@ -11,20 +11,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from kagan.core.domain.models import (
     Execution,
     ExecutionLogEntry,
+    FrozenDomainModel,
     PlanItem,
     PlanTodo,
     Project,
     Repo,
     Task,
 )
+from kagan.core.response_models import TaskLogsResponse as TaskLogsResponse
+from kagan.core.response_models import TaskWaitResponse as TaskWaitResponse
 
 
-class _FrozenBase(BaseModel):
+class _FrozenBase(FrozenDomainModel):
     """Shared base for all SDK response models.
 
     * ``frozen=True`` — instances are immutable (like the former frozen dataclasses).
@@ -32,12 +35,55 @@ class _FrozenBase(BaseModel):
     * ``populate_by_name=True`` — fields can be set by either alias or Python name.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
+
+def _coerce_embedded_model(
+    data: object,
+    *,
+    field_name: str,
+    model_type: type[BaseModel],
+) -> object:
+    if not isinstance(data, dict):
+        return data
+    value = data.get(field_name)
+    if isinstance(value, dict):
+        return {**data, field_name: model_type.model_validate(value)}
+    return data
+
+
+def _coerce_embedded_model_list(
+    data: object,
+    *,
+    field_name: str,
+    model_type: type[BaseModel],
+) -> object:
+    if not isinstance(data, dict):
+        return data
+    values = data.get(field_name)
+    if not isinstance(values, list):
+        return data
+    return {
+        **data,
+        field_name: [
+            v if isinstance(v, model_type) else model_type.model_validate(v) for v in values
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
 # Response wrappers
 # ---------------------------------------------------------------------------
+
+
+class _SuccessResponse(_FrozenBase):
+    success: bool = False
+
+
+class _TaskScopedResponse(_SuccessResponse):
+    task_id: str = ""
+
+
+class _CountedResponse(_FrozenBase):
+    count: int = 0
 
 
 class TaskResponse(_FrozenBase):
@@ -47,38 +93,31 @@ class TaskResponse(_FrozenBase):
     task: Task | None = None
 
 
-class TaskListResponse(_FrozenBase):
+class TaskListResponse(_CountedResponse):
     """Response from listing tasks."""
 
-    tasks: list[Task] = []
-    count: int = 0
+    tasks: list[Task] = Field(default_factory=list)
 
 
-class TaskCreateResponse(_FrozenBase):
+class TaskCreateResponse(_TaskScopedResponse):
     """Response from creating a task."""
 
-    success: bool = False
-    task_id: str = ""
     title: str = ""
     status: str = ""
     message: str | None = None
 
 
-class TaskUpdateResponse(_FrozenBase):
+class TaskUpdateResponse(_TaskScopedResponse):
     """Response from updating a task."""
 
-    success: bool = False
-    task_id: str = ""
     code: str = ""
     message: str | None = None
     hint: str | None = None
 
 
-class TaskDeleteResponse(_FrozenBase):
+class TaskDeleteResponse(_TaskScopedResponse):
     """Response from deleting a task."""
 
-    success: bool = False
-    task_id: str = ""
     message: str = ""
 
 
@@ -103,31 +142,14 @@ class TaskContextResponse(_FrozenBase):
     workspace_id: str | None = None
     workspace_branch: str | None = None
     workspace_path: str | None = None
-    repos: list[dict[str, Any]] = []
+    repos: list[dict[str, Any]] = Field(default_factory=list)
     repo_count: int = 0
-    linked_tasks: list[dict[str, Any]] = []
+    linked_tasks: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class TaskLogsResponse(_FrozenBase):
-    """Response from getting task logs."""
-
-    task_id: str = ""
-    logs: list[dict[str, Any]] = []
-    count: int = 0
-    total_runs: int = 0
-    returned_runs: int = 0
-    offset: int = 0
-    limit: int = 0
-    has_more: bool = False
-    next_offset: int | None = None
-    truncated: bool = False
-
-
-class ReviewResponse(_FrozenBase):
+class ReviewResponse(_TaskScopedResponse):
     """Response from review operations."""
 
-    success: bool = False
-    task_id: str = ""
     status: str = ""
     code: str = ""
     message: str | None = None
@@ -141,43 +163,38 @@ class ProjectResponse(_FrozenBase):
     project: Project | None = None
 
 
-class ProjectListResponse(_FrozenBase):
+class ProjectListResponse(_CountedResponse):
     """Response from listing projects."""
 
-    projects: list[Project] = []
-    count: int = 0
+    projects: list[Project] = Field(default_factory=list)
 
 
-class ProjectCreateResponse(_FrozenBase):
+class ProjectCreateResponse(_SuccessResponse):
     """Response from creating a project."""
 
-    success: bool = False
     project_id: str = ""
     name: str = ""
     description: str = ""
     repo_count: int = 0
 
 
-class RepoListResponse(_FrozenBase):
+class RepoListResponse(_CountedResponse):
     """Response from listing repos."""
 
-    repos: list[Repo] = []
-    count: int = 0
+    repos: list[Repo] = Field(default_factory=list)
 
 
-class AddRepoResponse(_FrozenBase):
+class AddRepoResponse(_SuccessResponse):
     """Response from adding a repo to a project."""
 
-    success: bool = False
     project_id: str = ""
     repo_id: str = ""
     repo_path: str = ""
 
 
-class JobResponse(_FrozenBase):
+class JobResponse(_SuccessResponse):
     """Response from job operations."""
 
-    success: bool = False
     job_id: str = ""
     task_id: str = ""
     action: str = ""
@@ -193,13 +210,12 @@ class JobResponse(_FrozenBase):
     current_task_type: str | None = None
 
 
-class JobListResponse(_FrozenBase):
+class JobListResponse(_SuccessResponse):
     """Response from listing job events."""
 
-    success: bool = False
     job_id: str = ""
     task_id: str = ""
-    events: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = Field(default_factory=list)
     total_events: int = 0
     returned_events: int = 0
     offset: int = 0
@@ -208,11 +224,9 @@ class JobListResponse(_FrozenBase):
     next_offset: int | None = None
 
 
-class SessionResponse(_FrozenBase):
+class SessionResponse(_TaskScopedResponse):
     """Response from session operations."""
 
-    success: bool = False
-    task_id: str = ""
     message: str = ""
     session_name: str | None = None
     worktree_path: str | None = None
@@ -231,35 +245,31 @@ class SessionExistsResponse(_FrozenBase):
     prompt_path: str | None = None
 
 
-class WorkspaceResponse(_FrozenBase):
+class WorkspaceResponse(_SuccessResponse):
     """Response from workspace operations."""
 
-    success: bool = False
     message: str | None = None
     code: str | None = None
 
 
-class WorkspaceListResponse(_FrozenBase):
+class WorkspaceListResponse(_CountedResponse):
     """Response from listing workspaces."""
 
-    workspaces: list[dict[str, Any]] = []
-    count: int = 0
+    workspaces: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class SettingsResponse(_FrozenBase):
+class SettingsResponse(_SuccessResponse):
     """Response from settings operations."""
 
-    success: bool = False
-    settings: dict[str, Any] = {}
+    settings: dict[str, Any] = Field(default_factory=dict)
     message: str | None = None
-    updated: dict[str, Any] = {}
+    updated: dict[str, Any] = Field(default_factory=dict)
 
 
-class AuditListResponse(_FrozenBase):
+class AuditListResponse(_CountedResponse):
     """Response from listing audit events."""
 
-    events: list[dict[str, Any]] = []
-    count: int = 0
+    events: list[dict[str, Any]] = Field(default_factory=list)
     truncated: bool = False
 
 
@@ -272,58 +282,21 @@ class QueuedMessage(_FrozenBase):
     queued_at: str = ""
 
 
-class PlannerDraft(_FrozenBase):
-    """Planner draft proposal from list_pending_planner_drafts."""
-
-    id: str | None = None
-    project_id: str | None = None
-    repo_id: str | None = None
-    status: str | None = None
-    created_at: str | None = None
-    tasks_json: list[dict[str, Any]] = Field(default_factory=list)
-    todos_json: list[dict[str, Any]] = Field(default_factory=list)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_list_fields(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        out = dict(data)
-        if out.get("tasks_json") is None:
-            out["tasks_json"] = []
-        if out.get("todos_json") is None:
-            out["todos_json"] = []
-        return out
-
-
-class TaskWaitResponse(_FrozenBase):
-    """Response from waiting for task status change."""
+class TaskWaitAnyResponse(_FrozenBase):
+    """Response from waiting for any task lifecycle change."""
 
     changed: bool = False
     timed_out: bool = False
     task_id: str = ""
-    previous_status: str | None = None
-    current_status: str | None = None
+    event_type: str | None = None
     changed_at: str | None = None
-    task: Task | None = None
     code: str = ""
     message: str | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_task(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        task_val = data.get("task")
-        if task_val is not None and isinstance(task_val, dict):
-            data = {**data, "task": Task.model_validate(task_val)}
-        return data
 
-
-class DiffResponse(_FrozenBase):
+class DiffResponse(_SuccessResponse):
     """Response from diff operations."""
 
-    success: bool = False
     diff: str = ""
     code: str = ""
 
@@ -331,22 +304,48 @@ class DiffResponse(_FrozenBase):
 class DiagnosticsResponse(_FrozenBase):
     """Response from diagnostics operations."""
 
-    instrumentation: dict[str, Any] = {}
+    instrumentation: dict[str, Any] = Field(default_factory=dict)
 
 
-class PluginInvokeResponse(_FrozenBase):
+class PluginInvokeResponse(_SuccessResponse):
     """Response from plugin invocation."""
 
-    success: bool = False
     result: Any = None
     error: str | None = None
 
 
-class QueueMessageResponse(_FrozenBase):
+class QueueMessageResponse(_SuccessResponse):
     """Response from queue message operations."""
 
-    success: bool = False
-    message: str = ""
+    message: str | QueuedMessage | None = None
+    code: str | None = None
+    content: str | None = None
+    author: str | None = None
+    metadata: dict[str, Any] | None = None
+    queued_at: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_message_payload(cls, data: object) -> object:
+        payload = _coerce_embedded_model(data, field_name="message", model_type=QueuedMessage)
+        if not isinstance(payload, dict):
+            return payload
+
+        # `automation.queue_message` responds with content/author/queued_at fields.
+        if (
+            payload.get("message") is None
+            and isinstance(payload.get("content"), str)
+            and isinstance(payload.get("queued_at"), str)
+        ):
+            payload["message"] = QueuedMessage.model_validate(
+                {
+                    "content": payload.get("content"),
+                    "author": payload.get("author"),
+                    "metadata": payload.get("metadata"),
+                    "queued_at": payload.get("queued_at"),
+                }
+            )
+        return payload
 
 
 class QueueStatusResponse(_FrozenBase):
@@ -356,24 +355,15 @@ class QueueStatusResponse(_FrozenBase):
     lane: str = ""
 
 
-class QueueListResponse(_FrozenBase):
+class QueueListResponse(_CountedResponse):
     """Response from listing queued messages."""
 
-    messages: list[QueuedMessage] = []
-    count: int = 0
+    messages: list[QueuedMessage] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
     def _coerce_messages(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        msgs = data.get("messages", [])
-        if isinstance(msgs, list):
-            coerced = [
-                m if isinstance(m, QueuedMessage) else QueuedMessage.model_validate(m) for m in msgs
-            ]
-            data = {**data, "messages": coerced}
-        return data
+        return _coerce_embedded_model_list(data, field_name="messages", model_type=QueuedMessage)
 
 
 class ExecutionResponse(_FrozenBase):
@@ -384,67 +374,24 @@ class ExecutionResponse(_FrozenBase):
     @model_validator(mode="before")
     @classmethod
     def _coerce_execution(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        exec_val = data.get("execution")
-        if exec_val is not None and isinstance(exec_val, dict):
-            data = {**data, "execution": Execution.model_validate(exec_val)}
-        return data
+        return _coerce_embedded_model(data, field_name="execution", model_type=Execution)
 
 
-class ExecutionLogResponse(_FrozenBase):
+class ExecutionLogResponse(_CountedResponse):
     """Response from execution log operations."""
 
-    entries: list[ExecutionLogEntry] = []
-    count: int = 0
+    entries: list[ExecutionLogEntry] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
     def _coerce_entries(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        entries_val = data.get("entries", [])
-        if isinstance(entries_val, list):
-            coerced = [
-                e if isinstance(e, ExecutionLogEntry) else ExecutionLogEntry.model_validate(e)
-                for e in entries_val
-            ]
-            data = {**data, "entries": coerced}
-        return data
+        return _coerce_embedded_model_list(data, field_name="entries", model_type=ExecutionLogEntry)
 
 
 class ExecutionCountResponse(_FrozenBase):
     """Response from counting executions."""
 
     count: int = 0
-
-
-class PlannerDraftResponse(_FrozenBase):
-    """Response from planner draft operations."""
-
-    success: bool = False
-    message: str = ""
-
-
-class PlannerDraftListResponse(_FrozenBase):
-    """Response from listing planner drafts."""
-
-    drafts: list[PlannerDraft] = []
-    count: int = 0
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_drafts(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        drafts_val = data.get("drafts", [])
-        if isinstance(drafts_val, list):
-            coerced = [
-                d if isinstance(d, PlannerDraft) else PlannerDraft.model_validate(d)
-                for d in drafts_val
-            ]
-            data = {**data, "drafts": coerced}
-        return data
 
 
 class WorkspaceDiffResponse(_FrozenBase):
@@ -456,7 +403,7 @@ class WorkspaceDiffResponse(_FrozenBase):
 class WorkspaceCommitLogResponse(_FrozenBase):
     """Response from workspace commit log operations."""
 
-    commits: list[str] = []
+    commits: list[str] = Field(default_factory=list)
 
 
 class WorkspaceDiffStatsResponse(_FrozenBase):
@@ -465,18 +412,16 @@ class WorkspaceDiffStatsResponse(_FrozenBase):
     stats: str = ""
 
 
-class WorkspaceRebaseResponse(_FrozenBase):
+class WorkspaceRebaseResponse(_SuccessResponse):
     """Response from workspace rebase operations."""
 
-    success: bool = False
     message: str = ""
-    conflict_files: list[str] = []
+    conflict_files: list[str] = Field(default_factory=list)
 
 
-class WorkspaceMergeResponse(_FrozenBase):
+class WorkspaceMergeResponse(_SuccessResponse):
     """Response from workspace merge operations."""
 
-    success: bool = False
     message: str = ""
     pr_url: str | None = None
 
@@ -486,13 +431,13 @@ class RepoDiffResponse(_FrozenBase):
 
     repo_id: str = ""
     repo_name: str = ""
-    files: list[dict[str, Any]] = []
+    files: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AllDiffsResponse(_FrozenBase):
     """Response from getting all diffs."""
 
-    diffs: list[dict[str, Any]] = []
+    diffs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class StartupDecisionResponse(_FrozenBase):
@@ -507,10 +452,9 @@ class StartupDecisionResponse(_FrozenBase):
     should_open_project: bool = False
 
 
-class RepoUpdateResponse(_FrozenBase):
+class RepoUpdateResponse(_SuccessResponse):
     """Response from repo update operations."""
 
-    success: bool = False
     repo_id: str = ""
 
 
@@ -537,20 +481,19 @@ class RuntimeViewResponse(_FrozenBase):
     run_count: int = 0
     has_running_agent: bool = False
     has_review_agent: bool = False
-    runtime: dict[str, Any] = {}
+    runtime: dict[str, Any] = Field(default_factory=dict)
 
 
-class RuntimeReconcileResponse(_FrozenBase):
+class RuntimeReconcileResponse(_CountedResponse):
     """Response from runtime reconciliation operations."""
 
-    tasks: list[dict[str, Any]] = []
-    count: int = 0
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TaskIdsResponse(_FrozenBase):
     """Response from getting task IDs."""
 
-    task_ids: list[str] = []
+    task_ids: list[str] = Field(default_factory=list)
 
 
 class TaskBaseBranchResponse(_FrozenBase):
@@ -572,10 +515,10 @@ class PluginUiCatalogResponse(_FrozenBase):
     """Response from plugin UI catalog."""
 
     schema_version: str = ""
-    actions: list[dict[str, Any]] = []
-    forms: list[dict[str, Any]] = []
-    badges: list[dict[str, Any]] = []
-    diagnostics: list[str] = []
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    forms: list[dict[str, Any]] = Field(default_factory=list)
+    badges: list[dict[str, Any]] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
 
 
 class PluginUiInvokeResponse(_FrozenBase):
@@ -585,7 +528,7 @@ class PluginUiInvokeResponse(_FrozenBase):
     code: str = ""
     message: str = ""
     data: dict[str, Any] | None = None
-    refresh: dict[str, bool] = {}
+    refresh: dict[str, bool] = Field(default_factory=dict)
 
 
 __all__ = [
@@ -605,9 +548,6 @@ __all__ = [
     "JobResponse",
     "PlanItem",
     "PlanTodo",
-    "PlannerDraft",
-    "PlannerDraftListResponse",
-    "PlannerDraftResponse",
     "PluginInvokeResponse",
     "PluginUiCatalogResponse",
     "PluginUiInvokeResponse",
@@ -641,6 +581,7 @@ __all__ = [
     "TaskLogsResponse",
     "TaskResponse",
     "TaskUpdateResponse",
+    "TaskWaitAnyResponse",
     "TaskWaitResponse",
     "WorkspaceCommitLogResponse",
     "WorkspaceDiffResponse",

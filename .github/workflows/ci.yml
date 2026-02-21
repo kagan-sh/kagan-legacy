@@ -94,8 +94,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Test (non-snapshot)
-        run: uv run pytest tests/ -m "not snapshot" -n 0 -v
+      - name: Test (windows compatibility marker)
+        run: uv run pytest tests/ -m "windows_ci" -n 0 -v
+      - name: Test (non-snapshot, excluding windows marker slice)
+        run: uv run pytest tests/ -m "not snapshot and not windows_ci" -n 0 -v
 
   snapshot:
     needs: lint

@@ -14,6 +14,7 @@ from kagan.core.domain.enums import (
     TaskType,
     resolve_pair_backend,
 )
+from kagan.core.domain.pair_terminal_backends import PAIR_TERMINAL_BACKEND_SELECT_OPTIONS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -102,6 +103,7 @@ class PrioritySelect(Select[int]):
         ]
 
         initial_value = value.value if isinstance(value, TaskPriority) else value
+        kwargs.setdefault("compact", True)
         super().__init__(
             options=options,
             value=initial_value,
@@ -127,6 +129,7 @@ class TaskTypeSelect(Select[str]):
         **kwargs,
     ) -> None:
         initial_value = value.value if isinstance(value, TaskType) else value
+        kwargs.setdefault("compact", True)
         super().__init__(
             options=self.OPTIONS,
             value=initial_value,
@@ -154,6 +157,7 @@ class StatusSelect(Select[str]):
         **kwargs,
     ) -> None:
         initial_value = value.value if isinstance(value, TaskStatus) else value
+        kwargs.setdefault("compact", True)
         super().__init__(
             options=self.OPTIONS,
             value=initial_value,
@@ -178,6 +182,7 @@ class AgentBackendSelect(Select[str]):
         valid_values = {v for _, v in opts}
         if value and value not in valid_values:
             value = opts[0][1] if opts else ""
+        kwargs.setdefault("compact", True)
         super().__init__(
             options=opts,
             value=value,
@@ -190,15 +195,7 @@ class AgentBackendSelect(Select[str]):
 class PairTerminalBackendSelect(Select[str]):
     """PAIR terminal backend dropdown."""
 
-    OPTIONS: Sequence[tuple[str, str]] = [
-        ("tmux", "tmux"),
-        ("Neovim", "nvim"),
-        ("VS Code", "vscode"),
-        ("Cursor", "cursor"),
-        ("Windsurf", "windsurf"),
-        ("Kiro", "kiro"),
-        ("Antigravity", "antigravity"),
-    ]
+    OPTIONS: Sequence[tuple[str, str]] = PAIR_TERMINAL_BACKEND_SELECT_OPTIONS
 
     def __init__(
         self,
@@ -209,6 +206,7 @@ class PairTerminalBackendSelect(Select[str]):
         **kwargs,
     ) -> None:
         initial_value = resolve_pair_backend(value)
+        kwargs.setdefault("compact", True)
         super().__init__(
             options=self.OPTIONS,
             value=initial_value,

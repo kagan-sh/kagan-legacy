@@ -12,7 +12,7 @@ Covers:
 - parse_acceptance_criteria, build_task_update_fields
 - parse_timeout_seconds, parse_events_limit, parse_events_offset
 - parse_wait_timeout_seconds, parse_wait_for_status_filter
-- parse_queue_lane, parse_runtime_session_event, parse_proposal_status
+- parse_queue_lane, parse_runtime_session_event
 - require_str, optional_str, str_list, str_object_dict, parse_json_dict_list
 - Task @mention link extraction regex
 """
@@ -24,6 +24,7 @@ import pytest
 from kagan.core.adapters.db.schema import Task
 from kagan.core.commands._parsing import (
     build_task_update_fields,
+    is_parse_error,
     optional_str,
     parse_acceptance_criteria,
     parse_events_limit,
@@ -41,7 +42,13 @@ from kagan.core.commands._parsing import (
     str_list,
     str_object_dict,
 )
-from kagan.core.domain.enums import PairTerminalBackend, TaskPriority, TaskStatus, TaskType
+from kagan.core.domain.enums import (
+    PairTerminalBackend,
+    QueueLane,
+    TaskPriority,
+    TaskStatus,
+    TaskType,
+)
 
 
 class TestTaskCreation:
@@ -337,14 +344,19 @@ class TestParseTerminalBackend:
     def test_enum_passthrough(self) -> None:
         assert parse_terminal_backend(PairTerminalBackend.TMUX) is PairTerminalBackend.TMUX
 
-    @pytest.mark.parametrize("value", ["tmux", "TMUX", "nvim", "vscode", "cursor"])
+    @pytest.mark.parametrize("value", ["TMUX", *(backend.value for backend in PairTerminalBackend)])
     def test_valid_strings(self, value) -> None:
         result = parse_terminal_backend(value)
         assert isinstance(result, PairTerminalBackend)
 
-    def test_invalid_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="Invalid terminal backend"):
+    def test_invalid_string_raises_with_supported_values_in_message(self) -> None:
+        expected_values = ", ".join(backend.value for backend in PairTerminalBackend)
+        expected_message = (
+            f"Invalid terminal backend value: 'emacs'. Expected one of: {expected_values}."
+        )
+        with pytest.raises(ValueError) as exc_info:
             parse_terminal_backend("emacs")
+        assert str(exc_info.value) == expected_message
 
     def test_non_string_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid terminal backend"):
@@ -424,16 +436,16 @@ class TestParseTimeoutSeconds:
 
     def test_negative_returns_error(self) -> None:
         result = parse_timeout_seconds(-1)
-        assert isinstance(result, str)
-        assert ">= 0" in result
+        assert is_parse_error(result)
+        assert ">= 0" in result.message
 
     def test_bool_returns_error(self) -> None:
         result = parse_timeout_seconds(True)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
     def test_string_returns_error(self) -> None:
         result = parse_timeout_seconds("thirty")
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
 
 class TestParseEventsLimit:
@@ -447,15 +459,15 @@ class TestParseEventsLimit:
 
     def test_zero_returns_error(self) -> None:
         result = parse_events_limit(0)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
     def test_over_max_returns_error(self) -> None:
         result = parse_events_limit(101)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
     def test_bool_returns_error(self) -> None:
         result = parse_events_limit(True)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
 
 class TestParseEventsOffset:
@@ -469,11 +481,11 @@ class TestParseEventsOffset:
 
     def test_negative_returns_error(self) -> None:
         result = parse_events_offset(-1)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
     def test_bool_returns_error(self) -> None:
         result = parse_events_offset(True)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
 
 class TestParseWaitTimeoutSeconds:
@@ -493,21 +505,21 @@ class TestParseWaitTimeoutSeconds:
 
     def test_zero_returns_error(self) -> None:
         result = parse_wait_timeout_seconds(0, default_timeout=30, max_timeout=300)
-        assert isinstance(result, str)
-        assert "> 0" in result
+        assert is_parse_error(result)
+        assert "> 0" in result.message
 
     def test_exceeds_max_returns_error(self) -> None:
         result = parse_wait_timeout_seconds(999, default_timeout=30, max_timeout=300)
-        assert isinstance(result, str)
-        assert "300" in result
+        assert is_parse_error(result)
+        assert "300" in result.message
 
     def test_bool_returns_error(self) -> None:
         result = parse_wait_timeout_seconds(True, default_timeout=30, max_timeout=300)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
     def test_empty_string_returns_error(self) -> None:
         result = parse_wait_timeout_seconds("", default_timeout=30, max_timeout=300)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
 
 class TestParseWaitForStatusFilter:
@@ -534,33 +546,40 @@ class TestParseWaitForStatusFilter:
 
     def test_invalid_status_returns_error(self) -> None:
         result = parse_wait_for_status_filter(["UNKNOWN"])
-        assert isinstance(result, str)
-        assert "Invalid status filter" in result
+        assert is_parse_error(result)
+        assert "Invalid status filter" in result.message
 
     def test_empty_string_returns_none(self) -> None:
         assert parse_wait_for_status_filter("") is None
 
     def test_non_string_non_list_returns_error(self) -> None:
         result = parse_wait_for_status_filter(42)
-        assert isinstance(result, str)
+        assert is_parse_error(result)
 
 
 class TestParseQueueLane:
     """parse_queue_lane: None default, valid lanes, invalid."""
 
     def test_none_defaults_to_implementation(self) -> None:
-        assert parse_queue_lane(None) == "implementation"
+        assert parse_queue_lane(None) is QueueLane.IMPLEMENTATION
 
-    @pytest.mark.parametrize("lane", ["implementation", "review", "planner"])
-    def test_valid_lanes(self, lane) -> None:
-        assert parse_queue_lane(lane) == lane
+    @pytest.mark.parametrize(
+        ("raw_lane", "expected_lane"),
+        [
+            ("implementation", QueueLane.IMPLEMENTATION),
+            ("review", QueueLane.REVIEW),
+            ("planner", QueueLane.PLANNER),
+        ],
+    )
+    def test_valid_lanes(self, raw_lane: str, expected_lane: QueueLane) -> None:
+        assert parse_queue_lane(raw_lane) is expected_lane
 
     def test_case_insensitive(self) -> None:
-        assert parse_queue_lane("REVIEW") == "review"
+        assert parse_queue_lane("REVIEW") is QueueLane.REVIEW
 
-    def test_invalid_returns_error(self) -> None:
-        result = parse_queue_lane("deploy")
-        assert "must be one of" in result
+    def test_invalid_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="lane must be one of"):
+            parse_queue_lane("deploy")
 
 
 class TestParseRuntimeSessionEvent:
@@ -591,34 +610,6 @@ class TestParseRuntimeSessionEvent:
         assert parse_runtime_session_event(42) is None
 
 
-class TestParseProposalStatus:
-    """parse_proposal_status: enum passthrough, valid strings, invalid."""
-
-    def test_valid_string(self) -> None:
-        from kagan.core.commands._parsing import parse_proposal_status
-        from kagan.core.domain.enums import ProposalStatus
-
-        result = parse_proposal_status("draft")
-        assert result == ProposalStatus.DRAFT
-
-    def test_enum_passthrough(self) -> None:
-        from kagan.core.commands._parsing import parse_proposal_status
-        from kagan.core.domain.enums import ProposalStatus
-
-        result = parse_proposal_status(ProposalStatus.APPROVED)
-        assert result is ProposalStatus.APPROVED
-
-    def test_invalid_string_returns_none(self) -> None:
-        from kagan.core.commands._parsing import parse_proposal_status
-
-        assert parse_proposal_status("unknown") is None
-
-    def test_non_string_returns_none(self) -> None:
-        from kagan.core.commands._parsing import parse_proposal_status
-
-        assert parse_proposal_status(42) is None
-
-
 class TestParseJsonDictList:
     """parse_json_dict_list: valid list, non-list, non-dict items."""
 
@@ -628,10 +619,10 @@ class TestParseJsonDictList:
 
     def test_non_list_returns_error(self) -> None:
         result = parse_json_dict_list("not a list", field_name="items")
-        assert isinstance(result, str)
-        assert "items must be a list" in result
+        assert is_parse_error(result)
+        assert "items must be a list" in result.message
 
     def test_non_dict_item_returns_error(self) -> None:
         result = parse_json_dict_list([{"a": 1}, "not a dict"], field_name="items")
-        assert isinstance(result, str)
-        assert "items items must be objects" in result
+        assert is_parse_error(result)
+        assert "items items must be objects" in result.message

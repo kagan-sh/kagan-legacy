@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, Label, Select, Static, Switch
+from textual.widgets import Checkbox, Input, Label, Select, Static
 
 from kagan.tui.ui.modals.base import KaganModalScreen
 
@@ -28,7 +28,7 @@ class PluginFormModal(KaganModalScreen[dict[str, Any] | None]):
         Binding("shift+tab", "previous_field", "Previous Field", priority=True),
     ]
 
-    _FIELD_SELECTOR = "Input, Select, Switch"
+    _FIELD_SELECTOR = "Input, Select, Checkbox"
 
     def __init__(
         self,
@@ -67,9 +67,11 @@ class PluginFormModal(KaganModalScreen[dict[str, Any] | None]):
 
                     widget_id = f"plugin-form-{name}"
                     if kind == "boolean":
-                        yield Switch(
+                        yield Checkbox(
+                            "Enabled",
                             id=widget_id,
                             value=bool(self._initial_values.get(name, False)),
+                            compact=True,
                         )
                     elif kind == "select":
                         raw_options = field.get("options") or []
@@ -91,6 +93,7 @@ class PluginFormModal(KaganModalScreen[dict[str, Any] | None]):
                             value=value,
                             id=widget_id,
                             allow_blank=not required,
+                            compact=True,
                         )
                     else:
                         initial = self._initial_values.get(name)
@@ -147,7 +150,7 @@ class PluginFormModal(KaganModalScreen[dict[str, Any] | None]):
             widget_id = f"#plugin-form-{name}"
 
             if kind == "boolean":
-                value = bool(self.query_one(widget_id, Switch).value)
+                value = bool(self.query_one(widget_id, Checkbox).value)
                 payload[name] = value
                 continue
 

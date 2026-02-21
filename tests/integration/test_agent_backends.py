@@ -20,7 +20,7 @@ import asyncio
 import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -33,6 +33,7 @@ from kagan.core.builtin_agents import (
     BuiltinAgent,
 )
 from kagan.core.config import get_os_value
+from tests.integration._acp_stub_client import StubAcpClient
 
 _INTEGRATION_ENABLED = bool(os.getenv("KAGAN_INTEGRATION_TESTS"))
 
@@ -110,41 +111,6 @@ def test_agent_binary_responds_to_version_flag(agent_name: str, tmp_path: Path) 
 # ---------------------------------------------------------------------------
 
 
-class _StubAcpClient:
-    """Minimal ACP client stub for handshake-only testing.
-
-    Implements only the methods the ACP SDK may call before we terminate the
-    connection.  All methods are stubs that return None / raise gracefully.
-    """
-
-    async def session_update(self, *_: Any, **__: Any) -> None:
-        pass
-
-    async def request_permission(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def read_text_file(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def write_text_file(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def create_terminal(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def terminal_output(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def kill_terminal(self, *_: Any, **__: Any) -> None:
-        pass
-
-    async def release_terminal(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def wait_for_terminal_exit(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-
 @pytest.mark.skipif(not _INTEGRATION_ENABLED, reason="Set KAGAN_INTEGRATION_TESTS=1")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("agent_name", _PRIORITY_ORDERED)
@@ -177,7 +143,7 @@ async def test_agent_acp_initialize_handshake(agent_name: str, tmp_path: Path) -
     assert resolution.resolved_command is not None  # guaranteed by _acp_binary_available
 
     command_parts = resolution.resolved_command
-    client = _StubAcpClient()
+    client = StubAcpClient()
 
     async with asyncio.timeout(30.0):
         async with (

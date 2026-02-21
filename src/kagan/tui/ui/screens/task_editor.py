@@ -134,12 +134,14 @@ class TaskEditorScreen(ModalScreen[list[EditableTask] | None]):
                 value=task.priority.value,
                 id=field_ids.priority.removeprefix("#"),
                 classes="task-select",
+                compact=True,
             ),
             Select(
                 options=TASK_TYPE_OPTIONS,
                 value=task.task_type.value,
                 id=field_ids.task_type.removeprefix("#"),
                 classes="task-select",
+                compact=True,
             ),
             Label("PAIR Terminal Backend:", classes="task-label"),
             PairTerminalBackendSelect(

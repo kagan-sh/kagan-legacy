@@ -55,9 +55,12 @@ def build_kanban_hints(
     hints = KanbanHints()
 
     hints.global_hints = [
-        _hint("switch_global_agent", "agent"),
-        _hint("show_help", "help"),
+        _hint("new_task", "new"),
+        _hint("toggle_search", "search"),
+        _hint("view_details", "details"),
+        _hint("open_chat_fullscreen", "assistant"),
         _hint("command_palette", "actions"),
+        _hint("show_help", "help"),
     ]
 
     if status is None:
@@ -66,7 +69,7 @@ def build_kanban_hints(
             _hint("new_task", "new"),
             _hint("new_auto_task", "new auto"),
             _hint("toggle_search", "search"),
-            _hint("toggle_chat_overlay", "orchestrator"),
+            _hint("toggle_chat_overlay", "assistant dock"),
         ]
         return hints
 
@@ -78,17 +81,17 @@ def build_kanban_hints(
 
     if status == TaskStatus.BACKLOG:
         hints.actions = [
-            _hint("open_session", "start"),
-            _hint("start_agent", "agent"),
-            _hint("edit_task", "edit"),
             _hint("view_details", "details"),
+            _hint("open_session", "start"),
+            _hint("start_agent", "AI assistant"),
+            _hint("edit_task", "edit"),
             _hint("toggle_peek", "peek"),
         ]
 
     elif status == TaskStatus.IN_PROGRESS:
         hints.actions = [
-            _hint("open_session", "open"),
             _hint("view_details", "details"),
+            _hint("open_session", "open"),
             _hint("edit_task", "edit"),
             _hint("toggle_peek", "peek"),
         ]
@@ -100,17 +103,17 @@ def build_kanban_hints(
 
     elif status == TaskStatus.REVIEW:
         hints.actions = [
-            _hint("open_session", "open"),
+            _hint("view_details", "details"),
+            _hint("open_session", "output"),
             _hint("view_diff", "diff"),
             _hint("merge_direct", "merge"),
             _hint("rebase", "rebase"),
-            _hint("view_details", "details"),
         ]
 
     elif status == TaskStatus.DONE:
         hints.actions = [
-            _hint("open_session", "history"),
             _hint("view_details", "details"),
+            _hint("open_session", "history"),
             _hint("duplicate_task", "duplicate"),
             _hint("delete_task_direct", "delete"),
         ]

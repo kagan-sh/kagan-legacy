@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from kagan.core.commands import tasks as task_commands
@@ -11,12 +10,14 @@ from kagan.core.domain.errors import (
     ReviewApprovalContextMissingError,
     ReviewGuardrailBlockedError,
 )
+from tests.helpers.mocks import build_task_command_context, build_task_result
 
 
 class TestTaskReviewCommandDelegation:
     async def test_update_task_delegates_to_api_without_task_service(self) -> None:
-        api = SimpleNamespace(update_task=AsyncMock(return_value=SimpleNamespace(id="task-1")))
-        ctx = SimpleNamespace(api=api)
+        ctx = build_task_command_context(
+            update_task=AsyncMock(return_value=build_task_result()),
+        )
 
         result = await task_commands.update_task(
             ctx,
@@ -24,11 +25,12 @@ class TestTaskReviewCommandDelegation:
         )
 
         assert result == {"success": True, "task_id": "task-1", "code": "UPDATED"}
-        api.update_task.assert_awaited_once_with("task-1", status=TaskStatus.IN_PROGRESS)
+        ctx.api.update_task.assert_awaited_once_with("task-1", status=TaskStatus.IN_PROGRESS)
 
     async def test_update_task_done_error_payload_from_api_value_error(self) -> None:
-        api = SimpleNamespace(update_task=AsyncMock(side_effect=ValueError("Invalid transition")))
-        ctx = SimpleNamespace(api=api)
+        ctx = build_task_command_context(
+            update_task=AsyncMock(side_effect=ValueError("Invalid transition")),
+        )
 
         result = await task_commands.update_task(
             ctx,
@@ -44,12 +46,11 @@ class TestTaskReviewCommandDelegation:
         }
 
     async def test_approve_review_delegates_to_api_without_task_service(self) -> None:
-        api = SimpleNamespace(
+        ctx = build_task_command_context(
             approve_task=AsyncMock(
-                return_value=SimpleNamespace(id="task-1", status=TaskStatus.REVIEW)
-            )
+                return_value=build_task_result(status=TaskStatus.REVIEW),
+            ),
         )
-        ctx = SimpleNamespace(api=api)
 
         result = await task_commands.approve_review(ctx, {"task_id": "task-1"})
 
@@ -60,15 +61,14 @@ class TestTaskReviewCommandDelegation:
             "task_status": "REVIEW",
             "code": "APPROVED",
         }
-        api.approve_task.assert_awaited_once_with("task-1")
+        ctx.api.approve_task.assert_awaited_once_with("task-1")
 
     async def test_approve_review_not_ready_payload_uses_task_status_from_api(self) -> None:
-        api = SimpleNamespace(
+        ctx = build_task_command_context(
             approve_task=AsyncMock(
-                return_value=SimpleNamespace(id="task-1", status=TaskStatus.IN_PROGRESS)
-            )
+                return_value=build_task_result(status=TaskStatus.IN_PROGRESS),
+            ),
         )
-        ctx = SimpleNamespace(api=api)
 
         result = await task_commands.approve_review(ctx, {"task_id": "task-1"})
 
@@ -84,16 +84,15 @@ class TestTaskReviewCommandDelegation:
         }
 
     async def test_approve_review_context_missing_payload(self) -> None:
-        api = SimpleNamespace(
+        ctx = build_task_command_context(
             approve_task=AsyncMock(
                 side_effect=ReviewApprovalContextMissingError(
                     code="REVIEW_APPROVAL_CONTEXT_MISSING",
                     message="Cannot approve review: no execution context exists for this task.",
                     hint="Create a review execution for this task, then retry approve.",
                 )
-            )
+            ),
         )
-        ctx = SimpleNamespace(api=api)
 
         result = await task_commands.approve_review(ctx, {"task_id": "task-1"})
 
@@ -106,16 +105,15 @@ class TestTaskReviewCommandDelegation:
         }
 
     async def test_request_review_maps_guardrail_error_payload(self) -> None:
-        api = SimpleNamespace(
+        ctx = build_task_command_context(
             request_review=AsyncMock(
                 side_effect=ReviewGuardrailBlockedError(
                     code="REVIEW_GUARDRAIL_TIMEOUT",
                     message="REVIEW transition blocked: review guardrail check timed out.",
                     hint="Retry after fixing plugin health.",
                 )
-            )
+            ),
         )
-        ctx = SimpleNamespace(api=api)
 
         result = await task_commands.request_review(
             ctx,
@@ -131,12 +129,11 @@ class TestTaskReviewCommandDelegation:
         }
 
     async def test_reject_review_delegates_to_api_without_task_service(self) -> None:
-        api = SimpleNamespace(
+        ctx = build_task_command_context(
             reject_task=AsyncMock(
-                return_value=SimpleNamespace(id="task-1", status=TaskStatus.BACKLOG)
-            )
+                return_value=build_task_result(status=TaskStatus.BACKLOG),
+            ),
         )
-        ctx = SimpleNamespace(api=api)
 
         result = await task_commands.reject_review(
             ctx,
@@ -149,4 +146,4 @@ class TestTaskReviewCommandDelegation:
             "status": "BACKLOG",
             "code": "REJECTED",
         }
-        api.reject_task.assert_awaited_once_with("task-1", "needs tests", "backlog")
+        ctx.api.reject_task.assert_awaited_once_with("task-1", "needs tests", "backlog")

@@ -41,6 +41,7 @@ uv run poe fix        # Auto-fix lint issues + format (run this first!)
 uv run poe lint       # Ruff linter
 uv run poe format     # Format with ruff
 uv run poe typecheck  # Pyrefly type checker
+uv run poe deadcode   # Vulture dead-code scan (src/)
 uv run pytest tests/ -v
 ```
 
@@ -172,11 +173,11 @@ Order: stdlib, third-party, local. Use `from __future__ import annotations`.
 from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 from textual.app import ComposeResult
-from kagan.constants import COLUMN_ORDER
-from kagan.core.models.entities import Task
+from kagan.core.constants import COLUMN_ORDER
+from kagan.core.adapters.db.schema import Task
 
 if TYPE_CHECKING:
-    from kagan.app import KaganApp
+    from kagan.tui.app import KaganApp
 ```
 
 ### Type Annotations
@@ -236,7 +237,7 @@ git config commit.gpgsign false
 
 1. **CSS in `.tcss` only** - All styles in `kagan.tcss`, never use `DEFAULT_CSS`
 1. **Async database** - All DB operations via SQLModel TaskRepository
-1. **Constants module** - Use `kagan.constants` for shared values
+1. **Constants module** - Use `kagan.core.constants` for shared values
 1. **Property assertions** - Use `@property` with `assert` for required state
 1. **Module boundaries by change** - Split modules when responsibilities or change cadence diverge; keep cohesive code together even if large.
 

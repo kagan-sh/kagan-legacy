@@ -108,6 +108,11 @@ def _error(code: str, message: str, hint: str) -> dict[str, Any]:
     return {"success": False, "code": code, "message": message, "hint": hint}
 
 
+async def _resolve_gh_cli_path(gh: GhCliClientAdapter) -> tuple[str | None, dict[str, Any] | None]:
+    """Resolve gh CLI path without blocking the async event loop."""
+    return await asyncio.to_thread(gh.resolve_gh_cli_path)
+
+
 def _repo_identifier(repo: Any) -> str:
     repo_id = repo.id if hasattr(repo, "id") else None
     if isinstance(repo_id, str) and repo_id:
@@ -116,10 +121,6 @@ def _repo_identifier(repo: Any) -> str:
     if isinstance(repo_name, str) and repo_name:
         return repo_name
     return "<unknown-repo>"
-
-
-# Local alias preserves existing call sites while using shared coercion.
-_non_empty_str = non_empty_str
 
 
 def _coerce_positive_int(
@@ -251,8 +252,8 @@ async def _resolve_connect_target(
     project_id: str | None,
     repo_id: str | None,
 ) -> tuple[Any | None, dict[str, Any] | None]:
-    project_id = _non_empty_str(project_id)
-    repo_id = _non_empty_str(repo_id)
+    project_id = non_empty_str(project_id)
+    repo_id = non_empty_str(repo_id)
     if not project_id:
         return None, _error(
             GH_PROJECT_REQUIRED,
@@ -386,8 +387,8 @@ async def _merge_github_pr(
     project_id_raw: str | None,
     merge_method_raw: str | None,
 ) -> dict[str, Any]:
-    task_id = _non_empty_str(task_id_raw)
-    project_id = _non_empty_str(project_id_raw)
+    task_id = non_empty_str(task_id_raw)
+    project_id = non_empty_str(project_id_raw)
     if not task_id:
         return _error(
             GH_TASK_REQUIRED,
@@ -442,7 +443,7 @@ async def _merge_github_pr(
                 "already_merged": True,
             }
 
-        gh_path, gh_error = gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -521,8 +522,8 @@ async def _get_pr_review_comments(
     task_id_raw: str | None,
     project_id_raw: str | None,
 ) -> dict[str, Any]:
-    task_id = _non_empty_str(task_id_raw)
-    project_id = _non_empty_str(project_id_raw)
+    task_id = non_empty_str(task_id_raw)
+    project_id = non_empty_str(project_id_raw)
     if not task_id:
         return _error(
             GH_TASK_REQUIRED,
@@ -566,7 +567,7 @@ async def _get_pr_review_comments(
             continue
         owner, repo_name = owner_repo
 
-        gh_path, gh_error = gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -712,7 +713,7 @@ class GitHubPluginUseCases:
         if connection_error is not None:
             return connection_error
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -760,7 +761,7 @@ class GitHubPluginUseCases:
 
             if action == "insert":
                 try:
-                    normalized_project_id = _non_empty_str(request.project_id)
+                    normalized_project_id = non_empty_str(request.project_id)
                     assert normalized_project_id is not None
                     task = await self._core.create_task(
                         title=changes["title"],
@@ -890,7 +891,7 @@ class GitHubPluginUseCases:
                 "holder": None,
             }
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -976,7 +977,7 @@ class GitHubPluginUseCases:
                 "message": "Lease enforcement disabled for this repository; skipping release.",
             }
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -1044,7 +1045,7 @@ class GitHubPluginUseCases:
                 },
             }
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -1089,15 +1090,15 @@ class GitHubPluginUseCases:
         request: SyncTaskStatusInput,
     ) -> dict[str, Any]:
         """Sync Kagan task status to linked GitHub issue (close/reopen + labels)."""
-        task_id = _non_empty_str(request.task_id)
-        project_id = _non_empty_str(request.project_id)
+        task_id = non_empty_str(request.task_id)
+        project_id = non_empty_str(request.project_id)
 
         if not task_id:
             return _error(GH_TASK_REQUIRED, "task_id is required", "Provide the task_id")
         if not project_id:
             return _error(GH_PROJECT_REQUIRED, "project_id is required", "Provide the project_id")
 
-        to_status_str = _non_empty_str(request.to_status)
+        to_status_str = non_empty_str(request.to_status)
         if not to_status_str:
             return _error(
                 "GH_STATUS_REQUIRED",
@@ -1163,7 +1164,7 @@ class GitHubPluginUseCases:
         to_status: TaskStatus,
     ) -> dict[str, Any]:
         """Apply close/reopen and label changes to a GitHub issue."""
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             detail = (
                 str(gh_error.get("message"))
@@ -1238,8 +1239,8 @@ class GitHubPluginUseCases:
         request: ValidateReviewTransitionInput,
     ) -> dict[str, Any]:
         """Validate REVIEW transition guardrails for GitHub-connected repos."""
-        task_id = _non_empty_str(request.task_id)
-        project_id = _non_empty_str(request.project_id)
+        task_id = non_empty_str(request.task_id)
+        project_id = non_empty_str(request.project_id)
         if not task_id or not project_id:
             return {"allowed": True}
 
@@ -1317,7 +1318,7 @@ class GitHubPluginUseCases:
             owner, repo_name = owner_repo
 
             if gh_path is None:
-                gh_path, gh_error = self._gh.resolve_gh_cli_path()
+                gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
                 if gh_error is not None:
                     detail = (
                         str(gh_error.get("message"))
@@ -1397,7 +1398,6 @@ class GitHubPluginUseCases:
         assert repo_context is not None
 
         connection = repo_context["connection"]
-        base_branch = connection.get("default_branch", "main")
 
         task = await self._core.get_task(request.task_id)
         if task is None:
@@ -1406,6 +1406,9 @@ class GitHubPluginUseCases:
                 f"Task not found: {request.task_id}",
                 "Verify the task_id exists",
             )
+        task_base_branch = non_empty_str(getattr(task, "base_branch", None))
+        default_base_branch = non_empty_str(connection.get("default_branch"))
+        base_branch = task_base_branch or default_base_branch or "main"
 
         workspaces = await self._core.list_workspaces(task_id=request.task_id)
         if not workspaces:
@@ -1425,18 +1428,51 @@ class GitHubPluginUseCases:
             return workspace_error
         assert workspace is not None
 
-        head_branch = _non_empty_str(getattr(workspace, "branch_name", None))
+        head_branch = non_empty_str(getattr(workspace, "branch_name", None))
         if head_branch is None:
             return _error(
                 GH_WORKSPACE_REQUIRED,
                 f"Workspace {workspace.id} has no branch name",
                 "Recreate workspace for this task before creating a PR",
             )
+        workspace_repos = await self._core.get_workspace_repos(workspace.id)
+        repo_id = repo.id if hasattr(repo, "id") else None
+        workspace_repo = next(
+            (
+                item
+                for item in workspace_repos
+                if isinstance(item, dict) and item.get("repo_id") == repo_id
+            ),
+            None,
+        )
+        worktree_path = (
+            non_empty_str(workspace_repo.get("worktree_path"))
+            if isinstance(workspace_repo, dict)
+            else None
+        )
+        if worktree_path is None:
+            return _error(
+                GH_WORKSPACE_REQUIRED,
+                f"Workspace {workspace.id} has no worktree for repo {repo_id}",
+                "Recreate the workspace before creating a PR",
+            )
 
         pr_title = request.title or task.title
         pr_body = request.body or task.description or ""
+        push_error = await asyncio.to_thread(
+            self._gh.run_git_push_branch,
+            worktree_path,
+            head_branch,
+        )
+        if push_error:
+            return {
+                "success": False,
+                "code": GH_PR_CREATE_FAILED,
+                "message": f"Failed to push branch before PR creation: {push_error}",
+                "hint": "Verify git remote 'origin' exists and push permissions are granted.",
+            }
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -1489,13 +1525,27 @@ class GitHubPluginUseCases:
         request: AutoCreateReviewPrInput,
     ) -> dict[str, Any]:
         """Auto-create a draft PR when a task transitions to REVIEW."""
-        task_id = _non_empty_str(request.task_id)
-        project_id = _non_empty_str(request.project_id)
+        task_id = non_empty_str(request.task_id)
+        project_id = non_empty_str(request.project_id)
         if not task_id or not project_id:
             return {
                 "success": True,
                 "code": AUTO_PR_SKIPPED,
                 "message": "Missing task_id or project_id; skipping auto PR creation",
+            }
+
+        auto_commit_enabled = False
+        is_auto_commit_changes_enabled = getattr(self._core, "is_auto_commit_changes_enabled", None)
+        if callable(is_auto_commit_changes_enabled):
+            auto_commit_enabled = bool(is_auto_commit_changes_enabled())
+        if not auto_commit_enabled:
+            return {
+                "success": True,
+                "code": AUTO_PR_SKIPPED,
+                "message": (
+                    "general.auto_commit_changes is disabled; "
+                    "skipping auto PR creation to avoid remote pushes"
+                ),
             }
 
         try:
@@ -1514,13 +1564,10 @@ class GitHubPluginUseCases:
                 "message": "No repos in project; skipping auto PR creation",
             }
 
+        connected_repos: list[Any] = []
         for repo in repos:
             connection_state = load_connection_state(repo.scripts)
             if not connection_state.raw_value or connection_state.normalized is None:
-                continue
-
-            issue_mapping = load_issue_mapping_state(repo.scripts)
-            if issue_mapping.get_issue_number(task_id) is None:
                 continue
 
             pr_mapping = load_pr_mapping_state(repo.scripts)
@@ -1530,16 +1577,42 @@ class GitHubPluginUseCases:
                     "code": AUTO_PR_SKIPPED,
                     "message": f"Task {task_id} already has a linked PR",
                 }
+            connected_repos.append(repo)
 
-            task = await self._core.get_task(task_id)
-            if task is None:
-                return {
-                    "success": True,
-                    "code": AUTO_PR_SKIPPED,
-                    "message": f"Task {task_id} not found; skipping auto PR creation",
-                }
+        if not connected_repos:
+            return {
+                "success": True,
+                "code": AUTO_PR_SKIPPED,
+                "message": "No GitHub-connected repos in project; skipping auto PR creation",
+            }
 
-            from kagan.core.plugins.github.models import CreatePrForTaskInput
+        task = await self._core.get_task(task_id)
+        if task is None:
+            return {
+                "success": True,
+                "code": AUTO_PR_SKIPPED,
+                "message": f"Task {task_id} not found; skipping auto PR creation",
+            }
+
+        workspaces = await self._core.list_workspaces(task_id=task_id)
+        if not workspaces:
+            return {
+                "success": True,
+                "code": AUTO_PR_SKIPPED,
+                "message": f"Task {task_id} has no workspace; skipping auto PR creation",
+            }
+
+        from kagan.core.plugins.github.models import CreatePrForTaskInput
+
+        for repo in connected_repos:
+            _, workspace_error = await _resolve_workspace_for_repo(
+                self._core,
+                task_id=task_id,
+                repo=repo,
+                workspaces=workspaces,
+            )
+            if workspace_error is not None:
+                continue
 
             pr_request = CreatePrForTaskInput(
                 project_id=project_id,
@@ -1549,12 +1622,19 @@ class GitHubPluginUseCases:
                 body="Auto-created draft PR for review",
                 draft=True,
             )
-            return await self.create_pr_for_task(pr_request)
+            result = await self.create_pr_for_task(pr_request)
+            if result.get("success") and result.get("code") == PR_CREATED:
+                result = dict(result)
+                result["code"] = AUTO_PR_CREATED
+                result["message"] = result.get("message", "Auto-created review PR")
+            return result
 
         return {
             "success": True,
             "code": AUTO_PR_SKIPPED,
-            "message": f"Task {task_id} has no linked GitHub issue; skipping auto PR creation",
+            "message": (
+                f"Task {task_id} has no workspace in connected repos; skipping auto PR creation"
+            ),
         }
 
     async def link_pr_to_task(self, request: LinkPrToTaskInput) -> dict[str, Any]:
@@ -1602,7 +1682,7 @@ class GitHubPluginUseCases:
                 "Verify the task_id exists",
             )
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -1684,7 +1764,7 @@ class GitHubPluginUseCases:
                 "Verify the task_id exists",
             )
 
-        gh_path, gh_error = self._gh.resolve_gh_cli_path()
+        gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
         if gh_error is not None:
             return gh_error
         assert gh_path is not None
@@ -1761,8 +1841,8 @@ class GitHubPluginUseCases:
         request: CheckPrCiStatusInput,
     ) -> dict[str, Any]:
         """Check CI status for the PR linked to a task."""
-        task_id = _non_empty_str(request.task_id)
-        project_id = _non_empty_str(request.project_id)
+        task_id = non_empty_str(request.task_id)
+        project_id = non_empty_str(request.project_id)
         if not task_id:
             return _error(
                 GH_TASK_REQUIRED,
@@ -1804,7 +1884,7 @@ class GitHubPluginUseCases:
             if pr_link is None:
                 continue
 
-            gh_path, gh_error = self._gh.resolve_gh_cli_path()
+            gh_path, gh_error = await _resolve_gh_cli_path(self._gh)
             if gh_error is not None:
                 return gh_error
             assert gh_path is not None

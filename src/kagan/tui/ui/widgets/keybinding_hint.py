@@ -87,6 +87,8 @@ class KanbanHintBar(Widget):
         navigation: list[tuple[str, str]],
         actions: list[tuple[str, str]],
         global_hints: list[tuple[str, str]],
+        *,
+        mode_label: str = "Board",
     ) -> None:
         """Update both rows of the hint bar.
 
@@ -112,14 +114,14 @@ class KanbanHintBar(Widget):
             nav_left.update(
                 f"[dim]◀[/] [bold]{left_hint[0]}[/] {left_hint[1]}" if left_hint[0] else ""
             )
-            nav_center.update("[dim]h j k l[/dim] navigate")
+            nav_center.update(f"[dim]Mode: {mode_label} · h j k l[/dim] navigate")
             nav_right.update(
                 f"{right_hint[1]} [bold]{right_hint[0]}[/] [dim]▶[/]" if right_hint[0] else ""
             )
         else:
             self.has_card = False
             nav_left.update("")
-            nav_center.update("[dim]h j k l[/dim] navigate")
+            nav_center.update(f"[dim]Mode: {mode_label} · h j k l[/dim] navigate")
             nav_right.update("")
 
         actions_left.update("")

@@ -31,6 +31,27 @@ def _deadline(timeout: float) -> float:
     return asyncio.get_running_loop().time() + timeout
 
 
+async def _wait_until_deadline[PollResult](
+    predicate: Callable[[], Awaitable[PollResult | None]],
+    *,
+    timeout: float,
+    check_interval: float,
+    wait_between_checks: Callable[[float], Awaitable[None]],
+    timeout_message: Callable[[float], str],
+    wait_before_check: Callable[[], Awaitable[None]] | None = None,
+) -> PollResult:
+    timeout = _ci_timeout(timeout)
+    deadline = _deadline(timeout)
+    while asyncio.get_running_loop().time() < deadline:
+        if wait_before_check is not None:
+            await wait_before_check()
+        result = await predicate()
+        if result is not None:
+            return result
+        await wait_between_checks(check_interval)
+    raise TimeoutError(timeout_message(timeout))
+
+
 async def wait_until(
     predicate: Callable[[], bool],
     *,
@@ -39,13 +60,19 @@ async def wait_until(
     description: str = "condition",
 ) -> None:
     """Wait for a synchronous predicate to become true."""
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        if predicate():
-            return
-        await asyncio.sleep(check_interval)
-    raise TimeoutError(f"Timed out after {timeout}s waiting for {description}")
+
+    async def _predicate() -> bool | None:
+        return True if predicate() else None
+
+    await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=asyncio.sleep,
+        timeout_message=lambda scaled_timeout: (
+            f"Timed out after {scaled_timeout}s waiting for {description}"
+        ),
+    )
 
 
 async def wait_until_async(
@@ -56,13 +83,19 @@ async def wait_until_async(
     description: str = "condition",
 ) -> None:
     """Wait for an async predicate to become true."""
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        if await predicate():
-            return
-        await asyncio.sleep(check_interval)
-    raise TimeoutError(f"Timed out after {timeout}s waiting for {description}")
+
+    async def _predicate() -> bool | None:
+        return True if await predicate() else None
+
+    await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=asyncio.sleep,
+        timeout_message=lambda scaled_timeout: (
+            f"Timed out after {scaled_timeout}s waiting for {description}"
+        ),
+    )
 
 
 async def wait_for_screen(
@@ -127,17 +160,23 @@ async def wait_for_widget(
 ) -> None:
     from textual.css.query import NoMatches
 
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        await pilot.pause()
+    async def _predicate() -> bool | None:
         try:
             pilot.app.screen.query_one(selector)
-            return
+            return True
         except NoMatches:
-            await pilot.pause(check_interval)
+            return None
 
-    raise TimeoutError(f"Widget '{selector}' not found within {timeout}s")
+    await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=pilot.pause,
+        wait_before_check=pilot.pause,
+        timeout_message=lambda scaled_timeout: (
+            f"Widget '{selector}' not found within {scaled_timeout}s"
+        ),
+    )
 
 
 async def wait_for_text(
@@ -146,16 +185,20 @@ async def wait_for_text(
     timeout: float = 5.0,
     check_interval: float = 0.1,
 ) -> None:
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        await pilot.pause()
+    async def _predicate() -> bool | None:
         rendered = str(pilot.app.screen)
-        if text in rendered:
-            return
-        await pilot.pause(check_interval)
+        return True if text in rendered else None
 
-    raise TimeoutError(f"Text '{text}' not found within {timeout}s")
+    await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=pilot.pause,
+        wait_before_check=pilot.pause,
+        timeout_message=lambda scaled_timeout: (
+            f"Text '{text}' not found within {scaled_timeout}s"
+        ),
+    )
 
 
 async def wait_for_modal(
@@ -164,16 +207,23 @@ async def wait_for_modal(
     timeout: float = 5.0,
     check_interval: float = 0.1,
 ) -> Screen:
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        await pilot.pause()
+    async def _predicate() -> Screen | None:
         for screen in pilot.app.screen_stack:
             if isinstance(screen, modal_type):
                 return screen
-        await pilot.pause(check_interval)
 
-    raise TimeoutError(f"Modal {modal_type.__name__} not found within {timeout}s")
+        return None
+
+    return await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=pilot.pause,
+        wait_before_check=pilot.pause,
+        timeout_message=lambda scaled_timeout: (
+            f"Modal {modal_type.__name__} not found within {scaled_timeout}s"
+        ),
+    )
 
 
 async def wait_for_task_status(
@@ -226,16 +276,20 @@ async def wait_for_widget_state(
     """Wait for a widget matching ``selector`` to satisfy ``predicate``."""
     from textual.css.query import NoMatches
 
-    timeout = _ci_timeout(timeout)
-    deadline = _deadline(timeout)
-    while asyncio.get_running_loop().time() < deadline:
-        await pilot.pause()
+    async def _predicate() -> Any | None:
         try:
             widget = pilot.app.screen.query_one(selector)
         except NoMatches:
-            await pilot.pause(check_interval)
-            continue
-        if predicate(widget):
-            return widget
-        await pilot.pause(check_interval)
-    raise TimeoutError(f"Timed out after {timeout}s waiting for {description}: {selector}")
+            return None
+        return widget if predicate(widget) else None
+
+    return await _wait_until_deadline(
+        _predicate,
+        timeout=timeout,
+        check_interval=check_interval,
+        wait_between_checks=pilot.pause,
+        wait_before_check=pilot.pause,
+        timeout_message=lambda scaled_timeout: (
+            f"Timed out after {scaled_timeout}s waiting for {description}: {selector}"
+        ),
+    )

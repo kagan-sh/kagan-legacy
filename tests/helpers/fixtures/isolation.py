@@ -13,6 +13,7 @@ REAL_PRODUCTION_DB_PATH = (Path(user_data_dir("kagan")) / "kagan.db").expanduser
 TEST_BASE_DIR = Path(tempfile.mkdtemp(prefix="kagan-tests-"))
 _TEST_BASE_DIR_RESOLVED = TEST_BASE_DIR.resolve()
 TEST_ENV = {
+    "KAGAN_STRICT_TEST_ISOLATION": "1",
     "KAGAN_DATA_DIR": str(TEST_BASE_DIR / "data"),
     "KAGAN_CONFIG_DIR": str(TEST_BASE_DIR / "config"),
     "KAGAN_CACHE_DIR": str(TEST_BASE_DIR / "cache"),

@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
-from kagan.core.paths import ensure_directories, get_database_path
+from kagan.core.paths import get_database_path
+from kagan.core.test_isolation import enforce_test_db_path
 
 
 def _check_greenlet() -> None:
@@ -32,8 +33,8 @@ def _check_greenlet() -> None:
 async def create_db_engine(db_path: str | Path | None = None) -> AsyncEngine:
     """Create async SQLite engine with WAL mode."""
     _check_greenlet()
-    ensure_directories()
     resolved = Path(db_path) if db_path else get_database_path()
+    enforce_test_db_path(db_path if db_path is not None else resolved, context="create_db_engine")
     db_path_str = str(resolved)
     if db_path_str == ":memory:":
         engine = create_async_engine(

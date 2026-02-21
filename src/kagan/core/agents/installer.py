@@ -32,7 +32,7 @@ INSTALL_TIMEOUT_SECONDS = 120
 def _which(command: str) -> str | None:
     """Resolve command path via stdlib lookup.
 
-    Keeping `shutil.which` reachable preserves test monkeypatch compatibility.
+    Keeping `shutil.which` in this wrapper gives tests a stable patch point.
     """
     return shutil.which(command)
 

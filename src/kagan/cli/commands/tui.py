@@ -10,24 +10,24 @@ from pathlib import Path
 import click
 
 from kagan.cli.update import check_for_updates, prompt_and_update
-from kagan.core.constants import DEFAULT_DB_PATH
-from kagan.core.paths import get_config_path
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 
 
-def _ensure_core_ready_for_cli(db_path: str) -> None:
+def _ensure_core_ready_for_cli(runtime_context: CoreRuntimeContext) -> None:
     """Auto-start core daemon for TUI clients when config allows it."""
     from kagan.core.config import KaganConfig
     from kagan.core.services.runtime import ensure_core_running_sync
 
-    config = KaganConfig.load(get_config_path())
+    config = KaganConfig.load(runtime_context.config_path)
     if not config.general.core_autostart:
         return
 
     try:
         ensure_core_running_sync(
             config=config,
-            config_path=get_config_path(),
-            db_path=Path(db_path),
+            config_path=runtime_context.config_path,
+            db_path=runtime_context.db_path,
+            runtime_context=runtime_context,
         )
     except Exception as exc:
         click.secho(f"Failed to start core daemon: {exc}", fg="red")
@@ -59,35 +59,59 @@ def _check_for_updates_gate() -> None:
             click.echo()
 
 
-async def _cleanup_stale_done_workspaces_via_core(db_path: str, older_than_days: int) -> int:
+async def _cleanup_stale_done_workspaces_via_core(
+    runtime_context: CoreRuntimeContext,
+    older_than_days: int,
+) -> int:
     """Run stale DONE-task workspace cleanup through core API/service layers."""
     from kagan.core.bootstrap import create_app_context
 
-    ctx = await create_app_context(get_config_path(), Path(db_path), enable_wire=False)
+    ctx = await create_app_context(
+        runtime_context.config_path,
+        runtime_context.db_path,
+        enable_wire=False,
+    )
     try:
         return await ctx.api.cleanup_stale_done_workspaces(older_than_days=older_than_days)
     finally:
         await ctx.close()
 
 
-def _auto_cleanup_done_workspaces(db_path: str, *, older_than_days: int = 7) -> None:
-    if db_path == ":memory:":
+def _auto_cleanup_done_workspaces(
+    runtime_context: CoreRuntimeContext | None = None,
+    db_path: str | Path | None = None,
+    *,
+    older_than_days: int = 7,
+) -> None:
+    if runtime_context is None and isinstance(db_path, str) and db_path.strip() == ":memory:":
         return
-    db_file = Path(db_path)
+    resolved_context = runtime_context or resolve_runtime_context(db_path=db_path)
+    resolved_db_path = str(resolved_context.db_path)
+    if resolved_db_path == ":memory:":
+        return
+    db_file = Path(resolved_db_path)
     if not db_file.exists():
         return
     try:
-        asyncio.run(_cleanup_stale_done_workspaces_via_core(db_path, older_than_days))
+        asyncio.run(_cleanup_stale_done_workspaces_via_core(resolved_context, older_than_days))
     except Exception as exc:
         click.secho(f"Preflight cleanup failed: {exc}", fg="yellow")
 
 
-def _run_startup_doctor_gate(*, db_path: str, skip_preflight: bool) -> None:
+def _run_startup_doctor_gate(
+    *,
+    runtime_context: CoreRuntimeContext | None = None,
+    db_path: str | Path | None = None,
+    skip_preflight: bool,
+) -> None:
     """Run doctor checks silently and block startup only on critical failures."""
     if skip_preflight:
         return
 
-    _auto_cleanup_done_workspaces(db_path)
+    if runtime_context is not None:
+        _auto_cleanup_done_workspaces(runtime_context=runtime_context)
+    else:
+        _auto_cleanup_done_workspaces(db_path=db_path)
 
     from kagan.cli.commands.doctor import (
         render_doctor_report,
@@ -113,7 +137,7 @@ def _run_startup_doctor_gate(*, db_path: str, skip_preflight: bool) -> None:
 
 
 @click.command()
-@click.option("--db", default=DEFAULT_DB_PATH, help="Path to SQLite database")
+@click.option("--db", default=None, help="Path to SQLite database")
 @click.option(
     "--skip-preflight",
     is_flag=True,
@@ -125,17 +149,19 @@ def _run_startup_doctor_gate(*, db_path: str, skip_preflight: bool) -> None:
     envvar="KAGAN_SKIP_UPDATE_CHECK",
     help="Skip update check on startup",
 )
-def tui(db: str, skip_preflight: bool, skip_update_check: bool) -> None:
+def tui(db: str | None, skip_preflight: bool, skip_update_check: bool) -> None:
     """Run the Kanban TUI (default command)."""
-    db_path = db
+    runtime_context = resolve_runtime_context(
+        db_path=Path(db).expanduser().resolve(strict=False) if db else None
+    )
 
     if not skip_update_check and not os.environ.get("KAGAN_SKIP_UPDATE_CHECK"):
         _check_for_updates_gate()
 
-    _run_startup_doctor_gate(db_path=db_path, skip_preflight=skip_preflight)
+    _run_startup_doctor_gate(runtime_context=runtime_context, skip_preflight=skip_preflight)
 
     from kagan.tui.app import KaganApp, resolve_tui_mouse_enabled
 
-    _ensure_core_ready_for_cli(db_path)
-    app = KaganApp(db_path=db_path)
+    _ensure_core_ready_for_cli(runtime_context)
+    app = KaganApp(runtime_context=runtime_context)
     app.run(mouse=resolve_tui_mouse_enabled())

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Literal
@@ -11,9 +12,10 @@ from acp.schema import PlanEntry
 from acp.schema import ToolCall as AcpToolCall
 from acp.schema import ToolCallUpdate as AcpToolCallUpdate
 from pydantic import ValidationError
-from textual.containers import VerticalScroll
+from textual import events, on
+from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
-from textual.widgets import Rule, Static
+from textual.widgets import Button, Rule, Static
 
 from kagan.core.domain.enums import StreamPhase, StreamRole
 from kagan.core.limits import MAX_TOOL_CALLS
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
 XML_BLOCK_PATTERN = re.compile(r"<(todos|plan)>.*?</\1>", re.DOTALL | re.IGNORECASE)
 
 XML_PARTIAL_START = re.compile(r"<(todos|plan)", re.IGNORECASE)
+_SCROLL_LIVE_MARGIN = 2
 ToolCallKind = Literal[
     "read",
     "edit",
@@ -104,6 +107,8 @@ class StreamingOutput(VerticalScroll):
         self._xml_buffer: str = ""
         self._last_agent_status: str | None = None
         self._scroll_scheduled: bool = False
+        self._unread_events: int = 0
+        self._follow_live_stream: bool = True
 
     @property
     def phase(self) -> StreamPhase:
@@ -114,7 +119,34 @@ class StreamingOutput(VerticalScroll):
         self._phase = phase
 
     def compose(self) -> ComposeResult:
-        yield from ()
+        yield Static(
+            "Waiting for prompt",
+            id="stream-current-action",
+            classes="stream-current-action confidence-certain",
+        )
+        with Horizontal(id="stream-live-jump-row", classes="stream-live-jump-row"):
+            yield Button("Jump to latest", id="stream-jump-live-btn")
+
+    def on_mount(self) -> None:
+        self._sync_live_jump()
+
+    @on(Button.Pressed, "#stream-jump-live-btn")
+    def _on_jump_to_live_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.action_jump_to_live()
+
+    def action_jump_to_live(self) -> None:
+        self._follow_live_stream = True
+        self._clear_unread()
+        self._scroll_to_end(force=True)
+
+    def on_scroll(self, _event: events.Scroll) -> None:
+        if self._is_at_live_edge():
+            self._follow_live_stream = True
+            self._clear_unread()
+            return
+        self._follow_live_stream = False
+        self._sync_live_jump()
 
     def _interaction_verbosity(self) -> str:
         config = getattr(self.app, "config", None)
@@ -125,16 +157,16 @@ class StreamingOutput(VerticalScroll):
     async def post_user_input(self, text: str) -> UserInput:
         """Post user input as a separate widget."""
         widget = UserInput(text)
-        await self.mount(widget)
-        self._scroll_to_end()
+        self._set_current_action("Queued user request", confidence="certain")
+        await self._mount_content(widget)
         return widget
 
     async def post_thinking_indicator(self, *, label: str = "Thinking...") -> ThinkingIndicator:
         """Mount a thinking indicator, removed when streaming starts."""
         await self._remove_thinking_indicator()
         self._thinking_indicator = ThinkingIndicator(label=label, classes="thinking-indicator")
-        await self.mount(self._thinking_indicator)
-        self._scroll_to_end()
+        self._set_current_action(label, confidence="assumption")
+        await self._mount_content(self._thinking_indicator)
         self._phase = StreamPhase.THINKING
         return self._thinking_indicator
 
@@ -162,6 +194,8 @@ class StreamingOutput(VerticalScroll):
         await self._remove_thinking_indicator()
         self._agent_thought = None
         self._phase = StreamPhase.STREAMING
+        follow_live = self._should_follow_live_stream()
+        self._set_current_action("Drafting response", confidence="certain")
 
         if fragment:
             fragment = self._filter_xml_content(fragment)
@@ -174,7 +208,7 @@ class StreamingOutput(VerticalScroll):
             response = self._agent_response
         if fragment:
             await response.append_content(fragment)
-        self._scroll_to_end()
+        self._scroll_to_end(force=follow_live)
         return response
 
     def _filter_xml_content(self, fragment: str) -> str:
@@ -221,6 +255,8 @@ class StreamingOutput(VerticalScroll):
         the ``await self.mount(...)`` yield point.
         """
         await self._remove_thinking_indicator()
+        follow_live = self._should_follow_live_stream()
+        self._set_current_action("Reasoning through approach", confidence="assumption")
         if self._agent_thought is None:
             thought = StreamingMarkdown(role=StreamRole.THOUGHT)
             self._agent_thought = thought
@@ -228,7 +264,7 @@ class StreamingOutput(VerticalScroll):
         else:
             thought = self._agent_thought
         await thought.append_content(fragment)
-        self._scroll_to_end()
+        self._scroll_to_end(force=follow_live)
         return thought
 
     async def post_tool_call(
@@ -244,6 +280,9 @@ class StreamingOutput(VerticalScroll):
         await self._remove_thinking_indicator()
         self._agent_response = None
         self._agent_thought = None
+        follow_live = self._should_follow_live_stream()
+        action_label = kind or "tool"
+        self._set_current_action(f"Running {action_label}: {title}", confidence="certain")
 
         if not tool_id or tool_id == "unknown":
             tool_id = f"auto-{uuid4().hex[:8]}"
@@ -275,7 +314,7 @@ class StreamingOutput(VerticalScroll):
             await old_widget.remove()
 
         await self.mount(widget)
-        self._scroll_to_end()
+        self._scroll_to_end(force=follow_live)
         return widget
 
     async def upsert_tool_call(self, tool_call: AcpToolCall) -> ToolCall:
@@ -305,9 +344,10 @@ class StreamingOutput(VerticalScroll):
 
     async def post_note(self, text: str, classes: str = "") -> Widget:
         """Post a simple text note."""
+        follow_live = self._should_follow_live_stream()
         widget = Static(text, classes=f"streaming-note {classes}".strip())
         await self.mount(widget)
-        self._scroll_to_end()
+        self._scroll_to_end(force=follow_live)
         return widget
 
     async def post_plan(self, entries: list[PlanEntry] | list[dict[str, object]]) -> PlanDisplay:
@@ -322,7 +362,8 @@ class StreamingOutput(VerticalScroll):
             self._plan_display = PlanDisplay(normalized, classes="plan-display")
             await self.mount(self._plan_display)
 
-        self._scroll_to_end()
+        self._set_current_action("Reviewing generated plan", confidence="assumption")
+        self._scroll_to_end(force=self._should_follow_live_stream())
         return self._plan_display
 
     async def post_permission_request(
@@ -345,8 +386,8 @@ class StreamingOutput(VerticalScroll):
         """
         await self._remove_thinking_indicator()
         widget = PermissionPrompt(options, tool_call, result_future, timeout)
-        await self.mount(widget)
-        self._scroll_to_end()
+        self._set_current_action("Waiting for permission response", confidence="needs-validation")
+        await self._mount_content(widget)
         widget.focus()
         return widget
 
@@ -361,16 +402,15 @@ class StreamingOutput(VerticalScroll):
         """
         await self._remove_thinking_indicator()
         widget = PlanApprovalWidget(tasks)
-        await self.mount(widget)
-        self._scroll_to_end()
+        self._set_current_action("Waiting for plan approval", confidence="needs-validation")
+        await self._mount_content(widget)
         widget.focus()
         return widget
 
     async def post_turn_separator(self) -> Rule:
         """Mount a horizontal divider between conversation turns."""
         rule = Rule(classes="turn-separator")
-        await self.mount(rule)
-        self._scroll_to_end()
+        await self._mount_content(rule)
         return rule
 
     async def dispatch_wire_event(self, event: WireEvent) -> bool:
@@ -393,10 +433,12 @@ class StreamingOutput(VerticalScroll):
                     await self.post_note(event.message or "Agent is thinking…", classes="info")
             elif status == "ready":
                 await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+                self._set_current_action("Ready for the next request", confidence="certain")
                 if status != self._last_agent_status:
                     await self.post_note(event.message or "Agent ready", classes="success")
             else:
                 await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+                self._set_current_action(f"Status update: {status}", confidence="assumption")
                 if status != self._last_agent_status:
                     await self.post_note(
                         event.message or f"Agent status: {status}",
@@ -405,6 +447,7 @@ class StreamingOutput(VerticalScroll):
             self._last_agent_status = status
             return True
         if isinstance(event, ToolExecution):
+            self._set_current_action(f"Tool execution: {event.tool_name}", confidence="certain")
             msg = f"Tool: {event.tool_name}"
             if event.result:
                 result_str = str(event.result)[:300]
@@ -413,19 +456,24 @@ class StreamingOutput(VerticalScroll):
             return True
         if isinstance(event, AgentCompleted):
             await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+            self._set_current_action("Run completed", confidence="certain")
             await self.post_note(f"Agent completed: {event.outcome or 'done'}", classes="success")
             return True
         if isinstance(event, AgentFailed):
             await self.clear_thinking_indicator(phase=StreamPhase.IDLE)
+            self._set_current_action("Run failed", confidence="needs-validation")
             await self.post_note(f"Agent failed: {event.error}", classes="error")
             return True
         if isinstance(event, JobStarted):
+            self._set_current_action("Dispatching background job", confidence="certain")
             await self.post_note(f"Job started: {event.job_id}", classes="info")
             return True
         if isinstance(event, ReviewRequested):
+            self._set_current_action("Preparing review request", confidence="certain")
             await self.post_note("Review requested", classes="info")
             return True
         if isinstance(event, FollowUpQueued):
+            self._set_current_action("Queued follow-up context", confidence="certain")
             preview = preview_text_for_interaction(
                 event.message,
                 verbosity=self._interaction_verbosity(),
@@ -433,6 +481,7 @@ class StreamingOutput(VerticalScroll):
             await self.post_note(f"Follow-up queued: {preview}", classes="dim")
             return True
         if isinstance(event, FollowUpDelivered):
+            self._set_current_action("Delivered follow-up to worker", confidence="certain")
             preview = preview_text_for_interaction(
                 event.message,
                 verbosity=self._interaction_verbosity(),
@@ -452,12 +501,16 @@ class StreamingOutput(VerticalScroll):
         self._plan_display = None
         self._xml_buffer = ""
         self._phase = StreamPhase.IDLE
+        self._set_current_action("Waiting for prompt", confidence="certain")
 
     async def clear(self) -> None:
         """Clear all content from the container."""
         for widget in self.query(StreamingMarkdown):
             await widget.stop_stream()
-        await self.remove_children()
+        for child in list(self.children):
+            if child.id in {"stream-current-action", "stream-live-jump-row"}:
+                continue
+            await child.remove()
         self._agent_response = None
         self._agent_thought = None
         self._tool_calls.clear()
@@ -467,17 +520,84 @@ class StreamingOutput(VerticalScroll):
         self._phase = StreamPhase.IDLE
         self._last_agent_status = None
         self._scroll_scheduled = False
+        self._unread_events = 0
+        self._follow_live_stream = True
+        self._set_current_action("Waiting for prompt", confidence="certain")
+        self._sync_live_jump()
 
-    def _scroll_to_end(self) -> None:
+    def _is_at_live_edge(self) -> bool:
+        try:
+            return self.max_scroll_y - self.scroll_y <= _SCROLL_LIVE_MARGIN
+        except Exception:
+            return True
+
+    def _should_follow_live_stream(self) -> bool:
+        if self._scroll_scheduled and self._follow_live_stream:
+            return True
+        return self._follow_live_stream and self._is_at_live_edge()
+
+    async def _mount_content(self, widget: Widget) -> Widget:
+        follow_live = self._should_follow_live_stream()
+        await self.mount(widget)
+        self._scroll_to_end(force=follow_live)
+        return widget
+
+    def _set_current_action(self, action: str, *, confidence: str) -> None:
+        normalized_confidence = {
+            "certain": "certain",
+            "assumption": "assumption",
+            "needs-validation": "needs-validation",
+        }.get(confidence, "certain")
+        text = action
+        with contextlib.suppress(NoMatches):
+            widget = self.query_one("#stream-current-action", Static)
+            widget.update(text)
+            widget.set_class(normalized_confidence == "certain", "confidence-certain")
+            widget.set_class(normalized_confidence == "assumption", "confidence-assumption")
+            widget.set_class(
+                normalized_confidence == "needs-validation",
+                "confidence-needs-validation",
+            )
+
+    def _mark_unread(self) -> None:
+        self._unread_events += 1
+        self._sync_live_jump()
+
+    def _clear_unread(self) -> None:
+        if self._unread_events == 0:
+            self._sync_live_jump()
+            return
+        self._unread_events = 0
+        self._sync_live_jump()
+
+    def _sync_live_jump(self) -> None:
+        with contextlib.suppress(NoMatches):
+            row = self.query_one("#stream-live-jump-row", Horizontal)
+            button = self.query_one("#stream-jump-live-btn", Button)
+            visible = self._unread_events > 0 and not self._is_at_live_edge()
+            row.display = visible
+            button.label = (
+                f"Jump to latest ({self._unread_events})" if visible else "Jump to latest"
+            )
+
+    def _scroll_to_end(self, *, force: bool = False) -> None:
         """Scroll to the bottom of the container."""
+        if force:
+            self._follow_live_stream = True
+        if not force and not self._should_follow_live_stream():
+            self._mark_unread()
+            return
         if self._scroll_scheduled:
             return
         self._scroll_scheduled = True
 
         def _do_scroll() -> None:
             self._scroll_scheduled = False
-            if self.is_mounted:
+            if self.is_mounted and self._follow_live_stream:
                 self.scroll_end(animate=False)
+                self._clear_unread()
+                return
+            self._sync_live_jump()
 
         self.call_after_refresh(_do_scroll)
 
@@ -502,6 +622,8 @@ class StreamingOutput(VerticalScroll):
                 if entries:
                     parts.append("Plan:\n" + "\n".join(entries))
             elif isinstance(child, Static) and not isinstance(child, ThinkingIndicator):
+                if child.id == "stream-current-action":
+                    continue
                 # Static notes - get rendered text content
                 text = str(child.render())
                 if text:

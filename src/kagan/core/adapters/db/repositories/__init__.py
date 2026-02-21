@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from kagan.core.adapters.db.repositories.auxiliary import (
     AuditRepository,
-    PlannerRepository,
     RepoRepository,
     ScratchRepository,
     SessionRecordRepository,
@@ -19,7 +18,6 @@ __all__ = [
     "ClosingAwareSessionFactory",
     "ExecutionRepository",
     "JobRepository",
-    "PlannerRepository",
     "RepoRepository",
     "RepositoryClosing",
     "ScratchRepository",

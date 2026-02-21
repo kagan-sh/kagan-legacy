@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from textual import events
     from textual.app import ComposeResult
     from textual.timer import Timer
+    from textual.worker import Worker
 
     from kagan.tui.ui.types import TaskView
     from kagan.tui.ui.widgets.card import TaskCard
@@ -65,6 +66,7 @@ SIZE_WARNING_MESSAGE = (
     f"Please resize your terminal"
 )
 DEFAULT_REPO_SYNC_ACTION_ID = "sync_issues"
+PLUGIN_UI_CATALOG_CACHE_TTL_SECONDS = 2.0
 
 KANBAN_DONE_BLOCKED_ACTIONS = frozenset(
     {
@@ -123,6 +125,10 @@ class KanbanScreen(KaganScreen):
     header = getters.query_one(KaganHeader)
 
     BRANCH_SYNC_INTERVAL_SECONDS: float = 5.0
+    BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS: float = 30.0
+    DOCKED_OVERLAY_BASE_HEIGHT: int = 8
+    DOCKED_OVERLAY_MAX_HEIGHT_RATIO: float = 0.5
+    DOCKED_OVERLAY_MIN_HEIGHT: int = 3
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -138,6 +144,7 @@ class KanbanScreen(KaganScreen):
         self._merge_failed_tasks: set[str] = set()
         self._search_request_id: int = 0
         self._branch_sync_timer: Timer | None = None
+        self._initial_hydration_worker: Worker[None] | None = None
         self._board = KanbanBoardController(self)
         self._review = KanbanReviewController(self)
         self._session = KanbanSessionController(self)
@@ -145,6 +152,11 @@ class KanbanScreen(KaganScreen):
         self._plugin_ui_catalog: dict[str, Any] | None = None
         self._plugin_ui_catalog_fetched_at: float = 0.0
         self._plugin_ui_catalog_lock = asyncio.Lock()
+        self._board_overlay_inset: int = 0
+        self._last_empty_placeholder_offset_y: int = 0
+        self._last_task_change_signal_at: float = monotonic()
+        self._last_board_refresh_at: float = 0.0
+        self._quickstart_toast_shown: bool = False
 
     _TASK_REQUIRED_ACTIONS = frozenset(item.action for item in KANBAN_ACTIONS if item.requires_task)
     _AGENT_REQUIRED_ACTIONS = frozenset(
@@ -156,8 +168,11 @@ class KanbanScreen(KaganScreen):
         if self._agent_offline and action_id in self._AGENT_REQUIRED_ACTIONS:
             return (False, "Agent unavailable (offline mode)")
 
-        card = self.get_focused_card()
-        task = card.task_model if card else None
+        if action_id in self._TASK_REQUIRED_ACTIONS:
+            task = self._focused_task(notify_on_missing=False)
+        else:
+            card = self.get_focused_card()
+            task = card.task_model if card else None
 
         if not task:
             if action_id in self._TASK_REQUIRED_ACTIONS:
@@ -302,29 +317,75 @@ class KanbanScreen(KaganScreen):
         yield PeekOverlay(id="peek-overlay")
         yield KanbanHintBar(id="kanban-hint-bar")
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         self._board.check_screen_size()
         self._board.check_agent_health()
+        self.kagan_app.task_changed_signal.subscribe(self, self._on_task_changed)
+        self._board.start_background_sync()
+        self._start_branch_sync()
+        self.sync_empty_placeholders_for_overlay()
+        self._run_initial_hydration_worker()
+
+    def _run_initial_hydration_worker(self) -> None:
+        """Hydrate header, board, and intro state after first paint."""
+        if self._initial_hydration_worker is not None:
+            if not self._initial_hydration_worker.is_finished:
+                return
+        self._initial_hydration_worker = self.run_worker(
+            self._hydrate_initial_screen_state(),
+            group="kanban-initial-hydration",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    async def _hydrate_initial_screen_state(self) -> None:
         await self.sync_header_context(self.header)
         await self._board.refresh_board()
         self.focus_first_card()
-        self.kagan_app.task_changed_signal.subscribe(self, self._on_task_changed)
-        self._board.start_background_sync()
-        self._board.sync_agent_states()
-        if self.ctx.active_repo_id is None:
-            self.header.update_branch("")
-        else:
-            branch = await get_current_branch(self.kagan_app.project_root)
-            self.header.update_branch(branch)
-        self._start_branch_sync()
+        await self._sync_branch_label_once()
+
         # Start on the board when tasks exist; use fullscreen intro only on empty boards.
         try:
             overlay = self.query_one("#chat-overlay", ChatOverlay)
             if await self._should_show_startup_intro():
-                overlay.show(fullscreen=True)
+                overlay.show(fullscreen=False)
         except NoMatches:
             pass
         self.sync_empty_placeholders_for_overlay()
+        self._show_quickstart_toast_if_needed()
+        self._sync_header_mode()
+
+    def _show_quickstart_toast_if_needed(self) -> None:
+        show_beginner_hints = bool(getattr(self.kagan_app.config.ui, "show_beginner_hints", True))
+        if self._quickstart_toast_shown or self._tasks or not show_beginner_hints:
+            return
+        self._quickstart_toast_shown = True
+        self.notify(
+            "Quick start: 1) n new task  2) / search  3) Enter details  4) Ctrl+P assistant",
+            severity="information",
+        )
+
+    def _current_mode_label(self) -> str:
+        with suppress(NoMatches):
+            overlay = self.query_one("#chat-overlay", ChatOverlay)
+            if overlay.has_class("visible") and overlay.has_class("fullscreen"):
+                return "Assistant (Fullscreen)"
+            if overlay.has_class("visible"):
+                return "Assistant (Docked)"
+        if self.search_visible:
+            return "Search"
+        return "Board"
+
+    def _sync_header_mode(self) -> None:
+        with suppress(Exception):
+            self.header.update_mode(self._current_mode_label())
+
+    async def _sync_branch_label_once(self) -> None:
+        if self.ctx.active_repo_id is None:
+            self.header.update_branch("")
+            return
+        branch = await get_current_branch(self.kagan_app.project_root)
+        self.header.update_branch(branch)
 
     def on_unmount(self) -> None:
         self._stop_branch_sync()
@@ -340,6 +401,7 @@ class KanbanScreen(KaganScreen):
     async def _on_task_changed(self, _task_id: str) -> None:
         if not self.is_mounted:
             return
+        self._last_task_change_signal_at = monotonic()
         self._board.schedule_refresh()
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
@@ -347,6 +409,7 @@ class KanbanScreen(KaganScreen):
         self._remember_focused_task()
         self._board.update_keybinding_hints()
         self.refresh_bindings()
+        self._sync_header_mode()
 
     def on_resize(self, event: events.Resize) -> None:
         self._board.check_screen_size()
@@ -355,9 +418,14 @@ class KanbanScreen(KaganScreen):
     async def on_screen_resume(self) -> None:
         self._start_branch_sync()
         self._board.start_background_sync()
-        await self._refresh_plugin_ui_catalog(force=True)
+        self.run_worker(
+            self._refresh_plugin_ui_catalog(force=True),
+            group="kanban-plugin-catalog-refresh",
+            exclusive=True,
+            exit_on_error=False,
+        )
         await self._board.refresh_board()
-        self._board.sync_agent_states()
+        await self._sync_branch_label_once()
 
     async def reset_for_repo_change(self) -> None:
         await self._board.reset_for_repo_change()
@@ -393,7 +461,39 @@ class KanbanScreen(KaganScreen):
     def action_focus_down(self) -> None:
         self.focus_vertical(1)
 
-    def action_deselect(self) -> None:
+    def _get_all_cards(self) -> list[TaskCard]:
+        """All visible cards in reading order (column-by-column, top-to-bottom)."""
+        from kagan.tui.ui.widgets.card import TaskCard  # noqa: F401
+
+        return [card for col in self.get_columns() for card in col.get_cards()]
+
+    def action_focus_next_card(self) -> None:
+        cards = self._get_all_cards()
+        if not cards:
+            return
+        focused = self.get_focused_card()
+        if focused is None:
+            cards[0].focus()
+            return
+        try:
+            cards[(cards.index(focused) + 1) % len(cards)].focus()
+        except ValueError:
+            cards[0].focus()
+
+    def action_focus_prev_card(self) -> None:
+        cards = self._get_all_cards()
+        if not cards:
+            return
+        focused = self.get_focused_card()
+        if focused is None:
+            cards[-1].focus()
+            return
+        try:
+            cards[(cards.index(focused) - 1) % len(cards)].focus()
+        except ValueError:
+            cards[-1].focus()
+
+    async def action_deselect(self) -> None:
         try:
             overlay = self.query_one("#chat-overlay", ChatOverlay)
             if overlay.has_class("visible"):
@@ -411,9 +511,15 @@ class KanbanScreen(KaganScreen):
         if self.search_visible:
             self._clear_search_state(cancel_workers=True)
             self.run_worker(self._board.refresh_board())
+            self._sync_header_mode()
             return
-        self._last_focused_task_id = None
-        self.app.set_focus(None)
+        if self.app.focused is not None:
+            self._last_focused_task_id = None
+            self.app.set_focus(None)
+            self._sync_header_mode()
+            return
+        # Nothing was selected — back out to project picker
+        await self.app.run_action("open_project_selector")
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -501,19 +607,151 @@ class KanbanScreen(KaganScreen):
         """Get task id for chat (focused card or first task)."""
         return self._task_id_value(self._chat_task())
 
-    def sync_empty_placeholders_for_overlay(self) -> None:
-        """Keep empty-column placeholders centered in visible board area."""
-        offset_y = 0
+    def _set_board_overlay_inset(self, inset_bottom: int) -> None:
+        normalized = max(0, int(inset_bottom))
+        if normalized == self._board_overlay_inset:
+            return
+        self._board_overlay_inset = normalized
+        with suppress(NoMatches):
+            board = self.query_one(".board", Horizontal)
+            board.styles.padding = (0, 0, normalized, 0)
+
+    def _estimated_docked_overlay_height(self) -> int:
+        viewport_height = 0
+        with suppress(Exception):
+            viewport_height = int(self.size.height)
+        if viewport_height <= 0:
+            with suppress(Exception):
+                viewport_height = int(self.app.size.height)
+        if viewport_height <= 0:
+            return 0
+        target_height = max(
+            self.DOCKED_OVERLAY_BASE_HEIGHT,
+            int(viewport_height * self.DOCKED_OVERLAY_MAX_HEIGHT_RATIO),
+        )
+        # Keep at least one row visible for the board area even on constrained terminals.
+        max_allowed_height = max(1, viewport_height - 1)
+        return max(1, min(target_height, max_allowed_height))
+
+    def _resolve_docked_overlay_height(self, overlay: ChatOverlay) -> int:
+        measured = max(0, overlay.region.height or overlay.size.height)
+        estimated = self._estimated_docked_overlay_height()
+        minimum_visible_height = self.DOCKED_OVERLAY_MIN_HEIGHT
+        # Prefer viewport-derived docked height so transient first-pass measurements
+        # do not collapse docked mode into a nearly invisible strip.
+        if estimated > 0:
+            return max(estimated, minimum_visible_height)
+        return max(measured, minimum_visible_height)
+
+    def _apply_overlay_height_constraints(
+        self,
+        overlay: ChatOverlay,
+        *,
+        fullscreen: bool,
+        docked_height: int | None = None,
+    ) -> None:
+        if fullscreen:
+            overlay.styles.height = "1fr"
+            overlay.styles.max_height = "1fr"
+            overlay.styles.min_height = "0"
+            return
+        resolved = max(1, int(docked_height or self._estimated_docked_overlay_height() or 1))
+        min_height = min(self.DOCKED_OVERLAY_MIN_HEIGHT, resolved)
+        overlay.styles.height = str(resolved)
+        overlay.styles.max_height = str(resolved)
+        overlay.styles.min_height = str(min_height)
+
+    def prepare_for_docked_overlay_open(self) -> None:
+        """Pre-apply docked overlay layout constraints before first paint."""
+        overlay_height = self._estimated_docked_overlay_height()
+        if overlay_height <= 0:
+            return
         with suppress(NoMatches):
             overlay = self.query_one("#chat-overlay", ChatOverlay)
-            if overlay.has_class("visible") and not overlay.has_class("fullscreen"):
-                overlay_height = overlay.region.height or overlay.size.height
-                if overlay_height > 0:
-                    offset_y = -(overlay_height // 2)
+            self._apply_overlay_height_constraints(
+                overlay,
+                fullscreen=False,
+                docked_height=overlay_height,
+            )
+        offset_y = -(overlay_height // 2)
+        self._set_board_overlay_inset(overlay_height)
         for status in COLUMN_ORDER:
             with suppress(NoMatches):
                 column = self.query_one(f"#column-{status.value.lower()}", KanbanColumn)
+                column.set_overlay_occlusion(True)
                 column.set_empty_placeholder_offset(offset_y)
+        self._last_empty_placeholder_offset_y = offset_y
+
+    def is_orchestrator_fullscreen_visible(self) -> bool:
+        with suppress(NoMatches):
+            overlay = self.query_one("#chat-overlay", ChatOverlay)
+            return overlay.has_class("visible") and overlay.has_class("fullscreen")
+        return False
+
+    def mark_board_refreshed(self) -> None:
+        self._last_board_refresh_at = monotonic()
+
+    def is_board_refresh_stale(self) -> bool:
+        last_event_or_refresh = max(self._last_task_change_signal_at, self._last_board_refresh_at)
+        return monotonic() - last_event_or_refresh >= self.BOARD_PASSIVE_REFRESH_FALLBACK_SECONDS
+
+    def on_chat_overlay_visibility_changed(self, visible: bool, fullscreen: bool) -> None:
+        """Coordinate board sync behavior with overlay visibility/layout state."""
+        if not self.is_mounted:
+            return
+        with suppress(NoMatches):
+            overlay = self.query_one("#chat-overlay", ChatOverlay)
+            if visible:
+                overlay_height = (
+                    self._resolve_docked_overlay_height(overlay) if not fullscreen else None
+                )
+                self._apply_overlay_height_constraints(
+                    overlay,
+                    fullscreen=fullscreen,
+                    docked_height=overlay_height,
+                )
+        if not visible:
+            self.sync_empty_placeholders_for_overlay()
+            self._board.start_background_sync()
+            self._board.schedule_refresh()
+            self._sync_header_mode()
+            return
+        if fullscreen:
+            self._board.stop_background_sync()
+            self._board.cancel_refresh_work()
+            self._sync_header_mode()
+            return
+        self.sync_empty_placeholders_for_overlay()
+        self._board.start_background_sync()
+        self._sync_header_mode()
+
+    def sync_empty_placeholders_for_overlay(self) -> None:
+        """Keep board and empty-column placeholders aligned with visible area."""
+        offset_y = 0
+        overlay_height = 0
+        overlay_occludes_columns = False
+        with suppress(NoMatches):
+            overlay = self.query_one("#chat-overlay", ChatOverlay)
+            if overlay.has_class("visible") and not overlay.has_class("fullscreen"):
+                overlay_height = self._resolve_docked_overlay_height(overlay)
+                if overlay_height > 0:
+                    self._apply_overlay_height_constraints(
+                        overlay,
+                        fullscreen=False,
+                        docked_height=overlay_height,
+                    )
+                    overlay_occludes_columns = True
+                    offset_y = -(overlay_height // 2)
+        self._set_board_overlay_inset(overlay_height)
+        for status in COLUMN_ORDER:
+            with suppress(NoMatches):
+                column = self.query_one(f"#column-{status.value.lower()}", KanbanColumn)
+                column.set_overlay_occlusion(overlay_occludes_columns)
+                if offset_y != self._last_empty_placeholder_offset_y:
+                    column.set_empty_placeholder_offset(offset_y)
+        if offset_y == self._last_empty_placeholder_offset_y:
+            return
+        self._last_empty_placeholder_offset_y = offset_y
 
     def action_toggle_chat_overlay(self) -> None:
         """Toggle docked orchestrator overlay (switch fullscreen -> docked)."""
@@ -604,12 +842,7 @@ class KanbanScreen(KaganScreen):
                 # Keep fullscreen overlay modal, but allow board shortcuts while docked.
                 if overlay.has_class("fullscreen") and not focus_inside_overlay:
                     if event.key == "escape":
-                        overlay.hide()
-                        overlay._run_overlay_worker(
-                            overlay._cancel_active_prompt,
-                            group="chat-overlay-cancel",
-                            exclusive=True,
-                        )
+                        overlay.action_escape_overlay()
                     elif event.key == "ctrl+c":
                         overlay.handle_ctrl_c()
                     event.stop()
@@ -619,7 +852,15 @@ class KanbanScreen(KaganScreen):
         except NoMatches:
             pass
         if event.key == "enter" and not self.search_visible:
-            if self._dispatch_kanban_action(KanbanActionId.OPEN_SESSION):
+            card = self.get_focused_card()
+            if card is None or card.task_model is None:
+                self.notify(
+                    "No task selected. Press n to create one, or Ctrl+P to open assistant.",
+                    severity="warning",
+                )
+                event.stop()
+                return
+            if self._dispatch_kanban_action(KanbanActionId.VIEW_DETAILS):
                 event.stop()
                 return
 
@@ -644,8 +885,10 @@ class KanbanScreen(KaganScreen):
         if self.search_visible:
             self._clear_search_state(cancel_workers=True)
             await self._board.refresh_board()
+            self._sync_header_mode()
             return
         self.search_visible = True
+        self._sync_header_mode()
 
     @on(SearchBar.QueryChanged)
     def on_search_query_changed(self, event: SearchBar.QueryChanged) -> None:
@@ -740,6 +983,11 @@ class KanbanScreen(KaganScreen):
     ) -> bool:
         action_id = _as_kanban_action_id(action)
         action_value = action_id if action_id is not None else str(action)
+        is_valid, reason = self._validate_action(action_value)
+        if not is_valid:
+            if reason:
+                self.notify(reason, severity="warning")
+            return False
         spec = get_kanban_action(action_value)
         if (
             action_id == KanbanActionId.OPEN_SESSION
@@ -1054,12 +1302,18 @@ class KanbanScreen(KaganScreen):
 
     async def _refresh_plugin_ui_catalog(self, *, force: bool = False) -> dict[str, Any]:
         if not force and self._plugin_ui_catalog is not None:
-            if monotonic() - self._plugin_ui_catalog_fetched_at < 2.0:
+            if (
+                monotonic() - self._plugin_ui_catalog_fetched_at
+                < PLUGIN_UI_CATALOG_CACHE_TTL_SECONDS
+            ):
                 return dict(self._plugin_ui_catalog)
 
         async with self._plugin_ui_catalog_lock:
             if not force and self._plugin_ui_catalog is not None:
-                if monotonic() - self._plugin_ui_catalog_fetched_at < 2.0:
+                if (
+                    monotonic() - self._plugin_ui_catalog_fetched_at
+                    < PLUGIN_UI_CATALOG_CACHE_TTL_SECONDS
+                ):
                     return dict(self._plugin_ui_catalog)
 
             project = await self._get_active_project()

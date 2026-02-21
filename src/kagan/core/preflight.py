@@ -8,7 +8,12 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from kagan.core.command_utils import cached_which, split_command_string
-from kagan.core.domain.enums import VALID_PAIR_BACKENDS
+from kagan.core.domain.enums import coerce_pair_backend
+from kagan.core.domain.pair_terminal_backends import (
+    TMUX_BACKEND,
+    pair_terminal_backend_executable,
+    pair_terminal_backend_fallback_order,
+)
 
 if TYPE_CHECKING:
     from kagan.core.config import AgentConfig
@@ -230,22 +235,21 @@ def _resolve_pair_terminal_backend(
     pair_terminal_backend: str | None,
     default_pair_terminal_backend: str | None,
 ) -> str:
-    backend = (pair_terminal_backend or default_pair_terminal_backend or "tmux").strip().lower()
-    if backend in VALID_PAIR_BACKENDS:
-        if backend == "tmux" and platform.system() == "Windows":
-            for candidate, command in (
-                ("vscode", "code"),
-                ("cursor", "cursor"),
-                ("windsurf", "windsurf"),
-                ("kiro", "kiro"),
-                ("antigravity", "agy"),
-                ("nvim", "nvim"),
-            ):
-                if _command_exists(command):
-                    return candidate
-            return "vscode"
+    backend = coerce_pair_backend(pair_terminal_backend)
+    if backend is None:
+        backend = coerce_pair_backend(default_pair_terminal_backend)
+    if backend is None:
+        backend = TMUX_BACKEND
+
+    if backend != TMUX_BACKEND or platform.system() != "Windows":
         return backend
-    return "tmux"
+
+    fallback_order = pair_terminal_backend_fallback_order(windows=True)
+    for candidate in fallback_order:
+        executable = pair_terminal_backend_executable(candidate)
+        if executable is not None and _command_exists(executable):
+            return candidate
+    return fallback_order[0] if fallback_order else backend
 
 
 def _tmux_install_hint() -> tuple[str, str | None]:

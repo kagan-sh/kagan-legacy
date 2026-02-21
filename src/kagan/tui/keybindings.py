@@ -31,7 +31,8 @@ APP_BINDINGS: list[BindingType] = [
 
 KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New"),
-    Binding("enter", "open_session", "Open", key_display="Enter"),
+    Binding("enter", "view_details", "Details", key_display="Enter"),
+    Binding("o", "open_session", "Open Session", show=False),
     Binding("slash", "toggle_search", "Search", key_display="/"),
     Binding("N", "new_auto_task", "New AUTO", key_display="Shift+N", show=False),
     Binding("v", "view_details", "View", show=False),
@@ -43,29 +44,47 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding(
         "ctrl+p",
         "open_chat_fullscreen",
-        "Orchestrator Fullscreen",
+        "AI Assistant Fullscreen",
         key_display="Ctrl+P",
         show=False,
     ),
     Binding(
         "ctrl+o",
         "toggle_chat_overlay",
-        "Orchestrator Overlay",
+        "AI Assistant Overlay",
         key_display="Ctrl+O",
         show=False,
     ),
     Binding("f", "expand_description", "Expand", show=False),
     Binding("f5", "expand_description", "Full Editor", key_display="F5", show=False),
-    Binding("H", "move_backward", "Move Left", key_display="Shift+H", show=False),
-    Binding("L", "move_forward", "Move Right", key_display="Shift+L", show=False),
-    Binding("a", "start_agent", "Start agent", show=False),
-    Binding("s", "stop_agent", "Stop agent", show=False),
+    Binding(
+        "shift+left,H",
+        "move_backward",
+        "Move Left",
+        key_display="Shift+Left",
+        show=False,
+    ),
+    Binding(
+        "shift+right,L",
+        "move_forward",
+        "Move Right",
+        key_display="Shift+Right",
+        show=False,
+    ),
+    Binding("a", "start_agent", "Start AI Assistant", show=False),
+    Binding("s", "stop_agent", "Stop AI Assistant", show=False),
     Binding("D", "view_diff", "Diff", key_display="Shift+D", show=False),
     Binding("r", "open_review", "Review", show=False),
     Binding("m", "merge_direct", "Merge", show=False),
     Binding("R", "rebase", "Rebase", key_display="Shift+R", show=False),
     Binding("b", "set_task_branch", "Set Task Branch", show=False),
-    Binding("A", "switch_global_agent", "Switch Agent", key_display="Shift+A", show=False),
+    Binding(
+        "ctrl+a,A",
+        "switch_global_agent",
+        "Switch AI Assistant",
+        key_display="Ctrl+A / Shift+A",
+        show=False,
+    ),
     Binding("comma", "open_settings", "Settings", key_display=",", show=False),
     # Plugin-backed repo sync action from the UI catalog.
     Binding("G", "repo_sync", "Repo Sync", key_display="Shift+G", show=False),
@@ -77,9 +96,9 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("right", "focus_right", "Right", show=False),
     Binding("down", "focus_down", "Down", show=False),
     Binding("up", "focus_up", "Up", show=False),
-    Binding("tab", "focus_right", "Next Column", show=False),
-    Binding("shift+tab", "focus_left", "Prev Column", show=False),
-    Binding("escape", "deselect", "", show=False),
+    Binding("tab", "focus_next_card", "Next", key_display="Tab", show=False),
+    Binding("shift+tab", "focus_prev_card", "Prev", key_display="Shift+Tab", show=False),
+    Binding("escape", "deselect", "", key_display="Esc", show=False),
     Binding("ctrl+c", "interrupt", "", show=False),
 ]
 
@@ -106,6 +125,7 @@ DIFF_BINDINGS: list[BindingType] = [
 ]
 
 HELP_BINDINGS: list[BindingType] = [
+    Binding("ctrl+f", "focus_search", "Search", key_display="Ctrl+F"),
     Binding("escape", "close", "Close"),
     Binding("q", "close", "Close", show=False),
 ]
@@ -137,8 +157,8 @@ REVIEW_BINDINGS: list[BindingType] = [
 
 TASK_OUTPUT_BINDINGS: list[BindingType] = [
     Binding("tab", "cycle_chat_session", "Next Session", show=False),
-    Binding("ctrl+p", "open_chat_fullscreen", "Orchestrator Fullscreen", show=False),
-    Binding("ctrl+o", "toggle_chat_overlay", "Orchestrator Overlay", show=False),
+    Binding("ctrl+p", "open_chat_fullscreen", "AI Assistant Fullscreen", show=False),
+    Binding("ctrl+o", "toggle_chat_overlay", "AI Assistant Overlay", show=False),
     Binding("a", "start_agent_output", "Start Agent"),
     Binding("s", "stop_agent_output", "Stop Agent"),
     Binding("escape", "close", "Close"),
@@ -182,14 +202,6 @@ APPROVAL_BINDINGS: list[BindingType] = [
     Binding("t", "toggle_type", "Toggle Type"),
 ]
 
-PLANNER_BINDINGS: list[BindingType] = [
-    Binding("escape", "to_board", "Board"),
-    Binding("ctrl+c", "cancel", "Stop", priority=True),
-    Binding("ctrl+e", "refine", "Enhance", key_display="Ctrl+E", priority=True),
-    Binding("f2", "refine", "Enhance", show=False),
-    Binding("b", "set_task_branch", "Set Task Branch", show=False),
-]
-
 TASK_EDITOR_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel"),
     Binding("ctrl+s", "finish", "Finish Editing", key_display="Ctrl+S"),
@@ -202,6 +214,10 @@ WELCOME_BINDINGS: list[BindingType] = [
     Binding("o", "open_folder", "Open Folder", show=False),
     Binding("s", "settings", "Settings", show=False),
     Binding("enter", "open_selected", "Open", key_display="Enter", show=False),
+    Binding("up,k", "move_selection_up", "Up", key_display="Up / k", show=False),
+    Binding("down,j", "move_selection_down", "Down", key_display="Down / j", show=False),
+    Binding("tab", "focus_next", "Next", key_display="Tab", show=False),
+    Binding("shift+tab", "focus_previous", "Previous", key_display="Shift+Tab", show=False),
     Binding("escape", "quit", "Quit", show=False),
     Binding("1", "open_project('0')", "Open #1", show=False),
     Binding("2", "open_project('1')", "Open #2", show=False),
@@ -215,7 +231,11 @@ WELCOME_BINDINGS: list[BindingType] = [
 ]
 
 ONBOARDING_BINDINGS: list[BindingType] = [
-    Binding("escape", "quit", "Quit"),
+    Binding("enter", "continue_setup", "Continue", key_display="Enter"),
+    Binding("ctrl+s", "continue_setup", "Continue", key_display="Ctrl+S", show=False),
+    Binding("tab", "focus_next", "Next", key_display="Tab", show=False),
+    Binding("shift+tab", "focus_previous", "Previous", key_display="Shift+Tab", show=False),
+    Binding("escape", "quit", "Quit", key_display="Esc"),
 ]
 
 

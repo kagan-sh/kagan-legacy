@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from kagan.core.adapters.process import spawn_shell
 from kagan.core.command_utils import format_command_for_shell
+from kagan.core.workspace_env import workspace_env_overrides
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -112,8 +113,7 @@ class TerminalRunner:
         else:
             work_dir = str(self.project_root)
 
-        environment = os.environ.copy()
-        environment.update(self.env)
+        environment = self._build_environment(work_dir)
 
         try:
             self._process = await spawn_shell(
@@ -141,6 +141,12 @@ class TerminalRunner:
 
         self._return_code = await self._process.wait()
         self._exit_event.set()
+
+    def _build_environment(self, work_dir: str) -> dict[str, str]:
+        environment = os.environ.copy()
+        environment.update(self.env)
+        environment.update(workspace_env_overrides(Path(work_dir), base_env=environment))
+        return environment
 
     def _record_output(self, data: bytes) -> None:
         """Record output bytes, respecting the limit."""

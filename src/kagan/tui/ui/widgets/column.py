@@ -43,6 +43,8 @@ class _NSVertical(Vertical):
 class _NSScrollable(ScrollableContainer):
     ALLOW_SELECT = False
     can_focus = False
+    _default_show_vertical_scrollbar = False
+    _default_show_horizontal_scrollbar = False
 
 
 class _NSContainer(Container):
@@ -62,7 +64,10 @@ class KanbanColumn(Widget):
         self._tasks: list[TaskView] = tasks or []
         self._blocked_count: int = 0
         self._has_active_agents: bool = False
+        self._overlay_occluded: bool = False
         self._empty_offset_y: int = 0
+        self._task_order_ids: tuple[str, ...] = tuple(task.id for task in self._tasks)
+        self._header_text_cache: str = self._header_text()
 
     def compose(self) -> ComposeResult:
         with _NSVertical():
@@ -84,6 +89,10 @@ class KanbanColumn(Widget):
         """Return cards."""
         return list(self.query(TaskCard))
 
+    def on_mount(self) -> None:
+        self._sync_scroll_indicator_visibility()
+        self.call_after_refresh(self._sync_scroll_indicator_visibility)
+
     def get_focused_card_index(self) -> int | None:
         """Return focused card index."""
         for i, card in enumerate(self.get_cards()):
@@ -104,13 +113,11 @@ class KanbanColumn(Widget):
     def update_tasks(self, tasks: list[TaskView]) -> None:
         """Update tasks with minimal DOM changes - no full recompose."""
         new_tasks = [t for t in tasks if t.status == self.status]
+        new_task_order_ids = tuple(task.id for task in new_tasks)
+        order_changed = new_task_order_ids != self._task_order_ids
         self._tasks = new_tasks
-
-        try:
-            header = self.query_one(f"#header-{self.status.value.lower()}", _NSLabel)
-            header.update(self._header_text())
-        except NoMatches:
-            pass
+        self._task_order_ids = new_task_order_ids
+        self._update_header_label()
 
         current_cards = {card.task_model.id: card for card in self.get_cards() if card.task_model}
         new_tasks_by_id = {t.id: t for t in new_tasks}
@@ -131,8 +138,8 @@ class KanbanColumn(Widget):
         for task_id in current_ids & new_task_ids:
             card = current_cards[task_id]
             new_task = new_tasks_by_id[task_id]
-
-            card.task_model = new_task
+            if card.task_model != new_task:
+                card.task_model = new_task
 
         for task in new_tasks:
             if task.id not in current_ids:
@@ -143,7 +150,7 @@ class KanbanColumn(Widget):
         # Preserve existing card widgets but ensure visual ordering matches task order.
         ordered_cards = [current_cards[task.id] for task in new_tasks if task.id in current_cards]
         attached_cards = [card for card in ordered_cards if card in content.children]
-        if attached_cards:
+        if attached_cards and order_changed:
             first_task_card = next(
                 (child for child in content.children if isinstance(child, TaskCard)),
                 None,
@@ -168,6 +175,8 @@ class KanbanColumn(Widget):
             content.mount(empty)
         elif has_empty:
             self._apply_empty_placeholder_offset()
+        self._sync_scroll_indicator_visibility()
+        self.call_after_refresh(self._sync_scroll_indicator_visibility)
 
     def set_empty_placeholder_offset(self, offset_y: int) -> None:
         """Set vertical offset for the empty placeholder container."""
@@ -179,15 +188,19 @@ class KanbanColumn(Widget):
         self._empty_offset_y = normalized
         self._apply_empty_placeholder_offset()
 
+    def set_overlay_occlusion(self, is_occluded: bool) -> None:
+        normalized = bool(is_occluded)
+        if normalized == self._overlay_occluded:
+            return
+        self._overlay_occluded = normalized
+        self._sync_scroll_indicator_visibility()
+        self.call_after_refresh(self._sync_scroll_indicator_visibility)
+
     def update_blocked_count(self, blocked_count: int) -> None:
         if self.status is not TaskStatus.BACKLOG:
             return
         self._blocked_count = max(0, blocked_count)
-        try:
-            header = self.query_one(f"#header-{self.status.value.lower()}", _NSLabel)
-            header.update(self._header_text())
-        except NoMatches:
-            pass
+        self._update_header_label()
 
     def update_active_states(
         self,
@@ -202,11 +215,7 @@ class KanbanColumn(Widget):
         )
 
         if had_active != self._has_active_agents:
-            try:
-                header = self.query_one(f"#header-{self.status.value.lower()}", _NSLabel)
-                header.update(self._header_text())
-            except NoMatches:
-                pass
+            self._update_header_label()
 
         for card in self.query(TaskCard):
             if card.task_model is not None:
@@ -220,6 +229,17 @@ class KanbanColumn(Widget):
         if self.status is TaskStatus.BACKLOG and self._blocked_count > 0:
             return f"{text} • blocked {self._blocked_count}"
         return text
+
+    def _update_header_label(self) -> None:
+        header_text = self._header_text()
+        if header_text == self._header_text_cache:
+            return
+        self._header_text_cache = header_text
+        try:
+            header = self.query_one(f"#header-{self.status.value.lower()}", _NSLabel)
+            header.update(header_text)
+        except NoMatches:
+            pass
 
     def _empty_container_id(self) -> str:
         return f"empty-{self.status.value.lower()}"
@@ -240,3 +260,14 @@ class KanbanColumn(Widget):
             except NoMatches:
                 return
         empty.styles.offset = (0, self._empty_offset_y)
+
+    def _sync_scroll_indicator_visibility(self) -> None:
+        try:
+            content = self.query_one(f"#content-{self.status.value.lower()}", _NSScrollable)
+        except NoMatches:
+            return
+        should_show = self._overlay_occluded and bool(self._tasks) and content.max_scroll_y > 0
+        content.styles.scrollbar_size_vertical = 1 if should_show else 0
+        content.styles.scrollbar_size_horizontal = 0
+        content.show_vertical_scrollbar = should_show
+        content.show_horizontal_scrollbar = False

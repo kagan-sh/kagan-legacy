@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from enum import IntEnum, StrEnum
 
+from kagan.core.domain.pair_terminal_backends import (
+    ANTIGRAVITY_BACKEND,
+    CURSOR_BACKEND,
+    KIRO_BACKEND,
+    NVIM_BACKEND,
+    PAIR_TERMINAL_BACKEND_VALUE_SET,
+    TMUX_BACKEND,
+    VSCODE_BACKEND,
+    WINDSURF_BACKEND,
+    coerce_pair_terminal_backend,
+)
+
 
 class TaskStatus(StrEnum):
     """Task status values for Kanban columns."""
@@ -62,26 +74,44 @@ class TaskType(StrEnum):
 class PairTerminalBackend(StrEnum):
     """Launcher/backend options for PAIR task sessions."""
 
-    TMUX = "tmux"
-    NVIM = "nvim"
-    VSCODE = "vscode"
-    CURSOR = "cursor"
-    WINDSURF = "windsurf"
-    KIRO = "kiro"
-    ANTIGRAVITY = "antigravity"
+    TMUX = TMUX_BACKEND
+    NVIM = NVIM_BACKEND
+    VSCODE = VSCODE_BACKEND
+    CURSOR = CURSOR_BACKEND
+    WINDSURF = WINDSURF_BACKEND
+    KIRO = KIRO_BACKEND
+    ANTIGRAVITY = ANTIGRAVITY_BACKEND
 
 
-VALID_PAIR_BACKENDS: frozenset[str] = frozenset(b.value for b in PairTerminalBackend)
+VALID_PAIR_BACKENDS: frozenset[str] = PAIR_TERMINAL_BACKEND_VALUE_SET
 
 
 def coerce_pair_backend(value: object) -> str | None:
     """Coerce a value to a valid pair backend string, or return None."""
     if isinstance(value, PairTerminalBackend):
         return value.value
+    return coerce_pair_terminal_backend(value)
+
+
+class QueueLane(StrEnum):
+    """Queue lanes for automation follow-up messages."""
+
+    IMPLEMENTATION = "implementation"
+    REVIEW = "review"
+    PLANNER = "planner"
+
+
+VALID_QUEUE_LANES: frozenset[str] = frozenset(lane.value for lane in QueueLane)
+
+
+def coerce_queue_lane(value: object) -> QueueLane | None:
+    """Coerce a value to a queue lane enum, or return None."""
+    if isinstance(value, QueueLane):
+        return value
     if isinstance(value, str):
         normalized = value.strip().lower()
-        if normalized in VALID_PAIR_BACKENDS:
-            return normalized
+        if normalized in VALID_QUEUE_LANES:
+            return QueueLane(normalized)
     return None
 
 
@@ -117,7 +147,7 @@ def resolve_pair_backend(
     coerced = coerce_pair_backend(config_backend)
     if coerced is not None:
         return coerced
-    return PairTerminalBackend.TMUX.value
+    return TMUX_BACKEND
 
 
 class WorkspaceStatus(StrEnum):
@@ -277,14 +307,6 @@ class StreamPhase(StrEnum):
             self.STREAMING: "Streaming",
             self.COMPLETE: "Complete",
         }[self]
-
-
-class ProposalStatus(StrEnum):
-    """Planner proposal lifecycle status."""
-
-    DRAFT = "draft"
-    APPROVED = "approved"
-    REJECTED = "rejected"
 
 
 class PlanStatus(StrEnum):

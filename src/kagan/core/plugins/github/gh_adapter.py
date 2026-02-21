@@ -35,6 +35,7 @@ GH_TIMEOUT_VERSION: Final = 10
 GH_TIMEOUT_DEFAULT: Final = 30
 GH_TIMEOUT_ISSUE_LIST: Final = 60
 GH_TIMEOUT_PR_CREATE: Final = 60
+GH_TIMEOUT_GIT_PUSH: Final = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,14 +128,14 @@ def normalize_connection_metadata(connection: Mapping[str, Any]) -> dict[str, An
     """Normalize connection metadata to canonical V1 keys."""
     normalized = dict(connection)
     repo_name = normalized.get("repo")
-    if isinstance(repo_name, str):
-        stripped_repo = repo_name.strip()
-        if stripped_repo:
-            normalized["repo"] = stripped_repo
+    if isinstance(repo_name, str) and repo_name.strip():
+        normalized["repo"] = repo_name.strip()
+    else:
+        legacy_name = normalized.get("name")
+        if isinstance(legacy_name, str) and legacy_name.strip():
+            normalized["repo"] = legacy_name.strip()
         else:
             normalized.pop("repo", None)
-    else:
-        normalized.pop("repo", None)
     normalized.pop("name", None)
     return normalized
 
@@ -998,6 +999,32 @@ def run_gh_pr_merge(
     return True, None
 
 
+def run_git_push_branch(repo_path: str, branch: str) -> str | None:
+    """Push a branch to origin and set upstream when needed."""
+    branch_name = branch.strip()
+    if not branch_name:
+        return "Branch name is required"
+
+    try:
+        result = run_exec_capture_sync(
+            "git",
+            "push",
+            "--set-upstream",
+            "origin",
+            branch_name,
+            cwd=repo_path,
+            timeout=GH_TIMEOUT_GIT_PUSH,
+        )
+    except TimeoutError:
+        return "Git push timed out"
+    except OSError as exc:
+        return str(exc)
+
+    if result.returncode != 0:
+        return result.stderr_text().strip() or "Failed to push branch"
+    return None
+
+
 __all__ = [
     "ALREADY_CONNECTED",
     "GH_AUTH_REQUIRED",
@@ -1038,5 +1065,6 @@ __all__ = [
     "run_gh_pr_view",
     "run_gh_pr_view_by_url",
     "run_gh_repo_view",
+    "run_git_push_branch",
     "run_preflight_checks",
 ]

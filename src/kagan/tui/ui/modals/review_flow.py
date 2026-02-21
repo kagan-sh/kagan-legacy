@@ -645,12 +645,6 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
     def on_key(self, event: events.Key) -> None:
         if event.key != "tab":
             return
-        overlay = self._session_overlay()
-        if overlay is not None and overlay.has_class("visible") and not overlay.has_class("hidden"):
-            event.prevent_default()
-            event.stop()
-            overlay.cycle_chat_session()
-            return
         event.prevent_default()
         event.stop()
         self.action_cycle_session()
@@ -686,6 +680,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
 
         overlay = self._session_overlay()
         if overlay is not None and overlay.has_class("visible") and not overlay.has_class("hidden"):
+            overlay.set_target_scope(self._task_model.id)
             overlay.show(task_id=self._task_model.id, fullscreen=fullscreen)
 
     async def _refresh_runtime_state(self, *, wait_for_live_agent: bool = True) -> None:
@@ -785,6 +780,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
         overlay = self._session_overlay()
         if overlay is not None:
             overlay.hide()
+            overlay.set_target_scope(None)
 
     # ------------------------------------------------------------------
     # State management
@@ -1057,6 +1053,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
             if overlay is not None:
                 overlay.add_class("hidden")
                 overlay.hide()
+                overlay.set_target_scope(None)
             review_panel.remove_class("hidden")
             agent_panel.add_class("hidden")
             note = self._state_review_note()
@@ -1069,6 +1066,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
             if use_embedded_overlay:
                 overlay_only_mode = True
                 agent_panel.add_class("hidden")
+                overlay.set_target_scope(self._task_model.id)
                 overlay.remove_class("hidden")
                 overlay.show(
                     task_id=self._task_model.id,
@@ -1081,6 +1079,7 @@ class ReviewModal(ReviewActionsMixin, KaganModalScreen[str | None]):
                 if overlay is not None:
                     overlay.add_class("hidden")
                     overlay.hide()
+                    overlay.set_target_scope(None)
                 agent_panel.remove_class("hidden")
             note = self._state_agent_output_note()
             label = "Implementation"

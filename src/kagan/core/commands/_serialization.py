@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import kagan.core.domain.models as domain_models
+from kagan.core.commands._responses import (
+    CommandCode,
+    invalid_job_id_response,
+    invalid_task_id_response,
+    job_not_found_response,
+)
 from kagan.core.commands._transport_truncation import (
     DEFAULT_AUDIT_FIELD_CHAR_LIMIT,
     truncate_for_transport,
@@ -240,33 +246,6 @@ def session_create_error_response(task_id: str, exc: Exception) -> dict[str, Any
     raise TypeError(msg)
 
 
-def invalid_job_id_response() -> dict[str, Any]:
-    return {
-        "success": False,
-        "message": "job_id is required. Get the job_id from a previous job_start response.",
-        "code": "INVALID_JOB_ID",
-    }
-
-
-def invalid_task_id_response(job_id: str) -> dict[str, Any]:
-    return {
-        "success": False,
-        "job_id": job_id,
-        "message": "task_id is required. Use task_list to find valid task IDs.",
-        "code": "INVALID_TASK_ID",
-    }
-
-
-def job_not_found_response(job_id: str, task_id: str) -> dict[str, Any]:
-    return {
-        "success": False,
-        "job_id": job_id,
-        "task_id": task_id,
-        "message": "Job not found. Verify job_id and task_id, or submit a new job with job_start.",
-        "code": "JOB_NOT_FOUND",
-    }
-
-
 def build_job_response(job: JobRecord, *, timed_out: bool = False) -> dict[str, Any]:
     is_terminal = job.status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED}
 
@@ -279,7 +258,7 @@ def build_job_response(job: JobRecord, *, timed_out: bool = False) -> dict[str, 
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
         "message": job.message,
-        "code": "JOB_TIMEOUT" if timed_out and not is_terminal else job.code,
+        "code": CommandCode.JOB_TIMEOUT.value if timed_out and not is_terminal else job.code,
         "timed_out": timed_out and not is_terminal,
     }
     if job.result is not None:
@@ -329,10 +308,6 @@ def build_audit_list_response(
     return {"events": result_events, "count": len(result_events), "truncated": truncated}
 
 
-# Local alias preserves existing call sites while using shared coercion.
-_non_empty_str = non_empty_str
-
-
 def _isoformat(value: object) -> str | None:
     if isinstance(value, str):
         return value
@@ -356,8 +331,8 @@ def _enum_value(value: object) -> str | None:
 def workspace_to_dict(workspace: object) -> dict[str, Any]:
     return {
         "id": str(getattr(workspace, "id", "")),
-        "project_id": _non_empty_str(getattr(workspace, "project_id", None)),
-        "task_id": _non_empty_str(getattr(workspace, "task_id", None)),
+        "project_id": non_empty_str(getattr(workspace, "project_id", None)),
+        "task_id": non_empty_str(getattr(workspace, "task_id", None)),
         "branch_name": str(getattr(workspace, "branch_name", "")),
         "path": str(getattr(workspace, "path", "")),
         "status": _enum_value(getattr(workspace, "status", None)),
@@ -370,7 +345,7 @@ def execution_to_dict(execution: object) -> dict[str, Any]:
     payload = domain_models.Execution.model_validate(
         {
             "id": str(getattr(execution, "id", "")),
-            "session_id": _non_empty_str(getattr(execution, "session_id", None)),
+            "session_id": non_empty_str(getattr(execution, "session_id", None)),
             "run_reason": _enum_value(getattr(execution, "run_reason", None)),
             "executor_action": dict(getattr(execution, "executor_action", {}) or {}),
             "status": _enum_value(getattr(execution, "status", None)),
@@ -380,7 +355,7 @@ def execution_to_dict(execution: object) -> dict[str, Any]:
             "completed_at": _isoformat(getattr(execution, "completed_at", None)),
             "created_at": _isoformat(getattr(execution, "created_at", None)),
             "updated_at": _isoformat(getattr(execution, "updated_at", None)),
-            "error": _non_empty_str(getattr(execution, "error", None)),
+            "error": non_empty_str(getattr(execution, "error", None)),
             "metadata": dict(getattr(execution, "metadata_", {}) or {}),
         }
     )
@@ -391,7 +366,7 @@ def execution_log_entry_to_dict(entry: object) -> dict[str, Any]:
     payload = domain_models.ExecutionLogEntry.model_validate(
         {
             "id": str(getattr(entry, "id", "")),
-            "execution_process_id": _non_empty_str(getattr(entry, "execution_process_id", None)),
+            "execution_process_id": non_empty_str(getattr(entry, "execution_process_id", None)),
             "logs": str(getattr(entry, "logs", "")),
             "byte_size": int(getattr(entry, "byte_size", 0) or 0),
             "inserted_at": _isoformat(getattr(entry, "inserted_at", None)),
@@ -403,20 +378,20 @@ def execution_log_entry_to_dict(entry: object) -> dict[str, Any]:
 def runtime_context_to_dict(state: object) -> dict[str, Any]:
     payload = domain_models.RuntimeContext.model_validate(
         {
-            "project_id": _non_empty_str(getattr(state, "project_id", None)),
-            "repo_id": _non_empty_str(getattr(state, "repo_id", None)),
+            "project_id": non_empty_str(getattr(state, "project_id", None)),
+            "repo_id": non_empty_str(getattr(state, "repo_id", None)),
         }
     )
     return payload.model_dump(mode="json")
 
 
 def startup_decision_to_dict(decision: object) -> dict[str, Any]:
-    project_id = _non_empty_str(getattr(decision, "project_id", None))
-    preferred_repo_id = _non_empty_str(getattr(decision, "preferred_repo_id", None))
+    project_id = non_empty_str(getattr(decision, "project_id", None))
+    preferred_repo_id = non_empty_str(getattr(decision, "preferred_repo_id", None))
     preferred_path_value = getattr(decision, "preferred_path", None)
     preferred_path = str(preferred_path_value) if preferred_path_value is not None else None
     suggest_cwd = bool(getattr(decision, "suggest_cwd", False))
-    cwd_path = _non_empty_str(getattr(decision, "cwd_path", None))
+    cwd_path = non_empty_str(getattr(decision, "cwd_path", None))
     cwd_is_git_repo = bool(getattr(decision, "cwd_is_git_repo", False))
     should_open_project_raw = getattr(decision, "should_open_project", None)
     should_open_project = (
@@ -458,7 +433,7 @@ def runtime_view_to_dict(
         {
             "task_id": task_id,
             "phase": _enum_value(getattr(view, "phase", None)),
-            "execution_id": _non_empty_str(getattr(view, "execution_id", None)),
+            "execution_id": non_empty_str(getattr(view, "execution_id", None)),
             "run_count": run_count,
             "has_running_agent": getattr(view, "running_agent", None) is not None,
             "has_review_agent": getattr(view, "review_agent", None) is not None,

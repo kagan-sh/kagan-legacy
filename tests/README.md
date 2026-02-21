@@ -4,22 +4,22 @@ Kagan tests are organized by package first, then by test type.
 
 ## Directory map
 
+- `tests/*.py`: cross-boundary behavior/regression tests that are not package-scoped
 - `tests/core/unit/`: deterministic core logic tests
-- `tests/core/smoke/`: minimal core boundary smoke checks
-- `tests/mcp/contract/`: MCP tool/resource/schema contract tests
-- `tests/mcp/smoke/`: minimal MCP transport smoke checks
 - `tests/tui/snapshot/`: Textual visual snapshot regressions
 - `tests/tui/smoke/`: critical TUI interaction journeys
 - `tests/plugins/`: plugin implementation tests (unit by default)
+- `tests/integration/`: real-agent integration/e2e coverage
 - `tests/helpers/`: shared test helpers and fixtures
 
 ## Package/type policy
 
 - Core defaults to `unit` tests. Keep these fast, isolated, and deterministic.
-- MCP defaults to `contract` tests. Validate schemas, errors, and compatibility behavior.
+- Integration tests are `integration` + `e2e` by path and may require explicit env setup.
 - TUI defaults to `snapshot` tests for rendering regressions.
 - Plugin tests default to `unit`. Place them under `tests/plugins/<plugin-name>/`.
 - Smoke tests are allowed for critical cross-boundary paths only.
+- `core/fast`, `core/smoke`, and `mcp/*` path groups are supported by marker rules when those paths are populated.
 
 ## Authoring standard
 
@@ -52,8 +52,9 @@ Kagan tests are organized by package first, then by test type.
 
 ## Marker enforcement
 
-`tests/conftest.py` auto-applies package and type markers from the file path:
+`tests/helpers/fixtures/markers.py` (registered by `tests/conftest.py`) auto-applies package and type markers from the file path:
 
+- `tests/core/fast/*` => `@pytest.mark.core` + `@pytest.mark.fast`
 - `tests/core/unit/*` => `@pytest.mark.core` + `@pytest.mark.unit`
 - `tests/core/smoke/*` => `@pytest.mark.core` + `@pytest.mark.smoke`
 - `tests/mcp/contract/*` => `@pytest.mark.mcp` + `@pytest.mark.contract`
@@ -61,10 +62,18 @@ Kagan tests are organized by package first, then by test type.
 - `tests/tui/snapshot/*` => `@pytest.mark.tui` + `@pytest.mark.snapshot`
 - `tests/tui/smoke/*` => `@pytest.mark.tui` + `@pytest.mark.smoke`
 - `tests/plugins/*` => `@pytest.mark.plugins` + `@pytest.mark.unit`
+- `tests/integration/*` => `@pytest.mark.integration` + `@pytest.mark.e2e`
 
-Do not add these markers manually in test files. Marker ownership is path-based.
+Do not add package/type markers manually in test files. Marker ownership is path-based.
 
 Snapshot tests are grouped into one xdist worker for deterministic output.
+
+Additional explicit markers:
+
+- `@pytest.mark.windows_ci`: focused Windows compatibility behavior checks run in the Windows CI job.
+- `@pytest.mark.slow`: optional slow test selection.
+- `@pytest.mark.property`: hypothesis/property test selection.
+- `@pytest.mark.mock_platform_system("...")`: overrides `platform.system()` for a test.
 
 ## Common commands
 
@@ -72,7 +81,7 @@ Snapshot tests are grouped into one xdist worker for deterministic output.
 uv run pytest
 uv run pytest tests/ -v
 uv run pytest tests/core/unit/ -v
-uv run pytest tests/mcp/contract/ -v
+uv run pytest tests/integration/ -v
 uv run pytest tests/tui/snapshot/ -v
 uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
 uv run poe check        # lint + typecheck + all tests

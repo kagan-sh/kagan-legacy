@@ -1,4 +1,4 @@
-"""Auxiliary repositories for audit, scratchpads, session records, planners, and repos."""
+"""Auxiliary repositories for audit, scratchpads, session records, and repos."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from sqlmodel import col, select
 
 from kagan.core.adapters.db.schema import (
     AuditEvent,
-    PlannerProposal,
     ProjectRepo,
     Repo,
     Scratch,
@@ -20,8 +19,9 @@ from kagan.core.adapters.db.schema import (
     WorkspaceRepo,
 )
 from kagan.core.constants import KAGAN_BRANCH_CONFIGURED_KEY
-from kagan.core.domain.enums import ProposalStatus, ScratchType, SessionStatus, SessionType
+from kagan.core.domain.enums import ScratchType, SessionStatus, SessionType
 from kagan.core.limits import SCRATCHPAD_LIMIT
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class AuditRepository:
         self,
         *,
         capability: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_EVENTS_LIMIT,
         cursor: str | None = None,
     ) -> list[AuditEvent]:
         """List audit events with optional filter and cursor pagination."""
@@ -231,90 +231,6 @@ class SessionRecordRepository:
                 session.add(record)
                 await session.commit()
                 return record
-
-
-class PlannerRepository:
-    """Repository for planner proposal persistence."""
-
-    def __init__(self, session_factory: ClosingAwareSessionFactory) -> None:
-        self._session_factory = session_factory
-        self._lock = asyncio.Lock()
-
-    def _get_session(self) -> AsyncSession:
-        return self._session_factory()
-
-    async def save_proposal(
-        self,
-        *,
-        project_id: str,
-        repo_id: str | None = None,
-        tasks_json: list[dict[str, Any]],
-        todos_json: list[dict[str, Any]] | None = None,
-    ) -> PlannerProposal:
-        """Create and persist a new draft proposal."""
-        async with self._lock:
-            async with self._get_session() as session:
-                proposal = PlannerProposal(
-                    project_id=project_id,
-                    repo_id=repo_id,
-                    tasks_json=tasks_json,
-                    todos_json=todos_json or [],
-                    status=ProposalStatus.DRAFT,
-                )
-                session.add(proposal)
-                await session.commit()
-                return proposal
-
-    async def get_proposal(self, proposal_id: str) -> PlannerProposal | None:
-        """Fetch a single proposal by ID."""
-        async with self._get_session() as session:
-            return await session.get(PlannerProposal, proposal_id)
-
-    async def list_pending(
-        self,
-        project_id: str,
-        *,
-        repo_id: str | None = None,
-    ) -> list[PlannerProposal]:
-        """List draft proposals for a project, optionally filtered by repo."""
-        async with self._get_session() as session:
-            stmt = select(PlannerProposal).where(
-                PlannerProposal.project_id == project_id,
-                PlannerProposal.status == ProposalStatus.DRAFT,
-            )
-            if repo_id is not None:
-                stmt = stmt.where(PlannerProposal.repo_id == repo_id)
-            stmt = stmt.order_by(col(PlannerProposal.created_at).desc())
-            result = await session.exec(stmt)
-            return list(result.all())
-
-    async def update_status(
-        self,
-        proposal_id: str,
-        status: ProposalStatus,
-    ) -> PlannerProposal | None:
-        """Transition a proposal to a new status."""
-        async with self._lock:
-            async with self._get_session() as session:
-                proposal = await session.get(PlannerProposal, proposal_id)
-                if proposal is None:
-                    return None
-                proposal.status = status
-                proposal.updated_at = utc_now()
-                session.add(proposal)
-                await session.commit()
-                return proposal
-
-    async def delete_proposal(self, proposal_id: str) -> bool:
-        """Delete a proposal by ID. Returns True if deleted."""
-        async with self._lock:
-            async with self._get_session() as session:
-                proposal = await session.get(PlannerProposal, proposal_id)
-                if proposal is None:
-                    return False
-                await session.delete(proposal)
-                await session.commit()
-                return True
 
 
 class RepoRepository:

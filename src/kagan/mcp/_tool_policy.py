@@ -25,43 +25,59 @@ TASK_TYPE_VALUES = frozenset(TASK_TYPE_ENUM_VALUES)
 DEFAULT_JOB_POLL_WAIT_TIMEOUT_SECONDS = 1.5
 JOB_NON_TERMINAL_STATUSES = frozenset({"queued", "running"})
 
+type _ProtocolMethodEnum = (
+    TasksMethod
+    | ProjectsMethod
+    | AuditMethod
+    | PlanMethod
+    | JobsMethod
+    | ReviewMethod
+    | SessionsMethod
+    | DiagnosticsMethod
+    | SettingsMethod
+)
+
+_PROTOCOL_CALL_BINDINGS: tuple[tuple[str, ProtocolCapability, _ProtocolMethodEnum], ...] = (
+    ("plan_propose", ProtocolCapability.PLAN, PlanMethod.PROPOSE),
+    ("tasks_get", ProtocolCapability.TASKS, TasksMethod.GET),
+    ("tasks_scratchpad", ProtocolCapability.TASKS, TasksMethod.SCRATCHPAD),
+    ("tasks_list", ProtocolCapability.TASKS, TasksMethod.LIST),
+    ("tasks_logs", ProtocolCapability.TASKS, TasksMethod.LOGS),
+    ("tasks_wait", ProtocolCapability.TASKS, TasksMethod.WAIT),
+    ("tasks_update_scratchpad", ProtocolCapability.TASKS, TasksMethod.UPDATE_SCRATCHPAD),
+    ("tasks_create", ProtocolCapability.TASKS, TasksMethod.CREATE),
+    ("tasks_update", ProtocolCapability.TASKS, TasksMethod.UPDATE),
+    ("tasks_move", ProtocolCapability.TASKS, TasksMethod.MOVE),
+    ("tasks_delete", ProtocolCapability.TASKS, TasksMethod.DELETE),
+    ("projects_list", ProtocolCapability.PROJECTS, ProjectsMethod.LIST),
+    ("projects_repos", ProtocolCapability.PROJECTS, ProjectsMethod.REPOS),
+    ("projects_create", ProtocolCapability.PROJECTS, ProjectsMethod.CREATE),
+    ("projects_open", ProtocolCapability.PROJECTS, ProjectsMethod.OPEN),
+    ("audit_list", ProtocolCapability.AUDIT, AuditMethod.LIST),
+    ("jobs_submit", ProtocolCapability.JOBS, JobsMethod.SUBMIT),
+    ("jobs_get", ProtocolCapability.JOBS, JobsMethod.GET),
+    ("jobs_wait", ProtocolCapability.JOBS, JobsMethod.WAIT),
+    ("jobs_events", ProtocolCapability.JOBS, JobsMethod.EVENTS),
+    ("jobs_cancel", ProtocolCapability.JOBS, JobsMethod.CANCEL),
+    ("sessions_create", ProtocolCapability.SESSIONS, SessionsMethod.CREATE),
+    ("sessions_exists", ProtocolCapability.SESSIONS, SessionsMethod.EXISTS),
+    ("sessions_kill", ProtocolCapability.SESSIONS, SessionsMethod.KILL),
+    ("review_request", ProtocolCapability.REVIEW, ReviewMethod.REQUEST),
+    ("review_approve", ProtocolCapability.REVIEW, ReviewMethod.APPROVE),
+    ("review_reject", ProtocolCapability.REVIEW, ReviewMethod.REJECT),
+    ("review_merge", ProtocolCapability.REVIEW, ReviewMethod.MERGE),
+    ("review_rebase", ProtocolCapability.REVIEW, ReviewMethod.REBASE),
+    ("settings_get", ProtocolCapability.SETTINGS, SettingsMethod.GET),
+    ("settings_update", ProtocolCapability.SETTINGS, SettingsMethod.UPDATE),
+    (
+        "diagnostics_instrumentation",
+        ProtocolCapability.DIAGNOSTICS,
+        DiagnosticsMethod.INSTRUMENTATION,
+    ),
+)
+
 PROTOCOL_CALLS: dict[str, tuple[str, str]] = {
-    "plan_propose": protocol_call(ProtocolCapability.PLAN, PlanMethod.PROPOSE),
-    "tasks_get": protocol_call(ProtocolCapability.TASKS, TasksMethod.GET),
-    "tasks_scratchpad": protocol_call(ProtocolCapability.TASKS, TasksMethod.SCRATCHPAD),
-    "tasks_list": protocol_call(ProtocolCapability.TASKS, TasksMethod.LIST),
-    "tasks_logs": protocol_call(ProtocolCapability.TASKS, TasksMethod.LOGS),
-    "tasks_wait": protocol_call(ProtocolCapability.TASKS, TasksMethod.WAIT),
-    "tasks_update_scratchpad": protocol_call(
-        ProtocolCapability.TASKS, TasksMethod.UPDATE_SCRATCHPAD
-    ),
-    "tasks_create": protocol_call(ProtocolCapability.TASKS, TasksMethod.CREATE),
-    "tasks_update": protocol_call(ProtocolCapability.TASKS, TasksMethod.UPDATE),
-    "tasks_move": protocol_call(ProtocolCapability.TASKS, TasksMethod.MOVE),
-    "tasks_delete": protocol_call(ProtocolCapability.TASKS, TasksMethod.DELETE),
-    "projects_list": protocol_call(ProtocolCapability.PROJECTS, ProjectsMethod.LIST),
-    "projects_repos": protocol_call(ProtocolCapability.PROJECTS, ProjectsMethod.REPOS),
-    "projects_create": protocol_call(ProtocolCapability.PROJECTS, ProjectsMethod.CREATE),
-    "projects_open": protocol_call(ProtocolCapability.PROJECTS, ProjectsMethod.OPEN),
-    "audit_list": protocol_call(ProtocolCapability.AUDIT, AuditMethod.LIST),
-    "jobs_submit": protocol_call(ProtocolCapability.JOBS, JobsMethod.SUBMIT),
-    "jobs_get": protocol_call(ProtocolCapability.JOBS, JobsMethod.GET),
-    "jobs_wait": protocol_call(ProtocolCapability.JOBS, JobsMethod.WAIT),
-    "jobs_events": protocol_call(ProtocolCapability.JOBS, JobsMethod.EVENTS),
-    "jobs_cancel": protocol_call(ProtocolCapability.JOBS, JobsMethod.CANCEL),
-    "sessions_create": protocol_call(ProtocolCapability.SESSIONS, SessionsMethod.CREATE),
-    "sessions_exists": protocol_call(ProtocolCapability.SESSIONS, SessionsMethod.EXISTS),
-    "sessions_kill": protocol_call(ProtocolCapability.SESSIONS, SessionsMethod.KILL),
-    "review_request": protocol_call(ProtocolCapability.REVIEW, ReviewMethod.REQUEST),
-    "review_approve": protocol_call(ProtocolCapability.REVIEW, ReviewMethod.APPROVE),
-    "review_reject": protocol_call(ProtocolCapability.REVIEW, ReviewMethod.REJECT),
-    "review_merge": protocol_call(ProtocolCapability.REVIEW, ReviewMethod.MERGE),
-    "review_rebase": protocol_call(ProtocolCapability.REVIEW, ReviewMethod.REBASE),
-    "settings_get": protocol_call(ProtocolCapability.SETTINGS, SettingsMethod.GET),
-    "settings_update": protocol_call(ProtocolCapability.SETTINGS, SettingsMethod.UPDATE),
-    "diagnostics_instrumentation": protocol_call(
-        ProtocolCapability.DIAGNOSTICS, DiagnosticsMethod.INSTRUMENTATION
-    ),
+    name: protocol_call(capability, method) for name, capability, method in _PROTOCOL_CALL_BINDINGS
 }
 
 

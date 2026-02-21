@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from kagan.core.constants import DEFAULT_DB_PATH
+from kagan.core.runtime_context import resolve_runtime_context
 
 
 async def _list_projects_data(
@@ -79,13 +79,15 @@ async def _list_projects_data(
 @click.command(name="list")
 def list_cmd() -> None:
     """List all projects and their associated repos."""
-    db_file = Path(DEFAULT_DB_PATH)
+    runtime_context = resolve_runtime_context()
+    db_path = str(runtime_context.db_path)
+    db_file = Path(db_path)
     if not db_file.exists():
         click.secho("No projects found.", fg="yellow")
         return
 
     try:
-        projects = asyncio.run(_list_projects_data(DEFAULT_DB_PATH))
+        projects = asyncio.run(_list_projects_data(db_path))
     except Exception as error:
         click.secho(f"Failed to read database: {error}", fg="red")
         return

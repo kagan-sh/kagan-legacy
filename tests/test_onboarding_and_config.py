@@ -101,6 +101,10 @@ class TestConfigPersistence:
         config = KaganConfig()
         assert config.general.auto_approve is True
 
+    def test_auto_commit_changes_defaults_to_false(self) -> None:
+        config = KaganConfig()
+        assert config.general.auto_commit_changes is False
+
     def test_worktree_base_ref_strategy_defaults_to_local_if_ahead(self) -> None:
         config = KaganConfig()
         assert config.general.worktree_base_ref_strategy == "local_if_ahead"
@@ -171,6 +175,12 @@ class TestSettingsNormalization:
 
         result = normalize_settings_updates({"general.auto_skill_discovery": True})
         assert result["general.auto_skill_discovery"] is True
+
+    def test_auto_commit_changes_field_accepts_bool(self) -> None:
+        from kagan.core.settings import normalize_settings_updates
+
+        result = normalize_settings_updates({"general.auto_commit_changes": True})
+        assert result["general.auto_commit_changes"] is True
 
     def test_bool_field_rejects_non_bool(self) -> None:
         from kagan.core.settings import normalize_settings_updates
@@ -312,6 +322,7 @@ class TestSettingsNormalization:
         result = build_settings_set_fields(
             {
                 "auto_review": False,
+                "auto_commit_changes": False,
                 "auto_skill_discovery": True,
                 "max_concurrent_agents": 4,
                 "worker_persona": "Implementer persona",
@@ -324,6 +335,7 @@ class TestSettingsNormalization:
         )
         assert result == {
             "general.auto_review": False,
+            "general.auto_commit_changes": False,
             "general.auto_skill_discovery": True,
             "general.max_concurrent_agents": 4,
             "general.worker_persona": "Implementer persona",

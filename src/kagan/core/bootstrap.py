@@ -52,7 +52,6 @@ if TYPE_CHECKING:
     from kagan.core.adapters.db.repositories import (
         AuditRepository,
         ExecutionRepository,
-        PlannerRepository,
         TaskRepository,
     )
     from kagan.core.agents.agent_factory import AgentFactory
@@ -273,7 +272,6 @@ class AppContext:
     project_service: ProjectServiceImpl = field(init=False)
     agent_health: AgentHealthServiceImpl = field(init=False)
     audit_repository: AuditRepository = field(init=False)
-    planner_repository: PlannerRepository = field(init=False)
     api: KaganAPI = field(init=False)
     plugin_registry: PluginRegistry = field(init=False)
 
@@ -464,7 +462,6 @@ async def create_app_context(
         AuditRepository,
         ExecutionRepository,
         JobRepository,
-        PlannerRepository,
         RepoRepository,
         ScratchRepository,
         SessionRecordRepository,
@@ -503,12 +500,10 @@ async def create_app_context(
     session_record_repository = SessionRecordRepository(session_factory)
     scratch_repository = ScratchRepository(session_factory)
     audit_repository = AuditRepository(session_factory)
-    planner_repository = PlannerRepository(session_factory)
     job_repository = JobRepository(session_factory)
 
     ctx._task_repo = task_repo
     ctx.audit_repository = audit_repository
-    ctx.planner_repository = planner_repository
     ctx.task_service = TaskServiceImpl(
         task_repo,
         event_bus,

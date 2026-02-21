@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from kagan.core.domain.enums import McpIdentity, TaskPriority, TaskStatus
 from kagan.core.limits import (
     AGENT_TIMEOUT,
@@ -11,8 +13,10 @@ from kagan.core.limits import (
     SHUTDOWN_TIMEOUT,
     SUBPROCESS_LIMIT,
 )
-from kagan.core.paths import get_config_path, get_database_path
 from kagan.core.policy import CapabilityProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CARD_TITLE_LINE_WIDTH = 28
 CARD_DESC_MAX_LENGTH = 28
@@ -25,7 +29,6 @@ CARD_BACKEND_MAX_LENGTH = 10
 MODAL_TITLE_MAX_LENGTH = 50
 APPROVAL_TITLE_MAX_LENGTH = 45
 NOTIFICATION_TITLE_MAX_LENGTH = 40
-PLANNER_TITLE_MAX_LENGTH = 30
 
 
 DIFF_MAX_LENGTH = 10000
@@ -50,8 +53,27 @@ KAGAN_GENERATED_PATTERNS = (
     ".gitignore",
 )
 
-DEFAULT_DB_PATH = str(get_database_path())
-DEFAULT_CONFIG_PATH = str(get_config_path())
+
+def default_db_path() -> str:
+    """Resolve the default DB path from the current runtime context."""
+    from kagan.core.runtime_context import resolve_runtime_context
+
+    return str(resolve_runtime_context().db_path)
+
+
+def get_database_path() -> Path:
+    """Compatibility shim for callers/fixtures monkeypatching this symbol."""
+    from kagan.core.paths import get_database_path as resolve_database_path
+
+    return resolve_database_path()
+
+
+def default_config_path() -> str:
+    """Resolve the default config path from the current runtime context."""
+    from kagan.core.runtime_context import resolve_runtime_context
+
+    return str(resolve_runtime_context().config_path)
+
 
 MCP_CAPABILITY_VIEWER = CapabilityProfile.VIEWER.value
 MCP_CAPABILITY_PLANNER = CapabilityProfile.PLANNER.value
@@ -92,15 +114,14 @@ PRIORITY_LABELS = {
 
 
 KAGAN_LOGO = """\
-ᘚᘛ  ██╗  ██╗ █████╗  ██████╗  █████╗ ███╗   ██╗  ᘚᘛ
-ᘚᘛ  ██║ ██╔╝██╔══██╗██╔════╝ ██╔══██╗████╗  ██║  ᘚᘛ
-ᘚᘛ  █████╔╝ ███████║██║  ███╗███████║██╔██╗ ██║  ᘚᘛ
-ᘚᘛ  ██╔═██╗ ██╔══██║██║   ██║██╔══██║██║╚██╗██║  ᘚᘛ
-ᘚᘛ  ██║  ██╗██║  ██║╚██████╔╝██║  ██║██║ ╚████║  ᘚᘛ
-ᘚᘛ  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝  ᘚᘛ"""
+ _  __    _    ____    _    _   _
+| |/ /   / \\  / ___|  / \\  | \\ | |
+| ' /   / _ \\| |  _  / _ \\ |  \\| |
+| . \\  / ___ \\ |_| |/ ___ \\| |\\  |
+|_|\\_\\/_/   \\_\\____/_/   \\_\\_| \\_|"""
 
 
-KAGAN_LOGO_SMALL = "ᘚᘛ"
+KAGAN_LOGO_SMALL = "KG"
 
 
 BOX_DRAWING = {
@@ -140,8 +161,6 @@ __all__ = [
     "CARD_TITLE_LINE_WIDTH",
     "COLUMN_ORDER",
     "DEBUG_BUILD",
-    "DEFAULT_CONFIG_PATH",
-    "DEFAULT_DB_PATH",
     "DIFF_MAX_LENGTH",
     "KAGAN_BRANCH_CONFIGURED_KEY",
     "KAGAN_GENERATED_PATTERNS",
@@ -165,11 +184,13 @@ __all__ = [
     "MIN_SCREEN_WIDTH",
     "MODAL_TITLE_MAX_LENGTH",
     "NOTIFICATION_TITLE_MAX_LENGTH",
-    "PLANNER_TITLE_MAX_LENGTH",
     "PRIORITY_LABELS",
     "RESPONSE_BUFFER",
     "SCRATCHPAD_LIMIT",
     "SHUTDOWN_TIMEOUT",
     "STATUS_LABELS",
     "SUBPROCESS_LIMIT",
+    "default_config_path",
+    "default_db_path",
+    "get_database_path",
 ]

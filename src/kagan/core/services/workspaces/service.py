@@ -542,7 +542,7 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin, WorkspaceMaintenanceMixin):
         return files
 
     # ------------------------------------------------------------------
-    # Merge-ops (formerly WorkspaceMergeOpsMixin)
+    # Merge operations
     # ------------------------------------------------------------------
 
     async def get_merge_worktree_path(self, task_id: str, base_branch: str = "main") -> Path:
@@ -735,7 +735,7 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin, WorkspaceMaintenanceMixin):
             return []
 
     # ------------------------------------------------------------------
-    # Diff operations (formerly DiffService)
+    # Diff operations
     # ------------------------------------------------------------------
 
     async def get_repo_diff(self, workspace_id: str, repo_id: str) -> RepoDiff:
@@ -801,7 +801,7 @@ class WorkspaceServiceImpl(WorkspaceInternalsMixin, WorkspaceMaintenanceMixin):
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # Merge operations (formerly MergeService)
+    # Merge operations
     # ------------------------------------------------------------------
 
     def _is_task_runtime_active(self, task_id: str) -> bool:

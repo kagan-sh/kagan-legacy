@@ -25,12 +25,16 @@ import asyncio
 import os
 import shutil
 import textwrap
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+
+from tests.integration._acp_stub_client import StubAcpClient
 
 _INTEGRATION_ENABLED = bool(os.getenv("KAGAN_INTEGRATION_TESTS"))
 
@@ -38,48 +42,6 @@ _SKIP_INTEGRATION = pytest.mark.skipif(
     not _INTEGRATION_ENABLED,
     reason="Set KAGAN_INTEGRATION_TESTS=1 to run ACP roundtrip tests",
 )
-
-
-# ---------------------------------------------------------------------------
-# ACP stub client
-# ---------------------------------------------------------------------------
-
-
-class _StubAcpClient:
-    """Minimal ACP client stub sufficient for a single prompt roundtrip.
-
-    All handler methods are no-ops or return the minimal value the ACP SDK
-    expects.  The stub deliberately ignores all server-initiated calls so that
-    the test can focus solely on whether the agent can process a prompt without
-    erroring out.
-    """
-
-    async def session_update(self, *_: Any, **__: Any) -> None:
-        pass
-
-    async def request_permission(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def read_text_file(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def write_text_file(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def create_terminal(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def terminal_output(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def kill_terminal(self, *_: Any, **__: Any) -> None:
-        pass
-
-    async def release_terminal(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
-
-    async def wait_for_terminal_exit(self, *_: Any, **__: Any) -> None:
-        return None  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +134,7 @@ async def _run_acp_prompt_roundtrip(
     from acp import PROTOCOL_VERSION, spawn_agent_process
     from acp.schema import ClientCapabilities, FileSystemCapability, Implementation
 
-    client = _StubAcpClient()
+    client = StubAcpClient()
     merged_env = {**os.environ, **(env or {})}
 
     async with asyncio.timeout(30.0):
@@ -222,167 +184,160 @@ async def _run_acp_prompt_roundtrip(
             process.terminate()
 
 
-# ---------------------------------------------------------------------------
-# goose (Block) — OPENAI_HOST env var
-# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class _RoundtripCase:
+    binary: str
+    command_parts: tuple[str, ...]
+    missing_binary_message: str
+    prepare_env: Callable[[str, Path, pytest.MonkeyPatch], dict[str, str] | None]
 
 
-@_SKIP_INTEGRATION
-async def test_goose_acp_roundtrip_with_mock_llm(
-    mock_llm_proxy: str,
-    tmp_path: Path,
+def _prepare_goose_env(
+    proxy_url: str,
+    _tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Goose routes its LLM calls via OPENAI_HOST (not OPENAI_BASE_URL).
-
-    The mock proxy satisfies the OpenAI-compatible endpoint so that the agent
-    can complete a prompt without a real API key.
-    """
-    if not shutil.which("goose"):
-        pytest.skip("goose binary not found in PATH — install to run this test")
-
-    monkeypatch.setenv("OPENAI_HOST", mock_llm_proxy)
+) -> dict[str, str]:
+    monkeypatch.setenv("OPENAI_HOST", proxy_url)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-    await _run_acp_prompt_roundtrip(
-        ["goose", "acp"],
-        cwd=str(tmp_path),
-        env={
-            "OPENAI_HOST": mock_llm_proxy,
-            "OPENAI_API_KEY": "test-key",
-        },
-    )
+    return {
+        "OPENAI_HOST": proxy_url,
+        "OPENAI_API_KEY": "test-key",
+    }
 
 
-# ---------------------------------------------------------------------------
-# vtcode (VT Code) — OPENAI_BASE_URL env var
-# ---------------------------------------------------------------------------
-
-
-@_SKIP_INTEGRATION
-async def test_vtcode_acp_roundtrip_with_mock_llm(
-    mock_llm_proxy: str,
-    tmp_path: Path,
+def _prepare_vtcode_env(
+    proxy_url: str,
+    _tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """VT Code honours the standard OPENAI_BASE_URL for endpoint override."""
-    if not shutil.which("vtcode"):
-        pytest.skip("vtcode binary not found in PATH — install to run this test")
-
-    monkeypatch.setenv("OPENAI_BASE_URL", f"{mock_llm_proxy}/v1")
+) -> dict[str, str]:
+    endpoint = f"{proxy_url}/v1"
+    monkeypatch.setenv("OPENAI_BASE_URL", endpoint)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-    await _run_acp_prompt_roundtrip(
-        ["vtcode", "acp"],
-        cwd=str(tmp_path),
-        env={
-            "OPENAI_BASE_URL": f"{mock_llm_proxy}/v1",
-            "OPENAI_API_KEY": "test-key",
-        },
-    )
+    return {
+        "OPENAI_BASE_URL": endpoint,
+        "OPENAI_API_KEY": "test-key",
+    }
 
 
-# ---------------------------------------------------------------------------
-# openhands — LLM_BASE_URL + LLM_API_KEY env vars (LiteLLM)
-# ---------------------------------------------------------------------------
-
-
-@_SKIP_INTEGRATION
-async def test_openhands_acp_roundtrip_with_mock_llm(
-    mock_llm_proxy: str,
-    tmp_path: Path,
+def _prepare_openhands_env(
+    proxy_url: str,
+    _tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """OpenHands uses LiteLLM; endpoint override is via LLM_BASE_URL."""
-    if not shutil.which("openhands"):
-        pytest.skip("openhands binary not found in PATH — install to run this test")
-
-    monkeypatch.setenv("LLM_BASE_URL", f"{mock_llm_proxy}/v1")
+) -> dict[str, str]:
+    endpoint = f"{proxy_url}/v1"
+    monkeypatch.setenv("LLM_BASE_URL", endpoint)
     monkeypatch.setenv("LLM_API_KEY", "test-key")
-
-    await _run_acp_prompt_roundtrip(
-        ["openhands", "acp"],
-        cwd=str(tmp_path),
-        env={
-            "LLM_BASE_URL": f"{mock_llm_proxy}/v1",
-            "LLM_API_KEY": "test-key",
-        },
-    )
+    return {
+        "LLM_BASE_URL": endpoint,
+        "LLM_API_KEY": "test-key",
+    }
 
 
-# ---------------------------------------------------------------------------
-# cagent (Docker) — agent.yml config file
-# ---------------------------------------------------------------------------
-
-
-@_SKIP_INTEGRATION
-async def test_cagent_acp_roundtrip_with_mock_llm(
-    mock_llm_proxy: str,
-    tmp_path: Path,
-) -> None:
-    """Docker cagent reads model config from agent.yml in the working directory."""
-    if not shutil.which("cagent"):
-        pytest.skip("cagent binary not found in PATH — install Docker Desktop 4.49+")
-
-    _write_cagent_config(tmp_path, mock_llm_proxy)
-
-    await _run_acp_prompt_roundtrip(
-        ["cagent", "acp"],
-        cwd=str(tmp_path),
-    )
-
-
-# ---------------------------------------------------------------------------
-# stakpak — config.toml profile + --profile flag
-# ---------------------------------------------------------------------------
-
-
-@_SKIP_INTEGRATION
-async def test_stakpak_acp_roundtrip_with_mock_llm(
-    mock_llm_proxy: str,
+def _prepare_cagent_env(
+    proxy_url: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stakpak uses a named profile in config.toml; we pass --profile ci-mock."""
-    if not shutil.which("stakpak"):
-        pytest.skip("stakpak binary not found in PATH — run: cargo install stakpak")
+    del monkeypatch
+    _write_cagent_config(tmp_path, proxy_url)
+    return None
 
-    stakpak_dir = _write_stakpak_config(tmp_path, mock_llm_proxy)
+
+def _prepare_stakpak_env(
+    proxy_url: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, str]:
+    stakpak_dir = _write_stakpak_config(tmp_path, proxy_url)
     # Point stakpak at the temporary config directory so it doesn't read the
     # real ~/.stakpak/config.toml from the developer's home directory.
     monkeypatch.setenv("STAKPAK_CONFIG_DIR", str(stakpak_dir))
-
-    await _run_acp_prompt_roundtrip(
-        ["stakpak", "acp", "--profile", "ci-mock"],
-        cwd=str(tmp_path),
-        env={"STAKPAK_CONFIG_DIR": str(stakpak_dir)},
-    )
+    return {"STAKPAK_CONFIG_DIR": str(stakpak_dir)}
 
 
-# ---------------------------------------------------------------------------
-# vibe (Mistral Vibe) — ~/.vibe/config.toml
-# ---------------------------------------------------------------------------
+def _prepare_vibe_env(
+    proxy_url: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, str]:
+    vibe_dir = _write_vibe_config(tmp_path, proxy_url)
+    # Override HOME so vibe reads our temporary config instead of ~/.vibe/config.toml.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    return {"HOME": str(tmp_path), "VIBE_CONFIG_DIR": str(vibe_dir)}
+
+
+_ROUNDTRIP_CASES = (
+    pytest.param(
+        _RoundtripCase(
+            binary="goose",
+            command_parts=("goose", "acp"),
+            missing_binary_message="goose binary not found in PATH — install to run this test",
+            prepare_env=_prepare_goose_env,
+        ),
+        id="goose",
+    ),
+    pytest.param(
+        _RoundtripCase(
+            binary="vtcode",
+            command_parts=("vtcode", "acp"),
+            missing_binary_message="vtcode binary not found in PATH — install to run this test",
+            prepare_env=_prepare_vtcode_env,
+        ),
+        id="vtcode",
+    ),
+    pytest.param(
+        _RoundtripCase(
+            binary="openhands",
+            command_parts=("openhands", "acp"),
+            missing_binary_message="openhands binary not found in PATH — install to run this test",
+            prepare_env=_prepare_openhands_env,
+        ),
+        id="openhands",
+    ),
+    pytest.param(
+        _RoundtripCase(
+            binary="cagent",
+            command_parts=("cagent", "acp"),
+            missing_binary_message="cagent binary not found in PATH — install Docker Desktop 4.49+",
+            prepare_env=_prepare_cagent_env,
+        ),
+        id="cagent",
+    ),
+    pytest.param(
+        _RoundtripCase(
+            binary="stakpak",
+            command_parts=("stakpak", "acp", "--profile", "ci-mock"),
+            missing_binary_message="stakpak binary not found in PATH — run: cargo install stakpak",
+            prepare_env=_prepare_stakpak_env,
+        ),
+        id="stakpak",
+    ),
+    pytest.param(
+        _RoundtripCase(
+            binary="vibe-acp",
+            command_parts=("vibe-acp",),
+            missing_binary_message=(
+                "vibe-acp binary not found in PATH — "
+                "run: curl -LsSf https://mistral.ai/vibe/install.sh | bash"
+            ),
+            prepare_env=_prepare_vibe_env,
+        ),
+        id="vibe",
+    ),
+)
 
 
 @_SKIP_INTEGRATION
-async def test_vibe_acp_roundtrip_with_mock_llm(
+@pytest.mark.parametrize("case", _ROUNDTRIP_CASES)
+async def test_agent_acp_roundtrip_with_mock_llm(
+    case: _RoundtripCase,
     mock_llm_proxy: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Mistral Vibe reads provider config from ~/.vibe/config.toml."""
-    if not shutil.which("vibe-acp"):
-        pytest.skip(
-            "vibe-acp binary not found in PATH — "
-            "run: curl -LsSf https://mistral.ai/vibe/install.sh | bash"
-        )
+    """Run ACP roundtrip smoke checks across supported agents."""
+    if not shutil.which(case.binary):
+        pytest.skip(case.missing_binary_message)
 
-    vibe_dir = _write_vibe_config(tmp_path, mock_llm_proxy)
-    # Override HOME so vibe reads our temporary config instead of ~/.vibe/config.toml.
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    await _run_acp_prompt_roundtrip(
-        ["vibe-acp"],
-        cwd=str(tmp_path),
-        env={"HOME": str(tmp_path), "VIBE_CONFIG_DIR": str(vibe_dir)},
-    )
+    env = case.prepare_env(mock_llm_proxy, tmp_path, monkeypatch)
+    await _run_acp_prompt_roundtrip(list(case.command_parts), cwd=str(tmp_path), env=env)

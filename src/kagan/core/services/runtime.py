@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import json
 import logging
 import os
@@ -19,7 +18,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from sqlalchemy.exc import OperationalError
@@ -31,17 +29,17 @@ from kagan.core.adapters.process import spawn_detached
 from kagan.core.domain.enums import ExecutionStatus, TaskType
 from kagan.core.git_utils import has_git_repo
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
-from kagan.core.paths import (
-    get_config_path,
-    get_core_runtime_dir,
-    get_data_dir,
-    get_database_path,
-)
 from kagan.core.process_liveness import pid_exists
+from kagan.core.runtime_context import (
+    CoreRuntimeContext,
+    resolve_runtime_context,
+    runtime_context_env,
+)
 from kagan.core.time import utc_now
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from kagan.core.acp import Agent
     from kagan.core.adapters.db.repositories import ExecutionRepository
@@ -680,7 +678,7 @@ class RuntimeServiceImpl:
 
 
 # ---------------------------------------------------------------------------
-# Idempotency (formerly runtime_helpers)
+# Idempotency
 # ---------------------------------------------------------------------------
 
 IDEMPOTENCY_CACHE_LIMIT = 512
@@ -732,7 +730,7 @@ class IdempotencyReservation:
 
 
 # ---------------------------------------------------------------------------
-# Runtime snapshot (formerly runtime_helpers)
+# Runtime snapshot
 # ---------------------------------------------------------------------------
 
 
@@ -812,7 +810,7 @@ def runtime_snapshot_for_task(
 
 
 # ---------------------------------------------------------------------------
-# Process control (formerly runtime_control)
+# Process control
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
@@ -840,11 +838,11 @@ def _spawn_core_detached(
     *,
     config_path: Path,
     db_path: Path,
-    runtime_dir: Path,
+    runtime_context: CoreRuntimeContext,
 ) -> subprocess.Popen[bytes]:
     cmd = _build_daemon_command(config_path, db_path)
     env = dict(os.environ)
-    env["KAGAN_CORE_RUNTIME_DIR"] = str(runtime_dir)
+    env.update(runtime_context_env(runtime_context))
 
     if os.name == "nt":
         creationflags = 0
@@ -918,8 +916,18 @@ def _has_live_core_instance_lock(runtime_dir: Path) -> bool:
     return pid is not None and pid_exists(pid)
 
 
-def discover_running_pid_fallback(*, runtime_dir: Path | None = None) -> int | None:
-    resolved_runtime_dir = runtime_dir if runtime_dir is not None else get_core_runtime_dir()
+def discover_running_pid_fallback(
+    *,
+    runtime_dir: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
+) -> int | None:
+    resolved_runtime_dir = (
+        runtime_context.runtime_dir
+        if runtime_context is not None
+        else runtime_dir
+        if runtime_dir is not None
+        else resolve_runtime_context().runtime_dir
+    )
     lease_path = resolved_runtime_dir / _CORE_LEASE_FILE
     try:
         lease_data = json.loads(lease_path.read_text(encoding="utf-8"))
@@ -940,36 +948,21 @@ def discover_running_pid_fallback(*, runtime_dir: Path | None = None) -> int | N
     return None
 
 
-def cleanup_stale_runtime_files(*, runtime_dir: Path | None = None) -> None:
-    resolved_runtime_dir = runtime_dir if runtime_dir is not None else get_core_runtime_dir()
+def cleanup_stale_runtime_files(
+    *,
+    runtime_dir: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
+) -> None:
+    resolved_runtime_dir = (
+        runtime_context.runtime_dir
+        if runtime_context is not None
+        else runtime_dir
+        if runtime_dir is not None
+        else resolve_runtime_context().runtime_dir
+    )
     for name in ("endpoint.json", "token", _CORE_LEASE_FILE):
         with contextlib.suppress(OSError):
             (resolved_runtime_dir / name).unlink(missing_ok=True)
-
-
-def _resolve_runtime_dir(config_path: Path, db_path: Path) -> Path:
-    override = os.environ.get("KAGAN_CORE_RUNTIME_DIR")
-    if override:
-        return Path(override).expanduser().resolve(strict=False)
-
-    resolved_config = config_path.expanduser().resolve(strict=False)
-    resolved_db = db_path.expanduser().resolve(strict=False)
-    default_config = get_config_path().expanduser().resolve(strict=False)
-    default_db = get_database_path().expanduser().resolve(strict=False)
-
-    if resolved_config == default_config and resolved_db == default_db:
-        return get_core_runtime_dir()
-
-    try:
-        resolved_executable = Path(sys.executable).expanduser().resolve(strict=False)
-    except OSError:
-        resolved_executable = Path(sys.executable)
-
-    key = f"{resolved_config}\n{resolved_db}\n{resolved_executable}".encode()
-    suffix = hashlib.sha256(key).hexdigest()[:16]
-    if os.name == "nt":
-        return get_data_dir() / "core" / "scoped" / suffix
-    return Path("/tmp") / "kagan-core" / suffix
 
 
 async def ensure_core_running(
@@ -977,16 +970,21 @@ async def ensure_core_running(
     config: KaganConfig | None = None,
     config_path: Path | None = None,
     db_path: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
     timeout: float = 15.0,
 ) -> CoreEndpoint:
     del config
-    config_path = config_path or get_config_path()
-    db_path = db_path or get_database_path()
-    runtime_dir = _resolve_runtime_dir(config_path, db_path)
+    resolved_context = runtime_context or resolve_runtime_context(
+        config_path=config_path,
+        db_path=db_path,
+    )
+    config_path = resolved_context.config_path
+    db_path = resolved_context.db_path
+    runtime_dir = resolved_context.runtime_dir
     runtime_dir.mkdir(parents=True, exist_ok=True)
     lock_path = _core_start_lock_path(runtime_dir)
 
-    endpoint = discover_core_endpoint(runtime_dir=runtime_dir)
+    endpoint = discover_core_endpoint(runtime_context=resolved_context)
     if endpoint is not None:
         logger.info("Found existing core: %s %s", endpoint.transport, endpoint.address)
         return endpoint
@@ -999,7 +997,7 @@ async def ensure_core_running(
     stale_after = max(_CORE_START_LOCK_STALE_SECONDS, timeout * 2)
     try:
         while asyncio.get_running_loop().time() < deadline:
-            endpoint = discover_core_endpoint(runtime_dir=runtime_dir)
+            endpoint = discover_core_endpoint(runtime_context=resolved_context)
             if endpoint is not None:
                 return endpoint
 
@@ -1009,7 +1007,7 @@ async def ensure_core_running(
                     process = _spawn_core_detached(
                         config_path=config_path,
                         db_path=db_path,
-                        runtime_dir=runtime_dir,
+                        runtime_context=resolved_context,
                     )
                 else:
                     _maybe_clear_stale_start_lock(lock_path, stale_after_seconds=stale_after)
@@ -1035,6 +1033,7 @@ def ensure_core_running_sync(
     config: KaganConfig | None = None,
     config_path: Path | None = None,
     db_path: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
     timeout: float = 15.0,
 ) -> CoreEndpoint:
     try:
@@ -1045,6 +1044,7 @@ def ensure_core_running_sync(
                 config=config,
                 config_path=config_path,
                 db_path=db_path,
+                runtime_context=runtime_context,
                 timeout=timeout,
             )
         )
@@ -1052,12 +1052,23 @@ def ensure_core_running_sync(
     raise RuntimeError(msg)
 
 
-async def run_core_host(*, config_path: Path | None = None, db_path: Path | None = None) -> None:
+async def run_core_host(
+    *,
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
+) -> None:
     from kagan.core.host import CoreHost
 
-    resolved_config_path = config_path or get_config_path()
-    resolved_db_path = db_path or get_database_path()
-    host = CoreHost(config_path=resolved_config_path, db_path=resolved_db_path)
+    resolved_context = runtime_context or resolve_runtime_context(
+        config_path=config_path,
+        db_path=db_path,
+    )
+    host = CoreHost(
+        config_path=resolved_context.config_path,
+        db_path=resolved_context.db_path,
+        runtime_context=resolved_context,
+    )
     await host.start()
     await host.wait_until_stopped()
 
@@ -1066,9 +1077,16 @@ def launch_core_subprocess(
     *,
     config_path: Path | None = None,
     db_path: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
 ) -> int:
     try:
-        asyncio.run(run_core_host(config_path=config_path, db_path=db_path))
+        asyncio.run(
+            run_core_host(
+                config_path=config_path,
+                db_path=db_path,
+                runtime_context=runtime_context,
+            )
+        )
     except KeyboardInterrupt:
         logger.info("Core host interrupted by user")
     return 0

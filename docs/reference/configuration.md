@@ -8,14 +8,16 @@ icon: material/cog
 
 `config.toml` in Kagan config dir. Paths: `platformdirs` + env overrides.
 
-| Purpose         | Override                 |
-| --------------- | ------------------------ |
-| Config          | `KAGAN_CONFIG_DIR`       |
-| Data            | `KAGAN_DATA_DIR`         |
-| Cache           | `KAGAN_CACHE_DIR`        |
-| Worktree base   | `KAGAN_WORKTREE_BASE`    |
-| Core runtime    | `KAGAN_CORE_RUNTIME_DIR` |
-| TUI mouse input | `KAGAN_TUI_MOUSE`        |
+| Purpose                     | Override                            |
+| --------------------------- | ----------------------------------- |
+| Config                      | `KAGAN_CONFIG_DIR`                  |
+| Data                        | `KAGAN_DATA_DIR`                    |
+| Cache                       | `KAGAN_CACHE_DIR`                   |
+| Worktree base               | `KAGAN_WORKTREE_BASE`               |
+| Core runtime                | `KAGAN_CORE_RUNTIME_DIR`            |
+| Shared workspace cache      | `KAGAN_SHARED_WORKSPACE_CACHE`      |
+| Shared workspace cache root | `KAGAN_SHARED_WORKSPACE_CACHE_ROOT` |
+| TUI mouse input             | `KAGAN_TUI_MOUSE`                   |
 
 Files: `config.toml`, `profiles.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
@@ -24,6 +26,7 @@ Files: `config.toml`, `profiles.toml`, `kagan.db`, core runtime (`endpoint.json`
 ```toml
 [general]
 default_worker_agent = "claude"
+auto_commit_changes = false
 auto_skill_discovery = false
 worker_persona = "Implementer: ship the smallest correct change and verify with tests."
 orchestrator_persona = "Orchestrator: plan concrete tasks and communicate concisely."
@@ -43,7 +46,8 @@ max_concurrent_agents = 3
 | `worktree_base_ref_strategy`         | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local`      |
 | `auto_review`                        | boolean        | `true`                           | Run AI review on completion                                                         |
 | `auto_approve`                       | boolean        | `true`                           | Skip planner permission prompts                                                     |
-| `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`            |
+| `auto_commit_changes`                | boolean        | `false`                          | Allow automation to auto-commit and auto-push task branches                         |
+| `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/agent skills`      |
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
 | `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                                |
@@ -119,10 +123,11 @@ OS keys for command tables: `macos`, `linux`, `windows`, `*`.
 
 ## `[ui]`
 
-| Key                       | Type        | Default               | Notes                                                      |
-| ------------------------- | ----------- | --------------------- | ---------------------------------------------------------- |
-| `skip_pair_instructions`  | boolean     | `false`               | Skip PAIR instruction modal                                |
-| `tui_plugin_ui_allowlist` | string list | `["official.github"]` | Plugin IDs allowed to contribute declarative UI to the TUI |
+| Key                       | Type        | Default               | Notes                                                         |
+| ------------------------- | ----------- | --------------------- | ------------------------------------------------------------- |
+| `skip_pair_instructions`  | boolean     | `false`               | Skip PAIR instruction modal                                   |
+| `theme`                   | string/null | `null`                | Persisted TUI theme (`kagan` truecolor, `kagan-256` fallback) |
+| `tui_plugin_ui_allowlist` | string list | `["official.github"]` | Plugin IDs allowed to contribute declarative UI to the TUI    |
 
 ## `[plugins]`
 
@@ -139,14 +144,23 @@ discovery = [..., "my_company.kagan_plugins.my_plugin:MyPlugin"]
 
 ## Environment variables passed into PAIR sessions
 
-| Variable                | Meaning                   |
-| ----------------------- | ------------------------- |
-| `KAGAN_TASK_ID`         | Current task ID           |
-| `KAGAN_TASK_TITLE`      | Current task title        |
-| `KAGAN_WORKTREE_PATH`   | Worktree path             |
-| `KAGAN_PROJECT_ROOT`    | Project root path         |
-| `KAGAN_CWD`             | Current working directory |
-| `KAGAN_MCP_SERVER_NAME` | MCP server name override  |
+| Variable                 | Meaning                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `KAGAN_TASK_ID`          | Current task ID                                                              |
+| `KAGAN_TASK_TITLE`       | Current task title                                                           |
+| `KAGAN_WORKTREE_PATH`    | Worktree path                                                                |
+| `KAGAN_PROJECT_ROOT`     | Project root path                                                            |
+| `KAGAN_CWD`              | Current working directory                                                    |
+| `KAGAN_MCP_SERVER_NAME`  | MCP server name override                                                     |
+| `CARGO_TARGET_DIR`       | Shared Cargo build target dir (when `Cargo.toml` exists and not already set) |
+| `UV_PROJECT_ENVIRONMENT` | Shared uv virtualenv dir (when `uv.lock` exists and not already set)         |
+
+### Shared workspace cache controls
+
+- Default behavior: enabled.
+- Disable completely: `KAGAN_SHARED_WORKSPACE_CACHE=0` (also accepts `false`, `no`, `off`).
+- Custom cache root: `KAGAN_SHARED_WORKSPACE_CACHE_ROOT=/your/path`.
+- Default cache root when unset: `{KAGAN_CACHE_DIR}/workspace-cache`.
 
 ## TUI mouse reporting
 

@@ -13,6 +13,15 @@ from sqlmodel import col, select
 
 from kagan.core.adapters.db.session import get_session
 from kagan.core.adapters.process import ProcessExecutionError, ProcessRetryPolicy, run_exec_checked
+from kagan.core.services.workspaces.constants import (
+    WORKSPACE_MERGE_FAILURE_MESSAGE_MAX_CHARS,
+    WORKSPACE_MERGE_OVERLAP_PREVIEW_FILE_COUNT,
+    WORKSPACE_MERGE_REBASE_HINT_CAP,
+    WORKSPACE_MERGE_RISK_COMMIT_THRESHOLD,
+    WORKSPACE_MERGE_RISK_FILE_THRESHOLD,
+    WORKSPACE_MERGE_RISK_OVERLAP_SCORE,
+    WORKSPACE_MERGE_RISK_REPO_CHANGE_THRESHOLD,
+)
 
 if TYPE_CHECKING:
     from kagan.core.adapters.db.schema import Repo, WorkspaceRepo
@@ -62,12 +71,14 @@ class WorkspaceInternalsMixin:
         if has_conflicts:
             hints.append("Tip: run review rebase, resolve conflicts, then merge again")
         if overlap_files:
-            preview = ", ".join(overlap_files[:3])
-            suffix = "..." if len(overlap_files) > 3 else ""
+            preview = ", ".join(overlap_files[:WORKSPACE_MERGE_OVERLAP_PREVIEW_FILE_COUNT])
+            suffix = (
+                "..." if len(overlap_files) > WORKSPACE_MERGE_OVERLAP_PREVIEW_FILE_COUNT else ""
+            )
             hints.append(f"Potential overlap with base changes: {preview}{suffix}")
         if hints:
             message = f"{message}. {' '.join(hints)}"
-        return message[:500]
+        return message[:WORKSPACE_MERGE_FAILURE_MESSAGE_MAX_CHARS]
 
     @staticmethod
     def _should_retry_after_rebase(failures: list[MergeResult]) -> bool:
@@ -91,14 +102,14 @@ class WorkspaceInternalsMixin:
         overlap_files = tuple(sorted(set(changed_files).intersection(base_changed_files)))
 
         score = 0
-        if changed_repo_count > 1:
+        if changed_repo_count > WORKSPACE_MERGE_RISK_REPO_CHANGE_THRESHOLD:
             score += 1
-        if len(commits) >= 6:
+        if len(commits) >= WORKSPACE_MERGE_RISK_COMMIT_THRESHOLD:
             score += 1
-        if len(changed_files) >= 12:
+        if len(changed_files) >= WORKSPACE_MERGE_RISK_FILE_THRESHOLD:
             score += 1
         if overlap_files:
-            score += 2
+            score += WORKSPACE_MERGE_RISK_OVERLAP_SCORE
 
         return MergeRisk(
             score=score,
@@ -116,7 +127,7 @@ class WorkspaceInternalsMixin:
     def _note_rebase_hint(self, base_branch: str) -> None:
         self._rebase_first_hints[base_branch] = min(
             self._rebase_first_hints.get(base_branch, 0) + 1,
-            3,
+            WORKSPACE_MERGE_REBASE_HINT_CAP,
         )
 
     def _cooldown_rebase_hint(self, base_branch: str) -> None:

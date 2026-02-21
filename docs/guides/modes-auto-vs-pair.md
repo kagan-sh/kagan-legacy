@@ -18,21 +18,22 @@ tags:
 
 ## Run AUTO
 
-`n` → set AUTO → `a` or `Enter` → dedicated Task Output screen in split view with the same `Ctrl+O` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
+`n` → set AUTO → `a` (start) or `o` (open Task Output) → dedicated Task Output screen in split view with the same `Ctrl+O` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
 
 Agent runs in the background. Use implementation session follow-ups plus `a`/`s`
 to steer iterations, then review output in REVIEW.
 
 ## Run PAIR
 
-`n` → set PAIR → `Enter` → work in tmux / Neovim / VS Code / Cursor / Windsurf / Kiro / Antigravity → move through REVIEW manually.
+`n` → set PAIR → `o` → work in tmux / Neovim / VS Code / Cursor / Windsurf / Kiro / Antigravity → move through REVIEW manually.
 
 You drive. The session is yours. Kagan tracks state and surfaces it at review time.
 
-PAIR `Enter` does not route to orchestrator chat overlay. It creates/attaches the PAIR session and
+On the board, `Enter` opens task details.
+PAIR `o` does not route to AI Assistant chat overlay. It creates/attaches the PAIR session and
 redirects into the configured backend (tmux/Neovim suspend attach; VS Code/Cursor/Windsurf/Kiro/Antigravity
 external handoff with startup-prompt guidance).
-If focus briefly clears during board refresh, `Enter` reuses the last focused task; use `Escape` to
+If focus briefly clears during board refresh, `o` reuses the last focused task; use `Escape` to
 clear selection explicitly.
 
 When `default_pair_terminal_backend = "nvim"`, Kagan opens `.kagan/start_prompt.md` and attempts
@@ -85,13 +86,13 @@ ______________________________________________________________________
 
 ## Review Summary panel
 
-When a task enters REVIEW, the review modal surfaces a structured summary tab:
+When a task enters REVIEW, the Task Output screen surfaces the same structured context:
 
 - Task title, status, priority on one line
 - Acceptance criteria as a checklist (`□ criterion text`)
 - Diff stats once loaded (`N files changed, +X −Y`)
 
-Reviewers read one screen instead of raw `git diff`. Approve, reject, or rebase from there.
+Reviewers read one screen instead of raw `git diff`, with the AI Assistant chat overlay available.
 
 ______________________________________________________________________
 

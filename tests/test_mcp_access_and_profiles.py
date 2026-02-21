@@ -24,8 +24,10 @@ from kagan.core.policy import (
     SessionBindingError,
     SessionNamespace,
     SessionOrigin,
+    apply_profile_ceiling,
     enforce_task_scope,
     get_binding,
+    profile_rank,
     resolve_mcp_capability,
 )
 
@@ -52,6 +54,36 @@ class TestCapabilityProfileHierarchy:
         viewer = CAPABILITY_PROFILES[CapabilityProfile.VIEWER]
         planner = CAPABILITY_PROFILES[CapabilityProfile.PLANNER]
         assert viewer.issubset(planner)
+
+
+class TestCapabilityProfileRankOrdering:
+    """Canonical rank helpers preserve profile precedence semantics."""
+
+    def test_profile_rank_is_monotonic_by_privilege(self) -> None:
+        ordered_profiles = [
+            CapabilityProfile.VIEWER,
+            CapabilityProfile.PLANNER,
+            CapabilityProfile.PAIR_WORKER,
+            CapabilityProfile.OPERATOR,
+            CapabilityProfile.MAINTAINER,
+        ]
+        ranks = [profile_rank(profile) for profile in ordered_profiles]
+        assert ranks == sorted(ranks)
+
+    def test_apply_profile_ceiling_caps_requested_profile(self) -> None:
+        assert (
+            apply_profile_ceiling(
+                CapabilityProfile.MAINTAINER,
+                ceiling_profile=CapabilityProfile.PAIR_WORKER,
+            )
+            == CapabilityProfile.PAIR_WORKER
+        )
+
+    def test_apply_profile_ceiling_accepts_string_profiles(self) -> None:
+        assert (
+            apply_profile_ceiling("viewer", ceiling_profile="maintainer")
+            == CapabilityProfile.VIEWER
+        )
 
 
 class TestAuthorizationPolicy:
@@ -290,3 +322,33 @@ class TestResolveMcpCapability:
 
     def test_mutating_unscoped_is_maintainer(self) -> None:
         assert resolve_mcp_capability(task_id="", read_only=False) == CapabilityProfile.MAINTAINER
+
+
+class TestMcpServerEffectiveProfileResolution:
+    """MCP server identity ceilings are applied to requested capability profiles."""
+
+    def test_caps_profile_by_identity_ceiling(self) -> None:
+        from kagan.mcp.server import MCPRuntimeConfig, _resolve_effective_profile
+
+        effective = _resolve_effective_profile(
+            CapabilityProfile.MAINTAINER,
+            "kagan",
+            runtime_config=MCPRuntimeConfig(
+                capability_profile="maintainer",
+                identity="kagan",
+            ),
+        )
+        assert effective == "pair_worker"
+
+    def test_invalid_requested_profile_falls_back_to_viewer(self) -> None:
+        from kagan.mcp.server import MCPRuntimeConfig, _resolve_effective_profile
+
+        effective = _resolve_effective_profile(
+            CapabilityProfile.MAINTAINER,
+            "kagan_admin",
+            runtime_config=MCPRuntimeConfig(
+                capability_profile="invalid-profile",
+                identity="kagan_admin",
+            ),
+        )
+        assert effective == "viewer"

@@ -8,10 +8,8 @@ import socket
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from kagan.core.paths import (
-    get_core_runtime_dir,
-)
 from kagan.core.process_liveness import pid_exists
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,6 +26,7 @@ class CoreEndpoint:
     port: int | None = None
     pid: int | None = None
     token: str | None = None
+    context_id: str | None = None
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -85,13 +84,14 @@ def _is_socket_endpoint_reachable(address: str) -> bool:
         return False
 
 
-def discover_core_endpoint(*, runtime_dir: Path | None = None) -> CoreEndpoint | None:
+def discover_core_endpoint(
+    *,
+    runtime_dir: Path | None = None,
+    runtime_context: CoreRuntimeContext | None = None,
+) -> CoreEndpoint | None:
     """Discover a running Kagan core by reading runtime files."""
-    resolved_runtime_dir = (
-        runtime_dir.expanduser().resolve(strict=False)
-        if runtime_dir is not None
-        else get_core_runtime_dir()
-    )
+    resolved_context = runtime_context or resolve_runtime_context(runtime_dir=runtime_dir)
+    resolved_runtime_dir = resolved_context.runtime_dir
     endpoint_path = resolved_runtime_dir / "endpoint.json"
     data = _read_json(endpoint_path)
     if data is None:
@@ -109,6 +109,16 @@ def discover_core_endpoint(*, runtime_dir: Path | None = None) -> CoreEndpoint |
             "Unsupported transport '%s' in endpoint file at %s",
             transport,
             endpoint_path,
+        )
+        return None
+    raw_context_id = data.get("context_id")
+    endpoint_context_id = str(raw_context_id).strip() if isinstance(raw_context_id, str) else None
+    if endpoint_context_id and endpoint_context_id != resolved_context.context_id:
+        logger.info(
+            "Endpoint context mismatch at %s: expected %s, found %s",
+            endpoint_path,
+            resolved_context.context_id,
+            endpoint_context_id,
         )
         return None
 
@@ -144,6 +154,7 @@ def discover_core_endpoint(*, runtime_dir: Path | None = None) -> CoreEndpoint |
         port=data.get("port"),
         pid=pid,
         token=token,
+        context_id=endpoint_context_id,
     )
 
 

@@ -24,7 +24,6 @@ from kagan.core.domain.enums import (
     MergeStatus,
     MergeType,
     PairTerminalBackend,
-    ProposalStatus,
     ScratchType,
     SessionStatus,
     SessionType,
@@ -458,18 +457,3 @@ class WorkspaceRepo(SQLModel, table=True):
 
     workspace: "Workspace" = Relationship(back_populates="workspace_repos")
     repo: "Repo" = Relationship(back_populates="workspace_repos")
-
-
-class PlannerProposal(SQLModel, table=True):
-    """Persisted planner proposal draft."""
-
-    __tablename__ = "planner_proposals"  # type: ignore[bad-override]
-
-    id: str = Field(default_factory=_new_id, primary_key=True)
-    project_id: str = Field(foreign_key="projects.id", index=True)
-    repo_id: str | None = Field(default=None, index=True)
-    tasks_json: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
-    todos_json: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
-    status: ProposalStatus = Field(default=ProposalStatus.DRAFT, index=True)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)

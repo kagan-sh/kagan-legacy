@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from kagan.core.policy import command
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT
 
 from ._parsing import str_list
 from ._serialization import build_audit_list_response, project_to_dict
@@ -126,7 +127,7 @@ async def find_project_by_repo_path(ctx: AppContext, params: dict[str, Any]) -> 
 @command("audit", "list", description="List recent audit events.")
 async def list_audit_events(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     capability = params.get("capability")
-    limit = params.get("limit", 50)
+    limit = params.get("limit", DEFAULT_EVENTS_LIMIT)
     cursor = params.get("cursor")
     events = await ctx.audit_repository.list_events(
         capability=capability,

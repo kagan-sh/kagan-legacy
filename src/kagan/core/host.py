@@ -28,14 +28,7 @@ from kagan.core.instance_lease import (
 )
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.server import IPCServer
-from kagan.core.paths import (
-    get_config_path,
-    get_core_endpoint_path,
-    get_core_instance_lock_path,
-    get_core_runtime_dir,
-    get_core_token_path,
-    get_database_path,
-)
+from kagan.core.ipc.transports import UnixSocketTransport
 from kagan.core.policy import (
     AuthorizationError,
     CapabilityProfile,
@@ -49,6 +42,7 @@ from kagan.core.policy import (
 from kagan.core.policy import (
     get_binding as get_session_binding,
 )
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 from kagan.core.services.runtime import (
     IDEMPOTENCY_CACHE_LIMIT,
     IDEMPOTENT_MUTATION_METHODS,
@@ -67,10 +61,6 @@ if TYPE_CHECKING:
     from kagan.core.wire.transport import Wire
 
 logger = logging.getLogger(__name__)
-
-
-def _core_lease_path() -> Path:
-    return get_core_runtime_dir() / "core.lease.json"
 
 
 class CoreHostStatus(enum.Enum):
@@ -104,10 +94,16 @@ class CoreHost:
         config: KaganConfig | None = None,
         config_path: Path | None = None,
         db_path: Path | None = None,
+        runtime_context: CoreRuntimeContext | None = None,
     ) -> None:
+        resolved_context = runtime_context or resolve_runtime_context(
+            config_path=config_path,
+            db_path=db_path,
+        )
         self._config = config
-        self._config_path = config_path or get_config_path()
-        self._db_path = db_path or get_database_path()
+        self._runtime_context = resolved_context
+        self._config_path = resolved_context.config_path
+        self._db_path = resolved_context.db_path
 
         self._status = CoreHostStatus.STOPPED
         self._ctx: AppContext | None = None
@@ -122,9 +118,10 @@ class CoreHost:
         self._idempotency_lock = asyncio.Lock()
         self._runtime_version = get_kagan_version()
         self._runtime_build_hash = get_kagan_runtime_hash()
+        runtime_dir = self._runtime_context.runtime_dir
         self._instance_lock = CoreInstanceLock(
-            get_core_instance_lock_path(),
-            lease_path=_core_lease_path(),
+            runtime_dir / "core.instance.lock",
+            lease_path=runtime_dir / "core.lease.json",
         )
 
     @property
@@ -207,8 +204,14 @@ class CoreHost:
             await self._ctx.event_bus.publish(CoreHostStarting())
 
             transport_pref = self._config.general.core_transport_preference
+            runtime_transport = None
+            if os.name != "nt" and transport_pref in {"auto", "socket"}:
+                runtime_transport = UnixSocketTransport(
+                    path=str(self._runtime_context.runtime_dir / "core.sock")
+                )
             self._ipc_server = IPCServer(
                 handler=self.handle_request,
+                transport=runtime_transport,
                 transport_preference=transport_pref,
                 on_client_connect=self._on_client_connected,
                 on_client_disconnect=self._on_client_disconnected,
@@ -781,33 +784,33 @@ class CoreHost:
 
     def _write_runtime_files(self, handle: ServerHandle) -> None:
         """Write endpoint and token files for client discovery."""
-        runtime_dir = get_core_runtime_dir()
+        runtime_dir = self._runtime_context.runtime_dir
         runtime_dir.mkdir(parents=True, exist_ok=True)
 
         assert self._ipc_server is not None
-        get_core_token_path().write_text(self._ipc_server.token, encoding="utf-8")
+        (runtime_dir / "token").write_text(self._ipc_server.token, encoding="utf-8")
 
         endpoint_data: dict[str, str | int] = {
             "transport": handle.transport_type,
             "address": handle.address,
+            "context_id": self._runtime_context.context_id,
         }
         if handle.port is not None:
             endpoint_data["port"] = handle.port
-        get_core_endpoint_path().write_text(
+        (runtime_dir / "endpoint.json").write_text(
             json.dumps(endpoint_data, indent=2),
             encoding="utf-8",
         )
 
-    @staticmethod
-    def _cleanup_runtime_files() -> None:
+    def _cleanup_runtime_files(self) -> None:
         """Remove runtime files on shutdown."""
-        for path_fn in (
-            get_core_endpoint_path,
-            get_core_token_path,
-            _core_lease_path,
+        for path in (
+            self._runtime_context.runtime_dir / "endpoint.json",
+            self._runtime_context.runtime_dir / "token",
+            self._runtime_context.runtime_dir / "core.lease.json",
         ):
             with contextlib.suppress(OSError):
-                path_fn().unlink(missing_ok=True)
+                path.unlink(missing_ok=True)
 
     def _set_status(self, new_status: CoreHostStatus) -> None:
         old = self._status

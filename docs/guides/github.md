@@ -21,6 +21,13 @@ Bundled by default (`official.github`). Repos start disconnected — run connect
 
 Single-repo: `project_id` auto-resolves. Multi-repo: add `repo_id`.
 
+## Review PR automation
+
+- When a connected task moves to `REVIEW`, Kagan auto-creates a draft PR for the task workspace branch.
+- This now applies even when no GitHub issue is linked, as long as the task workspace matches a connected repo.
+- PR creation auto-pushes the task branch (`origin/<task-branch>`) before calling `gh pr create`.
+- For tasks already linked to a PR, subsequent AUTO completions push new commits to the remote branch automatically.
+
 ## Issue ↔ Task mapping
 
 | GitHub   | Kagan   |
@@ -92,7 +99,7 @@ Post-sync: check `stats.errors == 0`, compare `stats.total` with GitHub issue co
 
 **Mapping drift:** Re-run `kagan_github_sync_issues`. Sync reconciles by issue number.
 
-**Connection reset:** `kagan_github_connect_repo` is idempotent — returns `ALREADY_CONNECTED` if valid, refreshes if metadata changed. If metadata lacks canonical `repo` (legacy `name`-only), reconnect.
+**Connection reset:** `kagan_github_connect_repo` is idempotent — returns `ALREADY_CONNECTED` if valid, refreshes if metadata changed.
 
 ### Rate limits
 

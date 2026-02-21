@@ -14,6 +14,7 @@ from kagan.tui.ui.modals.new_project import NewProjectModal
 from kagan.tui.ui.modals.plugin_form import PluginFormModal
 from kagan.tui.ui.modals.rejection_input import RejectionInputModal
 from kagan.tui.ui.modals.review_flow import ReviewModal
+from kagan.tui.ui.modals.session_picker import SessionPickerModal
 from kagan.tui.ui.modals.settings import SettingsModal
 from kagan.tui.ui.modals.start_workspace import StartWorkspaceModal
 from kagan.tui.ui.modals.task_details_modal import ModalAction, TaskDetailsModal
@@ -36,6 +37,7 @@ __all__ = [
     "PluginFormModal",
     "RejectionInputModal",
     "ReviewModal",
+    "SessionPickerModal",
     "SettingsModal",
     "StartWorkspaceModal",
     "TaskDetailsModal",

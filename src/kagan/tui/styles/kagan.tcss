@@ -44,7 +44,6 @@ $opacity-focus: 20%;
 .btn-icon { min-width: 3; padding: 0 1; }
 .btn-compact { min-width: auto; padding: 0 1; }
 .btn-wide { min-width: 20; }
-Button:disabled { text-opacity: 40%; background: $surface; }
 
 /* =============================================================================
    CSS VARIABLES
@@ -52,15 +51,17 @@ Button:disabled { text-opacity: 40%; background: $surface; }
 
 /* Priority colors - semantic aliases for consistency */
 $priority-high: $error;
-$priority-high-text: $text;
+$priority-high-text: $background;
 $priority-medium: $warning;
 $priority-medium-text: $background;
 $priority-low: $border;
 $priority-low-text: $text-muted;
+/* Kanban board background token (must be available across all themes). */
+$kanban-background: $background;
 
 /* Status badge text colors - use dark text for visibility on colored backgrounds */
 $success-text: $background;
-$error-text: $text;
+$error-text: $background;
 $warning-text: $background;
 
 /* Common spacing */
@@ -81,6 +82,65 @@ Screen {
     background: $background;
 }
 
+/* Compact checkbox baseline across the TUI (text-first, terminal-native). */
+Checkbox.-textual-compact {
+    border: none !important;
+    padding: 0;
+    min-height: 1;
+    background: transparent;
+}
+
+Checkbox.-textual-compact > .toggle--button {
+    color: $text-muted;
+    background: $surface;
+}
+
+Checkbox.-textual-compact.-on > .toggle--button {
+    color: $success;
+    background: $surface;
+}
+
+Checkbox.-textual-compact > .toggle--label {
+    color: $text;
+}
+
+Checkbox.-textual-compact:focus {
+    border: none !important;
+    background: $primary 12%;
+}
+
+Checkbox.-textual-compact:focus > .toggle--label {
+    color: $text;
+    background: transparent;
+    text-style: bold;
+}
+
+/* Compact select baseline across the TUI (one-line current value, terminal-like). */
+Select.-textual-compact {
+    min-height: 1;
+    border: none !important;
+    background: transparent;
+}
+
+Select.-textual-compact > SelectCurrent {
+    border: none !important;
+    background: transparent;
+    padding: 0 1 0 0;
+}
+
+Select.-textual-compact > SelectCurrent .arrow {
+    color: $text-muted;
+}
+
+Select.-textual-compact:focus > SelectCurrent {
+    border: none !important;
+    background: $primary 12%;
+}
+
+Select.-textual-compact:focus > SelectCurrent > Static#label {
+    text-style: bold;
+}
+
 /* =============================================================================
    HEADER & FOOTER
    ============================================================================= */
@@ -90,39 +150,43 @@ KaganHeader {
     dock: top;
     width: 100%;
     height: 3;
-    background: $panel;
-    color: $text;
+    background: $background;
+    color: $text-muted;
     layout: horizontal;
-    padding: 0 1;
+    padding: 1 1 0 1;
     align: left middle;
-    border-bottom: solid $border;
+    border-bottom: solid $panel;
 }
 
 KaganHeader .header-logo {
     width: auto;
-    color: $secondary;
+    color: $text-muted;
     text-style: bold;
+    text-opacity: 100%;
     padding-right: 1;
 }
 
 KaganHeader .header-logo.logo-connected {
-    color: $secondary;
+    color: $text-muted;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-logo.logo-disconnected {
-    color: $text-muted;
-    text-opacity: 60%;
+    color: $text-disabled;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-title {
     width: auto;
-    color: $primary;
+    color: $text;
     text-style: bold;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-repo {
     width: auto;
-    color: $text-muted;
+    color: $text-disabled;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-version {
@@ -137,37 +201,40 @@ KaganHeader .header-spacer {
 
 KaganHeader .header-branch {
     width: auto;
-    color: $text-muted;
+    color: $text-disabled;
+    text-opacity: 100%;
     padding-right: 2;
 }
 
 KaganHeader .header-sessions {
     width: auto;
+    color: $text-disabled;
+    text-opacity: 100%;
     padding-right: 2;
-}
-
-KaganHeader .header-sessions {
-    color: $text-muted;
 }
 
 KaganHeader .header-github-status {
     width: auto;
     padding-right: 2;
-    color: $text-muted;
+    color: $text-disabled;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-github-status.github-synced {
     color: $success;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-github-status.github-pending {
     color: $warning;
+    text-opacity: 100%;
 }
 
 KaganHeader .header-agent {
     width: auto;
-    color: $secondary;
+    color: $text-disabled;
     text-style: bold;
+    text-opacity: 100%;
     padding-right: 2;
 }
 
@@ -178,14 +245,15 @@ KaganHeader .core-status {
 
 KaganHeader .header-stats {
     width: auto;
-    color: $text;
+    color: $text-disabled;
+    text-opacity: 100%;
 }
 
 /* Dim separator characters between header sections */
 KaganHeader .header-separator {
     width: auto;
     color: $text-disabled;
-    text-opacity: 50%;
+    text-opacity: 100%;
     padding: 0 1;
 }
 
@@ -197,12 +265,13 @@ Footer {
 
 FooterKey > .footer-key--key {
     background: transparent;
-    color: $text-muted;
+    color: $primary;
     text-style: bold;
 }
 
 FooterKey > .footer-key--description {
-    color: $text-disabled;
+    color: $text-muted;
+    text-opacity: 100%;
 }
 
 /* Modal Footer - dock to bottom of screen */
@@ -224,7 +293,7 @@ RejectionInputModal .hint-label {
     width: 100%;
     text-align: center;
     color: $text-disabled;
-    text-opacity: 85%;
+    text-opacity: 100%;
 }
 
 /* Bottom-docked action hint strip for keyboard-only modal actions. */
@@ -251,7 +320,7 @@ RejectionInputModal .hint-label {
 .modal-action-hint-row .modal-action-hint-end {
     width: 1fr;
     color: $text-disabled;
-    text-opacity: 85%;
+    text-opacity: 100%;
 }
 
 .modal-action-hint-row .modal-action-hint-start {
@@ -283,12 +352,13 @@ RejectionInputModal .hint-label {
     width: 100%;
     height: 1fr;
     padding: 0;
-    background: $background;
+    background: $kanban-background;
 }
 
 .board {
     width: 100%;
     height: 100%;
+    background: $kanban-background;
 }
 
 /* Column styles - flush layout with border separators */
@@ -450,10 +520,19 @@ TaskCard .card-branch {
 
 /* GitHub context badges (issue #, PR #) */
 TaskCard .card-badge-gh {
-    width: auto;
-    height: 1;
+    background: $panel;
+    color: $text;
+}
+
+TaskCard .card-badge-gh-issue {
+    background: $surface;
     color: $text-muted;
-    margin-left: 1;
+}
+
+TaskCard .card-badge-gh-pr {
+    background: $success;
+    color: $success-text;
+    text-style: bold;
 }
 
 /* Spacer pushes priority badge right */
@@ -874,6 +953,10 @@ TaskDetailsModal .form-label {
     text-style: bold;
 }
 
+TaskDetailsModal .form-field:focus-within .form-label {
+    color: $secondary;
+}
+
 TaskDetailsModal Input {
     width: 100%;
     background: $background;
@@ -883,6 +966,7 @@ TaskDetailsModal Input {
 
 TaskDetailsModal Input:focus {
     border: solid $primary;
+    background: $surface;
 }
 
 TaskDetailsModal TextArea {
@@ -896,10 +980,16 @@ TaskDetailsModal TextArea {
 
 TaskDetailsModal TextArea:focus {
     border: solid $primary;
+    background: $surface;
 }
 
 TaskDetailsModal Select {
     width: 100%;
+}
+
+TaskDetailsModal Select:focus > SelectCurrent {
+    border: none !important;
+    background: $primary 12%;
 }
 
 /* Horizontal field row for Priority/Agent in edit mode */
@@ -1260,202 +1350,6 @@ DiffModal {
     scrollbar-gutter: stable;
 }
 
-/* PlannerScreen styles */
-PlannerScreen {
-    layout: vertical;
-    background: $background;
-}
-
-#planner-container {
-    width: 100%;
-    height: 1fr;
-    padding: 1;
-    layout: vertical;
-}
-
-#planner-header {
-    width: 100%;
-    height: auto;
-    max-height: 3;
-    color: $text-muted;
-    padding-bottom: 2;
-    text-style: bold;
-}
-
-#planner-output {
-    width: 100%;
-    height: 1fr;
-    display: none;
-}
-
-#planner-output.visible {
-    display: block;
-}
-
-#planner-output > ScrollableContainer {
-    height: 1fr;
-    padding: 0 1;
-    scrollbar-gutter: stable;
-}
-
-/* Bottom container for StatusBar + Input */
-#planner-bottom {
-    dock: bottom;
-    height: auto;
-    width: 100%;
-}
-
-#planner-input {
-    width: 100%;
-    padding: 0 1;
-    background: transparent;
-    border: solid $border;
-    height: auto;
-    min-height: 1;
-    max-height: 6;
-}
-
-#planner-input:focus {
-    border: solid $primary;
-}
-
-#planner-input.-disabled {
-    text-opacity: 40%;
-    border: solid $border;
-}
-
-/* Refinement mode visual feedback */
-#planner-input.-refining {
-    border: solid $secondary;
-    text-opacity: 60%;
-}
-
-#planner-input.-refining:focus {
-    border: solid $secondary;
-}
-
-/* Planner empty state */
-.planner-empty-state {
-    width: 100%;
-    height: 1fr;
-    align: center middle;
-    content-align: center middle;
-    padding: 1;
-}
-
-.planner-empty-content {
-    width: auto;
-    min-width: 70;
-    max-width: 90;
-    height: auto;
-    align: center middle;
-    content-align: center middle;
-}
-
-.planner-empty-card {
-    width: 100%;
-    height: auto;
-    border: none;
-    background: transparent;
-    padding: 1 2;
-    align: center middle;
-}
-
-#planner-empty-logo {
-    width: auto;
-    content-align: center middle;
-    text-align: center;
-    color: $primary;
-    padding-bottom: 1;
-}
-
-#planner-empty-heading {
-    width: 100%;
-    text-style: bold underline;
-    color: $primary;
-    text-align: center;
-    content-align: center middle;
-    padding-bottom: 1;
-}
-
-#planner-empty-description {
-    width: 100%;
-    text-align: center;
-    color: $text-muted;
-    padding-bottom: 1;
-}
-
-#planner-empty-examples {
-    width: 100%;
-    align: center middle;
-}
-
-.planner-empty-section-title {
-    color: $text-muted;
-    text-style: bold;
-    text-align: center;
-    width: 100%;
-    padding-top: 1;
-}
-
-.planner-empty-example {
-    color: $text;
-    text-align: center;
-    width: 100%;
-}
-
-
-/* EmptyState widget */
-.empty-state {
-    width: 100%;
-    height: auto;
-    align: center middle;
-    content-align: center middle;
-    padding: 2;
-}
-
-.empty-state-card {
-    width: auto;
-    min-width: 70;
-    max-width: 90;
-    height: auto;
-    border: none;
-    background: transparent;
-    padding: 1 2;
-    align: center middle;
-}
-
-#empty-state-logo {
-    width: auto;
-    content-align: center middle;
-    text-align: center;
-    color: $primary;
-    padding-bottom: 1;
-}
-
-.empty-card-title {
-    width: 100%;
-    text-style: bold underline;
-    color: $primary;
-    text-align: center;
-    content-align: center middle;
-    padding-bottom: 1;
-}
-
-.empty-card-section {
-    color: $text-muted;
-    text-style: bold;
-    padding-top: 1;
-    text-align: center;
-    width: 100%;
-}
-
-.card-item-compact {
-    color: $text;
-    text-align: center;
-    width: 100%;
-}
-
 /* StatusBar widget */
 StatusBar {
     height: 1;
@@ -1463,12 +1357,6 @@ StatusBar {
     layout: horizontal;
     padding: 0 1;
     border-top: solid $border;
-}
-
-/* StatusBar in planner - positioned above input via planner-bottom container */
-#planner-bottom StatusBar {
-    /* Match the input's width: account for input's border (1 cell each side) */
-    margin: 0 1;
 }
 
 .status-left {
@@ -1480,6 +1368,15 @@ StatusBar {
     width: 1fr;
     text-align: right;
     color: $text-muted;
+}
+
+.keybinding-hint {
+    dock: bottom;
+    width: 100%;
+    padding: 0 1;
+    color: $text-muted;
+    background: $surface;
+    border-top: solid $border;
 }
 
 /* =============================================================================
@@ -1537,16 +1434,15 @@ WelcomeScreen {
 
 .toggle-row {
     width: 100%;
-    min-height: 3;
+    min-height: 1;
     height: auto;
-    padding: 0 1;
+    padding: 0;
     margin-bottom: 1;
     align: left middle;
 }
 
-.toggle-text {
-    padding-left: 1;
-    color: $text-muted;
+.toggle-row .toggle-checkbox {
+    width: auto;
 }
 
 #git-init-hint {
@@ -1591,8 +1487,32 @@ WelcomeScreen Footer {
 }
 
 #project-list > ListItem {
+    background: $surface;
+    border-left: solid $surface;
     padding: 0;
     height: auto;
+}
+
+#project-list > ListItem.-hovered,
+#project-list > ListItem.-highlight {
+    background: $panel;
+    border-left: solid $primary;
+}
+
+#project-list:focus > ListItem.-highlight {
+    background: $primary 18%;
+    border-left: thick $primary;
+}
+
+#project-list > ListItem.-highlight .project-name,
+#project-list > ListItem.-highlight .project-time {
+    color: $text;
+}
+
+#project-list > ListItem.-highlight .project-repos,
+#project-list > ListItem.-highlight .project-tasks {
+    color: $text-muted;
+    text-opacity: 100%;
 }
 
 #empty-state {
@@ -2070,7 +1990,7 @@ ReviewModal #review-keyboard-hint {
     width: 100%;
     text-align: center;
     color: $text-disabled;
-    text-opacity: 85%;
+    text-opacity: 100%;
 }
 
 ReviewModal .button-row .button-group {
@@ -2130,7 +2050,7 @@ ReviewModal .button-row .button-group-end Button {
     background: transparent;
     border: none;
     color: $text-disabled;
-    text-opacity: 85%;
+    text-opacity: 100%;
 }
 
 .pr-comment-resolve-btn:focus {
@@ -2308,104 +2228,101 @@ GlobalAgentPickerModal {
 }
 
 /* =============================================================================
+   SESSION PICKER MODAL
+   ============================================================================= */
+
+SessionPickerModal {
+    align: center middle;
+}
+
+#session-picker-container {
+    width: 72;
+    height: auto;
+    max-height: 80%;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#session-picker-container .modal-title {
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+    color: $primary;
+    padding-bottom: 1;
+}
+
+#session-picker-filter {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+#session-picker-match-count {
+    width: 100%;
+    color: $text-muted;
+    padding: 0 0 1 0;
+}
+
+#session-picker-grid {
+    width: 100%;
+    height: auto;
+}
+
+#session-picker-grid .session-picker-column {
+    width: 1fr;
+    height: auto;
+    margin-right: 1;
+}
+
+#session-picker-grid .session-picker-column:last-child {
+    margin-right: 0;
+}
+
+#session-picker-grid .session-picker-column-title {
+    width: 100%;
+    color: $text-muted;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#session-picker-groups,
+#session-picker-options {
+    width: 1fr;
+    height: auto;
+    max-height: 14;
+    background: $background;
+    border: solid $border;
+}
+
+#session-picker-groups > .option-list--option,
+#session-picker-options > .option-list--option {
+    padding: 0 1;
+}
+
+#session-picker-groups > .option-list--option-highlighted,
+#session-picker-options > .option-list--option-highlighted {
+    background: $primary 30%;
+    color: $text;
+}
+
+#session-picker-groups:focus > .option-list--option-highlighted,
+#session-picker-options:focus > .option-list--option-highlighted {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+#session-picker-footer-hint {
+    width: 100%;
+    color: $text-muted;
+}
+
+/* =============================================================================
    SETTINGS MODAL
    ============================================================================= */
 
 SettingsModal {
     align: center middle;
-}
-
-#settings-container {
-    width: 70;
-    height: auto;
-    max-height: 90%;
-    background: $surface;
-    border: round $primary;
-    padding: 1 2;
-    overflow-y: auto;
-}
-
-SettingsModal .modal-title {
-    text-align: center;
-    text-style: bold;
-    width: 100%;
-    color: $primary;
-}
-
-SettingsModal Rule {
-    margin: 0;
-    color: $border;
-}
-
-SettingsModal .section-title {
-    text-style: bold;
-    color: $text-muted;
-    margin-top: 1;
-}
-
-SettingsModal .setting-row {
-    width: 100%;
-    height: auto;
-    padding: 0 1;
-}
-
-SettingsModal .setting-label {
-    padding-left: 1;
-    color: $text;
-}
-
-SettingsModal .input-group {
-    width: 100%;
-    height: auto;
-    padding: 0 1;
-}
-
-SettingsModal .input-label {
-    color: $text-muted;
-}
-
-SettingsModal Input {
-    width: 100%;
-    background: $background;
-    color: $text;
-    border: solid $border;
-}
-
-SettingsModal Input:focus {
-    border: solid $primary;
-}
-
-SettingsModal Select {
-    width: 100%;
-}
-
-SettingsModal .button-row {
-    width: 100%;
-    height: auto;
-    align: center middle;
-    margin-top: 1;
-}
-
-SettingsModal .button-row Button {
-    margin: 0 1;
-}
-
-SettingsModal PersonaField {
-    width: 100%;
-    height: 3;
-    background: $background;
-    color: $text-muted;
-    border: solid $border;
-    padding: 0 1;
-}
-
-SettingsModal PersonaField:focus {
-    border: solid $primary;
-    color: $text;
-}
-
-SettingsModal PersonaField:hover {
-    background: $panel;
 }
 
 /* TaskEditorScreen styles */
@@ -2512,8 +2429,10 @@ ChatPanel .chat-output {
 
 ChatPanel .chat-input {
     height: auto;
-    padding-top: 1;
+    padding: 1;
     border-top: solid $border;
+    background: $panel;
+    background-tint: 4%;
 }
 
 ChatPanel .chat-input-area {
@@ -2521,11 +2440,16 @@ ChatPanel .chat-input-area {
     min-height: 3;
     max-height: 8;
     border: round $border;
-    background: $background;
+    background: $surface;
+    background-tint: 4%;
+    color: $text;
+    padding: 0 1;
 }
 
 ChatPanel .chat-input-area:focus {
     border: round $primary;
+    background: $surface;
+    background-tint: 12%;
 }
 
 /* Queued messages container */
@@ -2535,7 +2459,8 @@ ChatPanel .queued-messages-container {
     max-height: 8;
     margin-bottom: 1;
     border: round $border;
-    background: $surface;
+    background: $panel;
+    background-tint: 6%;
     padding: 0 1;
 }
 
@@ -2577,21 +2502,30 @@ ChatPanel .queued-message-remove:hover {
     color: $background;
 }
 
+ChatPanel .queued-message-remove:focus {
+    background: $error;
+    color: $background;
+    text-style: bold;
+}
+
 /* StreamingOutput container (VerticalScroll) */
 StreamingOutput {
     width: 100%;
     height: 1fr;
     min-height: 5;
-    padding: 1;
+    padding: 1 2;
     scrollbar-gutter: stable;
 }
 
-/* UserInput widget */
+/* UserInput widget — left-accent strip, no full box */
 .user-input {
     width: 100%;
     height: auto;
     margin-bottom: 1;
-    padding: 0 1;
+    padding: 0 1 0 2;
+    border-left: thick $primary;
+    background: $panel;
+    color: $text;
 }
 
 .user-input-prompt {
@@ -2605,36 +2539,36 @@ StreamingOutput {
 .user-input-content {
     width: 1fr;
     height: auto;
-    color: $primary;
+    color: $text;
 }
 
 .user-input-content > * {
     margin: 0;
 }
 
-/* AgentResponse widget */
+/* AgentResponse widget — borderless, content is the UI */
 .agent-response {
     width: 100%;
     height: auto;
     min-height: 1;
     margin-bottom: 1;
-    padding: 0 1;
-    background: transparent;
+    padding: 0 1 0 2;
+    border-left: thick $border;
 }
 
 .agent-response > * {
     margin: 0;
 }
 
-/* AgentThought widget */
+/* AgentThought widget — muted left-accent strip */
 .agent-thought {
     width: 100%;
     height: auto;
     min-height: 1;
     margin-bottom: 1;
-    padding: 0 1;
+    padding: 0 1 0 2;
     color: $text-muted;
-    background: transparent;
+    border-left: thick $border;
 }
 
 .agent-thought > * {
@@ -2645,7 +2579,13 @@ StreamingOutput {
 .agent-response:hover,
 .agent-thought:hover,
 .user-input:hover {
-    tint: $primary 10%;
+    tint: $primary 8%;
+}
+
+.user-input:focus {
+    tint: $primary 12%;
+    border-left: thick $primary;
+    background: $panel;
 }
 
 ToolCall:hover {
@@ -2656,11 +2596,21 @@ ToolCall:hover {
     tint: $primary 10%;
 }
 
+.plan-entry:focus {
+    tint: $primary 15%;
+    background: $surface;
+}
+
 /* ToolCall widget (expandable tool call display) */
 .tool-call {
     width: 100%;
     height: auto;
     margin-bottom: 1;
+}
+
+.tool-call:focus {
+    tint: $primary 15%;
+    background: $surface;
 }
 
 #tool-content {
@@ -2679,6 +2629,11 @@ ToolCallHeader {
 
 ToolCallHeader:hover {
     background: $surface;
+}
+
+ToolCall:focus ToolCallHeader {
+    background: $panel;
+    text-style: bold;
 }
 
 TextContent {
@@ -2708,6 +2663,51 @@ MarkdownContent {
     color: $text;
 }
 
+/* Stream status — inline in scroll flow, not docked */
+#stream-current-action {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+    padding: 0 1;
+    color: $text-disabled;
+}
+
+#stream-current-action.confidence-certain {
+    color: $text-muted;
+}
+
+#stream-current-action.confidence-assumption {
+    color: $warning;
+}
+
+#stream-current-action.confidence-needs-validation {
+    color: $error;
+}
+
+#stream-live-jump-row {
+    dock: bottom;
+    width: 100%;
+    height: auto;
+    align: center middle;
+    padding: 0 1 1 1;
+    background: transparent;
+    display: none;
+}
+
+#stream-jump-live-btn {
+    width: auto;
+    border: round $primary;
+    background: $primary 15%;
+    color: $text;
+    text-style: bold;
+}
+
+#stream-jump-live-btn:hover,
+#stream-jump-live-btn:focus {
+    background: $primary;
+    color: $background;
+}
+
 /* Streaming notes with status classes */
 .streaming-note {
     width: 100%;
@@ -2726,6 +2726,10 @@ MarkdownContent {
 
 .streaming-note.warning {
     color: $warning;
+}
+
+.streaming-note.session-snapshot {
+    color: $text-muted;
 }
 
 .streaming-note.info {
@@ -2790,6 +2794,11 @@ MarkdownContent {
     border: round $warning;
     padding: 1 2;
     margin: 1 0;
+}
+
+.permission-prompt:focus {
+    background: $panel;
+    border: round $primary;
 }
 
 .permission-prompt .permission-header {
@@ -2893,15 +2902,17 @@ HelpModal .modal-title {
 }
 
 .help-key {
-    width: 16;
-    min-width: 16;
+    width: 19;
+    min-width: 19;
     color: $primary;
     text-style: bold;
+    padding-right: 1;
 }
 
 .help-desc {
     width: 1fr;
     color: $text;
+    padding-left: 1;
 }
 
 /* =============================================================================
@@ -2913,7 +2924,7 @@ HelpModal .modal-title {
     layer: overlay;
     dock: bottom;
     /* Keep popup above the input row while still overlaying footer chrome. */
-    offset-y: -3;
+    offset-y: -5;
     width: 100%;
     height: auto;
     background: $surface;
@@ -2928,21 +2939,6 @@ HelpModal .modal-title {
     max-height: 6;
     background: $surface;
     scrollbar-gutter: stable;
-}
-
-.slash-complete #slash-options > .option-list--option {
-    padding: 0 1;
-    color: $text;
-    text-wrap: nowrap;
-}
-
-.slash-complete #slash-options > .option-list--option-highlighted {
-    background: $primary;
-    color: $background;
-}
-
-.slash-complete #slash-options > .option-list--option-hover {
-    background: $panel;
 }
 
 /* =============================================================================
@@ -2974,18 +2970,29 @@ HelpModal .modal-title {
     scrollbar-gutter: stable;
 }
 
+.slash-complete #slash-options > .option-list--option,
 .task-mention-complete #mention-options > .option-list--option {
     padding: 0 1;
     color: $text;
+    text-wrap: nowrap;
 }
 
+.slash-complete #slash-options > .option-list--option-highlighted,
 .task-mention-complete #mention-options > .option-list--option-highlighted {
     background: $primary;
     color: $background;
+    text-style: bold;
 }
 
+.slash-complete #slash-options > .option-list--option-hover,
 .task-mention-complete #mention-options > .option-list--option-hover {
     background: $panel;
+}
+
+.slash-complete #slash-options > .option-list--option-disabled,
+.task-mention-complete #mention-options > .option-list--option-disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
 }
 
 /* =============================================================================
@@ -3000,6 +3007,11 @@ HelpModal .modal-title {
     margin: 1 0;
     width: 100%;
     height: auto;
+}
+
+.plan-approval:focus {
+    border: round $primary-lighten-1;
+    background: $surface;
 }
 
 .plan-approval .plan-header {
@@ -3077,6 +3089,11 @@ HelpModal .modal-title {
 
 .plan-approval #approval-buttons Button {
     margin: 0 1;
+}
+
+.plan-approval #approval-buttons Button:focus {
+    background: $primary;
+    color: $background;
 }
 
 .plan-approval .approval-hint {
@@ -3351,7 +3368,13 @@ StartWorkspaceModal #repo-list {
 }
 
 StartWorkspaceModal .repo-row {
-    height: 3;
+    height: auto;
+    min-height: 1;
+    align: left middle;
+}
+
+StartWorkspaceModal .repo-row Checkbox {
+    margin-right: 1;
 }
 
 StartWorkspaceModal .repo-path {
@@ -3391,9 +3414,30 @@ WorkspaceReposWidget {
     padding: 1;
 }
 
+WorkspaceReposWidget:focus {
+    background: $panel;
+}
+
+WorkspaceReposWidget .workspace-repos-hint {
+    color: $text-muted;
+    text-style: italic;
+    padding: 0 0 1 0;
+}
+
 WorkspaceReposWidget .repo-item {
     height: 3;
     padding: 0 1;
+    border-left: solid $surface;
+}
+
+WorkspaceRepoItem.selected .repo-item {
+    background: $primary 15%;
+    border-left: thick $primary;
+}
+
+WorkspaceRepoItem:focus-within .repo-item {
+    background: $panel;
+    border-left: solid $secondary;
 }
 
 WorkspaceReposWidget .repo-name {
@@ -3421,6 +3465,12 @@ WorkspaceReposWidget .btn-diff, WorkspaceReposWidget .btn-merge {
     margin-left: 1;
 }
 
+WorkspaceReposWidget .btn-diff:focus,
+WorkspaceReposWidget .btn-merge:focus {
+    background: $primary;
+    color: $background;
+}
+
 /* === Merge Dialog === */
 MergeDialog {
     align: center middle;
@@ -3436,8 +3486,14 @@ MergeDialog {
 }
 
 MergeDialog .merge-row {
-    height: 3;
+    height: auto;
+    min-height: 1;
+    align: left middle;
     padding: 0 1;
+}
+
+MergeDialog .merge-row Checkbox {
+    margin-right: 1;
 }
 
 MergeDialog .target-branch {
@@ -3560,7 +3616,7 @@ OnboardingScreen {
     height: auto;
 }
 
-#auto-review-row .form-label {
+#auto-review-row .onboarding-auto-review-checkbox {
     margin-top: 0;
     margin-bottom: 0;
 }
@@ -3576,6 +3632,13 @@ OnboardingScreen {
 #onboarding-actions Button {
     margin: 0 1;
     min-width: 24;
+}
+
+#onboarding-keyboard-hint {
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    margin-top: 1;
 }
 
 /* =============================================================================
@@ -3624,6 +3687,11 @@ OfflineBanner {
     padding: 1 2;
 }
 
+OfflineBanner:focus {
+    background: $warning 30%;
+    border-bottom: solid $primary;
+}
+
 #offline-title {
     text-style: bold;
     color: $warning;
@@ -3641,6 +3709,11 @@ OfflineBanner {
 
 #offline-actions Button {
     margin-right: 1;
+}
+
+#offline-actions Button:focus {
+    background: $primary;
+    color: $background;
 }
 
 /* =============================================================================
@@ -3906,8 +3979,8 @@ ChatOverlay {
     height: 24;
     max-height: 50%;
     background: $surface;
-    border-top: heavy $primary;
-    padding: 0 1 0 1;
+    border-top: solid $primary;
+    padding: 0;
     display: none;
     offset-y: 100%;
 }
@@ -3925,6 +3998,13 @@ ChatOverlay.visible.fullscreen {
     border: none;
     padding: 0;
     background: $background;
+    overflow: hidden;
+}
+
+ChatOverlay.visible.docked {
+    height: 50%;
+    max-height: 50%;
+    min-height: 3;
     overflow: hidden;
 }
 
@@ -3947,17 +4027,31 @@ ChatOverlay #chat-overlay-main {
     background: $background;
     layout: vertical;
     layers: default overlay;
-    padding: 0 1 0 1;
+    padding: 0;
 }
 
 ChatOverlay.visible.fullscreen #chat-overlay-main {
-    padding: 1;
+    padding: 0;
+}
+
+ChatOverlay.docked #chat-overlay-main {
+    height: 1fr;
+    min-height: 0;
 }
 
 ChatOverlay #chat-overlay-content {
     width: 100%;
     height: 1fr;
     layout: vertical;
+    min-height: 0;
+    padding: 1 1 0 1;
+}
+
+ChatOverlay.docked #chat-overlay-content {
+    display: block;
+    height: 1fr;
+    min-height: 0;
+    padding: 1 1 0 1;
 }
 
 ChatOverlay #chat-overlay-empty-state {
@@ -3965,13 +4059,13 @@ ChatOverlay #chat-overlay-empty-state {
     height: 1fr;
     align: center middle;
     content-align: center middle;
-    padding: 1;
+    padding: 2 1 1 1;
 }
 
 ChatOverlay .chat-overlay-empty-content {
     width: auto;
-    min-width: 56;
-    max-width: 90;
+    min-width: 46;
+    max-width: 82;
     height: auto;
     align: center middle;
     content-align: center middle;
@@ -3983,7 +4077,7 @@ ChatOverlay .chat-overlay-empty-card {
     background: transparent;
     border: none;
     align: center middle;
-    padding: 1 2;
+    padding: 2 2 1 2;
 }
 
 ChatOverlay #chat-overlay-empty-heading {
@@ -4001,6 +4095,7 @@ ChatOverlay #chat-overlay-empty-quote {
     text-style: italic;
     text-align: center;
     color: $primary;
+    text-opacity: 100%;
     padding-bottom: 1;
 }
 
@@ -4013,32 +4108,34 @@ ChatOverlay #chat-overlay-empty-description {
     width: 100%;
     text-align: center;
     color: $text-muted;
-    padding-bottom: 1;
+    padding-bottom: 2;
 }
 
 ChatOverlay #chat-overlay-empty-examples {
     display: none;
     width: 100%;
+    height: auto;
     align: center middle;
+    margin-top: 1;
 }
 
 ChatOverlay .chat-overlay-empty-section-title {
     width: 100%;
     text-style: bold;
     text-align: center;
-    color: $text-muted;
-    padding-top: 1;
+    color: $text-disabled;
+    padding-top: 0;
 }
 
 ChatOverlay .chat-overlay-empty-example {
     width: 100%;
     text-align: center;
-    color: $text;
+    color: $text-muted;
 }
 
 ChatOverlay.visible.fullscreen .chat-overlay-empty-content {
-    min-width: 70;
-    max-width: 90;
+    min-width: 52;
+    max-width: 82;
 }
 
 ChatOverlay.visible.fullscreen #chat-overlay-empty-description {
@@ -4052,42 +4149,216 @@ ChatOverlay.visible.fullscreen #chat-overlay-empty-examples {
 ChatOverlay #chat-overlay-output {
     width: 100%;
     height: 1fr;
-    min-height: 8;
+    min-height: 0;
     background: $background;
     display: none;
 }
 
 ChatOverlay #chat-overlay-output > ScrollableContainer {
     height: 1fr;
-    padding: 0 1;
+    padding: 1 2;
     scrollbar-gutter: stable;
 }
 
 ChatOverlay #chat-overlay-bottom {
     dock: bottom;
     height: auto;
+    min-height: 5;
     width: 100%;
-    padding: 0;
+    padding: 0 1;
     margin: 0;
+    background: $surface;
+    border-top: solid $border;
+}
+
+ChatOverlay #chat-overlay-bottom:focus-within {
+    border-top: solid $primary;
+}
+
+ChatOverlay.docked #chat-overlay-bottom {
+    min-height: 4;
+    max-height: 8;
+    padding: 0 1;
+}
+
+ChatOverlay #chat-overlay-command-line {
+    width: 100%;
+    height: auto;
+    min-height: 3;
+    max-height: 6;
+    align: left middle;
+    padding: 0 1;
+    margin: 0;
+    background: $background;
+    border: round $border;
+}
+
+ChatOverlay #chat-overlay-command-line:focus-within {
+    background: $surface;
+    border: round $primary;
+    tint: $primary 4%;
+}
+
+ChatOverlay #chat-overlay-session-switcher {
+    width: 100%;
+    height: 1;
+    min-height: 1;
+    align: left middle;
+    margin: 0;
+    padding: 0 2;
+}
+
+ChatOverlay #chat-overlay-session-current-wrap {
+    width: 1fr;
+    height: 1;
+    align: left middle;
+}
+
+ChatOverlay #chat-overlay-mode-badge {
+    width: auto;
+    margin-right: 1;
+    padding: 0 1;
+    border: none;
+    background: transparent;
+    color: $text-muted;
+}
+
+ChatOverlay #chat-overlay-mode-badge.mode-docked {
+    color: $warning;
+}
+
+ChatOverlay #chat-overlay-mode-badge.mode-fullscreen {
+    color: $primary;
+}
+
+ChatOverlay #chat-overlay-session-indicator {
+    display: none;
+}
+
+ChatOverlay #chat-overlay-session-indicator.session-kind-orchestrator {
+    color: $primary;
+}
+
+ChatOverlay #chat-overlay-session-indicator.session-kind-auto {
+    color: $success;
+}
+
+ChatOverlay #chat-overlay-session-indicator.session-kind-review {
+    color: $warning;
+}
+
+ChatOverlay #chat-overlay-session-indicator.session-kind-pair {
+    color: $text;
+}
+
+ChatOverlay #chat-overlay-session-current {
+    width: auto;
+    color: $text-muted;
+    text-opacity: 100%;
+}
+
+ChatOverlay.chat-overlay-multi-session #chat-overlay-session-current {
+    color: $text-muted;
+    text-opacity: 100%;
+}
+
+ChatOverlay #chat-overlay-session-toggle {
+    display: none;
+}
+
+ChatOverlay #chat-overlay-session-toggle-label {
+    display: none;
+}
+
+ChatOverlay #chat-overlay-session-select {
+    display: none;
+    width: auto;
+    min-width: 10;
+    max-width: 20;
+    margin-left: 1;
+    border: round $border;
+    background: $background;
+    color: $text;
+    text-opacity: 100%;
+}
+
+ChatOverlay #chat-overlay-session-select:focus {
+    border: round $primary;
+    background: $surface;
+}
+
+ChatOverlay #chat-overlay-input-prompt {
+    width: auto;
+    color: $text;
+    text-style: bold;
+    padding-right: 1;
 }
 
 ChatOverlay #chat-overlay-status {
-    margin: 0 1;
+    height: 1;
+    min-height: 1;
+    margin: 0;
+    border: none;
+    background: transparent;
+    padding: 0 1;
+}
+
+ChatOverlay.docked #chat-overlay-session-switcher {
+    display: none;
+}
+
+ChatOverlay.docked #chat-overlay-command-line {
+    margin: 0;
+    min-height: 3;
+    max-height: 6;
+}
+
+ChatOverlay.docked #chat-overlay-session-current,
+ChatOverlay.docked #chat-overlay-session-indicator,
+ChatOverlay.docked #chat-overlay-session-toggle,
+ChatOverlay.docked #chat-overlay-session-select {
+    display: none;
+}
+
+ChatOverlay #chat-overlay-status .status-left {
+    color: $text-muted;
+}
+
+ChatOverlay #chat-overlay-status .status-right {
+    color: $text-muted;
+    text-opacity: 100%;
 }
 
 ChatOverlay #chat-overlay-input {
-    width: 100%;
-    padding: 0 1;
+    width: 1fr;
+    padding: 0;
+    margin: 0;
     height: auto;
     min-height: 1;
     max-height: 6;
-    border: solid $border;
+    border: none;
     background: transparent;
     color: $text;
 }
 
 ChatOverlay #chat-overlay-input:focus {
-    border: solid $primary;
+    border: none;
+    background: transparent;
+    color: $text;
+}
+
+ChatOverlay #chat-overlay-input:disabled {
+    border: none;
+    background: transparent;
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+ChatOverlay #chat-overlay-bottom Button:focus,
+ChatOverlay #chat-overlay-bottom Select:focus > SelectCurrent {
+    border: round $primary;
+    background: $surface;
+    tint: $primary 8%;
 }
 
 ChatOverlay.has-content #chat-overlay-empty-state {
@@ -4141,4 +4412,1156 @@ PluginFormModal #dialog-actions {
 PluginFormModal #dialog-actions Button {
     margin: 0 1;
     min-width: 16;
+}
+
+/* =============================================================================
+   DON DRAPER EDITORIAL POLISH
+   =============================================================================
+   Intent:
+   - Strong hierarchy
+   - Cleaner contrast and rhythm
+   - Obvious, elegant keyboard affordances
+*/
+
+/* Core interaction language */
+Button {
+    border: round $border;
+    background: $panel;
+    color: $text;
+}
+
+Button:hover {
+    tint: $primary 12%;
+}
+
+Button:focus {
+    border: round $primary;
+    background: $surface;
+    tint: $primary 8%;
+    text-style: bold;
+}
+
+Button:disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
+    background: $surface;
+    border: round $border;
+}
+
+Input,
+TextArea {
+    background: $background;
+    color: $text;
+    border: solid $border;
+}
+
+Select > SelectCurrent {
+    background: $background;
+    color: $text;
+    border: solid $border;
+}
+
+Input:focus,
+TextArea:focus {
+    background: $surface;
+    border: solid $primary;
+    tint: $primary 6%;
+}
+
+Select:focus > SelectCurrent {
+    background: $surface;
+    border: solid $primary;
+    tint: $primary 6%;
+}
+
+Input:disabled,
+TextArea:disabled {
+    background: $surface;
+    color: $text-disabled;
+    text-opacity: 100%;
+    border: solid $border;
+}
+
+Select:disabled > SelectCurrent {
+    background: $surface;
+    color: $text-disabled;
+    text-opacity: 100%;
+    border: solid $border;
+}
+
+TextArea.-read-only {
+    background: $surface;
+    color: $text-muted;
+    border: solid $warning 35%;
+}
+
+TextArea.-read-only:focus {
+    border: solid $warning;
+    tint: $warning 6%;
+}
+
+Tabs:focus .underline--bar {
+    background: $primary;
+}
+
+Tab.-active {
+    background: $primary 20%;
+    color: $text;
+    text-style: bold;
+}
+
+Tabs:focus .-active {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+Tab:disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+OptionList {
+    background: $surface;
+    color: $text;
+}
+
+OptionList:focus {
+    background-tint: $primary 6%;
+}
+
+OptionList > .option-list--option-disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: $primary 24%;
+    color: $text;
+    text-style: bold;
+}
+
+OptionList:focus > .option-list--option-highlighted {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+OptionList > .option-list--option-hover {
+    background: $panel;
+}
+
+OptionList:disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+DataTable {
+    background: $surface;
+    color: $text;
+}
+
+DataTable:focus {
+    background-tint: $primary 6%;
+}
+
+DataTable > .datatable--header {
+    background: $panel;
+    color: $text;
+    text-style: bold;
+}
+
+DataTable > .datatable--fixed {
+    background: $panel;
+    color: $text-muted;
+}
+
+DataTable > .datatable--even-row {
+    background: $background 30%;
+}
+
+DataTable > .datatable--cursor,
+DataTable > .datatable--fixed-cursor {
+    background: $primary 24%;
+    color: $text;
+    text-style: bold;
+}
+
+DataTable:focus > .datatable--cursor,
+DataTable:focus > .datatable--fixed-cursor {
+    background: $primary;
+    color: $background;
+}
+
+DataTable > .datatable--header-cursor {
+    background: $primary 24%;
+    color: $text;
+    text-style: bold;
+}
+
+DataTable:focus > .datatable--header-cursor {
+    background: $primary;
+    color: $background;
+}
+
+DataTable > .datatable--header-hover,
+DataTable > .datatable--hover {
+    background: $panel;
+}
+
+DataTable:disabled {
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+/* StartupErrorScreen fallback path should remain usable even before app boots fully. */
+StartupErrorScreen {
+    align: center middle;
+}
+
+#startup-error-container {
+    width: 92;
+    max-width: 96%;
+    height: auto;
+    max-height: 85%;
+    background: $surface;
+    border: round $error;
+    padding: 1 2;
+}
+
+#startup-error-title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: $error;
+    padding-bottom: 1;
+}
+
+#startup-error-guidance {
+    width: 100%;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+#startup-error-details {
+    width: 100%;
+    height: auto;
+    background: $background;
+    border: round $border;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#startup-error-label {
+    width: 100%;
+    color: $text-muted;
+    text-style: bold;
+}
+
+#startup-error-message {
+    width: 100%;
+    color: $text;
+    background: $panel;
+    border: round $border;
+    padding: 0 1;
+}
+
+#startup-error-actions {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#startup-error-actions Button {
+    margin: 0 1;
+    min-width: 18;
+}
+
+#startup-error-retry:focus,
+#startup-error-restart:focus,
+#startup-error-quit:focus {
+    border: round $primary;
+    text-style: bold;
+    tint: $primary 8%;
+}
+
+/* Editorial chrome */
+KaganHeader {
+    background: $panel;
+    border-bottom: solid $border;
+}
+
+KaganHeader .header-title {
+    color: $text;
+    text-style: bold;
+    text-opacity: 100%;
+}
+
+KaganHeader .header-agent,
+KaganHeader .header-stats {
+    color: $text-muted;
+    text-opacity: 100%;
+}
+
+Footer {
+    background: $panel;
+    border-top: solid $border;
+}
+
+KeybindingHint,
+KanbanHintBar {
+    background: $panel;
+}
+
+KeybindingHint {
+    border-top: solid $border;
+    color: $text-muted;
+}
+
+KanbanHintBar {
+    border-top: solid $border;
+}
+
+KanbanHintBar .hint-nav-center,
+KanbanHintBar .hint-global {
+    color: $text-disabled;
+}
+
+/* Board composition and card scan-ability */
+KanbanColumn .column-header {
+    background: $panel;
+    border-bottom: solid $primary;
+}
+
+TaskCard {
+    border-left: solid $surface;
+}
+
+TaskCard:hover {
+    background: $panel;
+}
+
+TaskCard:focus {
+    border-left: thick $primary;
+    border-bottom: solid $primary;
+    background: $panel;
+}
+
+TaskCard .card-title {
+    text-style: bold;
+}
+
+TaskCard .card-desc {
+    color: $text-muted;
+}
+
+/* Streaming conversation clarity */
+.plan-entry,
+.tool-call {
+    border: round $border;
+    padding: 0 1;
+    margin-bottom: 1;
+    background: $surface;
+    background-tint: 3%;
+}
+
+.plan-entry:focus,
+.tool-call:focus {
+    border: round $primary;
+    background-tint: 10%;
+}
+
+.plan-entry:hover,
+.tool-call:hover {
+    tint: $primary 8%;
+}
+
+ToolCallHeader {
+    border-bottom: solid $border;
+}
+
+/* Status + hint bars read like calm instrumentation */
+StatusBar {
+    background: $background;
+    border-top: solid $border;
+}
+
+.status-left {
+    color: $text;
+    text-style: bold;
+}
+
+.status-right {
+    color: $text-muted;
+}
+
+/* Decision surfaces */
+.permission-prompt,
+.plan-approval,
+WorkspaceReposWidget {
+    background: $surface;
+    border: round $border;
+}
+
+.permission-prompt:focus,
+.plan-approval:focus,
+WorkspaceReposWidget:focus {
+    border: round $primary;
+    background: $panel;
+}
+
+.plan-approval .plan-header,
+WorkspaceReposWidget .section-header {
+    color: $text;
+    text-style: bold;
+}
+
+.plan-approval .plan-hint,
+WorkspaceReposWidget .workspace-repos-hint {
+    color: $text-muted;
+}
+
+WorkspaceRepoItem.selected .repo-item {
+    background: $primary 16%;
+    border-left: thick $primary;
+}
+
+WorkspaceReposWidget .repo-name.has-changes {
+    color: $warning;
+    text-style: bold;
+}
+
+WorkspaceReposWidget .repo-name.no-changes {
+    color: $text-muted;
+}
+
+WorkspaceReposWidget .btn-diff:focus,
+WorkspaceReposWidget .btn-merge:focus,
+#offline-actions Button:focus,
+.plan-approval #approval-buttons Button:focus {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+/* Calm urgency for outage messaging */
+OfflineBanner {
+    background: $panel;
+    border-bottom: solid $warning;
+}
+
+OfflineBanner:focus {
+    border-bottom: solid $primary;
+}
+
+#offline-title {
+    color: $warning;
+    text-style: bold;
+}
+
+#offline-message {
+    color: $text;
+}
+
+/* Keyboard hints remain visible but quieter than content */
+.modal-keyboard-hint,
+.modal-action-hint {
+    color: $text-muted;
+    text-opacity: 100%;
+}
+
+/* =============================================================================
+   FIVE-SCREEN UX REFINEMENTS (CONSOLE-FIRST)
+   ============================================================================= */
+
+/* Header hierarchy: keep active AI and mode prominent, dim secondary metadata. */
+KaganHeader .header-github-status,
+KaganHeader .header-branch,
+KaganHeader .header-sessions,
+KaganHeader .header-separator {
+    color: $text-disabled;
+    text-opacity: 100%;
+}
+
+KaganHeader .header-agent {
+    color: $text;
+    text-style: bold;
+    text-opacity: 100%;
+}
+
+KaganHeader .header-stats {
+    color: $text-muted;
+    text-opacity: 100%;
+}
+
+#header-help {
+    color: $text-muted;
+    text-opacity: 100%;
+    padding-left: 1;
+}
+
+/* Console command rail as the primary action surface. */
+ChatOverlay #chat-overlay-bottom {
+    background: $panel;
+    border-top: solid $border;
+    padding: 0 1 1 1;
+}
+
+ChatOverlay #chat-overlay-command-line {
+    background: $surface;
+    border: round $panel;
+    min-height: 3;
+    max-height: 6;
+    padding: 0 1;
+}
+
+ChatOverlay #chat-overlay-command-line:focus-within {
+    border: round $primary;
+    background: $surface;
+    tint: $primary 6%;
+}
+
+ChatOverlay #chat-overlay-input-prompt {
+    color: $primary;
+}
+
+ChatOverlay #chat-overlay-status .status-right {
+    color: $text-disabled;
+}
+
+/* Improve long-response readability in stream output. */
+StreamingOutput {
+    padding: 1 2 1 2;
+}
+
+.user-input,
+.agent-response,
+.agent-thought {
+    margin-bottom: 1;
+    padding: 0 1 0 2;
+}
+
+.agent-response {
+    border-left: thick $panel;
+}
+
+.agent-thought {
+    border-left: thick $border;
+    color: $text-muted;
+}
+
+.user-input {
+    border-left: thick $primary;
+    background: $panel;
+}
+
+.plan-entry,
+.tool-call {
+    border: round $border;
+    background: $surface;
+    margin-bottom: 1;
+    padding: 0 1;
+}
+
+.streaming-note.error {
+    color: $error;
+    text-opacity: 100%;
+}
+
+.streaming-note.warning {
+    color: $warning;
+    text-opacity: 100%;
+}
+
+/* Muted toast severity styles (non-aggressive warnings/errors). */
+ToastRack {
+    align: right top;
+}
+
+Toast {
+    background: $surface;
+    border: round $border;
+    color: $text;
+}
+
+Toast.-information {
+    border: round $primary 45%;
+}
+
+Toast.-warning {
+    border: round $warning 45%;
+}
+
+Toast.-error {
+    border: round $error 45%;
+}
+
+Toast .toast--title {
+    color: $text-muted;
+}
+
+Toast .toast--message {
+    color: $text;
+}
+
+/* Task details: reduce separators, rely on spacing and softer badges. */
+TaskDetailsModal #task-details-container {
+    padding: 1 2 0 2;
+}
+
+TaskDetailsModal Rule {
+    margin: 0;
+    color: $panel;
+    text-opacity: 100%;
+}
+
+TaskDetailsModal .section-title {
+    color: $text;
+    text-style: bold;
+}
+
+TaskDetailsModal .task-title {
+    padding: 0;
+    background: transparent;
+    color: $text;
+    text-style: bold;
+}
+
+TaskDetailsModal .task-description {
+    padding: 1;
+    background: $background 45%;
+    border: round $border;
+}
+
+TaskDetailsModal .badge {
+    padding: 0 1;
+    margin-right: 1;
+    height: 1;
+    min-height: 1;
+    border: none;
+    text-opacity: 100%;
+    text-style: bold;
+}
+
+TaskDetailsModal .badge-priority-high {
+    background: $priority-high;
+    color: $priority-high-text;
+}
+
+TaskDetailsModal .badge-priority-medium {
+    border: none;
+}
+
+TaskDetailsModal .badge-priority-low {
+    border: none;
+}
+
+TaskDetailsModal .badge-status {
+    border: none;
+}
+
+TaskDetailsModal .badge-type,
+TaskDetailsModal .badge-agent {
+    border: none;
+}
+
+TaskDetailsModal .description-header,
+TaskDetailsModal .workspace-repos-section,
+TaskDetailsModal .github-section,
+TaskDetailsModal .meta-row,
+TaskDetailsModal .resume-context-section {
+    margin-top: 1;
+}
+
+TaskDetailsModal .workspace-repos-section,
+TaskDetailsModal .github-section {
+    padding: 0;
+}
+
+TaskDetailsModal .section-header-row {
+    width: 100%;
+    height: auto;
+    align: left middle;
+}
+
+TaskDetailsModal #workspace-repos-loading {
+    padding: 0 1;
+    color: $text-muted;
+}
+
+TaskDetailsModal #workspace-repos-loading.workspace-empty-state {
+    color: $text-muted;
+    text-style: italic;
+    padding: 0 1;
+}
+
+TaskDetailsModal #github-context-content {
+    color: $text-muted;
+    padding: 0 1;
+}
+
+TaskDetailsModal .connect-github {
+    width: auto;
+    min-width: 16;
+    background: $panel;
+    border: round $border;
+    color: $text;
+}
+
+TaskDetailsModal .connect-github:hover,
+TaskDetailsModal .connect-github:focus {
+    border: round $primary;
+    background: $primary 12%;
+    color: $text;
+}
+
+TaskDetailsModal .expand-action {
+    width: auto;
+    border: none;
+    background: transparent;
+    color: $primary;
+    padding: 0 1;
+}
+
+TaskDetailsModal .expand-action:hover,
+TaskDetailsModal .expand-action:focus {
+    border: round $primary;
+    background: $primary 12%;
+    color: $text;
+}
+
+TaskDetailsModal.editing #title-input {
+    text-style: bold;
+    background: $panel;
+    border: tall $border;
+    padding: 0 1;
+}
+
+TaskDetailsModal.editing #title-input:focus {
+    border: tall $primary;
+    background: $surface;
+}
+
+TaskDetailsModal.editing Select {
+    background: transparent;
+    border: none !important;
+    color: $text;
+}
+
+TaskDetailsModal.editing Select:hover > SelectCurrent,
+TaskDetailsModal.editing Select:focus > SelectCurrent {
+    border: none !important;
+    background: $primary 12%;
+}
+
+TaskDetailsModal.editing #ac-input {
+    background: $background;
+    border: solid $border;
+}
+
+TaskDetailsModal.editing #ac-input:focus {
+    border: solid $primary;
+    background: $surface;
+}
+
+TaskDetailsModal .modal-action-hint-row .modal-action-hint-end {
+    text-align: right;
+}
+
+/* Settings: compact two-pane layout inspired by toad/textual patterns. */
+#settings-container {
+    width: 92%;
+    max-width: 112;
+    min-width: 76;
+    max-height: 90%;
+    padding: 1 2 0 2;
+    background: $surface;
+    border: round $primary;
+    overflow: hidden;
+}
+
+SettingsModal .modal-title {
+    text-align: left;
+    color: $text;
+    text-style: bold;
+    border-bottom: solid $border;
+    padding-bottom: 1;
+}
+
+#settings-search {
+    margin-top: 1;
+    margin-bottom: 0;
+    background: $panel;
+    border: round $border;
+}
+
+#settings-search:focus {
+    border: round $primary;
+    background: $surface;
+}
+
+#settings-search-status {
+    height: auto;
+    min-height: 1;
+    color: $text-muted;
+    padding: 0 1 0 0;
+    margin-top: 0;
+    margin-bottom: 1;
+    display: none;
+}
+
+#settings-workspace {
+    width: 100%;
+    height: 1fr;
+    min-height: 0;
+}
+
+#settings-nav-pane {
+    width: 28;
+    min-width: 24;
+    max-width: 32;
+    height: 1fr;
+    min-height: 0;
+    border-right: solid $border;
+    padding: 0 1 0 0;
+}
+
+SettingsModal .settings-nav-title {
+    color: $text-muted;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#settings-nav {
+    width: 100%;
+    height: 1fr;
+    min-height: 0;
+    background: transparent;
+}
+
+#settings-nav > .option-list--option {
+    padding: 0 1;
+    color: $text-muted;
+}
+
+#settings-nav > .option-list--option-highlighted {
+    background: $primary 28%;
+    color: $text;
+}
+
+#settings-nav:focus > .option-list--option-highlighted {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+#settings-sections {
+    width: 1fr;
+    height: 1fr;
+    min-height: 0;
+    padding-left: 1;
+}
+
+SettingsModal .settings-pane {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    display: none;
+    padding: 0 0 1 0;
+}
+
+SettingsModal .settings-pane.active-pane {
+    display: block;
+}
+
+SettingsModal .settings-pane-title {
+    width: 100%;
+    color: $text;
+    text-style: bold;
+    margin: 0;
+    padding: 0 0 1 0;
+}
+
+SettingsModal .settings-pane-empty {
+    width: 100%;
+    color: $text-muted;
+    text-style: italic;
+    margin-bottom: 1;
+    display: none;
+}
+
+SettingsModal Checkbox.setting-row {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    margin-bottom: 1;
+}
+
+SettingsModal .settings-input-row {
+    width: 100%;
+    height: auto;
+}
+
+SettingsModal .input-group {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+
+SettingsModal .input-group-half {
+    width: 1fr;
+    margin-right: 1;
+}
+
+SettingsModal .input-group-half:last-child {
+    margin-right: 0;
+}
+
+SettingsModal .input-label {
+    color: $text-muted;
+    margin-bottom: 0;
+}
+
+SettingsModal Input,
+SettingsModal Select > SelectCurrent {
+    width: 100%;
+    background: $panel;
+    border: round $border;
+    color: $text;
+}
+
+SettingsModal Input:focus,
+SettingsModal Select:focus > SelectCurrent {
+    border: round $primary;
+    background: $surface;
+}
+
+SettingsModal PersonaField {
+    min-height: 4;
+    height: auto;
+    background: $panel-darken-1;
+    color: $text;
+    border: round $border;
+    padding: 1;
+}
+
+SettingsModal PersonaField:hover {
+    background: $panel;
+}
+
+SettingsModal PersonaField:focus {
+    border: round $primary;
+    background: $surface;
+}
+
+SettingsModal .modal-action-hint-row {
+    margin-top: 0;
+    padding: 0 1;
+    height: 1;
+    border-top: solid $border;
+    background: $surface;
+}
+
+SettingsModal #settings-action-hint {
+    width: 100%;
+    text-align: center;
+    color: $text-disabled;
+    text-wrap: nowrap;
+}
+
+/* Help modal: search-first flow, stronger active tabs, strict key/action grid. */
+#help-container {
+    padding: 1 2 0 2;
+}
+
+#help-search-input {
+    margin-bottom: 1;
+    background: $panel;
+    border: round $border;
+}
+
+#help-search-input:focus {
+    border: round $primary;
+    background: $surface;
+}
+
+#help-tabs Tabs {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#help-tabs Tabs:focus .underline--bar {
+    background: $primary 40%;
+}
+
+#help-tabs Tab {
+    color: $text-muted;
+    background: transparent;
+    padding: 0 1;
+}
+
+#help-tabs Tab:hover {
+    color: $text;
+}
+
+#help-tabs Tab.-active {
+    color: $text;
+    text-style: bold;
+    background: $panel;
+    border: none;
+}
+
+#help-tabs Tabs:focus Tab.-active {
+    color: $text;
+    background: $primary 24%;
+}
+
+#help-tabs Tabs:focus .-active {
+    color: $text;
+    background: $primary 24%;
+}
+
+.help-section-title {
+    text-style: bold;
+    color: $text;
+    padding-top: 1;
+    padding-bottom: 0;
+}
+
+.help-subsection {
+    text-style: bold;
+    color: $text-muted;
+    padding-top: 1;
+}
+
+.help-key-row {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    padding: 0;
+}
+
+.help-key {
+    width: 22;
+    min-width: 22;
+    color: $text-muted;
+    text-opacity: 100%;
+    padding-right: 1;
+    text-overflow: ellipsis;
+}
+
+.help-key-separator {
+    width: 1;
+    min-width: 1;
+    color: $border;
+}
+
+.help-desc {
+    width: 1fr;
+    color: $text;
+    padding-left: 1;
+}
+
+/* === Diff Browser Widget === */
+DiffBrowserWidget {
+    height: auto;
+    min-height: 14;
+}
+
+DiffBrowserWidget > Horizontal {
+    height: auto;
+    min-height: 14;
+}
+
+DiffFileTree {
+    width: 30%;
+    min-width: 22;
+    height: auto;
+    min-height: 12;
+    border: solid $border;
+    border-right: solid $primary;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+DiffFileTree:focus {
+    border: solid $primary;
+    border-right: solid $primary;
+}
+
+DiffFileTree .diff-tree-repo-header {
+    color: $text;
+    text-style: bold;
+    padding: 0 0 0 0;
+}
+
+DiffFileTree .diff-tree-repo-header.no-changes {
+    color: $text-muted;
+    text-style: none;
+}
+
+DiffFileTree .diff-tree-file-row {
+    color: $text-muted;
+    padding: 0 0 0 2;
+}
+
+DiffFileTree .diff-tree-file-row.cursor {
+    background: $primary 20%;
+    color: $text;
+}
+
+DiffFileTree .diff-tree-file-row.modified {
+    color: $warning;
+}
+
+DiffFileTree .diff-tree-file-row.added {
+    color: $success;
+}
+
+DiffFileTree .diff-tree-file-row.deleted {
+    color: $error;
+}
+
+DiffFileTree .diff-tree-hint {
+    color: $text-muted;
+    text-style: italic;
+    padding: 1 0 0 0;
+}
+
+DiffContentPane {
+    width: 1fr;
+    height: auto;
+    min-height: 12;
+    border: solid $border;
+    padding: 0;
+}
+
+DiffContentPane:focus {
+    border: solid $primary;
+}
+
+DiffContentPane .diff-content-header {
+    color: $text;
+    text-style: bold;
+    background: $surface;
+    padding: 0 1;
+    height: 1;
+}
+
+DiffContentPane .diff-content-body {
+    padding: 0 1;
+    height: auto;
+    min-height: 8;
+}
+
+DiffContentPane .diff-action-hint {
+    color: $text-muted;
+    background: $surface;
+    padding: 0 1;
+    height: 1;
+}
+
+TaskDetailsModal .diff-browser-section {
+    margin-top: 1;
+    padding: 0;
 }

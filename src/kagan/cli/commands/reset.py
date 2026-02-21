@@ -13,15 +13,14 @@ from pathlib import Path
 
 import click
 
-from kagan.core.constants import DEFAULT_DB_PATH
 from kagan.core.paths import (
     get_cache_dir,
     get_config_dir,
-    get_core_runtime_dir,
     get_data_dir,
     get_worktree_base_dir,
 )
 from kagan.core.process_liveness import pid_exists
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 
 
 async def _get_projects(db_path: str) -> list[tuple[str, str]]:
@@ -190,10 +189,10 @@ def _read_lease_owner_pid(path: Path) -> int | None:
     return None
 
 
-def _stop_core_before_reset() -> None:
+def _stop_core_before_reset(runtime_context: CoreRuntimeContext) -> None:
     """Stop running core process before deleting runtime/data directories."""
-    lock_path = get_core_runtime_dir() / "core.instance.lock"
-    lease_path = get_core_runtime_dir() / "core.lease.json"
+    lock_path = runtime_context.runtime_dir / "core.instance.lock"
+    lease_path = runtime_context.runtime_dir / "core.lease.json"
     lease_pid = _read_lease_owner_pid(lease_path)
     pids = {
         pid for path in (lock_path,) if (pid := _read_pid(path)) is not None and _pid_exists(pid)
@@ -222,7 +221,8 @@ def _stop_core_before_reset() -> None:
 
 def _reset_all(existing_dirs: list[tuple[str, Path]], force: bool) -> None:
     """Nuclear reset: delete all Kagan directories."""
-    _stop_core_before_reset()
+    runtime_context = resolve_runtime_context()
+    _stop_core_before_reset(runtime_context)
     click.echo()
     click.secho(
         "WARNING: This will permanently delete the following:",
@@ -348,11 +348,13 @@ def reset(force: bool) -> None:
         _reset_all(existing_dirs, force=True)
         return
 
-    db_file = Path(DEFAULT_DB_PATH)
+    runtime_context = resolve_runtime_context()
+    db_path = str(runtime_context.db_path)
+    db_file = Path(db_path)
     projects: list[tuple[str, str]] = []
     if db_file.exists():
         with contextlib.suppress(Exception):
-            projects = asyncio.run(_get_projects(DEFAULT_DB_PATH))
+            projects = asyncio.run(_get_projects(db_path))
 
     if not projects:
         _reset_all(existing_dirs, force=False)
@@ -380,7 +382,7 @@ def reset(force: bool) -> None:
     click.echo()
     click.echo(f"Deleting project '{project_name}'...")
     try:
-        asyncio.run(_delete_project_data(DEFAULT_DB_PATH, project_id))
+        asyncio.run(_delete_project_data(db_path, project_id))
         click.secho(
             f"Project '{project_name}' has been removed.",
             fg="green",

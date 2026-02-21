@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 import shutil
 from dataclasses import dataclass, field
 
@@ -23,6 +22,7 @@ from kagan.core.agents.backend_config import (
     VibeAgentConfig,
     VTCodeAgentConfig,
 )
+from kagan.core.command_utils import split_command_string
 from kagan.core.config import AgentConfig, get_os_value
 
 
@@ -345,7 +345,7 @@ def _check_command_available(command: str | None) -> bool:
         return False
 
     try:
-        parts = shlex.split(command)
+        parts = split_command_string(command)
         executable = parts[0] if parts else command
     except ValueError:
         return shutil.which(command) is not None

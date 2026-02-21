@@ -14,13 +14,14 @@ from mcp.server.session import ServerSession
 from mcp.types import ToolAnnotations
 
 from kagan.core.domain.coercion import coerce_task_type
-from kagan.core.policy import CapabilityProfile
+from kagan.core.policy import CapabilityProfile, coerce_profile, profile_rank
+from kagan.core.protocol_constants import DEFAULT_EVENTS_LIMIT
 from kagan.core.scalars import (
     dict_str_keys_or_none,
     str_or_none,
     strict_int_or_none,
 )
-from kagan.core.settings import build_settings_set_fields
+from kagan.core.settings import MCP_SETTINGS_SET_PARAM_TO_KEY, build_settings_set_fields
 from kagan.mcp._response_models import (
     InstrumentationSnapshotResponse,
     JobActionInput,
@@ -28,6 +29,7 @@ from kagan.mcp._response_models import (
     JobEventsResponse,
     JobResponse,
     ProjectOpenResponse,
+    RecoveryResponse,
     RejectionActionInput,
     ReviewActionInput,
     ReviewActionResponse,
@@ -61,12 +63,6 @@ if TYPE_CHECKING:
 MCPContext = Context[ServerSession, Any]
 
 
-# Local aliases preserve existing call sites while sharing implementation.
-_str_or_none = str_or_none
-_dict_or_none = dict_str_keys_or_none
-_int_or_none = strict_int_or_none
-
-
 def _normalized_mode(value: str | None) -> str | None:
     """Return 'AUTO' or 'PAIR' if value is a task_type, else None."""
     if value is None:
@@ -75,6 +71,10 @@ def _normalized_mode(value: str | None) -> str | None:
     if normalized is None:
         return None
     return normalized.value
+
+
+def _recovery_fields(raw: dict[str, Any]) -> dict[str, object]:
+    return RecoveryResponse.model_validate(raw).model_dump()
 
 
 def _register_plugin_tools(
@@ -113,21 +113,15 @@ def _register_plugin_tools(
     if registry is None:
         return
 
-    _PROFILE_RANK: dict[str, int] = {
-        str(CapabilityProfile.VIEWER): 0,
-        str(CapabilityProfile.PLANNER): 1,
-        str(CapabilityProfile.PAIR_WORKER): 2,
-        str(CapabilityProfile.OPERATOR): 3,
-        str(CapabilityProfile.MAINTAINER): 4,
-    }
-    caller_rank = _PROFILE_RANK.get(effective_profile, 0)
+    caller_profile = coerce_profile(effective_profile) or CapabilityProfile.VIEWER
+    caller_rank = profile_rank(caller_profile)
 
     for operation in registry.all_operations():
         schema = operation.mcp_tool_schema
         if schema is None:
             continue
 
-        op_min_rank = _PROFILE_RANK.get(str(operation.minimum_profile), 4)
+        op_min_rank = profile_rank(operation.minimum_profile)
         if caller_rank < op_min_rank:
             continue
 
@@ -160,11 +154,7 @@ def _register_plugin_tools(
                 raw = await transport.request(op.capability, op.method, kwargs or None)
                 return PluginToolResponse(
                     success=bool(raw.get("success", True)),
-                    message=raw.get("message"),
-                    code=raw.get("code"),
-                    hint=raw.get("hint"),
-                    next_tool=raw.get("next_tool"),
-                    next_arguments=raw.get("next_arguments"),
+                    **_recovery_fields(raw),
                     plugin_id=raw.get("plugin_id", op.plugin_id),
                     capability=op.capability,
                     method=op.method,
@@ -285,11 +275,7 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             raw = await transport.request("tasks", "create", params_create)
             return TaskCreateResponse(
                 success=bool(raw.get("success", True)),
-                message=raw.get("message"),
-                code=raw.get("code"),
-                hint=raw.get("hint"),
-                next_tool=raw.get("next_tool"),
-                next_arguments=raw.get("next_arguments"),
+                **_recovery_fields(raw),
                 task_id=raw.get("task_id", ""),
                 title=raw.get("title", title),
                 status=raw.get("status", "backlog"),
@@ -476,11 +462,7 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             raw = await transport.request("tasks", "delete", {"task_id": task_id})
             return TaskDeleteResponse(
                 success=bool(raw.get("success", False)),
-                message=raw.get("message"),
-                code=raw.get("code"),
-                hint=raw.get("hint"),
-                next_tool=raw.get("next_tool"),
-                next_arguments=raw.get("next_arguments"),
+                **_recovery_fields(raw),
                 task_id=task_id,
             )
 
@@ -501,12 +483,12 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             if arguments is not None:
                 params_job["arguments"] = arguments
             raw = await transport.request("jobs", "submit", params_job)
-            job_id = _str_or_none(raw.get("job_id")) or ""
-            returned_task_id = _str_or_none(raw.get("task_id")) or task_id
+            job_id = str_or_none(raw.get("job_id")) or ""
+            returned_task_id = str_or_none(raw.get("task_id")) or task_id
             success = bool(raw.get("success", False))
-            next_tool = _str_or_none(raw.get("next_tool"))
-            next_arguments = _dict_or_none(raw.get("next_arguments"))
-            hint = _str_or_none(raw.get("hint"))
+            next_tool = str_or_none(raw.get("next_tool"))
+            next_arguments = dict_str_keys_or_none(raw.get("next_arguments"))
+            hint = str_or_none(raw.get("hint"))
             if success and next_tool is None and job_id:
                 next_tool = "job_poll"
                 next_arguments = {
@@ -517,15 +499,15 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
                 }
             return JobResponse(
                 success=success,
-                message=_str_or_none(raw.get("message")),
-                code=_str_or_none(raw.get("code")),
+                message=str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
                 hint=hint,
                 next_tool=next_tool,
                 next_arguments=next_arguments,
                 job_id=job_id,
                 task_id=returned_task_id,
-                action=_str_or_none(raw.get("action")) or str(action),
-                status=_str_or_none(raw.get("status")),
+                action=str_or_none(raw.get("action")) or str(action),
+                status=str_or_none(raw.get("status")),
             )
 
     if (
@@ -541,7 +523,7 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             wait: bool = False,
             timeout_seconds: float = DEFAULT_JOB_POLL_WAIT_TIMEOUT_SECONDS,
             events: bool = False,
-            limit: int = 50,
+            limit: int = DEFAULT_EVENTS_LIMIT,
             offset: int = 0,
             ctx: MCPContext | None = None,
         ) -> JobResponse | JobEventsResponse:
@@ -566,29 +548,29 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
                             continue
                         event_items.append(
                             JobEvent(
-                                job_id=_str_or_none(raw_event.get("job_id")),
-                                task_id=_str_or_none(raw_event.get("task_id")),
-                                status=_str_or_none(raw_event.get("status")),
-                                timestamp=_str_or_none(raw_event.get("timestamp")),
-                                message=_str_or_none(raw_event.get("message")),
-                                code=_str_or_none(raw_event.get("code")),
+                                job_id=str_or_none(raw_event.get("job_id")),
+                                task_id=str_or_none(raw_event.get("task_id")),
+                                status=str_or_none(raw_event.get("status")),
+                                timestamp=str_or_none(raw_event.get("timestamp")),
+                                message=str_or_none(raw_event.get("message")),
+                                code=str_or_none(raw_event.get("code")),
                             )
                         )
-                total_events = _int_or_none(raw.get("total_events"))
-                returned_events = _int_or_none(raw.get("returned_events"))
-                page_offset = _int_or_none(raw.get("offset"))
-                page_limit = _int_or_none(raw.get("limit"))
-                next_offset = _int_or_none(raw.get("next_offset"))
+                total_events = strict_int_or_none(raw.get("total_events"))
+                returned_events = strict_int_or_none(raw.get("returned_events"))
+                page_offset = strict_int_or_none(raw.get("offset"))
+                page_limit = strict_int_or_none(raw.get("limit"))
+                next_offset = strict_int_or_none(raw.get("next_offset"))
                 has_more_val = raw.get("has_more")
                 has_more = (
                     has_more_val if isinstance(has_more_val, bool) else next_offset is not None
                 )
                 return JobEventsResponse(
                     success=bool(raw.get("success", False)),
-                    message=_str_or_none(raw.get("message")),
-                    code=_str_or_none(raw.get("code")),
-                    job_id=_str_or_none(raw.get("job_id")) or job_id,
-                    task_id=_str_or_none(raw.get("task_id")) or task_id,
+                    message=str_or_none(raw.get("message")),
+                    code=str_or_none(raw.get("code")),
+                    job_id=str_or_none(raw.get("job_id")) or job_id,
+                    task_id=str_or_none(raw.get("task_id")) or task_id,
                     events=event_items,
                     total_events=(total_events if total_events is not None else len(event_items)),
                     returned_events=(
@@ -608,15 +590,15 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             else:
                 raw = await transport.query("jobs", "get", {"job_id": job_id, "task_id": task_id})
 
-            result = _dict_or_none(raw.get("result"))
+            result = dict_str_keys_or_none(raw.get("result"))
             success = bool(raw.get("success", False))
-            status = _str_or_none(raw.get("status"))
-            code = _str_or_none(raw.get("code"))
+            status = str_or_none(raw.get("status"))
+            code = str_or_none(raw.get("code"))
             if code is None and result is not None:
-                code = _str_or_none(result.get("code"))
-            message = _str_or_none(raw.get("message"))
+                code = str_or_none(result.get("code"))
+            message = str_or_none(raw.get("message"))
             if message is None and result is not None:
-                message = _str_or_none(result.get("message"))
+                message = str_or_none(result.get("message"))
 
             timed_out_val = raw.get("timed_out")
             if not isinstance(timed_out_val, bool) and result is not None:
@@ -629,7 +611,7 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             if (
                 not success
                 and result is not None
-                and _str_or_none(result.get("code")) == "START_PENDING"
+                and str_or_none(result.get("code")) == "START_PENDING"
             ):
                 success = True
                 code = "START_PENDING"
@@ -644,9 +626,9 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             if timeout_fields:
                 timeout_metadata = timeout_fields
 
-            next_tool = _str_or_none(raw.get("next_tool"))
-            next_arguments = _dict_or_none(raw.get("next_arguments"))
-            hint = _str_or_none(raw.get("hint"))
+            next_tool = str_or_none(raw.get("next_tool"))
+            next_arguments = dict_str_keys_or_none(raw.get("next_arguments"))
+            hint = str_or_none(raw.get("hint"))
 
             # Derive recovery for non-terminal / timed-out states
             if next_tool is None and (
@@ -660,9 +642,9 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
                     "timeout_seconds": DEFAULT_JOB_POLL_WAIT_TIMEOUT_SECONDS,
                 }
 
-            runtime_raw = _dict_or_none(raw.get("runtime"))
+            runtime_raw = dict_str_keys_or_none(raw.get("runtime"))
             if runtime_raw is None and result is not None:
-                runtime_raw = _dict_or_none(result.get("runtime"))
+                runtime_raw = dict_str_keys_or_none(result.get("runtime"))
 
             return JobResponse(
                 success=success,
@@ -671,9 +653,9 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
                 hint=hint,
                 next_tool=next_tool,
                 next_arguments=next_arguments,
-                job_id=_str_or_none(raw.get("job_id")) or job_id,
-                task_id=_str_or_none(raw.get("task_id")) or task_id,
-                action=_str_or_none(raw.get("action")),
+                job_id=str_or_none(raw.get("job_id")) or job_id,
+                task_id=str_or_none(raw.get("task_id")) or task_id,
+                action=str_or_none(raw.get("action")),
                 status=status,
                 timed_out=timed_out,
                 timeout_metadata=timeout_metadata,
@@ -693,9 +675,9 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             transport = _get_transport(ctx)
             raw = await transport.request("jobs", "cancel", {"job_id": job_id, "task_id": task_id})
             success = bool(raw.get("success", False))
-            next_tool = _str_or_none(raw.get("next_tool"))
-            next_arguments = _dict_or_none(raw.get("next_arguments"))
-            hint = _str_or_none(raw.get("hint"))
+            next_tool = str_or_none(raw.get("next_tool"))
+            next_arguments = dict_str_keys_or_none(raw.get("next_arguments"))
+            hint = str_or_none(raw.get("hint"))
             if success and next_tool is None:
                 next_tool = "job_poll"
                 next_arguments = {
@@ -706,15 +688,15 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
                 }
             return JobResponse(
                 success=success,
-                message=_str_or_none(raw.get("message")),
-                code=_str_or_none(raw.get("code")),
+                message=str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
                 hint=hint,
                 next_tool=next_tool,
                 next_arguments=next_arguments,
-                job_id=_str_or_none(raw.get("job_id")) or job_id,
-                task_id=_str_or_none(raw.get("task_id")) or task_id,
-                action=_str_or_none(raw.get("action")),
-                status=_str_or_none(raw.get("status")),
+                job_id=str_or_none(raw.get("job_id")) or job_id,
+                task_id=str_or_none(raw.get("task_id")) or task_id,
+                action=str_or_none(raw.get("action")),
+                status=str_or_none(raw.get("status")),
             )
 
     # --- Review tool ---
@@ -750,11 +732,11 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             raw = await transport.request("review", action, params_review)
             return ReviewActionResponse(
                 success=bool(raw.get("success", False)),
-                message=_str_or_none(raw.get("message")),
-                code=_str_or_none(raw.get("code")),
-                hint=_str_or_none(raw.get("hint")),
-                next_tool=_str_or_none(raw.get("next_tool")),
-                next_arguments=_dict_or_none(raw.get("next_arguments")),
+                message=str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
+                hint=str_or_none(raw.get("hint")),
+                next_tool=str_or_none(raw.get("next_tool")),
+                next_arguments=dict_str_keys_or_none(raw.get("next_arguments")),
                 task_id=raw.get("task_id", task_id),
             )
 
@@ -815,6 +797,7 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
         async def settings_set(
             auto_review: bool | None = None,
             auto_approve: bool | None = None,
+            auto_commit_changes: bool | None = None,
             auto_skill_discovery: bool | None = None,
             require_review_approval: bool | None = None,
             serialize_merges: bool | None = None,
@@ -849,17 +832,60 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
         ) -> SettingsUpdateResponse:
             """Update allowlisted settings fields."""
             transport = _get_transport(ctx)
-            fields = build_settings_set_fields(locals())
+            params = {
+                "auto_review": auto_review,
+                "auto_approve": auto_approve,
+                "auto_commit_changes": auto_commit_changes,
+                "auto_skill_discovery": auto_skill_discovery,
+                "require_review_approval": require_review_approval,
+                "serialize_merges": serialize_merges,
+                "worktree_base_ref_strategy": worktree_base_ref_strategy,
+                "max_concurrent_agents": max_concurrent_agents,
+                "default_worker_agent": default_worker_agent,
+                "worker_persona": worker_persona,
+                "orchestrator_persona": orchestrator_persona,
+                "pr_reviewer_persona": pr_reviewer_persona,
+                "default_pair_terminal_backend": default_pair_terminal_backend,
+                "doctor_verbosity": doctor_verbosity,
+                "interaction_verbosity": interaction_verbosity,
+                "default_model_claude": default_model_claude,
+                "default_model_opencode": default_model_opencode,
+                "default_model_codex": default_model_codex,
+                "default_model_gemini": default_model_gemini,
+                "default_model_kimi": default_model_kimi,
+                "default_model_copilot": default_model_copilot,
+                "default_model_goose": default_model_goose,
+                "default_model_openhands": default_model_openhands,
+                "default_model_auggie": default_model_auggie,
+                "default_model_amp": default_model_amp,
+                "default_model_cagent": default_model_cagent,
+                "default_model_stakpak": default_model_stakpak,
+                "default_model_vibe": default_model_vibe,
+                "default_model_vtcode": default_model_vtcode,
+                "tasks_wait_default_timeout_seconds": tasks_wait_default_timeout_seconds,
+                "tasks_wait_max_timeout_seconds": tasks_wait_max_timeout_seconds,
+                "skip_pair_instructions": skip_pair_instructions,
+                "theme": theme,
+            }
+            fields = build_settings_set_fields(params)
             raw = await transport.request("settings", "update", {"fields": fields})
             return SettingsUpdateResponse(
                 success=bool(raw.get("success", False)),
-                message=raw.get("message"),
-                code=raw.get("code"),
-                hint=raw.get("hint"),
-                next_tool=raw.get("next_tool"),
-                next_arguments=raw.get("next_arguments"),
+                **_recovery_fields(raw),
                 updated=raw.get("updated", {}),
                 settings=raw.get("settings", {}),
+            )
+
+        declared_params = {
+            name for name in inspect.signature(settings_set).parameters if name != "ctx"
+        }
+        expected_params = set(MCP_SETTINGS_SET_PARAM_TO_KEY)
+        if declared_params != expected_params:
+            missing = sorted(expected_params - declared_params)
+            extra = sorted(declared_params - expected_params)
+            raise RuntimeError(
+                "settings_set parameter mismatch with settings bindings. "
+                f"missing={missing}, extra={extra}"
             )
 
     # --- Session tool ---
@@ -930,11 +956,11 @@ def _register_full_mode_tools(  # noqa: C901, RUF100
             raw = await transport.request("projects", "open", {"project_id": project_id})
             return ProjectOpenResponse(
                 success=bool(raw.get("success", True)),
-                message=_str_or_none(raw.get("message")),
-                code=_str_or_none(raw.get("code")),
-                hint=_str_or_none(raw.get("hint")),
-                next_tool=_str_or_none(raw.get("next_tool")),
-                next_arguments=_dict_or_none(raw.get("next_arguments")),
+                message=str_or_none(raw.get("message")),
+                code=str_or_none(raw.get("code")),
+                hint=str_or_none(raw.get("hint")),
+                next_tool=str_or_none(raw.get("next_tool")),
+                next_arguments=dict_str_keys_or_none(raw.get("next_arguments")),
                 project_id=raw.get("project_id", project_id),
                 name=raw.get("name", ""),
             )

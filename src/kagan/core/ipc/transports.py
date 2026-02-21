@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from kagan.core.ipc.constants import STREAM_LIMIT_BYTES
-from kagan.core.paths import get_core_runtime_dir
+from kagan.core.runtime_context import resolve_runtime_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -41,7 +41,7 @@ _SOCKET_NAME = "core.sock"
 
 
 def _default_socket_path() -> str:
-    return str(get_core_runtime_dir() / _SOCKET_NAME)
+    return str(resolve_runtime_context().runtime_dir / _SOCKET_NAME)
 
 
 class UnixSocketTransport:

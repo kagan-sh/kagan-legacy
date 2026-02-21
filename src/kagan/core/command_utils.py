@@ -6,7 +6,7 @@ import os
 import platform
 import shlex
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,12 +40,9 @@ def is_windows() -> bool:
 def split_command_string(command: str) -> list[str]:
     """Parse a command string into args, using Windows-aware rules when needed."""
     if is_windows():
-        try:
-            import mslex  # type: ignore[import-not-found] — optional Windows-only dependency
+        import mslex
 
-            return mslex.split(command)
-        except Exception:
-            return shlex.split(command, posix=False)
+        return mslex.split(command)
     return shlex.split(command)
 
 
@@ -78,8 +75,30 @@ def format_command_for_shell(command: str, args: Sequence[str]) -> str:
     if not args:
         return command
     if is_windows():
-        return subprocess.list2cmdline([command, *args])
+        import mslex
+
+        return " ".join(mslex.quote(part) for part in [command, *args])
     return f"{command} {shlex.join(list(args))}"
+
+
+def _resolve_current_python_executable() -> str:
+    try:
+        return str(Path(sys.executable).expanduser().resolve(strict=False))
+    except OSError:
+        return sys.executable
+
+
+def resolve_kagan_cli_invocation() -> tuple[str, list[str]]:
+    """Resolve a reliable command tuple for invoking the Kagan CLI."""
+    if executable := cached_which("kagan"):
+        return executable, []
+    return _resolve_current_python_executable(), ["-m", "kagan"]
+
+
+def build_kagan_mcp_command_args(mcp_args: Sequence[str]) -> tuple[str, list[str]]:
+    """Build ``(command, args)`` for launching ``kagan mcp ...`` robustly."""
+    command, prefix_args = resolve_kagan_cli_invocation()
+    return command, [*prefix_args, *mcp_args]
 
 
 def ensure_windows_npm_dir() -> None:

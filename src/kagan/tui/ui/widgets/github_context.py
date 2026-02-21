@@ -64,7 +64,7 @@ def resolve_github_context(
 def format_github_context(ctx: GitHubTaskContext) -> list[str]:
     """Format GitHub context into display lines."""
     if not ctx.connected:
-        return ["Not connected — use repo actions to connect"]
+        return ["GitHub is not connected. Use Connect GitHub to link a repository."]
 
     lines: list[str] = []
 

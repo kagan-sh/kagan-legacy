@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING, Any
 from kagan.core.ipc.constants import MAX_LINE_BYTES
 from kagan.core.ipc.contracts import CoreRequest, CoreResponse
 from kagan.core.ipc.transports import DefaultTransport, TCPLoopbackTransport, UnixSocketTransport
+from kagan.core.protocol_constants import DEFAULT_IPC_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from kagan.core.ipc.discovery import CoreEndpoint
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT = 30.0
+_DEFAULT_TIMEOUT = DEFAULT_IPC_TIMEOUT_SECONDS
 
 
 class IPCClient:

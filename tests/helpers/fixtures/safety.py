@@ -144,19 +144,29 @@ def _block_production_kagan_db_access(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sqlite3, "connect", _guarded_sqlite_connect)
     monkeypatch.setattr(core_paths, "get_database_path", _guarded_get_database_path)
     monkeypatch.setattr(db_engine, "create_db_engine", _guarded_kagan_create_db_engine)
+
     # Patch get_database_path at every import site so callers that bound the name
     # at import time (``from kagan.core.paths import get_database_path``) also
     # pick up the guard.
-    monkeypatch.setattr(db_engine, "get_database_path", _guarded_get_database_path)
-    monkeypatch.setattr(task_repo_mod, "get_database_path", _guarded_get_database_path)
-    monkeypatch.setattr(core_constants, "get_database_path", _guarded_get_database_path)
-    monkeypatch.setattr(runtime_mod, "get_database_path", _guarded_get_database_path)
-    monkeypatch.setattr(host_mod, "get_database_path", _guarded_get_database_path)
+    get_database_path_targets: tuple[tuple[object, str], ...] = (
+        (db_engine, "get_database_path"),
+        (task_repo_mod, "get_database_path"),
+        (core_constants, "get_database_path"),
+        (runtime_mod, "get_database_path"),
+        (host_mod, "get_database_path"),
+    )
+    for module, attribute in get_database_path_targets:
+        monkeypatch.setattr(module, attribute, _guarded_get_database_path, raising=False)
     # MCP server also imports get_database_path; patch if available.
     try:
         from kagan.mcp import server as mcp_server_mod
 
-        monkeypatch.setattr(mcp_server_mod, "get_database_path", _guarded_get_database_path)
+        monkeypatch.setattr(
+            mcp_server_mod,
+            "get_database_path",
+            _guarded_get_database_path,
+            raising=False,
+        )
     except Exception:  # quality-allow-broad-except: optional resilience boundary
         pass
 

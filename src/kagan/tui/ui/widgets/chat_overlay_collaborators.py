@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import contextlib
+from time import monotonic
 from typing import Any
 
 from kagan.core.agents.planner_parser import parse_proposed_plan
-from kagan.core.domain.enums import ChatRole, StreamPhase, TaskStatus
+from kagan.core.domain.enums import ChatRole, StreamPhase
 from kagan.core.safety import normalize_untrusted_text, redact_sensitive_text
 
 
@@ -15,124 +15,104 @@ class ChatOverlayTargetManager:
     def __init__(self, overlay: Any) -> None:
         self._overlay = overlay
 
-    async def refresh_chat_targets(self) -> None:
+    async def _load_task_context(self, task_id: str) -> Any | None:
+        overlay = self._overlay
+        normalized_task_id = str(task_id or "").strip()
+        if not normalized_task_id:
+            return None
+        existing_context = overlay._task_context_by_id.get(normalized_task_id)
+        if existing_context is not None:
+            return existing_context
+        ctx = getattr(overlay.app, "ctx", None)
+        if ctx is None:
+            return None
+        try:
+            task = await ctx.api.get_task(normalized_task_id)
+        except Exception:
+            return None
+        if task is None:
+            return None
+        return overlay._task_context(task)
+
+    async def refresh_chat_targets(self, *, force: bool = False) -> None:
         overlay = self._overlay
         current_key = overlay._active_target().key
         target_scope_task_id = overlay._target_scope_task_id
-        targets: list[Any] = []
-        if target_scope_task_id is None:
-            targets.append(overlay._orchestrator_target())
-        overlay._task_context_by_id = {}
-        ctx = getattr(overlay.app, "ctx", None)
-        requested_task_id = target_scope_task_id or overlay._requested_task_id
+        requested_task_id = overlay._requested_task_id
         requested_context = overlay._requested_task_context
 
-        if ctx is not None and getattr(ctx, "active_project_id", None):
-            project_id = ctx.active_project_id
-            in_progress: list[object] = []
-            in_review: list[object] = []
-            try:
-                in_progress_result, in_review_result = await asyncio.gather(
-                    ctx.api.list_tasks(
-                        project_id=project_id,
-                        status=TaskStatus.IN_PROGRESS.value,
-                    ),
-                    ctx.api.list_tasks(
-                        project_id=project_id,
-                        status=TaskStatus.REVIEW.value,
-                    ),
-                    return_exceptions=True,
-                )
-                if not isinstance(in_progress_result, Exception):
-                    in_progress = list(in_progress_result)
-                if not isinstance(in_review_result, Exception):
-                    in_review = list(in_review_result)
-            except Exception:
-                in_progress = []
-                in_review = []
+        cache_key = (
+            target_scope_task_id,
+            requested_task_id,
+            requested_context.task_id if requested_context is not None else None,
+        )
+        if (
+            not force
+            and overlay._chat_targets
+            and requested_task_id is None
+            and requested_context is None
+            and overlay._chat_targets_cache_key == cache_key
+            and monotonic() - overlay._chat_targets_cache_at
+            <= overlay._CHAT_TARGETS_CACHE_TTL_SECONDS
+        ):
+            overlay._sync_active_target_ui()
+            with contextlib.suppress(Exception):
+                await overlay._sync_active_target_session()
+            return
 
-            for task in in_progress:
-                context = overlay._task_context(task)
-                if context is None:
-                    continue
-                if target_scope_task_id is not None and context.task_id != target_scope_task_id:
-                    continue
-                overlay._task_context_by_id[context.task_id] = context
-                overlay._append_target_if_missing(targets, overlay._target_from_context(context))
+        overlay._task_context_by_id = {}
 
-            for task in in_review:
-                context = overlay._task_context(task)
-                if context is None:
-                    continue
-                if target_scope_task_id is not None and context.task_id != target_scope_task_id:
-                    continue
-                overlay._task_context_by_id[context.task_id] = context
-                overlay._append_target_if_missing(targets, overlay._target_from_context(context))
-
-        if requested_context is None and requested_task_id:
-            requested_context = overlay._task_context_by_id.get(requested_task_id)
-        if requested_context is None and requested_task_id and ctx is not None:
-            try:
-                fetched_task = await ctx.api.get_task(requested_task_id)
-            except Exception:
-                fetched_task = None
-            if fetched_task is not None:
-                requested_context = overlay._task_context(fetched_task)
-                if requested_context is not None:
-                    overlay._task_context_by_id[requested_context.task_id] = requested_context
-
+        overlay._focused_task_context = None
+        targets: list[Any]
         preferred_key: str | None = None
-        if requested_context is not None:
-            overlay._focused_task_context = requested_context
-            overlay._append_target_if_missing(
-                targets, overlay._target_from_context(requested_context)
-            )
-            preferred_key = overlay._preferred_target_key_for_context(requested_context, targets)
-        elif requested_task_id:
-            for target in targets:
-                if target.task_id == requested_task_id:
-                    preferred_key = target.key
-                    break
-
-        if target_scope_task_id is not None and not targets:
-            targets.append(overlay._fallback_scoped_target(target_scope_task_id))
-            preferred_key = targets[0].key
+        if target_scope_task_id is None:
+            targets = overlay._orchestrator_targets()
+            if requested_context is None and requested_task_id:
+                requested_context = await self._load_task_context(requested_task_id)
+            if requested_context is not None:
+                overlay._task_context_by_id[requested_context.task_id] = requested_context
+                overlay._focused_task_context = requested_context
+            preferred_key = overlay._active_orchestrator_target_key()
+        else:
+            targets = []
+            if requested_context is None or requested_context.task_id != target_scope_task_id:
+                requested_context = await self._load_task_context(target_scope_task_id)
+            if requested_context is not None:
+                overlay._task_context_by_id[requested_context.task_id] = requested_context
+                overlay._focused_task_context = requested_context
+                for target in overlay._scoped_targets_for_context(requested_context):
+                    overlay._append_target_if_missing(targets, target)
+                preferred_key = overlay._preferred_target_key_for_context(
+                    requested_context,
+                    targets,
+                )
+            if not targets:
+                targets.append(overlay._fallback_scoped_target(target_scope_task_id))
+                preferred_key = targets[0].key
 
         overlay._chat_targets = targets
         selected_index: int | None = None
-        if preferred_key is not None:
+        for index, target in enumerate(overlay._chat_targets):
+            if target.key == current_key:
+                selected_index = index
+                break
+        if selected_index is None and preferred_key is not None:
             for index, target in enumerate(overlay._chat_targets):
                 if target.key == preferred_key:
-                    selected_index = index
-                    break
-        if selected_index is None:
-            for index, target in enumerate(overlay._chat_targets):
-                if target.key == current_key:
                     selected_index = index
                     break
         overlay._active_target_index = selected_index if selected_index is not None else 0
         overlay._requested_task_id = None
         overlay._requested_task_context = None
+        overlay._chat_targets_cache_key = (
+            target_scope_task_id,
+            None,
+            None,
+        )
+        overlay._chat_targets_cache_at = monotonic()
         overlay._sync_active_target_ui()
         with contextlib.suppress(Exception):
             await overlay._sync_active_target_session()
-
-    async def execute_targets(self) -> None:
-        overlay = self._overlay
-        await self.refresh_chat_targets()
-        overlay._show_output()
-        lines = [
-            "**Chat Sessions (Tab to cycle):**",
-            "",
-            "Use `/attach <task-id|kind|label>` to switch directly.",
-            "",
-        ]
-        active_key = overlay._active_target().key
-        for target in overlay._chat_targets:
-            marker = " (active)" if target.key == active_key else ""
-            task_hint = f" [task: `{target.task_id}`]" if target.task_id else ""
-            lines.append(f"- `{target.kind.value}`: {target.label}{task_hint}{marker}")
-        await overlay.output.post_note("\n".join(lines))
 
 
 class ChatOverlaySlashCommandExecutor:
@@ -152,12 +132,13 @@ class ChatOverlaySlashCommandExecutor:
                 "help": "Show commands",
                 "clear": "Reset conversation",
                 "new": "Start fresh session",
+                "export": "Copy session transcript",
                 "compact": "Compact context",
-                "browse": "List chat sessions",
-                "attach": "Attach to a session",
-                "restart": "Restart AUTO target",
-                "stop": "Stop AUTO target",
-                "skills": "List local skills",
+                "sessions": "Open session quick-pick",
+                "agent": "Run grouped agent commands",
+                "restart": "Restart AUTO runtime task",
+                "stop": "Stop AUTO runtime task",
+                "close": "Close orchestrator session",
                 "mode": "List/set mode",
             }
             lines = ["**Quick Commands:**", ""]
@@ -180,14 +161,20 @@ class ChatOverlaySlashCommandExecutor:
         if verbosity == "technical":
             help_text += (
                 "\n**Usage Notes:**\n"
-                "- `Tab` cycles active chat session (Orchestrator/AUTO/REVIEW).\n"
-                "- `/browse` lists sessions; `/attach <id|kind|label>` switches directly.\n"
+                "- `Ctrl+K` opens the session quick-pick for all active project sessions.\n"
+                "- `Tab` cycles linearly in task scope.\n"
+                "- On board, `Tab` cycles active attention targets.\n"
+                "- `/sessions` opens the same quick-pick palette.\n"
+                "- `/agent` lists grouped agent commands; `/agent <command> [args]` executes one.\n"
                 "- `/restart [extra context]` starts the next AUTO iteration "
-                "for the active AUTO target.\n"
-                "- `/stop` requests stop for the active AUTO session.\n"
-                "- `/new session` starts a fresh local chat session.\n"
+                "for the active AUTO runtime task.\n"
+                "- `/stop` requests stop for the active AUTO runtime task.\n"
+                "- `/new session` creates and switches to a new orchestrator session.\n"
+                "- `/close session` closes the active orchestrator session.\n"
+                "- `/export` copies the active session transcript to the clipboard.\n"
                 "- `/clear all sessions` resets local chat sessions and target focus.\n"
-                "- `/skills` lists trusted local skill metadata; `/skills refresh` rescans.\n"
+                "- `/agent skills` lists trusted local skill metadata; "
+                "`/agent skills refresh` rescans.\n"
                 "- `/mode` with no args lists modes; `/mode <id>` switches mode.\n"
                 "- `/compact` prefers native agent compaction; when unavailable it uses "
                 "Kagan's redacted snapshot + fresh-session fallback.\n"
@@ -198,7 +185,7 @@ class ChatOverlaySlashCommandExecutor:
         overlay = self._overlay
         normalized = overlay._normalize_command_args(args)
         if normalized not in {"", "list", "refresh"}:
-            overlay.notify("Usage: /skills [list|refresh]", severity="warning")
+            overlay.notify("Usage: /agent skills [list|refresh]", severity="warning")
             return
 
         overlay._show_output()
@@ -210,7 +197,9 @@ class ChatOverlaySlashCommandExecutor:
             )
             return
 
-        discovered = overlay._discover_local_skills(force_refresh=normalized == "refresh")
+        discovered = await overlay._discover_local_skills_async(
+            force_refresh=normalized == "refresh"
+        )
         if not discovered:
             await overlay.output.post_note(
                 "No local skills discovered in trusted roots "
@@ -283,10 +272,18 @@ class ChatOverlayStreamCoordinator:
 
     def build_compact_snapshot(self) -> str:
         overlay = self._overlay
-        if not overlay._conversation_history:
+        target = overlay._active_target()
+        target_kind = getattr(getattr(target, "kind", None), "value", "")
+        target_key = (
+            target.key
+            if target_kind == "orchestrator"
+            else overlay._active_orchestrator_target_key()
+        )
+        conversation_history = overlay._conversation_history_by_target_key.get(target_key, [])
+        if not conversation_history:
             return ""
         lines: list[str] = []
-        for role, content in overlay._conversation_history[-overlay._COMPACT_MAX_HISTORY_ITEMS :]:
+        for role, content in conversation_history[-overlay._COMPACT_MAX_HISTORY_ITEMS :]:
             role_token = str(role).strip().lower()
             role_label = (
                 "User"

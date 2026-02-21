@@ -60,6 +60,7 @@ class MockAgent:
         self._stopped = False
         self._auto_approve = False
         self._model_override: str | None = None
+        self._external_session_scope: str | None = None
         self._message_target: Any = None
 
         self._buffers.append_response("Done. <complete/>")
@@ -96,6 +97,13 @@ class MockAgent:
 
     def set_model_override(self, model_id: str | None) -> None:
         self._model_override = model_id
+
+    def set_external_session_scope(self, scope_id: str | None) -> None:
+        self._external_session_scope = scope_id
+
+    @property
+    def external_session_scope(self) -> str | None:
+        return self._external_session_scope
 
     def start(self, message_target: Any = None) -> None:
         self._message_target = message_target

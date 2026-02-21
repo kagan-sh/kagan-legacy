@@ -5,17 +5,19 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, Any
 
+from textual import on
 from textual.containers import Vertical
 from textual.css.query import NoMatches
 from textual.widgets import Label, Rule, Static
 
 from kagan.core.constants import MODAL_TITLE_MAX_LENGTH
-from kagan.core.domain.enums import TaskType
+from kagan.core.domain.enums import TaskStatus, TaskType
 from kagan.core.services.jobs import JobStatus
 from kagan.tui.keybindings import TASK_OUTPUT_BINDINGS
 from kagan.tui.ui.screens.base import KaganScreen
 from kagan.tui.ui.utils.job_results import job_message, job_result_payload
 from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
+from kagan.tui.ui.widgets.diff_browser import DiffBrowserWidget
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -28,9 +30,9 @@ class TaskOutputScreen(KaganScreen):
     """Show task stats on top and the standard orchestrator overlay on the lower half."""
 
     BINDINGS = TASK_OUTPUT_BINDINGS
-
-    _OUTPUT_LAYOUT_SPLIT = "split"
-    _OUTPUT_LAYOUT_FULLSCREEN = "fullscreen"
+    DOCKED_OVERLAY_BASE_HEIGHT: int = 8
+    DOCKED_OVERLAY_MAX_HEIGHT_RATIO: float = 0.5
+    DOCKED_OVERLAY_MIN_HEIGHT: int = 3
     START_JOB_PENDING_MESSAGE = "Agent start requested; waiting for scheduler."
     STOP_JOB_PENDING_MESSAGE = "Agent stop requested; waiting for scheduler."
 
@@ -78,8 +80,10 @@ class TaskOutputScreen(KaganScreen):
                 )
                 yield Label("", id="task-output-status", classes="task-output-status")
                 yield Rule()
-                yield Static("[dim]Loading diff stats...[/dim]", id="task-output-diff-stats")
-                yield Static("[dim]Loading changed files...[/dim]", id="task-output-files")
+                yield Static(
+                    "[dim]Loading workspace diff…[/dim]",
+                    id="task-output-diff-placeholder",
+                )
             yield TaskOutputChatOverlay(
                 agent_factory=self.kagan_app._agent_factory,
                 id="task-output-chat-overlay",
@@ -137,61 +141,60 @@ class TaskOutputScreen(KaganScreen):
             )
 
     async def _hydrate_top_panel(self) -> None:
-        stats_text = ""
-        try:
-            stats_text = await self.ctx.api.get_workspace_diff_stats(
-                self._task_model.id,
-                base_branch=self._base_branch,
-            )
-        except RuntimeError:
-            stats_text = ""
+        placeholder = None
         with contextlib.suppress(NoMatches):
-            self.query_one("#task-output-diff-stats", Static).update(
-                f"[bold]Diff Stats:[/bold]\n{stats_text}" if stats_text else "[dim](No diff)[/dim]"
-            )
+            placeholder = self.query_one("#task-output-diff-placeholder", Static)
 
-        files_text = await self._load_changed_files_text()
-        with contextlib.suppress(NoMatches):
-            self.query_one("#task-output-files", Static).update(files_text)
-
-    async def _load_changed_files_text(self) -> str:
         try:
             workspaces = await self.ctx.api.list_workspaces(task_id=self._task_model.id)
         except RuntimeError:
-            return "[dim](Unable to load changed files)[/dim]"
-        if not workspaces:
-            return "[dim](No workspace yet)[/dim]"
+            workspaces = []
 
-        workspace_id = str(self._state_attr(workspaces[0], "id", "")).strip()
+        first = workspaces[0] if workspaces else None
+        workspace_id = str(self._state_attr(first, "id", "")).strip()
+
         if not workspace_id:
-            return "[dim](No workspace yet)[/dim]"
+            if placeholder is not None:
+                placeholder.update("[dim](No workspace yet)[/dim]")
+            return
 
+        if placeholder is not None:
+            placeholder.display = False
+
+        with contextlib.suppress(NoMatches):
+            top = self.query_one("#task-output-top", Vertical)
+            await top.mount(
+                DiffBrowserWidget(
+                    workspace_id,
+                    load_all_diffs=self._load_all_workspace_diffs,
+                )
+            )
+
+    async def _load_all_workspace_diffs(self, workspace_id: str) -> list[Any]:
+        return await self.ctx.api.get_all_diffs(workspace_id)
+
+    @on(DiffBrowserWidget.ActionRequested)
+    async def _on_diff_action_requested(self, event: DiffBrowserWidget.ActionRequested) -> None:
+        event.stop()
+        if event.action == "approve":
+            self.notify("Diff approved", severity="information")
+        elif event.action == "reject":
+            self.notify("Diff rejected", severity="warning")
+        elif event.action == "merge":
+            await self._handle_diff_merge()
+
+    async def _handle_diff_merge(self) -> None:
         try:
-            repo_diffs = await self.ctx.api.get_all_diffs(workspace_id)
+            workspaces = await self.ctx.api.list_workspaces(task_id=self._task_model.id)
         except RuntimeError:
-            return "[dim](Unable to load changed files)[/dim]"
+            self.notify("Merge failed: unable to load workspace", severity="error")
+            return
+        if not workspaces:
+            self.notify("No workspace to merge", severity="warning")
+            return
+        from kagan.tui.ui.modals import MergeDialog
 
-        lines: list[str] = []
-        for repo_diff in repo_diffs or []:
-            file_diffs = self._state_attr(repo_diff, "files", [])
-            if not isinstance(file_diffs, list):
-                continue
-            for file_diff in file_diffs:
-                path = str(self._state_attr(file_diff, "path", "")).strip()
-                if not path:
-                    continue
-                additions = self._state_attr(file_diff, "additions", 0)
-                deletions = self._state_attr(file_diff, "deletions", 0)
-                lines.append(f"- {path} (+{additions}/-{deletions})")
-        if not lines:
-            return "[dim](No changed files)[/dim]"
-
-        max_lines = 12
-        visible = lines[:max_lines]
-        remaining = len(lines) - len(visible)
-        if remaining > 0:
-            visible.append(f"[dim]... {remaining} more file(s)[/dim]")
-        return "[bold]Files Changed:[/bold]\n" + "\n".join(visible)
+        await self.app.push_screen(MergeDialog(workspaces[0].id, []))
 
     def _schedule_runtime_refresh(self) -> None:
         if not self.is_mounted:
@@ -242,9 +245,65 @@ class TaskOutputScreen(KaganScreen):
             "task-output-terminal-fullscreen",
         )
 
-    def action_cycle_output_layout(self) -> None:
-        """Backward-compatible alias for fullscreen toggle."""
-        self.action_open_chat_fullscreen()
+    def _estimated_docked_overlay_height(self) -> int:
+        viewport_height = 0
+        with contextlib.suppress(Exception):
+            viewport_height = int(self.size.height)
+        if viewport_height <= 0:
+            with contextlib.suppress(Exception):
+                viewport_height = int(self.app.size.height)
+        if viewport_height <= 0:
+            return 0
+        target_height = max(
+            self.DOCKED_OVERLAY_BASE_HEIGHT,
+            int(viewport_height * self.DOCKED_OVERLAY_MAX_HEIGHT_RATIO),
+        )
+        max_allowed_height = max(1, viewport_height - 1)
+        return max(1, min(target_height, max_allowed_height))
+
+    def _apply_overlay_height_constraints(
+        self,
+        overlay: ChatOverlay,
+        *,
+        fullscreen: bool,
+        docked_height: int | None = None,
+    ) -> None:
+        if fullscreen:
+            overlay.styles.height = "1fr"
+            overlay.styles.max_height = "1fr"
+            overlay.styles.min_height = "0"
+            return
+        resolved = max(1, int(docked_height or self._estimated_docked_overlay_height() or 1))
+        min_height = min(self.DOCKED_OVERLAY_MIN_HEIGHT, resolved)
+        overlay.styles.height = str(resolved)
+        overlay.styles.max_height = str(resolved)
+        overlay.styles.min_height = str(min_height)
+
+    def prepare_for_docked_overlay_open(self) -> None:
+        overlay_height = self._estimated_docked_overlay_height()
+        if overlay_height <= 0:
+            return
+        with contextlib.suppress(NoMatches):
+            overlay = self._overlay()
+            self._apply_overlay_height_constraints(
+                overlay,
+                fullscreen=False,
+                docked_height=overlay_height,
+            )
+
+    def on_chat_overlay_visibility_changed(self, visible: bool, fullscreen: bool) -> None:
+        if not self.is_mounted:
+            return
+        with contextlib.suppress(NoMatches):
+            overlay = self._overlay()
+            if visible:
+                overlay_height = self._estimated_docked_overlay_height() if not fullscreen else None
+                self._apply_overlay_height_constraints(
+                    overlay,
+                    fullscreen=fullscreen,
+                    docked_height=overlay_height,
+                )
+        self._sync_overlay_layout_class()
 
     def action_toggle_chat_overlay(self) -> None:
         overlay = self._overlay()
@@ -275,6 +334,9 @@ class TaskOutputScreen(KaganScreen):
     async def action_start_agent_output(self) -> None:
         if self._task_model.task_type is not TaskType.AUTO:
             return
+        if self._task_model.status is not TaskStatus.IN_PROGRESS:
+            self.notify("Start is available only for AUTO tasks in IN_PROGRESS", severity="warning")
+            return
         await self._submit_runtime_action(
             action="start_agent",
             pending_msg=self.START_JOB_PENDING_MESSAGE,
@@ -294,6 +356,9 @@ class TaskOutputScreen(KaganScreen):
 
     async def action_stop_agent_output(self) -> None:
         if self._task_model.task_type is not TaskType.AUTO:
+            return
+        if self._task_model.status is not TaskStatus.IN_PROGRESS:
+            self.notify("Stop is available only for AUTO tasks in IN_PROGRESS", severity="warning")
             return
         await self._submit_runtime_action(
             action="stop_agent",
@@ -331,6 +396,37 @@ class TaskOutputScreen(KaganScreen):
 
 class TaskOutputChatOverlay(ChatOverlay):
     """Task Output variant: Escape closes the Task Output screen."""
+
+    _TASK_STREAM_CONNECTING_MESSAGE = "Connecting to agent output stream in a task..."
+
+    def show_for_task(self, task: object, *, fullscreen: bool = False) -> None:
+        """Prime output stream UI before async session sync begins."""
+        self._show_output()
+        super().show_for_task(task, fullscreen=fullscreen)
+        self._run_overlay_worker(
+            self._post_task_stream_connecting_note_if_needed(),
+            group="task-output-stream-connect-note",
+            exclusive=True,
+        )
+
+    async def _post_task_stream_connecting_note_if_needed(self) -> None:
+        existing_output = self.output.get_text_content().lower()
+        if self._TASK_STREAM_CONNECTING_MESSAGE.lower() in existing_output:
+            return
+        await self.output.post_note(self._TASK_STREAM_CONNECTING_MESSAGE, classes="info")
+
+    async def _activate(self) -> None:
+        """Prioritize AUTO stream attach; warm the orchestrator agent in background."""
+        self._update_status("ready", self._ready_hint(self._active_target()))
+        self._focus_chat_input()
+        self.call_after_refresh(self._focus_chat_input)
+        await self._refresh_chat_targets()
+        self._discover_local_skills()
+        self._run_overlay_worker(
+            self._ensure_agent(),
+            group="chat-overlay-activate-agent",
+            exclusive=True,
+        )
 
     def action_escape_overlay(self) -> None:
         if not self.has_class("visible"):

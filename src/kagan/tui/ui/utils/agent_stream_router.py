@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from kagan.core.acp import messages
 from kagan.core.acp.messages import Answer
 from kagan.tui.ui.utils.helpers import is_graceful_agent_termination
+from kagan.tui.ui.widgets.chat_overlay_helpers import normalize_agent_failure_for_ui
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -196,7 +197,10 @@ class AgentStreamRouter:
             )
             return
 
-        await output.post_note(f"Error: {message.message}", classes="error")
+        friendly_message, remediation = normalize_agent_failure_for_ui(message.message)
+        await output.post_note(friendly_message, classes="warning")
+        if remediation:
+            await output.post_note(remediation, classes="info")
         if message.details:
             await output.post_note(message.details)
 

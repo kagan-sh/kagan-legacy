@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from kagan.core.policy import command
 
-from ._parsing import parse_workspace_repo_inputs
+from ._parsing import ParseError, parse_workspace_repo_inputs
 from ._serialization import workspace_to_dict
 
 if TYPE_CHECKING:
@@ -43,8 +43,8 @@ async def get_workspace_path(ctx: AppContext, params: dict[str, Any]) -> dict[st
 async def provision_workspace(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     task_id = params["task_id"]
     repos = parse_workspace_repo_inputs(params.get("repos"))
-    if isinstance(repos, str):
-        raise ValueError(repos)
+    if isinstance(repos, ParseError):
+        raise ValueError(repos.message)
     workspace_id = await ctx.api.provision_workspace(task_id=task_id, repos=repos)
     return {"workspace_id": workspace_id}
 

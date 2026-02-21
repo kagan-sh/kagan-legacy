@@ -67,10 +67,6 @@ if TYPE_CHECKING:
 _GH_CLIENT = GhCliClientAdapter()
 
 
-# Local alias preserves existing call sites while using shared coercion.
-_non_empty_str = non_empty_str
-
-
 def _optional_str(value: object, *, field: str) -> str | None:
     if value is None:
         return None
@@ -122,8 +118,8 @@ def _extract_github_status(repo: object) -> tuple[str, str]:
 
 async def handle_ui_describe(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Return declarative UI schema for GitHub operations."""
-    project_id = _non_empty_str(params.get("project_id"))
-    repo_id = _non_empty_str(params.get("repo_id"))
+    project_id = non_empty_str(params.get("project_id"))
+    repo_id = non_empty_str(params.get("repo_id"))
     if not project_id:
         return {
             "schema_version": "1",
@@ -264,8 +260,8 @@ def build_contract_probe_payload(params: dict[str, Any]) -> dict[str, Any]:
 async def handle_connect_repo(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Connect a repository to GitHub with preflight checks."""
     request = ConnectRepoInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
     )
     return await _build_use_cases(ctx).connect_repo(request)
 
@@ -273,8 +269,8 @@ async def handle_connect_repo(ctx: AppContext, params: dict[str, Any]) -> dict[s
 async def handle_sync_issues(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Sync GitHub issues to Kagan task projections."""
     request = SyncIssuesInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
     )
     return await _build_use_cases(ctx).sync_issues(request)
 
@@ -282,8 +278,8 @@ async def handle_sync_issues(ctx: AppContext, params: dict[str, Any]) -> dict[st
 async def handle_acquire_lease(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Acquire a lease on a GitHub issue for the current Kagan instance."""
     request = AcquireLeaseInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
         issue_number=params.get("issue_number"),
         force_takeover=bool(params.get("force_takeover", False)),
     )
@@ -293,8 +289,8 @@ async def handle_acquire_lease(ctx: AppContext, params: dict[str, Any]) -> dict[
 async def handle_release_lease(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Release a lease on a GitHub issue."""
     request = ReleaseLeaseInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
         issue_number=params.get("issue_number"),
     )
     return await _build_use_cases(ctx).release_lease(request)
@@ -303,8 +299,8 @@ async def handle_release_lease(ctx: AppContext, params: dict[str, Any]) -> dict[
 async def handle_get_lease_state(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Get the current lease state for a GitHub issue."""
     request = GetLeaseStateInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
         issue_number=params.get("issue_number"),
     )
     return await _build_use_cases(ctx).get_lease_state(request)
@@ -313,9 +309,9 @@ async def handle_get_lease_state(ctx: AppContext, params: dict[str, Any]) -> dic
 async def handle_create_pr_for_task(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Create a PR for a task and link it."""
     request = CreatePrForTaskInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
-        task_id=_non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
+        task_id=non_empty_str(params.get("task_id")),
         title=_optional_str(params.get("title"), field="title"),
         body=_optional_str(params.get("body"), field="body"),
         draft=bool(params.get("draft", False)),
@@ -326,9 +322,9 @@ async def handle_create_pr_for_task(ctx: AppContext, params: dict[str, Any]) -> 
 async def handle_link_pr_to_task(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Link an existing PR to a task."""
     request = LinkPrToTaskInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
-        task_id=_non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
+        task_id=non_empty_str(params.get("task_id")),
         pr_number=params.get("pr_number"),
     )
     return await _build_use_cases(ctx).link_pr_to_task(request)
@@ -337,9 +333,9 @@ async def handle_link_pr_to_task(ctx: AppContext, params: dict[str, Any]) -> dic
 async def handle_reconcile_pr_status(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Reconcile PR status for a task and apply deterministic board transitions."""
     request = ReconcilePrStatusInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        repo_id=_non_empty_str(params.get("repo_id")),
-        task_id=_non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        repo_id=non_empty_str(params.get("repo_id")),
+        task_id=non_empty_str(params.get("task_id")),
     )
     return await _build_use_cases(ctx).reconcile_pr_status(request)
 
@@ -350,8 +346,8 @@ async def handle_validate_review_transition(
 ) -> dict[str, Any]:
     """Validate REVIEW transition guardrails for GitHub-connected repos."""
     request = ValidateReviewTransitionInput(
-        task_id=_non_empty_str(params.get("task_id")),
-        project_id=_non_empty_str(params.get("project_id")),
+        task_id=non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
     )
     return await _build_use_cases(ctx).validate_review_transition(request)
 
@@ -359,9 +355,9 @@ async def handle_validate_review_transition(
 async def handle_sync_task_status(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Sync Kagan task status to the linked GitHub issue."""
     request = SyncTaskStatusInput(
-        task_id=_non_empty_str(params.get("task_id")),
-        project_id=_non_empty_str(params.get("project_id")),
-        to_status=_non_empty_str(params.get("to_status")),
+        task_id=non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        to_status=non_empty_str(params.get("to_status")),
     )
     return await _build_use_cases(ctx).sync_task_status_to_issue(request)
 
@@ -369,8 +365,8 @@ async def handle_sync_task_status(ctx: AppContext, params: dict[str, Any]) -> di
 async def handle_check_ci_status(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Check CI status on the linked GitHub PR for a task."""
     request = CheckPrCiStatusInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        task_id=_non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        task_id=non_empty_str(params.get("task_id")),
     )
     return await _build_use_cases(ctx).check_pr_ci_status(request)
 
@@ -378,9 +374,9 @@ async def handle_check_ci_status(ctx: AppContext, params: dict[str, Any]) -> dic
 async def handle_merge_pr(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     """Merge the GitHub PR linked to a task."""
     request = MergeGithubPrInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        task_id=_non_empty_str(params.get("task_id")),
-        merge_method=_non_empty_str(params.get("merge_method")) or "merge",
+        project_id=non_empty_str(params.get("project_id")),
+        task_id=non_empty_str(params.get("task_id")),
+        merge_method=non_empty_str(params.get("merge_method")) or "merge",
     )
     return await _build_use_cases(ctx).merge_github_pr(request)
 
@@ -391,8 +387,8 @@ async def handle_get_pr_review_comments(
 ) -> dict[str, Any]:
     """Fetch PR review comments for the PR linked to a task."""
     request = GetPrReviewCommentsInput(
-        project_id=_non_empty_str(params.get("project_id")),
-        task_id=_non_empty_str(params.get("task_id")),
+        project_id=non_empty_str(params.get("project_id")),
+        task_id=non_empty_str(params.get("task_id")),
     )
     return await _build_use_cases(ctx).get_pr_review_comments(request)
 

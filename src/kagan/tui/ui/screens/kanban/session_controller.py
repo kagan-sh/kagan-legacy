@@ -490,7 +490,7 @@ class KanbanSessionController:
             if result is None:
                 return True
             if result == "skip_future":
-                self.screen.kagan_app.config.ui.skip_pair_instructions = True
+                self.screen.kagan_app.apply_settings_updates({"ui.skip_pair_instructions": True})
                 self.screen.run_worker(
                     self.save_pair_instructions_preference(skip=True),
                     exclusive=True,
@@ -779,6 +779,7 @@ class KanbanSessionController:
             terminal = await self.wait_for_job_terminal(submitted.job_id, task_id=task.id)
         except Exception as exc:
             self.screen.notify(f"Failed to start agent: {exc}", severity="error")
+            await self.open_auto_output_for_task(task, quiet_unavailable=True, force_open=True)
             return False
 
         payload = job_result_payload(terminal)
@@ -787,12 +788,14 @@ class KanbanSessionController:
                 job_message(terminal, "Failed to start agent"),
                 severity="warning",
             )
+            await self.open_auto_output_for_task(task, quiet_unavailable=True, force_open=True)
             return False
         if terminal is not None and terminal.status in {JobStatus.FAILED, JobStatus.CANCELLED}:
             self.screen.notify(
                 job_message(terminal, "Failed to start agent"),
                 severity="warning",
             )
+            await self.open_auto_output_for_task(task, quiet_unavailable=True, force_open=True)
             return False
         if payload is None:
             self.screen.notify(self.START_JOB_PENDING_MESSAGE, severity="information")
@@ -812,27 +815,60 @@ class KanbanSessionController:
         return True
 
     async def apply_global_agent_selection(self, selected: str) -> None:
-        from kagan.core.builtin_agents import get_builtin_agent
-
         config = self.screen.kagan_app.config
         current_agent = config.general.default_worker_agent
         if not selected or selected == current_agent:
             return
 
-        config.general.default_worker_agent = selected
-        if config.get_agent(selected) is None:
-            if builtin := get_builtin_agent(selected):
-                config.agents[selected] = builtin.config.model_copy(deep=True)
+        try:
+            success, message = await self.screen.kagan_app.persist_settings_updates(
+                {"general.default_worker_agent": selected}
+            )
+            if not success:
+                self.screen.notify(
+                    f"Failed to save global agent: {message}",
+                    severity="error",
+                )
+                return
+            await self._ensure_builtin_agent_config_persisted(selected)
+        except Exception as exc:  # quality-allow-broad-except
+            self.screen.notify(f"Failed to save global agent: {exc}", severity="error")
+            return
 
-        await config.save(self.screen.kagan_app.config_path)
-        self.screen.header.update_agent_from_config(config)
+        self.screen.header.update_agent_from_config(self.screen.kagan_app.config)
         self.screen.notify(f"Global agent set to: {selected}", severity="information")
+
+    async def _ensure_builtin_agent_config_persisted(self, selected: str) -> None:
+        from kagan.core.builtin_agents import get_builtin_agent
+        from kagan.core.config import KaganConfig
+
+        config = self.screen.kagan_app.config
+        if config.get_agent(selected) is not None:
+            return
+        builtin = get_builtin_agent(selected)
+        if builtin is None:
+            return
+
+        config_data = config.model_dump(mode="python")
+        agents_data = config_data.get("agents")
+        if not isinstance(agents_data, dict):
+            agents_data = {}
+            config_data["agents"] = agents_data
+        if selected in agents_data:
+            return
+        agents_data[selected] = builtin.config.model_dump(mode="python")
+
+        next_config = KaganConfig.model_validate(config_data)
+        await next_config.save(self.screen.kagan_app.config_path)
+        self.screen.kagan_app.config = next_config
+        self.screen.ctx.config = next_config
 
     async def save_pair_instructions_preference(self, skip: bool = True) -> None:
         try:
-            await self.screen.kagan_app.config.update_ui_preferences(
-                self.screen.kagan_app.config_path,
-                skip_pair_instructions=skip,
+            success, message = await self.screen.kagan_app.persist_settings_updates(
+                {"ui.skip_pair_instructions": skip}
             )
-        except Exception as e:
-            self.screen.notify(f"Failed to save preference: {e}", severity="error")
+            if not success:
+                self.screen.notify(f"Failed to save preference: {message}", severity="error")
+        except Exception as exc:  # quality-allow-broad-except
+            self.screen.notify(f"Failed to save preference: {exc}", severity="error")

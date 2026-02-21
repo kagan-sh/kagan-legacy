@@ -11,14 +11,16 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from kagan.core.domain.models import (
+    AgentLogEntry,
     PlanItem,
     PlanTodo,
     Project,
     Repo,
-    Task,
     TaskRuntimeState,
     TaskSummary,
 )
+from kagan.core.domain.pair_terminal_backends import PairTerminalBackendLiteral
+from kagan.core.response_models import TaskWaitResponse as _CoreTaskWaitResponse
 
 
 class RecoveryResponse(BaseModel):
@@ -46,42 +48,29 @@ class TaskScopedMutatingResponse(MutatingResponse):
     task_id: str = Field(description="ID of the task")
 
 
-class JobScopedResponse(RecoveryResponse):
+class JobScopedResponse(MutatingResponse):
     """Base response for MCP tools scoped to a specific asynchronous job."""
 
-    success: bool = Field(description="Whether the operation succeeded")
     job_id: str = Field(description="Core job identifier")
     task_id: str = Field(description="ID of the associated task")
 
 
-class AgentLogEntry(BaseModel):
-    """A single agent execution log entry."""
+class _CountedResponse(BaseModel):
+    """Shared list/count envelope for MCP collection responses."""
 
-    run: int = Field(description="Run number (1 = first run)")
-    content: str = Field(description="Log content")
-    created_at: str = Field(description="ISO timestamp of log creation")
+    count: int = Field(default=0, description="Total number of items returned")
 
 
-class TaskWaitResponse(BaseModel):
-    """Response from task_wait long-poll tool."""
+class TaskWaitResponse(_CoreTaskWaitResponse):
+    """MCP response from task_wait long-poll tool."""
 
-    changed: bool = Field(description="Whether task status changed before timeout")
-    timed_out: bool = Field(description="Whether the wait timed out without status change")
-    task_id: str = Field(description="ID of the watched task")
-    previous_status: str | None = Field(
-        default=None, description="Task status at the start of the wait"
+    # Override code to nullable for MCP recovery protocol
+    code: str | None = None  # type: ignore[assignment]
+    hint: str | None = Field(default=None, description="Actionable remediation guidance")
+    next_tool: str | None = Field(default=None, description="Suggested next MCP tool")
+    next_arguments: dict[str, object] | None = Field(
+        default=None, description="Suggested arguments for next_tool"
     )
-    current_status: str | None = Field(
-        default=None, description="Task status at the end of the wait"
-    )
-    changed_at: str | None = Field(
-        default=None, description="ISO timestamp cursor for observed task status updates"
-    )
-    task: Task | None = Field(
-        default=None, description="Compact task snapshot (no large logs/scratchpads)"
-    )
-    code: str | None = Field(default=None, description="Machine-readable status code")
-    message: str | None = Field(default=None, description="Human-readable status message")
 
 
 class PlanProposalResponse(MutatingResponse):
@@ -100,11 +89,10 @@ class PlanProposalResponse(MutatingResponse):
     )
 
 
-class TaskListResponse(BaseModel):
+class TaskListResponse(_CountedResponse):
     """Response from task_list tool."""
 
     tasks: list[TaskSummary] = Field(default_factory=list, description="List of tasks")
-    count: int = Field(default=0, description="Total number of tasks returned")
 
 
 class TaskLogsResponse(RecoveryResponse):
@@ -205,11 +193,10 @@ class ProjectInfo(Project):
     )
 
 
-class ProjectListResponse(BaseModel):
+class ProjectListResponse(_CountedResponse):
     """Response from project_list tool."""
 
     projects: list[ProjectInfo] = Field(default_factory=list, description="List of projects")
-    count: int = Field(default=0, description="Total number of projects returned")
 
 
 class ProjectOpenResponse(MutatingResponse):
@@ -230,11 +217,10 @@ class RepoListItem(Repo):
     )
 
 
-class RepoListResponse(BaseModel):
+class RepoListResponse(_CountedResponse):
     """Response from repo_list tool."""
 
     repos: list[RepoListItem] = Field(default_factory=list, description="List of repositories")
-    count: int = Field(default=0, description="Total number of repos returned")
 
 
 class ReviewActionResponse(TaskScopedMutatingResponse):
@@ -253,11 +239,10 @@ class AuditEvent(BaseModel):
     success: bool | None = Field(default=None, description="Whether the command succeeded")
 
 
-class AuditTailResponse(BaseModel):
+class AuditTailResponse(_CountedResponse):
     """Response from audit_list tool."""
 
     events: list[AuditEvent] = Field(default_factory=list, description="List of audit events")
-    count: int = Field(default=0, description="Total number of events returned")
 
 
 class InstrumentationSnapshotResponse(BaseModel):
@@ -323,7 +308,7 @@ TaskTypeInput = Literal["AUTO", "PAIR", "auto", "pair"]
 TaskStatusInput = WorkflowStatusInput
 TaskPriorityInput = Literal["LOW", "MED", "MEDIUM", "HIGH", "low", "med", "medium", "high"]
 JobActionInput = Literal["start_agent", "stop_agent"]
-TerminalBackendInput = Literal["tmux", "nvim", "vscode", "cursor"]
+TerminalBackendInput = PairTerminalBackendLiteral
 ReviewActionInput = Literal["approve", "reject", "merge", "rebase"]
 RejectionActionInput = Literal["reopen", "return", "in_progress", "backlog"]
 SessionActionInput = Literal["open", "read", "close"]

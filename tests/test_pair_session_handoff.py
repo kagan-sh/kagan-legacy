@@ -2,7 +2,7 @@
 
 Covers:
 - Session creation bound to task-scoped context
-- Backend support (tmux, nvim, vscode, cursor) with fallback
+- Backend support (tmux, nvim, vscode, cursor, windsurf, kiro, antigravity) with fallback
 - Session open / read / close lifecycle
 - Status handling: BACKLOG -> IN_PROGRESS on session open
 - Task/session env vars injection
@@ -13,7 +13,7 @@ Covers:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import pytest
 
@@ -44,6 +44,13 @@ class TestPairBackendResolution:
     @pytest.mark.parametrize("backend", list(PairTerminalBackend))
     def test_all_backends_are_valid(self, backend: PairTerminalBackend) -> None:
         assert coerce_pair_backend(backend.value) == backend.value
+
+    def test_mcp_terminal_backend_input_literal_matches_domain_enum(self) -> None:
+        from kagan.mcp._response_models import TerminalBackendInput
+
+        assert get_args(TerminalBackendInput) == tuple(
+            backend.value for backend in PairTerminalBackend
+        )
 
     def test_invalid_backend_returns_none(self) -> None:
         assert coerce_pair_backend("invalid") is None

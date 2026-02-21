@@ -12,6 +12,8 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from kagan.core.protocol_constants import DEFAULT_JOB_WAIT_TIMEOUT_SECONDS
+
 if TYPE_CHECKING:
     from kagan.core.config import KaganConfig
     from kagan.sdk import KaganSDK
@@ -29,6 +31,22 @@ class WorkspaceView:
     status: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _QueueStatusResult:
+    has_queued: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _StartupDecisionResult:
+    should_open_project: bool
+    project_id: str | None
+    preferred_repo_id: str | None
+    preferred_path: Path | None
+    suggest_cwd: bool
+    cwd_path: str | None
+    cwd_is_git_repo: bool
 
 
 def _value_from(source: object, key: str) -> object:
@@ -377,7 +395,11 @@ class CoreBackedApi:
         task_id: str,
         timeout_seconds: float | None = None,
     ):
-        result = await self._sdk.jobs_wait(job_id, task_id, timeout_seconds or 30.0)
+        result = await self._sdk.jobs_wait(
+            job_id,
+            task_id,
+            timeout_seconds or DEFAULT_JOB_WAIT_TIMEOUT_SECONDS,
+        )
         return result
 
     async def cancel_job(self, job_id: str, *, task_id: str):
@@ -527,13 +549,11 @@ class CoreBackedApi:
     ):
         return await self._sdk.queue_message(session_id, content, lane, author, metadata)
 
-    async def get_queue_status(self, session_id: str, *, lane: str = "implementation"):
+    async def get_queue_status(
+        self, session_id: str, *, lane: str = "implementation"
+    ) -> _QueueStatusResult:
         result = await self._sdk.get_queue_status(session_id, lane)
-
-        class Status:
-            has_queued = result.has_queued
-
-        return Status()
+        return _QueueStatusResult(has_queued=result.has_queued)
 
     async def get_queued_messages(
         self,
@@ -545,7 +565,12 @@ class CoreBackedApi:
         return result.messages
 
     async def take_queued_message(self, session_id: str, *, lane: str = "implementation"):
-        return await self._sdk.take_queued_message(session_id, lane)
+        from kagan.sdk._types import QueuedMessage
+
+        result = await self._sdk.take_queued_message(session_id, lane)
+        if isinstance(result.message, QueuedMessage):
+            return result.message
+        return None
 
     async def remove_queued_message(
         self,
@@ -556,29 +581,6 @@ class CoreBackedApi:
     ):
         result = await self._sdk.remove_queued_message(session_id, index, lane)
         return result.value
-
-    async def save_planner_draft(
-        self,
-        *,
-        project_id: str,
-        repo_id: str | None = None,
-        tasks_json: list[dict[str, Any]],
-        todos_json: list[dict[str, Any]] | None = None,
-    ):
-        return await self._sdk.save_planner_draft(project_id, tasks_json, repo_id, todos_json)
-
-    async def list_pending_planner_drafts(
-        self,
-        project_id: str,
-        *,
-        repo_id: str | None = None,
-    ):
-        result = await self._sdk.list_pending_planner_drafts(project_id, repo_id)
-        return result.drafts
-
-    async def update_planner_draft_status(self, proposal_id: str, status):
-        status_value = status.value if hasattr(status, "value") else str(status)
-        return await self._sdk.update_planner_draft_status(proposal_id, status_value)
 
     async def get_execution(self, execution_id: str):
         result = await self._sdk.get_execution(execution_id)
@@ -596,19 +598,17 @@ class CoreBackedApi:
         result = await self._sdk.count_executions_for_task(task_id)
         return result.count
 
-    async def decide_startup(self, cwd: Path):
+    async def decide_startup(self, cwd: Path) -> _StartupDecisionResult:
         result = await self._sdk.decide_startup(str(cwd))
-
-        class Decision:
-            should_open_project = result.should_open_project
-            project_id = result.project_id
-            preferred_repo_id = result.preferred_repo_id
-            preferred_path = Path(result.preferred_path) if result.preferred_path else None
-            suggest_cwd = result.suggest_cwd
-            cwd_path = result.cwd_path
-            cwd_is_git_repo = result.cwd_is_git_repo
-
-        return Decision()
+        return _StartupDecisionResult(
+            should_open_project=result.should_open_project,
+            project_id=result.project_id,
+            preferred_repo_id=result.preferred_repo_id,
+            preferred_path=Path(result.preferred_path) if result.preferred_path else None,
+            suggest_cwd=result.suggest_cwd,
+            cwd_path=result.cwd_path,
+            cwd_is_git_repo=result.cwd_is_git_repo,
+        )
 
     async def dispatch_runtime_session(
         self,
@@ -673,6 +673,13 @@ class CoreBackedApi:
         task_id = task.id if hasattr(task, "id") else task
         return await self._sdk.recover_stale_auto_output(task_id)
 
+    async def wait_for_task_event(
+        self,
+        *,
+        timeout_seconds: float = DEFAULT_JOB_WAIT_TIMEOUT_SECONDS,
+    ):
+        return await self._sdk.tasks_wait_any(timeout_seconds=timeout_seconds)
+
 
 @dataclass
 class CoreBackedContext:
@@ -683,10 +690,14 @@ class CoreBackedContext:
     db_path: Path
     api: CoreBackedApi
     sdk: KaganSDK
+    event_sdk: KaganSDK | None = None
     active_project_id: str | None = None
     active_repo_id: str | None = None
 
     async def close(self) -> None:
+        if self.event_sdk:
+            await self.event_sdk.close()
+            self.event_sdk = None
         if self.sdk:
             await self.sdk.close()
         return None

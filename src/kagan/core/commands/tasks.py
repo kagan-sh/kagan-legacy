@@ -13,8 +13,16 @@ from kagan.core.domain.errors import (
 )
 from kagan.core.domain.task_rules import validate_transition
 from kagan.core.policy import command
+from kagan.core.protocol_constants import (
+    DEFAULT_TASK_LOG_ENTRY_CHAR_LIMIT,
+    DEFAULT_TASK_LOG_LIMIT,
+    DEFAULT_TASK_LOG_TOTAL_CHAR_LIMIT,
+    DEFAULT_TASK_SCRATCHPAD_CHAR_LIMIT,
+    MAX_TASK_LOG_LIMIT,
+)
 
 from ._parsing import (
+    ParseError,
     build_task_update_fields,
     parse_events_offset,
     parse_task_status,
@@ -27,9 +35,11 @@ if TYPE_CHECKING:
     from kagan.core.bootstrap import AppContext
 
 logger = logging.getLogger(__name__)
-_DEFAULT_TASK_SCRATCHPAD_CHAR_LIMIT = 16_000
-_DEFAULT_TASK_LOG_ENTRY_CHAR_LIMIT = 6_000
-_DEFAULT_TASK_LOG_TOTAL_CHAR_LIMIT = 18_000
+
+_MIN_TRANSPORT_CONTENT_CHAR_LIMIT = 256
+_MAX_TRANSPORT_CONTENT_CHAR_LIMIT = 200_000
+_MAX_TRANSPORT_TOTAL_CHAR_LIMIT = 1_000_000
+_TASK_LOG_ENTRY_OVERHEAD_CHARS = 128
 
 
 def _task_error_response(
@@ -72,7 +82,7 @@ def _bounded_int(
 
 @command("tasks", "get", description="Get a single task by ID.")
 async def get_task(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
-    task = await ctx.task_service.get_task(params["task_id"])
+    task = await ctx.api.get_task(params["task_id"])
     if task is None:
         return {"found": False, "task": None}
     return {
@@ -90,7 +100,7 @@ async def list_tasks(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     if isinstance(status_filter, str) and status_filter.strip():
         status = TaskStatus(status_filter.strip().upper())
 
-    tasks = await ctx.task_service.list_tasks(project_id=project_id, status=status)
+    tasks = await ctx.api.list_tasks(project_id=project_id, status=status)
     excluded_task_ids = set(str_list(params.get("exclude_task_ids")))
     filtered_tasks = [task for task in tasks if task.id not in excluded_task_ids]
 
@@ -99,7 +109,7 @@ async def list_tasks(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     for task in filtered_tasks:
         payload = task_to_dict(task, runtime_service=runtime_service)
         if include_scratchpad:
-            payload["scratchpad"] = await ctx.task_service.get_scratchpad(task.id)
+            payload["scratchpad"] = await ctx.api.get_scratchpad(task.id)
         serialized_tasks.append(payload)
     return {"tasks": serialized_tasks, "count": len(filtered_tasks)}
 
@@ -122,9 +132,9 @@ async def get_scratchpad(ctx: AppContext, params: dict[str, Any]) -> dict[str, A
     task_id = params["task_id"]
     content_limit = _bounded_int(
         params.get("content_char_limit"),
-        default=_DEFAULT_TASK_SCRATCHPAD_CHAR_LIMIT,
-        minimum=256,
-        maximum=200_000,
+        default=DEFAULT_TASK_SCRATCHPAD_CHAR_LIMIT,
+        minimum=_MIN_TRANSPORT_CONTENT_CHAR_LIMIT,
+        maximum=_MAX_TRANSPORT_CONTENT_CHAR_LIMIT,
     )
     scratchpad = await ctx.task_service.get_scratchpad(task_id)
     content, truncated = _truncate_for_transport(scratchpad, limit=content_limit)
@@ -219,31 +229,31 @@ async def get_task_context(ctx: AppContext, params: dict[str, Any]) -> dict[str,
 @command("tasks", "logs", description="Return execution logs for a task.")
 async def get_task_logs(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]:
     task_id = params["task_id"]
-    raw_limit = params.get("limit", 5)
-    limit = 5
+    raw_limit = params.get("limit", DEFAULT_TASK_LOG_LIMIT)
+    limit = DEFAULT_TASK_LOG_LIMIT
     if isinstance(raw_limit, int) and not isinstance(raw_limit, bool):
-        limit = max(1, min(raw_limit, 20))
+        limit = max(1, min(raw_limit, MAX_TASK_LOG_LIMIT))
 
     offset_value = parse_events_offset(params.get("offset"))
-    if isinstance(offset_value, str):
+    if isinstance(offset_value, ParseError):
         return {
             "success": False,
             "task_id": task_id,
-            "message": offset_value,
-            "code": "INVALID_OFFSET",
+            "message": offset_value.message,
+            "code": offset_value.code,
         }
 
     content_limit = _bounded_int(
         params.get("content_char_limit"),
-        default=_DEFAULT_TASK_LOG_ENTRY_CHAR_LIMIT,
-        minimum=256,
-        maximum=200_000,
+        default=DEFAULT_TASK_LOG_ENTRY_CHAR_LIMIT,
+        minimum=_MIN_TRANSPORT_CONTENT_CHAR_LIMIT,
+        maximum=_MAX_TRANSPORT_CONTENT_CHAR_LIMIT,
     )
     total_limit = _bounded_int(
         params.get("total_char_limit"),
-        default=_DEFAULT_TASK_LOG_TOTAL_CHAR_LIMIT,
+        default=DEFAULT_TASK_LOG_TOTAL_CHAR_LIMIT,
         minimum=content_limit,
-        maximum=1_000_000,
+        maximum=_MAX_TRANSPORT_TOTAL_CHAR_LIMIT,
     )
     raw_logs = await _task_logs_page(ctx, task_id=task_id, limit=limit, offset=offset_value)
     logs = raw_logs.get("logs", [])
@@ -251,7 +261,6 @@ async def get_task_logs(ctx: AppContext, params: dict[str, Any]) -> dict[str, An
     bounded_logs: list[dict[str, Any]] = []
     truncated = False
     used_chars = 0
-    per_entry_overhead = 128
     for log in logs:
         if not isinstance(log, dict):
             continue
@@ -260,7 +269,7 @@ async def get_task_logs(ctx: AppContext, params: dict[str, Any]) -> dict[str, An
         if entry_truncated:
             truncated = True
 
-        remaining = total_limit - used_chars - per_entry_overhead
+        remaining = total_limit - used_chars - _TASK_LOG_ENTRY_OVERHEAD_CHARS
         if remaining <= 0:
             truncated = True
             break
@@ -273,7 +282,7 @@ async def get_task_logs(ctx: AppContext, params: dict[str, Any]) -> dict[str, An
         bounded_log = dict(log)
         bounded_log["content"] = content
         bounded_logs.append(bounded_log)
-        used_chars += len(content) + per_entry_overhead
+        used_chars += len(content) + _TASK_LOG_ENTRY_OVERHEAD_CHARS
 
     total_runs_raw = raw_logs.get("total_runs")
     total_runs = total_runs_raw if isinstance(total_runs_raw, int) else offset_value + len(logs)
@@ -310,7 +319,7 @@ async def _task_logs_page(
     limit: int,
     offset: int,
 ) -> dict[str, Any]:
-    limit = max(1, min(limit, 20))
+    limit = max(1, min(limit, MAX_TASK_LOG_LIMIT))
     offset = max(0, offset)
     executions = await ctx.execution_service.list_executions_for_task(
         task_id,
@@ -361,20 +370,17 @@ async def create_task(ctx: AppContext, params: dict[str, Any]) -> dict[str, Any]
     project_id = params.get("project_id")
     created_by = params.get("created_by")
 
-    task = await ctx.task_service.create_task(
-        title=title,
-        description=description,
-        project_id=project_id,
-        created_by=created_by,
-    )
-
     fields = build_task_update_fields(params)
     for field in ("project_id", "title", "description"):
         fields.pop(field, None)
-    if fields:
-        updated = await ctx.task_service.update_fields(task.id, **fields)
-        if updated is not None:
-            task = updated
+
+    task = await ctx.api.create_task(
+        title,
+        description,
+        project_id=project_id,
+        created_by=created_by,
+        **fields,
+    )
     return {"success": True, "task_id": task.id, "title": task.title, "status": task.status.value}
 
 

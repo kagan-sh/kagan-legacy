@@ -43,8 +43,11 @@ Create a task. Pick a mode. The agent works. You review, approve, and merge.
 **UV (Recommended)**
 ```bash
 uv tool install kagan
-# or 
+# or
 uvx kagan
+# invoke with either command name:
+kagan --version
+kg --version
 ```
 
 **Mac / Linux**

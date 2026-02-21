@@ -11,9 +11,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
-from kagan.core.adapters.db.repositories import RepoRepository, TaskRepository
 from kagan.core.adapters.db.schema import Task
 from kagan.core.adapters.process import ProcessResult
 from kagan.core.domain.enums import TaskStatus
@@ -21,30 +18,9 @@ from kagan.core.domain.enums import TaskStatus
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
 
-@pytest.fixture
-async def repo_with_project(tmp_path: Path):
-    """Create a TaskRepository with a project and linked git repo."""
-    from tests.helpers.git import init_git_repo_with_commit
-
-    repo_path = tmp_path / "myrepo"
-    repo_path.mkdir()
-    await init_git_repo_with_commit(repo_path)
-
-    db_path = tmp_path / "test.db"
-    task_repo = TaskRepository(db_path, project_root=repo_path)
-    await task_repo.initialize()
-    project_id = await task_repo.ensure_test_project("Test Project")
-
-    assert task_repo._session_factory is not None
-    repo_repo = RepoRepository(task_repo._session_factory)
-    repo, _ = await repo_repo.get_or_create(repo_path, default_branch="main")
-    if repo.id:
-        await repo_repo.update_default_branch(repo.id, "main", mark_configured=True)
-        await repo_repo.add_to_project(project_id, repo.id, is_primary=True)
-
-    yield task_repo, repo_repo, project_id, repo_path, repo
-    await task_repo.close()
+    from tests.helpers.fixtures.core import RepoWithProjectFixture
 
 
 class TestProjectCreation:
@@ -66,41 +42,46 @@ class TestProjectCreation:
 class TestRepoAssociation:
     """Linking repos to projects and branch setup."""
 
-    async def test_repo_linked_to_project(self, repo_with_project) -> None:
-        _task_repo, repo_repo, project_id, repo_path, _repo = repo_with_project
-        repos = await repo_repo.list_for_project(project_id)
+    async def test_repo_linked_to_project(self, repo_with_project: RepoWithProjectFixture) -> None:
+        repos = await repo_with_project.repo_repo.list_for_project(repo_with_project.project_id)
         assert len(repos) >= 1
-        assert any(str(r.path) == str(repo_path) for r in repos)
+        assert any(str(r.path) == str(repo_with_project.repo_path) for r in repos)
 
-    async def test_repo_default_branch_set(self, repo_with_project) -> None:
-        _task_repo, repo_repo, _project_id, _repo_path, repo = repo_with_project
-        fetched = await repo_repo.get(repo.id)
+    async def test_repo_default_branch_set(self, repo_with_project: RepoWithProjectFixture) -> None:
+        fetched = await repo_with_project.repo_repo.get(repo_with_project.repo.id)
         assert fetched is not None
         assert fetched.default_branch == "main"
         # branch_configured is stored in scripts dict
         assert fetched.scripts.get("kagan.branch_configured") == "true"
 
-    async def test_get_or_create_existing_repo(self, repo_with_project) -> None:
-        _task_repo, repo_repo, _project_id, repo_path, repo = repo_with_project
-        same_repo, created = await repo_repo.get_or_create(repo_path, default_branch="main")
-        assert same_repo.id == repo.id
+    async def test_get_or_create_existing_repo(
+        self, repo_with_project: RepoWithProjectFixture
+    ) -> None:
+        same_repo, created = await repo_with_project.repo_repo.get_or_create(
+            repo_with_project.repo_path,
+            default_branch="main",
+        )
+        assert same_repo.id == repo_with_project.repo.id
         assert created is False
 
 
 class TestProjectScopedTasks:
     """Tasks belong to a project scope."""
 
-    async def test_task_created_under_project(self, repo_with_project) -> None:
-        task_repo, _, project_id, _, _ = repo_with_project
+    async def test_task_created_under_project(
+        self, repo_with_project: RepoWithProjectFixture
+    ) -> None:
         task = Task.create(
             title="Scoped task",
-            project_id=project_id,
+            project_id=repo_with_project.project_id,
             status=TaskStatus.BACKLOG,
         )
-        created = await task_repo.create(task)
-        assert created.project_id == project_id
+        created = await repo_with_project.task_repo.create(task)
+        assert created.project_id == repo_with_project.project_id
 
-        all_tasks = await task_repo.get_all(project_id=project_id)
+        all_tasks = await repo_with_project.task_repo.get_all(
+            project_id=repo_with_project.project_id
+        )
         assert any(t.id == created.id for t in all_tasks)
 
 

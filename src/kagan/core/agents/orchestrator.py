@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from kagan.core.domain.enums import ChatRole
 from kagan.core.safety import literalize_for_prompt
+
+from .conversation_context import build_conversation_context_lines, build_persona_section
 
 ORCHESTRATOR_PROMPT = """\
 You are kagan — an AI project manager and development orchestrator.
@@ -92,11 +93,7 @@ def build_orchestrator_prompt(
     """Build the prompt for the orchestrator agent."""
     context_section = ""
     snapshot_section = ""
-    persona_section = ""
-    if isinstance(persona, str):
-        cleaned = persona.strip()
-        if cleaned:
-            persona_section = f"## Persona Preset\n\n{literalize_for_prompt(cleaned)}"
+    persona_section = build_persona_section(persona)
     if isinstance(session_snapshot, str):
         cleaned_snapshot = session_snapshot.strip()
         if cleaned_snapshot:
@@ -107,18 +104,8 @@ def build_orchestrator_prompt(
                 "</snapshot>\n\n"
                 "---\n\n"
             )
-    if conversation_history:
-        context_parts = []
-        for role, content in conversation_history:
-            safe_content = literalize_for_prompt(content)
-            if role == ChatRole.USER:
-                context_parts.append(f"User: {safe_content}")
-            else:
-                truncated = (
-                    safe_content[:2000] + "..." if len(safe_content) > 2000 else safe_content
-                )
-                context_parts.append(f"Assistant: {truncated}")
-
+    context_parts = build_conversation_context_lines(conversation_history)
+    if context_parts:
         context_section = f"""## Previous Conversation
 
 {chr(10).join(context_parts)}

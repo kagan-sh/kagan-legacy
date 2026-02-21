@@ -29,14 +29,15 @@ from kagan.core.constants import (
 from kagan.core.ipc.client import IPCClient
 from kagan.core.ipc.discovery import CoreEndpoint, discover_core_endpoint
 from kagan.core.mcp_naming import get_mcp_server_name
-from kagan.core.paths import get_config_path, get_core_token_path, get_database_path
 from kagan.core.policy import (
     CAPABILITY_PROFILES,
     CapabilityProfile,
     ProtocolCapability,
     ProtocolMethod,
+    apply_profile_ceiling,
     protocol_call,
 )
+from kagan.core.runtime_context import CoreRuntimeContext, resolve_runtime_context
 from kagan.core.services.runtime import ensure_core_running
 from kagan.mcp._response_models import *  # noqa: F403  # Import all response models for FastMCP type inspection
 from kagan.mcp._tool_closures import _register_full_mode_tools
@@ -89,6 +90,7 @@ class MCPRuntimeConfig:
     capability_profile: str | None = None
     identity: str | None = None
     enable_internal_instrumentation: bool = False
+    runtime_context: CoreRuntimeContext | None = None
 
 
 @dataclass
@@ -105,13 +107,6 @@ _IDENTITY_PROFILE_CEILING: dict[str, CapabilityProfile] = {
     MCP_IDENTITY_DEFAULT: CapabilityProfile.PAIR_WORKER,
     MCP_IDENTITY_ADMIN: CapabilityProfile.MAINTAINER,
 }
-_PROFILE_RANK: dict[CapabilityProfile, int] = {
-    CapabilityProfile.VIEWER: 0,
-    CapabilityProfile.PLANNER: 1,
-    CapabilityProfile.PAIR_WORKER: 2,
-    CapabilityProfile.OPERATOR: 3,
-    CapabilityProfile.MAINTAINER: 4,
-}
 
 
 def _runtime_config_or_default(runtime_config: MCPRuntimeConfig | None) -> MCPRuntimeConfig:
@@ -122,7 +117,8 @@ def _runtime_config_or_default(runtime_config: MCPRuntimeConfig | None) -> MCPRu
 def _resolve_endpoint(runtime_config: MCPRuntimeConfig | None = None) -> CoreEndpoint | None:
     """Resolve the core endpoint from override or discovery."""
     config = _runtime_config_or_default(runtime_config)
-    discovered = discover_core_endpoint()
+    runtime_context = config.runtime_context or resolve_runtime_context()
+    discovered = discover_core_endpoint(runtime_context=runtime_context)
     if not config.endpoint:
         return discovered
 
@@ -136,19 +132,19 @@ def _resolve_endpoint(runtime_config: MCPRuntimeConfig | None = None) -> CoreEnd
                 transport="tcp",
                 address=host,
                 port=int(port_raw),
-                token=_read_local_core_token(discovered),
+                token=_read_local_core_token(discovered, runtime_context=runtime_context),
             )
         return CoreEndpoint(
             transport="tcp",
             address=host_port,
             port=None,
-            token=_read_local_core_token(discovered),
+            token=_read_local_core_token(discovered, runtime_context=runtime_context),
         )
     if raw.startswith("socket://"):
         return CoreEndpoint(
             transport="socket",
             address=raw.removeprefix("socket://"),
-            token=_read_local_core_token(discovered),
+            token=_read_local_core_token(discovered, runtime_context=runtime_context),
         )
 
     if raw.startswith("pipe://") or raw.startswith("\\\\.\\pipe\\"):
@@ -157,7 +153,7 @@ def _resolve_endpoint(runtime_config: MCPRuntimeConfig | None = None) -> CoreEnd
         return CoreEndpoint(
             transport="socket",
             address=raw,
-            token=_read_local_core_token(discovered),
+            token=_read_local_core_token(discovered, runtime_context=runtime_context),
         )
 
     host, sep, port_raw = raw.rpartition(":")
@@ -166,30 +162,34 @@ def _resolve_endpoint(runtime_config: MCPRuntimeConfig | None = None) -> CoreEnd
             transport="tcp",
             address=host,
             port=int(port_raw),
-            token=_read_local_core_token(discovered),
+            token=_read_local_core_token(discovered, runtime_context=runtime_context),
         )
     return CoreEndpoint(
         transport="socket",
         address=raw,
-        token=_read_local_core_token(discovered),
+        token=_read_local_core_token(discovered, runtime_context=runtime_context),
     )
 
 
-def _read_local_core_token(discovered: CoreEndpoint | None) -> str | None:
+def _read_local_core_token(
+    discovered: CoreEndpoint | None,
+    *,
+    runtime_context: CoreRuntimeContext,
+) -> str | None:
     """Read token from discovered endpoint or local runtime file."""
     if discovered is not None and discovered.token:
         return discovered.token
     with suppress(OSError):
-        token = get_core_token_path().read_text(encoding="utf-8").strip()
+        token = (runtime_context.runtime_dir / "token").read_text(encoding="utf-8").strip()
         if token:
             return token
     return None
 
 
-def _is_core_autostart_enabled() -> bool:
+def _is_core_autostart_enabled(*, runtime_context: CoreRuntimeContext) -> bool:
     """Return whether MCP should auto-start core when no endpoint is available."""
     try:
-        config = KaganConfig.load(get_config_path())
+        config = KaganConfig.load(runtime_context.config_path)
     except Exception:
         return True
     return config.general.core_autostart
@@ -200,17 +200,19 @@ async def _resolve_or_autostart_endpoint(
 ) -> CoreEndpoint | None:
     """Resolve endpoint, auto-starting core when discovery fails and autostart is enabled."""
     config = _runtime_config_or_default(runtime_config)
+    runtime_context = config.runtime_context or resolve_runtime_context()
     endpoint = _resolve_endpoint(config)
     if endpoint is not None:
         return endpoint
     if config.endpoint:
         return None
-    if not _is_core_autostart_enabled():
+    if not _is_core_autostart_enabled(runtime_context=runtime_context):
         return None
     try:
         return await ensure_core_running(
-            config_path=get_config_path(),
-            db_path=get_database_path(),
+            config_path=runtime_context.config_path,
+            db_path=runtime_context.db_path,
+            runtime_context=runtime_context,
         )
     except Exception:
         logger.warning("Failed to auto-start core endpoint", exc_info=True)
@@ -383,7 +385,7 @@ def _resolve_effective_profile(
     except ValueError:
         requested = CapabilityProfile.VIEWER
     ceiling = _IDENTITY_PROFILE_CEILING.get(raw_identity, CapabilityProfile.PAIR_WORKER)
-    effective = requested if _PROFILE_RANK[requested] <= _PROFILE_RANK[ceiling] else ceiling
+    effective = apply_profile_ceiling(requested, ceiling_profile=ceiling)
     return str(effective)
 
 
@@ -500,7 +502,8 @@ def _build_plugin_registry() -> Any:
     """Build a PluginRegistry with plugins discovered from config."""
     from kagan.core.plugins.sdk import PluginRegistry
 
-    config = KaganConfig.load(get_config_path())
+    runtime_context = resolve_runtime_context()
+    config = KaganConfig.load(runtime_context.config_path)
     registry = PluginRegistry()
     registry.discover_and_register(config.plugins.discovery)
     return registry
@@ -525,6 +528,7 @@ def main(
     enable_internal_instrumentation: bool = False,
 ) -> None:
     """Entry point for kagan-mcp command."""
+    runtime_context = resolve_runtime_context()
     runtime_config = MCPRuntimeConfig(
         endpoint=endpoint,
         session_id=session_id,
@@ -532,6 +536,7 @@ def main(
         or (MCP_DEFAULT_READONLY_CAPABILITY if readonly else MCP_DEFAULT_FULL_CAPABILITY),
         identity=identity or (MCP_IDENTITY_DEFAULT if readonly else MCP_IDENTITY_ADMIN),
         enable_internal_instrumentation=enable_internal_instrumentation,
+        runtime_context=runtime_context,
     )
     mcp = _create_mcp_server(readonly=readonly, runtime_config=runtime_config)
     try:

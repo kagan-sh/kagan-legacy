@@ -39,6 +39,7 @@ class RepoMergeRow(Static):
                 self.repo_name,
                 value=self.has_changes,
                 disabled=not self.has_changes,
+                compact=True,
                 id=f"check-{self.repo_id}",
             )
             yield Label(f"-> {self.target_branch}", classes="target-branch")
@@ -97,6 +98,7 @@ class MergeDialog(KaganModalScreen[list[MergeResult] | None]):
                 ],
                 id="strategy-select",
                 prompt="Merge Strategy",
+                compact=True,
             )
 
             with Horizontal(id="button-row", classes="modal-action-hint-row"):

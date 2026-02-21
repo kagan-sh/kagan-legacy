@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from kagan.core.acp import messages
 from kagan.core.safety import REDACTED_EMAIL, REDACTED_TOKEN
 from kagan.tui.ui.widgets.chat_overlay import ChatOverlay
 
@@ -39,6 +40,29 @@ def test_suppresses_removed_agent_commands() -> None:
     assert overlay._is_suppressed_agent_command(SimpleNamespace(name="textual")) is True
     assert overlay._is_suppressed_agent_command(SimpleNamespace(name="textual:snapshot")) is True
     assert overlay._is_suppressed_agent_command(SimpleNamespace(name="find-skills")) is False
+
+
+def test_handle_commands_update_without_slash_complete_popup_does_not_raise() -> None:
+    overlay = ChatOverlay()
+
+    overlay._handle_commands_update(messages.AvailableCommandsUpdate(commands=[]))
+
+    assert overlay._available_commands == []
+
+
+def test_slash_popup_hides_agent_commands_from_root_listing() -> None:
+    overlay = ChatOverlay()
+    overlay._available_commands = [
+        SimpleNamespace(name="review", description="Review work", input=None),
+        SimpleNamespace(name="find-skills", description="Find skills", input=None),
+    ]
+
+    commands = overlay._slash_popup_commands()
+    names = {command.command for command in commands}
+
+    assert "agent" in names
+    assert "review" not in names
+    assert "find-skills" not in names
 
 
 def test_discover_local_skills_reads_metadata_with_precedence(tmp_path: Path) -> None:

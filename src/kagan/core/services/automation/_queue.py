@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
+from kagan.core.domain.enums import QueueLane
 from kagan.core.safety import (
     QUEUE_MESSAGE_MAX_CHARS,
     normalize_untrusted_text,
@@ -17,8 +18,7 @@ from kagan.core.time import utc_now
 if TYPE_CHECKING:
     from datetime import datetime
 
-QueueLane = Literal["implementation", "review", "planner"]
-DEFAULT_QUEUE_LANE: QueueLane = "implementation"
+DEFAULT_QUEUE_LANE: QueueLane = QueueLane.IMPLEMENTATION
 
 
 @dataclass(frozen=True)

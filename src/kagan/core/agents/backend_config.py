@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -124,24 +124,7 @@ AgentBackendConfig = Annotated[
     Field(discriminator="type"),
 ]
 
-BACKEND_CONFIG_DEFAULTS: dict[str, type[BaseModel]] = {
-    "claude": ClaudeAgentConfig,
-    "opencode": OpenCodeAgentConfig,
-    "copilot": CopilotAgentConfig,
-    "gemini": GeminiAgentConfig,
-    "kimi": KimiAgentConfig,
-    "codex": CodexAgentConfig,
-    "goose": GooseAgentConfig,
-    "openhands": OpenHandsAgentConfig,
-    "auggie": AuggieAgentConfig,
-    "amp": AmpAgentConfig,
-    "cagent": CagentAgentConfig,
-    "stakpak": StakpakAgentConfig,
-    "vibe": VibeAgentConfig,
-    "vtcode": VTCodeAgentConfig,
-}
-
-_BACKEND_CONFIG_TYPES = (
+_BACKEND_CONFIG_CLASSES: tuple[type[BaseModel], ...] = (
     ClaudeAgentConfig,
     OpenCodeAgentConfig,
     CopilotAgentConfig,
@@ -157,6 +140,11 @@ _BACKEND_CONFIG_TYPES = (
     VibeAgentConfig,
     VTCodeAgentConfig,
 )
+
+BACKEND_CONFIG_DEFAULTS: dict[str, type[BaseModel]] = {
+    str(config_cls.model_fields["type"].default): config_cls
+    for config_cls in _BACKEND_CONFIG_CLASSES
+}
 
 
 def get_backend_config(agent_type: str) -> AgentBackendConfig:
@@ -176,8 +164,8 @@ def get_backend_config(agent_type: str) -> AgentBackendConfig:
         supported = ", ".join(sorted(BACKEND_CONFIG_DEFAULTS))
         raise ValueError(f"Unknown agent type: {agent_type!r}. Supported: {supported}")
     config = config_cls()
-    if isinstance(config, _BACKEND_CONFIG_TYPES):
-        return config
+    if isinstance(config, _BACKEND_CONFIG_CLASSES):
+        return cast("AgentBackendConfig", config)
     msg = f"Unexpected backend config type: {type(config).__name__}"
     raise TypeError(msg)
 

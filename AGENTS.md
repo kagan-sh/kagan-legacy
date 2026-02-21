@@ -44,6 +44,7 @@ uv run poe lint
 uv run poe format
 uv run poe fix
 uv run poe typecheck
+uv run poe deadcode
 uv run poe check
 uv run pre-commit run --all-files
 ```
@@ -58,7 +59,7 @@ Or with paths/filters:
 
 ```bash
 uv run pytest tests/ -v
-uv run pytest tests/core/unit/test_runtime_state_service.py -v
+uv run pytest tests/core/unit/test_automation_queue_handlers.py -v
 uv run pytest tests/ -k "runtime and refresh" -v
 uv run pytest tests/ -m "core and unit" -v
 uv run pytest tests/ -n 0 -v   # sequential (debug/snapshot update)
@@ -69,9 +70,9 @@ uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
 
 - Default addopts include `-n auto --dist=loadgroup`.
 - Snapshot tests use `xdist_group` and run with `-n auto`; only `--snapshot-update` requires `-n 0`.
-- Package/type markers are path-assigned in `tests/conftest.py`.
-- Do not manually add: `core`, `mcp`, `tui`, `plugins`, `fast`, `unit`, `contract`, `snapshot`, `smoke`.
-- `integration` marker is deprecated/disallowed for explicit use.
+- Package/type markers are path-assigned in `tests/helpers/fixtures/markers.py` (registered by `tests/conftest.py`).
+- Do not manually add package/type markers: `core`, `mcp`, `tui`, `plugins`, `integration`, `fast`, `unit`, `contract`, `snapshot`, `smoke`, `e2e`.
+- Keep explicit markers for behavior flags only (`slow`, `property`, `windows_ci`, `mock_platform_system(...)`).
 - Do not write tautology tests (tests that only restate implementation internals).
 - Prefer tests that validate useful user-facing behavior and observable outcomes.
 
@@ -95,6 +96,7 @@ Path mapping:
 - `tests/tui/snapshot/*` -> `tui`, `snapshot`
 - `tests/tui/smoke/*` -> `tui`, `smoke`
 - `tests/plugins/*` -> `plugins`, `unit`
+- `tests/integration/*` -> `integration`, `e2e`
 
 ## Code Style
 
@@ -159,7 +161,7 @@ Path mapping:
 
 - `_client.py` — `KaganSDK` typed client
 - `_transport.py` — `SDKTransport` (IPC communication)
-- `_types.py` — response dataclasses
+- `_types.py` — SDK model types (Pydantic response models/wrappers)
 - `_errors.py` — `SDKError` hierarchy
 
 **MCP server** — `src/kagan/mcp/`
@@ -169,14 +171,6 @@ Path mapping:
 - `_tool_gen.py` — tool registration/generation
 - `_response_models.py` — MCP response models
 - `_truncation.py` — response size management
-
-### Compatibility Shims (transitional)
-
-These modules delegate to `core/commands/` and exist only for backward-compatible imports in tests:
-
-- `core/request_handlers/` — handler facades wrapping command functions
-- `core/request_dispatch_map/` — dispatch map built from `CommandRouter`
-- `core/request_handler_support.py` — re-exports from `commands/_parsing.py` and `commands/_serialization.py`
 
 ## TUI Rules
 

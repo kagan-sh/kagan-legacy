@@ -63,7 +63,7 @@ class KanbanTaskController:
         if editing_task_id is None:
             task = await self.create_task_from_payload(result)
             await self.screen._board.refresh_board()
-            self.screen.notify(f"Created task: {task.title}")
+            self.screen.notify(f"Task created in BACKLOG: {task.title}")
             return
 
         current_task = await self.screen.ctx.api.get_task(editing_task_id)

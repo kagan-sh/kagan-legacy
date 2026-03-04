@@ -27,7 +27,7 @@ from kagan.core.errors import KaganError
 
 ENTRY_POINT_GROUP = "kagan.plugins"
 _BUILTIN_PACKAGE = "kagan"
-_BUILTIN_SOURCE_URL = "https://github.com/aorumbayev/kagan"
+_BUILTIN_SOURCE_URL = "https://github.com/kagan-sh/kagan"
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ _COMMUNITY_DISCLAIMER = """\
    and evaluate third-party plugins for security and correctness before use.
 
    To improve plugin safety, contribute to the kagan project:
-   https://github.com/aorumbayev/kagan\
+   https://github.com/kagan-sh/kagan\
 """
 
 

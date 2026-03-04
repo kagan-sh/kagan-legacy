@@ -934,6 +934,13 @@ class TaskScreen(Screen[None]):
             return
         self._stream_task = asyncio.create_task(self._stream_events(self._task_id))
 
+    def _maybe_apply_chat_event(
+        self, overlay_chat: ChatPanel, event_type: SessionEventType, payload: dict[str, Any]
+    ) -> None:
+        """Apply chat event if in task chat mode."""
+        if self._chat_mode == "task":
+            apply_task_chat_event(overlay_chat, event_type, payload)
+
     async def _stream_events(self, task_id: str) -> None:
         output = self._output_stream()
         overlay_chat = self._overlay_panel()
@@ -943,8 +950,7 @@ class TaskScreen(Screen[None]):
                 match event.event_type:
                     case SessionEventType.OUTPUT_CHUNK:
                         self._render_stream_chunk(output, payload)
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                     case SessionEventType.TOOL_CALL_START:
                         output.upsert_tool_call(
                             tool_call_id(payload),
@@ -954,19 +960,16 @@ class TaskScreen(Screen[None]):
                             result=tool_call_result(payload),
                             kind=tool_call_kind(payload),
                         )
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                     case SessionEventType.TOOL_CALL_UPDATE:
                         output.update_tool_status(
                             tool_call_id(payload),
                             tool_call_status(payload, default="updated"),
                             result=tool_call_result(payload),
                         )
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                     case SessionEventType.AGENT_STATUS:
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                         output.post_note(self._payload_text(payload) or "Agent status update")
                     case SessionEventType.PLAN_UPDATE:
                         output.post_note(self._payload_text(payload) or "Plan updated")
@@ -976,14 +979,12 @@ class TaskScreen(Screen[None]):
                     case SessionEventType.AGENT_COMPLETED:
                         self._running = False
                         self._set_status("Completed")
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                         output.post_note("Agent completed")
                     case SessionEventType.AGENT_FAILED:
                         self._running = False
                         self._set_status("Failed")
-                        if self._chat_mode == "task":
-                            apply_task_chat_event(overlay_chat, event.event_type, payload)
+                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                         output.post_note(self._payload_text(payload) or "Agent failed")
                     case SessionEventType.MERGE_COMPLETED:
                         output.post_note(self._payload_text(payload) or "Merge completed")

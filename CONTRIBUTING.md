@@ -5,7 +5,7 @@ Thanks for contributing.
 ## Quick Start
 
 ```bash
-git clone https://github.com/aorumbayev/kagan.git
+git clone https://github.com/kagan-sh/kagan.git
 cd kagan
 uv sync --dev
 uv run poe install-local

@@ -44,15 +44,14 @@ dependencies = [
   "platformdirs>=4.3.0",
   "prompt-toolkit>=3.0.0",
   "rich>=14.0.0",
-  "rich-click>=1.8.9",
   "sqlmodel>=0.0.22",
   "textual>=7.0.0",
   "tomlkit>=0.13.0",
 ]
 
 [project.scripts]
-kagan = "kagan.cli.entrypoint:main"
-kg = "kagan.cli.entrypoint:main"
+kagan = "kagan.cli:cli"
+kg = "kagan.cli:cli"
 
 [project.entry-points."kagan.plugins"]
 github = "kagan.plugins._github:GitHubImporter"
@@ -60,9 +59,9 @@ github = "kagan.plugins._github:GitHubImporter"
 [project.urls]
 Homepage = "https://kagan.sh"
 Documentation = "https://docs.kagan.sh"
-Repository = "https://github.com/aorumbayev/kagan"
-Issues = "https://github.com/aorumbayev/kagan/issues"
-Changelog = "https://github.com/aorumbayev/kagan/blob/main/CHANGELOG.md"
+Repository = "https://github.com/kagan-sh/kagan"
+Issues = "https://github.com/kagan-sh/kagan/issues"
+Changelog = "https://github.com/kagan-sh/kagan/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

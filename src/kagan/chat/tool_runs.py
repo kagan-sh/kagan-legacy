@@ -21,12 +21,24 @@ class ToolRunRecord:
 
 
 class ToolRunTracker:
+    _MAX_TOOL_RUNS = 200
+
     def __init__(self) -> None:
         self._tool_status_by_key: dict[str, str] = {}
         self._tool_runs_by_key: dict[str, ToolRunRecord] = {}
         self._tool_runs_by_display_id: dict[str, ToolRunRecord] = {}
         self._tool_run_order: list[str] = []
         self._tool_run_counter = 0
+
+    def _prune_runs(self) -> None:
+        overflow = len(self._tool_run_order) - self._MAX_TOOL_RUNS
+        while overflow > 0:
+            oldest_key = self._tool_run_order.pop(0)
+            record = self._tool_runs_by_key.pop(oldest_key, None)
+            if record is not None:
+                self._tool_runs_by_display_id.pop(record.display_id, None)
+            self._tool_status_by_key.pop(oldest_key, None)
+            overflow -= 1
 
     def start_turn(self) -> None:
         self._tool_status_by_key = {}
@@ -125,6 +137,7 @@ class ToolRunTracker:
         self._tool_runs_by_key[tool_key] = created
         self._tool_runs_by_display_id[display_id] = created
         self._tool_run_order.append(tool_key)
+        self._prune_runs()
         return created
 
     @staticmethod

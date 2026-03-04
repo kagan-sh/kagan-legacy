@@ -290,13 +290,20 @@ def _ctrl_u(event) -> None:
 
 _console = Console(highlight=False)
 _prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
+_prompt_session: PromptSession[str] | None = None
 
-_prompt_session: PromptSession[str] = PromptSession(
-    style=_prompt_style,
-    completer=_SlashCompleter(),
-    key_bindings=_kb,
-    bottom_toolbar=_bottom_toolbar,
-)
+
+def _get_prompt_session() -> PromptSession[str]:
+    global _prompt_session
+    if _prompt_session is None:
+        _prompt_session = PromptSession(
+            style=_prompt_style,
+            completer=_SlashCompleter(),
+            key_bindings=_kb,
+            bottom_toolbar=_bottom_toolbar,
+        )
+    return _prompt_session
+
 
 # ---------------------------------------------------------------------------
 # Banner & wave animation

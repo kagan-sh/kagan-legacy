@@ -633,6 +633,7 @@ class Sessions:
                 if not _process_exists(pid):
                     raise ProcessLookupError(pid)
             except ProcessLookupError:
+                await unregister_spawned_process(session_id)
                 await asyncio.to_thread(self._complete_session, session_id)
                 task = await self._get_task(task_id)
                 if task.status == TaskStatus.IN_PROGRESS:

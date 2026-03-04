@@ -69,8 +69,3 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-
-      - id: check-added-large-files-local
-        name: check for added large files
-        entry: uv run python scripts/check_added_large_files.py --maxkb 500
-        language: system

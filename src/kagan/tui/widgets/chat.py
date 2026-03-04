@@ -112,6 +112,8 @@ class ChatPanel(Vertical):
     )
     _DOCKED_EMPTY_HEADING = "What are you working on?"
     _EXPANDED_EMPTY_HEADING = "What's next?"
+    _MAX_SESSION_STATE_COUNT = 30
+    _MAX_SESSION_ENTRY_COUNT = 300
 
     def __init__(
         self,
@@ -284,6 +286,7 @@ class ChatPanel(Vertical):
         self._session_options = normalized or [("Orchestrator", "orchestrator")]
         for _label, key in self._session_options:
             self._ensure_session_state(key)
+        self._prune_session_states()
 
         next_key = active_key or self._selected_session_key
         if not any(key == next_key for _, key in self._session_options):
@@ -291,15 +294,19 @@ class ChatPanel(Vertical):
 
         selector = self.query_one("#chat-overlay-session-select", Select)
         set_options = getattr(selector, "set_options", None)
+        self._suspend_session_change_event = True
         if callable(set_options):
             set_options(self._session_options)
-        self._suspend_session_change_event = True
-        try:
-            selector.value = next_key
-        finally:
-            self._suspend_session_change_event = False
+        selector.value = next_key
         self.set_class(len(self._session_options) > 1, "chat-overlay-multi-session")
         self._switch_session(next_key, emit=False)
+        if self.is_mounted:
+            self.call_after_refresh(self._release_session_change_suspension)
+        else:
+            self._release_session_change_suspension()
+
+    def _release_session_change_suspension(self) -> None:
+        self._suspend_session_change_event = False
 
     def set_session_kind(self, kind: str) -> None:
         indicator = self.query_one("#chat-overlay-session-indicator", Static)
@@ -366,6 +373,7 @@ class ChatPanel(Vertical):
                     },
                 )
             )
+        self._trim_session_entries(state)
         if self.is_mounted:
             stream = self._stream_output()
             if stream is None:
@@ -480,6 +488,7 @@ class ChatPanel(Vertical):
                 state.entries.append(("assistant", {"text": content}))
             else:
                 state.entries.append(("user", {"text": content}))
+        self._trim_session_entries(state)
         if self.is_mounted:
             self._render_current_session()
 
@@ -523,6 +532,12 @@ class ChatPanel(Vertical):
             return
         value = event.value
         if value is Select.BLANK or not isinstance(value, str):
+            return
+        selector = self.query_one("#chat-overlay-session-select", Select)
+        current_value = selector.value
+        if current_value is Select.BLANK or not isinstance(current_value, str):
+            return
+        if value != current_value:
             return
         self._switch_session(value, emit=True)
 
@@ -826,6 +841,7 @@ class ChatPanel(Vertical):
             state.entries[-1] = (kind, previous)
         else:
             state.entries.append((kind, {"text": cleaned}))
+        self._trim_session_entries(state)
 
         if self.is_mounted:
             stream = self._stream_output()
@@ -864,6 +880,7 @@ class ChatPanel(Vertical):
             state.entries[-1] = (kind, previous)
         else:
             state.entries.append((kind, {"text": text}))
+        self._trim_session_entries(state)
 
         if self.is_mounted:
             stream = self._stream_output()
@@ -879,6 +896,20 @@ class ChatPanel(Vertical):
             state = _SessionState()
             self._session_state[key] = state
         return state
+
+    def _prune_session_states(self) -> None:
+        keep_keys = [key for _label, key in self._session_options]
+        if self._selected_session_key not in keep_keys:
+            keep_keys.append(self._selected_session_key)
+        keep = set(keep_keys[-self._MAX_SESSION_STATE_COUNT :])
+        for key in list(self._session_state):
+            if key not in keep:
+                self._session_state.pop(key, None)
+
+    def _trim_session_entries(self, state: _SessionState) -> None:
+        if len(state.entries) <= self._MAX_SESSION_ENTRY_COUNT:
+            return
+        state.entries = state.entries[-self._MAX_SESSION_ENTRY_COUNT :]
 
     def _current_state(self) -> _SessionState:
         return self._ensure_session_state(self._selected_session_key)

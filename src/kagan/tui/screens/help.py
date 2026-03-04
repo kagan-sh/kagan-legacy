@@ -75,12 +75,14 @@ class HelpModal(ModalScreen[None]):
                     get_help_rows_for_actions(
                         WELCOME_BINDINGS,
                         [
-                            ("open_selected", "Open the highlighted project", ("Enter",)),
-                            ("new_project", "Create a new project", ("n",)),
-                            ("open_folder", "Open or create from a repo path", ("o",)),
-                            ("settings", "Open settings", ("s",)),
+                            ("open_selected", "Open project", ("Enter",)),
+                            ("new_project", "Create project", ("n",)),
+                            ("open_folder", "Open folder", ("o",)),
+                            ("settings", "Settings", ("s",)),
                             ("move_selection_up", "Move up", ("Up / k",)),
                             ("move_selection_down", "Move down", ("Down / j",)),
+                            ("focus_next", "Next field", ("Tab",)),
+                            ("focus_previous", "Previous field", ("Shift+Tab",)),
                         ],
                     )
                 ),
@@ -91,15 +93,27 @@ class HelpModal(ModalScreen[None]):
                     get_help_rows_for_actions(
                         KANBAN_BINDINGS,
                         [
-                            ("new_task", "Create a task", ("n",)),
-                            ("view_details", "Open the selected task", ("Enter",)),
-                            ("open_session", "Open task output or workspace", ("o",)),
+                            ("new_task", "Create PAIR task", ("n",)),
+                            ("new_auto_task", "Create AUTO task", ("N",)),
+                            ("view_details", "Open task details", ("Enter",)),
+                            ("open_session", "Open workspace/session", ("o",)),
+                            ("start_agent", "Start agent on task", ("a",)),
+                            ("stop_agent", "Stop agent", ("s",)),
                             ("toggle_search", "Filter tasks", ("/",)),
-                            ("toggle_peek", "Peek selected task", ("space",)),
-                            ("review_task", "Open review flow", ("r",)),
-                            ("open_settings", "Open settings", (",",)),
-                            ("open_chat_fullscreen", "Fullscreen assistant", ("Ctrl+P",)),
-                            ("toggle_chat_overlay", "Cycle assistant view", ("Ctrl+O",)),
+                            ("toggle_peek", "Peek task details", ("space",)),
+                            ("review_task", "Open review", ("r",)),
+                            ("edit_task", "Edit task", ("e",)),
+                            ("delete_task_direct", "Delete task", ("x",)),
+                            ("duplicate_task", "Duplicate task", ("y",)),
+                            ("move_backward", "Move to previous column", ("Shift+H",)),
+                            ("move_forward", "Move to next column", ("Shift+L",)),
+                            ("focus_up", "Navigate up", ("k",)),
+                            ("focus_down", "Navigate down", ("j",)),
+                            ("focus_left", "Navigate left", ("h",)),
+                            ("focus_right", "Navigate right", ("l",)),
+                            ("open_settings", "Settings", (",",)),
+                            ("open_chat_fullscreen", "AI assistant fullscreen", ("Ctrl+P",)),
+                            ("toggle_chat_overlay", "Toggle AI assistant", ("Ctrl+O",)),
                         ],
                     )
                 ),
@@ -111,13 +125,14 @@ class HelpModal(ModalScreen[None]):
                         SESSION_DASHBOARD_BINDINGS,
                         [
                             ("primary_action", "Start or focus agent", ("Enter",)),
-                            ("stop_run", "Stop the running agent", ("s",)),
-                            ("restart_run", "Restart the agent", ("r",)),
-                            ("open_chat_fullscreen", "Fullscreen assistant", ("Ctrl+P",)),
-                            ("toggle_chat_overlay", "Docked assistant", ("Ctrl+O",)),
+                            ("stop_run", "Stop agent", ("s",)),
+                            ("restart_run", "Restart agent", ("r",)),
+                            ("cycle_chat_session", "Cycle chat session", ("Tab",)),
+                            ("open_chat_fullscreen", "AI assistant fullscreen", ("Ctrl+P",)),
+                            ("toggle_chat_overlay", "Toggle AI assistant", ("Ctrl+O",)),
                             ("open_session_picker", "Session picker", ("Ctrl+K",)),
-                            ("cancel_run", "Cancel active run", ("Ctrl+C",)),
-                            ("back", "Return to board", ("Esc",)),
+                            ("cancel_run", "Stop agent", ("Ctrl+C",)),
+                            ("back", "Back to board", ("Esc",)),
                         ],
                     )
                 ),
@@ -128,12 +143,21 @@ class HelpModal(ModalScreen[None]):
                     get_help_rows_for_actions(
                         TASK_SCREEN_BINDINGS,
                         [
-                            ("primary_action", "Start run or approve merge", ("Enter",)),
-                            ("generate_review", "Run AI review", ("g",)),
+                            ("switch_tab('overview')", "Overview tab", ("1",)),
+                            ("switch_tab('changes')", "Changes tab", ("2",)),
+                            ("switch_tab('review')", "Review tab", ("3",)),
+                            ("primary_action", "Start run / approve / merge", ("Enter",)),
+                            ("edit_task", "Edit task", ("e",)),
+                            ("delete_task", "Delete task", ("d",)),
+                            ("approve", "Approve review", ("a",)),
+                            ("merge", "Merge task", ("m",)),
                             ("reject", "Reject review", ("x",)),
-                            ("rebase", "Rebase worktree branch", ("b",)),
-                            ("cancel_run", "Stop the active run", ("Ctrl+C",)),
-                            ("back", "Return to the board", ("Esc",)),
+                            ("rebase", "Rebase branch", ("b",)),
+                            ("generate_review", "Run AI review", ("g",)),
+                            ("cycle_chat_session", "Cycle chat session", ("Tab",)),
+                            ("open_session_picker", "Session picker", ("Ctrl+K",)),
+                            ("cancel_run", "Stop agent", ("Ctrl+C",)),
+                            ("back", "Back to board", ("Esc",)),
                         ],
                     )
                 ),
@@ -157,31 +181,44 @@ class HelpModal(ModalScreen[None]):
 
     def _compose_flows(self) -> Widget:
         return Vertical(
-            Static("Project Startup", classes="help-section-title"),
+            Static("Quick Start", classes="help-section-title"),
             Static(
-                "Create a project from Welcome with `n`, or open a repo path with `o`.",
+                "Create a project (n) or open a folder (o) from Welcome. "
+                "Enable 'Open last project on launch' in Settings to skip Welcome.",
+                classes="help-paragraph",
+            ),
+            Static("Kanban Workflow", classes="help-section-title"),
+            Static(
+                "BACKLOG → IN_PROGRESS: Select task, press Enter or 'a' to start agent. "
+                "Use Shift+H/L to move tasks between columns.",
                 classes="help-paragraph",
             ),
             Static(
-                'Enable "Open last project on launch" in Settings to skip the welcome screen.',
+                "IN_PROGRESS → REVIEW: Agent submits for review. Press 'r' to open review UI.",
                 classes="help-paragraph",
             ),
-            Static("Repository Selection", classes="help-section-title"),
             Static(
-                "Use `Ctrl+R` on the board to choose the preferred repository for the current "
-                "project or add another repo path.",
+                "REVIEW → DONE: Press 'a' to approve, 'm' to merge. "
+                "Press 'x' to reject or 'b' to rebase.",
                 classes="help-paragraph",
             ),
-            Static("Task Workflow", classes="help-section-title"),
+            Static("AI Assistant Chat", classes="help-section-title"),
             Static(
-                "The board is the control surface: select a task, open its output/workspace with "
-                "`o`, or open review with `r` when it reaches REVIEW.",
+                "Ctrl+O toggles overlay (horizontal/vertical/hidden). "
+                "Ctrl+P opens fullscreen. Ctrl+K switches session. "
+                "Tab cycles between Task and Orchestrator sessions.",
                 classes="help-paragraph",
             ),
-            Static("Settings", classes="help-section-title"),
+            Static("Repository Management", classes="help-section-title"),
             Static(
-                "Settings control default agent backend, PAIR launcher, startup behavior, git "
-                "identity, and automation defaults.",
+                "Ctrl+R opens repo selector. Each project can have multiple repos. "
+                "The preferred repo is used for new worktrees.",
+                classes="help-paragraph",
+            ),
+            Static("Task Creation", classes="help-section-title"),
+            Static(
+                "'n' creates PAIR task (interactive). 'N' (Shift+N) creates AUTO task (autonomous)."
+                " Set default mode in Settings.",
                 classes="help-paragraph",
             ),
         )
@@ -190,20 +227,38 @@ class HelpModal(ModalScreen[None]):
         return Vertical(
             Static("Projects", classes="help-section-title"),
             Static(
-                "A project groups one or more repositories and provides the scope for the kanban "
-                "board.",
+                "A project groups repositories and tasks. Each project has its own kanban board "
+                "and settings. Switch projects with Ctrl+Shift+O.",
                 classes="help-paragraph",
             ),
             Static("Repositories", classes="help-section-title"),
             Static(
-                "Repository selection is a UI preference used by the TUI surfaces that need a "
-                "primary repo context.",
+                "Repos are git directories. Add multiple repos to a project. "
+                "The preferred repo (Ctrl+R) is used for new worktrees and patches.",
                 classes="help-paragraph",
             ),
-            Static("AUTO vs PAIR", classes="help-section-title"),
+            Static("AUTO vs PAIR Mode", classes="help-section-title"),
             Static(
-                "AUTO runs autonomous agent sessions. PAIR opens a collaborative environment using "
-                "your configured launcher.",
+                "AUTO: Agent works autonomously to completion. Best for well-defined tasks. "
+                "Runs in background without user interaction.",
+                classes="help-paragraph",
+            ),
+            Static(
+                "PAIR: Agent works interactively with you in a terminal (tmux, Cursor, etc.). "
+                "Best for exploration and complex debugging.",
+                classes="help-paragraph",
+            ),
+            Static("Chat Sessions", classes="help-section-title"),
+            Static(
+                "Task session: Context-aware chat tied to the current task. "
+                "Orchestrator session: General assistant for planning and questions. "
+                "Switch with Tab or Ctrl+K.",
+                classes="help-paragraph",
+            ),
+            Static("Agent Backends", classes="help-section-title"),
+            Static(
+                "Configure default backend in Settings (claude-code, codex, gemini-cli, etc.). "
+                "Switch backends mid-session with /agent command or Ctrl+A.",
                 classes="help-paragraph",
             ),
         )

@@ -59,7 +59,7 @@ from kagan.chat.repl import (
     _console,
     _env_flag_enabled,
     _find_git_root,
-    _prompt_session,
+    _get_prompt_session,
 )
 from kagan.chat.sessions import (
     _clean_generated_title,
@@ -599,7 +599,7 @@ class ChatController:
         _console.print()
 
         try:
-            name = await _prompt_session.prompt_async(f"Project name [{default_name}]: ")
+            name = await _get_prompt_session().prompt_async(f"Project name [{default_name}]: ")
         except (EOFError, KeyboardInterrupt):
             _console.print("[dim]Cancelled.[/dim]")
             return False
@@ -635,7 +635,7 @@ class ChatController:
         _console.print()
 
         try:
-            choice = await _prompt_session.prompt_async("Choice [1]: ")
+            choice = await _get_prompt_session().prompt_async("Choice [1]: ")
         except (EOFError, KeyboardInterrupt):
             choice = ""
 
@@ -647,10 +647,10 @@ class ChatController:
             _console.print(f"[green]\u2713[/green] Using system git profile: {label}")
         elif choice == "3":
             try:
-                custom_name = await _prompt_session.prompt_async(
+                custom_name = await _get_prompt_session().prompt_async(
                     f"Git user name [{KAGAN_AGENT_NAME}]: "
                 )
-                custom_email = await _prompt_session.prompt_async(
+                custom_email = await _get_prompt_session().prompt_async(
                     f"Git email [{KAGAN_AGENT_EMAIL}]: "
                 )
             except (EOFError, KeyboardInterrupt):
@@ -1029,7 +1029,7 @@ class ChatController:
         try:
             while True:
                 try:
-                    line = await _prompt_session.prompt_async(_build_prompt_message())
+                    line = await _get_prompt_session().prompt_async(_build_prompt_message())
                 except EOFError:
                     break
                 except KeyboardInterrupt:

@@ -50,6 +50,11 @@ class Events:
             self._signals[task_id] = asyncio.Event()
         return self._signals[task_id]
 
+    def _prune_signal_if_idle(self, task_id: str) -> None:
+        if self._live_queues.get(task_id):
+            return
+        self._signals.pop(task_id, None)
+
     @staticmethod
     def _session_event_key_for_coalesce(event: SessionEvent) -> tuple[str, str, str | None] | None:
         event_type = event.event_type
@@ -149,11 +154,13 @@ class Events:
             payload=payload,
         )
         await _db_async(self._engine, lambda s: _add_and_refresh(s, event))
-        self._signal_for(task_id).set()
+        signal = self._signal_for(task_id)
+        signal.set()
         for queue in self._live_queues.get(task_id, []):
             self._enqueue_session_event(queue, event)
         for queue in self._global_live_queues:
             self._enqueue_session_event(queue, event)
+        self._prune_signal_if_idle(task_id)
         if event_type is SessionEventType.TASK_STATUS_CHANGED:
             self.publish_board(
                 BoardEvent(
@@ -260,6 +267,7 @@ class Events:
                 queues.remove(queue)
             if not queues:
                 self._live_queues.pop(task_id, None)
+                self._prune_signal_if_idle(task_id)
 
     async def stream_all(self, *, replay: bool = True) -> AsyncIterator[SessionEvent]:
         if replay:

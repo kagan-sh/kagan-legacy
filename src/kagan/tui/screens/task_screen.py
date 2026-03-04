@@ -488,7 +488,7 @@ class TaskScreen(Screen[None]):
             return
         if not panel.has_class("visible"):
             self._overlay_layout_mode = "vertical"
-            await self._open_chat_from_current_mode(fullscreen=False)
+            await self.action_open_task_overlay()
             return
         if self._overlay_layout_mode == "vertical":
             self._overlay_layout_mode = "horizontal"

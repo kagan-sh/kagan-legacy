@@ -30,6 +30,7 @@ def _runner_env(tmp_path: Path) -> dict[str, str]:
     }
 
 
+@pytest.mark.windows_ci
 def test_help_surface_contains_commands(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"], env=_runner_env(tmp_path))

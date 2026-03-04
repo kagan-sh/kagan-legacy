@@ -19,7 +19,7 @@ from kagan.core._launchers import (
     resolve_launcher,
 )
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.core, pytest.mark.unit]
 
 
 # -----------------------------------------------------------------------------

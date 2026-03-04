@@ -1,0 +1,140 @@
+import asyncio
+import json
+from typing import Any, cast
+
+import pytest
+
+from kagan.core._acp import run_acp_session
+
+pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+
+
+class _FakeSession:
+    session_id = "session-1"
+
+
+class _FakeConnection:
+    def __init__(self) -> None:
+        self.prompt_called = False
+        self.closed = False
+
+    async def initialize(self, *, protocol_version):
+        del protocol_version
+        return None
+
+    async def new_session(self, *, cwd, mcp_servers):
+        del cwd, mcp_servers
+        return _FakeSession()
+
+    async def prompt(self, *, session_id, prompt):
+        del session_id, prompt
+        self.prompt_called = True
+        return None
+
+    async def close(self):
+        self.closed = True
+        return None
+
+
+class _FakeProcess:
+    def __init__(self) -> None:
+        self.pid = 12345
+        self.stdin = object()
+        self.stdout = object()
+        self.stderr: Any = None
+        self.returncode: int | None = None
+        self.terminated = False
+        self.wait_calls = 0
+        self.killed = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        return 0 if self.returncode is None else self.returncode
+
+
+class _SlowInitializeConnection(_FakeConnection):
+    async def initialize(self, *, protocol_version):
+        del protocol_version
+        await asyncio.sleep(0.05)
+
+
+class _FakeStderr:
+    def __init__(self, text: str) -> None:
+        self._payload = text.encode("utf-8")
+
+    async def read(self, _n: int = -1) -> bytes:
+        return self._payload
+
+
+async def test_run_acp_session_terminates_process_after_prompt(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp_json = tmp_path / ".mcp.json"
+    mcp_json.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "kagan": {
+                        "command": "kagan",
+                        "args": ["mcp"],
+                        "env": {},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    fake_conn = _FakeConnection()
+    monkeypatch.setattr("kagan.core._acp.acp.connect_to_agent", lambda *_: fake_conn)
+
+    process = _FakeProcess()
+    await run_acp_session(
+        process=cast("Any", process),
+        client=cast("Any", object()),
+        worktree_path=tmp_path,
+        prompt="one-shot prompt",
+        mcp_json_path=mcp_json,
+    )
+
+    assert fake_conn.prompt_called is True
+    assert process.terminated is True
+    assert process.wait_calls >= 1
+    assert fake_conn.closed is True
+
+
+async def test_run_acp_session_surfaces_early_process_exit_on_initialize_timeout(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp_json = tmp_path / ".mcp.json"
+    mcp_json.write_text(
+        json.dumps({"mcpServers": {"kagan": {"command": "kagan", "args": ["mcp"], "env": {}}}}),
+        encoding="utf-8",
+    )
+
+    fake_conn = _SlowInitializeConnection()
+    monkeypatch.setattr("kagan.core._acp.acp.connect_to_agent", lambda *_: fake_conn)
+    monkeypatch.setenv("KAGAN_ACP_STARTUP_TIMEOUT_SECONDS", "0.01")
+
+    process = _FakeProcess()
+    process.returncode = 1
+    process.stderr = _FakeStderr("EACCES: permission denied")
+
+    with pytest.raises(RuntimeError, match="exited before ACP initialize"):
+        await run_acp_session(
+            process=cast("Any", process),
+            client=cast("Any", object()),
+            worktree_path=tmp_path,
+            prompt="one-shot prompt",
+            mcp_json_path=mcp_json,
+        )

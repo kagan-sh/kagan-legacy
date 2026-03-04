@@ -1,0 +1,861 @@
+/* === V2 STYLE PORT (kanban.tcss) === */
+
+/* =============================================================================
+/* Kanban board styles */
+
+/* Custom variable aliases */
+$priority-high: $error;
+$priority-high-text: $background;
+$priority-low: $border;
+$priority-low-text: $text-muted;
+$priority-medium: $warning;
+$priority-medium-text: $background;
+$status-error: $error;
+$status-idle: $text-muted;
+$status-running: $secondary;
+$status-success: $success;
+$success-text: $background;
+
+
+   /* KANBAN BOARD */
+
+   /* ============================================================================= */
+.board-container {
+    width: 100%;
+    height: 1fr;
+    layout: horizontal;
+    padding: 0;
+    background: $background;
+}
+
+.kanban-content-pane {
+    width: 1fr;
+    min-width: 0;
+    height: 1fr;
+    min-height: 0;
+    layout: vertical;
+}
+
+.kanban-main-pane {
+    width: 100%;
+    height: 1fr;
+    min-height: 0;
+    layout: horizontal;
+}
+
+.kanban-main-pane .kanban-board {
+    width: 1fr;
+    min-width: 0;
+}
+
+BoardView {
+    width: 100%;
+    height: 100%;
+    background: $background;
+}
+
+.board {
+    width: 100%;
+    height: 100%;
+    background: $background;
+}
+/* Column styles - flush layout with border separators */
+
+BoardColumn {
+    width: 1fr;
+    height: 100%;
+    border-right: solid $border;
+    padding: 0;
+    margin: 0;
+    background: $surface;
+}
+
+KanbanColumn {
+    width: 1fr;
+    height: 100%;
+    border-right: solid $border;
+    padding: 0;
+    margin: 0;
+    background: $surface;
+}
+/* No right border on last column */
+
+BoardColumn:last-child {
+    border-right: none;
+}
+
+KanbanColumn:last-child {
+    border-right: none;
+}
+
+BoardColumn .column-header {
+    width: 100%;
+    height: 3;
+    padding: 0 1;
+    align: center middle;
+    border-bottom: solid $primary;
+}
+
+BoardColumn .column-header-text {
+    text-style: bold;
+    color: $text;
+    width: auto;
+    text-align: center;
+}
+
+BoardColumn .column-count {
+    color: $text-muted;
+}
+
+BoardColumn .column-content {
+    width: 100%;
+    height: 1fr;
+    padding: 0;
+}
+
+BoardColumn .column-empty {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+    align: center middle;
+    padding: 1 2;
+}
+
+BoardColumn .empty-message {
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    padding: 0;
+}
+
+BoardColumn .empty-message-title {
+    color: $text;
+    text-style: bold;
+}
+
+BoardColumn .empty-message-detail {
+    color: $text-disabled;
+}
+
+BoardColumn .empty-message-metric {
+    color: $success;
+}
+/* === Card styles - bottom-border only, flush within column — TASK CARDS === */
+TaskCard {
+    width: 100%;
+    height: 4;
+    margin: 0;
+    padding: 0;
+    border-left: solid $surface;
+    border-bottom: solid $border;
+    background: $surface;
+    color: $text;
+    transition: background 150ms in_out_cubic;
+}
+
+TaskCard:focus {
+    border-left: thick $primary;
+    border-bottom: solid $border;
+    background: $surface;
+    tint: $primary 8%;
+}
+
+TaskCard:hover {
+    background: $panel;
+}
+/* === CARD CONTENT STYLES === */
+
+TaskCard .card-row {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+TaskCard .card-content {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+}
+
+TaskCard .card-rail {
+    width: 1;
+    text-style: bold;
+    color: $border;
+    transition: color 300ms in_out_cubic;
+}
+
+TaskCard .card-rail.rail-normal {
+    color: $border;
+}
+
+TaskCard .card-rail.rail-running {
+    color: $secondary;
+}
+
+TaskCard .card-rail.rail-warning {
+    color: $warning;
+}
+
+TaskCard .card-rail.rail-error {
+    color: $error;
+}
+
+TaskCard .card-rail.rail-success {
+    color: $success;
+}
+/* rail-normal keeps its color on focus — the left border provides focus signal */
+
+
+TaskCard .card-title {
+    width: 1fr;
+    height: 1;
+    text-style: bold;
+    color: $text;
+}
+
+TaskCard .card-desc {
+    width: 1fr;
+    height: 1;
+    color: $text-muted;
+}
+
+TaskCard .card-desc-empty {
+    color: $text-disabled;
+    text-style: italic;
+}
+/* Inline elapsed time badge for running/in-progress tasks */
+
+TaskCard .card-elapsed {
+    width: auto;
+    height: 1;
+    color: $status-running;
+    text-style: bold;
+    padding: 0 1;
+}
+
+TaskCard .card-badge-row {
+    width: 100%;
+    height: 1;
+}
+/* Right-aligned card ID (muted) */
+
+TaskCard .card-id {
+    width: auto;
+    height: 1;
+    color: $text-muted;
+}
+/* Branch badge - shows git branch name */
+
+TaskCard .card-branch {
+    width: auto;
+    height: 1;
+    color: $text-muted;
+    text-style: italic;
+    margin-left: 1;
+}
+/* GitHub context badges (issue #, PR #) */
+
+TaskCard .card-badge-gh {
+    background: $panel;
+    color: $text;
+}
+
+TaskCard .card-badge-gh-issue {
+    background: $surface;
+    color: $text-muted;
+}
+
+TaskCard .card-badge-gh-pr {
+    background: $success;
+    color: $success-text;
+    text-style: bold;
+}
+/* Spacer pushes priority badge right */
+
+TaskCard .card-spacer {
+    width: 1fr;
+    height: 1;
+}
+
+TaskCard .card-badge {
+    height: 1;
+    padding: 0 1;
+    margin-right: 1;
+    background: $surface;
+    color: $text-muted;
+}
+
+TaskCard .card-badge-type {
+    background: $secondary;
+    color: $background;
+}
+
+TaskCard .card-badge-backend {
+    background: $panel;
+    color: $text;
+}
+
+TaskCard .card-badge-priority.priority-high {
+    background: $priority-high;
+    color: $priority-high-text;
+}
+
+TaskCard .card-badge-priority.priority-medium {
+    background: $priority-medium;
+    color: $priority-medium-text;
+}
+
+TaskCard .card-badge-priority.priority-low {
+    background: $priority-low;
+    color: $priority-low-text;
+}
+
+TaskCard .card-review {
+    width: 100%;
+    height: 1;
+    color: $text;
+}
+
+TaskCard .card-checks {
+    width: 100%;
+    height: 1;
+    color: $success;
+}
+/* Review state colors for checks line */
+
+TaskCard .card-checks.passed {
+    color: $success;
+}
+
+TaskCard .card-checks.failed {
+    color: $error;
+}
+
+TaskCard .card-checks.pending {
+    color: $warning;
+}
+
+TaskCard .card-readiness {
+    width: 100%;
+    height: 1;
+    color: $text-muted;
+}
+
+TaskCard .card-readiness.readiness-ready {
+    color: $success;
+}
+
+TaskCard .card-readiness.readiness-risk {
+    color: $warning;
+}
+
+TaskCard .card-readiness.readiness-blocked {
+    color: $error;
+}
+/* Card status indicators */
+
+TaskCard .card-indicator {
+    width: 2;
+    height: 1;
+    text-style: bold;
+}
+
+TaskCard .indicator-running { color: $status-running; }
+TaskCard .indicator-idle    { color: $status-idle; }
+TaskCard .indicator-reviewing { color: $accent; }
+TaskCard .indicator-blocked { color: $status-error; }
+TaskCard .indicator-passed  { color: $status-success; }
+TaskCard .indicator-failed  { color: $status-error; }
+/* Kagan TUI Styles - Screen and modal specific layout/state rules. */
+/* Loaded last so screen-level overrides keep prior cascade behavior. */
+/* === KanbanScreen styles — SCREENS === */
+KanbanScreen {
+    layout: vertical;
+    background: $background;
+    layers: base overlay;
+}
+
+KanbanScreen .size-warning {
+    width: 100%;
+    height: 100%;
+    align: center middle;
+    background: $surface;
+    display: none;
+}
+
+KanbanScreen .size-warning-text {
+    text-align: center;
+    color: $warning;
+    text-style: bold;
+}
+
+KanbanScreen.too-small .board-container {
+    display: none;
+}
+
+KanbanScreen.too-small .size-warning {
+    display: block;
+}
+
+KanbanScreen.search-replace-header KaganHeader {
+    display: none;
+}
+
+KanbanScreen.search-replace-header SearchBar {
+    border-top: none;
+}
+
+/* === SearchBar widget - always-visible compact row — SEARCH BAR === */
+SearchBar {
+    dock: top;
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+    border-bottom: solid $border;
+    transition: background 150ms in_out_cubic, opacity 150ms in_out_cubic;
+}
+/* Expand to make room for the presets row when it becomes visible */
+
+SearchBar.has-presets {
+    height: 2;
+}
+
+SearchBar .search-row {
+    width: 100%;
+    height: 1;
+    align: left middle;
+}
+
+SearchBar .search-shortcut {
+    width: auto;
+    color: $text-disabled;
+    padding-right: 1;
+}
+
+SearchBar Input {
+    width: auto;
+    min-width: 20;
+    display: none;
+    border: none;
+    background: transparent;
+    color: $text;
+    padding: 0 1 0 0;
+    transition: background 150ms in_out_cubic;
+}
+
+SearchBar.active Input {
+    display: block;
+    width: 1fr;
+    background: $background 55%;
+    border: none;
+}
+
+SearchBar Input:focus {
+    border: none;
+    background: $primary 10%;
+}
+
+SearchBar .search-meta {
+    width: auto;
+    display: none;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+SearchBar.active .search-meta {
+    display: block;
+}
+
+SearchBar .search-clear {
+    width: auto;
+    color: $text-disabled;
+}
+/* Search preset pills row */
+
+SearchPresets {
+    width: 100%;
+    height: 1;
+    display: none;
+}
+
+SearchPresets.visible {
+    display: block;
+}
+
+SearchPresets .presets-row {
+    width: 100%;
+    height: 1;
+    align: left middle;
+}
+
+SearchPresets .preset-pill {
+    width: auto;
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    background: $surface;
+    margin-right: 1;
+    transition: color 150ms in_out_cubic, background 150ms in_out_cubic;
+}
+
+SearchPresets .preset-pill.focused {
+    color: $primary;
+    background: $primary 15%;
+}
+/* Review queue hint */
+
+#review-queue-hint {
+    width: 100%;
+    height: 1;
+    display: none;
+    background: $surface;
+    color: $text-muted;
+    text-align: center;
+    padding: 0 1;
+}
+
+#review-queue-hint.visible {
+    display: block;
+}
+/* === KANBAN HINT BAR (two-row — Kanban board) === */
+
+KanbanHintBar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    border-top: none;
+}
+
+KanbanHintBar.card-focused {
+    height: 2;
+}
+
+KanbanHintBar .hint-bar-row {
+    height: 1;
+    width: 100%;
+}
+/* Row 1: Navigation — movement arrows */
+
+KanbanHintBar .hint-bar-nav {
+    background: $surface;
+}
+
+KanbanHintBar .hint-nav-left {
+    width: 1fr;
+    text-align: left;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+KanbanHintBar .hint-nav-center {
+    width: auto;
+    text-align: center;
+    padding: 0 2;
+    color: $text-disabled;
+}
+
+KanbanHintBar .hint-nav-right {
+    width: auto;
+    text-align: right;
+    padding: 0 1;
+    color: $text-muted;
+}
+/* Always-visible universal shortcuts strip (right side of nav row) */
+
+KanbanHintBar .hint-nav-global {
+    width: auto;
+    text-align: right;
+    padding: 0 1;
+    color: $text-disabled;
+}
+/* Row 2: Actions — context-sensitive + global */
+
+KanbanHintBar .hint-bar-actions {
+    background: $surface;
+    display: none;
+}
+
+KanbanHintBar.card-focused .hint-bar-actions {
+    display: block;
+}
+
+KanbanHintBar .hint-actions-left {
+    width: 1fr;
+    text-align: left;
+}
+
+KanbanHintBar .hint-actions {
+    width: auto;
+    text-align: center;
+    padding: 0 2;
+    color: $text-muted;
+}
+
+KanbanHintBar .hint-global {
+    width: 1fr;
+    text-align: right;
+    padding: 0 1;
+    color: $text-disabled;
+}
+/* Hide board hint bar whenever chat overlay is visible (any mode). */
+
+KanbanScreen.chat-overlay-visible KanbanHintBar {
+    display: none;
+}
+
+KanbanScreen.chat-overlay-horizontal .kanban-main-pane {
+    width: 1fr;
+    min-width: 0;
+    height: 1fr;
+}
+
+KanbanScreen.chat-overlay-horizontal .kanban-board {
+    height: 1fr;
+    max-height: 1fr;
+}
+
+KanbanScreen.chat-overlay-horizontal .chat-overlay {
+    layer: default;
+    dock: bottom;
+    width: 100%;
+    border-top: solid $primary;
+    border-left: none;
+}
+
+KanbanScreen.chat-overlay-vertical .kanban-main-pane {
+    width: 1fr;
+    min-width: 0;
+    height: 1fr;
+}
+
+KanbanScreen.chat-overlay-vertical .kanban-board {
+    height: 1fr;
+    max-height: 1fr;
+}
+
+KanbanScreen.chat-overlay-vertical TaskInspector {
+    width: 30;
+    min-width: 24;
+}
+
+KanbanScreen.chat-overlay-vertical .chat-overlay {
+    layer: default;
+    dock: right;
+    width: 44%;
+    min-width: 48;
+    max-width: 72;
+    height: 1fr;
+    max-height: 1fr;
+    border-left: solid $border;
+    border-top: none;
+}
+
+KanbanScreen.chat-overlay-expanded .kanban-board {
+    height: 0;
+    max-height: 0;
+}
+
+KanbanScreen.chat-overlay-expanded KanbanHintBar {
+    display: none;
+}
+
+KanbanScreen.chat-overlay-expanded #review-queue-hint {
+    display: none;
+}
+/* === PEEK OVERLAY === */
+
+PeekOverlay {
+    layer: overlay;
+    width: 50;
+    height: auto;
+    max-height: 12;
+    background: $surface;
+    border: round $primary;
+    padding: 1;
+    display: none;
+    position: absolute;
+    overflow-y: auto;
+}
+
+PeekOverlay.visible {
+    display: block;
+}
+
+PeekOverlay .peek-title {
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
+
+PeekOverlay .peek-status {
+    color: $text;
+}
+
+PeekOverlay .peek-content {
+    color: $text-muted;
+}
+
+/* === WAVE 2 VISUAL PARITY (kanban board + search + hints + peek) === */
+
+KanbanColumn .column-header,
+BoardColumn .column-header {
+    background: $panel;
+    border-bottom: solid $primary;
+}
+
+KanbanColumn .column-header-text,
+BoardColumn .column-header-text {
+    text-style: bold;
+    color: $text;
+}
+
+KanbanColumn .column-content,
+BoardColumn .column-content {
+    background: $surface;
+}
+
+TaskCard {
+    height: 4;
+}
+
+TaskInspector {
+    width: 40;
+    min-width: 32;
+    height: 100%;
+    min-height: 0;
+    padding: 1;
+    border-left: solid $border;
+    background: $surface;
+    color: $text;
+}
+
+TaskInspector .inspector-scroll {
+    width: 100%;
+    height: 1fr;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+TaskInspector .inspector-title {
+    text-style: bold;
+    color: $primary;
+}
+
+TaskInspector .inspector-head {
+    text-style: bold;
+    margin-top: 1;
+    height: auto;
+    text-wrap: wrap;
+}
+
+TaskInspector .inspector-meta {
+    color: $text-muted;
+    margin-bottom: 1;
+    height: auto;
+    text-wrap: wrap;
+}
+
+TaskInspector .inspector-section-label {
+    margin-top: 1;
+    text-style: bold;
+}
+
+TaskInspector .inspector-description,
+TaskInspector .inspector-criteria,
+TaskInspector .inspector-actions {
+    width: 100%;
+    height: auto;
+    color: $text-muted;
+    text-wrap: wrap;
+}
+
+TaskInspector .inspector-message {
+    margin-top: 1;
+    padding: 0 1;
+}
+
+TaskInspector .inspector-message.is-info {
+    color: $secondary;
+}
+
+TaskInspector .inspector-message.is-warning {
+    color: $warning;
+}
+
+TaskInspector .inspector-message.is-error {
+    color: $error;
+}
+
+TaskCard:hover {
+    background: $panel;
+}
+
+TaskCard:focus {
+    border-left: thick $primary;
+    border-right: solid $primary 35%;
+    border-bottom: solid $primary;
+    background: $panel;
+    tint: $primary 6%;
+}
+
+TaskCard .card-title {
+    text-style: bold;
+}
+
+TaskCard .card-desc {
+    color: $text-muted;
+}
+
+KanbanHintBar,
+BoardHintBar {
+    dock: bottom;
+    background: $surface;
+    color: $text-muted;
+    border-top: solid $border;
+}
+
+KanbanHintBar .hint-nav-center,
+KanbanHintBar .hint-global,
+BoardHintBar .hint-nav-center,
+BoardHintBar .hint-global {
+    color: $text-disabled;
+}
+
+KanbanHintBar.card-focused .hint-bar-actions,
+BoardHintBar.card-focused .hint-bar-actions {
+    display: block;
+}
+
+PeekOverlay,
+TaskPeekOverlay {
+    layer: overlay;
+    width: 50;
+    height: auto;
+    max-height: 12;
+    background: $surface;
+    border: round $primary;
+    padding: 1;
+    display: none;
+    position: absolute;
+    overflow-y: auto;
+}
+
+PeekOverlay .peek-title,
+TaskPeekOverlay .peek-title {
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
+
+PeekOverlay .peek-status,
+TaskPeekOverlay .peek-status {
+    color: $text;
+}
+
+PeekOverlay .peek-content,
+TaskPeekOverlay .peek-content {
+    color: $text-muted;
+}

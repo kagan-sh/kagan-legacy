@@ -118,9 +118,9 @@ plugins:
   - tags
   - social:
       cards_layout_options:
-        background_color: "#000000"
-        color: "#FFFFFF"
-        font_family: Roboto
+        background_color: "#020202"
+        color: "#E8E4DC"
+        font_family: Barlow Condensed
 
 exclude_docs: |
   standalone-mcp-core-refactor-execution.md
@@ -132,10 +132,12 @@ nav:
   - Quickstart: quickstart.md
   - Concepts:
       - Architecture: concepts/architecture-overview.md
-      - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+      - Task lifecycle: concepts/task-lifecycle.md
   - Guides:
+      - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+      - ACP session lifecycle: guides/acp-session-lifecycle.md
       - MCP setup: guides/mcp-setup.md
-      - GitHub: guides/github.md
+      - GitHub import: guides/github.md
   - Reference:
       - CLI: reference/cli.md
       - Configuration: reference/configuration.md

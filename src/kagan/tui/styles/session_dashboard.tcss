@@ -1,0 +1,157 @@
+SessionDashboardScreen {
+    background: $background;
+    layout: vertical;
+}
+
+#dashboard-status-bar {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    padding: 0 1;
+    border-bottom: solid $primary;
+    background: $surface;
+    color: $text;
+}
+
+#dashboard-status-bar .dashboard-status-spacer {
+    width: 1fr;
+}
+
+#dashboard-task-status {
+    margin: 0 1;
+    padding: 0 1;
+    border: round $border;
+    background: $surface;
+    color: $text-muted;
+}
+
+#dashboard-task-status.status-running {
+    border: round $warning;
+    color: $warning;
+}
+
+#dashboard-task-status.status-completed {
+    border: round $success;
+    color: $success;
+}
+
+#dashboard-task-status.status-failed,
+#dashboard-task-status.status-cancelled {
+    border: round $error;
+    color: $error;
+}
+
+#dashboard-body {
+    width: 100%;
+    height: 1fr;
+    layout: horizontal;
+    padding: 1;
+}
+
+#dashboard-left-col,
+#dashboard-right-col {
+    width: 1fr;
+    height: 1fr;
+    layout: vertical;
+}
+
+#dashboard-left-col {
+    margin-right: 1;
+}
+
+#dashboard-right-col {
+    margin-left: 1;
+}
+
+#dashboard-agent-status,
+#dashboard-persona-pipeline,
+#dashboard-worktree,
+#dashboard-commits {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+    padding: 1;
+    border: round $border;
+    background: $surface;
+    color: $text;
+}
+
+#dashboard-commits {
+    max-height: 12;
+    overflow-y: auto;
+}
+
+#dashboard-live-output,
+#dashboard-diff-view {
+    width: 100%;
+    height: 1fr;
+    min-height: 8;
+    border: round $border;
+    background: $surface;
+}
+
+#dashboard-live-output {
+    overflow-y: auto;
+}
+
+#dashboard-diff-view {
+    overflow-y: auto;
+}
+
+SessionDashboardScreen.dashboard-chat-fullscreen #dashboard-body {
+    display: none;
+}
+
+#dashboard-chat-overlay {
+    dock: bottom;
+    width: 100%;
+    height: 18;
+    max-height: 55%;
+    border-top: solid $primary;
+    background: $surface;
+    display: none;
+}
+
+#dashboard-chat-overlay.visible {
+    display: block;
+}
+
+#dashboard-chat-overlay.visible.fullscreen,
+#dashboard-chat-overlay.visible.expanded {
+    height: 1fr;
+    max-height: 1fr;
+    border: none;
+    background: $background;
+}
+
+#dashboard-chat-overlay #chat-overlay-bottom {
+    border-top: solid $border;
+    background: $surface;
+}
+
+#dashboard-chat-overlay #chat-overlay-command-line:focus-within {
+    border: round $primary;
+    background: $surface;
+}
+
+#dashboard-actions {
+    dock: bottom;
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+    align: center middle;
+    border-top: solid $border;
+    background: $surface;
+}
+
+.dashboard-action-hint {
+    width: 1fr;
+    color: $text-disabled;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+SessionDashboardScreen.dashboard-chat-fullscreen #dashboard-actions {
+    display: none;
+}

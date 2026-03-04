@@ -1,0 +1,466 @@
+"""Console setup, REPL banner, wave animation, git helpers, and entry points."""
+
+import asyncio
+import os
+import subprocess
+import time
+from dataclasses import dataclass
+from importlib.metadata import version
+from pathlib import Path
+from typing import Final, Literal
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
+from rich.align import Align
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.text import Text
+
+from kagan.chat.commands import SLASH_COMMAND_REGISTRY
+from kagan.runtime_env import build_sanitized_subprocess_environment
+
+# ---------------------------------------------------------------------------
+# Fuzzy match helper
+# ---------------------------------------------------------------------------
+
+
+def _fuzzy_match(pattern: str, text: str) -> bool:
+    """Check if all chars of *pattern* appear in *text* in order (case-insensitive)."""
+    lower_text = text.casefold()
+    pos = 0
+    for ch in pattern.casefold():
+        idx = lower_text.find(ch, pos)
+        if idx < 0:
+            return False
+        pos = idx + 1
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Slash command aliases  (short form → canonical command name)
+# ---------------------------------------------------------------------------
+
+_SLASH_ALIASES: Final[dict[str, str]] = {
+    "q": "exit",
+    "?": "help",
+    "s": "sessions",
+    "a": "agents",
+    "f": "flow",
+}
+
+
+class _SlashCompleter(Completer):
+    def get_completions(self, document, complete_event):
+        _complete_event = complete_event  # Unused: only document.text_before_cursor is needed
+        text = document.text_before_cursor
+        if not text.startswith("/"):
+            return
+        partial = text[1:].casefold()
+
+        seen: set[str] = set()
+        # 1. Fuzzy-match against command names
+        for spec in SLASH_COMMAND_REGISTRY.specs():
+            if _fuzzy_match(partial, spec.name) and spec.name not in seen:
+                seen.add(spec.name)
+                yield Completion(
+                    spec.name,
+                    start_position=-len(partial),
+                    display_meta=spec.description,
+                )
+
+        # 2. Exact-match aliases (e.g. "q" → "exit")
+        alias_target = _SLASH_ALIASES.get(partial)
+        if alias_target and alias_target not in seen:
+            spec_obj = SLASH_COMMAND_REGISTRY.get(alias_target)
+            if spec_obj is not None:
+                seen.add(alias_target)
+                yield Completion(
+                    alias_target,
+                    start_position=-len(partial),
+                    display_meta=f"(alias) {spec_obj.spec.description}",
+                )
+
+
+# ---------------------------------------------------------------------------
+# Toolbar state — mutable singleton updated by controller
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class ToolbarState:
+    agent_backend: str = ""
+    project_name: str = ""
+    turn_count: int = 0
+    session_label: str = "orchestrator"
+
+
+def create_toolbar_state() -> ToolbarState:
+    return ToolbarState()
+
+
+# Module-level instance
+_TOOLBAR_STATE = create_toolbar_state()
+
+_REPL_COLORS: Final[dict[str, str]] = {
+    "bg": "#0B0A09",
+    "surface": "#151311",
+    "panel": "#1E1B17",
+    "text": "#FFFFFF",
+    "text_muted": "#B5AC9F",
+    "text_soft": "#C2B9AD",
+    "accent": "#3fb58e",
+    "accent_soft": "#1D3A31",
+    "primary": "#d4a84b",
+}
+
+_ANSI_REPL_COLORS: Final[dict[str, str]] = {
+    "accent": "ansigreen",
+    "muted": "ansibrightblack",
+    "primary": "ansiyellow",
+}
+
+
+def _supports_truecolor_terminal() -> bool:
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    colorterm = os.environ.get("COLORTERM", "").casefold()
+    term = os.environ.get("TERM", "").casefold()
+    _width = _height = None  # Unused: TrueColor detection only needs env vars
+    return "truecolor" in colorterm or "24bit" in colorterm or "direct" in term
+
+
+def _build_prompt_style_rules() -> dict[str, str]:
+    if _supports_truecolor_terminal():
+        return {
+            "prompt": f"fg:{_REPL_COLORS['accent']} bold",
+            "bottom-toolbar": (
+                f"noreverse bg:{_REPL_COLORS['panel']} fg:{_REPL_COLORS['text_soft']}"
+            ),
+            "bottom-toolbar.text": (
+                f"noreverse bg:{_REPL_COLORS['panel']} fg:{_REPL_COLORS['text']}"
+            ),
+            "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
+            "completion-menu.completion.current": (
+                f"bg:{_REPL_COLORS['accent_soft']} fg:{_REPL_COLORS['text']} bold"
+            ),
+            "selected-text": f"noreverse bg:{_REPL_COLORS['accent']} fg:{_REPL_COLORS['bg']}",
+        }
+    return {
+        "prompt": "fg:ansigreen bold",
+        "bottom-toolbar": "noreverse bg:default fg:default",
+        "bottom-toolbar.text": "noreverse bg:default fg:default",
+        "completion-menu": "bg:default fg:default",
+        "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
+        "selected-text": "noreverse bg:ansigreen fg:ansiblack",
+    }
+
+
+_PROMPT_STYLE_RULES: Final[dict[str, str]] = _build_prompt_style_rules()
+
+
+def _history_cycle_target(
+    *,
+    current_index: int,
+    working_line_count: int,
+    direction: Literal["up", "down"],
+) -> int | None:
+    last_history_index = working_line_count - 2
+    if last_history_index < 0:
+        return None
+    if direction == "up":
+        if current_index <= 0 or current_index > last_history_index:
+            return last_history_index
+        return current_index - 1
+    if current_index >= last_history_index or current_index < 0:
+        return 0
+    return current_index + 1
+
+
+def _cycle_history(event, direction: Literal["up", "down"]) -> None:
+    buffer = event.current_buffer
+    target = _history_cycle_target(
+        current_index=buffer.working_index,
+        working_line_count=len(getattr(buffer, "_working_lines", [])),
+        direction=direction,
+    )
+    if target is None:
+        return
+    buffer.go_to_history(target)
+
+
+def _bottom_toolbar() -> str:
+    """Toolbar callback for prompt_toolkit — shown at the bottom of the terminal."""
+    parts: list[str] = []
+    if _TOOLBAR_STATE.agent_backend:
+        parts.append(f"agent: {_TOOLBAR_STATE.agent_backend}")
+    if _TOOLBAR_STATE.project_name:
+        parts.append(f"project: {_TOOLBAR_STATE.project_name}")
+    parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
+    parts.append("Up/Down: history")
+    parts.append("Ctrl-U: clear")
+    parts.append("Alt-Enter: newline")
+    return " · ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Rich prompt builder
+# ---------------------------------------------------------------------------
+
+
+def _build_prompt_message() -> FormattedText:
+    """Build a coloured ``user@project`` prompt for prompt_toolkit."""
+    project = Path.cwd().name
+    if _supports_truecolor_terminal():
+        user_style = f"bold {_REPL_COLORS['accent']}"
+        at_style = _REPL_COLORS["text_muted"]
+        project_style = _REPL_COLORS["primary"]
+    else:
+        user_style = f"bold {_ANSI_REPL_COLORS['accent']}"
+        at_style = _ANSI_REPL_COLORS["muted"]
+        project_style = _ANSI_REPL_COLORS["primary"]
+    return FormattedText(
+        [
+            (user_style, "kg"),
+            (at_style, "@"),
+            (project_style, project),
+            ("", " \u203a "),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Multiline key bindings (Alt-Enter / Ctrl-J insert newline)
+# ---------------------------------------------------------------------------
+
+_kb = KeyBindings()
+
+
+@_kb.add("escape", "enter")
+def _alt_enter(event) -> None:
+    event.current_buffer.insert_text("\n")
+
+
+@_kb.add("c-j")
+def _ctrl_j(event) -> None:
+    event.current_buffer.insert_text("\n")
+
+
+@_kb.add("up")
+def _up(event) -> None:
+    buffer = event.current_buffer
+    if buffer.complete_state is not None:
+        buffer.complete_previous()
+        return
+    if not buffer.document.on_first_line:
+        buffer.cursor_up(count=1)
+        return
+    _cycle_history(event, "up")
+
+
+@_kb.add("down")
+def _down(event) -> None:
+    buffer = event.current_buffer
+    if buffer.complete_state is not None:
+        buffer.complete_next()
+        return
+    if not buffer.document.on_last_line:
+        buffer.cursor_down(count=1)
+        return
+    _cycle_history(event, "down")
+
+
+@_kb.add("c-u")
+def _ctrl_u(event) -> None:
+    buffer = event.current_buffer
+    if not buffer.text:
+        return
+    line_count = len(getattr(buffer, "_working_lines", []))
+    if line_count > 0:
+        buffer.go_to_history(line_count - 1)
+    buffer.text = ""
+    buffer.cursor_position = 0
+
+
+# ---------------------------------------------------------------------------
+# Console & prompt
+# ---------------------------------------------------------------------------
+
+_console = Console(highlight=False)
+_prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
+
+_prompt_session: PromptSession[str] = PromptSession(
+    style=_prompt_style,
+    completer=_SlashCompleter(),
+    key_bindings=_kb,
+    bottom_toolbar=_bottom_toolbar,
+)
+
+# ---------------------------------------------------------------------------
+# Banner & wave animation
+# ---------------------------------------------------------------------------
+
+LOGO = r"""█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
+█▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
+
+WAVE_FRAMES = (
+    "ᘚᘚᘚᘚ",
+    "ᘛᘚᘚᘚ",
+    "ᘛᘛᘚᘚ",
+    "ᘛᘛᘛᘚ",
+    "ᘛᘛᘛᘛ",
+    "ᘚᘛᘛᘛ",
+    "ᘚᘚᘛᘛ",
+    "ᘚᘚᘚᘛ",
+)
+
+
+def _write_boot_banner(
+    project_root: Path | None = None, *, agent_backend: str | None = None
+) -> None:
+    ver = version("kagan")
+    banner_lines = Text.assemble(
+        (LOGO, "bold green"),
+    )
+    details = Text.assemble(
+        ("chat", "bold white"),
+        ("  ·  ", "dim"),
+        ("orchestrator", "dim cyan"),
+        ("  ·  ", "dim"),
+        ("admin mode", "dim cyan"),
+        ("  ·  ", "dim"),
+        (f"v{ver}", "dim"),
+    )
+    extra: list[str] = []
+    if project_root is not None:
+        extra.append(f"[dim]Project: {project_root}[/dim]")
+    if agent_backend is not None:
+        extra.append(f"[dim]Agent: {agent_backend}[/dim]")
+    extra.append(
+        "[dim]Type naturally; /flow for guided Plan -> Execute -> Orchestrate; "
+        "Ctrl-D exit; Alt-Enter newline.[/dim]"
+    )
+    inner = Group(
+        Align.center(banner_lines),
+        details,
+    )
+
+    _console.print()
+    banner_panel = Panel(
+        inner,
+        border_style="dim green",
+        title="kagan chat",
+        subtitle=f"v{ver}",
+        padding=(0, 2),
+        expand=False,
+    )
+    _console.print(Align.left(banner_panel))
+    for line in extra:
+        _console.print(Text.from_markup(line))
+    _console.print()
+
+
+def _animate_connecting() -> None:
+    """Quick one-shot wave for non-Live contexts (e.g. tests)."""
+    if os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1":
+        _console.print(Text(WAVE_FRAMES[-1], style="dim cyan"))
+        return
+    for frame in WAVE_FRAMES:
+        _console.print(f"\r[dim cyan]{frame}[/dim cyan]", end="")
+        time.sleep(0.08)
+    _console.print()
+
+
+# ---------------------------------------------------------------------------
+# Git helpers (for standalone bootstrap)
+# ---------------------------------------------------------------------------
+
+
+def _find_git_root(path: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=build_sanitized_subprocess_environment(),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return Path(result.stdout.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _setting_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
+    value = settings.get(key)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    return normalized not in {"0", "false", "no", "off"}
+
+
+def _env_flag_enabled(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    return normalized not in {"0", "false", "no", "off"}
+
+
+# ---------------------------------------------------------------------------
+# Public entry points — used by cli/chat.py
+# ---------------------------------------------------------------------------
+
+
+async def run_chat_async(
+    *,
+    prompt: str | None = None,
+    session_id: str | None = None,
+    agent: str | None = None,
+) -> str | None:
+    """Async entry point for the chat command.
+
+    With --prompt: single-shot mode — send to agent, stream output, exit.
+    Without: interactive REPL.
+    """
+    from kagan.chat.agents import resolve_default_agent_backend
+    from kagan.chat.controller import ChatController
+    from kagan.core import KaganCore
+
+    async with KaganCore() as client:
+        # Resolve agent: explicit --agent flag > saved setting > fallback
+        backend = agent
+        if not backend:
+            settings = await client.settings.get()
+            backend = resolve_default_agent_backend(settings)
+
+        controller = ChatController(
+            client,
+            agent_backend=backend,
+            mcp_session_id=session_id,
+            prefer_session_backend=agent is None,
+        )
+
+        if not await controller.ensure_project():
+            return None
+
+        await controller.hydrate_persistent_session(explicit_session_id=session_id)
+
+        _write_boot_banner(Path.cwd(), agent_backend=controller.agent_backend)
+
+        await controller.run(prompt=prompt)
+
+    return None
+
+
+def run_chat(
+    prompt: str | None = None,
+    session_id: str | None = None,
+    agent: str | None = None,
+) -> str | None:
+    """Sync wrapper — the one function cli/chat.py calls."""
+    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent))

@@ -1,4 +1,8 @@
-exclude: \.ambr$
+exclude: |
+  (?x)^(
+    .*\.ambr$|
+    src/kagan/core/adapters/db/migrations/versions/.*\.py$
+  )
 
 # Baseline for local hooks:
 #   uv sync --dev
@@ -20,7 +24,6 @@ repos:
         exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
       - id: check-yaml
         exclude: ^(mkdocs\.yml$|.*\.svg$)
-      - id: check-added-large-files
       - id: check-merge-conflict
       - id: mixed-line-ending
         args: [--fix=lf]
@@ -66,3 +69,8 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: check-added-large-files-local
+        name: check for added large files
+        entry: uv run python scripts/check_added_large_files.py --maxkb 500
+        language: system

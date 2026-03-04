@@ -48,7 +48,7 @@ uvx kagan
 
   Structured review: diff summary, acceptance criteria checklist, your call.
 
-  [:octicons-arrow-right-24: Architecture](concepts/architecture-overview.md)
+  [:octicons-arrow-right-24: Task lifecycle](concepts/task-lifecycle.md)
 
 </div>
 
@@ -56,42 +56,21 @@ ______________________________________________________________________
 
 ## Supported agents
 
-Kagan works with the agents you already use. Bring one or bring all -- they share the same board, the same state, the same review gate.
+Kagan works with the agents you already use. Bring one or bring all — they share the same board, the same state, the same review gate.
 
-| Agent              | Author       | Description                                 |
-| ------------------ | ------------ | ------------------------------------------- |
-| **Claude Code**    | Anthropic    | Agentic coding from the terminal            |
-| **OpenCode**       | SST          | Multi-model CLI with TUI                    |
-| **Codex**          | OpenAI       | OpenAI CLI coding agent                     |
-| **Gemini CLI**     | Google       | Google Gemini CLI agent                     |
-| **Kimi CLI**       | Moonshot AI  | Kimi CLI coding agent                       |
-| **GitHub Copilot** | GitHub       | GitHub Copilot CLI agent                    |
-| **Goose**          | Block        | Open-source, extensible AI agent            |
-| **OpenHands**      | OpenHands    | Cloud coding agent platform                 |
-| **Auggie**         | Augment Code | Terminal and editor AI agent                |
-| **Amp**            | Sourcegraph  | Frontier coding agent for the terminal      |
-| **Docker cagent**  | Docker       | Agent builder and runtime with MCP/ACP      |
-| **Stakpak**        | Stakpak      | Terminal-native DevOps agent                |
-| **Mistral Vibe**   | Mistral      | Open-source CLI backed by Devstral          |
-| **VT Code**        | Vinh Nguyen  | Rust-based agent with semantic intelligence |
+**Claude Code** · **OpenCode** · **Codex** · **Gemini CLI** · **Kimi CLI** · **GitHub Copilot** · **Goose** · **OpenHands** · **Auggie** · **Amp** · **Docker cagent** · **Stakpak** · **Mistral Vibe** · **VT Code**
 
-Set `default_worker_agent` in config or pick per task. Kagan detects what's installed and falls through the priority list automatically.
+Set `default_worker_agent` in config or pick per task. Kagan detects what's installed automatically.
+
+[:octicons-arrow-right-24: Full agent list with install commands](concepts/architecture-overview.md#supported-agents)
 
 ______________________________________________________________________
 
 ## PAIR backends
 
-Interactive sessions open in the tool you already live in.
+Interactive sessions open in the tool you already live in: **tmux** · **Neovim** · **VS Code** · **Cursor** · **Windsurf** · **Kiro** · **Antigravity**
 
-| Backend       | Editor / Terminal                            |
-| ------------- | -------------------------------------------- |
-| `tmux`        | Terminal multiplexer (default on Unix/macOS) |
-| `nvim`        | Neovim with AI chat plugin support           |
-| `vscode`      | Visual Studio Code                           |
-| `cursor`      | Cursor                                       |
-| `windsurf`    | Windsurf                                     |
-| `kiro`        | Kiro                                         |
-| `antigravity` | Antigravity                                  |
+[:octicons-arrow-right-24: Backend details](concepts/architecture-overview.md#pair-backends)
 
 ______________________________________________________________________
 
@@ -107,13 +86,15 @@ ______________________________________________________________________
 
 ## Find what you need
 
-| Goal                          | Page                                                     |
-| ----------------------------- | -------------------------------------------------------- |
-| First run in under 5 minutes  | [Quickstart](quickstart.md)                              |
-| Understand AUTO vs PAIR       | [AUTO vs PAIR](guides/modes-auto-vs-pair.md)             |
-| Connect an AI client via MCP  | [MCP setup](guides/mcp-setup.md)                         |
-| Work across multiple repos    | [MCP setup - Multi-repo](guides/mcp-setup.md#multi-repo) |
-| Connect GitHub issues and PRs | [GitHub plugin](guides/github.md)                        |
-| Fix a known issue             | [Troubleshooting](troubleshooting.md)                    |
-| All CLI flags                 | [CLI reference](reference/cli.md)                        |
-| All MCP tools                 | [MCP tools reference](reference/mcp-tools.md)            |
+| Goal                         | Page                                                     |
+| ---------------------------- | -------------------------------------------------------- |
+| First run in under 5 minutes | [Quickstart](quickstart.md)                              |
+| Understand the task flow     | [Task lifecycle](concepts/task-lifecycle.md)             |
+| Understand AUTO vs PAIR      | [AUTO vs PAIR](guides/modes-auto-vs-pair.md)             |
+| Understand ACP chat sessions | [ACP session lifecycle](guides/acp-session-lifecycle.md) |
+| Connect an AI client via MCP | [MCP setup](guides/mcp-setup.md)                         |
+| Work across multiple repos   | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo) |
+| Import tasks from GitHub     | [Import from GitHub](guides/github.md)                   |
+| Fix a known issue            | [Troubleshooting](troubleshooting.md)                    |
+| All CLI flags                | [CLI reference](reference/cli.md)                        |
+| All MCP tools                | [MCP tools reference](reference/mcp-tools.md)            |

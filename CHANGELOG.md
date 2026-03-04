@@ -46,21 +46,19 @@
   ([#27](https://github.com/kagan-sh/kagan/pull/27),
   [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
 
-### Refactoring
-
-- Align runtime reconcile responses and tui runtime cache
-  ([#27](https://github.com/kagan-sh/kagan/pull/27),
-  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
-
-- Simplification ui and ux improvements; github integration; orchestrator > planner
-  ([#27](https://github.com/kagan-sh/kagan/pull/27),
-  [`32e0eb3`](https://github.com/kagan-sh/kagan/commit/32e0eb3ccfafafac3bdd4b0be25be57d462f3b06))
-
 
 ## v0.6.0 (unreleased)
 
 > **Upgrade from v0.5.0:** No migration required. The database schema is unchanged.
 > Run `kagan update` and restart — your data is safe.
+
+### Breaking changes
+
+- **SDK/MCP mutation response shapes** — `task_create`, `project_create`, and `task_patch` now return nested canonical payloads only. Flat top-level fields (`task_id`, `project_id`, `title`, `status`, `name`, `description`) were removed. Migrate to:
+  - `result.task.id` instead of `result.task_id`
+  - `result.project.id` instead of `result.project_id`
+  - `result.task.title`, `result.task.status` instead of top-level `title`/`status`
+  See [MCP tools reference](https://docs.kagan.sh/reference/mcp-tools/#mutation-response-shapes-sdk--mcp) for full details.
 
 ### Features
 
@@ -84,18 +82,11 @@
 
 - Harden prompt-injection and privacy boundaries (redaction, tag escaping)
 - Restore planner chat UX with real-time streaming
+- Restore first-run onboarding so users can choose their backend agent before Welcome
 - Standardize canonical Pydantic domain models and rebuild MCP schemas
 - `poe dev` path corrections and local docs-serve fixes
 - TUI chat loading UX hardened: animated `initializing` during connection, chat input locked while requests are in-flight, and timeout recovery prevents indefinite thinking loops
 
-### Refactoring
-
-- Centralize task coercion and planner payload models
-- Dedupe task/review command logic via internal API layer
-- Unify truncation helpers and MCP constants
-- MCP policy helpers and settings field wiring consolidated
-- All DB repositories migrated to SQLModel `session.exec()` for SELECT queries
-  (replaces deprecated `session.execute()` for model queries — no behavior change for users)
 
 ### Documentation
 
@@ -160,34 +151,6 @@
   ([#20](https://github.com/kagan-sh/kagan/pull/20),
   [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
 
-### Refactoring
-
-- Add generic slash command registry with alias support
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Consolidate ACP message routing into shared AgentStreamRouter
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Extract task form building and field collection into reusable methods
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Modernize planner screen with command provider, reactive bindings, and stream router
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Project cleanup ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Unify Kanban screen with command palette provider, action dispatch table, and reactive search
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
-
-- Use structured result types in session controller and add AUTO task restart flow
-  ([#20](https://github.com/kagan-sh/kagan/pull/20),
-  [`939c2e7`](https://github.com/kagan-sh/kagan/commit/939c2e76f5bf221b9b7b7ca5a74ccaf6b4388345))
 
 ### Testing
 
@@ -222,54 +185,10 @@
   ([#19](https://github.com/kagan-sh/kagan/pull/19),
   [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
 
-### Refactoring
-
-- Add KaganModalScreen base class, screen_result helper, and update UI layer
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Add UTC time helper, session factory protocol, and standardize schema timestamps
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Extract CLI commands from __main__.py into cli/commands package
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Extract planner models, parser, and prompts into dedicated modules
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Extract shared git adapter base and add protocol interfaces
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Remove executors adapter, domain entities module, and executions service
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Split automation.py into automation package with clear responsibilities
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Split monolithic repositories.py into focused repository modules
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Split preflight.py monolith into preflight package
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Split workspaces.py into workspaces package ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
-
-- Update app startup, bootstrap DI, service protocols, and screen wiring
-  ([#19](https://github.com/kagan-sh/kagan/pull/19),
-  [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
 
 ### Testing
 
-- Add and update tests for all refactored modules ([#19](https://github.com/kagan-sh/kagan/pull/19),
+- Add and update tests for all updated modules ([#19](https://github.com/kagan-sh/kagan/pull/19),
   [`8904a04`](https://github.com/kagan-sh/kagan/commit/8904a04142db7c2248984b8d8323860ed65fe6ba))
 
 
@@ -293,11 +212,6 @@
 - Race condition in async workers accessing database during widget unmount
   ([#18](https://github.com/aorumbayev/kagan/pull/18),
   [`58c51ec`](https://github.com/aorumbayev/kagan/commit/58c51ec7e0692bd9f748373431e374654201de02))
-
-### Refactoring
-
-- Replace OperationalError band-aids with ordered shutdown and lifecycle-aware DB sessions
-  ([`ae9e3c5`](https://github.com/aorumbayev/kagan/commit/ae9e3c56bc5098a12136802a8cf714ed67b15b9e))
 
 
 ## v0.3.0-beta.5 (2026-02-07)
@@ -360,24 +274,6 @@
   ([#15](https://github.com/aorumbayev/kagan/pull/15),
   [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
 
-### Refactoring
-
-- Centralize storage with XDG paths and schema evolution
-  ([#15](https://github.com/aorumbayev/kagan/pull/15),
-  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
-
-- Consolidate git wrapper and modernize async patterns
-  ([#15](https://github.com/aorumbayev/kagan/pull/15),
-  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
-
-- Remodel architecture with service-oriented patterns
-  ([#15](https://github.com/aorumbayev/kagan/pull/15),
-  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
-
-- **core**: Migrate to sqlmodel ORM and official ACP SDK
-  ([#15](https://github.com/aorumbayev/kagan/pull/15),
-  [`0602373`](https://github.com/aorumbayev/kagan/commit/0602373bef984f50f66a52867d2109e9c10ed029))
-
 
 ## v0.3.0-beta.1 (2026-02-02)
 
@@ -400,55 +296,11 @@
 
 ### Features
 
-- Ux improvements; minor new features; internal refactor
+- Ux improvements and minor new features
   ([#11](https://github.com/aorumbayev/kagan/pull/11),
   [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
 
 - **cli**: Add tools command for agent management
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-### Refactoring
-
-- Update core modules and styling ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **acp**: Consolidate JSON-RPC and remove legacy RPC layer
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **agents**: Improve planner, scheduler, and add installer
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **database**: Enhance models and add migrations support
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **keybindings**: Consolidate into single module
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **tests**: Remove duplicate permission_prompt test
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **tests**: Update e2e tests for refactored UI ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **tests**: Update integration tests for refactored modules
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **tests**: Update test infrastructure and helpers
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **tests**: Update unit tests for refactored modules
-  ([#11](https://github.com/aorumbayev/kagan/pull/11),
-  [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
-
-- **ui**: Restructure screens, modals, and widgets
   ([#11](https://github.com/aorumbayev/kagan/pull/11),
   [`d7c686a`](https://github.com/aorumbayev/kagan/commit/d7c686a6678a1ed7861f6ab2aff77126881344af))
 
@@ -465,14 +317,6 @@
 
 - Update readme
   ([`ae2c9a2`](https://github.com/aorumbayev/kagan/commit/ae2c9a2a33801184cc02edbbe2ce05dd9e1f6455))
-
-### Refactoring
-
-- **tests**: Mock fetch_latest_version instead of httpx transport
-  ([`db9053a`](https://github.com/aorumbayev/kagan/commit/db9053a0ed4d8a9b503ca03bcf850e0f06112506))
-
-- **tests**: Reduce httpx_mock usage to minimize event loop warnings
-  ([`37332db`](https://github.com/aorumbayev/kagan/commit/37332db58650b42f481039e8a5874d05bb24044e))
 
 
 ## v0.2.0 (2026-01-31)
@@ -529,11 +373,6 @@
   ([#9](https://github.com/aorumbayev/kagan/pull/9),
   [`fe57f66`](https://github.com/aorumbayev/kagan/commit/fe57f663aef153780eadd5699082932d0266ca1a))
 
-### Refactoring
-
-- **ci**: Simplify workflow structure ([#9](https://github.com/aorumbayev/kagan/pull/9),
-  [`fe57f66`](https://github.com/aorumbayev/kagan/commit/fe57f663aef153780eadd5699082932d0266ca1a))
-
 
 ## v0.2.0-beta.2 (2026-01-31)
 
@@ -562,7 +401,7 @@
 
 ### Features
 
-- Refactoring, cleanup and new features ([#6](https://github.com/aorumbayev/kagan/pull/6),
+- Cleanup and new features ([#6](https://github.com/aorumbayev/kagan/pull/6),
   [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
 
 - **agents**: Add prompt refiner for pre-send enhancement
@@ -586,12 +425,6 @@
   [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
 
 - **ui**: Add new modals, widgets, and clipboard utilities
-  ([#6](https://github.com/aorumbayev/kagan/pull/6),
-  [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
-
-### Refactoring
-
-- **tests**: Reorganize test suite into categorized structure
   ([#6](https://github.com/aorumbayev/kagan/pull/6),
   [`d47160f`](https://github.com/aorumbayev/kagan/commit/d47160f38c7c7d7d91939529001fd21cedb151ca))
 

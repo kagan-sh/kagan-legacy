@@ -860,6 +860,8 @@ class ChatController:
                         ValueError,
                     ) as exc:
                         handshake_error = exc
+                    except Exception as exc:
+                        handshake_error = exc
                     finally:
                         ready_event.set()
 
@@ -921,6 +923,9 @@ class ChatController:
 
         except (FileNotFoundError, PermissionError) as exc:
             _console.print(f"[red]Failed to spawn agent: {exc}[/red]")
+        except Exception as exc:
+            logger.exception("Unexpected ACP agent session failure")
+            _console.print(f"[red]Agent session failed: {exc}[/red]")
         finally:
             await self._watcher.close()
             self._acp_conn = None
@@ -975,6 +980,10 @@ class ChatController:
                 )
             except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                 logger.exception("Failed to send prompt to agent")
+                _console.print(f"\n[red]Agent error: {exc}[/red]")
+                return
+            except Exception as exc:
+                logger.exception("Unexpected failure while sending prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
                 return
 

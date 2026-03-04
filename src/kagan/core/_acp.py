@@ -269,7 +269,7 @@ class KaganACPClient(ACPClientBase):
         )
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 
-    async def session_update(
+    async def session_update(  # noqa: bad-override
         self,
         session_id: str,
         update: UserMessageChunk

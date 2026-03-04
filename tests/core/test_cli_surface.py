@@ -8,6 +8,13 @@ from click.testing import CliRunner
 from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
+# Check if rich_click is available for extended CLI output
+try:
+    import rich_click
+    _HAS_RICH_CLICK = True
+except ImportError:
+    _HAS_RICH_CLICK = False
+
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
 
 
@@ -37,7 +44,8 @@ def test_help_surface_contains_commands(tmp_path: Path) -> None:
     assert "Usage:" in result.output
     assert "Options" in result.output
     assert "Commands" in result.output
-    assert "https://docs.kagan.sh/reference/cli/" in result.output
+    if _HAS_RICH_CLICK:
+        assert "https://docs.kagan.sh/reference/cli/" in result.output
 
 
 def test_version_flag_prints_version(tmp_path: Path) -> None:

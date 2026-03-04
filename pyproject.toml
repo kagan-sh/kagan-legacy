@@ -165,7 +165,7 @@ markers = [
   "integration: tests scoped to real agent binary integration",
   "mock_platform_system(name): override platform.system() for the test",
 ]
-addopts = "-x -n auto --dist=loadgroup"
+addopts = "-p no:anyio -x -n auto --dist=loadgroup"
 
 [tool.coverage.run]
 source = ["src/kagan"]

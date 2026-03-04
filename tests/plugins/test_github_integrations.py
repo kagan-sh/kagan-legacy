@@ -82,6 +82,7 @@ def test_format_github_setup_message_shows_fix_steps_for_blockers() -> None:
         ("https://github.com/octocat/hello-world", "octocat/hello-world"),
         ("git@github.com:octocat/hello-world.git", "octocat/hello-world"),
         ("ssh://git@github.com/octocat/hello-world.git", "octocat/hello-world"),
+        ("ssh://git@ssh.github.com:443/octocat/hello-world.git", "octocat/hello-world"),
     ],
 )
 def test_parse_github_repo_slug_from_remote_url(remote_url: str, expected: str) -> None:
@@ -93,6 +94,9 @@ def test_parse_github_repo_slug_from_remote_url(remote_url: str, expected: str) 
     [
         "",
         "https://gitlab.com/octocat/hello-world.git",
+        "https://evilgithub.com/octocat/hello-world.git",
+        "https://github.com.evil.com/octocat/hello-world.git",
+        "https://github.com@evil.com/octocat/hello-world.git",
         "git@github.com:octocat/hello/world.git",
         "github.com/octocat/hello-world",
     ],

@@ -11,6 +11,7 @@ from kagan.cli.main import _sanitize_startup_environment, cli
 # Check if rich_click is available for extended CLI output
 try:
     import rich_click
+
     _HAS_RICH_CLICK = True
 except ImportError:
     _HAS_RICH_CLICK = False
@@ -22,7 +23,10 @@ def _runner_env(tmp_path: Path) -> dict[str, str]:
     return {
         "KAGAN_SKIP_UPDATE_CHECK": "1",
         "KAGAN_DATA_DIR": str(tmp_path),
+        "KAGAN_CONFIG_DIR": str(tmp_path),
         "COLUMNS": "120",
+        # Prevent tests from accidentally spawning real agent binaries
+        "KAGAN_INTEGRATION_TESTS": "",
     }
 
 

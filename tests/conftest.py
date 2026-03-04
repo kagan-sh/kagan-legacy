@@ -29,8 +29,10 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ["XDG_STATE_HOME"] = os.path.join(_kagan_test_root, "state")
     os.environ["XDG_CONFIG_HOME"] = os.path.join(_kagan_test_root, "config")
     os.environ["KAGAN_WORKTREE_BASE"] = os.path.join(_kagan_test_root, "worktrees")
-    # Clear any user-set override so tests don't accidentally resolve to a real dir.
-    os.environ.pop("KAGAN_DATA_DIR", None)
+    # Set KAGAN_DATA_DIR and KAGAN_CONFIG_DIR to ensure tests use temp dir
+    # (especially on macOS where platformdirs doesn't respect XDG_*_HOME)
+    os.environ["KAGAN_DATA_DIR"] = os.path.join(_kagan_test_root, "data")
+    os.environ["KAGAN_CONFIG_DIR"] = os.path.join(_kagan_test_root, "config")
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

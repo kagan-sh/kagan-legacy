@@ -1,6 +1,6 @@
 from kagan.tui.screens.agent_picker import AgentPickerModal
 from kagan.tui.screens.confirm import ConfirmModal
-from kagan.tui.screens.gateway import PairInstructionsModal, TmuxGatewayModal
+from kagan.tui.screens.gateway import PairInstructionsModal
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
 from kagan.tui.screens.rejection_input import RejectionInputModal
@@ -23,6 +23,5 @@ __all__ = [
     "SettingsModal",
     "TaskEditorModal",
     "TaskScreen",
-    "TmuxGatewayModal",
     "WelcomeScreen",
 ]

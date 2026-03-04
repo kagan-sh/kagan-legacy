@@ -1,5 +1,6 @@
 """Bootstrap TOML config for kagan.core — only settings needed before the DB exists."""
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +15,13 @@ class KaganBootstrapConfig:
 
 
 def default_config_path() -> Path:
-    """Return the default config file path using platformdirs."""
+    """Return the default config file path.
+
+    Uses KAGAN_CONFIG_DIR environment variable if set, otherwise uses platformdirs.
+    """
+    kagan_override = os.environ.get("KAGAN_CONFIG_DIR")
+    if kagan_override:
+        return Path(kagan_override) / "config.toml"
     from platformdirs import user_config_dir
 
     return Path(user_config_dir("kagan", "kagan")) / "config.toml"

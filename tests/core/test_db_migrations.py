@@ -290,3 +290,43 @@ def test_legacy_orphans_are_pruned_without_startup_crash(tmp_path: Path) -> None
         asyncio.run(run_smoke())
     finally:
         client.close()
+
+
+def test_known_legacy_alembic_revision_is_remapped_to_head(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-known-rev.db"
+    _seed_v060_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES (?)", ("5b95758fdb4d",))
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = KaganCore(db_path=db_path)
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            head = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+            assert head == ("0001_v060_to_latest",)
+        finally:
+            conn.close()
+    finally:
+        client.close()
+
+
+def test_unknown_alembic_revision_fails_with_explicit_message(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-unknown-rev.db"
+    _seed_v060_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES (?)", ("deadbeefdead",))
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match="Unknown alembic revision 'deadbeefdead'"):
+        KaganCore(db_path=db_path)

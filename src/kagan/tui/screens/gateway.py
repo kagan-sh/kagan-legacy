@@ -15,8 +15,6 @@ from kagan.tui.widgets.hint_bar import format_hint
 __all__ = [
     "TMUX_DOCS_URL",
     "PairInstructionsModal",
-    # Keep old name as alias for backwards compatibility
-    "TmuxGatewayModal",
 ]
 
 TMUX_DOCS_URL = "https://github.com/tmux/tmux/wiki"
@@ -151,7 +149,3 @@ class PairInstructionsModal(ModalScreen[str | None]):
 
     def action_skip_future(self) -> None:
         self.dismiss("skip_future")
-
-
-# Backwards-compatible alias
-TmuxGatewayModal = PairInstructionsModal

@@ -31,6 +31,13 @@ def canonical_repo_slug(repo_slug: str) -> str:
     return f"{owner}/{name}"
 
 
+def _is_allowed_github_host(hostname: str | None) -> bool:
+    if not hostname:
+        return False
+    normalized = hostname.strip().lower().rstrip(".")
+    return normalized == "github.com" or normalized.endswith(".github.com")
+
+
 def parse_github_repo_slug_from_remote_url(remote_url: str) -> str | None:
     value = remote_url.strip()
     if not value:
@@ -41,8 +48,7 @@ def parse_github_repo_slug_from_remote_url(remote_url: str) -> str | None:
         path = value.split(":", 1)[1]
     else:
         parsed = urlparse(value)
-        host = parsed.netloc.lower()
-        if host.endswith("github.com"):
+        if _is_allowed_github_host(parsed.hostname):
             path = parsed.path.lstrip("/")
 
     if not path:

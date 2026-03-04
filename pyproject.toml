@@ -131,6 +131,7 @@ bad-argument-type = false        # Misreads 3rd-party stubs (tomlkit, acp, textu
 no-matching-overload = false     # Textual push_screen overloads too complex for Pyrefly
 bad-assignment = false           # kagan.core.models.Task vs asyncio.Task name collision
 missing-argument = false         # Misreads asyncio.to_thread, acp.schema constructors
+bad-override = false             # ACP client session_update signature mismatch (parent type too broad)
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,0 +1,282 @@
+# Chat Architecture — `kagan.chat`
+
+*Design principles: conversational layer over core, slash commands, session persistence.*
+
+______________________________________________________________________
+
+## References
+
+| Package            | Repo                                                                                            | Use                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **ACP SDK**        | [anthropics/agent-client-protocol](https://github.com/anthropics/agent-client-protocol)         | Agent Client Protocol: streaming agent output, tool calls, bidirectional communication.                 |
+| **Prompt Toolkit** | [prompt-toolkit/python-prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) | REPL input with history, completion, editing.                                                           |
+| **Rich**           | [Textualize/rich](https://github.com/Textualize/rich)                                           | Console output formatting, markdown rendering, syntax highlighting.                                     |
+| **Loguru**         | [Delgan/loguru](https://github.com/Delgan/loguru)                                               | Structured logging. Config and sink setup in core — see `docs/internal/architecture/core.md` § Logging. |
+
+______________________________________________________________________
+
+## Context
+
+`kagan.chat` provides conversational abstractions over `kagan.core`. It implements:
+
+1. **REPL (Read-Eval-Print Loop)** — interactive terminal chat with an orchestrator agent
+1. **Slash commands** — structured actions (`/agents`, `/sessions`, `/help`) within chat
+1. **Session persistence** — conversation history stored in core settings, survives restart
+1. **Orchestrator turns** — ACP-based agent execution for multi-step workflows
+
+**Core does not know about chat.** The dependency direction is strictly one-way:
+
+```
+kagan.chat ──► kagan.core   (agent spawning, event streaming, task ops)
+kagan.tui  ──► kagan.chat   (ChatController, slash commands)
+kagan.cli  ──► kagan.chat   (run_chat for REPL)
+kagan.core ──✘► kagan.chat  NEVER
+```
+
+______________________________________________________________________
+
+## Design Principles
+
+1. **Chat is a frontend over core** — it uses the same async API that TUI/CLI use
+1. **Sessions persist in core settings** — `client.settings` stores chat history, no separate DB
+1. **Slash commands are declarative** — `SlashCommandSpec` + handler function
+1. **One orchestrator agent per scope** — project-level orchestrator has its own session store
+1. **ACP for streaming** — orchestrator turns use ACP over STDIO for bidirectional streaming
+
+______________________________________________________________________
+
+## Package Layout
+
+```
+src/kagan/chat/
+├── __init__.py        # re-exports public API
+├── controller.py      # ChatController, _OrchestratorACPClient
+├── acp.py             # run_orchestrator_turn, ACP bridge utilities
+├── agents.py          # agent backend selection, formatting utilities
+├── commands.py        # SlashCommandSpec, SlashCommandRegistry, parsing
+├── prompt.py          # orchestrator system prompt, request formatting
+├── repl.py            # run_chat, run_chat_async, console setup
+└── sessions.py        # session CRUD, history normalization, persistence
+```
+
+**8 files.** Flat, no sub-packages.
+
+## Core Components
+
+### ChatController
+
+`ChatController` is the main orchestrator for REPL interaction. It:
+
+- Manages the orchestrator agent lifecycle via ACP
+- Processes user input (text or slash commands)
+- Streams agent output to Rich console
+- Maintains conversation state for the current session
+
+**Key methods:**
+
+| Method                                                               | Description                              |
+| -------------------------------------------------------------------- | ---------------------------------------- |
+| `process_input(text)`                                                | Main entry: parse slash or send to agent |
+| `run_orchestrator_turn()`                                            | Execute one agent turn via ACP           |
+| `close()`                                                            | Cleanup ACP connection                   |
+| is stored via `sessions.py` helpers that write to `client.settings`. |                                          |
+
+### SlashCommandRegistry
+
+Slash commands are declaratively registered:
+
+```python
+@dataclass(frozen=True, slots=True)
+class SlashCommandSpec:
+    name: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class SlashCommand:
+    spec: SlashCommandSpec
+    handler: Callable[[SlashCommandInvocation, _SlashCommandContext], SlashCommandOutcome]
+```
+
+**Built-in commands:**
+
+| Command                               | Description                                  |
+| ------------------------------------- | -------------------------------------------- |
+| `/help`                               | List available commands                      |
+| `/agents`                             | List and switch agent backends               |
+| `/sessions`                           | List, attach, or delete chat sessions        |
+| `/tool`                               | Inspect recent tool calls and full I/O by ID |
+| `/clear`                              | Clear the current session (start fresh)      |
+| `/exit`                               | Exit the REPL                                |
+| (close, clear, switch session, etc.). |                                              |
+
+### Session Persistence
+
+Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
+
+**Key helpers (from `sessions.py`):**
+
+| Function                   | Description                             |
+| -------------------------- | --------------------------------------- |
+| `create_chat_session(...)` | Create a new session record             |
+| `get_chat_session(key)`    | Retrieve a session by ID                |
+| `list_chat_sessions()`     | List all sessions with metadata         |
+| `save_chat_session(...)`   | Persist session with messages and title |
+| `delete_chat_session(key)` | Remove a session                        |
+| `set_last_session_id(...)` | Remember last active session per scope  |
+| **Normalization:**         |                                         |
+
+- `MAX_STORED_SESSIONS = 30` — oldest sessions pruned on save
+- `MAX_STORED_MESSAGES = 300` — messages truncated to recent N
+- `MAX_STORED_HISTORY = 120` — prompt-toolkit history lines
+
+Title generation: the orchestrator is asked to generate a short title
+from the first exchange. `_clean_generated_title()` strips reasoning
+tags (DeepSeek), quotes, and newlines.
+
+### REPL (`repl.py`)
+
+The REPL provides the interactive terminal interface:
+
+- **Input:** `prompt_toolkit` session with history, multiline editing
+- **Output:** `Rich.Console` with markdown rendering, syntax highlighting
+- **Loop:** reads line → `ChatController.process_input()` → render response
+
+**Entry points:**
+
+| Function           | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `run_chat()`       | One-shot REPL call (used by `kagan chat --prompt`)    |
+| `run_chat_async()` | Stateful REPL loop (used by interactive `kagan chat`) |
+
+**Scope modes:**
+
+- **Project-scoped** — `--session-id` binds to a specific task session
+- **Global orchestrator** — no session binding, uses project-level settings
+
+### Agent Backend Selection (`agents.py`)
+
+Helper functions for resolving which agent backend to use:
+
+| Function                            | Description                             |
+| ----------------------------------- | --------------------------------------- |
+| `resolve_default_agent_backend()`   | Read from settings or environment       |
+| `resolve_agent_backend_selection()` | Parse `/agents` argument or prompt user |
+| `list_registered_agent_backends()`  | All backends from core registry         |
+| `format_agent_backend_list()`       | Render list for REPL output             |
+
+______________________________________________________________________
+
+## Orchestrator Turn Flow
+
+```
+User types "implement auth"
+   │
+   ▼
+ChatController.process_input()
+   │
+   ├─ slash command? → SlashCommandRegistry.resolve() → execute handler
+   │
+   └─ text message
+       │
+       ▼
+   run_orchestrator_turn()
+       │
+       ├─ build_orchestrator_prompt() ──► system + context + request
+       │
+       ├─ acp.connect_to_agent() ──────► STDIO handshake
+       │
+       ├─ prompt(session/new) ─────────► send user message
+       │
+       └─ stream loop
+           │
+           ├─ on AgentMessageChunk ──► print to Rich console
+           ├─ on ToolCallStart ──────► print tool name/args
+           ├─ on ToolCallProgress ───► update tool status
+           └─ on session/end ────────► finalize response
+```
+
+**ACP integration:**
+
+- Uses `agent-client-protocol` SDK for bidirectional streaming
+- `_OrchestratorACPClient` (in `controller.py`) implements `ACPClientBase`
+- Streams to `Rich.Console` with live updates
+- Tool calls rendered with status indicators (pending ✓/✗)
+
+______________________________________________________________________
+
+## Orchestrator System Prompt
+
+The orchestrator prompt is built dynamically from:
+
+1. **Base system prompt** — role, capabilities, constraints
+1. **Runtime guidance** — project context, current task state (if session-bound)
+1. **MCP manifest** — available tools via `kagan mcp --admin`
+1. **User request block** — formatted first message
+
+See `prompt.py` for construction. Key function: `build_orchestrator_prompt()`.
+
+______________________________________________________________________
+
+## Session Scoping
+
+Chat sessions can be scoped to:
+
+- **Task session** — `--session-id {id}` binds chat to a task run
+- **Project orchestrator** — no binding, shared across project
+
+The session ID determines which `client.settings` key is used:
+
+- Task-scoped: `chat_scope_state_{session_id}`
+- Global: `chat_sessions_v1`
+
+**Session list command:** `/sessions` queries all sessions and shows:
+
+```
+ 1. "Fix login bug" (claude-code, 2h ago) ◀ current
+ 2. "Refactor API" (gemini-cli, yesterday)
+ 3. "Add tests" (claude-code, 3d ago)
+```
+
+User can attach: `/sessions 2` or delete: `/sessions delete 3`.
+
+______________________________________________________________________
+
+## Integration with TUI and CLI
+
+| Frontend | How it uses chat                                     |
+| -------- | ---------------------------------------------------- |
+| **TUI**  | `ChatPanel` widget holds a `ChatController`          |
+| **CLI**  | `kagan chat` calls `run_chat()` / `run_chat_async()` |
+
+Both import from `kagan.chat.__init__`:
+
+- `ChatController` — orchestrator lifecycle
+- `run_chat`, `run_chat_async` — REPL entry points
+- `SlashCommandRegistry` — for potential TUI slash commands
+- Session CRUD helpers — for session management UI
+
+______________________________________________________________________
+
+## Testing
+
+See `docs/internal/testing.md` for the full testing guide.
+
+Chat-specific:
+
+- Mock the ACP connection, not core
+- Use `run_chat()` with a fixed prompt for deterministic output
+- Slash commands are pure functions — test handlers directly
+- Session persistence: use in-memory settings, not real DB
+
+______________________________________________________________________
+
+## What This Architecture Does NOT Have
+
+| Omitted                    | Why                                                             |
+| -------------------------- | --------------------------------------------------------------- |
+| Separate chat database     | Sessions persist in core `settings` table — one source of truth |
+| WebSocket / HTTP transport | REPL is local only. STDIO + ACP is sufficient.                  |
+| ChatSession domain model   | Session is just a dict in settings, not an entity               |
+| Message class hierarchy    | Messages are dicts (role, content). No validation needed.       |
+| Multi-turn context window  | Orchestrator manages context via ACP session, not chat module   |

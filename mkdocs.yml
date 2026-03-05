@@ -6,139 +6,141 @@ site_url: https://docs.kagan.sh
 docs_dir: docs
 site_dir: site
 
-repo_url: https://github.com/aorumbayev/kagan
-repo_name: aorumbayev/kagan
+repo_url: https://github.com/kagan-sh/kagan
+repo_name: kagan-sh/kagan
 edit_uri: edit/main/docs/
 
 theme:
-  name: material
-  custom_dir: docs/overrides
+    name: material
+    custom_dir: docs/overrides
 
-  # Dark mode only - no toggle
-  palette:
-    scheme: slate
+    # Dark mode only - no toggle
+    palette:
+        scheme: slate
 
-  logo: assets/logo.svg
-  favicon: assets/favicon.svg
+    logo: assets/logo.svg
+    favicon: assets/favicon.svg
 
-  font: false
+    font: false
 
-  features:
-    # Navigation
-    - navigation.instant
-    - navigation.instant.prefetch
-    - navigation.instant.preview
-    - navigation.tabs
-    - navigation.sections
-    - navigation.path
-    - navigation.indexes
-    - navigation.tracking
-    - navigation.prune
-    - navigation.top
-    - navigation.footer
-    - header.autohide
+    features:
+        # Navigation
+        - navigation.instant
+        - navigation.instant.prefetch
+        - navigation.instant.preview
+        - navigation.tabs
+        - navigation.sections
+        - navigation.path
+        - navigation.indexes
+        - navigation.tracking
+        - navigation.prune
+        - navigation.top
+        - navigation.footer
+        - header.autohide
 
-    # Search
-    - search.suggest
-    - search.highlight
-    - search.share
+        # Search
+        - search.suggest
+        - search.highlight
+        - search.share
 
-    # Content
-    - content.code.copy
-    - content.code.select
-    - content.code.annotate
-    - content.tabs.link
-    - content.action.edit
-    - content.tooltips
-    - content.footnote.tooltips
+        # Content
+        - content.code.copy
+        - content.code.select
+        - content.code.annotate
+        - content.tabs.link
+        - content.action.edit
+        - content.tooltips
+        - content.footnote.tooltips
 
-    # Table of contents
-    - toc.follow
+        # Table of contents
+        - toc.follow
 
-  icon:
-    repo: fontawesome/brands/github
+    icon:
+        repo: fontawesome/brands/github
 
 extra_css:
-  - stylesheets/extra.css
+    - stylesheets/extra.css
 
 extra_javascript:
-  - javascripts/layout.js
-  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+    - javascripts/layout.js
+    - https://unpkg.com/mermaid@10/dist/mermaid.min.js
 
 extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/aorumbayev/kagan
-    - icon: fontawesome/brands/python
-      link: https://pypi.org/project/kagan/
+    social:
+        - icon: fontawesome/brands/github
+          link: https://github.com/kagan-sh/kagan
+        - icon: fontawesome/brands/python
+          link: https://pypi.org/project/kagan/
 
-  generator: false
+    generator: false
 
-copyright: Released under the <a href="https://github.com/aorumbayev/kagan/blob/main/LICENSE" target="_blank">MIT License</a>. Copyright 2026 Kagan by <a href="https://makerx.com.au/" target="_blank">MakerX</a>.
+copyright: Released under the <a href="https://github.com/kagan-sh/kagan/blob/main/LICENSE" target="_blank">MIT License</a>. Copyright 2026 Kagan by <a href="https://makerx.com.au/" target="_blank">MakerX</a>.
 
 markdown_extensions:
-  # Python Markdown
-  - abbr
-  - admonition
-  - attr_list
-  - def_list
-  - footnotes
-  - md_in_html
-  - tables
-  - toc:
-      permalink: true
+    # Python Markdown
+    - abbr
+    - admonition
+    - attr_list
+    - def_list
+    - footnotes
+    - md_in_html
+    - tables
+    - toc:
+          permalink: true
 
-  # Python Markdown Extensions
-  - pymdownx.betterem:
-      smart_enable: all
-  - pymdownx.caret
-  - pymdownx.details
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
-  - pymdownx.keys
-  - pymdownx.mark
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.tasklist:
-      custom_checkbox: true
-  - pymdownx.tilde
+    # Python Markdown Extensions
+    - pymdownx.betterem:
+          smart_enable: all
+    - pymdownx.caret
+    - pymdownx.details
+    - pymdownx.emoji:
+          emoji_index: !!python/name:material.extensions.emoji.twemoji
+          emoji_generator: !!python/name:material.extensions.emoji.to_svg
+    - pymdownx.highlight:
+          anchor_linenums: true
+    - pymdownx.inlinehilite
+    - pymdownx.keys
+    - pymdownx.mark
+    - pymdownx.superfences:
+          custom_fences:
+              - name: mermaid
+                class: mermaid
+                format: !!python/name:pymdownx.superfences.fence_code_format
+    - pymdownx.tabbed:
+          alternate_style: true
+    - pymdownx.tasklist:
+          custom_checkbox: true
+    - pymdownx.tilde
 
 plugins:
-  - search:
-      separator: '[\s\-\.]+'
-  - tags
-  - social:
-      cards_layout_options:
-        background_color: "#000000"
-        color: "#FFFFFF"
-        font_family: Roboto
+    - search:
+          separator: '[\s\-\.]+'
+    - tags
+    - social:
+          cards_layout_options:
+              background_color: "#020202"
+              color: "#E8E4DC"
+              font_family: Barlow Condensed
 
 exclude_docs: |
-  standalone-mcp-core-refactor-execution.md
-  standalone-mcp-core-refactor-scratchpad.md
-  internal/**
+    standalone-mcp-core-refactor-execution.md
+    standalone-mcp-core-refactor-scratchpad.md
+    internal/**
 
 nav:
-  - Home: index.md
-  - Quickstart: quickstart.md
-  - Concepts:
-      - Architecture: concepts/architecture-overview.md
-      - AUTO vs PAIR: guides/modes-auto-vs-pair.md
-  - Guides:
-      - MCP setup: guides/mcp-setup.md
-      - GitHub: guides/github.md
-  - Reference:
-      - CLI: reference/cli.md
-      - Configuration: reference/configuration.md
-      - Keybindings: reference/keybindings.md
-      - MCP tools: reference/mcp-tools.md
-  - Troubleshooting: troubleshooting.md
+    - Home: index.md
+    - Quickstart: quickstart.md
+    - Concepts:
+          - Architecture: concepts/architecture-overview.md
+          - Task lifecycle: concepts/task-lifecycle.md
+    - Guides:
+          - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+          - ACP session lifecycle: guides/acp-session-lifecycle.md
+          - MCP setup: guides/mcp-setup.md
+          - GitHub import: guides/github.md
+    - Reference:
+          - CLI: reference/cli.md
+          - Configuration: reference/configuration.md
+          - Keybindings: reference/keybindings.md
+          - MCP tools: reference/mcp-tools.md
+    - Troubleshooting: troubleshooting.md

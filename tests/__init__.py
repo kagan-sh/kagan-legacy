@@ -1,1 +1,1 @@
-"""Tests for Kagan."""
+"""Kagan acceptance test suite."""

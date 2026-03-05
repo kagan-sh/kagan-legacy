@@ -1,0 +1,1385 @@
+import contextlib
+from dataclasses import dataclass, field
+from typing import Any, Final, Literal
+
+from textual import on
+from textual.app import ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
+from textual.events import Key
+from textual.message import Message
+from textual.timer import Timer
+from textual.widgets import Input, OptionList, Select, Static
+from textual.widgets.option_list import Option
+
+from kagan.chat import (
+    SLASH_COMMAND_REGISTRY,
+    build_slash_presentation_lines,
+    list_registered_agent_backends,
+    normalize_chat_input,
+    resolve_slash_input,
+)
+from kagan.tui.keybindings import CHAT_BINDINGS
+from kagan.tui.screens.session_picker import (
+    SessionPickerGroup,
+    SessionPickerModal,
+    SessionPickerOption,
+)
+from kagan.tui.widgets.permission import PermissionPrompt
+from kagan.tui.widgets.plan import PlanApprovalWidget, PlanDisplay
+from kagan.tui.widgets.status_bar import StatusBar
+from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
+
+
+def _fuzzy_match(pattern: str, text: str) -> bool:
+    """Check if all chars of *pattern* appear in *text* in order (case-insensitive)."""
+    lower_text = text.casefold()
+    pos = 0
+    for ch in pattern.casefold():
+        idx = lower_text.find(ch, pos)
+        if idx < 0:
+            return False
+        pos = idx + 1
+    return True
+
+
+_SLASH_ALIASES: Final[dict[str, str]] = {
+    "q": "exit",
+    "?": "help",
+    "s": "sessions",
+    "a": "agent",
+}
+
+
+@dataclass(slots=True)
+class _SessionState:
+    entries: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    draft: str = ""
+    prompt_history: list[str] = field(default_factory=list)
+    history_index: int | None = None
+    plan_entries: list[str | dict[str, str]] = field(default_factory=list)
+    decision_surface: tuple[str, dict[str, Any]] | None = None
+
+
+class ChatPanel(Vertical):
+    BINDINGS = CHAT_BINDINGS
+    _deferred_timer: Timer | None = None
+
+    DEFAULT_CSS = """
+    ChatPanel {
+        layout: vertical;
+    }
+    """
+
+    @dataclass
+    class SubmitRequested(Message):
+        text: str
+
+    @dataclass
+    class MessageAdded(Message):
+        author: str
+        text: str
+
+    @dataclass
+    class SessionChanged(Message):
+        key: str
+
+    @dataclass
+    class SessionPickerRequested(Message):
+        initial_query: str = ""
+
+    @dataclass
+    class CloseRequested(Message):
+        pass
+
+    @dataclass
+    class NewSessionRequested(Message):
+        pass
+
+    @dataclass
+    class AgentPickerRequested(Message):
+        pass
+
+    _EMPTY_TEXT = "No messages yet"
+    _LOGO = """\
+█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
+█▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
+    _EXAMPLES: tuple[str, ...] = (
+        '"Break this task into small milestones"',
+        '"/flow Build a release checklist"',
+        '"Suggest a safe implementation plan"',
+        '"Show risks before coding"',
+    )
+    _DOCKED_EMPTY_HEADING = "What are you working on?"
+    _EXPANDED_EMPTY_HEADING = "What's next?"
+    _MAX_SESSION_STATE_COUNT = 30
+    _MAX_SESSION_ENTRY_COUNT = 300
+
+    def __init__(
+        self,
+        *,
+        id: str | None = "chat-panel",
+        classes: str | None = None,
+    ) -> None:
+        merged_classes = "chat-overlay" if not classes else f"{classes} chat-overlay"
+        super().__init__(id=id, classes=merged_classes)
+        self._agent_hint: str | None = None
+        self._slash_matches: list[str] = []
+        self._mention_matches: list[SessionPickerOption] = []
+        self._selected_session_key = "orchestrator"
+        self._session_options: list[tuple[str, str]] = [("Orchestrator", "orchestrator")]
+        self._session_state: dict[str, _SessionState] = {"orchestrator": _SessionState()}
+        self._suspend_session_change_event = False
+        self._runtime_status = "ready"
+        self._chat_input_disable_depth = 0
+        self._runtime_input_locked = False
+        self._history_programmatic_update = False
+
+    def compose(self) -> ComposeResult:
+        yield Static("Orchestrator", id="chat-title")
+        with Vertical(id="chat-overlay-main"):
+            with Vertical(id="chat-overlay-content"):
+                with Vertical(id="chat-overlay-empty-state", classes="chat-overlay-empty-state"):
+                    with Vertical(classes="chat-overlay-empty-content"):
+                        with Vertical(classes="chat-overlay-empty-card"):
+                            yield Static(
+                                self._LOGO,
+                                classes="chat-header chat-overlay-logo",
+                                id="chat-overlay-logo",
+                            )
+                            yield Static(
+                                self._DOCKED_EMPTY_HEADING,
+                                id="chat-overlay-empty-heading",
+                            )
+                            yield Static(
+                                (
+                                    "Describe what to build, or run /flow for guided "
+                                    "Plan -> Execute -> Orchestrate."
+                                ),
+                                id="chat-overlay-empty-description",
+                            )
+                            yield Static(
+                                (
+                                    "Want a quick TLDR walkthrough?\n"
+                                    "Need structure? Use /flow <goal> "
+                                    "for an explicit 3-phase guide."
+                                ),
+                                id="chat-overlay-empty-walkthrough",
+                            )
+                            with Vertical(id="chat-overlay-empty-examples"):
+                                yield Static(
+                                    "Examples:", classes="chat-overlay-empty-section-title"
+                                )
+                                for example in self._EXAMPLES:
+                                    yield Static(
+                                        f"  • {example}", classes="chat-overlay-empty-example"
+                                    )
+                            yield Static(
+                                "Tip: press Ctrl+O for orchestrator mode.",
+                                id="chat-overlay-first-boot-nudge",
+                            )
+                yield StreamingOutput(id="chat-overlay-output", classes="chat-output")
+                yield PlanDisplay(id="chat-plan-display")
+                yield Vertical(id="chat-inline-surface")
+                yield Static(
+                    self._EMPTY_TEXT,
+                    classes="chat-empty chat-output chat-output-buffer",
+                    id="chat-messages",
+                    markup=False,
+                )
+
+            with Vertical(id="chat-overlay-bottom"):
+                yield StatusBar(id="chat-overlay-status", classes="chat-status")
+                with Horizontal(
+                    classes="chat-input-row chat-command-line",
+                    id="chat-overlay-command-line",
+                ):
+                    with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
+                        yield Input(
+                            placeholder="What's next? Type /flow for guided mode or / for commands",
+                            classes="chat-input-area",
+                            id="chat-overlay-input",
+                        )
+                with Horizontal(id="chat-overlay-session-switcher"):
+                    with Horizontal(id="chat-overlay-session-current-wrap"):
+                        yield Static("Docked", id="chat-overlay-mode-badge", classes="mode-docked")
+                        yield Static(
+                            "●",
+                            id="chat-overlay-session-indicator",
+                            classes="session-kind-orchestrator",
+                        )
+                        yield Static("Orchestrator", id="chat-overlay-session-current")
+                    with Horizontal(id="chat-overlay-session-toggle"):
+                        yield Static("Session", id="chat-overlay-session-toggle-label")
+                        yield Select[str](
+                            options=self._session_options,
+                            value=self._selected_session_key,
+                            id="chat-overlay-session-select",
+                            allow_blank=False,
+                            compact=True,
+                        )
+
+            with Vertical(classes="slash-complete", id="slash-complete"):
+                yield OptionList(id="slash-options")
+            with Vertical(classes="task-mention-complete", id="task-mention-complete"):
+                yield OptionList(id="mention-options")
+
+    def on_mount(self) -> None:
+        self.set_class(True, "docked")
+        self.set_class(True, "default")
+        self.set_class(False, "expanded")
+        self.set_class(False, "fullscreen")
+
+        self.query_one("#slash-complete", Vertical).display = False
+        self.query_one("#task-mention-complete", Vertical).display = False
+        self.query_one("#chat-plan-display", PlanDisplay).display = False
+        self.query_one("#chat-inline-surface", Vertical).display = False
+        self.query_one("#chat-messages", Static).display = False
+
+        input_widget = self._input_widget()
+        session_select = self.query_one("#chat-overlay-session-select", Select)
+        self.query_one("#chat-title", Static).display = False
+        input_widget.disabled = True
+        input_widget.can_focus = False
+        session_select.disabled = True
+        self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
+        self._sync_input_enabled_state()
+        self._render_current_session()
+        self._refresh_status()
+
+    def set_visible(self, visible: bool) -> None:
+        self.set_class(visible, "visible")
+        session_select = self.query_one("#chat-overlay-session-select", Select)
+        session_select.disabled = not visible
+        self._sync_input_enabled_state()
+        if not visible:
+            self._flush_deferred()
+            self._current_state().draft = self._input_widget().value
+            self._hide_overlays()
+        self._refresh_status()
+
+    def set_fullscreen(self, fullscreen: bool) -> None:
+        self.set_class(fullscreen, "fullscreen")
+        self.set_class(fullscreen, "expanded")
+        self.set_class(not fullscreen, "docked")
+        self.set_class(not fullscreen, "default")
+        badge = self.query_one("#chat-overlay-mode-badge", Static)
+        heading = self.query_one("#chat-overlay-empty-heading", Static)
+        if fullscreen:
+            badge.update("Expanded")
+            badge.set_class(True, "mode-expanded")
+            badge.set_class(False, "mode-docked")
+            heading.update(self._EXPANDED_EMPTY_HEADING)
+        else:
+            badge.update("Docked")
+            badge.set_class(False, "mode-expanded")
+            badge.set_class(True, "mode-docked")
+            heading.update(self._DOCKED_EMPTY_HEADING)
+        self._refresh_status()
+
+    def set_mode_title(self, title: str) -> None:
+        self.query_one("#chat-title", Static).update(title)
+        self._refresh_status()
+
+    def set_sessions(self, sessions: list[tuple[str, str]], active_key: str | None = None) -> None:
+        normalized = [(label.strip(), key.strip()) for label, key in sessions if label and key]
+        self._session_options = normalized or [("Orchestrator", "orchestrator")]
+        for _label, key in self._session_options:
+            self._ensure_session_state(key)
+        self._prune_session_states()
+
+        next_key = active_key or self._selected_session_key
+        if not any(key == next_key for _, key in self._session_options):
+            next_key = self._session_options[0][1]
+
+        selector = self.query_one("#chat-overlay-session-select", Select)
+        set_options = getattr(selector, "set_options", None)
+        self._suspend_session_change_event = True
+        if callable(set_options):
+            set_options(self._session_options)
+        selector.value = next_key
+        self.set_class(len(self._session_options) > 1, "chat-overlay-multi-session")
+        self._switch_session(next_key, emit=False)
+        if self.is_mounted:
+            self.call_after_refresh(self._release_session_change_suspension)
+        else:
+            self._release_session_change_suspension()
+
+    def _release_session_change_suspension(self) -> None:
+        self._suspend_session_change_event = False
+
+    def set_session_kind(self, kind: str) -> None:
+        indicator = self.query_one("#chat-overlay-session-indicator", Static)
+        for css_kind in ("orchestrator", "auto", "review", "pair"):
+            indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
+
+    def set_first_boot(self, enabled: bool = True) -> None:
+        self.set_class(enabled, "first-boot")
+
+    def add_user_message(self, text: str) -> None:
+        self._append_text_entry("user", text, author="You")
+
+    def add_assistant_message(self, text: str) -> None:
+        self._append_text_entry("assistant", text, author="Agent", merge=True)
+
+    def add_system_message(self, text: str) -> None:
+        self._append_text_entry("note", text, author="System")
+
+    def add_thought_message(self, text: str) -> None:
+        self._append_text_entry("thought", text, author="Agent", merge=True)
+
+    def append_assistant_fragment(self, text: str) -> None:
+        self._append_stream_fragment("assistant", text)
+
+    def append_thought_fragment(self, text: str) -> None:
+        self._append_stream_fragment("thought", text)
+
+    def upsert_tool_call(
+        self,
+        tool_id: str,
+        title: str,
+        *,
+        status: str = "running",
+        args: str | None = None,
+        result: str | None = None,
+        kind: str | None = None,
+    ) -> None:
+        state = self._current_state()
+        for index, (kind, existing) in enumerate(state.entries):
+            if kind == "tool" and existing.get("tool_id") == tool_id:
+                state.entries[index] = (
+                    "tool",
+                    {
+                        "tool_id": tool_id,
+                        "title": title or str(existing.get("title") or tool_id),
+                        "status": status,
+                        "args": args if args is not None else existing.get("args"),
+                        "result": result if result is not None else existing.get("result"),
+                        "kind": kind or existing.get("kind"),
+                    },
+                )
+                break
+        else:
+            state.entries.append(
+                (
+                    "tool",
+                    {
+                        "tool_id": tool_id,
+                        "title": title,
+                        "status": status,
+                        "args": args,
+                        "result": result,
+                        "kind": kind,
+                    },
+                )
+            )
+        self._trim_session_entries(state)
+        if self.is_mounted:
+            stream = self._stream_output()
+            if stream is None:
+                return
+            stream.upsert_tool_call(
+                tool_id,
+                title or tool_id,
+                status=status,
+                args=args,
+                result=result,
+                kind=kind,
+            )
+            self._schedule_deferred_update()
+
+    def update_tool_call(self, tool_id: str, status: str, *, result: str | None = None) -> None:
+        state = self._current_state()
+        for index, (kind, existing) in enumerate(state.entries):
+            if kind != "tool" or existing.get("tool_id") != tool_id:
+                continue
+            payload = dict(existing)
+            payload["status"] = status
+            if result is not None:
+                payload["result"] = result
+            state.entries[index] = ("tool", payload)
+            if self.is_mounted:
+                stream = self._stream_output()
+                if stream is None:
+                    return
+                stream.update_tool_status(tool_id, status, result=result)
+                self._schedule_deferred_update()
+            return
+
+    def set_plan_entries(self, entries: list[str | dict[str, str]]) -> None:
+        state = self._current_state()
+        state.plan_entries = list(entries)
+        if self.is_mounted:
+            self._render_plan_display()
+
+    def request_permission(self, text: str, *, timeout_seconds: int = 30) -> None:
+        state = self._current_state()
+        state.decision_surface = (
+            "permission",
+            {"text": text, "timeout_seconds": timeout_seconds},
+        )
+        if self.is_mounted:
+            self._render_decision_surface()
+
+    def show_plan_approval(self, tasks: list[Any]) -> None:
+        state = self._current_state()
+        state.decision_surface = ("plan_approval", {"tasks": tasks})
+        if self.is_mounted:
+            self._render_decision_surface()
+
+    def clear_messages(self) -> None:
+        state = self._current_state()
+        state.entries.clear()
+        state.plan_entries.clear()
+        state.decision_surface = None
+        self._runtime_status = "ready"
+        self._cancel_deferred_timer()
+        if self.is_mounted:
+            self._render_current_session()
+
+    def message_count(self) -> int:
+        return sum(
+            1
+            for kind, _payload in self._current_state().entries
+            if kind in {"assistant", "user", "note", "thought"}
+        )
+
+    def preferred_agent_backend(self) -> str | None:
+        return self._agent_hint
+
+    def set_runtime_status(self, status: str) -> None:
+        self._runtime_status = status.strip().lower() or "ready"
+        lock_input = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if lock_input != self._runtime_input_locked:
+            self._runtime_input_locked = lock_input
+            self._sync_input_enabled_state()
+        if self.is_mounted:
+            status_bar = self._status_bar()
+            if status_bar is not None:
+                status_bar.update_status(self._runtime_status)
+
+    def set_agent_backend(self, backend: str) -> None:
+        if self.is_mounted:
+            status_bar = self._status_bar()
+            if status_bar is not None:
+                status_bar.agent_backend = backend
+
+    def set_preferred_agent_backend(self, backend: str | None) -> None:
+        if backend is None:
+            self._agent_hint = None
+            return
+        normalized = backend.strip()
+        self._agent_hint = normalized or None
+
+    def increment_turn_count(self) -> None:
+        if self.is_mounted:
+            status_bar = self._status_bar()
+            if status_bar is not None:
+                status_bar.turn_count += 1
+
+    def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
+        state = self._current_state()
+        state.entries.clear()
+        state.plan_entries.clear()
+        state.decision_surface = None
+        self._cancel_deferred_timer()
+        for role, content in history:
+            if role == "assistant":
+                state.entries.append(("assistant", {"text": content}))
+            else:
+                state.entries.append(("user", {"text": content}))
+        self._trim_session_entries(state)
+        if self.is_mounted:
+            self._render_current_session()
+
+    def export_rendered_messages(self) -> list[str]:
+        return self._rendered_messages()
+
+    def set_stream_action(
+        self,
+        action: str,
+        *,
+        confidence: ConfidenceLevel = "certain",
+    ) -> None:
+        if not self.is_mounted:
+            return
+        stream = self._stream_output()
+        if stream is None:
+            return
+        stream.set_current_action(action, confidence=confidence)
+
+    @on(Input.Changed, "#chat-overlay-input")
+    def _on_input_changed(self, event: Input.Changed) -> None:
+        state = self._current_state()
+        state.draft = event.value
+        if self._history_programmatic_update:
+            self._history_programmatic_update = False
+        elif state.history_index is not None:
+            state.history_index = None
+        self._sync_completion_overlays(event.value)
+
+    @on(OptionList.OptionSelected, "#slash-options")
+    def _on_slash_option_selected(self, _: OptionList.OptionSelected) -> None:
+        self.action_accept_completion()
+
+    @on(OptionList.OptionSelected, "#mention-options")
+    def _on_mention_option_selected(self, _: OptionList.OptionSelected) -> None:
+        self.action_accept_completion()
+
+    @on(Select.Changed, "#chat-overlay-session-select")
+    def _on_session_changed(self, event: Select.Changed) -> None:
+        if self._suspend_session_change_event:
+            return
+        value = event.value
+        if value is Select.BLANK or not isinstance(value, str):
+            return
+        selector = self.query_one("#chat-overlay-session-select", Select)
+        current_value = selector.value
+        if current_value is Select.BLANK or not isinstance(current_value, str):
+            return
+        if value != current_value:
+            return
+        self._switch_session(value, emit=True)
+
+    @on(Input.Submitted, "#chat-overlay-input")
+    def _on_input_submitted(self) -> None:
+        self._submit_current_input()
+
+    @on(PermissionPrompt.DecisionMade)
+    def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
+        state = self._current_state()
+        state.decision_surface = None
+        self.add_system_message(f"Permission {event.decision}")
+        self._render_decision_surface()
+
+    @on(PlanApprovalWidget.Approved)
+    def _on_plan_approved(self, _event: PlanApprovalWidget.Approved) -> None:
+        self._current_state().decision_surface = None
+        self.add_system_message("Plan approved")
+        self._render_decision_surface()
+
+    @on(PlanApprovalWidget.EditRequested)
+    def _on_plan_edit_requested(self, _event: PlanApprovalWidget.EditRequested) -> None:
+        self._current_state().decision_surface = None
+        self.add_system_message("Plan sent back for editing")
+        self._render_decision_surface()
+
+    @on(PlanApprovalWidget.Dismissed)
+    def _on_plan_dismissed(self, _event: PlanApprovalWidget.Dismissed) -> None:
+        self._current_state().decision_surface = None
+        self.add_system_message("Plan dismissed")
+        self._render_decision_surface()
+
+    def on_key(self, event: Key) -> None:
+        """Intercept arrow keys for slash/mention completion overlay navigation."""
+        overlay_visible = bool(self._slash_matches or self._mention_matches)
+        if overlay_visible:
+            option_list_id = "#slash-options" if self._slash_matches else "#mention-options"
+            option_list = self.query_one(option_list_id, OptionList)
+
+            nav_map: dict[str, str] = {
+                "up": "action_cursor_up",
+                "down": "action_cursor_down",
+                "pageup": "action_page_up",
+                "pagedown": "action_page_down",
+                "home": "action_first",
+                "end": "action_last",
+            }
+
+            if event.key in nav_map:
+                event.prevent_default()
+                event.stop()
+                with contextlib.suppress(AttributeError):
+                    getattr(option_list, nav_map[event.key])()
+                return
+
+            if event.key == "enter":
+                # If the input already contains a complete slash command, submit it
+                # instead of merely accepting the overlay selection.
+                current_text = self._input_widget().value.strip()
+                if current_text.startswith("/"):
+                    cmd_name = (
+                        current_text.lstrip("/").split()[0] if current_text.lstrip("/") else ""
+                    )
+                    specs = SLASH_COMMAND_REGISTRY.specs()
+                    exact_match = any(spec.name == cmd_name for spec in specs)
+                    if exact_match:
+                        self._hide_overlays()
+                        self.action_send_message()
+                        return
+                event.prevent_default()
+                event.stop()
+                self.action_accept_completion()
+                return
+
+            if event.key == "escape":
+                event.prevent_default()
+                event.stop()
+                self._hide_overlays()
+                return
+
+        if not self._input_has_focus():
+            return
+
+        if event.key in {"ctrl+u", "ctrl+c"}:
+            event.prevent_default()
+            event.stop()
+            self.action_clear_input()
+            return
+
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.action_send_message()
+            return
+
+        if overlay_visible:
+            return
+
+        if event.key == "up":
+            if self._cycle_prompt_history(direction="up"):
+                event.prevent_default()
+                event.stop()
+            return
+
+        if event.key == "down":
+            if self._cycle_prompt_history(direction="down"):
+                event.prevent_default()
+                event.stop()
+            return
+
+    def action_send_message(self) -> None:
+        self._submit_current_input()
+
+    def action_insert_newline(self) -> None:
+        return
+
+    def action_clear_input(self) -> None:
+        input_widget = self._input_widget()
+        if input_widget.disabled:
+            return
+        if not input_widget.value:
+            return
+        self._history_programmatic_update = True
+        input_widget.value = ""
+        state = self._current_state()
+        state.draft = ""
+        state.history_index = None
+        self._hide_overlays()
+        input_widget.focus()
+
+    def action_accept_completion(self) -> None:
+        if self._mention_matches:
+            self._apply_mention_completion()
+            return
+        if not self._slash_matches:
+            cycle_session = getattr(self.screen, "action_cycle_chat_session", None)
+            if callable(cycle_session):
+                cycle_session()
+                return
+            self.action_open_session_picker()
+            return
+        option_list = self.query_one("#slash-options", OptionList)
+        highlighted = option_list.highlighted
+        if highlighted is None or highlighted < 0 or highlighted >= len(self._slash_matches):
+            selected = self._slash_matches[0]
+        else:
+            selected = self._slash_matches[highlighted]
+        input_widget = self._input_widget()
+        input_widget.value = f"/{selected} "
+        input_widget.focus()
+        self._current_state().draft = input_widget.value
+        self._hide_slash_complete()
+
+    def action_dismiss(self) -> None:
+        if self._mention_matches or self._slash_matches:
+            self._hide_overlays()
+            return
+        self._request_close()
+
+    def action_open_session_picker(self, initial_query: str | None = None) -> None:
+        self._request_session_picker(initial_query or "")
+
+    def create_session_picker_modal(self, *, initial_query: str = "") -> SessionPickerModal:
+        return SessionPickerModal(
+            groups=self._build_session_groups(),
+            active_key=self._selected_session_key,
+            initial_query=initial_query,
+        )
+
+    def _submit_current_input(self) -> None:
+        input_widget = self._input_widget()
+        if input_widget.disabled:
+            return
+        text = normalize_chat_input(input_widget.value)
+        if not text:
+            return
+
+        if (
+            self._slash_matches
+            and text.startswith("/")
+            and " " not in text[1:]
+            and SLASH_COMMAND_REGISTRY.get(text[1:].casefold()) is None
+        ):
+            self.action_accept_completion()
+            return
+
+        session_key, resolved_text = self._consume_session_prefix(text)
+        if session_key is not None:
+            self._switch_session(session_key, emit=True)
+            text = resolved_text
+            if not text:
+                input_widget.value = ""
+                self._current_state().draft = ""
+                self._hide_overlays()
+                return
+
+        self._append_prompt_history(text)
+
+        handled = self._handle_slash_command(text)
+        if not handled:
+            self.post_message(self.SubmitRequested(text))
+            self.add_user_message(text)
+
+        input_widget.value = ""
+        self._current_state().draft = ""
+        input_widget.focus()
+        self._hide_overlays()
+
+    def _handle_slash_command(self, text: str) -> bool:
+        by_key = {key: label for label, key in self._session_options}
+        session_label = by_key.get(self._selected_session_key, "Orchestrator")
+
+        result = resolve_slash_input(
+            text,
+            session_label=session_label,
+            session_key=self._selected_session_key,
+            runtime_session_id=None,
+            current_backend=self._agent_hint,
+            available_backends=list_registered_agent_backends(),
+        )
+        if not result.handled:
+            return False
+
+        if result.clear_requested:
+            self.clear_messages()
+
+        if result.selected_agent is not None:
+            self._agent_hint = result.selected_agent
+            self.add_system_message(f"Switched to {result.selected_agent}")
+        if result.sessions_requested:
+            self._request_session_picker(result.sessions_query or "")
+
+        if result.delete_session_query is not None:
+            self.add_system_message(
+                "Session deletion is currently available in REPL only. "
+                "Use /sessions in REPL to delete sessions."
+            )
+
+        if result.new_session_requested:
+            self.post_message(self.NewSessionRequested())
+
+        if result.agent_picker_requested:
+            self.post_message(self.AgentPickerRequested())
+
+        if result.help_overlay_requested:
+            self._show_help_overlay()
+
+        for line in build_slash_presentation_lines(result):
+            if line.tone == "error":
+                self.add_system_message(f"Error: {line.text}")
+            else:
+                self.add_system_message(line.text)
+
+        if result.close_requested:
+            self._request_close()
+
+        return True
+
+    def _request_session_picker(self, initial_query: str) -> None:
+        if len(self._session_options) <= 1:
+            return
+        if not self.has_class("chat-overlay"):
+            return
+        self.post_message(self.SessionPickerRequested(initial_query=initial_query))
+
+    def _show_help_overlay(self) -> None:
+        """Focus input with '/' to trigger the existing slash completion overlay."""
+        input_widget = self._input_widget()
+        input_widget.value = "/"
+        input_widget.focus()
+        self._sync_slash_complete("/")
+
+    def _request_close(self) -> None:
+        if self.has_class("chat-overlay"):
+            self.post_message(self.CloseRequested())
+            return
+        self.set_visible(False)
+
+    def _append_text_entry(
+        self,
+        kind: str,
+        text: str,
+        *,
+        author: str,
+        merge: bool = False,
+    ) -> None:
+        cleaned = text.strip()
+        if not cleaned:
+            return
+        state = self._current_state()
+        if (
+            not merge
+            and state.entries
+            and state.entries[-1][0] == kind
+            and state.entries[-1][1].get("text") == cleaned
+        ):
+            return
+        if merge and state.entries and state.entries[-1][0] == kind:
+            previous = dict(state.entries[-1][1])
+            previous["text"] = f"{previous.get('text', '')}{cleaned}"
+            state.entries[-1] = (kind, previous)
+        else:
+            state.entries.append((kind, {"text": cleaned}))
+        self._trim_session_entries(state)
+
+        if self.is_mounted:
+            stream = self._stream_output()
+            if stream is None:
+                return
+            if kind == "user":
+                stream.post_user_input(cleaned)
+            elif kind == "assistant":
+                stream.append_chunk(cleaned, kind="assistant", merge=merge)
+            elif kind == "thought":
+                stream.append_chunk(cleaned, kind="thought", merge=merge)
+            else:
+                stream.post_note(cleaned)
+
+        if merge:
+            self._schedule_deferred_update()
+            return
+
+        self.post_message(self.MessageAdded(author=author, text=cleaned))
+        self._update_hidden_buffer()
+        self._update_content_state()
+        self._refresh_status()
+
+    def _append_stream_fragment(
+        self,
+        kind: Literal["assistant", "thought"],
+        text: str,
+    ) -> None:
+        if not text:
+            return
+
+        state = self._current_state()
+        if state.entries and state.entries[-1][0] == kind:
+            previous = dict(state.entries[-1][1])
+            previous["text"] = f"{previous.get('text', '')}{text}"
+            state.entries[-1] = (kind, previous)
+        else:
+            state.entries.append((kind, {"text": text}))
+        self._trim_session_entries(state)
+
+        if self.is_mounted:
+            stream = self._stream_output()
+            if stream is None:
+                return
+            stream.append_chunk(text, kind=kind, merge=True)
+
+        self._schedule_deferred_update()
+
+    def _ensure_session_state(self, key: str) -> _SessionState:
+        state = self._session_state.get(key)
+        if state is None:
+            state = _SessionState()
+            self._session_state[key] = state
+        return state
+
+    def _prune_session_states(self) -> None:
+        keep_keys = [key for _label, key in self._session_options]
+        if self._selected_session_key not in keep_keys:
+            keep_keys.append(self._selected_session_key)
+        keep = set(keep_keys[-self._MAX_SESSION_STATE_COUNT :])
+        for key in list(self._session_state):
+            if key not in keep:
+                self._session_state.pop(key, None)
+
+    def _trim_session_entries(self, state: _SessionState) -> None:
+        if len(state.entries) <= self._MAX_SESSION_ENTRY_COUNT:
+            return
+        state.entries = state.entries[-self._MAX_SESSION_ENTRY_COUNT :]
+
+    def _current_state(self) -> _SessionState:
+        return self._ensure_session_state(self._selected_session_key)
+
+    def _switch_session(self, key: str, *, emit: bool) -> None:
+        previous_key = self._selected_session_key
+        if self.is_mounted:
+            self._flush_deferred()
+            self._ensure_session_state(previous_key).draft = self._input_widget().value
+
+        self._selected_session_key = key
+        self._ensure_session_state(key)
+        self._sync_session_label()
+        self.set_session_kind(self._infer_session_kind(key))
+
+        if self.is_mounted:
+            input_widget = self._input_widget()
+            input_widget.value = self._current_state().draft
+            self._sync_completion_overlays(input_widget.value)
+            self._render_current_session()
+
+        if emit and previous_key != key:
+            self.post_message(self.SessionChanged(key))
+
+    def _render_current_session(self) -> None:
+        stream = self._stream_output()
+        if stream is not None:
+            stream.clear()
+            for kind, payload in self._current_state().entries:
+                self._render_entry(stream, kind, payload)
+        self._render_plan_display()
+        self._render_decision_surface()
+        self._update_hidden_buffer()
+        self._update_content_state()
+        self._refresh_status()
+
+    def _render_entry(self, stream: StreamingOutput, kind: str, payload: dict[str, Any]) -> None:
+        raw_text = str(payload.get("text") or "")
+        text = raw_text.strip()
+        if kind == "user" and text:
+            stream.post_user_input(text)
+            return
+        if kind == "assistant" and raw_text:
+            stream.append_chunk(raw_text, kind="assistant")
+            return
+        if kind == "thought" and raw_text:
+            stream.append_chunk(raw_text, kind="thought")
+            return
+        if kind == "note" and text:
+            stream.post_note(text)
+            return
+        if kind == "tool":
+            stream.upsert_tool_call(
+                str(payload.get("tool_id") or "tool"),
+                str(payload.get("title") or payload.get("tool_id") or "tool"),
+                status=str(payload.get("status") or "running"),
+                args=payload.get("args"),
+                result=payload.get("result"),
+                kind=payload.get("kind"),
+            )
+
+    def _render_plan_display(self) -> None:
+        plan_display = self.query_one("#chat-plan-display", PlanDisplay)
+        entries = self._current_state().plan_entries
+        if not entries:
+            plan_display.clear()
+            plan_display.display = False
+            return
+        plan_display.set_entries(entries)
+        plan_display.display = True
+
+    def _render_decision_surface(self) -> None:
+        container = self.query_one("#chat-inline-surface", Vertical)
+        for child in list(container.children):
+            child.remove()
+        state = self._current_state()
+        if state.decision_surface is None:
+            container.display = False
+            return
+
+        kind, payload = state.decision_surface
+        if kind == "permission":
+            container.mount(
+                PermissionPrompt(
+                    str(payload.get("text") or "Permission required"),
+                    timeout_seconds=int(payload.get("timeout_seconds") or 30),
+                )
+            )
+        elif kind == "plan_approval":
+            tasks = payload.get("tasks")
+            if isinstance(tasks, list):
+                container.mount(PlanApprovalWidget(tasks))
+        container.display = True
+
+    def _rendered_messages(self) -> list[str]:
+        rendered: list[str] = []
+        for kind, payload in self._current_state().entries:
+            text = str(payload.get("text") or "").strip()
+            if kind == "user" and text:
+                rendered.append(f"You: {text}")
+            elif kind == "assistant" and text:
+                rendered.append(f"Agent: {text}")
+            elif kind == "thought" and text:
+                rendered.append(f"Thinking: {text}")
+            elif kind == "note" and text:
+                rendered.append(f"System: {text}")
+            elif kind == "tool":
+                title = str(payload.get("title") or payload.get("tool_id") or "tool")
+                status = str(payload.get("status") or "running")
+                rendered.append(f"Tool: {title} [{status}]")
+        return rendered
+
+    def _update_hidden_buffer(self) -> None:
+        messages = self.query_one("#chat-messages", Static)
+        rendered = self._rendered_messages()
+        if not rendered:
+            messages.set_class(True, "chat-empty")
+            messages.update(self._EMPTY_TEXT)
+            return
+        messages.set_class(False, "chat-empty")
+        messages.update("\n".join(rendered[-200:]))
+
+    def _update_content_state(self) -> None:
+        state = self._current_state()
+        has_content = bool(state.entries or state.plan_entries or state.decision_surface)
+        self.set_class(has_content, "has-content")
+
+    def _cancel_deferred_timer(self) -> None:
+        if self._deferred_timer is None:
+            return
+        self._deferred_timer.stop()
+        self._deferred_timer = None
+
+    def _schedule_deferred_update(self) -> None:
+        if not self.is_mounted:
+            return
+        if not self.has_class("has-content") and self._current_state().entries:
+            self.set_class(True, "has-content")
+        if self._deferred_timer is not None:
+            self._deferred_timer.reset()
+            return
+        self._deferred_timer = self.set_timer(0.5, self._flush_deferred)
+
+    def _flush_deferred(self) -> None:
+        self._cancel_deferred_timer()
+        if not self.is_mounted:
+            return
+        self._update_hidden_buffer()
+        self._update_content_state()
+        self._refresh_status()
+
+    def _input_widget(self) -> Input:
+        return self.query_one("#chat-overlay-input", Input)
+
+    def _stream_output(self) -> StreamingOutput | None:
+        try:
+            return self.query_one("#chat-overlay-output", StreamingOutput)
+        except NoMatches:
+            return None
+
+    def _status_bar(self) -> StatusBar | None:
+        try:
+            return self.query_one("#chat-overlay-status", StatusBar)
+        except NoMatches:
+            return None
+
+    def set_chat_input_disabled(self, disabled: bool) -> None:
+        if disabled:
+            self._chat_input_disable_depth += 1
+        else:
+            self._chat_input_disable_depth = max(0, self._chat_input_disable_depth - 1)
+        self._sync_input_enabled_state()
+        self._refresh_status()
+
+    def _sync_input_enabled_state(self) -> None:
+        if not self.is_mounted:
+            return
+        try:
+            input_widget = self._input_widget()
+        except NoMatches:
+            return
+        visible = self.has_class("visible")
+        locked = self._runtime_input_locked or self._chat_input_disable_depth > 0
+        should_disable = (not visible) or locked
+        input_widget.disabled = should_disable
+        input_widget.can_focus = not should_disable
+
+    def _sync_completion_overlays(self, raw_value: str) -> None:
+        self._sync_slash_complete(raw_value)
+        self._sync_mention_complete(raw_value)
+
+    def _sync_slash_complete(self, raw_value: str) -> None:
+        query = raw_value.strip()
+        if not query.startswith("/"):
+            self._hide_slash_complete()
+            return
+
+        query = query[1:]
+        if any(ch.isspace() for ch in query):
+            self._hide_slash_complete()
+            return
+
+        seen: set[str] = set()
+        matches: list[tuple[str, str]] = []
+        # 1. Fuzzy-match against command names
+        for spec in SLASH_COMMAND_REGISTRY.specs():
+            if (not query or _fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
+                seen.add(spec.name)
+                matches.append((spec.name, spec.description))
+        # 2. Exact alias match
+        alias_target = _SLASH_ALIASES.get(query.casefold())
+        if alias_target and alias_target not in seen:
+            cmd = SLASH_COMMAND_REGISTRY.get(alias_target)
+            if cmd is not None:
+                seen.add(alias_target)
+                matches.append((alias_target, f"(alias) {cmd.spec.description}"))
+        self._slash_matches = [name for name, _description in matches]
+        if not matches:
+            self._hide_slash_complete()
+            return
+
+        option_list = self.query_one("#slash-options", OptionList)
+        option_list.clear_options()
+        for name, description in matches:
+            option_list.add_option(Option(f"/{name}  ·  {description}", id=name))
+        option_list.highlighted = 0
+        self.query_one("#slash-complete", Vertical).display = True
+
+    def _sync_mention_complete(self, raw_value: str) -> None:
+        mention = self._mention_span(raw_value)
+        if mention is None:
+            self._hide_mention_complete()
+            return
+
+        _start, _end, query = mention
+        matches = self._mention_options(query)
+        self._mention_matches = matches
+        if not matches:
+            self._hide_mention_complete()
+            return
+
+        option_list = self.query_one("#mention-options", OptionList)
+        option_list.clear_options()
+        for option in matches:
+            option_list.add_option(Option(f"@{option.key}  ·  {option.label}", id=option.key))
+        option_list.highlighted = 0
+        self.query_one("#task-mention-complete", Vertical).display = True
+
+    def _mention_options(self, query: str) -> list[SessionPickerOption]:
+        normalized = query.casefold()
+        options: list[SessionPickerOption] = []
+        for label, key in self._session_options:
+            option = SessionPickerOption(
+                key=key,
+                icon=self._session_icon(self._infer_session_kind(key)),
+                label=label,
+                search_text=f"{label} {key}",
+            )
+            haystack = f"{option.label} {option.key} {option.search_text}".casefold()
+            if not normalized or normalized in haystack:
+                options.append(option)
+        return options
+
+    def _apply_mention_completion(self) -> None:
+        if not self._mention_matches:
+            return
+        option_list = self.query_one("#mention-options", OptionList)
+        highlighted = option_list.highlighted
+        if highlighted is None or highlighted < 0 or highlighted >= len(self._mention_matches):
+            selected = self._mention_matches[0]
+        else:
+            selected = self._mention_matches[highlighted]
+
+        input_widget = self._input_widget()
+        mention = self._mention_span(input_widget.value)
+        if mention is None:
+            self._hide_mention_complete()
+            return
+        start, end, _query = mention
+        input_widget.value = (
+            f"{input_widget.value[:start]}@{selected.key} {input_widget.value[end:]}"
+        )
+        self._current_state().draft = input_widget.value
+        input_widget.focus()
+        self._hide_mention_complete()
+
+    def _hide_slash_complete(self) -> None:
+        self._slash_matches = []
+        self.query_one("#slash-complete", Vertical).display = False
+
+    def _hide_mention_complete(self) -> None:
+        self._mention_matches = []
+        self.query_one("#task-mention-complete", Vertical).display = False
+
+    def _hide_overlays(self) -> None:
+        self._hide_slash_complete()
+        self._hide_mention_complete()
+
+    def _sync_session_label(self) -> None:
+        by_key = {key: label for label, key in self._session_options}
+        label = by_key.get(self._selected_session_key, "Orchestrator")
+        self.query_one("#chat-overlay-session-current", Static).update(label)
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        input_disabled = self._input_widget().disabled
+        if input_disabled:
+            right = "Read-only timeline"
+        elif bool(self._slash_matches or self._mention_matches):
+            right = "Enter send · Tab complete · Ctrl+K sessions · Ctrl+C/U clear · Esc close"
+        else:
+            cycle_session = getattr(self.screen, "action_cycle_chat_session", None)
+            tab_action = "cycle" if callable(cycle_session) else "sessions"
+            right = (
+                f"Enter send · Up/Down history · Tab {tab_action} · "
+                "Ctrl+K sessions · Ctrl+C/U clear · Esc close"
+            )
+        status_bar = self._status_bar()
+        if status_bar is None:
+            return
+        status_bar.update_status(self._runtime_status)
+        status_bar.update_hint(right)
+
+    def _append_prompt_history(self, text: str) -> None:
+        cleaned = normalize_chat_input(text)
+        if not cleaned:
+            return
+        state = self._current_state()
+        if not state.prompt_history or state.prompt_history[-1] != cleaned:
+            state.prompt_history.append(cleaned)
+            state.prompt_history = state.prompt_history[-100:]
+        state.history_index = None
+
+    def _cycle_prompt_history(self, *, direction: Literal["up", "down"]) -> bool:
+        state = self._current_state()
+        if not state.prompt_history:
+            return False
+        if state.history_index is None:
+            next_index = len(state.prompt_history) - 1 if direction == "up" else 0
+        else:
+            step = -1 if direction == "up" else 1
+            next_index = (state.history_index + step) % len(state.prompt_history)
+        state.history_index = next_index
+        value = state.prompt_history[next_index]
+        self._history_programmatic_update = True
+        input_widget = self._input_widget()
+        input_widget.value = value
+        input_widget.focus()
+        state.draft = value
+        return True
+
+    def _input_has_focus(self) -> bool:
+        return self._input_widget().has_focus
+
+    def _consume_session_prefix(self, text: str) -> tuple[str | None, str]:
+        stripped = text.lstrip()
+        if not stripped.startswith("@"):
+            return None, text
+        first, separator, remainder = stripped.partition(" ")
+        alias = first[1:].strip()
+        if not alias:
+            return None, text
+        key = self._resolve_session_alias(alias)
+        if key is None:
+            return None, text
+        if not separator:
+            return key, ""
+        return key, normalize_chat_input(remainder)
+
+    def _resolve_session_alias(self, alias: str) -> str | None:
+        normalized = alias.casefold().replace("-", "").replace("_", "")
+        for label, key in self._session_options:
+            label_key = label.casefold().replace(" ", "").replace("-", "")
+            session_key = key.casefold().replace("-", "").replace("_", "")
+            if normalized in {label_key, session_key}:
+                return key
+        return None
+
+    def _build_session_groups(self) -> list[SessionPickerGroup]:
+        orchestrator: list[SessionPickerOption] = []
+        task_targets_by_ticket: dict[str, list[SessionPickerOption]] = {}
+        other: list[SessionPickerOption] = []
+        for label, key in self._session_options:
+            kind = self._infer_session_kind(key)
+            option = SessionPickerOption(
+                key=key,
+                icon=self._session_icon(kind),
+                label=label,
+                search_text=f"{label} {key} {kind}",
+            )
+            if kind == "orchestrator":
+                orchestrator.append(option)
+            elif kind in {"auto", "review", "pair"}:
+                ticket_label = self._ticket_group_label(option.label)
+                task_targets_by_ticket.setdefault(ticket_label, []).append(option)
+            else:
+                other.append(option)
+
+        groups: list[SessionPickerGroup] = []
+        if orchestrator:
+            groups.append(
+                SessionPickerGroup(
+                    group_id="group:orchestrator",
+                    icon="◎",
+                    label="Orchestrator",
+                    subtitle=f"{len(orchestrator)} target(s)",
+                    search_text="orchestrator assistant global",
+                    options=tuple(orchestrator),
+                )
+            )
+        for ticket_label in sorted(task_targets_by_ticket):
+            options = task_targets_by_ticket[ticket_label]
+            groups.append(
+                SessionPickerGroup(
+                    group_id=f"group:ticket:{ticket_label.casefold().replace(' ', '-')}",
+                    icon="◉",
+                    label=ticket_label,
+                    subtitle=f"{len(options)} agent(s)",
+                    search_text=f"ticket task auto review pair worktree {ticket_label}",
+                    options=tuple(options),
+                )
+            )
+        if other:
+            groups.append(
+                SessionPickerGroup(
+                    group_id="group:other",
+                    icon="●",
+                    label="Other",
+                    subtitle=f"{len(other)} target(s)",
+                    search_text="other sessions",
+                    options=tuple(other),
+                )
+            )
+        return groups
+
+    @staticmethod
+    def _ticket_group_label(option_label: str) -> str:
+        ticket_label, _separator, _role = option_label.partition(" · ")
+        normalized = ticket_label.strip()
+        return normalized or "Ticket"
+
+    @staticmethod
+    def _infer_session_kind(key: str) -> str:
+        normalized = key.casefold()
+        if "orchestrator" in normalized:
+            return "orchestrator"
+        if "review" in normalized:
+            return "review"
+        if "pair" in normalized:
+            return "pair"
+        return "auto"
+
+    @staticmethod
+    def _session_icon(kind: str) -> str:
+        return {
+            "orchestrator": "◎",
+            "auto": "◉",
+            "review": "◆",
+            "pair": "◌",
+        }.get(kind, "●")
+
+    @staticmethod
+    def _mention_span(value: str) -> tuple[int, int, str] | None:
+        end = len(value)
+        start = value.rfind("@")
+        if start < 0:
+            return None
+        if start > 0 and not value[start - 1].isspace():
+            return None
+        query = value[start + 1 : end]
+        if any(ch.isspace() for ch in query):
+            return None
+        return start, end, query

@@ -50,6 +50,11 @@ as context and asking for first-step acknowledgement.
 
 `v` (details) → `e` (edit) → change `task_type` → ++ctrl+s++ save.
 
+## Orchestrator session lifecycle
+
+If you need precise behavior for ACP session spawn/reuse/cleanup in `kagan chat` and TUI orchestrator chat, see:
+[ACP session lifecycle](acp-session-lifecycle.md)
+
 ______________________________________________________________________
 
 ## Acceptance criteria gate
@@ -109,13 +114,4 @@ check when the run completes.
 
 ______________________________________________________________________
 
-## Config
-
-```toml
-[general]
-default_worker_agent = "claude"
-default_pair_terminal_backend = "tmux"
-max_concurrent_agents = 3
-```
-
-[Configuration](../reference/configuration.md) · [Troubleshooting](../troubleshooting.md) · [MCP tools](../reference/mcp-tools.md)
+[:octicons-arrow-right-24: Configuration reference](../reference/configuration.md) · [:octicons-arrow-right-24: Task lifecycle](../concepts/task-lifecycle.md) · [:octicons-arrow-right-24: Troubleshooting](../troubleshooting.md)

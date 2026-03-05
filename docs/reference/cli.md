@@ -11,17 +11,19 @@ tags:
 
 `kagan` with no subcommand → `kagan tui` (default).
 
-| Command    | Description              |
-| ---------- | ------------------------ |
-| `core`     | Manage core process      |
-| `doctor`   | Environment diagnostics  |
-| `list`     | List projects and repos  |
-| `mcp`      | Run MCP server (stdio)   |
-| `profiles` | List MCP access profiles |
-| `reset`    | Remove local state       |
-| `tools`    | Stateless utilities      |
-| `tui`      | Run TUI explicitly       |
-| `update`   | Check/install updates    |
+| Command    | Description                         |
+| ---------- | ----------------------------------- |
+| `chat`     | Orchestrator REPL / one-shot prompt |
+| `core`     | Manage core process                 |
+| `doctor`   | Environment diagnostics             |
+| `import`   | Import tasks from tools             |
+| `list`     | List projects and repos             |
+| `mcp`      | Run MCP server (stdio)              |
+| `profiles` | List MCP access profiles            |
+| `reset`    | Remove local state                  |
+| `tools`    | Stateless utilities                 |
+| `tui`      | Run TUI explicitly                  |
+| `update`   | Check/install updates               |
 
 ## Machine-readable output guarantees
 
@@ -51,6 +53,32 @@ Runs startup diagnostics (Python, git, agent backend availability, tooling).
 | `--verbosity tldr`      | Warnings and failures only                      |
 | `--verbosity short`     | Concise guidance + one source pointer (default) |
 | `--verbosity technical` | Full rationale, commands, official source links |
+
+## `kagan chat`
+
+Interactive orchestrator REPL by default. Use `--prompt` for single-shot mode.
+Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecycle.md)
+
+| Option          | Description                                |
+| --------------- | ------------------------------------------ |
+| `--prompt TEXT` | Single-shot mode (send once, print, exit)  |
+| `--session-id`  | Attach to an existing chat or task session |
+| `--agent`       | Override default orchestrator backend      |
+
+## `kagan import`
+
+| Subcommand | Description                       |
+| ---------- | --------------------------------- |
+| `github`   | Import GitHub issues as new tasks |
+
+### `kagan import github`
+
+| Option    | Description                                 |
+| --------- | ------------------------------------------- |
+| `--repo`  | Repository in `owner/repo` format           |
+| `--state` | Issue state filter: `open`, `closed`, `all` |
+| `--label` | Import only issues with this label          |
+| `--yes`   | Skip confirmation prompt                    |
 
 ## `kagan list`
 

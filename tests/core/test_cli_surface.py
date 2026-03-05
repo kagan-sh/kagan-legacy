@@ -1,0 +1,324 @@
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
+from kagan.cli.doctor import DoctorCheck
+from kagan.cli.main import _sanitize_startup_environment, cli
+
+# Check if rich_click is available for extended CLI output
+try:
+    import rich_click
+
+    _HAS_RICH_CLICK = True
+except ImportError:
+    _HAS_RICH_CLICK = False
+
+pytestmark = [pytest.mark.core, pytest.mark.smoke]
+
+
+def _runner_env(tmp_path: Path) -> dict[str, str]:
+    return {
+        "KAGAN_SKIP_UPDATE_CHECK": "1",
+        "KAGAN_DATA_DIR": str(tmp_path),
+        "KAGAN_CONFIG_DIR": str(tmp_path),
+        "COLUMNS": "120",
+        # Prevent tests from accidentally spawning real agent binaries
+        "KAGAN_INTEGRATION_TESTS": "",
+    }
+
+
+@pytest.mark.windows_ci
+def test_help_surface_contains_commands(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "chat" in result.output
+    assert "doctor" in result.output
+    assert "import" in result.output
+    assert "list" in result.output
+    assert "mcp" in result.output
+    assert "reset" in result.output
+    assert "tools" in result.output
+    assert "tui" in result.output
+    assert "update" in result.output
+    assert "--skip-update-check" not in result.output
+    assert "Usage:" in result.output
+    assert "Options" in result.output
+    assert "Commands" in result.output
+    if _HAS_RICH_CLICK:
+        assert "https://docs.kagan.sh/reference/cli/" in result.output
+
+
+def test_version_flag_prints_version(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--version"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert result.output.strip()
+
+
+def test_import_help_contains_github_subcommand(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["import", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "github" in result.output
+
+
+def test_unknown_command_returns_usage_exit_code_2(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["unknown"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 2
+
+
+def test_bare_kagan_delegates_to_tui(monkeypatch, tmp_path: Path) -> None:
+    called = {"value": False}
+
+    def fake_launch(**_kw) -> None:
+        called["value"] = True
+
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+    runner = CliRunner()
+    result = runner.invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert called["value"] is True
+
+
+def test_tui_help_lists_session_attach_flag(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["tui", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "-s" in result.output
+    assert "--session-id" in result.output
+
+
+def test_tui_session_id_is_forwarded_to_app_launch(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, str | None] = {}
+
+    def _fake_launch(
+        *, db_path: str | Path | None = None, startup_chat_session_id: str | None = None
+    ) -> None:
+        del db_path
+        captured["session_id"] = startup_chat_session_id
+
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", _fake_launch)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["tui", "-s", "tui12345"],
+        env=_runner_env(tmp_path),
+    )
+
+    assert result.exit_code == 0
+    assert captured["session_id"] == "tui12345"
+
+
+def test_doctor_short_warns_exit_zero(monkeypatch, tmp_path: Path) -> None:
+    checks = [
+        DoctorCheck("git", "pass", "ok", "", "git --version"),
+        DoctorCheck("tmux", "warn", "missing", "install", "tmux -V"),
+    ]
+    monkeypatch.setattr("kagan.cli.doctor._collect_doctor_checks", lambda: checks)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["doctor"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "WARN" in result.output
+
+
+def test_doctor_fail_exits_one(monkeypatch, tmp_path: Path) -> None:
+    checks = [
+        DoctorCheck("db", "fail", "broken", "fix", "kagan list"),
+    ]
+    monkeypatch.setattr("kagan.cli.doctor._collect_doctor_checks", lambda: checks)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["doctor", "--verbosity", "tldr"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 1
+    assert "FAIL" in result.output
+
+
+def test_list_exits_zero_on_empty_state(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["list"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Project" in result.output
+
+
+def test_mcp_mutually_exclusive_flags_is_usage_error(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["mcp", "--readonly", "--admin"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 2
+
+
+def test_mcp_help_includes_access_tier_guidance(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["mcp", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Access tiers:" in result.output
+    assert "--readonly" in result.output
+    assert "--admin" in result.output
+
+
+@pytest.mark.parametrize("source_mode", ["prompt", "file"])
+def test_tools_enhance_full_flow_outputs_refined_result(
+    monkeypatch,
+    tmp_path: Path,
+    source_mode: str,
+) -> None:
+    prompt = "stabilize cli tests"
+    expected = "As a QA engineer, stabilize CLI tests with deterministic assertions."
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text(f"  {prompt}  ", encoding="utf-8")
+    args = ["tools", "enhance", "--agent", "kimi", prompt]
+    if source_mode == "file":
+        args = ["tools", "enhance", "--agent", "kimi", "--file", str(prompt_file)]
+
+    def _fake_run(
+        command: list[str],
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str] | None = None,
+    ):
+        assert command[0] == "kimi" and capture_output and text and not check
+        assert env is not None
+        return subprocess.CompletedProcess(
+            command, 0, stdout=f"<result>{expected}</result>", stderr=""
+        )
+
+    monkeypatch.setattr("kagan.cli.tools.subprocess.run", _fake_run)
+    result = CliRunner().invoke(cli, args, env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert expected in result.output
+
+
+@pytest.mark.parametrize("source_mode", ["prompt", "file"])
+def test_tools_enhance_full_flow_falls_back_to_original_on_short_agent_result(
+    monkeypatch,
+    tmp_path: Path,
+    source_mode: str,
+) -> None:
+    prompt = "improve validation behavior"
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text(f"  {prompt}  ", encoding="utf-8")
+    args = ["tools", "enhance", "--agent", "kimi", prompt]
+    if source_mode == "file":
+        args = ["tools", "enhance", "--agent", "kimi", "--file", str(prompt_file)]
+
+    def _fake_run(
+        command: list[str],
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str] | None = None,
+    ):
+        assert command[0] == "kimi" and capture_output and text and not check
+        assert env is not None
+        return subprocess.CompletedProcess(command, 0, stdout="<result>ok</result>", stderr="")
+
+    monkeypatch.setattr("kagan.cli.tools.subprocess.run", _fake_run)
+    result = CliRunner().invoke(cli, args, env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert prompt in result.output
+
+
+def test_chat_prompt_single_shot_prints_response(monkeypatch, tmp_path: Path) -> None:
+    """Single-shot chat with no projects prints a helpful message and exits 0."""
+    # chdir to tmp_path so _bootstrap_project doesn't find the repo git root
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chat", "--prompt", "hello"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    # With no projects, the controller prints a "no projects" message.
+    assert "project" in result.output.lower() or "hello" in result.output
+
+
+def test_chat_ctrl_c_exits_one(monkeypatch, tmp_path: Path) -> None:
+    def _raise_keyboard_interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("kagan.chat.run_chat_async", _raise_keyboard_interrupt)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chat"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 1
+
+
+def test_chat_help_uses_structured_options_panel(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chat", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
+    assert "chat" in result.output
+    assert "Options" in result.output
+    assert "--prompt" in result.output and "TEXT" in result.output
+    assert "--session-id" in result.output and "TEXT" in result.output
+    assert "--agent" in result.output and "TEXT" in result.output
+
+
+def test_reset_force_completes_without_confirmation(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["reset", "--force"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Reset complete" in result.output
+
+
+def test_update_check_only_reports_status(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "kagan.cli.update.check_and_install_update",
+        lambda check_only, prerelease, force: (True, "Update available: 0.1.0 -> 0.2.0"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["update", "--check-only"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Update available" in result.output
+
+
+def test_startup_update_hint_prints_before_command_output(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("kagan.cli.main.maybe_check_for_updates", lambda skip: "9.9.9")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["list"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert lines[0].startswith("hint: kagan 9.9.9 available")
+
+
+def test_sanitize_startup_environment_removes_macos_malloc_keys(monkeypatch) -> None:
+    monkeypatch.setattr("kagan.cli._env.sys.platform", "darwin")
+    monkeypatch.setenv("MALLOCSTACKLOGGING", "1")
+    monkeypatch.setenv("MALLOCSTACKLOGGINGNOCOMPACT", "1")
+    monkeypatch.setenv("MALLOCSTACKLOGGINGDIRECTORY", "/tmp/msl")
+    monkeypatch.setenv("__XPC_MALLOCSTACKLOGGING", "1")
+
+    _sanitize_startup_environment()
+
+    assert os.environ.get("MALLOCSTACKLOGGING") is None
+    assert os.environ.get("MALLOCSTACKLOGGINGNOCOMPACT") is None
+    assert os.environ.get("MALLOCSTACKLOGGINGDIRECTORY") is None
+    assert os.environ.get("__XPC_MALLOCSTACKLOGGING") is None

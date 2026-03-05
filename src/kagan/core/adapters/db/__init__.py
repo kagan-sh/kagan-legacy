@@ -1,1 +1,0 @@
-"""Database adapters and repositories."""

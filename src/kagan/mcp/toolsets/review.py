@@ -1,0 +1,130 @@
+"""kagan.mcp.toolsets.review — Review domain MCP tools."""
+
+import asyncio
+from enum import StrEnum
+
+from mcp.server.fastmcp import Context, FastMCP
+
+from kagan.core import build_conflict_resolution_feedback
+from kagan.core.errors import MergeConflictError
+from kagan.mcp._policy import is_tool_allowed
+from kagan.mcp.server import ServerOptions, get_context
+from kagan.mcp.toolsets import mcp_error_boundary
+
+
+class ReviewAction(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
+    MERGE = "merge"
+    REBASE = "rebase"
+
+
+_VALID_ACTIONS = frozenset(item.value for item in ReviewAction)
+
+
+def _parse_action(action: str) -> ReviewAction:
+    try:
+        return ReviewAction(action)
+    except ValueError as exc:
+        raise ValueError(
+            f"Unknown review action: {action!r}. Must be one of {sorted(_VALID_ACTIONS)}"
+        ) from exc
+
+
+def register(mcp: FastMCP, opts: ServerOptions) -> None:
+    """Register review domain tools on mcp, filtered by opts."""
+    if is_tool_allowed("review_decide", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_decide(
+            task_id: str,
+            action: str,
+            ctx: Context,
+            feedback: str | None = None,
+            target_branch: str | None = None,
+        ) -> dict:
+            """Apply a review action (approve, reject, merge, rebase) to a task.
+
+            Approve and merge require that the task has acceptance criteria.
+            Tasks without acceptance criteria must be reviewed manually by a human.
+            """
+            parsed = _parse_action(action)
+
+            app = get_context(ctx)
+
+            # Gate: tasks without acceptance criteria cannot be auto-approved/merged
+            if parsed in (ReviewAction.APPROVE, ReviewAction.MERGE):
+                task = await app.client.tasks.get(task_id)
+                criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+                if not criteria:
+                    return {
+                        "task_id": task_id,
+                        "action": "blocked",
+                        "reason": (
+                            "This task has no acceptance criteria. "
+                            "Cannot auto-approve — manual human review required."
+                        ),
+                    }
+
+            match parsed:
+                case ReviewAction.APPROVE:
+                    await app.client.reviews.approve(task_id)
+                case ReviewAction.REJECT:
+                    if feedback is None:
+                        raise ValueError("feedback is required for reject action")
+                    await app.client.reviews.reject(task_id, feedback=feedback)
+                case ReviewAction.MERGE:
+                    try:
+                        await app.client.reviews.merge(task_id)
+                    except MergeConflictError as exc:
+                        task = await app.client.tasks.get(task_id)
+                        ws = await app.client.worktrees.get(task_id)
+                        repo = None
+                        if ws is not None:
+                            repo = await asyncio.to_thread(
+                                app.client.worktrees._get_repo, ws.repo_id
+                            )
+                        branch = task.base_branch or (repo.default_branch if repo else "main")
+                        feedback_text = build_conflict_resolution_feedback(
+                            conflict_files=exc.conflict_files,
+                            target_branch=branch,
+                            task_title=task.title,
+                        )
+                        return {
+                            "task_id": task_id,
+                            "action": "merge",
+                            "status": "conflict",
+                            "conflict_files": exc.conflict_files,
+                            "target_branch": branch,
+                            "suggested_feedback": feedback_text,
+                        }
+                case ReviewAction.REBASE:
+                    await app.client.reviews.rebase(task_id)
+            return {"task_id": task_id, "action": parsed.value, "feedback": feedback}
+
+    if is_tool_allowed("review_conflicts", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_conflicts(task_id: str, ctx: Context) -> dict:
+            app = get_context(ctx)
+            return await app.client.reviews.conflicts(task_id)
+
+    if is_tool_allowed("review_continue_rebase", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_continue_rebase(task_id: str, ctx: Context) -> dict:
+            app = get_context(ctx)
+            await app.client.reviews.continue_rebase(task_id)
+            return {"task_id": task_id, "action": "rebase_continue"}
+
+    if is_tool_allowed("review_abort_rebase", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_abort_rebase(task_id: str, ctx: Context) -> dict:
+            app = get_context(ctx)
+            await app.client.reviews.abort_rebase(task_id)
+            return {"task_id": task_id, "action": "abort_conflicts"}

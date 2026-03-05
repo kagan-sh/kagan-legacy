@@ -1,1 +1,0 @@
-"""TUI smoke test package."""

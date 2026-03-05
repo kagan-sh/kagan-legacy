@@ -1,51 +1,51 @@
 /* Fonts loaded via <link> in docs/overrides/main.html for non-blocking render */
 
 /* ===== KAGAN MKDOCS THEME ===== */
-/* Black + white + gold — aligned with landing page */
+/* Black + warm ivory + amber — aligned with kagan-landing */
 :root,
 [data-md-color-scheme="slate"] {
-  /* Backgrounds — pure black */
-  --md-default-bg-color: #000000;
-  --md-default-bg-color--light: #0C0C0A;
-  --md-default-bg-color--lighter: #141210;
-  --md-default-bg-color--lightest: #1C1A16;
+  /* Backgrounds — near-black (matches landing --bg / --bg-darker) */
+  --md-default-bg-color: #020202;
+  --md-default-bg-color--light: #0E0C0A;
+  --md-default-bg-color--lighter: #181614;
+  --md-default-bg-color--lightest: #1E1C19;
 
-  /* Text — white */
-  --md-default-fg-color: #FFFFFF;
-  --md-default-fg-color--light: #8A8278;
-  --md-default-fg-color--lighter: #8A827880;
-  --md-default-fg-color--lightest: #1C1A16;
+  /* Text — warm ivory (matches landing --fg / --fg-muted) */
+  --md-default-fg-color: #E8E4DC;
+  --md-default-fg-color--light: #7A7468;
+  --md-default-fg-color--lighter: #7A746880;
+  --md-default-fg-color--lightest: #1E1C19;
 
-  /* Primary — override to black so Material uses dark header/tabs backgrounds.
-     Gold accents applied explicitly on individual elements below. */
-  --md-primary-fg-color: #0C0C0A;
-  --md-primary-fg-color--light: #141210;
-  --md-primary-fg-color--dark: #000000;
-  --md-primary-bg-color: #FFFFFF;
-  --md-primary-bg-color--light: #8A8278;
+  /* Primary — override to near-black so Material uses dark header/tabs backgrounds.
+     Amber accents applied explicitly on individual elements below. */
+  --md-primary-fg-color: #0E0C0A;
+  --md-primary-fg-color--light: #181614;
+  --md-primary-fg-color--dark: #020202;
+  --md-primary-bg-color: #E8E4DC;
+  --md-primary-bg-color--light: #7A7468;
 
-  /* Accent — Gold for hover/active states */
-  --md-accent-fg-color: #d4a84b;
-  --md-accent-fg-color--transparent: #d4a84b20;
-  --md-accent-bg-color: #000000;
+  /* Accent — Amber phosphor for hover/active states (matches landing --primary) */
+  --md-accent-fg-color: #C9A46A;
+  --md-accent-fg-color--transparent: #C9A46A20;
+  --md-accent-bg-color: #020202;
 
   /* Code */
-  --md-code-fg-color: #FFFFFF;
-  --md-code-bg-color: #0C0C0A;
-  --md-code-hl-color: #d4a84b30;
+  --md-code-fg-color: #E8E4DC;
+  --md-code-bg-color: #0E0C0A;
+  --md-code-hl-color: #C9A46A30;
   --md-code-hl-number-color: #C27C4E;
-  --md-code-hl-keyword-color: #d4a84b;
-  --md-code-hl-function-color: #3fb58e;
-  --md-code-hl-string-color: #3fb58e;
+  --md-code-hl-keyword-color: #C9A46A;
+  --md-code-hl-function-color: #4A9B7F;
+  --md-code-hl-string-color: #4A9B7F;
   --md-code-hl-name-color: #6fa3d4;
-  --md-code-hl-comment-color: #8A8278;
+  --md-code-hl-comment-color: #7A7468;
 
-  /* Links — green for usability */
-  --md-typeset-a-color: #3fb58e;
+  /* Links — sage for usability (matches landing --secondary) */
+  --md-typeset-a-color: #4A9B7F;
 
   /* Admonitions */
-  --md-admonition-fg-color: #FFFFFF;
-  --md-admonition-bg-color: #0C0C0A;
+  --md-admonition-fg-color: #E8E4DC;
+  --md-admonition-bg-color: #0E0C0A;
 
   /* Override Material's info admonition icon */
   --md-admonition-icon--info: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h-2V7h2m0 10h-2v-6h2m-1-9A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2Z"/></svg>');
@@ -55,68 +55,76 @@
 /* Body text — Geist Mono, matching landing page */
 body,
 .md-typeset {
-  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
+  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
 }
 
-/* Headings — Bodoni Moda, matching landing page */
+/* Headings h1, h2 — Barlow Condensed, matching landing --font-display */
 .md-typeset h1,
-.md-typeset h2,
+.md-typeset h2 {
+  font-family: 'Barlow Condensed', 'Barlow', 'IBM Plex Sans Condensed', sans-serif !important;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+/* Headings h3–h6 — Geist Mono, matching landing pattern */
 .md-typeset h3,
 .md-typeset h4,
 .md-typeset h5,
 .md-typeset h6 {
-  font-family: 'Bodoni Moda', Georgia, 'Times New Roman', serif !important;
+  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
 }
 
 /* Code — Geist Mono */
 .md-typeset code,
 .md-typeset pre,
 .md-typeset kbd {
-  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
+  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
 }
 
 /* ===== HEADER ===== */
 .md-header {
-  background-color: rgba(0, 0, 0, 0.92) !important;
+  background-color: rgba(2, 2, 2, 0.92) !important;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid #1C1A16;
-  color: #FFFFFF;
+  border-bottom: 1px solid #1E1C19;
+  color: #E8E4DC;
 }
 
 .md-header__button.md-logo {
-  color: #d4a84b;
+  color: #C9A46A;
 }
 
 .md-header__title {
-  color: #d4a84b;
+  color: #C9A46A;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   font-size: 13px;
 }
 
-/* Header icons and buttons — white by default, gold on hover */
+/* Header icons and buttons — muted by default, amber on hover */
 .md-header .md-header__button,
 .md-header .md-icon {
-  color: #8A8278;
+  color: #7A7468;
 }
 
 .md-header .md-header__button:hover,
 .md-header .md-icon:hover {
-  color: #d4a84b;
+  color: #C9A46A;
 }
 
 /* ===== TABS BAR ===== */
 .md-tabs {
-  background-color: #0C0C0A !important;
-  border-bottom: 1px solid #1C1A16;
+  background-color: #0E0C0A !important;
+  border-bottom: 1px solid #1E1C19;
 }
 
 .md-tabs__link {
-  color: #8A8278 !important;
+  color: #7A7468 !important;
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   opacity: 1 !important;
@@ -124,71 +132,70 @@ body,
 }
 
 .md-tabs__link:hover {
-  color: #FFFFFF !important;
+  color: #E8E4DC !important;
 }
 
 .md-tabs__link--active,
 .md-tabs__item--active .md-tabs__link {
-  color: #d4a84b !important;
+  color: #C9A46A !important;
   font-weight: 500;
 }
 
 /* ===== NAVIGATION ===== */
 .md-nav__link {
-  color: #8A8278 !important;
+  color: #7A7468 !important;
   transition: color 0.15s ease;
 }
 
 .md-nav__link:hover {
-  color: #d4a84b !important;
+  color: #C9A46A !important;
 }
 
 .md-nav__link--active,
 .md-nav__item--active > .md-nav__link,
 .md-nav__link[href="."] {
-  color: #d4a84b !important;
+  color: #C9A46A !important;
   font-weight: 500;
 }
 
 .md-nav--primary .md-nav__link--active,
 .md-nav--primary .md-nav__item--active > .md-nav__link {
-  color: #d4a84b !important;
+  color: #C9A46A !important;
 }
 
 .md-nav--secondary .md-nav__link--active {
-  color: #d4a84b !important;
+  color: #C9A46A !important;
 }
 
 /* ===== CONTENT ===== */
 .md-typeset h1 {
-  color: #FFFFFF !important;
-  font-style: italic;
+  color: #E8E4DC !important;
 }
 
 .md-typeset h2 {
-  color: #d4a84b !important;
-  border-bottom: 1px solid #1C1A16;
+  color: #C9A46A !important;
+  border-bottom: 1px solid #1E1C19;
   padding-bottom: 0.4em;
 }
 
 .md-typeset h3,
 .md-typeset h4 {
-  color: #FFFFFF !important;
+  color: #E8E4DC !important;
 }
 
 .md-typeset a {
-  color: #3fb58e;
+  color: #4A9B7F;
 }
 
 .md-typeset a:hover {
-  color: #4ec9b0;
+  color: #5AB893;
 }
 
 /* ===== CODE BLOCKS ===== */
 .md-typeset code {
-  background-color: #0C0C0A;
-  border: 1px solid #1C1A16;
-  color: #d4a84b;
+  background-color: #0E0C0A;
+  border: 1px solid #1E1C19;
+  color: #C9A46A;
   border-radius: 0;
 }
 
@@ -197,27 +204,27 @@ body,
 }
 
 .md-typeset pre > code {
-  border: 1px solid #1C1A16;
-  color: #FFFFFF;
+  border: 1px solid #1E1C19;
+  color: #E8E4DC;
 }
 
 .md-clipboard {
-  color: #8A8278;
+  color: #7A7468;
 }
 
 .md-clipboard:hover {
-  color: #d4a84b;
+  color: #C9A46A;
 }
 
 /* ===== TABLES ===== */
 .md-typeset table:not([class]) {
-  border: 1px solid #1C1A16;
+  border: 1px solid #1E1C19;
   border-radius: 0;
 }
 
 .md-typeset table:not([class]) th {
-  background-color: #0C0C0A;
-  color: #8A8278;
+  background-color: #0E0C0A;
+  color: #7A7468;
   font-weight: 500;
   text-transform: uppercase;
   font-size: 0.75em;
@@ -225,18 +232,18 @@ body,
 }
 
 .md-typeset table:not([class]) td {
-  border-top: 1px solid #1C1A16;
+  border-top: 1px solid #1E1C19;
 }
 
 .md-typeset table:not([class]) tr:hover td {
-  background-color: #14121020;
+  background-color: #18161420;
 }
 
 .md-typeset kbd {
-  background-color: #0C0C0A;
-  border: 1px solid #1C1A16;
+  background-color: #0E0C0A;
+  border: 1px solid #1E1C19;
   border-radius: 0;
-  color: #d4a84b;
+  color: #C9A46A;
   box-shadow: none;
 }
 
@@ -245,30 +252,30 @@ body,
 .md-typeset details {
   border-left-width: 4px;
   border-left-style: solid;
-  background-color: #0C0C0A;
+  background-color: #0E0C0A;
 }
 
-/* Info — gold */
+/* Info — amber */
 .md-typeset .admonition.info,
 .md-typeset details.info {
-  border-color: #d4a84b !important;
+  border-color: #C9A46A !important;
 }
 
 .md-typeset .info > .admonition-title,
 .md-typeset .info > summary {
-  background-color: rgba(212, 168, 75, 0.1) !important;
+  background-color: rgba(201, 164, 106, 0.1) !important;
 }
 
 .md-typeset .info > .admonition-title::before,
 .md-typeset .info > summary::before {
-  background-color: #d4a84b !important;
+  background-color: #C9A46A !important;
 }
 
 .md-typeset .admonition.info .admonition-title .twemoji svg,
 .md-typeset .admonition.info > .admonition-title::before {
-  color: #d4a84b !important;
-  fill: #d4a84b !important;
-  background-color: #d4a84b !important;
+  color: #C9A46A !important;
+  fill: #C9A46A !important;
+  background-color: #C9A46A !important;
 }
 
 /* Note — blue */
@@ -303,20 +310,20 @@ body,
   background-color: #e6c07b !important;
 }
 
-/* Tip — green */
+/* Tip — sage (matches landing --secondary) */
 .md-typeset .admonition.tip,
 .md-typeset details.tip {
-  border-color: #3fb58e !important;
+  border-color: #4A9B7F !important;
 }
 
 .md-typeset .tip > .admonition-title,
 .md-typeset .tip > summary {
-  background-color: rgba(63, 181, 142, 0.1) !important;
+  background-color: rgba(74, 155, 127, 0.1) !important;
 }
 
 .md-typeset .tip > .admonition-title::before,
 .md-typeset .tip > summary::before {
-  background-color: #3fb58e !important;
+  background-color: #4A9B7F !important;
 }
 
 /* Danger/Error — red */
@@ -343,45 +350,45 @@ body,
 
 /* ===== SEARCH ===== */
 .md-search__form {
-  background-color: #0C0C0A !important;
-  border: 1px solid #1C1A16;
+  background-color: #0E0C0A !important;
+  border: 1px solid #1E1C19;
   border-radius: 0;
 }
 
 .md-search__input {
   background-color: transparent !important;
-  color: #FFFFFF !important;
-  caret-color: #d4a84b;
+  color: #E8E4DC !important;
+  caret-color: #C9A46A;
 }
 
 .md-search__input::placeholder {
-  color: #8A8278 !important;
+  color: #7A7468 !important;
 }
 
 .md-search__input:hover {
-  border-color: #2A2620;
+  border-color: #2A2724;
 }
 
 .md-search__input:focus {
-  border-color: #d4a84b;
+  border-color: #C9A46A;
 }
 
 .md-search__icon {
-  color: #8A8278 !important;
+  color: #7A7468 !important;
 }
 
 .md-search__output {
-  background-color: #0C0C0A !important;
-  border: 1px solid #1C1A16;
+  background-color: #0E0C0A !important;
+  border: 1px solid #1E1C19;
 }
 
 .md-search-result__meta {
-  background-color: #141210 !important;
-  color: #8A8278 !important;
+  background-color: #181614 !important;
+  color: #7A7468 !important;
 }
 
 .md-search-result__item {
-  border-bottom: 1px solid #1C1A16;
+  border-bottom: 1px solid #1E1C19;
 }
 
 .md-search-result__link {
@@ -389,46 +396,46 @@ body,
 }
 
 .md-search-result__link:hover {
-  background-color: #141210 !important;
+  background-color: #181614 !important;
 }
 
 .md-search-result__title {
-  color: #FFFFFF !important;
+  color: #E8E4DC !important;
 }
 
 .md-search-result__teaser {
-  color: #8A8278 !important;
+  color: #7A7468 !important;
 }
 
 /* ===== FOOTER ===== */
 .md-footer {
-  background-color: #000000;
-  border-top: 1px solid #1C1A16;
+  background-color: #020202;
+  border-top: 1px solid #1E1C19;
 }
 
 .md-footer__inner {
-  background-color: #000000 !important;
+  background-color: #020202 !important;
 }
 
 .md-footer-meta {
-  background-color: #000000 !important;
+  background-color: #020202 !important;
 }
 
 /* Footer nav links */
 .md-footer__link {
-  color: #8A8278;
+  color: #7A7468;
 }
 
 .md-footer__link:hover {
-  color: #d4a84b;
+  color: #C9A46A;
 }
 
 .md-footer__title {
-  color: #FFFFFF;
+  color: #E8E4DC;
 }
 
 .md-footer__direction {
-  color: #8A8278;
+  color: #7A7468;
   font-size: 0.6rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -436,7 +443,7 @@ body,
 
 /* ===== SIDEBAR SECTIONS ===== */
 .md-nav__title {
-  color: #8A8278;
+  color: #7A7468;
   font-size: 0.65rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -444,75 +451,75 @@ body,
 
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1C1A16;
+  background: #2A2724;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4a84b;
+  background: #46423C;
 }
 
 /* ===== SELECTION ===== */
 ::selection {
-  background: rgba(212, 168, 75, 0.4);
-  color: #FFFFFF;
+  background: rgba(201, 164, 106, 0.2);
+  color: #E8E4DC;
 }
 
 /* ===== REPO STATS ===== */
 .md-source {
-  color: #8A8278;
+  color: #7A7468;
 }
 
 .md-source:hover {
-  color: #FFFFFF;
+  color: #E8E4DC;
 }
 
 .md-source__repository {
-  color: #FFFFFF;
+  color: #E8E4DC;
 }
 
 /* ===== BUTTONS ===== */
 .md-button--primary {
-  background-color: #d4a84b !important;
-  border-color: #d4a84b !important;
-  color: #000000 !important;
+  background-color: #C9A46A !important;
+  border-color: #C9A46A !important;
+  color: #020202 !important;
   border-radius: 0;
   font-weight: 500;
 }
 
 .md-button--primary:hover {
-  background-color: #e0bb62 !important;
-  border-color: #e0bb62 !important;
-  color: #000000 !important;
+  background-color: #D4B87A !important;
+  border-color: #D4B87A !important;
+  color: #020202 !important;
 }
 
 .md-button:not(.md-button--primary) {
-  border-color: #d4a84b;
-  color: #d4a84b;
+  border-color: #C9A46A;
+  color: #C9A46A;
 }
 
 .md-button:not(.md-button--primary):hover {
-  border-color: #e0bb62;
-  color: #e0bb62;
-  background-color: rgba(212, 168, 75, 0.08);
+  border-color: #D4B87A;
+  color: #D4B87A;
+  background-color: rgba(201, 164, 106, 0.08);
 }
 
 /* ===== TABBED CONTENT ===== */
 .md-typeset .tabbed-labels {
-  border-bottom-color: #1C1A16;
+  border-bottom-color: #1E1C19;
 }
 
 .md-typeset .tabbed-labels > label {
-  color: #8A8278;
+  color: #7A7468;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -520,22 +527,22 @@ body,
 }
 
 .md-typeset .tabbed-labels > label:hover {
-  color: #FFFFFF;
+  color: #E8E4DC;
 }
 
 .md-typeset .tabbed-labels > .tabbed-labels__active,
 .md-typeset .tabbed-labels > label.active {
-  color: #FFFFFF;
-  border-bottom-color: #d4a84b;
+  color: #E8E4DC;
+  border-bottom-color: #C9A46A;
 }
 
 .md-typeset .tabbed-labels .tabbed-labels__active {
-  color: #FFFFFF;
+  color: #E8E4DC;
 }
 
 /* ===== HORIZONTAL RULES ===== */
 .md-typeset hr {
-  border-color: #1C1A16;
+  border-color: #1E1C19;
 }
 
 .md-typeset .grid.cards hr {

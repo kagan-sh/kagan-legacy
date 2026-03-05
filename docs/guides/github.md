@@ -1,115 +1,64 @@
 ---
-title: GitHub plugin
-description: Connect Kagan to GitHub for issue sync, PR workflows, and board automation
+title: Import from GitHub
+description: Bring GitHub issues into Kagan as tasks in a few steps
 icon: material/github
 tags:
   - github
-  - plugins
+  - import
 ---
 
-# GitHub plugin
+# Import from GitHub
 
-Bundled by default (`official.github`). Repos start disconnected — run connect first.
+Use this guide to import GitHub issues into your board. GitHub support is bundled with Kagan.
 
-**Prerequisites:** `gh` CLI + `gh auth login`, Kagan project with repo.
+## What you need
 
-## Setup
+- GitHub CLI installed: <https://cli.github.com>
+- Signed in on your machine: `gh auth login`
+- A Kagan project already created
 
-1. **Verify:** `gh auth status`
-1. **Connect:** TUI palette (`.`) → `github connect`, or MCP `kagan_github_connect_repo`
-1. **Sync:** `Shift+G` or palette → `repo sync`, or MCP `kagan_github_sync_issues`
+## Import in the TUI
 
-Single-repo: `project_id` auto-resolves. Multi-repo: add `repo_id`.
+1. Open your project board in `kagan`
+1. Open Actions with `.`
+1. Run `github import`
+1. Enter your repository in `owner/repo` format
+1. Choose issue state (`open`, `closed`, or `all`)
+1. Press `Enter` to import
 
-## Issue ↔ Task mapping
+Kagan shows a summary with created, skipped, and error counts.
 
-| GitHub   | Kagan   |
-| -------- | ------- |
-| `OPEN`   | BACKLOG |
-| `CLOSED` | DONE    |
+## Import from CLI
 
-Titles: `[GH-123] Original Title`
-
-## AUTO/PAIR labels
-
-| Label             | Type |
-| ----------------- | ---- |
-| `kagan:mode:auto` | AUTO |
-| `kagan:mode:pair` | PAIR |
-
-Order: labels → repo default → **PAIR**. Conflict → PAIR wins.
-
-Repo default: `kagan.github.default_mode: "AUTO"` in repo scripts.
-
-## Lease coordination
-
-One instance per issue. `kagan:locked` label; 1h duration, 2h stale → auto-takeover. Disable: `kagan.github.lease_enforcement: false`.
-
-## Error codes
-
-| Code                       | Fix                              |
-| -------------------------- | -------------------------------- |
-| `GH_CLI_NOT_AVAILABLE`     | `brew install gh`                |
-| `GH_AUTH_REQUIRED`         | `gh auth login`                  |
-| `GH_REPO_ACCESS_DENIED`    | Check permissions                |
-| `GH_REPO_METADATA_INVALID` | Reconnect (use canonical `repo`) |
-| `GH_PROJECT_REQUIRED`      | Provide `project_id`             |
-| `GH_REPO_REQUIRED`         | Multi-repo: add `repo_id`        |
-| `GH_NOT_CONNECTED`         | Run connect first                |
-| `GH_SYNC_FAILED`           | Check gh access, inspect stats   |
-
-## MCP tools
-
-**V1 (frozen):** `kagan_github_contract_probe`, `kagan_github_connect_repo`, `kagan_github_sync_issues` — all MAINTAINER.
-
-**Extended:** `acquire_lease`, `release_lease`, `get_lease_state`, `create_pr_for_task`, `link_pr_to_task`, `reconcile_pr_status`, `check_ci_status`, `merge_pr`, `get_pr_review_comments`, `sync_task_status`.
-
-______________________________________________________________________
-
-## Operations
-
-### Initial setup checklist
-
-- [ ] `gh --version` installed, `gh auth login` completed
-- [ ] `gh repo view <owner>/<repo>` succeeds
-- [ ] Kagan project created with repository attached
-- [ ] `kagan_github_connect_repo` → response `code: "CONNECTED"`
-- [ ] Confirm `connection` metadata: canonical `repo`, correct `owner` and `default_branch`
-- [ ] `kagan_github_sync_issues` → tasks appear on board with `[GH-N]` prefix
-
-### Routine sync
-
-```json
-{
-  "tool": "kagan_github_sync_issues",
-  "arguments": { "project_id": "<project_id>" }
-}
+```bash
+kagan import github --repo octocat/hello-world
 ```
 
-Post-sync: check `stats.errors == 0`, compare `stats.total` with GitHub issue count.
+Optional flags:
 
-### Recovery
+- `--state open|closed|all`
+- `--label <label>` to import only matching issues
+- `--yes` to skip confirmation
 
-**Mapping drift:** Re-run `kagan_github_sync_issues`. Sync reconciles by issue number.
+If you omit `--repo`, Kagan prompts for it interactively.
 
-**Connection reset:** `kagan_github_connect_repo` is idempotent — returns `ALREADY_CONNECTED` if valid, refreshes if metadata changed. If metadata lacks canonical `repo` (legacy `name`-only), reconnect.
+## Label mapping
 
-### Rate limits
+These labels map automatically when importing:
 
-~5000 req/h via `gh`. Batch sync (once, not per-issue). Monitor: `gh api rate_limit`.
+- `priority:critical`, `priority:high`, `priority:medium`, `priority:low`
+- `kagan:auto`, `kagan:pair`
 
-### Scheduling sync
+Other labels are kept in the task description as tags.
 
-Kagan has no `--call` mode. To schedule:
+## Troubleshooting
 
-- Trigger from TUI (`Shift+G`)
-- Use any MCP client to call `kagan_github_sync_issues` against a running Kagan MCP server
+- `GitHub CLI (gh) not found` -> install from <https://cli.github.com>
+- `GitHub CLI not authenticated` -> run `gh auth login`
+- `repo must be in owner/repo format` -> use `owner/repo`, for example `octocat/hello-world`
 
-### Monitoring
+For a full environment check, run:
 
-| Cadence | Check                                         |
-| ------- | --------------------------------------------- |
-| Daily   | `stats.errors` from sync is 0                 |
-| Weekly  | GitHub issue count matches task count         |
-| Weekly  | Closed issues not stuck in BACKLOG            |
-| Weekly  | `kagan:locked` labels match active workspaces |
+```bash
+kagan doctor
+```

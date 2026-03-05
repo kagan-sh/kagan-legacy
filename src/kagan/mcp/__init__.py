@@ -1,21 +1,8 @@
-"""MCP server entry point for Kagan."""
+"""kagan.mcp — MCP server exposing kagan.core as MCP tools, resources, and prompts.
 
-from __future__ import annotations
+Entry point: create_server(opts) -> FastMCP
+"""
 
-from kagan.mcp.server import (
-    MCPRuntimeConfig,
-    MCPStartupError,
-    _create_mcp_server,
-    _mcp_lifespan,
-    main,
-)
-from kagan.mcp.tools import MCPBridgeError
+from kagan.mcp.server import ServerOptions, create_server
 
-__all__ = [
-    "MCPBridgeError",
-    "MCPRuntimeConfig",
-    "MCPStartupError",
-    "_create_mcp_server",
-    "_mcp_lifespan",
-    "main",
-]
+__all__ = ["ServerOptions", "create_server"]

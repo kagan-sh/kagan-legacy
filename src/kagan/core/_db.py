@@ -1,0 +1,109 @@
+import os
+import sqlite3
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
+from loguru import logger
+from sqlalchemy import Connection, Engine, event
+from sqlmodel import create_engine
+
+_HEAD_REVISION = "0001_v060_to_latest"
+_LEGACY_REVISION_REMAP = {"5b95758fdb4d": _HEAD_REVISION}
+
+
+def _make_alembic_config(database_url: str, connection: Connection | None = None) -> Config:
+    config = Config()
+    config.set_main_option("script_location", "kagan:core/adapters/db/migrations")
+    config.set_main_option("sqlalchemy.url", database_url)
+    if connection is not None:
+        config.attributes["connection"] = connection
+    return config
+
+
+def _normalize_revision_state(config: Config, connection: Connection) -> None:
+    current_revision = MigrationContext.configure(connection).get_current_revision()
+    if current_revision is None:
+        return
+
+    if remapped := _LEGACY_REVISION_REMAP.get(current_revision):
+        command.stamp(config, remapped, purge=True)
+        return
+
+    script = ScriptDirectory.from_config(config)
+    try:
+        if script.get_revision(current_revision) is not None:
+            return
+    except CommandError:
+        pass
+
+    raise RuntimeError(
+        "Unknown alembic revision "
+        f"'{current_revision}'. Run 'alembic stamp {_HEAD_REVISION}' after verifying schema state."
+    )
+
+
+def _run_alembic_upgrade(database_url: str, connection: Connection | None = None) -> None:
+    config = _make_alembic_config(database_url, connection)
+    if connection is not None:
+        _normalize_revision_state(config, connection)
+    command.upgrade(config, "head")
+
+
+def default_db_path() -> Path:
+    kagan_override = os.environ.get("KAGAN_DATA_DIR")
+    if kagan_override:
+        return Path(kagan_override) / "kagan.db"
+    from platformdirs import user_data_dir
+
+    return Path(user_data_dir("kagan", "kagan")) / "kagan.db"
+
+
+def create_db_engine(db_path: str | Path | None = None) -> Engine:
+    resolved = str(db_path) if db_path is not None else str(default_db_path())
+    logger.debug("Using database path: {}", resolved)
+
+    if resolved != ":memory:":
+        db_file = Path(resolved)
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+        url = f"sqlite:///{db_file}"
+    else:
+        url = "sqlite:///:memory:"
+
+    engine = create_engine(url, echo=False, connect_args={"check_same_thread": False})
+
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
+    if resolved == ":memory:":
+        with engine.begin() as connection:
+            _run_alembic_upgrade(url, connection)
+    else:
+        with engine.begin() as connection:
+            config = _make_alembic_config(url, connection)
+            _normalize_revision_state(config, connection)
+        _run_alembic_upgrade(url)
+
+    logger.debug("Database engine created and migrations applied")
+    return engine
+
+
+def get_db_version(engine: Engine) -> int:
+    with engine.connect() as conn:
+        if isinstance(value := conn.exec_driver_sql("PRAGMA data_version").scalar(), int):
+            return value
+    if value is None:
+        raise RuntimeError("SQLite PRAGMA data_version returned no value")
+    return int(value)
+
+
+__all__ = ["create_db_engine", "default_db_path", "get_db_version"]

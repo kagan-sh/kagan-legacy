@@ -1,217 +1,327 @@
-# AGENTS.md - Kagan Coding Agent Guide
+# AGENTS.md — Kagan Codebase Guide
 
-Purpose: give coding agents the minimum high-signal rules needed to ship safe, testable changes.
+AI-powered Kanban TUI for autonomous development workflows.
+Single Python package (`src/kagan/`) with six modules: `core`, `chat`, `tui`, `mcp`, `cli`, `plugins`.
 
-## Rule Scope and Precedence
+## Architecture
 
-- This file is the canonical repo-wide agent instruction file.
-- `.github/copilot-instructions.md` defers to this file.
-- No Cursor rules are currently present (`.cursorrules` and `.cursor/rules/` absent).
-- Keep this file concise and action-oriented; avoid architecture essays and legacy process detail.
-- Keep entries short, self-contained, and broadly applicable.
-- Avoid conflicting instructions across files.
-- Put file-type or directory-specific rules in `.github/instructions/*.instructions.md` if needed.
-
-## Engineering Principles (PEP 20, Pragmatic Form)
-
-- Prefer explicit over implicit behavior.
-- Prefer simple, readable solutions over clever ones.
-- Avoid ambiguity; define assumptions in code/tests.
-- Fail loudly on invalid state unless failure is intentionally suppressed.
-- Keep one obvious way to do routine tasks (build, test, lint, release).
-- Follow Zen of Python as a hard constraint: explicit, simple, readable, and one obvious way.
-
-## Instruction Maintenance
-
-- Treat this file as operational policy, not a design document.
-- Keep critical commands and rules near the top.
-- Remove stale migration-era instructions once they stop affecting behavior.
-- Prefer additive, scoped updates over large rewrites.
-
-## Setup
-
-```bash
-uv sync --dev
-uv run kagan
-uv run poe dev
+```
+src/kagan/
+  core/      -- domain models, services, adapters, agents (NO dependency on chat/tui/mcp/cli/plugins)
+  chat/      -- conversational abstractions, slash commands, REPL, orchestrator chat
+  tui/       -- Textual UI (screens, widgets, modals, styles)
+  mcp/       -- MCP server and tool registration
+  cli/       -- CLI entry points (Click)
+  plugins/   -- plugin system (entry-point discovery, import plugins)
 ```
 
-## Build / Lint / Format / Typecheck
+**Dependency rule:** `core` has no dependency on `chat`, `tui`, `mcp`, `cli`, or `plugins`.
+`chat` depends on `core` for agent spawning and event streaming. TUI/CLI import `chat` for REPL and chat features.
+Plugins depend on `core` but not on `chat`, `tui`, `mcp`, or `cli`.
+
+## Prerequisites
+
+- Python 3.12–3.14, `uv` for dependency management
+- tmux (for PAIR mode testing on macOS/Linux)
+- Git (for worktree functionality)
+
+## Build & Install
 
 ```bash
-uv build --wheel --package kagan
-uv run poe lint
-uv run poe format
-uv run poe fix
-uv run poe typecheck
-uv run poe check
-uv run pre-commit run --all-files
+uv sync --dev                          # Install all dependencies
+uv run poe install-local               # Install kagan as local CLI tool
+uv run poe dev                         # Run app with hot reload
+uv run kagan                           # Run the app
 ```
 
-## Test Commands
+## Lint / Format / Typecheck
 
 ```bash
-uv run pytest
+uv run poe fix                         # Auto-fix lint + format (run first!)
+uv run poe lint                        # Ruff linter only
+uv run poe format                      # Ruff formatter only
+uv run poe typecheck                   # Pyrefly type checker
+uv run poe deadcode                    # Vulture dead-code scan
+uv run poe check                       # Full quality gate (lint+typecheck+deadcode+migrations+test)
+uv run poe check-guardrails            # LOC budget + complexity check
 ```
 
-Or with paths/filters:
+## Testing
 
 ```bash
-uv run pytest tests/ -v
-uv run pytest tests/core/unit/test_runtime_state_service.py -v
-uv run pytest tests/ -k "runtime and refresh" -v
+uv run pytest                          # Run all tests (parallel by default: -n auto)
+uv run pytest tests/ -v                # Verbose
+uv run pytest tests/ -n 0 -v           # Sequential (for debugging)
+
+# Single file
+uv run pytest tests/core/test_tasks.py -v
+
+# Single class
+uv run pytest tests/core/test_tasks.py::TestClassName -v
+
+# Single test function
+uv run pytest tests/core/test_tasks.py::test_create_task_appears_in_backlog_with_id -v
+
+# By marker
 uv run pytest tests/ -m "core and unit" -v
-uv run pytest tests/ -n 0 -v   # sequential (debug/snapshot update)
-uv run pytest tests/tui/snapshot/ -n 0 -v --snapshot-update   # update snapshots
+uv run pytest tests/ -m "mcp and contract" -v
+
+# Database migration check
+uv run poe db-migrations-check
 ```
 
-## Pytest and Marker Policy
+### Test Markers
 
-- Default addopts include `-n auto --dist=loadgroup`.
-- Snapshot tests use `xdist_group` and run with `-n auto`; only `--snapshot-update` requires `-n 0`.
-- Package/type markers are path-assigned in `tests/conftest.py`.
-- Do not manually add: `core`, `mcp`, `tui`, `plugins`, `fast`, `unit`, `contract`, `snapshot`, `smoke`.
-- `integration` marker is deprecated/disallowed for explicit use.
-- Do not write tautology tests (tests that only restate implementation internals).
-- Prefer tests that validate useful user-facing behavior and observable outcomes.
+| Marker     | Purpose                                                    |
+| ---------- | ---------------------------------------------------------- |
+| `fast`     | Pure-logic tests, no I/O, no DB                            |
+| `unit`     | Pure logic tests, no I/O                                   |
+| `core`     | kagan-core behaviors                                       |
+| `mcp`      | MCP protocol boundary                                      |
+| `tui`      | Textual UI flows and rendering                             |
+| `smoke`    | Critical user-path checks                                  |
+| `contract` | Protocol/schema boundary tests                             |
+| `property` | Property-based tests (Hypothesis)                          |
+| `slow`     | Deselect with `-m "not slow"`                              |
+| `e2e`      | Requires real agent binaries (`KAGAN_INTEGRATION_TESTS=1`) |
 
-## Test Value Gate (Mandatory)
+### Test Configuration
 
-- Add tests only for user-visible behavior, API/contract guarantees, or real regressions.
-- Do not add tautology tests or pass-through wiring tests already covered elsewhere.
-- Search first (`rg`) for existing coverage and extend current tests instead of adding near-duplicates.
-- Reuse fixtures/helpers from `tests/**/conftest.py` and `tests/helpers/**`; avoid local fixtures when reusable ones exist.
-- Every new test must fail on the pre-fix path and pass after the fix.
-- If a new fixture is unavoidable, add a one-line comment explaining why shared fixtures are insufficient.
-- Before commit, remove or merge redundant tests introduced during the change.
+- **Framework:** pytest with `pytest-asyncio` (`asyncio_mode = "auto"`)
+- **Parallelism:** `pytest-xdist` (`-n auto --dist=loadgroup`), use `-n 0` to disable
+- **Default opts:** `-x -n auto --dist=loadgroup` (fail-fast, parallel)
+- **Coverage:** `pytest-cov` on `src/kagan`, branch coverage enabled
 
-Path mapping:
+### Test Conventions
 
-- `tests/core/fast/*` -> `core`, `fast`
-- `tests/core/unit/*` -> `core`, `unit`
-- `tests/core/smoke/*` -> `core`, `smoke`
-- `tests/mcp/contract/*` -> `mcp`, `contract`
-- `tests/mcp/smoke/*` -> `mcp`, `smoke`
-- `tests/tui/snapshot/*` -> `tui`, `snapshot`
-- `tests/tui/smoke/*` -> `tui`, `smoke`
-- `tests/plugins/*` -> `plugins`, `unit`
+- Tests live under `tests/{core,mcp,tui,plugins}/` by boundary, not implementation detail.
+- Name tests as behavioral specs: `test_<behavior>_<expected_outcome>`.
+- Each file has 2–6 tests, each test is 5–15 lines.
+- Most tests are `async def`; CLI surface tests with Click's `CliRunner` are sync.
+- Use `KaganDriver` DSL from `tests.helpers.driver` — never import from `kagan.core` internals.
+- Import test harness APIs from `kagan.testing` (canonical surface).
+- Use `tests.helpers` as the only shared test-support API (`.constants`, `.builders`, `.fakes`).
+- Reuse fixtures from `tests/conftest.py` before adding local fixtures.
+- **Real everything, fake agent.** Tests use real DB (in-memory SQLite), real git. Only fake is `FakeAgentFactory`.
+- Don't mock services/repos/adapters — only mock the agent.
+- Don't assert on logs, mock call counts, or DB rows — assert on observable state.
+- Don't use `asyncio.sleep` — wait for state changes.
 
 ## Code Style
 
-- Ruff is source of truth (`line-length = 100`, target `py312`).
-- Use `from __future__ import annotations` in Python modules.
-- Import order:
-  - standard library
-  - third-party
-  - local `kagan.*`
-  - type-only imports under `if TYPE_CHECKING:`
-- Type annotate public APIs and meaningful internal boundaries.
-- Prefer `X | None` over `Optional[X]`.
-- Use `Protocol` for service interfaces/boundaries.
-- Naming:
-  - classes: `PascalCase`
-  - functions/variables: `snake_case`
-  - constants: `UPPER_SNAKE_CASE`
-  - private members: `_leading_underscore`
+### Imports
 
-## Error Handling and Safety
+Order: stdlib → third-party → local. Use string quotes for forward references.
 
-- Never use bare `except:`.
-- Catch specific exceptions when possible.
-- Use `ValueError` for invalid input/data-contract violations.
-- Use `RuntimeError` for runtime/environment failures.
-- Preserve causal chain with `raise ... from exc`.
-- Broad `except Exception` only at explicit resilience boundaries.
-- In critical core files, broad exceptions require `quality-allow-broad-except`.
-- In critical core files, unbounded queues require `quality-allow-unbounded-queue`.
+```python
+from typing import TYPE_CHECKING, Any, cast
+from collections.abc import AsyncIterator, Mapping
 
-## Stable Architecture Boundaries
+from loguru import logger
+from sqlmodel import Field, SQLModel, select
 
-- Core daemon owns mutable runtime state.
-- SQLite is the single persisted source of truth.
-- DB writes happen through core services/adapters only.
-- TUI, MCP, and CLI are frontends over core operations.
-- No client-side mutation fallback around core.
-- Direct subprocess calls are only allowed in:
-  - `src/kagan/core/adapters/process.py`
+from kagan.core.enums import TaskStatus, WorkMode
+from kagan.core.errors import NotFoundError
 
-### Module Map
-
-**Domain layer** — `src/kagan/core/domain/`
-
-- `enums.py` — canonical enums (TaskStatus, TaskType, etc.)
-- `errors.py` — domain-specific error types
-- `task_rules.py` — task lifecycle/transition rules
-
-**Command dispatch** — `src/kagan/core/commands/`
-
-- `tasks.py`, `projects.py`, `automation.py`, `workspaces.py`, `plugins.py` — command handlers by capability
-- `_parsing.py` — input parsing helpers (limits, offsets, timeouts)
-- `_serialization.py` — response building and output formatting
-- `__init__.py` — `CommandRouter` dispatches `(capability, method)` pairs to handlers
-
-**Policy** — `src/kagan/core/policy.py`
-
-- Consolidated auth/security: `CapabilityProfile`, `AuthorizationPolicy`, `SessionBinding`, `@command` decorator, `RequestContext`
-- Merged from the former `security.py`, `session_binding.py`, `expose.py`, `request_context.py`
-
-**SDK** — `src/kagan/sdk/`
-
-- `_client.py` — `KaganSDK` typed client
-- `_transport.py` — `SDKTransport` (IPC communication)
-- `_types.py` — response dataclasses
-- `_errors.py` — `SDKError` hierarchy
-
-**MCP server** — `src/kagan/mcp/`
-
-- `server.py` — FastMCP server setup
-- `tools.py` — MCP tool definitions (bridge layer)
-- `_tool_gen.py` — tool registration/generation
-- `_response_models.py` — MCP response models
-- `_truncation.py` — response size management
-
-### Compatibility Shims (transitional)
-
-These modules delegate to `core/commands/` and exist only for backward-compatible imports in tests:
-
-- `core/request_handlers/` — handler facades wrapping command functions
-- `core/request_dispatch_map/` — dispatch map built from `CommandRouter`
-- `core/request_handler_support.py` — re-exports from `commands/_parsing.py` and `commands/_serialization.py`
-
-## TUI Rules
-
-- Keep Textual styling in:
-  - `src/kagan/tui/styles/kagan.tcss`
-- Do not add `DEFAULT_CSS` in Python widgets/screens.
-- Reuse shared keybindings from:
-  - `src/kagan/tui/keybindings.py`
-
-## Docs and Workflow Validation
-
-```bash
-uv run poe docs-serve
-uv run poe docs-build
-uv run poe workflows-check
+if TYPE_CHECKING:
+    from kagan.tui.app import KaganApp
 ```
 
-- Any user-facing behavior change must be documented in user-facing docs in the same change.
+- Ruff enforces import sorting (`I` rules enabled).
+- Use `TYPE_CHECKING` block for type-only imports to avoid circular dependencies.
+- Absolute imports everywhere (no relative imports).
+- For forward references in type annotations, use string quotes: `def foo() -> "SomeClass":`
 
-## Commit Conventions
+### Type Annotations
 
-- Allowed tags:
-  - `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `style`, `refactor`, `test`
-- Keep commits small and single-purpose.
-- In CI/automation contexts, disable GPG signing if needed:
-  - `git config commit.gpgsign false`
-- Before push:
-  - `uv run poe fix`
-  - `uv run poe check`
+- Always annotate function signatures and class attributes.
+- Use `X | None` union syntax — **never** `Optional[X]`.
+- Use `cast()` for type narrowing: `return cast("KaganApp", self.app)`.
+- Use `TYPE_CHECKING` block for imports needed only by type checkers.
+- Type checker: Pyrefly (not mypy). Some cross-module errors are suppressed in `pyproject.toml`.
 
-## Done Checklist for Agents
+### Naming Conventions
 
-- Ran the smallest relevant tests first, then broader gates as needed.
-- Do not claim completion without executing verification commands.
-- Updated tests/docs when behavior or contracts changed.
-- Confirmed tests exercise user-facing behavior (not implementation tautologies).
-- Kept changes within existing boundaries unless task explicitly required boundary changes.
-- Left a short summary with changed files and verification commands executed.
+| Type            | Convention        | Example                           |
+| --------------- | ----------------- | --------------------------------- |
+| Classes         | PascalCase        | `TaskCard`, `KanbanScreen`        |
+| Functions       | snake_case        | `get_all_tasks`, `_refresh_board` |
+| Private         | underscore prefix | `_get_focused_card`, `_db.py`     |
+| Constants       | UPPER_SNAKE       | `COLUMN_ORDER`, `MIN_WIDTH`       |
+| Enums           | PascalCase/UPPER  | `TaskStatus.BACKLOG`              |
+| Private modules | underscore prefix | `_transitions.py`, `_agent.py`    |
+
+### Naming Conventions
+
+| Type            | Convention        | Example                           |
+| --------------- | ----------------- | --------------------------------- |
+| Classes         | PascalCase        | `TaskCard`, `KanbanScreen`        |
+| Functions       | snake_case        | `get_all_tasks`, `_refresh_board` |
+| Private         | underscore prefix | `_get_focused_card`, `_db.py`     |
+| Constants       | UPPER_SNAKE       | `COLUMN_ORDER`, `MIN_WIDTH`       |
+| Enums           | PascalCase/UPPER  | `TaskStatus.BACKLOG`              |
+| Private modules | underscore prefix | `_transitions.py`, `_agent.py`    |
+
+### Error Handling
+
+Custom error hierarchy rooted in `KaganError`:
+
+```
+KaganError
+├── NotFoundError(entity, entity_id)
+├── InvalidTransitionError(from_status, to_status)
+├── WorktreeError
+│   └── MergeConflictError(message, conflict_files)
+├── AgentError
+├── PreflightError
+└── PluginError
+    └── PluginSyncError
+```
+
+- All errors carry structured data (not just messages).
+- Import errors from `kagan.core.errors` or `kagan.core` (re-exported).
+
+### Formatting
+
+- **Line length:** 100 characters (Ruff enforced).
+- **Formatter:** Ruff (`ruff format`), docstring code formatting enabled.
+- **Target:** Python 3.12.
+- **Ruff rules:** E, F, I, UP, B, SIM, TCH, RUF (see `pyproject.toml` for ignores).
+
+### Logging
+
+- **Loguru only** — no stdlib `logging`. Import: `from loguru import logger`.
+- One `logger.configure()` call in `kagan.core.__init__`. Other modules just use `logger` directly.
+- Use `logger.bind(task_id=..., session_id=...)` for structured context.
+- File sink at `~/.local/state/kagan/kagan.log`, 10 MB rotation, 3 retained.
+
+### Models & Database
+
+- **SQLModel** — one class is both Pydantic model and DB table definition.
+- All DB operations via sync `sqlmodel.Session` (async is for agent/terminal ops, not DB).
+- IDs are 8-char hex UUIDs: `uuid4().hex[:8]`.
+- Timestamps use `datetime.now(UTC)`.
+
+### Textual (TUI) Patterns
+
+- **Hybrid CSS architecture**: Widget `DEFAULT_CSS` for scoped structural styling (lowest specificity), `CSS_PATH` TCSS files for global theme and screen layout (higher specificity). See `docs/internal/architecture/tui.md` § Styling Strategy.
+- Messages as dataclasses: `@dataclass class Selected(Message): task: Task`.
+- Button handlers with `@on(Button.Pressed, "#save-btn")`.
+- Reactive attributes: `tasks: reactive[list[Task]] = reactive(list, recompose=True)`.
+- Widget IDs in `__init__`: `super().__init__(id=f"card-{task.id}", **kwargs)`.
+
+### Module Structure
+
+- `core/` is flat (~27 files, no sub-packages). Private modules prefixed with `_`.
+- Public API re-exported from `__init__.py` with explicit `__all__`.
+- Fluent API: `client.tasks.create()`, `client.projects.list()` — namespace is the subject, don't repeat it in method names.
+
+## Git & Commits
+
+```bash
+git config commit.gpgsign false        # Disable GPG signing for agent workflows
+```
+
+- Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `ci:`, `perf:`.
+- Semantic release on main branch.
+
+## Database Migrations (Alembic)
+
+```bash
+uv run poe db-migration-generate "describe schema change"  # Generate revision
+uv run poe db-migrations-check                              # Validate migrations
+```
+
+- Migration files in `src/kagan/core/adapters/db/migrations/versions/`.
+- Autogenerated files are excluded from Ruff/Pyrefly/pre-commit — review SQL manually.
+
+## Key Rules
+
+1. **Hybrid CSS** — Widget `DEFAULT_CSS` for structural styling, TCSS files (`app.tcss`, `kanban.tcss`, `chat.tcss`) for theme/layout. Never inline `CSS = """..."""` on App.
+1. **Async database** — All DB operations via SQLModel TaskRepository.
+1. **Constants module** — Use `kagan.core.constants` for shared values.
+1. **Module boundaries by change** — Split when responsibilities or change cadence diverge.
+1. **Core owns execution** — Frontends call `task.run()`/`task.pair()`, never launch agents directly.
+1. **No type suppression** — Never use `as any`, `@ts-ignore`, `# type: ignore` (except SQLModel `__tablename__` in `models.py`).
+
+## Deep Dive
+
+The `docs/internal/` directory contains detailed architecture and behavioral specs. Consult these before making non-trivial changes to a module:
+
+| Module  | Architecture                                                                                                          | Behavioral Spec                     |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| core    | `docs/internal/architecture/core.md` — client construction, fluent API, data models, event streaming, agent lifecycle | `docs/internal/features/core.md`    |
+| chat    | `docs/internal/architecture/chat.md` — controller, slash commands, sessions, REPL, ACP integration                    | `docs/internal/features/chat.md`    |
+| tui     | `docs/internal/architecture/tui.md` — screen hierarchy, state management, CSS strategy, chat integration              | `docs/internal/features/tui.md`     |
+| mcp     | `docs/internal/architecture/mcp.md` — server structure, toolset registration, access control, transport               | `docs/internal/features/mcp.md`     |
+| cli     | `docs/internal/architecture/cli.md` — command structure, bootstrap, lazy imports                                      | `docs/internal/features/cli.md`     |
+| plugins | `docs/internal/architecture/plugins.md` — entry-point discovery, ABC hierarchy, provenance, GitHub import             | `docs/internal/features/plugins.md` |
+
+Testing conventions and DSL guide: `docs/internal/testing.md`.
+
+## Pitfalls
+
+### core
+
+- **Don't import from `_`-prefixed modules** — `_db.py`, `_transitions.py`, `_agent.py` etc. are private. Use the public API re-exported from `kagan.core.__init__`.
+- **Don't use `asyncio.sleep` for waiting** — use `task.events.stream()` which signals reactively via `asyncio.Event`. The 5-second timeout is a safety net, not a polling interval.
+- **Don't create a second `KaganCore`** — one instance per process. Frontends share it. The TUI creates it in `on_mount`, CLI in `_bootstrap.make_client()`, MCP in lifespan.
+- **Don't skip the state machine** — task status transitions go through `_transitions.py`. Calling `task.set_status()` validates the transition; writing to the DB directly will corrupt state.
+- **Don't put chat logic in core** — conversational abstractions (`ChatSession`, slash commands) live in `kagan.chat`. Core provides raw primitives only.
+- **Unified Session model** — there's one `Session` model with a `mode` field (AUTONOMOUS or PAIR). Don't create separate models for different execution modes.
+
+### tui
+
+- **Never put business logic in TUI** — the TUI is a thin presentation shell. All state changes go through `self.app.core`. If you're writing an `if` that decides task behavior, it belongs in core.
+- **Don't use `CSS = """..."""` on App or screens** — use `DEFAULT_CSS` on individual widgets for structural styles, and `.tcss` files for theme/layout. Inline CSS on App breaks the specificity model.
+- **Don't call `refresh()` manually** — use `reactive` and `var` with watch methods. Textual's reactivity system handles re-renders.
+- **Don't use `call_from_thread` or callbacks** — workers pull `task.events.stream()` and post Textual messages. One pattern, no bridging.
+- **Don't import from `kagan.core._*`** — use `self.app.core` (the `KaganCore` instance) for all operations.
+
+### mcp
+
+- **Don't wrap `MCPServer`** — use `@mcp.tool()` directly. No abstraction layer over the python-sdk.
+- **Tools are plain functions** — type hints drive the JSON schema. Don't construct schemas manually.
+- **Don't add HTTP/SSE transport** — STDIO only. Hosts launch `kagan mcp` as a subprocess.
+- **Access control is registration-time** — tools are filtered when registered based on `--readonly`/`--admin`/`--session-id` flags, not at call time.
+
+### cli
+
+- **Lazy imports only** — CLI command functions import `kagan.core`, `kagan.tui`, etc. inside function bodies, never at module top-level. This keeps `kagan --help` fast.
+- **One error boundary** — `_CLIGroup` catches all exceptions. Don't add try/except in individual commands.
+- **Use `_bootstrap.make_client()`** — don't construct `KaganCore` directly in commands.
+
+### chat
+
+- **Don't import from private submodules** — use public API from `kagan.chat.__init__` (`ChatController`, `run_chat`, slash command utilities).
+- **ChatController owns the orchestrator turn** — TUI/CLI call `ChatController` methods; never spawn agents directly from chat components.
+- **Slash commands are declarative** — register via `SlashCommandSpec`, not imperative registration calls.
+- **Sessions persist in core settings** — chat sessions use `client.settings` for storage; no separate chat state DB.
+- **REPL is stateful** — `run_chat_async` maintains conversation state; short-lived CLI commands use `run_chat` one-shot.
+
+### plugins
+
+- **Don't import from `_base.py` or `_github.py` directly** — use the public API from `kagan.plugins` (`PluginManager`, `ImporterPlugin`, etc.).
+- **Always call `configure()` before `sync()`** — entry-point discovery instantiates plugins with no args. Configuration is a separate step.
+- **Don't put plugin logic in core** — `kagan.plugins` depends on `kagan.core`, never the reverse.
+- **Lazy imports in CLI/MCP** — `kagan.plugins` is imported inside function bodies, not at module top-level. This keeps startup fast.
+- **Entry-point name must match `plugin.name`** — mismatches are skipped. The entry-point name in `pyproject.toml` is the canonical identifier.
+
+### testing
+
+- **Don't import from `kagan.core` internals in tests** — use `KaganDriver` DSL from `tests.helpers.driver`. Tests are behavioral specs, not implementation probes.
+- **Don't mock services or repositories** — only mock the agent (`FakeAgentFactory`). Everything else runs real.
+- **Don't assert on DB rows** — assert on observable state through the driver.
+- **Don't add `asyncio.sleep` in tests** — wait for state changes via the driver's wait methods.
+
+## Pre-Completion Checklist
+
+Before marking a task complete, verify:
+
+- [ ] `uv run poe fix` passes (auto-fix lint + format)
+- [ ] `uv run poe typecheck` passes (Pyrefly)
+- [ ] Tests pass for affected module: `uv run pytest tests/{module}/ -v`
+- [ ] No new `# type: ignore` or `noqa` comments added
+- [ ] If DB schema changed: `uv run poe db-migrations-check` passes
+- [ ] Imports follow stdlib → third-party → local ordering with string quotes for forward references
+- [ ] New code has type annotations on all function signatures

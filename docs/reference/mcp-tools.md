@@ -34,7 +34,7 @@ Legacy bridge module paths `kagan.mcp.server` and `kagan.mcp.models` were remove
 | `task_get(...)`      | `read-only`   | Read bounded task snapshot (`summary`/`full`) or bounded context (`mode=context`) |
 | `task_logs(...)`     | `read-only`   | Read paginated task execution logs (newest-first pages)                           |
 | `task_list(...)`     | `read-only`   | List tasks with optional filtering and scratchpad inclusion                       |
-| `task_wait(...)`     | `read-only`   | Long-poll task status changes                                                     |
+| `tasks_wait(...)`    | `read-only`   | Long-poll task status changes                                                     |
 | `task_create(...)`   | `mutating`    | Create a task                                                                     |
 | `task_patch(...)`    | `mutating`    | Apply partial task updates, transitions, and note append                          |
 | `task_annotate(...)` | `mutating`    | Append a timestamped reasoning note to a task's scratchpad                        |
@@ -172,18 +172,18 @@ as input to the acceptance criteria coverage check at REVIEW transition time.
 
 ______________________________________________________________________
 
-## `task_wait` long-poll API
+## `tasks_wait` long-poll API
 
-`task_wait` blocks until task status changes or timeout is reached.
+`tasks_wait` blocks until task status changes or timeout is reached.
 
 ### Parameters
 
-| Parameter         | Type              | Default                | Description                                            |
-| ----------------- | ----------------- | ---------------------- | ------------------------------------------------------ |
-| `task_id`         | `string`          | required               | Task to watch                                          |
-| `timeout_seconds` | `float \| string` | server default (1800s) | Maximum wait duration                                  |
-| `wait_for_status` | `list \| string`  | `null`                 | Optional status filter (empty list/string = no filter) |
-| `from_updated_at` | `string`          | `null`                 | Race-safe resume cursor                                |
+| Parameter          | Type              | Default                | Description                                            |
+| ------------------ | ----------------- | ---------------------- | ------------------------------------------------------ |
+| `task_ids`         | `list[string]`    | required               | Task ids to watch (one or many)                        |
+| `timeout_seconds`  | `float \| string` | server default (1800s) | Maximum wait duration                                  |
+| `wait_for_status`  | `list \| string`  | `null`                 | Optional status filter (empty list/string = no filter) |
+| `resolve_when_any` | `bool`            | `false`                | Return when first watched task resolves                |
 
 ### Response codes
 
@@ -256,16 +256,16 @@ Default and max timeouts are server-side configurable via settings:
 
 ## Common recovery codes
 
-| Code                         | Meaning                                     | Typical action                      |
-| ---------------------------- | ------------------------------------------- | ----------------------------------- |
-| `START_PENDING`              | Job accepted, pending scheduler admission   | Poll with `job_poll(wait=true)`     |
-| `DISCONNECTED`               | Core unavailable                            | Start/restart core, retry           |
-| `AUTH_STALE_TOKEN`           | MCP token is stale after core restart       | Reconnect MCP client                |
-| `CLIENT_OUTDATED`            | Client version/build hash mismatches core   | Restart MCP/TUI session             |
-| `CLIENT_VERSION_REQUIRED`    | Client did not send runtime version         | Restart MCP/TUI session             |
-| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash      | Restart MCP/TUI session             |
-| `WAIT_TIMEOUT`               | `task_wait` timed out without status change | Retry with same or adjusted timeout |
-| `WAIT_INTERRUPTED`           | `task_wait` was interrupted/cancelled       | Retry with `from_updated_at` cursor |
+| Code                         | Meaning                                      | Typical action                      |
+| ---------------------------- | -------------------------------------------- | ----------------------------------- |
+| `START_PENDING`              | Job accepted, pending scheduler admission    | Poll with `job_poll(wait=true)`     |
+| `DISCONNECTED`               | Core unavailable                             | Start/restart core, retry           |
+| `AUTH_STALE_TOKEN`           | MCP token is stale after core restart        | Reconnect MCP client                |
+| `CLIENT_OUTDATED`            | Client version/build hash mismatches core    | Restart MCP/TUI session             |
+| `CLIENT_VERSION_REQUIRED`    | Client did not send runtime version          | Restart MCP/TUI session             |
+| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash       | Restart MCP/TUI session             |
+| `WAIT_TIMEOUT`               | `tasks_wait` timed out without status change | Retry with same or adjusted timeout |
+| `WAIT_INTERRUPTED`           | `tasks_wait` was interrupted/cancelled       | Retry with the same task_ids cursor |
 
 ## Capability profiles
 

@@ -1,0 +1,380 @@
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
+
+from textual import events, on
+from textual.app import ComposeResult
+from textual.containers import Container
+from textual.screen import Screen
+from textual.widgets import Footer, OptionList, Static
+
+from kagan.core.errors import SessionError
+from kagan.core.models import Project
+from kagan.tui.keybindings import WELCOME_BINDINGS, get_key_for_action
+from kagan.tui.screens.setup import OnboardingFlow
+from kagan.tui.widgets.hint_bar import KeybindingHint
+
+if TYPE_CHECKING:
+    from kagan.core.models import Repository
+    from kagan.tui.app import KaganApp
+
+
+_WELCOME_LOGO = """\
+█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
+█▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
+
+
+class WelcomeScreen(Screen[None]):
+    """Project launcher — one list, one action, zero redundancy."""
+
+    BINDINGS = [*WELCOME_BINDINGS]
+
+    def __init__(
+        self,
+        suggest_cwd: bool = True,
+        cwd_path: str | None = None,
+        cwd_is_git_repo: bool = False,
+        highlight_recent: bool = False,
+    ) -> None:
+        super().__init__(id="welcome-screen")
+        self._projects: list[Project] = []
+        self._repos_by_project_id: dict[str, list[Repository]] = {}
+        resolved_cwd_path = cwd_path or str(Path.cwd())
+        resolved_cwd_is_git = cwd_is_git_repo or (Path(resolved_cwd_path) / ".git").exists()
+
+        self._suggest_cwd = suggest_cwd
+        self._cwd_path = resolved_cwd_path
+        self._cwd_is_git_repo = resolved_cwd_is_git
+        self._highlight_recent = highlight_recent
+
+    @property
+    def kagan_app(self) -> "KaganApp":
+        return cast("KaganApp", self.app)
+
+    # ------------------------------------------------------------------
+    # Compose — logo, optional CWD banner, project list. Nothing else.
+    # ------------------------------------------------------------------
+
+    def compose(self) -> ComposeResult:
+        with Container(id="welcome-container"):
+            yield Static(_WELCOME_LOGO, id="logo")
+
+            if self._suggest_cwd and self._cwd_path:
+                with Container(id="cwd-suggestion-banner"):
+                    if self._cwd_is_git_repo:
+                        yield Static(
+                            "Create a project here to start tracking tasks in this codebase",
+                            id="cwd-title",
+                        )
+                    else:
+                        yield Static(
+                            "Create a project here to start tracking tasks — git will initialize",
+                            id="cwd-title",
+                        )
+                    yield Static(self._cwd_path, id="cwd-path")
+                    yield Static(
+                        "[bold]Enter[/] create project  [bold]Esc[/] dismiss",
+                        classes="modal-action-hint",
+                        id="cwd-actions-hint",
+                    )
+
+            yield Static("Recent Projects", id="recent-header")
+            yield Static("Loading projects…", id="projects-loading")
+            yield OptionList(id="project-list")
+            yield Static(
+                "Welcome to Kagan! Create your first project to get started.",
+                id="first-launch-welcome",
+            )
+            yield Static(
+                "No recent projects. Create a new project or open a folder.",
+                id="empty-state",
+            )
+        yield KeybindingHint(id="welcome-hint", classes="keybinding-hint")
+        yield Footer(show_command_palette=False)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    async def on_mount(self) -> None:
+        await self._reload_projects()
+        await self._maybe_hide_cwd_banner()
+        self._update_keybinding_hints()
+
+    async def on_screen_resume(self) -> None:
+        await self._reload_projects()
+        await self._maybe_hide_cwd_banner()
+        self._update_keybinding_hints()
+
+    async def _maybe_hide_cwd_banner(self) -> None:
+        """Hide CWD banner when the path is already linked to a project."""
+        if not self._suggest_cwd or not self._cwd_path:
+            return
+        banner = self.query_one("#cwd-suggestion-banner", Container)
+        resolved = str(Path(self._cwd_path).resolve())
+        existing = await self.kagan_app.core.projects.find_by_repo(resolved)
+        if existing is not None:
+            banner.display = False
+
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
+
+    async def action_reload_projects(self) -> None:
+        await self._reload_projects()
+
+    async def _reload_projects(self) -> None:
+        self._projects = sorted(
+            await self.kagan_app.core.projects.list(),
+            key=lambda project: project.updated_at,
+            reverse=True,
+        )
+        self._repos_by_project_id.clear()
+        for project in self._projects:
+            repos = await self.kagan_app.core.projects.repos(project.id)
+            self._repos_by_project_id[project.id] = repos
+
+        option_list = self.query_one("#project-list", OptionList)
+        option_list.clear_options()
+        self.query_one("#projects-loading", Static).display = False
+        empty_state = self.query_one("#empty-state", Static)
+        first_launch = self.query_one("#first-launch-welcome", Static)
+
+        if self._projects:
+            option_list.display = True
+            empty_state.display = False
+            first_launch.display = False
+            option_list.add_options(
+                [
+                    self._project_label(project, index)
+                    for index, project in enumerate(self._projects)
+                ]
+            )
+            option_list.highlighted = 0
+            self._update_keybinding_hints()
+            return
+
+        option_list.display = False
+        empty_state.display = not self._suggest_cwd
+        first_launch.display = True
+        self._update_keybinding_hints()
+
+    def _project_label(self, project: Project, index: int) -> str:
+        shortcut = f"[{index + 1}]" if index < 9 else "   "
+        repo_count = len(self._repos_by_project_id.get(project.id, []))
+        repo_label = "repo" if repo_count == 1 else "repos"
+        updated = self._relative_timestamp(project.updated_at)
+        return f"{shortcut} {project.name} · {repo_count} {repo_label} · {updated}"
+
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
+
+    def _update_keybinding_hints(self) -> None:
+        hint_widget = self.query_one("#welcome-hint", KeybindingHint)
+        escape_label = "back" if self.kagan_app.project is not None else "quit"
+        enter_label = "open"
+        if self._should_enter_create_from_cwd():
+            enter_label = "create"
+        elif not self._projects:
+            enter_label = "new project"
+        hint_widget.show_hints(
+            [
+                (get_key_for_action(WELCOME_BINDINGS, "open_selected", "Enter"), enter_label),
+                (
+                    get_key_for_action(WELCOME_BINDINGS, "move_selection_down", "Down / j"),
+                    "navigate",
+                ),
+                (get_key_for_action(WELCOME_BINDINGS, "focus_next", "Tab"), "next"),
+                (get_key_for_action(WELCOME_BINDINGS, "new_project", "n"), "new"),
+                (get_key_for_action(WELCOME_BINDINGS, "open_folder", "o"), "open folder"),
+                (get_key_for_action(WELCOME_BINDINGS, "quit", "Esc"), escape_label),
+            ]
+        )
+
+    def action_settings(self) -> None:
+        self.app.push_screen("settings-modal")
+
+    def action_move_selection_up(self) -> None:
+        option_list = self.query_one("#project-list", OptionList)
+        if not self._projects:
+            return
+        current = option_list.highlighted if option_list.highlighted is not None else 0
+        option_list.highlighted = max(0, current - 1)
+
+    def action_move_selection_down(self) -> None:
+        option_list = self.query_one("#project-list", OptionList)
+        if not self._projects:
+            return
+        current = option_list.highlighted if option_list.highlighted is not None else 0
+        option_list.highlighted = min(len(self._projects) - 1, current + 1)
+
+    def action_focus_next(self) -> None:
+        self.focus_next()
+
+    def action_focus_previous(self) -> None:
+        self.focus_previous()
+
+    async def action_quit(self) -> None:
+        await self.kagan_app.action_quit()
+
+    # ------------------------------------------------------------------
+    # Project actions
+    # ------------------------------------------------------------------
+
+    async def _create_project_from_cwd(self) -> None:
+        if not self._cwd_path:
+            return
+        cwd = Path(self._cwd_path)
+        existing_project = await self.kagan_app.core.projects.find_by_repo(str(cwd.resolve()))
+        if existing_project is not None:
+            await self.kagan_app.activate_project(existing_project)
+            self.app.switch_screen("kanban-screen")
+            return
+        try:
+            project = await self.kagan_app.core.projects.create(
+                cwd.name, repo_paths=[self._cwd_path]
+            )
+        except SessionError as exc:
+            self.app.notify(
+                f"Unable to create project from current folder: {exc}", severity="error"
+            )
+            return
+        await self.kagan_app.activate_project(project)
+        self.app.switch_screen("kanban-screen")
+
+    def _dismiss_cwd_banner(self) -> None:
+        self.query_one("#cwd-suggestion-banner", Container).display = False
+
+    async def action_open_selected(self) -> None:
+        if self._should_enter_create_from_cwd():
+            await self._create_project_from_cwd()
+            return
+        if not self._projects:
+            self.action_new_project()
+            return
+        option_list = self.query_one("#project-list", OptionList)
+        await self.action_open_project(str(self._selected_project_index(option_list)))
+
+    def _should_enter_create_from_cwd(self) -> bool:
+        if not self._cwd_banner_visible():
+            return False
+        if not self._projects:
+            return True
+
+        option_list = self.query_one("#project-list", OptionList)
+        selected_project = self._projects[self._selected_project_index(option_list)]
+        selected_repos = self._repos_by_project_id.get(selected_project.id, [])
+        return len(selected_repos) > 0
+
+    @staticmethod
+    def _selected_project_index(option_list: OptionList) -> int:
+        selected_index = option_list.highlighted
+        if selected_index is None:
+            return 0
+        return selected_index
+
+    async def action_open_project(self, index: str) -> None:
+        if not self._projects:
+            return
+        try:
+            selected_index = int(index)
+        except ValueError:
+            return
+        if selected_index < 0 or selected_index >= len(self._projects):
+            return
+        project = self._projects[selected_index]
+        await self.kagan_app.activate_project(project)
+        self.app.switch_screen("kanban-screen")
+
+    def action_new_project(self) -> None:
+        self.app.push_screen(OnboardingFlow(mode="new-project"))
+
+    def action_open_folder(self) -> None:
+        self.app.push_screen(
+            OnboardingFlow(
+                mode="open-folder",
+                initial_repo_path=self._cwd_path if self._cwd_is_git_repo else None,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
+
+    async def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id != "project-list":
+            return
+
+    @on(OptionList.OptionSelected, "#project-list")
+    async def _on_project_selected(self, _: OptionList.OptionSelected) -> None:
+        option_list = self.query_one("#project-list", OptionList)
+        selected_index = option_list.highlighted
+        if selected_index is None:
+            selected_index = 0
+        await self.action_open_project(str(selected_index))
+
+    async def on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            await self.action_open_selected()
+            return
+        if event.key == "escape":
+            if self._suggest_cwd and self._cwd_path:
+                banner = self.query_one("#cwd-suggestion-banner", Container)
+                if banner.display:
+                    event.prevent_default()
+                    event.stop()
+                    self._dismiss_cwd_banner()
+                    self._update_keybinding_hints()
+                    return
+        if event.key == "n":
+            event.prevent_default()
+            event.stop()
+            self.action_new_project()
+            return
+        if event.key == "o":
+            event.prevent_default()
+            event.stop()
+            self.action_open_folder()
+            return
+        if event.key == ",":
+            event.prevent_default()
+            event.stop()
+            self.action_settings()
+            return
+        if event.key == "r":
+            event.prevent_default()
+            event.stop()
+            await self.action_reload_projects()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _relative_timestamp(self, value: datetime) -> str:
+        delta = datetime.now(UTC) - value.astimezone(UTC)
+        seconds = max(int(delta.total_seconds()), 0)
+        if seconds < 60:
+            return "just now"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes}m ago"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}h ago"
+        days = hours // 24
+        if days < 30:
+            return f"{days}d ago"
+        months = days // 30
+        if months < 12:
+            return f"{months}mo ago"
+        years = months // 12
+        return f"{years}y ago"
+
+    def _cwd_banner_visible(self) -> bool:
+        if not self._suggest_cwd or not self._cwd_path:
+            return False
+        banner = self.query_one("#cwd-suggestion-banner", Container)
+        return bool(banner.display)

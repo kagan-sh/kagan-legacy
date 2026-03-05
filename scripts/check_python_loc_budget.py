@@ -13,6 +13,7 @@ EXCLUDED_DIR_NAMES = {
     "build",
     "dist",
     "__pycache__",
+    "references",
 }
 
 

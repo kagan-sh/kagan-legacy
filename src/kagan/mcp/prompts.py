@@ -1,0 +1,104 @@
+"""kagan.mcp.prompts — MCP prompt registrations."""
+
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.prompts.base import UserMessage
+
+from kagan.core import PROMPT_REVIEW_KEY, prepend_custom_prompt
+from kagan.mcp.server import ServerOptions, get_server_context
+
+
+def register(mcp: FastMCP, opts: ServerOptions) -> None:
+    """Register all kagan MCP prompts — always available regardless of access tier."""
+
+    async def _inject_review_customizations(base_prompt: str) -> str:
+        app = get_server_context(mcp)
+        if app is None:
+            return base_prompt
+        settings = await app.client.settings.get()
+        custom = settings.get(PROMPT_REVIEW_KEY, "").strip()
+        return prepend_custom_prompt(base_prompt, custom if custom else None)
+
+    @mcp.prompt()
+    async def review_task(task_id: str) -> list[UserMessage]:
+        """Return a structured code-review prompt for the given task."""
+        base_prompt = (
+            f"Review task {task_id}.\n\n"
+            "<review-protocol>\n"
+            "1. Retrieve the task with task_get to read its acceptance criteria.\n"
+            "2. If the task has NO acceptance criteria, STOP. Respond with:\n"
+            "   'This task has no acceptance criteria — manual human review required.'\n"
+            "   Do NOT approve or reject.\n"
+            "3. If acceptance criteria exist, verify EACH criterion:\n"
+            "   - Check the diff/code changes for evidence that the criterion is met.\n"
+            "   - Mark each criterion as PASS or FAIL with a one-line justification.\n"
+            "4. Review code quality: bugs, missing edge cases, style violations.\n"
+            "5. Verdict:\n"
+            "   - ALL criteria PASS and no blocking issues → approve.\n"
+            "   - ANY criterion FAIL or blocking issue → reject with specific feedback.\n"
+            "</review-protocol>"
+        )
+        prompt = await _inject_review_customizations(base_prompt)
+        return [UserMessage(prompt)]
+
+    @mcp.prompt()
+    async def plan_tasks_from_description(description: str) -> list[UserMessage]:
+        """Return a task-breakdown prompt for the given feature description."""
+        return [
+            UserMessage(
+                f"Break down the following feature into concrete tasks:\n\n{description}\n\n"
+                "For each task provide:\n"
+                "- A short title (\u2264 10 words)\n"
+                "- A one-sentence description\n"
+                "- Acceptance criteria (2-6 bullets, concrete and verifiable)\n"
+                "- Dependency notes (what must finish first, if anything)\n"
+                "- Parallelization notes (what can run concurrently safely)\n"
+                "- Estimated effort: small / medium / large\n"
+                "- Execution mode: AUTO or PAIR\n"
+                "  \u2022 AUTO (default): agent works independently to completion. "
+                "Best for well-defined, self-contained tasks with clear acceptance criteria.\n"
+                "  \u2022 PAIR: agent works interactively as co-pilot in a tmux session. "
+                "Best for exploratory work, complex debugging, or tasks needing user guidance.\n"
+                "Default to AUTO unless the task clearly benefits from interactive "
+                "collaboration.\n\n"
+                "Execution planning rules:\n"
+                "- Group independent, non-overlapping tasks into concurrent waves.\n"
+                "- If overlap is uncertain, run sequentially.\n"
+                "- Never schedule concurrent mutating work on the same workspace."
+            )
+        ]
+
+    @mcp.prompt()
+    async def diagnose_failure(task_id: str, failure_summary: str) -> list[UserMessage]:
+        """Return a diagnostic prompt for a failed task."""
+        return [
+            UserMessage(
+                f"Task {task_id} failed with the following error:\n\n{failure_summary}\n\n"
+                "Please diagnose the root cause:\n"
+                "1. Identify the most likely cause of the failure.\n"
+                "2. Suggest concrete remediation steps.\n"
+                "3. Indicate whether the task should be retried or escalated."
+            )
+        ]
+
+    @mcp.prompt()
+    async def security_audit_persona_repo(
+        repo: str, path: str = ".kagan/personas.json"
+    ) -> list[UserMessage]:
+        return [
+            UserMessage(
+                f"Audit persona preset source {repo} at path {path}.\n\n"
+                "You are a read-only security auditor.\n"
+                "MUST DO:\n"
+                "- Call persona_preset_audit first and quote findings exactly.\n"
+                "- Explicitly state whether repo is trusted by whitelist.\n"
+                "- Recommend next action: install, install with caution, or reject.\n"
+                "- Provide evidence bullets tied to audit output fields.\n\n"
+                "MUST NOT DO:\n"
+                "- Do not claim absolute safety.\n"
+                "- Do not perform writes or imports during audit.\n"
+                "- Do not omit due-diligence disclaimer.\n\n"
+                "Required disclaimer:\n"
+                "This audit is advisory and heuristic. "
+                "User must review repository source before import."
+            )
+        ]

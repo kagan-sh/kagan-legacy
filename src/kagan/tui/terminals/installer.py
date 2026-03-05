@@ -1,27 +1,37 @@
 """Terminal backend installer utilities."""
 
-from __future__ import annotations
-
 import asyncio
 import platform
 import shutil
 
+from kagan.core._pair_backends import (
+    pair_terminal_backend_executable,
+    pair_terminal_backend_fallback_order,
+)
+from kagan.runtime_env import build_sanitized_subprocess_environment
+
+__all__ = [
+    "INSTALL_TIMEOUT_SECONDS",
+    "check_terminal_installed",
+    "first_available_pair_backend",
+    "get_manual_install_fallback",
+    "install_terminal",
+]
+
 INSTALL_TIMEOUT_SECONDS = 180
-WINDOWS_FALLBACK_ORDER = ("vscode", "cursor", "windsurf", "kiro", "antigravity", "nvim")
-UNIX_FALLBACK_ORDER = ("nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity")
 
 
 def _which(command: str) -> str | None:
     """Resolve executable path via stdlib lookup.
 
-    Keeping `shutil.which` reachable preserves test monkeypatch compatibility.
+    Keeping `shutil.which` in this wrapper gives tests a stable patch point.
     """
     return shutil.which(command)
 
 
 def first_available_pair_backend(*, windows: bool) -> str | None:
     """Return the first available fallback backend in priority order."""
-    order = WINDOWS_FALLBACK_ORDER if windows else UNIX_FALLBACK_ORDER
+    order = pair_terminal_backend_fallback_order(windows=windows)
     for backend in order:
         if check_terminal_installed(backend):
             return backend
@@ -30,16 +40,7 @@ def first_available_pair_backend(*, windows: bool) -> str | None:
 
 def check_terminal_installed(backend: str) -> bool:
     """Return whether the requested terminal backend executable exists in PATH."""
-    executable_map = {
-        "tmux": "tmux",
-        "nvim": "nvim",
-        "vscode": "code",
-        "cursor": "cursor",
-        "windsurf": "windsurf",
-        "kiro": "kiro",
-        "antigravity": "agy",
-    }
-    executable = executable_map.get(backend)
+    executable = pair_terminal_backend_executable(backend)
     if executable is None:
         return False
     return _which(executable) is not None
@@ -130,6 +131,7 @@ async def install_terminal(
     try:
         proc = await asyncio.create_subprocess_shell(
             install_cmd,
+            env=build_sanitized_subprocess_environment(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

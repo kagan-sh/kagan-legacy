@@ -194,6 +194,9 @@ secrets*
 .azure/
 
 .scratchpad/
+.tmp/
+.worktrees/
+.kagan_worktrees/
 
 # Kagan-generated files (local state + MCP configs)
 .mcp.json
@@ -204,3 +207,17 @@ kagan*.mcp.json
 coverage.json
 
 .claude/
+
+:memory:-shm
+
+:memory:
+
+:memory:-wal
+
+kagan.db
+
+.serena/
+
+.initiatives/
+
+.sisyphus/

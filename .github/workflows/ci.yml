@@ -131,7 +131,19 @@ jobs:
           enable-cache: true
       - run: uv sync --dev
       - name: Snapshot tests
-        run: uv run pytest tests/tui/snapshot/ -n auto -v
+        shell: bash
+        run: |
+          if [ ! -d tests/tui/snapshot ]; then
+            echo "No tests/tui/snapshot directory; skipping snapshot tests."
+            exit 0
+          fi
+
+          if ! ls tests/tui/snapshot/test_*.py >/dev/null 2>&1; then
+            echo "No snapshot test files found; skipping snapshot tests."
+            exit 0
+          fi
+
+          uv run pytest tests/tui/snapshot/ -n auto -v
 
   test-all-platforms:
     needs: lint

@@ -1,78 +1,50 @@
-"""Shared pytest bootstrap for Kagan tests."""
+"""Shared fixtures for acceptance tests.
 
-from __future__ import annotations
+pytest_configure runs before collection/imports, so XDG env overrides are in
+place before ``kagan.core.__init__`` calls ``configure_logging()``.
+"""
 
 import os
-import sys
-from pathlib import Path
+import shutil
+import tempfile
 
-from hypothesis import Phase, Verbosity, settings
+import pytest
 
-from tests.helpers.fixtures.isolation import apply_test_env
-
-pytest_plugins = [
-    "tests.helpers.fixtures.core",
-    "tests.helpers.fixtures.tui",
-    "tests.helpers.fixtures.agents",
-    "tests.helpers.fixtures.markers",
-    "tests.helpers.fixtures.safety",
-]
-
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-_SRC = str(_WORKSPACE_ROOT / "src")
-if _SRC in sys.path:
-    sys.path.remove(_SRC)
-sys.path.insert(0, _SRC)
-os.environ["PYTHONPATH"] = _SRC
-
-_WORKSPACE_SRC_ROOTS = (_WORKSPACE_ROOT / "src",)
+# Temp root created once per worker process (xdist-safe).
+_kagan_test_root: str | None = None
 
 
-def _is_workspace_module(module: object) -> bool:
-    module_file = getattr(module, "__file__", None)
-    if not module_file:
-        return True
-    module_path = Path(module_file).resolve()
-    return any(module_path.is_relative_to(root) for root in _WORKSPACE_SRC_ROOTS)
+def pytest_configure(config: pytest.Config) -> None:
+    """Redirect every XDG / kagan path to a disposable temp tree.
+
+    This fires before *any* test module is imported, which means
+    ``kagan.core.__init__`` → ``configure_logging()`` already sees the
+    overridden ``XDG_STATE_HOME`` and writes the log file into our temp dir
+    instead of the real ``~/.local/state/kagan/``.
+    """
+    global _kagan_test_root
+    _kagan_test_root = tempfile.mkdtemp(prefix="kagan-test-")
+
+    os.environ["XDG_DATA_HOME"] = os.path.join(_kagan_test_root, "data")
+    os.environ["XDG_STATE_HOME"] = os.path.join(_kagan_test_root, "state")
+    os.environ["XDG_CONFIG_HOME"] = os.path.join(_kagan_test_root, "config")
+    os.environ["KAGAN_WORKTREE_BASE"] = os.path.join(_kagan_test_root, "worktrees")
+    # Set KAGAN_DATA_DIR and KAGAN_CONFIG_DIR to ensure tests use temp dir
+    # (especially on macOS where platformdirs doesn't respect XDG_*_HOME)
+    os.environ["KAGAN_DATA_DIR"] = os.path.join(_kagan_test_root, "data")
+    os.environ["KAGAN_CONFIG_DIR"] = os.path.join(_kagan_test_root, "config")
 
 
-_stale_kagan_modules: list[str] = []
-_stale_schema_loaded = False
-for _module_name, _module in list(sys.modules.items()):
-    if not (_module_name == "kagan" or _module_name.startswith("kagan.")):
-        continue
-    if _module is not None and _is_workspace_module(_module):
-        continue
-    _stale_kagan_modules.append(_module_name)
-    if _module_name == "kagan.core.adapters.db.schema":
-        _stale_schema_loaded = True
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Remove the disposable temp tree created in ``pytest_configure``."""
+    global _kagan_test_root
+    if _kagan_test_root and os.path.isdir(_kagan_test_root):
+        shutil.rmtree(_kagan_test_root, ignore_errors=True)
+        _kagan_test_root = None
 
-for _module_name in _stale_kagan_modules:
-    del sys.modules[_module_name]
 
-if _stale_schema_loaded:
-    import sqlmodel.main as sqlmodel_main
+# Re-export canonical fixtures so every test file can use ``board`` and ``git_board``
+# without a local fixture definition.
+from tests.helpers.fixtures import board, git_board  # noqa: E402
 
-    sqlmodel_main.default_registry.dispose()
-    sqlmodel_main.default_registry.metadata.clear()
-
-apply_test_env()
-
-settings.register_profile(
-    "ci",
-    max_examples=100,
-    deadline=None,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
-)
-settings.register_profile(
-    "dev",
-    max_examples=20,
-    deadline=500,
-)
-settings.register_profile(
-    "debug",
-    max_examples=10,
-    verbosity=Verbosity.verbose,
-    deadline=None,
-)
-settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "dev"))
+__all__ = ["board", "git_board"]

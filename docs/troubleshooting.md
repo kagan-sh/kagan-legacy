@@ -47,11 +47,12 @@ Match symptom text below.
 
 ## Other
 
-| Symptom                  | Fix                                                                                                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Another instance running | Close other instance; if stale: `kagan reset`                                                                                                                                  |
-| UI rendering issues      | Resize ≥80×20; truecolor terminal; `F12` debug log                                                                                                                             |
-| Mouse copy inconsistent  | Set `KAGAN_TUI_MOUSE=0` for keyboard-first mode. With mouse enabled (default or `KAGAN_TUI_MOUSE=1`): use `Option`-select (iTerm) or `Shift`-select (GNOME / Windows Terminal) |
+| Symptom                            | Fix                                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Another instance running           | Close other instance; if stale: `kagan reset`                                                                                                                                  |
+| Chat context missing after a crash | Only persisted checkpoints are recoverable; see [ACP session lifecycle](guides/acp-session-lifecycle.md)                                                                       |
+| UI rendering issues                | Resize ≥80×20; truecolor terminal; `F12` debug log                                                                                                                             |
+| Mouse copy inconsistent            | Set `KAGAN_TUI_MOUSE=0` for keyboard-first mode. With mouse enabled (default or `KAGAN_TUI_MOUSE=1`): use `Option`-select (iTerm) or `Shift`-select (GNOME / Windows Terminal) |
 
 ## Prompt safety / privacy
 

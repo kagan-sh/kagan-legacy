@@ -49,9 +49,22 @@ PAIR launch does not open the orchestrator chat overlay; it opens or redirects t
 
 Move to REVIEW --> `Enter` (Task Output) --> approve/reject --> merge.
 
+## Optional: import existing GitHub issues
+
+Use Actions (`.`) on the board and run `github import`, or use:
+
+```bash
+kagan import github --repo owner/repo
+```
+
 ## Shortcuts
 
 `?` Help · `.` Actions · `,` Settings · `F12` Debug
+
+## Session behavior
+
+Need exact orchestrator session behavior (spawn, persistence, close semantics)?
+[ACP session lifecycle](guides/acp-session-lifecycle.md)
 
 ## When things break
 

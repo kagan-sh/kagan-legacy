@@ -1,0 +1,276 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" width="880" height="340">
+  <style>
+    text { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace; }
+
+    @keyframes splash  { 0%,16%{opacity:1} 20%,94%{opacity:0} 97%,100%{opacity:1} }
+    @keyframes scene1  { 0%,18%{opacity:0} 21%,42%{opacity:1} 46%,100%{opacity:0} }
+    @keyframes scene2  { 0%,44%{opacity:0} 46%,67%{opacity:1} 71%,100%{opacity:0} }
+    @keyframes scene3  { 0%,69%{opacity:0} 71%,92%{opacity:1} 96%,100%{opacity:0} }
+    @keyframes chrome  { 0%,18%{opacity:0} 21%,94%{opacity:1} 96%,100%{opacity:0} }
+    .splash{animation:splash 24s ease-in-out infinite}
+    .s1{animation:scene1 24s ease-in-out infinite} .s2{animation:scene2 24s ease-in-out infinite}
+    .s3{animation:scene3 24s ease-in-out infinite} .chrome{animation:chrome 24s ease-in-out infinite}
+
+    @keyframes logoPop {
+      0%   { transform:scale(0.7); opacity:0; }
+      3%   { transform:scale(1.06); opacity:1; }
+      5%   { transform:scale(0.97); opacity:1; }
+      7%   { transform:scale(1); opacity:1; }
+      94%  { transform:scale(1); opacity:1; }
+      97%  { transform:scale(0.7); opacity:0; }
+      100% { transform:scale(0.7); opacity:0; }
+    }
+    .logo-pop { transform-origin:0px 0px; animation:logoPop 24s ease-in-out infinite; }
+    @keyframes tagFade { 0%,5%{opacity:0} 8%,94%{opacity:1} 97%,100%{opacity:0} }
+    .tag-fade { animation:tagFade 24s ease-in-out infinite; }
+    @keyframes asciiPop { 0%{transform:translateY(6px);opacity:0} 5%{transform:translateY(0);opacity:1} 94%{opacity:1} 100%{opacity:0} }
+    .ascii-pop { animation:asciiPop 24s ease-in-out infinite; }
+    @keyframes asciiGlow { 0%,100%{opacity:.92} 50%{opacity:1} }
+    .ascii-glow { animation:asciiGlow 3s ease-in-out infinite; }
+    @keyframes hintPulse { 0%,100%{opacity:.65} 50%{opacity:1} }
+    .hint-pulse { animation:hintPulse 2.4s ease-in-out infinite; }
+    @keyframes approveGlow { 0%,100%{opacity:.15} 50%{opacity:.32} }
+    .approve-glow { animation:approveGlow 1.8s ease-in-out infinite; }
+
+    @keyframes d0{0%,16%{fill:#b8860b}20%,94%{fill:#d0d7de}97%,100%{fill:#b8860b}}
+    @keyframes d1{0%,18%{fill:#d0d7de}21%,42%{fill:#b8860b}46%,100%{fill:#d0d7de}}
+    @keyframes d2{0%,44%{fill:#d0d7de}46%,67%{fill:#b8860b}71%,100%{fill:#d0d7de}}
+    @keyframes d3{0%,69%{fill:#d0d7de}71%,92%{fill:#b8860b}96%,100%{fill:#d0d7de}}
+    .d0{animation:d0 24s ease-in-out infinite} .d1{animation:d1 24s ease-in-out infinite}
+    .d2{animation:d2 24s ease-in-out infinite} .d3{animation:d3 24s ease-in-out infinite}
+
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    .c1{animation:fadeIn .4s .2s ease both} .c2{animation:fadeIn .4s .35s ease both}
+    .c3{animation:fadeIn .4s .5s ease both} .c4{animation:fadeIn .4s .65s ease both}
+    .c5{animation:fadeIn .4s .8s ease both}
+
+    @keyframes flow{0%,38%{transform:translate(229px,64px);opacity:1}42%,88%{transform:translate(444px,64px);opacity:1}93%{transform:translate(444px,64px);opacity:0}94%{transform:translate(229px,64px);opacity:0}100%{transform:translate(229px,64px);opacity:1}}
+    .flow-card{animation:flow 10s ease-in-out infinite}
+    @keyframes flowPulse{0%,35%{stroke:#b8860b;stroke-opacity:.8}38%,94%{stroke:#d0d7de;stroke-opacity:1}100%{stroke:#b8860b;stroke-opacity:.3}}
+    .flow-border{animation:flowPulse 10s ease-in-out infinite}
+    @keyframes flowDot{0%,35%{opacity:.8}38%,100%{opacity:0}} .flow-dot{animation:flowDot 10s ease-in-out infinite}
+
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}} .cursor{animation:blink 1s step-end infinite}
+    @keyframes think{0%,100%{opacity:.4}50%{opacity:1}} .thinking{animation:think 1.5s ease-in-out infinite}
+    @keyframes logAppear{0%,60%{opacity:0}70%,100%{opacity:1}} .log-late{animation:logAppear 6s ease both infinite}
+    @keyframes scan{from{transform:translateY(-8px)}to{transform:translateY(340px)}} .scanline{animation:scan 6s linear infinite;opacity:.02}
+  </style>
+
+  <rect width="880" height="340" rx="8" fill="#ffffff"/>
+
+  <!-- ============ SPLASH ============ -->
+  <g class="splash">
+    <g transform="translate(440,138)" class="ascii-pop">
+      <text class="ascii-glow" x="0" y="0" text-anchor="middle" font-size="16" fill="#b8860b">█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █</text>
+      <text class="ascii-glow" x="0" y="21" text-anchor="middle" font-size="16" fill="#b8860b">█▀▄  █▀█  █▄█  █▀█  █ ▀▄█</text>
+    </g>
+    <text class="tag-fade" x="440" y="183" text-anchor="middle" font-size="9" fill="#656d76">kg chat: tasks · orchestrator · review</text>
+    <text class="tag-fade" x="440" y="200" text-anchor="middle" font-size="10" fill="#656d76">Your agents work. You decide.</text>
+    <text class="tag-fade" x="440" y="218" text-anchor="middle" font-size="9" fill="#d0d7de">docs.kagan.sh</text>
+  </g>
+
+  <!-- ============ CHROME ============ -->
+  <g class="chrome">
+    <circle cx="20" cy="14" r="4.5" fill="#d0d7de"/>
+    <circle cx="34" cy="14" r="4.5" fill="#d0d7de"/>
+    <circle cx="48" cy="14" r="4.5" fill="#d0d7de"/>
+    <text x="440" y="18" text-anchor="middle" font-size="11" font-weight="600" fill="#b8860b" letter-spacing="3">KAGAN</text>
+    <line x1="0" y1="28" x2="880" y2="28" stroke="#d0d7de"/>
+  </g>
+
+  <!-- ============ SCENE 1: KANBAN ============ -->
+  <g class="s1">
+    <text x="117" y="47" text-anchor="middle" font-size="9" font-weight="500" fill="#656d76" letter-spacing="1.5">BACKLOG</text>
+    <text x="332" y="47" text-anchor="middle" font-size="9" font-weight="500" fill="#656d76" letter-spacing="1.5">IN PROGRESS</text>
+    <text x="547" y="47" text-anchor="middle" font-size="9" font-weight="500" fill="#656d76" letter-spacing="1.5">REVIEW</text>
+    <text x="762" y="47" text-anchor="middle" font-size="9" font-weight="500" fill="#b8860b" letter-spacing="1.5">DONE</text>
+    <line x1="220" y1="34" x2="220" y2="290" stroke="#d0d7de"/>
+    <line x1="435" y1="34" x2="435" y2="290" stroke="#d0d7de"/>
+    <line x1="650" y1="34" x2="650" y2="290" stroke="#d0d7de"/>
+
+    <g transform="translate(14,36)">
+      <rect width="95" height="14" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="8" y="10" font-size="7" fill="#656d76">tasks 48</text>
+      <rect x="102" width="100" height="14" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="110" y="10" font-size="7" fill="#1f2328">active 7</text>
+      <rect class="hint-pulse" x="209" width="100" height="14" rx="3" fill="#b8860b" opacity=".12"/>
+      <text x="217" y="10" font-size="7" fill="#b8860b">review 3</text>
+      <rect x="316" width="95" height="14" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="324" y="10" font-size="7" fill="#1a7f37">done 38</text>
+    </g>
+
+    <g class="c1" transform="translate(14,58)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Implement user auth</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#b8860b">AUTO</text>
+      <circle cx="180" cy="37" r="3" fill="#cf222e"/></g>
+    <g class="c2" transform="translate(14,118)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Add rate limiting</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#b8860b">AUTO</text>
+      <circle cx="180" cy="37" r="3" fill="#bf8700"/></g>
+    <g class="c3" transform="translate(14,178)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Write API docs</text>
+      <rect x="10" y="30" width="30" height="14" rx="2" fill="#0969da" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#0969da">PAIR</text>
+      <circle cx="180" cy="37" r="3" fill="#1a7f37"/></g>
+    <g class="c5" transform="translate(229,124)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Update error handling</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#b8860b">AUTO</text>
+      <circle cx="180" cy="37" r="3" fill="#1a7f37"/></g>
+    <g class="flow-card"><rect width="196" height="52" rx="4" fill="#f6f8fa" class="flow-border" stroke-width="1.5"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Fix #342 timeout</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#b8860b">AUTO</text>
+      <circle cx="180" cy="37" r="3" fill="#cf222e"/><circle cx="170" cy="12" r="3" fill="#b8860b" class="flow-dot"/></g>
+    <g class="c4" transform="translate(444,124)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#1f2328">Refactor DB queries</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="15" y="40" font-size="8" font-weight="500" fill="#b8860b">AUTO</text>
+      <circle cx="180" cy="37" r="3" fill="#bf8700"/></g>
+    <g class="c4" transform="translate(659,58)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#656d76">Deploy to staging</text>
+      <rect x="10" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".06"/><text x="15" y="40" font-size="8" font-weight="500" fill="#656d76">AUTO</text>
+      <text x="176" y="40" font-size="11" fill="#1a7f37" text-anchor="middle">&#x2713;</text></g>
+    <g class="c5" transform="translate(659,118)"><rect width="196" height="52" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="19" font-size="10.5" fill="#656d76">Setup CI pipeline</text>
+      <rect x="10" y="30" width="30" height="14" rx="2" fill="#0969da" opacity=".06"/><text x="15" y="40" font-size="8" font-weight="500" fill="#656d76">PAIR</text>
+      <text x="176" y="40" font-size="11" fill="#1a7f37" text-anchor="middle">&#x2713;</text></g>
+
+    <line x1="0" y1="296" x2="880" y2="296" stroke="#d0d7de"/>
+    <text x="20" y="316" font-size="11" fill="#656d76">$</text>
+    <text x="34" y="316" font-size="11" fill="#1f2328">uvx kagan</text>
+    <rect x="102" y="305" width="7" height="14" fill="#b8860b" class="cursor"/>
+    <text x="860" y="316" text-anchor="end" font-size="10" fill="#656d76">Your agents work. You decide.</text>
+    <text x="20" y="334" font-size="8.5" fill="#d0d7de">? help   . actions   n new   a start   , settings</text>
+    <text x="860" y="334" text-anchor="end" font-size="8.5" fill="#d0d7de">Ctrl+O orchestrator</text>
+  </g>
+
+  <!-- ============ SCENE 2: ORCHESTRATOR ============ -->
+  <g class="s2">
+    <text x="65" y="44" text-anchor="middle" font-size="8" fill="#656d76" letter-spacing="1">BACKLOG</text>
+    <text x="195" y="44" text-anchor="middle" font-size="8" fill="#656d76" letter-spacing="1">IN PROGRESS</text>
+    <text x="325" y="44" text-anchor="middle" font-size="8" fill="#656d76" letter-spacing="1">REVIEW</text>
+    <text x="455" y="44" text-anchor="middle" font-size="8" fill="#b8860b" letter-spacing="1">DONE</text>
+    <line x1="130" y1="36" x2="130" y2="140" stroke="#d0d7de"/><line x1="260" y1="36" x2="260" y2="140" stroke="#d0d7de"/>
+    <line x1="390" y1="36" x2="390" y2="140" stroke="#d0d7de"/>
+
+    <g transform="translate(8,52)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Implement user auth</text><text x="7" y="24" font-size="6.5" fill="#b8860b">AUTO</text></g>
+    <g transform="translate(8,84)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Add rate limiting</text><text x="7" y="24" font-size="6.5" fill="#b8860b">AUTO</text></g>
+    <g transform="translate(8,116)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Write API docs</text><text x="7" y="24" font-size="6.5" fill="#0969da">PAIR</text></g>
+    <g transform="translate(138,52)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#b8860b" stroke-opacity=".5"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Fix #342 timeout</text><text x="7" y="24" font-size="6.5" fill="#b8860b">AUTO</text>
+      <circle cx="104" cy="8" r="2.5" fill="#b8860b" class="thinking"/></g>
+    <g transform="translate(138,84)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Update error handling</text><text x="7" y="24" font-size="6.5" fill="#b8860b">AUTO</text></g>
+    <g transform="translate(268,52)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#1f2328">Refactor DB queries</text><text x="7" y="24" font-size="6.5" fill="#b8860b">AUTO</text></g>
+    <g transform="translate(398,52)"><rect width="114" height="28" rx="3" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="7" y="14" font-size="8" fill="#656d76">Deploy to staging</text>
+      <text x="104" y="24" font-size="9" fill="#1a7f37" text-anchor="middle">&#x2713;</text></g>
+
+    <line x1="520" y1="28" x2="520" y2="296" stroke="#d0d7de"/>
+    <rect x="524" y="32" width="352" height="16" fill="#f6f8fa"/>
+    <text x="700" y="44" text-anchor="middle" font-size="8" font-weight="600" fill="#b8860b" letter-spacing="1.5">ORCHESTRATOR</text>
+    <text x="856" y="44" text-anchor="end" font-size="7" fill="#656d76">Ctrl+O</text>
+
+    <g transform="translate(532,56)"><text x="0" y="10" font-size="8" font-weight="600" fill="#0969da">you</text>
+      <text x="0" y="24" font-size="9" fill="#1f2328">Plan the auth refactor</text></g>
+    <g transform="translate(532,90)"><text x="0" y="10" font-size="8" font-weight="600" fill="#b8860b">kagan</text>
+      <text x="0" y="24" font-size="9" fill="#1f2328">Here's my plan:</text></g>
+
+    <g transform="translate(532,120)">
+      <rect width="340" height="120" rx="4" fill="#f6f8fa" stroke="#d0d7de"/>
+      <text x="10" y="16" font-size="8" font-weight="600" fill="#b8860b" letter-spacing="1">PLAN</text>
+      <text x="330" y="16" text-anchor="end" font-size="7" fill="#656d76">3 tasks</text>
+      <line x1="8" y1="24" x2="332" y2="24" stroke="#d0d7de"/>
+      <rect x="10" y="30" width="12" height="12" rx="2" fill="#fff" stroke="#b8860b" stroke-width=".8"/>
+      <text x="28" y="40" font-size="8.5" fill="#1f2328">Extract auth middleware</text>
+      <rect x="230" y="30" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="235" y="40" font-size="7" fill="#b8860b">AUTO</text>
+      <rect x="270" y="30" width="24" height="14" rx="2" fill="#cf222e" opacity=".1"/><text x="274" y="40" font-size="7" fill="#cf222e">high</text>
+      <rect x="10" y="50" width="12" height="12" rx="2" fill="#fff" stroke="#b8860b" stroke-width=".8"/>
+      <text x="28" y="60" font-size="8.5" fill="#1f2328">Add JWT token validation</text>
+      <rect x="230" y="50" width="34" height="14" rx="2" fill="#b8860b" opacity=".1"/><text x="235" y="60" font-size="7" fill="#b8860b">AUTO</text>
+      <rect x="270" y="50" width="24" height="14" rx="2" fill="#cf222e" opacity=".1"/><text x="274" y="60" font-size="7" fill="#cf222e">high</text>
+      <rect x="10" y="70" width="12" height="12" rx="2" fill="#fff" stroke="#0969da" stroke-width=".8"/>
+      <text x="28" y="80" font-size="8.5" fill="#1f2328">Write auth integration tests</text>
+      <rect x="230" y="70" width="30" height="14" rx="2" fill="#0969da" opacity=".1"/><text x="235" y="80" font-size="7" fill="#0969da">PAIR</text>
+      <rect x="266" y="70" width="30" height="14" rx="2" fill="#bf8700" opacity=".1"/><text x="270" y="80" font-size="7" fill="#bf8700">med</text>
+      <line x1="8" y1="92" x2="332" y2="92" stroke="#d0d7de"/>
+      <rect class="approve-glow" x="10" y="98" width="56" height="16" rx="3" fill="#b8860b" opacity=".15"/><text x="16" y="109" font-size="7.5" fill="#b8860b">[a] approve</text>
+      <rect x="74" y="98" width="42" height="16" rx="3" fill="#f6f8fa" stroke="#d0d7de"/><text x="80" y="109" font-size="7.5" fill="#656d76">[e] edit</text>
+      <rect x="124" y="98" width="58" height="16" rx="3" fill="#f6f8fa" stroke="#d0d7de"/><text x="130" y="109" font-size="7.5" fill="#656d76">[d] dismiss</text>
+    </g>
+
+    <g transform="translate(532,252)"><rect width="340" height="32" rx="4" fill="#fff" stroke="#d0d7de"/>
+      <text x="10" y="20" font-size="9" fill="#656d76">Ask anything...</text>
+      <rect x="100" y="12" width="7" height="12" fill="#b8860b" class="cursor"/></g>
+
+    <line x1="0" y1="296" x2="880" y2="296" stroke="#d0d7de"/>
+    <text x="20" y="316" font-size="10" fill="#b8860b">&#x223F;</text>
+    <text x="34" y="316" font-size="10" fill="#1f2328">Plan ready</text>
+    <text x="120" y="316" font-size="9" fill="#656d76">&#x2022; 3 tasks proposed</text>
+    <text x="860" y="316" text-anchor="end" font-size="10" fill="#656d76">Orchestrator &#x2022; Ctrl+O</text>
+    <text x="20" y="334" font-size="8.5" fill="#d0d7de">[a] approve plan   [e] edit   [d] dismiss</text>
+    <text x="860" y="334" text-anchor="end" font-size="8.5" fill="#d0d7de">press o to view task output</text>
+  </g>
+
+  <!-- ============ SCENE 3: TASK OUTPUT ============ -->
+  <g class="s3">
+    <rect x="0" y="28" width="880" height="24" fill="#f6f8fa"/>
+    <text x="20" y="44" font-size="9" font-weight="600" fill="#b8860b">TASK OUTPUT</text>
+    <text x="120" y="44" font-size="9" fill="#1f2328">Fix #342 timeout</text>
+    <text x="860" y="44" text-anchor="end" font-size="8" fill="#656d76">branch: fix/342-timeout</text>
+    <line x1="0" y1="52" x2="880" y2="52" stroke="#d0d7de"/>
+
+    <g transform="translate(14,60)">
+      <text x="0" y="14" font-size="9" font-weight="600" fill="#656d76" letter-spacing="1">CHANGES</text>
+      <text x="200" y="14" font-size="9" fill="#1a7f37">+340</text><text x="230" y="14" font-size="9" fill="#cf222e">-89</text>
+      <text x="260" y="14" font-size="8" fill="#656d76">12 files</text>
+      <g transform="translate(0,24)">
+        <text x="0" y="12" font-size="8.5" fill="#1f2328">src/api/retry.ts</text>
+        <text x="230" y="12" font-size="8" fill="#1a7f37">+82</text><text x="258" y="12" font-size="8" fill="#cf222e">-12</text>
+        <rect x="280" y="4" width="40" height="6" rx="1" fill="#d0d7de"/><rect x="280" y="4" width="30" height="6" rx="1" fill="#1a7f37"/>
+        <text x="0" y="28" font-size="8.5" fill="#1f2328">src/api/timeout.ts</text>
+        <text x="230" y="28" font-size="8" fill="#1a7f37">+64</text><text x="258" y="28" font-size="8" fill="#cf222e">-45</text>
+        <rect x="280" y="20" width="40" height="6" rx="1" fill="#d0d7de"/><rect x="280" y="20" width="24" height="6" rx="1" fill="#1a7f37"/><rect x="304" y="20" width="16" height="6" rx="1" fill="#cf222e"/>
+        <text x="0" y="44" font-size="8.5" fill="#1f2328">src/middleware/auth.ts</text>
+        <text x="230" y="44" font-size="8" fill="#1a7f37">+51</text><text x="258" y="44" font-size="8" fill="#cf222e">-8</text>
+        <rect x="280" y="36" width="40" height="6" rx="1" fill="#d0d7de"/><rect x="280" y="36" width="34" height="6" rx="1" fill="#1a7f37"/>
+        <text x="0" y="60" font-size="8.5" fill="#1f2328">tests/api/retry.test.ts</text>
+        <text x="230" y="60" font-size="8" fill="#1a7f37">+96</text><text x="258" y="60" font-size="8" fill="#cf222e">-0</text>
+        <rect x="280" y="52" width="40" height="6" rx="1" fill="#d0d7de"/><rect x="280" y="52" width="40" height="6" rx="1" fill="#1a7f37"/>
+        <text x="0" y="76" font-size="8.5" fill="#656d76">+ 8 more files...</text>
+      </g>
+    </g>
+
+    <line x1="440" y1="52" x2="440" y2="296" stroke="#d0d7de"/>
+    <g transform="translate(454,60)">
+      <text x="0" y="14" font-size="9" font-weight="600" fill="#656d76" letter-spacing="1">AGENT LOG</text>
+      <text x="370" y="14" text-anchor="end" font-size="8" fill="#b8860b" class="thinking">&#x223F; running</text>
+      <g transform="translate(0,26)">
+        <text x="0" y="12" font-size="8" fill="#1a7f37">&#x2713;</text><text x="14" y="12" font-size="8.5" fill="#1f2328">Read src/api/timeout.ts</text><text x="370" y="12" text-anchor="end" font-size="7.5" fill="#656d76">2.1s</text>
+        <text x="0" y="30" font-size="8" fill="#1a7f37">&#x2713;</text><text x="14" y="30" font-size="8.5" fill="#1f2328">Analyzed timeout configuration</text><text x="370" y="30" text-anchor="end" font-size="7.5" fill="#656d76">3.4s</text>
+        <text x="0" y="48" font-size="8" fill="#1a7f37">&#x2713;</text><text x="14" y="48" font-size="8.5" fill="#1f2328">Edit src/api/retry.ts</text><text x="370" y="48" text-anchor="end" font-size="7.5" fill="#656d76">1.8s</text>
+        <text x="0" y="66" font-size="8" fill="#1a7f37">&#x2713;</text><text x="14" y="66" font-size="8.5" fill="#1f2328">Added exponential backoff logic</text><text x="370" y="66" text-anchor="end" font-size="7.5" fill="#656d76">4.2s</text>
+        <text x="0" y="84" font-size="8" fill="#1a7f37">&#x2713;</text><text x="14" y="84" font-size="8.5" fill="#1f2328">Write tests/api/retry.test.ts</text><text x="370" y="84" text-anchor="end" font-size="7.5" fill="#656d76">5.1s</text>
+        <g class="log-late">
+          <text x="0" y="102" font-size="8" fill="#b8860b" class="thinking">&#x223F;</text><text x="14" y="102" font-size="8.5" fill="#1f2328">Running test suite...</text>
+        </g>
+      </g>
+    </g>
+
+    <line x1="0" y1="296" x2="880" y2="296" stroke="#d0d7de"/>
+    <text x="20" y="316" font-size="10" fill="#b8860b">&#x223F;</text>
+    <text x="34" y="316" font-size="10" fill="#1f2328" class="thinking">Agent running</text>
+    <text x="140" y="316" font-size="9" fill="#656d76">&#x2022; 6 actions completed</text>
+    <text x="860" y="316" text-anchor="end" font-size="10" fill="#656d76">Task Output &#x2022; press o</text>
+    <text x="20" y="334" font-size="8.5" fill="#d0d7de">[Enter] approve   [r] reject   [Shift+R] rebase   [g] run review</text>
+    <text x="860" y="334" text-anchor="end" font-size="8.5" fill="#d0d7de">Esc to close</text>
+  </g>
+
+  <circle cx="422" cy="330" r="3" class="d0"/>
+  <circle cx="434" cy="330" r="3" class="d1"/>
+  <circle cx="446" cy="330" r="3" class="d2"/>
+  <circle cx="458" cy="330" r="3" class="d3"/>
+
+  <rect class="scanline" x="0" y="0" width="880" height="6" fill="#1f2328"/>
+</svg>

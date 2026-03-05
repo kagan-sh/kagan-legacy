@@ -60,9 +60,11 @@
 
   <!-- ============ SPLASH ============ -->
   <g class="splash">
-    <g transform="translate(440,138)" class="ascii-pop">
-      <text class="ascii-glow" x="0" y="0" text-anchor="middle" font-size="16" fill="#b8860b">█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █</text>
-      <text class="ascii-glow" x="0" y="21" text-anchor="middle" font-size="16" fill="#b8860b">█▀▄  █▀█  █▄█  █▀█  █ ▀▄█</text>
+    <g transform="translate(440,138)">
+      <g class="ascii-pop">
+        <text class="ascii-glow" x="0" y="0" text-anchor="middle" font-size="16" fill="#b8860b">█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █</text>
+        <text class="ascii-glow" x="0" y="21" text-anchor="middle" font-size="16" fill="#b8860b">█▀▄  █▀█  █▄█  █▀█  █ ▀▄█</text>
+      </g>
     </g>
     <text class="tag-fade" x="440" y="183" text-anchor="middle" font-size="9" fill="#656d76">kg chat: tasks · orchestrator · review</text>
     <text class="tag-fade" x="440" y="200" text-anchor="middle" font-size="10" fill="#656d76">Your agents work. You decide.</text>

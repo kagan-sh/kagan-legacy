@@ -121,8 +121,11 @@ def _detect_install_method() -> str:
 
 
 def _build_install_command(method: str, prerelease: bool) -> list[str]:
-    if method == "uv" and not prerelease:
-        return ["uv", "tool", "install", "--upgrade", "kagan"]
+    if method == "uv":
+        command = ["uv", "tool", "install", "--upgrade", "kagan"]
+        if prerelease:
+            command.extend(["--prerelease", "allow"])
+        return command
     if method == "pipx":
         if prerelease:
             return ["pipx", "upgrade", "kagan", "--pip-args", "--pre"]

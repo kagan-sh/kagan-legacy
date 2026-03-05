@@ -94,12 +94,19 @@ jobs:
 
           echo "Running 'kagan update --force' to update to $LATEST_VERSION..."
 
-          # Use --prerelease flag if the latest version is a prerelease
+          # Use --prerelease flag if the latest version is a prerelease.
+          # Some previously released kagan versions can fail non-zero here
+          # (for example when pip is unavailable in uv tool environments).
+          # Keep going so we can verify the installed version and fallback.
           if [ "$IS_PRERELEASE" = "true" ]; then
             echo "Using --prerelease flag for prerelease version"
-            kagan update --force --prerelease
+            if ! kagan update --force --prerelease; then
+              echo "kagan update failed; continuing to fallback verification"
+            fi
           else
-            kagan update --force
+            if ! kagan update --force; then
+              echo "kagan update failed; continuing to fallback verification"
+            fi
           fi
 
           # Check if update succeeded by comparing versions

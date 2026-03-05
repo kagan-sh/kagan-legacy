@@ -16,46 +16,70 @@ on:
       - ".github/assets/**"
       - "mkdocs.yml"
       - ".readthedocs.yaml"
+  schedule:
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
       - run: uv run poe lint
       - run: uv run poe check-guardrails
       - run: uv run poe typecheck
       - run: uv run poe docs-check
 
   fast-gate:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
       - run: uv run poe db-migrations-check
       - run: uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
 
-  test:
+  test-pr:
+    if: github.event_name == 'pull_request'
     needs: [lint, fast-gate]
     timeout-minutes: 15
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: ubuntu-latest
+            python-version: "3.14"
+          - os: macos-latest
+            python-version: "3.14"
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies
         run: |
@@ -70,15 +94,52 @@ jobs:
           git config --global user.email "test@kagan.local"
           git config --global user.name "Kagan Test"
           git config --global commit.gpgsign false
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
+      - name: Test
+        run: uv run pytest tests/ -m "not snapshot" -n auto
+
+  test-main:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, fast-gate]
+    timeout-minutes: 15
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+          python-version: ${{ matrix.python-version }}
+      - name: Install system dependencies
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y tmux git
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            brew install tmux
+          fi
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "test@kagan.local"
+          git config --global user.name "Kagan Test"
+          git config --global commit.gpgsign false
+      - run: uv sync --frozen --dev
       - name: Test (with coverage)
-        if: github.ref == 'refs/heads/main'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run pytest tests/ -m "not snapshot" -n auto --cov=src/kagan --cov-report=term-missing
       - name: Test
-        if: github.ref != 'refs/heads/main'
+        if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.12'
         run: uv run pytest tests/ -m "not snapshot" -n auto
 
   test-windows:
+    if: github.event_name != 'schedule'
     needs: [lint, fast-gate]
     timeout-minutes: 30
     runs-on: windows-latest
@@ -94,18 +155,20 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
       - name: Test (windows compatibility marker)
         run: uv run pytest tests/ -m "windows_ci" -n 0 -v
       - name: Test (non-snapshot, excluding windows marker slice)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: uv run pytest tests/ -m "not snapshot and not windows_ci" -n 0 -v
 
   snapshot:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: lint
-    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 25
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
@@ -129,7 +192,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
       - name: Snapshot tests
         shell: bash
         run: |
@@ -146,11 +209,11 @@ jobs:
           uv run pytest tests/tui/snapshot/ -n auto -v
 
   test-all-platforms:
-    needs: lint
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'schedule'
+    timeout-minutes: 25
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-24.04-arm, macos-15-intel]
     steps:
@@ -171,6 +234,6 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --dev
+      - run: uv sync --frozen --dev
       # Exclude snapshot tests from matrix runs; covered by dedicated job.
-      - run: uv run pytest tests/ -m "not snapshot" -n auto --cov=src/kagan --cov-report=term-missing
+      - run: uv run pytest tests/ -m "not snapshot" -n auto

@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.7.0-beta.2 (2026-03-05)
+
+### Documentation
+
+- Readme tweak
+  ([`0fec93a`](https://github.com/kagan-sh/kagan/commit/0fec93a24dc55c6130914db4cd3e02cbe4159d2b))
+
+
 ## v0.7.0-beta.1 (2026-03-05)
 
 ### Chores

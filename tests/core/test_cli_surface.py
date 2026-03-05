@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import subprocess
 from pathlib import Path
@@ -9,12 +10,7 @@ from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
 # Check if rich_click is available for extended CLI output
-try:
-    import rich_click
-
-    _HAS_RICH_CLICK = True
-except ImportError:
-    _HAS_RICH_CLICK = False
+_HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
 

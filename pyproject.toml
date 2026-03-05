@@ -269,7 +269,7 @@ allowed_tags = [
   "test",
 ]
 minor_tags = ["feat"]
-patch_tags = ["fix", "perf", "docs"]
+patch_tags = ["fix", "perf"]
 
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]

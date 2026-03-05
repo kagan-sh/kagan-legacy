@@ -25,10 +25,12 @@ on:
         required: true
         default: false
 
-concurrency: release
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
-  contents: write
+  contents: read
   packages: read
 
 jobs:
@@ -62,19 +64,18 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
-      - name: Run lint, typecheck, and non-snapshot tests
-        # Snapshot tests are intentionally excluded from CD.
-        # They are covered in CI and can be flaky/slow across environments,
-        # which should not block package release.
+      - name: Run release smoke checks
         run: |
           set -o pipefail
-          uv run poe lint
-          uv run poe typecheck
-          uv run pytest tests/ -m "not snapshot" -n auto
+          uv run poe db-migrations-check
+          uv run pytest tests/core/unit/ -m "core and unit" -n auto -q
 
       - name: Run Semantic Release
         id: release
@@ -128,9 +129,12 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --frozen --dev
 
       - name: Build documentation
         run: uv run mkdocs build

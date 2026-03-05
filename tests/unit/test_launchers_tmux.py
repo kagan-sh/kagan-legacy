@@ -1,10 +1,15 @@
 import asyncio
+import sys
 
 import pytest
 
 from kagan.core import _agent, _launchers
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.asyncio,
+    pytest.mark.skipif(sys.platform == "win32", reason="tmux is unavailable on Windows"),
+]
 
 
 async def _launch_with_blocked_injection(

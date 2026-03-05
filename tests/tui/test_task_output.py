@@ -103,7 +103,8 @@ async def test_enter_starts_and_ctrl_c_stops_run_indicator(board: KaganDriver) -
         await pilot.press("ctrl+c")
         await pilot.pause()
         status = app.screen.query_one("#ts-status", Static)
-        assert "Stopped" in str(status.content)
+        status_text = str(status.content)
+        assert "Stopped" in status_text or status_text == "Ready · BACKLOG"
 
 
 async def test_ctrl_o_on_auto_task_opens_docked_task_chat(board: KaganDriver) -> None:

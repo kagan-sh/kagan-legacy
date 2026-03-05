@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v0.7.0-beta.1 (2026-03-05)
+
+### Chores
+
+- Logo patch for pypi
+  ([`f96a3ff`](https://github.com/kagan-sh/kagan/commit/f96a3fff61356b02c47b3165cbe985248c66a2e7))
+
+### Documentation
+
+- Favicon
+  ([`4ced1b1`](https://github.com/kagan-sh/kagan/commit/4ced1b1f93ede8958db513979e4a689b579fe9a7))
+
+- Icon tweaks
+  ([`756fbcc`](https://github.com/kagan-sh/kagan/commit/756fbcc2aba0cd2da4f07e95ead7f5ee114fe787))
+
+### Features
+
+- Refactoring ([#33](https://github.com/kagan-sh/kagan/pull/33),
+  [`c31852e`](https://github.com/kagan-sh/kagan/commit/c31852edf3f00200aaebd84d61ffc12cd01173e5))
+
+
 ## v0.6.0-beta.1 (2026-02-20)
 
 ### Bug Fixes

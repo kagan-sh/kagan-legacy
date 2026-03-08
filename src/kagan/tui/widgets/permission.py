@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import var
@@ -10,6 +9,8 @@ from textual.widgets import Static
 
 if TYPE_CHECKING:
     from textual.timer import Timer
+
+from kagan.tui.keybindings import CHAT_PERMISSION_BINDINGS
 
 
 class PermissionPrompt(Vertical):
@@ -19,11 +20,7 @@ class PermissionPrompt(Vertical):
 
     remaining_seconds: var[int] = var(0)
 
-    BINDINGS = [
-        Binding("a", "allow", "Allow"),
-        Binding("d", "deny", "Deny"),
-        Binding("escape", "deny", "Deny"),
-    ]
+    BINDINGS = CHAT_PERMISSION_BINDINGS
 
     def __init__(
         self,

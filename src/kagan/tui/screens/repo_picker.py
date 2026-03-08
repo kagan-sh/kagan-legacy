@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, Label, OptionList, Static
 
 from kagan.core.models import Repository
+from kagan.tui.keybindings import REPO_PICKER_BINDINGS, get_key_for_action
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
@@ -16,12 +16,7 @@ from kagan.tui.widgets.hint_bar import KeybindingHint
 
 
 class RepoPickerModal(ModalScreen[str | None]):
-    BINDINGS = [
-        Binding("enter", "select_repo", "Select"),
-        Binding("n", "add_repo", "Add Repo"),
-        Binding("r", "reload", "Refresh"),
-        Binding("escape", "dismiss", "Close"),
-    ]
+    BINDINGS = REPO_PICKER_BINDINGS
 
     def __init__(self) -> None:
         super().__init__(id="repo-picker-modal")
@@ -61,10 +56,11 @@ class RepoPickerModal(ModalScreen[str | None]):
         self.query_one("#repo-picker-hint", KeybindingHint).show_hints(
             [
                 ("↑/↓", "navigate"),
-                ("Enter", "select"),
-                ("n", "add repo"),
-                ("r", "refresh"),
-                ("Esc", "close"),
+                (
+                    get_key_for_action(REPO_PICKER_BINDINGS, "select_repo", default="Enter"),
+                    "select",
+                ),
+                (get_key_for_action(REPO_PICKER_BINDINGS, "dismiss", default="Esc"), "close"),
             ]
         )
 

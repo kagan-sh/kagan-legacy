@@ -166,7 +166,7 @@ class CoreDriver:
         description: str = "",
         *,
         project_id: str | None = None,
-        task_type: WorkMode = WorkMode.PAIR,
+        task_type: WorkMode = WorkMode.AUTO,
         priority: Priority = Priority.MEDIUM,
         acceptance_criteria: list[str] | None = None,
         base_branch: str | None = None,

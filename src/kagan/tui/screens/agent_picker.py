@@ -2,23 +2,20 @@ from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import OptionList, Static
+from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from kagan.chat import list_registered_agent_backends
+from kagan.tui.keybindings import AGENT_PICKER_BINDINGS
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
 
 class AgentPickerModal(ModalScreen[str | None]):
-    BINDINGS = [
-        Binding("enter", "select_agent", "Select", show=False, priority=True),
-        Binding("escape", "dismiss", "Close"),
-    ]
+    BINDINGS = AGENT_PICKER_BINDINGS
 
     _BACKEND_ALIASES = {
         "gemini": "gemini-cli",
@@ -43,12 +40,7 @@ class AgentPickerModal(ModalScreen[str | None]):
             )
             with Vertical(id="agent-picker-body"):
                 yield OptionList(id="agent-picker-options")
-            with Horizontal(classes="modal-action-hint-row"):
-                yield Static(
-                    "Enter select agent  Esc cancel",
-                    id="agent-picker-footer-hint",
-                    classes="modal-action-hint",
-                )
+            yield Footer(show_command_palette=False)
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()

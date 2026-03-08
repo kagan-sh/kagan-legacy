@@ -17,14 +17,29 @@ async def board(tmp_path):
     await driver.teardown()
 
 
-async def test_review_key_opens_task_screen_review_tab(board: KaganDriver) -> None:
+async def test_enter_twice_opens_task_screen(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
+    from kagan.tui.widgets.card import TaskCard
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
+        for _ in range(3):
+            if app.screen.id == "kanban-screen":
+                break
+            await pilot.press("enter")
+            await pilot.pause()
+
+        assert app.screen.id == "kanban-screen"
+
+        card = app.screen.query_one(TaskCard)
+        card.focus()
+        await pilot.pause()
+
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("r")
+
+        await pilot.press("enter")
         await pilot.pause()
+
         assert app.screen.id == "task-screen"

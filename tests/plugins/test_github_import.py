@@ -66,7 +66,7 @@ def test_map_labels_priority() -> None:
     """Priority labels map to Priority enum values."""
     priority, mode, remaining = _map_labels(["priority:high", "bug"])
     assert priority == Priority.HIGH
-    assert mode == WorkMode.PAIR  # default
+    assert mode == WorkMode.AUTO  # default
     assert remaining == ["bug"]
 
 
@@ -93,10 +93,9 @@ def test_map_labels_case_insensitive() -> None:
 
 
 def test_map_labels_defaults_when_no_mapped_labels() -> None:
-    """Without mapped labels, defaults are Priority.MEDIUM and WorkMode.PAIR."""
     priority, mode, remaining = _map_labels(["bug", "documentation"])
     assert priority == Priority.MEDIUM
-    assert mode == WorkMode.PAIR
+    assert mode == WorkMode.AUTO
     assert remaining == ["bug", "documentation"]
 
 

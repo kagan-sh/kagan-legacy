@@ -2,9 +2,10 @@ import asyncio
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from sqlmodel import Session as DBSession
 from tests.helpers.driver import KaganDriver
 
-from kagan.core import TaskStatus
+from kagan.core import Session, SessionStatus, TaskStatus, WorkMode
 
 if TYPE_CHECKING:
     from kagan.tui.screens.kanban import KanbanScreen
@@ -16,6 +17,7 @@ pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 async def board(tmp_path):
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Kanban Project")
+    await driver.settings_update({"ui.tui_tutorial_seen": "true"})
     await driver.create_task("Backlog A")
     await driver.create_task("Backlog B")
     yield driver
@@ -26,6 +28,7 @@ async def board(tmp_path):
 async def empty_board(tmp_path):
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Empty Board Project")
+    await driver.settings_update({"ui.tui_tutorial_seen": "true"})
     yield driver
     await driver.teardown()
 
@@ -38,11 +41,61 @@ async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+o")
+        await pilot.press("ctrl+t")
         await pilot.pause()
         chat_panel = app.screen.query_one("#chat-panel")
         assert chat_panel.has_class("visible")
         assert app.screen.has_class("chat-overlay-vertical")
+
+
+async def test_card_run_state_shows_mode_specific_running_and_not_started(
+    board: KaganDriver,
+) -> None:
+    from kagan.tui import KaganApp
+    from kagan.tui.widgets.card import TaskCard
+
+    pair_not_started = await board.create_task("PAIR not started", task_type=WorkMode.PAIR)
+    auto_running = await board.create_task("AUTO running", task_type=WorkMode.AUTO)
+    pair_running = await board.create_task("PAIR running", task_type=WorkMode.PAIR)
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    with DBSession(app.core._engine) as db:
+        db.add(
+            Session(
+                task_id=auto_running.id,
+                mode=WorkMode.AUTO,
+                agent_backend="claude-code",
+                status=SessionStatus.RUNNING,
+            )
+        )
+        db.add(
+            Session(
+                task_id=pair_running.id,
+                mode=WorkMode.PAIR,
+                agent_backend="claude-code",
+                status=SessionStatus.RUNNING,
+            )
+        )
+        db.commit()
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        cards = {
+            card.task_data.id: card
+            for card in app.screen.query(TaskCard)
+            if card.task_data is not None
+        }
+
+        def status_text(card: TaskCard) -> str:
+            assert card._status_label is not None
+            return str(card._status_label.render())
+
+        assert status_text(cards[auto_running.id]) == "AUTO agent running"
+        assert status_text(cards[pair_running.id]) == "PAIR session active"
+        assert status_text(cards[pair_not_started.id]) == "PAIR not started"
 
 
 async def test_kanban_mount_remains_interactive_while_bootstrap_runs(
@@ -224,7 +277,7 @@ async def test_ctrl_o_on_selected_auto_task_opens_docked_task_overlay(board: Kag
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+o")
+        await pilot.press("ctrl+t")
         await pilot.pause()
 
         panel = app.screen.query_one(ChatPanel)
@@ -356,7 +409,7 @@ async def test_empty_board_shows_onboarding_hint_with_help_fallback(
         hint_text = str(hint.render())
         assert hint.has_class("visible")
         assert "No tasks yet." in hint_text
-        assert "? / F1" in hint_text
+        assert "type in chat to get started" in hint_text
 
 
 async def test_f1_opens_help_modal_on_kanban(empty_board: KaganDriver) -> None:
@@ -372,3 +425,42 @@ async def test_f1_opens_help_modal_on_kanban(empty_board: KaganDriver) -> None:
         await pilot.pause()
 
         assert isinstance(app.screen, HelpModal)
+
+
+async def test_first_boot_tutorial_overlay_is_shown_once(tmp_path) -> None:
+    from kagan.tui import KaganApp
+    from kagan.tui.screens.kanban import KanbanScreen
+
+    driver = await KaganDriver.boot(tmp_path)
+    await driver.create_project("Tutorial Project")
+    await driver.settings_update({"ui.tui_tutorial_seen": "false"})
+
+    app = KaganApp(db_path=driver.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert isinstance(app.screen, KanbanScreen)
+        overlay = app.screen.query_one("#kanban-tutorial-overlay")
+        assert overlay.display
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, KanbanScreen)
+        overlay = app.screen.query_one("#kanban-tutorial-overlay")
+        assert not overlay.display
+
+    app2 = KaganApp(db_path=driver.tmp_path / "kagan.db")
+    async with app2.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert isinstance(app2.screen, KanbanScreen)
+        overlay = app2.screen.query_one("#kanban-tutorial-overlay")
+        assert not overlay.display
+
+    await driver.teardown()

@@ -68,6 +68,11 @@ def _process_exists(pid: int) -> bool:
             return False
 
 
+def _is_shutdown_runtime_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "Executor shutdown has been called" in message or "Event loop is closed" in message
+
+
 def _build_auto_run_prompt(
     task: Task,
     *,
@@ -510,7 +515,13 @@ class Sessions:
             result = map_acp_update_to_event(update)
             if result is not None:
                 event_type, payload = result
-                await self._events.emit(task_id, event_type, payload, session_id=session_id)
+                await self._events.emit(
+                    task_id,
+                    event_type,
+                    payload,
+                    session_id=session_id,
+                    persist=event_type is not SessionEventType.OUTPUT_CHUNK,
+                )
 
         return on_update
 
@@ -596,35 +607,46 @@ class Sessions:
         return TaskStatus.BACKLOG
 
     async def _handle_acp_done(self, task: asyncio.Task, task_id: str, session_id: str) -> None:
-        exc = task.exception() if not task.cancelled() else None
-        if exc is not None:
-            logger.error("ACP session failed for task={}: {}", task_id, exc)
-            await asyncio.to_thread(self._fail_session, session_id)
-            await self._events.emit(
-                task_id,
-                SessionEventType.AGENT_FAILED,
-                {"error": str(exc)},
-                session_id=session_id,
-            )
-        else:
-            await asyncio.to_thread(self._complete_session, session_id)
-            db_task = await self._get_task(task_id)
-            if db_task.status == TaskStatus.IN_PROGRESS:
-                next_status = await self._resolve_post_agent_status(task_id)
-                if next_status != db_task.status:
-                    await asyncio.to_thread(self._set_status, task_id, next_status)
-                    await self._events.emit(
-                        task_id,
-                        SessionEventType.TASK_STATUS_CHANGED,
-                        {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
-                        session_id=session_id,
-                    )
-            await self._events.emit(
-                task_id,
-                SessionEventType.AGENT_COMPLETED,
-                {},
-                session_id=session_id,
-            )
+        try:
+            exc = task.exception() if not task.cancelled() else None
+            if exc is not None:
+                logger.error("ACP session failed for task={}: {}", task_id, exc)
+                await asyncio.to_thread(self._fail_session, session_id)
+                await self._events.emit(
+                    task_id,
+                    SessionEventType.AGENT_FAILED,
+                    {"error": str(exc)},
+                    session_id=session_id,
+                )
+            else:
+                await asyncio.to_thread(self._complete_session, session_id)
+                db_task = await self._get_task(task_id)
+                if db_task.status == TaskStatus.IN_PROGRESS:
+                    next_status = await self._resolve_post_agent_status(task_id)
+                    if next_status != db_task.status:
+                        await asyncio.to_thread(self._set_status, task_id, next_status)
+                        await self._events.emit(
+                            task_id,
+                            SessionEventType.TASK_STATUS_CHANGED,
+                            {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
+                            session_id=session_id,
+                        )
+                await self._events.emit(
+                    task_id,
+                    SessionEventType.AGENT_COMPLETED,
+                    {},
+                    session_id=session_id,
+                )
+        except RuntimeError as exc:
+            if _is_shutdown_runtime_error(exc):
+                logger.debug(
+                    "Skipping ACP completion handling during shutdown for task={} session={}: {}",
+                    task_id,
+                    session_id,
+                    exc,
+                )
+                return
+            raise
 
     async def _monitor_detached(self, pid: int, task_id: str, session_id: str) -> None:
         while True:

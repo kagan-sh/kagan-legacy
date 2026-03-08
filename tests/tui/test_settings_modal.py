@@ -27,7 +27,8 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         await pilot.pause()
         assert app.screen.id == "settings-modal"
 
-        app.screen.query_one("#settings-default-agent", Input).value = "kimi-cli"
+        agent_select = app.screen.query_one("#settings-default-agent", Select)
+        agent_select.value = "kimi-cli"
         app.screen.query_one("#settings-default-base-branch", Input).value = "develop"
         pair_select = app.screen.query_one("#settings-pair-launcher", Select)
         pair_select.value = "nvim"

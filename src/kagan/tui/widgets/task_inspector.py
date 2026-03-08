@@ -115,7 +115,7 @@ class TaskInspector(Widget):
             meta.update("Select a card and press Enter to inspect.")
             description.update("No description.")
             criteria.update("No acceptance criteria.")
-            actions.update("[bold]Enter[/] inspect  [bold]o/p[/] open session")
+            actions.update("[bold]Enter[/] to inspect task")
             self._render_message()
             return
 
@@ -155,8 +155,8 @@ class TaskInspector(Widget):
             self.clear_message()
 
         actions.update(
-            "[bold]o/p[/] open  [bold]e[/] edit  [bold]x[/] delete  [bold]y[/] duplicate\n"
-            "[bold]a[/] start  [bold]s[/] stop  [bold]Shift+←/→[/] move  [bold]Esc[/] close"
+            "[bold]Enter[/] open  [bold]e[/] edit  [bold]x[/] delete\n"
+            "[bold]s[/] start  [bold]Shift+S[/] stop  [bold]Shift+←/→[/] move  [bold]Esc[/] close"
         )
         self._render_message()
 

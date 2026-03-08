@@ -3,12 +3,13 @@ from dataclasses import dataclass
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, OptionList, Static
+from textual.widgets import Footer, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
+
+from kagan.tui.keybindings import SESSION_PICKER_BINDINGS
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,17 +34,7 @@ class SessionPickerModal(ModalScreen[str | None]):
     EMPTY_GROUP_OPTION_ID = "__session-picker-empty-group__"
     EMPTY_SESSION_OPTION_ID = "__session-picker-empty-session__"
 
-    BINDINGS = [
-        Binding("escape", "cancel", "Cancel", show=False),
-        Binding("enter", "select", "Select", show=False, priority=True),
-        Binding("up", "cursor_up", "Up", show=False, priority=True),
-        Binding("down", "cursor_down", "Down", show=False, priority=True),
-        Binding("left", "focus_groups", "Groups", show=False, priority=True),
-        Binding("right", "focus_sessions", "Sessions", show=False, priority=True),
-        Binding("ctrl+f", "focus_filter", "Filter", show=False, priority=True),
-        Binding("tab", "toggle_pane", "Pane", show=False, priority=True),
-        Binding("shift+tab", "toggle_pane", "Pane", show=False, priority=True),
-    ]
+    BINDINGS = SESSION_PICKER_BINDINGS
 
     def __init__(
         self,
@@ -100,12 +91,7 @@ class SessionPickerModal(ModalScreen[str | None]):
                 with Vertical(classes="session-picker-column"):
                     yield Static("Agents", classes="session-picker-column-title")
                     yield OptionList(id="session-picker-options")
-            with Horizontal(classes="modal-action-hint-row"):
-                yield Static(
-                    "Tab switch pane  Ctrl+F filter  ↑↓ navigate  Enter select  Esc clear/close",
-                    id="session-picker-footer-hint",
-                    classes="modal-action-hint",
-                )
+            yield Footer(show_command_palette=False)
 
     def on_mount(self) -> None:
         filter_input = self.query_one("#session-picker-filter", Input)

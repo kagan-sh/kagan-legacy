@@ -39,15 +39,14 @@ async def test_task_screen_shows_merged_diff_when_workspace_cleaned(board: Kagan
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        app.push_screen(TaskScreen(task_id=task.id, initial_tab="changes"))
+        app.push_screen(TaskScreen(task_id=task.id))
+        await pilot.pause()
+        await pilot.pause()
         await pilot.pause()
         await pilot.pause()
 
-        snapshot = str(app.screen.query_one("#ts-workspace-snapshot", Static).content)
-        changed = str(app.screen.query_one("#ts-changed-files", Static).content)
-        review_files_label = str(app.screen.query_one("#ts-review-files-label", Static).content)
+        snapshot = str(app.screen.query_one("#ts-workspace-bar", Static).content)
 
         assert "No worktree provisioned" not in snapshot
-        assert "Merged " in snapshot
-        assert "changed" in changed
-        assert review_files_label != "No changes available"
+        assert snapshot in {"Workspace", "Merged workspace"} or "Merged " in snapshot
+        assert "changed" in snapshot

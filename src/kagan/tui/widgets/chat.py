@@ -100,6 +100,10 @@ class ChatPanel(Vertical):
     class AgentPickerRequested(Message):
         pass
 
+    @dataclass
+    class InterruptRequested(Message):
+        pass
+
     _EMPTY_TEXT = "No messages yet"
     _LOGO = """\
 █▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
@@ -175,7 +179,7 @@ class ChatPanel(Vertical):
                                         f"  • {example}", classes="chat-overlay-empty-example"
                                     )
                             yield Static(
-                                "Tip: press Ctrl+O for orchestrator mode.",
+                                "Tip: press Ctrl+T to toggle AI chat.",
                                 id="chat-overlay-first-boot-nudge",
                             )
                 yield StreamingOutput(id="chat-overlay-output", classes="chat-output")
@@ -194,11 +198,17 @@ class ChatPanel(Vertical):
                     classes="chat-input-row chat-command-line",
                     id="chat-overlay-command-line",
                 ):
-                    with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
-                        yield Input(
-                            placeholder="What's next? Type /flow for guided mode or / for commands",
-                            classes="chat-input-area",
-                            id="chat-overlay-input",
+                    with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
+                        with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
+                            yield Input(
+                                placeholder="What's next? Try /flow or type a message",
+                                classes="chat-input-area",
+                                id="chat-overlay-input",
+                            )
+                        yield Static(
+                            "Orchestrator",
+                            id="chat-overlay-session-badge",
+                            classes="session-badge session-kind-orchestrator",
                         )
                 with Horizontal(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
@@ -279,6 +289,8 @@ class ChatPanel(Vertical):
 
     def set_mode_title(self, title: str) -> None:
         self.query_one("#chat-title", Static).update(title)
+        with contextlib.suppress(NoMatches):
+            self.query_one("#chat-overlay-session-badge", Static).update(title)
         self._refresh_status()
 
     def set_sessions(self, sessions: list[tuple[str, str]], active_key: str | None = None) -> None:
@@ -312,6 +324,10 @@ class ChatPanel(Vertical):
         indicator = self.query_one("#chat-overlay-session-indicator", Static)
         for css_kind in ("orchestrator", "auto", "review", "pair"):
             indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
+        with contextlib.suppress(NoMatches):
+            badge = self.query_one("#chat-overlay-session-badge", Static)
+            for css_kind in ("orchestrator", "auto", "review", "pair"):
+                badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
 
     def set_first_boot(self, enabled: bool = True) -> None:
         self.set_class(enabled, "first-boot")
@@ -618,13 +634,24 @@ class ChatPanel(Vertical):
                 self._hide_overlays()
                 return
 
+        if event.key == "escape" and not self._input_has_focus():
+            event.prevent_default()
+            event.stop()
+            self._input_widget().focus()
+            return
+
         if not self._input_has_focus():
             return
 
-        if event.key in {"ctrl+u", "ctrl+c"}:
+        if event.key == "ctrl+c":
+            if self._input_widget().value:
+                event.prevent_default()
+                event.stop()
+                self.action_clear_input()
+                return
             event.prevent_default()
             event.stop()
-            self.action_clear_input()
+            self.post_message(ChatPanel.InterruptRequested())
             return
 
         if event.key == "enter":
@@ -634,6 +661,12 @@ class ChatPanel(Vertical):
             return
 
         if overlay_visible:
+            return
+
+        if event.key == "ctrl+j":
+            event.prevent_default()
+            event.stop()
+            self.action_focus_output_latest()
             return
 
         if event.key == "up":
@@ -650,6 +683,12 @@ class ChatPanel(Vertical):
 
     def action_send_message(self) -> None:
         self._submit_current_input()
+
+    def action_focus_output_latest(self) -> None:
+        stream = self._stream_output()
+        if stream is None:
+            return
+        stream.action_jump_to_latest()
 
     def action_insert_newline(self) -> None:
         return
@@ -673,11 +712,6 @@ class ChatPanel(Vertical):
             self._apply_mention_completion()
             return
         if not self._slash_matches:
-            cycle_session = getattr(self.screen, "action_cycle_chat_session", None)
-            if callable(cycle_session):
-                cycle_session()
-                return
-            self.action_open_session_picker()
             return
         option_list = self.query_one("#slash-options", OptionList)
         highlighted = option_list.highlighted
@@ -797,8 +831,6 @@ class ChatPanel(Vertical):
         return True
 
     def _request_session_picker(self, initial_query: str) -> None:
-        if len(self._session_options) <= 1:
-            return
         if not self.has_class("chat-overlay"):
             return
         self.post_message(self.SessionPickerRequested(initial_query=initial_query))
@@ -1112,10 +1144,16 @@ class ChatPanel(Vertical):
             self._hide_slash_complete()
             return
 
+        # Determine if we're in an orchestrator session
+        is_orchestrator = self._infer_session_kind(self._selected_session_key) == "orchestrator"
+
         seen: set[str] = set()
         matches: list[tuple[str, str]] = []
-        # 1. Fuzzy-match against command names
+        # 1. Fuzzy-match against command names (filter orchestrator-only if not in orchestrator)
         for spec in SLASH_COMMAND_REGISTRY.specs():
+            # Skip orchestrator-only commands in non-orchestrator sessions
+            if spec.orchestrator_only and not is_orchestrator:
+                continue
             if (not query or _fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
                 seen.add(spec.name)
                 matches.append((spec.name, spec.description))
@@ -1123,7 +1161,8 @@ class ChatPanel(Vertical):
         alias_target = _SLASH_ALIASES.get(query.casefold())
         if alias_target and alias_target not in seen:
             cmd = SLASH_COMMAND_REGISTRY.get(alias_target)
-            if cmd is not None:
+            # Skip alias if the target command is orchestrator-only and not in orchestrator session
+            if cmd is not None and not (cmd.spec.orchestrator_only and not is_orchestrator):
                 seen.add(alias_target)
                 matches.append((alias_target, f"(alias) {cmd.spec.description}"))
         self._slash_matches = [name for name, _description in matches]
@@ -1219,13 +1258,14 @@ class ChatPanel(Vertical):
         if input_disabled:
             right = "Read-only timeline"
         elif bool(self._slash_matches or self._mention_matches):
-            right = "Enter send · Tab complete · Ctrl+K sessions · Ctrl+C/U clear · Esc close"
-        else:
-            cycle_session = getattr(self.screen, "action_cycle_chat_session", None)
-            tab_action = "cycle" if callable(cycle_session) else "sessions"
             right = (
-                f"Enter send · Up/Down history · Tab {tab_action} · "
-                "Ctrl+K sessions · Ctrl+C/U clear · Esc close"
+                "Enter send · Tab complete · Ctrl+J timeline · "
+                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
+            )
+        else:
+            right = (
+                "Enter send · Up/Down history · Ctrl+J timeline · "
+                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
             )
         status_bar = self._status_bar()
         if status_bar is None:

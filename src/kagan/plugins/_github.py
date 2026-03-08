@@ -167,7 +167,7 @@ def _map_labels(label_names: list[str]) -> tuple[Priority, WorkMode, list[str]]:
     Returns (priority, execution_mode, remaining_labels).
     """
     priority = Priority.MEDIUM
-    mode = WorkMode.PAIR
+    mode = WorkMode.AUTO
     remaining: list[str] = []
 
     for name in label_names:

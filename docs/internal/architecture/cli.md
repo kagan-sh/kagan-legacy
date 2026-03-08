@@ -6,11 +6,10 @@ ______________________________________________________________________
 
 ## References
 
-| Package      | Repo                                                          | Use                                                                                                     |
-| ------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Click**    | [pallets/click](https://github.com/pallets/click)             | CLI framework: groups, commands, options, `CliRunner` testing patterns.                                 |
-| **Kimi CLI** | [anthropics/kimi-cli](https://github.com/anthropics/kimi-cli) | Agent CLI reference: command structure, REPL integration, chat-style flows.                             |
-| **Loguru**   | [Delgan/loguru](https://github.com/Delgan/loguru)             | Structured logging. Config and sink setup in core — see `docs/internal/architecture/core.md` § Logging. |
+| Package    | Repo                                              | Use                                                                                                     |
+| ---------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Click**  | [pallets/click](https://github.com/pallets/click) | CLI framework: groups, commands, options, `CliRunner` testing patterns.                                 |
+| **Loguru** | [Delgan/loguru](https://github.com/Delgan/loguru) | Structured logging. Config and sink setup in core — see `docs/internal/architecture/core.md` § Logging. |
 
 ______________________________________________________________________
 

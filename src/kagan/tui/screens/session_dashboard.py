@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import Screen
-from textual.widgets import Input, Label, Select, Static
+from textual.widgets import Footer, Input, Label, Select, Static
 
 from kagan.core.enums import SessionEventType, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
 TASK_WORKER_SESSION_KEY = "task-worker"
 TASK_REVIEWER_SESSION_KEY = "task-reviewer"
+SESSION_DASHBOARD_REPLAY_EVENT_LIMIT = 400
 
 
 class DashboardStatusBar(Horizontal):
@@ -125,8 +126,7 @@ class SessionDashboardScreen(Screen[None]):
                 yield CommitsPanel(id="dashboard-commits")
                 yield DiffView(id="dashboard-diff-view", default_focus="content")
         yield ChatPanel(id="dashboard-chat-overlay", classes="chat-overlay")
-        with Horizontal(id="dashboard-actions"):
-            yield Static("", id="dashboard-action-hint", classes="dashboard-action-hint")
+        yield Footer(show_command_palette=False)
 
     async def on_mount(self) -> None:
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
@@ -188,15 +188,15 @@ class SessionDashboardScreen(Screen[None]):
         with contextlib.suppress(KaganError, OSError, RuntimeError):
             await self.kagan_app.core.tasks.cancel(self._task_id)
 
-    async def action_stop_run(self) -> None:
+    async def action_stop_agent(self) -> None:
         """Stop the running agent with chat feedback."""
         chat = self._chat_panel()
         await self.action_cancel_run()
         chat.add_system_message("Agent stopped.")
         await self._refresh_agent_status()
 
-    async def action_restart_run(self) -> None:
-        """Stop current agent and start a fresh run."""
+    async def action_restart_agent(self) -> None:
+        """Restart the agent (stop current and start fresh)."""
         chat = self._chat_panel()
         if self._running:
             await self.action_cancel_run()
@@ -219,7 +219,7 @@ class SessionDashboardScreen(Screen[None]):
     async def action_open_task_overlay(self) -> None:
         self._show_chat_overlay(mode="task", fullscreen=False)
 
-    async def action_open_chat_fullscreen(self) -> None:
+    async def action_fullscreen_chat(self) -> None:
         panel = self._chat_panel()
         if panel.has_class("visible") and panel.has_class("fullscreen"):
             self._hide_chat_overlay()
@@ -231,7 +231,7 @@ class SessionDashboardScreen(Screen[None]):
             return
         self._show_chat_overlay(mode="orchestrator", fullscreen=True)
 
-    async def action_toggle_chat_overlay(self) -> None:
+    async def action_toggle_chat(self) -> None:
         panel = self._chat_panel()
         if panel.has_class("visible") and not panel.has_class("fullscreen"):
             self._hide_chat_overlay()
@@ -243,7 +243,7 @@ class SessionDashboardScreen(Screen[None]):
             return
         await self.action_open_task_overlay()
 
-    def action_cycle_chat_session(self) -> None:
+    def action_cycle_session(self) -> None:
         if self._chat_mode == "task":
             self.run_worker(self.action_open_orchestrator_chat(), exit_on_error=False)
             return
@@ -329,7 +329,17 @@ class SessionDashboardScreen(Screen[None]):
         panel.set_fullscreen(False)
         self._sync_layout_state()
 
-    async def action_open_session_picker(self) -> None:
+    def on_chat_panel_interrupt_requested(self, message: ChatPanel.InterruptRequested) -> None:
+        sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
+        if getattr(sender, "id", "") != "dashboard-chat-overlay":
+            return
+        if self._chat_message_task is not None and not self._chat_message_task.done():
+            self._chat_message_task.cancel()
+            return
+        self.run_worker(self.action_cancel_run(), exit_on_error=False)
+
+    async def action_switch_session(self) -> None:
+        """Open session picker."""
         panel = self._chat_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -453,9 +463,9 @@ class SessionDashboardScreen(Screen[None]):
 
         specs.extend(
             [
-                ("open_session_picker", "sessions"),
-                ("toggle_chat_overlay", "overlay"),
-                ("open_chat_fullscreen", "fullscreen"),
+                ("switch_session", "sessions"),
+                ("toggle_chat", "overlay"),
+                ("fullscreen_chat", "fullscreen"),
                 ("open_repo_picker", "repos"),
             ]
         )
@@ -474,7 +484,10 @@ class SessionDashboardScreen(Screen[None]):
         output = self.query_one(StreamingOutput)
         chat = self._chat_panel()
         try:
-            async for event in self.kagan_app.core.tasks.events.stream(task_id):
+            async for event in self.kagan_app.core.tasks.events.stream(
+                task_id,
+                replay_limit=SESSION_DASHBOARD_REPLAY_EVENT_LIMIT,
+            ):
                 payload = event.payload or {}
                 # Always pipe events to chat panel for real-time streaming
                 apply_task_chat_event(chat, event.event_type, payload)
@@ -809,7 +822,7 @@ class SessionDashboardScreen(Screen[None]):
         if not text:
             return
         if kind in {"assistant", "thought", "note", "user"}:
-            output.append_chunk(text, kind=cast("Any", kind))
+            output.append_chunk(text, kind=cast("Any", kind), merge=True)
             return
         output.append_text(text)
 

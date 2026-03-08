@@ -526,6 +526,44 @@ def test_resolve_slash_input_flow_returns_guided_phases() -> None:
     assert any(line.startswith("Goal: Build onboarding") for line in result.info_lines)
 
 
+def test_resolve_slash_input_flow_rejected_in_non_orchestrator_session() -> None:
+    """/flow should be rejected in non-orchestrator sessions (e.g., task agents)."""
+    result = resolve_slash_input(
+        "/flow Build onboarding",
+        session_label="Task Agent",
+        session_key="task-abc123",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code"],
+    )
+
+    assert result.handled is True
+    assert any("only available in orchestrator sessions" in line for line in result.error_lines)
+
+
+def test_flow_command_is_orchestrator_only() -> None:
+    """The /flow command spec should have orchestrator_only=True."""
+    flow_cmd = SLASH_COMMAND_REGISTRY.get("flow")
+    assert flow_cmd is not None
+    assert flow_cmd.spec.orchestrator_only is True
+
+
+def test_slash_command_registry_filters_by_orchestrator_only() -> None:
+    """specs() should filter by orchestrator_only flag when requested."""
+    all_specs = SLASH_COMMAND_REGISTRY.specs()
+    orchestrator_only_specs = SLASH_COMMAND_REGISTRY.specs(orchestrator_only=True)
+    non_orchestrator_specs = SLASH_COMMAND_REGISTRY.specs(orchestrator_only=False)
+
+    # /flow should be the only orchestrator-only command
+    assert any(spec.name == "flow" for spec in all_specs)
+    assert any(spec.name == "flow" for spec in orchestrator_only_specs)
+    assert not any(spec.name == "flow" for spec in non_orchestrator_specs)
+
+    # Other commands should not be orchestrator-only
+    assert any(spec.name == "help" for spec in non_orchestrator_specs)
+    assert not any(spec.name == "help" for spec in orchestrator_only_specs)
+
+
 @pytest.mark.asyncio
 async def test_handle_slash_help_prints_structured_help_documentation(monkeypatch) -> None:
     client = _FakeClient()

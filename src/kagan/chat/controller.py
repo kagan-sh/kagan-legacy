@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import shutil
+import signal
 import sys
 import time
 from collections.abc import AsyncIterator, Callable
@@ -442,6 +443,16 @@ class ChatController:
             await set_last_session_id(self.client, scope="repl", session_id=session_id)
             await self._persist_session()
         return self._restart_requested
+
+    def _append_turn(self, user_text: str, assistant_reply: str) -> None:
+        """Record a user/assistant exchange in conversation history."""
+        self._chat_history.append(("user", user_text))
+        self._rendered_messages.append(f"You: {user_text.strip()}")
+        if assistant_reply:
+            self._chat_history.append(("assistant", assistant_reply))
+            self._rendered_messages.append(f"Agent: {assistant_reply}")
+        self._chat_history = self._chat_history[-120:]
+        self._rendered_messages = self._rendered_messages[-300:]
 
     async def _persist_session(self) -> None:
         if self._chat_session_id is None or not self._persist_repl_session:
@@ -1010,14 +1021,24 @@ class ChatController:
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
+        interrupted = False
         async with _turn_wave_animation(_console, WAVE_FRAMES) as stop_animation:
             if self._acp_client is not None:
                 self._acp_client.start_turn(on_first_update=stop_animation)
-            try:
-                await self._acp_conn.prompt(
+            prompt_task = asyncio.create_task(
+                self._acp_conn.prompt(
                     session_id=self._acp_session_id,
                     prompt=prompt_blocks,
-                )
+                ),
+                name="chat-prompt",
+            )
+            original_sigint = signal.getsignal(signal.SIGINT)
+            loop = asyncio.get_running_loop()
+            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(prompt_task.cancel))
+            try:
+                await prompt_task
+            except asyncio.CancelledError:
+                interrupted = True
             except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                 logger.exception("Failed to send prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
@@ -1026,15 +1047,20 @@ class ChatController:
                 logger.exception("Unexpected failure while sending prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
                 return
+            finally:
+                signal.signal(signal.SIGINT, original_sigint)
 
-        assistant_reply = self._acp_client.finish_turn() if self._acp_client is not None else ""
-        self._chat_history.append(("user", text))
-        self._rendered_messages.append(f"You: {text.strip()}")
-        if assistant_reply:
-            self._chat_history.append(("assistant", assistant_reply))
-            self._rendered_messages.append(f"Agent: {assistant_reply}")
-        self._chat_history = self._chat_history[-120:]
-        self._rendered_messages = self._rendered_messages[-300:]
+        assistant_reply = ""
+        if self._acp_client is not None:
+            with contextlib.suppress(Exception):
+                assistant_reply = self._acp_client.finish_turn()
+
+        self._append_turn(text, assistant_reply)
+
+        if interrupted:
+            _console.print("\n[dim]Interrupted.[/dim]")
+            await self._persist_session()
+            return
 
         _console.print()  # newline after streamed output
         # Re-render as markdown if the response contains rich formatting
@@ -1063,7 +1089,7 @@ class ChatController:
         """Interactive REPL loop — runs inside spawn_agent_process context."""
         _console.print(
             "[dim]Type [bold]/help[/bold] for commands, [bold]/flow[/bold] for guided mode, "
-            "[bold]Ctrl-U[/bold] to clear input, "
+            "[bold]Ctrl-C[/bold] to interrupt, "
             "[bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
         try:
@@ -1087,6 +1113,8 @@ class ChatController:
 
                 try:
                     await self._send(stripped)
+                except KeyboardInterrupt:
+                    continue  # Safety net — SIGINT handler should handle this in _send()
                 except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")

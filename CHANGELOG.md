@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.0-beta.2 (2026-03-08)
+
+### Bug Fixes
+
+- Downgrade agent backend preflight check from FAIL to WARN
+  ([`eb2a3dd`](https://github.com/kagan-sh/kagan/commit/eb2a3dd51ac3a132cc1b06305435bacd95f9eb02))
+
+
 ## v0.8.0-beta.1 (2026-03-08)
 
 ### Bug Fixes

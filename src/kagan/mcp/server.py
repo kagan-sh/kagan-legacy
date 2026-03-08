@@ -93,8 +93,9 @@ async def _ensure_active_project(client: KaganCore) -> str:
 @asynccontextmanager
 async def _lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
     opts = _SERVER_OPTS.get(id(mcp), ServerOptions())
-    from kagan.core import KaganCore
+    from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
 
+    install_asyncio_subprocess_exception_filter()
     client = KaganCore(db_path=opts.db_path)
     logger.debug("MCP lifespan: client initialized")
 

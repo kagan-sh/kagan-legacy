@@ -180,7 +180,6 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("enter", "send_message", "Send"),
     Binding("shift+enter", "insert_newline", "Newline", key_display="Shift+Enter"),
     Binding("tab", "accept_completion", "Complete"),
-    Binding("ctrl+j", "focus_output_latest", "Timeline", key_display="Ctrl+J"),
     Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
     Binding("ctrl+k", "open_session_picker", "Switch", key_display="Ctrl+K"),
     Binding("escape", "dismiss", "Close"),

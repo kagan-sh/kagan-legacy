@@ -2,6 +2,54 @@
 
 <!-- version list -->
 
+## v0.8.0-beta.1 (2026-03-08)
+
+### Bug Fixes
+
+- Add explicit Save/Cancel buttons to settings dialog
+  ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+- Address community-reported issues #35–#39 ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+- Clean shutdown of subprocess transports on quit ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+- Drop hardcoded ACP format flags for claude-code backend
+  ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+- Guard worktree creation against missing git repo
+  ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+### Chores
+
+- Improve streaming responsiveness and refresh assets
+  ([`2b40a77`](https://github.com/kagan-sh/kagan/commit/2b40a77abc4a6d49a4e393df1d3c1a159c7374ee))
+
+### Documentation
+
+- Refine docs ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+### Features
+
+- Add project deletion from Welcome screen ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+### Refactoring
+
+- Address PR review feedback ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+### Testing
+
+- Update ACP spawn test to match empty acp_args ([#40](https://github.com/kagan-sh/kagan/pull/40),
+  [`53af0e5`](https://github.com/kagan-sh/kagan/commit/53af0e5c3e24d8cafe776ea76c88860fce5e06d5))
+
+
 ## v0.7.0 (2026-03-08)
 
 ### Documentation

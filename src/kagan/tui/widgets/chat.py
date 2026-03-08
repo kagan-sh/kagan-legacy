@@ -644,14 +644,15 @@ class ChatPanel(Vertical):
             return
 
         if event.key == "ctrl+c":
-            if self._input_widget().value:
-                event.prevent_default()
-                event.stop()
-                self.action_clear_input()
-                return
             event.prevent_default()
             event.stop()
-            self.post_message(ChatPanel.InterruptRequested())
+            # Agent active → interrupt first (regardless of input text)
+            if self._runtime_status in {"thinking", "initializing", "waiting"}:
+                self.post_message(ChatPanel.InterruptRequested())
+                return
+            # Agent idle → clear input text if any
+            if self._input_widget().value:
+                self.action_clear_input()
             return
 
         if event.key == "enter":

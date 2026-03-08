@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.1-beta.4 (2026-03-08)
+
+### Bug Fixes
+
+- Override default Ctrl+C behavior to handle chat interrupts
+  ([`9c75652`](https://github.com/kagan-sh/kagan/commit/9c756524342770d02001908f14b1c3e1ebec9453))
+
+
 ## v0.8.1-beta.3 (2026-03-08)
 
 ### Bug Fixes

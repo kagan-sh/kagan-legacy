@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.1-beta.2 (2026-03-08)
+
+### Bug Fixes
+
+- Catch AttributeError from malformed ACP JSON-RPC messages
+  ([`4bcbec3`](https://github.com/kagan-sh/kagan/commit/4bcbec3b523f7e577b5d3c1e63327fc9f831f0f3))
+
+
 ## v0.8.1-beta.1 (2026-03-08)
 
 ### Bug Fixes

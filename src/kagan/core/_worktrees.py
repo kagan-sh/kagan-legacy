@@ -136,7 +136,7 @@ class Worktrees:
         if ws is None:
             return
         repo = await asyncio.to_thread(self._get_repo, ws.repo_id)
-        if repo:
+        if repo and await git.is_git_repo(repo.path):
             await git.worktree_remove(repo.path, ws.worktree_path)
 
         def op(s):
@@ -161,7 +161,7 @@ class Worktrees:
             )
             if not task_exists:
                 repo = await asyncio.to_thread(self._get_repo, ws.repo_id)
-                if repo:
+                if repo and await git.is_git_repo(repo.path):
                     await git.worktree_remove(repo.path, ws.worktree_path)
                 with contextlib.suppress(OSError):
                     wt = Path(ws.worktree_path)

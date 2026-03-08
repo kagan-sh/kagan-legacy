@@ -201,7 +201,7 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             yield Input(
-                                placeholder="What's next? Try /flow or type a message",
+                                placeholder=("What's next? Try /flow · Ctrl+C to clear"),
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
@@ -685,12 +685,6 @@ class ChatPanel(Vertical):
             return
 
         if overlay_visible:
-            return
-
-        if event.key == "ctrl+j":
-            event.prevent_default()
-            event.stop()
-            self.action_focus_output_latest()
             return
 
         if event.key == "up":

@@ -100,9 +100,9 @@ def check_agent_backend(executable: str) -> PreflightCheckResult:
     if found is None:
         return PreflightCheckResult(
             name="agent_backend",
-            status=CheckStatus.FAIL,
+            status=CheckStatus.WARN,
             message=f"Agent backend '{executable}' not found on PATH",
-            fix_hint=f"Install '{executable}' or configure a different agent backend",
+            fix_hint=f"Install '{executable}' or configure a different agent backend in Settings",
         )
     return PreflightCheckResult(
         name="agent_backend",

@@ -194,6 +194,7 @@ WELCOME_BINDINGS: list[BindingType] = [
     Binding("enter", "open_selected", "Open"),
     Binding("n", "new_project", "New"),
     Binding("o", "open_folder", "Open Folder"),
+    Binding("x", "delete_project", "Delete"),
     Binding("escape", "quit", "Quit"),
     # Navigation
     Binding("j,down", "move_down", "Down", show=False),

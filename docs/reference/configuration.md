@@ -17,7 +17,7 @@ icon: material/cog
 | Core runtime    | `KAGAN_CORE_RUNTIME_DIR` |
 | TUI mouse input | `KAGAN_TUI_MOUSE`        |
 
-Files: `config.toml`, `profiles.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
+Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
 ## Minimal example
 

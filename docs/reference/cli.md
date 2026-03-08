@@ -9,61 +9,72 @@ tags:
 
 # CLI reference
 
-`kagan` with no subcommand → `kagan tui` (default).
+`kagan` with no subcommand launches the TUI (same as `kagan tui`).
 
-| Command    | Description                         |
-| ---------- | ----------------------------------- |
-| `chat`     | Orchestrator REPL / one-shot prompt |
-| `core`     | Manage core process                 |
-| `doctor`   | Environment diagnostics             |
-| `import`   | Import tasks from tools             |
-| `list`     | List projects and repos             |
-| `mcp`      | Run MCP server (stdio)              |
-| `profiles` | List MCP access profiles            |
-| `reset`    | Remove local state                  |
-| `tools`    | Stateless utilities                 |
-| `tui`      | Run TUI explicitly                  |
-| `update`   | Check/install updates               |
+| Command   | Description                                  |
+| --------- | -------------------------------------------- |
+| `chat`    | Orchestrator REPL / one-shot prompt          |
+| `core`    | Manage core process                          |
+| `doctor`  | Environment diagnostics                      |
+| `import`  | Import tasks from external sources           |
+| `list`    | List projects with task counts               |
+| `mcp`     | Run MCP server (stdio)                       |
+| `plugins` | Plugin management (requires opt-in, see below) |
+| `reset`   | Remove local state                           |
+| `tools`   | Stateless utilities                          |
+| `tui`     | Run TUI explicitly                           |
+| `update`  | Check/install updates                        |
 
-## Machine-readable output guarantees
+### Global options
 
-- Most CLI commands are currently human-first text output (`kagan list`, `kagan core status`, `kagan profiles`, etc.).
-- User-tunable schema flags are not GA today (`--output-schema`, schema overlays, repair-policy controls).
-- For stable machine contracts today, prefer MCP/SDK integrations over parsing CLI text output.
+| Option                | Description                |
+| --------------------- | -------------------------- |
+| `--version`           | Show version and exit      |
+| `-v, --verbose`       | Enable verbose stderr logging |
+| `--skip-update-check` | Skip startup update check (hidden; also `KAGAN_SKIP_UPDATE_CHECK=1`) |
 
-### Need custom schema validation?
-
-[Open a feature request](https://github.com/aorumbayev/kagan/issues/new?template=feature_request.md) with your CI/CD use case and expected contract behavior.
+______________________________________________________________________
 
 ## `kagan tui`
 
-| Option                | Description                           |
-| --------------------- | ------------------------------------- |
-| `--db TEXT`           | SQLite database path                  |
-| `--skip-preflight`    | Skip startup doctor checks (dev only) |
-| `--skip-update-check` | Skip update check on startup          |
+Default command. Launches the Kanban TUI.
 
-## `kagan doctor`
+| Option             | Description                                       |
+| ------------------ | ------------------------------------------------- |
+| `--db TEXT`        | SQLite database path                              |
+| `-s, --session-id` | Pre-attach orchestrator chat to a persisted session |
+| `--skip-preflight` | Skip startup doctor checks (also `KAGAN_SKIP_PREFLIGHT=1`) |
 
-Runs startup diagnostics (Python, git, agent backend availability, tooling).
-`kagan` runs these checks silently on boot and only surfaces output when critical blockers are detected.
-
-| Option                  | Description                                     |
-| ----------------------- | ----------------------------------------------- |
-| `--verbosity tldr`      | Warnings and failures only                      |
-| `--verbosity short`     | Concise guidance + one source pointer (default) |
-| `--verbosity technical` | Full rationale, commands, official source links |
+______________________________________________________________________
 
 ## `kagan chat`
 
 Interactive orchestrator REPL by default. Use `--prompt` for single-shot mode.
-Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecycle.md)
+
+Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecycle.md).
+Slash commands and usage: [Chat guide](../guides/chat.md).
 
 | Option          | Description                                |
 | --------------- | ------------------------------------------ |
 | `--prompt TEXT` | Single-shot mode (send once, print, exit)  |
 | `--session-id`  | Attach to an existing chat or task session |
 | `--agent`       | Override default orchestrator backend      |
+
+______________________________________________________________________
+
+## `kagan doctor`
+
+Runs startup diagnostics (Python, git, agent backend availability, tmux, IDE, DB, project config).
+
+`kagan` runs these checks silently on boot and only surfaces output when critical blockers are detected. Exit code 0 when all pass/warn, exit code 1 on any failure.
+
+| Option                  | Description                                     |
+| ----------------------- | ----------------------------------------------- |
+| `--verbosity tldr`      | Warnings and failures only                      |
+| `--verbosity short`     | Concise guidance + one source pointer (default) |
+| `--verbosity technical` | Full rationale, commands, official source links  |
+
+______________________________________________________________________
 
 ## `kagan import`
 
@@ -75,14 +86,18 @@ Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecyc
 
 | Option    | Description                                 |
 | --------- | ------------------------------------------- |
-| `--repo`  | Repository in `owner/repo` format           |
-| `--state` | Issue state filter: `open`, `closed`, `all` |
+| `--repo`  | Repository in `owner/repo` format (auto-detected from git remote if omitted) |
+| `--state` | Issue state filter: `open` (default), `closed`, `all` |
 | `--label` | Import only issues with this label          |
 | `--yes`   | Skip confirmation prompt                    |
 
+______________________________________________________________________
+
 ## `kagan list`
 
-No options.
+Lists projects with repository paths and per-status task counts (BACKLOG, IN_PROGRESS, REVIEW, DONE). No options.
+
+______________________________________________________________________
 
 ## `kagan core`
 
@@ -94,59 +109,58 @@ No options.
 
 `kagan core start`: `--foreground` for foreground run.
 
+______________________________________________________________________
+
 ## `kagan mcp`
 
-| Option                              | Description                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
-| `--readonly`                        | Read-only tools only                                                           |
-| `--session-id TEXT`                 | Bind to session/task                                                           |
-| `--capability TEXT`                 | `viewer` \| `planner` \| `pair_worker` \| `operator` \| `maintainer`           |
-| `--identity TEXT`                   | `kagan` \| `kagan_admin`                                                       |
-| `--preset TEXT`                     | Named profile (see below). Overridden by explicit `--capability`/`--identity`. |
-| `--endpoint TEXT`                   | Override core endpoint                                                         |
-| `--enable-internal-instrumentation` | Enable diagnostics tool                                                        |
+Starts the MCP server on STDIO. Blocks until the host disconnects.
 
-### Presets
+| Option                              | Description                                  |
+| ----------------------------------- | -------------------------------------------- |
+| `--readonly`                        | Read-only tier (read-only tools/resources/prompts only) |
+| `--admin`                           | Admin tier (includes destructive/admin tools) |
+| `--session-id TEXT`                 | Bind server context to a session or task     |
+| `--enable-internal-instrumentation` | Expose diagnostics instrumentation tool      |
 
-`--preset` applies a pre-built `--capability` + `--identity` combination.
+`--readonly` and `--admin` are mutually exclusive. Without either flag, the server runs in default tier (read + write, no destructive operations).
 
-| Preset              | capability    | identity      | Use                                |
-| ------------------- | ------------- | ------------- | ---------------------------------- |
-| `security-reviewer` | `viewer`      | `kagan`       | Read-only auditing                 |
-| `test-writer`       | `pair_worker` | `kagan`       | Scoped test generation             |
-| `refactoring-agent` | `pair_worker` | `kagan`       | Bounded refactors with review gate |
-| `pair-worker`       | `pair_worker` | `kagan`       | Interactive PAIR workflow          |
-| `orchestrator`      | `operator`    | `kagan_admin` | AUTO pipeline orchestration        |
-| `maintainer`        | `maintainer`  | `kagan_admin` | Admin / CI lane                    |
+### Access tiers
+
+| Tier      | Scope                                            |
+| --------- | ------------------------------------------------ |
+| `readonly` | Read-only operations (task_get, task_list, etc.) |
+| `default`  | Read + write (task_create, task_patch, jobs, sessions) |
+| `admin`    | Default + destructive (task_delete, settings, plugin sync) |
 
 ```bash
-kagan mcp --preset orchestrator
-kagan mcp --preset security-reviewer --session-id task:abc123
+kagan mcp --readonly                    # read-only auditing
+kagan mcp                               # default read+write
+kagan mcp --admin                       # full admin access
+kagan mcp --session-id task:abc123      # task-scoped session
 ```
 
-Run `kagan profiles` to list all presets with descriptions and equivalent manual flags.
-
-## `kagan profiles`
-
-Lists all built-in MCP access profiles with their `--capability`, `--identity`, and a description. No options.
-
-```bash
-kagan profiles
-```
+______________________________________________________________________
 
 ## `kagan update`
 
-| Option         | Description               |
-| -------------- | ------------------------- |
-| `-f, --force`  | Skip confirmation         |
-| `--check`      | Check only, don't install |
-| `--prerelease` | Include pre-releases      |
+| Option         | Description                          |
+| -------------- | ------------------------------------ |
+| `--check-only` | Check for updates only, don't install |
+| `--prerelease` | Include pre-release versions         |
+| `--force`      | Force reinstall even when current    |
+
+______________________________________________________________________
 
 ## `kagan reset`
 
-| Option        | Description       |
-| ------------- | ----------------- |
-| `-f, --force` | Skip confirmation |
+| Option           | Description                       |
+| ---------------- | --------------------------------- |
+| `--project NAME` | Reset a single project by name    |
+| `--force`        | Skip confirmation                 |
+
+Without `--project`, resets all data (config, DB, worktrees).
+
+______________________________________________________________________
 
 ## `kagan tools`
 
@@ -156,4 +170,24 @@ kagan profiles
 
 ### `kagan tools enhance`
 
-`[PROMPT]` or `-f PATH`. `-t, --tool`: `claude` | `opencode` (auto-detects if omitted).
+Rewrites a prompt for clarity and actionability using an AI backend.
+
+`[PROMPT]` positional argument or `-f PATH` for file input. At least one is required.
+
+| Option         | Description                                              |
+| -------------- | -------------------------------------------------------- |
+| `--agent NAME` | Refinement agent backend (auto-detects if omitted)       |
+| `-t, --tool`   | Legacy shorthand: `claude` or `opencode` (cannot combine with `--agent`) |
+| `-f, --file`   | Read prompt from file                                    |
+
+______________________________________________________________________
+
+## `kagan plugins`
+
+!!! note "Experimental — opt-in only"
+    Requires `KAGAN_ENABLE_PLUGIN_CLI=1`. The plugin system is early-stage. See [Plugins](plugins.md) for details.
+______________________________________________________________________
+
+## Machine-readable output
+
+Most CLI commands produce human-first text output. For stable machine contracts, prefer MCP integrations over parsing CLI text output.

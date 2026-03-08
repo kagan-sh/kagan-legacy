@@ -135,6 +135,7 @@ nav:
           - Task lifecycle: concepts/task-lifecycle.md
     - Guides:
           - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+          - Chat & REPL: guides/chat.md
           - ACP session lifecycle: guides/acp-session-lifecycle.md
           - MCP setup: guides/mcp-setup.md
           - GitHub import: guides/github.md
@@ -143,4 +144,5 @@ nav:
           - Configuration: reference/configuration.md
           - Keybindings: reference/keybindings.md
           - MCP tools: reference/mcp-tools.md
+          - Plugins: reference/plugins.md
     - Troubleshooting: troubleshooting.md

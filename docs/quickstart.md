@@ -54,14 +54,21 @@ kagan import github --repo owner/repo
 
 ## Shortcuts
 
-`?` Help · `Ctrl+P` Command Palette · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings
+`?` Help · `Ctrl+P` Command Palette · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+T` Chat
 
 Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in the command palette.
 
-## Session behavior
+## Chat
 
-Need exact orchestrator session behavior (spawn, persistence, close semantics)?
-[ACP session lifecycle](guides/acp-session-lifecycle.md)
+`Ctrl+T` toggles the AI chat overlay on any screen. Or use the standalone REPL:
+
+```bash
+kagan chat
+```
+
+Type `/help` for slash commands, `/sessions` to manage conversations.
+
+[Chat guide](guides/chat.md) · [ACP session lifecycle](guides/acp-session-lifecycle.md)
 
 ## When things break
 

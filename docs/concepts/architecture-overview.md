@@ -72,9 +72,7 @@ Set globally via `default_pair_terminal_backend` in config, or override per task
 
 ## Plugins
 
-Core = single mutable authority. TUI/MCP/CLI never mutate directly. Plugin actions: `capability.method` via registry. GitHub bundled, repos start disconnected. Third-party: local entrypoints in config (no remote fetch).
-
-If you want to see this grow into a more refined, enterprise-grade plugin ecosystem -- discovery, versioning, sandboxing, registry -- open a discussion on the [GitHub Discussions tab](https://github.com/aorumbayev/kagan/discussions). That's where the roadmap gets shaped.
+GitHub import is a native feature. A plugin system exists for third-party integrations but is early-stage — see [Plugins](../reference/plugins.md) for current status and how to request new integrations.
 
 ## Data
 
@@ -82,4 +80,4 @@ State outside repo: `config.toml`, `kagan.db`, core runtime files, worktrees. No
 
 ## Troubleshooting
 
-`kagan core status` when connectivity fails. MCP: use capability profiles. [Troubleshooting](../troubleshooting.md) for metadata/token/lock issues.
+`kagan core status` when connectivity fails. MCP: use `--readonly` or `--admin` access tiers. [Troubleshooting](../troubleshooting.md) for metadata/token/lock issues.

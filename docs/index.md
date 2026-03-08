@@ -42,6 +42,12 @@ uvx kagan
 
   [:octicons-arrow-right-24: Task lifecycle](concepts/task-lifecycle.md)
 
+- :material-chat:{ .lg .middle } **Chat orchestrator**
+
+  REPL or TUI overlay. Slash commands, session history, agent switching.
+
+  [:octicons-arrow-right-24: Chat guide](guides/chat.md)
+
 </div>
 
 ______________________________________________________________________
@@ -78,15 +84,17 @@ ______________________________________________________________________
 
 ## Find what you need
 
-| Goal                         | Page                                                     |
-| ---------------------------- | -------------------------------------------------------- |
-| First run in under 5 minutes | [Quickstart](quickstart.md)                              |
-| Understand the task flow     | [Task lifecycle](concepts/task-lifecycle.md)             |
-| Understand AUTO vs PAIR      | [AUTO vs PAIR](guides/modes-auto-vs-pair.md)             |
-| Understand ACP chat sessions | [ACP session lifecycle](guides/acp-session-lifecycle.md) |
-| Connect an AI client via MCP | [MCP setup](guides/mcp-setup.md)                         |
-| Work across multiple repos   | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo) |
-| Import tasks from GitHub     | [Import from GitHub](guides/github.md)                   |
-| Fix a known issue            | [Troubleshooting](troubleshooting.md)                    |
-| All CLI flags                | [CLI reference](reference/cli.md)                        |
-| All MCP tools                | [MCP tools reference](reference/mcp-tools.md)            |
+| Goal                             | Page                                                      |
+| -------------------------------- | --------------------------------------------------------- |
+| First run in under 5 minutes     | [Quickstart](quickstart.md)                               |
+| Understand the task flow         | [Task lifecycle](concepts/task-lifecycle.md)               |
+| Understand AUTO vs PAIR          | [AUTO vs PAIR](guides/modes-auto-vs-pair.md)               |
+| Use chat REPL or TUI overlay     | [Chat guide](guides/chat.md)                               |
+| Understand ACP chat sessions     | [ACP session lifecycle](guides/acp-session-lifecycle.md)   |
+| Connect an AI client via MCP     | [MCP setup](guides/mcp-setup.md)                           |
+| Work across multiple repos       | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo)   |
+| Import tasks from GitHub         | [Import from GitHub](guides/github.md)                     |
+| Extend with plugins              | [Plugins](reference/plugins.md) (early stage)              |
+| Fix a known issue                | [Troubleshooting](troubleshooting.md)                      |
+| All CLI flags                    | [CLI reference](reference/cli.md)                          |
+| All MCP tools                    | [MCP tools reference](reference/mcp-tools.md)              |

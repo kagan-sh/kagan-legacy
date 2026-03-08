@@ -309,11 +309,11 @@ class KaganCore:
     def close(self) -> None:
         with contextlib.suppress(OSError, RuntimeError, SQLAlchemyError):
             self._engine.dispose()
-        # Only run async cleanup if no event loop is running
         try:
-            asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
+            task = loop.create_task(cleanup_all_spawned_processes())
+            logger.debug("Cleanup task scheduled (fire-and-forget): {}", task)
         except RuntimeError:
-            # No event loop running, can use asyncio.run()
             asyncio.run(cleanup_all_spawned_processes())
         logger.debug("Client closed")
 

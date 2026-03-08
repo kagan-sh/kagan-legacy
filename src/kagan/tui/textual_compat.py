@@ -52,12 +52,15 @@ def _patch_select_overlay_page_navigation() -> None:
 
 def _is_known_asyncio_subprocess_invalid_state(context: dict[str, Any]) -> bool:
     exc = context.get("exception")
+    message = str(context.get("message") or "")
+    if isinstance(exc, RuntimeError) and "Event loop is closed" in str(exc):
+        if "SubprocessTransport" in message:
+            return True
     if not isinstance(exc, asyncio.InvalidStateError):
         return False
     handle = context.get("handle")
     callback = getattr(handle, "_callback", None)
     callback_name = str(getattr(callback, "__qualname__", ""))
-    message = str(context.get("message") or "")
     if "_call_connection_lost" not in f"{callback_name} {message}":
         return False
     return "BaseSubprocessTransport" in message or "_UnixReadPipeTransport" in message

@@ -624,6 +624,91 @@ body,
   height: 1rem;
 }
 
+/* ===== COLLECTION CARDS ===== */
+.md-typeset .collection-cards > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.md-typeset .collection-cards > ul > li {
+  margin: 0;
+  padding: 0;
+}
+
+.md-typeset .collection-cards > ul > li > p {
+  margin: 0;
+}
+
+.md-typeset .collection-cards > ul > li a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #1E1C19;
+  background-color: #0E0C0A;
+  color: #E8E4DC !important;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.md-typeset .collection-cards > ul > li a:hover {
+  border-color: #C9A46A40;
+  background-color: #181614;
+  color: #E8E4DC !important;
+}
+
+.md-typeset .collection-cards > ul > li a .twemoji {
+  color: #C9A46A;
+  flex-shrink: 0;
+}
+
+.md-typeset .collection-cards > ul > li a .twemoji svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: #C9A46A;
+}
+
+/* ===== TOOLTIP / INSTANT PREVIEW POPUPS ===== */
+/* Hide the tail arrow */
+.md-tooltip2::before {
+  display: none !important;
+}
+
+/* Fade + slide animation */
+.md-tooltip2 {
+  opacity: 0 !important;
+  transform: translateY(-6px) !important;
+  transition: opacity 0.2s ease, transform 0.2s ease !important;
+}
+
+.md-tooltip2--active {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  transition: opacity 0.25s ease 0.1s, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) 0.1s !important;
+}
+
+/* Prevent popup from staying open when mouse leaves the card */
+.md-tooltip2__inner {
+  pointer-events: none !important;
+  background-color: #222020 !important;
+  border: 1px solid #3A3632 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 1rem 1.2rem !important;
+}
+
+/* Remove the gradient fade edges */
+.md-tooltip2__inner::before,
+.md-tooltip2__inner::after {
+  display: none !important;
+}
+
 /* ===== HORIZONTAL RULES ===== */
 .md-typeset hr {
   border-color: #1E1C19;

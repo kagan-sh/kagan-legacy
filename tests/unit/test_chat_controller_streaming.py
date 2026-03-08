@@ -83,3 +83,62 @@ async def test_orchestrator_client_flushes_buffer_before_tool_lines(
     assert printed[0] == "a"
     assert printed[1] == "b"
     assert "dim cyan" in printed[2]
+
+
+async def test_deferred_flush_fires_after_cadence_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Buffered text is flushed by the scheduled timer callback when no more chunks arrive."""
+    fake_console = _FakeConsole()
+    ticks = iter([1.00, 1.01])
+
+    def _tick() -> float:
+        return next(ticks, 1.01)
+
+    monkeypatch.setattr(chat_controller, "_console", fake_console)
+    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+
+    client = chat_controller._OrchestratorACPClient()
+    client.start_turn()
+
+    await client.session_update("session-1", _message_chunk("a"))  # t=1.00 → flush
+    await client.session_update("session-1", _message_chunk("b"))  # t=1.01 → buffer + schedule
+
+    # Only "a" has been flushed so far
+    assert len(fake_console.calls) == 1
+    assert client._flush_handle is not None
+
+    # Simulate the timer firing
+    client._do_deferred_flush()
+
+    printed = [str(args[0]) for args, _kwargs in fake_console.calls]
+    assert printed == ["a", "b"]
+    assert fake_console.file.flush_count == 2
+    assert client._flush_handle is None
+
+
+async def test_flush_timer_cancelled_on_start_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Starting a new turn cancels any pending flush timer."""
+    fake_console = _FakeConsole()
+    ticks = iter([1.00, 1.01])
+
+    def _tick() -> float:
+        return next(ticks, 1.01)
+
+    monkeypatch.setattr(chat_controller, "_console", fake_console)
+    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+
+    client = chat_controller._OrchestratorACPClient()
+    client.start_turn()
+
+    await client.session_update("session-1", _message_chunk("a"))  # flush
+    await client.session_update("session-1", _message_chunk("b"))  # buffer + schedule
+
+    assert client._flush_handle is not None
+
+    # Starting a new turn cancels the timer and clears buffers
+    client.start_turn()
+    assert client._flush_handle is None
+    assert client._pending_output_chunks == []

@@ -493,6 +493,29 @@ class ChatPanel(Vertical):
             if status_bar is not None:
                 status_bar.turn_count += 1
 
+    def handle_interrupt(self) -> bool:
+        """Handle Ctrl+C: interrupt active agent or clear input text.
+
+        Called by the App-level ``action_help_quit`` override so that the
+        Textual system binding for Ctrl+C is redirected here instead of
+        showing a quit-hint toast.
+
+        Returns True if the interrupt was handled.
+        """
+        # Agent active → interrupt (highest priority)
+        if self._runtime_status in {"thinking", "initializing", "waiting"}:
+            self.post_message(ChatPanel.InterruptRequested())
+            return True
+        # Agent idle → clear input text if any
+        try:
+            input_widget = self._input_widget()
+            if input_widget.value:
+                self.action_clear_input()
+                return True
+        except Exception:
+            pass
+        return False
+
     def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
         state = self._current_state()
         state.entries.clear()

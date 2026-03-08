@@ -2,6 +2,38 @@
 
 <!-- version list -->
 
+## v0.9.0-beta.1 (2026-03-08)
+
+### Bug Fixes
+
+- Guard worktree removal against missing repo directories
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+- Import asyncio compat filter from public API instead of private module
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+- Remove ctrl+j binding and add ctrl+c hint to chat placeholder
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+- Remove ctrl+j binding, extract asyncio compat to core, and harden worktree cleanup
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+### Chores
+
+- Bump version to 0.8.1
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+### Features
+
+- Add acp_args field to all agent backend configs
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+### Refactoring
+
+- Extract asyncio subprocess filter from tui to core for MCP reuse
+  ([`22d5d3c`](https://github.com/kagan-sh/kagan/commit/22d5d3c65f5cbb926d4825d3c151f89efb1d5728))
+
+
 ## v0.8.1 (2026-03-08)
 
 

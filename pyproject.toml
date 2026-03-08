@@ -1,6 +1,6 @@
 [project]
 name = "kagan"
-version = "0.8.1-beta.2"
+version = "0.8.1-beta.3"
 description = "AI-powered Kanban TUI for autonomous development workflows"
 license = "MIT"
 authors = [

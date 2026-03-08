@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v0.8.1-beta.3 (2026-03-08)
+
+### Bug Fixes
+
+- Improve Ctrl+C interrupt handling in chat orchestrator
+  ([#41](https://github.com/kagan-sh/kagan/pull/41),
+  [`6ff707a`](https://github.com/kagan-sh/kagan/commit/6ff707a6e50ad8faf47f07df7cc76556566f637d))
+
+### Refactoring
+
+- Address PR review feedback on interrupt handling
+  ([#41](https://github.com/kagan-sh/kagan/pull/41),
+  [`6ff707a`](https://github.com/kagan-sh/kagan/commit/6ff707a6e50ad8faf47f07df7cc76556566f637d))
+
+
 ## v0.8.1-beta.2 (2026-03-08)
 
 ### Bug Fixes

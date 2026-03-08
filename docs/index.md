@@ -16,37 +16,13 @@ Kagan is a keyboard-first Kanban TUI that orchestrates coding agents across the 
 uvx kagan
 ```
 
-<div class="grid cards" markdown>
+<div class="collection-cards" markdown>
 
-- :material-lightning-bolt:{ .lg .middle } **60-second start**
-
-  One command. Any repo. Board up, first task running.
-
-  [:octicons-arrow-right-24: Quickstart](quickstart.md)
-
-- :material-robot:{ .lg .middle } **AUTO vs PAIR**
-
-  Background agents or interactive sessions. Switch per task, not per project.
-
-  [:octicons-arrow-right-24: Choose your mode](guides/modes-auto-vs-pair.md)
-
-- :material-server-network:{ .lg .middle } **Run from your editor**
-
-  Claude Code, VS Code, Cursor, Gemini CLI, or any MCP client. The TUI is optional.
-
-  [:octicons-arrow-right-24: MCP setup](guides/mcp-setup.md)
-
-- :material-source-branch:{ .lg .middle } **Review before merge**
-
-  Structured review: diff summary, acceptance criteria checklist, your call.
-
-  [:octicons-arrow-right-24: Task lifecycle](concepts/task-lifecycle.md)
-
-- :material-chat:{ .lg .middle } **Chat orchestrator**
-
-  REPL or TUI overlay. Slash commands, session history, agent switching.
-
-  [:octicons-arrow-right-24: Chat guide](guides/chat.md)
+- [:material-lightning-bolt: **60-second start**](quickstart.md)
+- [:material-robot: **AUTO vs PAIR**](guides/modes-auto-vs-pair.md)
+- [:material-server-network: **Run from your editor**](guides/mcp-setup.md)
+- [:material-source-branch: **Review before merge**](concepts/task-lifecycle.md)
+- [:material-chat: **Chat orchestrator**](guides/chat.md)
 
 </div>
 

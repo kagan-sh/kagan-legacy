@@ -18,6 +18,7 @@ from kagan.chat.prompt import (
 class SlashCommandSpec:
     name: str
     description: str
+    orchestrator_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +107,20 @@ class SlashCommandRegistry:
     def get(self, name: str) -> SlashCommand | None:
         return self._commands.get(name.strip().lower())
 
-    def specs(self) -> tuple[SlashCommandSpec, ...]:
-        return tuple(self._commands[name].spec for name in sorted(self._commands))
+    def specs(self, *, orchestrator_only: bool | None = None) -> tuple[SlashCommandSpec, ...]:
+        """Return command specs, optionally filtering by orchestrator_only flag.
+
+        Args:
+            orchestrator_only: If True, return only orchestrator-only commands.
+                If False, return only non-orchestrator commands.
+                If None (default), return all commands.
+        """
+        result = []
+        for name in sorted(self._commands):
+            spec = self._commands[name].spec
+            if orchestrator_only is None or spec.orchestrator_only == orchestrator_only:
+                result.append(spec)
+        return tuple(result)
 
     def format_help_lines(self) -> list[str]:
         lines = ["Available commands:"]
@@ -199,8 +212,17 @@ def _handle_tool(
 
 
 def _handle_flow(
-    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+    invocation: SlashCommandInvocation, ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
+    # Only available in orchestrator sessions
+    if "orchestrator" not in ctx.session_key.casefold():
+        return SlashCommandOutcome(
+            handled=True,
+            error_lines=(
+                "The /flow command is only available in orchestrator sessions. "
+                "Switch to the orchestrator session to use guided flow.",
+            ),
+        )
     goal = invocation.arg.strip()
     lines: list[str] = [
         "Structured flow: Plan -> Execute -> Orchestrate",
@@ -260,6 +282,16 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         name="flow",
         description="Show guided Plan -> Execute -> Orchestrate flow",
         handler=_handle_flow,
+    )
+    # Mark flow as orchestrator-only after registration
+    flow_cmd = registry._commands["flow"]
+    registry._commands["flow"] = SlashCommand(
+        spec=SlashCommandSpec(
+            name="flow",
+            description="Show guided Plan -> Execute -> Orchestrate flow",
+            orchestrator_only=True,
+        ),
+        handler=flow_cmd.handler,
     )
     return registry
 

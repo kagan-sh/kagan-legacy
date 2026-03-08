@@ -22,6 +22,9 @@ class _TaskData(Protocol):
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
+    has_active_session: bool
+    has_session_history: bool
+    latest_session_mode: WorkMode | None
 
 
 _TITLE_MAX = 56
@@ -32,8 +35,9 @@ _INDICATOR_CLASSES = frozenset(
     {
         "indicator-passed",
         "indicator-reviewing",
-        "indicator-running",
-        "indicator-blocked",
+        "indicator-running-auto",
+        "indicator-running-pair",
+        "indicator-not-started",
         "indicator-idle",
     }
 )
@@ -42,13 +46,13 @@ _PRIORITY_CLASSES = frozenset({"priority-low", "priority-medium", "priority-high
 
 _STATUS_CLASSES = frozenset(
     {
-        "card-checks",
-        "card-readiness",
-        "readiness-ready",
-        "readiness-risk",
-        "readiness-blocked",
-        "passed",
-        "pending",
+        "card-run-state",
+        "run-state-auto-running",
+        "run-state-pair-running",
+        "run-state-not-started",
+        "run-state-idle",
+        "run-state-review",
+        "run-state-done",
     }
 )
 
@@ -215,38 +219,36 @@ class TaskCard(Widget):
     @staticmethod
     def _indicator_state(task: _TaskData) -> tuple[str, str]:
         status = task.status
-        review_approved = bool(task.review_approved)
-        description = (task.description or "").strip()
-        criteria = [
-            item.strip()
-            for item in task.acceptance_criteria or []
-            if isinstance(item, str) and item.strip()
-        ]
-        if review_approved or status == TaskStatus.DONE:
+        if bool(task.review_approved) or status == TaskStatus.DONE:
             return ("●", "indicator-passed")
         if status == TaskStatus.REVIEW:
-            return ("●", "indicator-reviewing")
+            return ("◉", "indicator-reviewing")
+        if task.has_active_session:
+            if task.execution_mode == WorkMode.PAIR:
+                return ("◉", "indicator-running-pair")
+            return ("◉", "indicator-running-auto")
+        if not task.has_session_history:
+            return ("○", "indicator-not-started")
         if status == TaskStatus.IN_PROGRESS:
-            return ("●", "indicator-running")
-        if not description:
-            return ("●", "indicator-blocked")
-        if criteria:
             return ("●", "indicator-idle")
         return ("●", "indicator-idle")
 
     @staticmethod
     def _status_line(task: _TaskData) -> tuple[str, str]:
+        mode_label = "PAIR" if task.execution_mode == WorkMode.PAIR else "AUTO"
         status = task.status
-        review_approved = task.review_approved
+
         if status == TaskStatus.DONE:
-            return ("Done", "card-checks passed")
+            return (f"{mode_label} done", "card-run-state run-state-done")
         if status == TaskStatus.REVIEW:
-            if review_approved:
-                return ("Approved", "card-checks passed")
-            return ("Waiting review", "card-checks pending")
-        if status == TaskStatus.IN_PROGRESS:
-            return ("In progress", "card-readiness readiness-ready")
-        return ("Backlog", "card-readiness readiness-ready")
+            return (f"{mode_label} in review", "card-run-state run-state-review")
+        if task.has_active_session:
+            if task.execution_mode == WorkMode.PAIR:
+                return ("PAIR session active", "card-run-state run-state-pair-running")
+            return ("AUTO agent running", "card-run-state run-state-auto-running")
+        if not task.has_session_history:
+            return (f"{mode_label} not started", "card-run-state run-state-not-started")
+        return (f"{mode_label} ready", "card-run-state run-state-idle")
 
     # ------------------------------------------------------------------
     # Compose — skeleton only, no data computation

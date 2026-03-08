@@ -3,8 +3,10 @@ import json
 from typing import Any, cast
 
 import pytest
+from acp.schema import AgentMessageChunk, AgentThoughtChunk, TextContentBlock
 
-from kagan.core._acp import run_acp_session
+from kagan.core._acp import map_acp_update_to_event, run_acp_session
+from kagan.core.enums import SessionEventType
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -78,20 +80,16 @@ async def test_run_acp_session_terminates_process_after_prompt(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp_json = tmp_path / ".mcp.json"
-    mcp_json.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "kagan": {
-                        "command": "kagan",
-                        "args": ["mcp"],
-                        "env": {},
-                    }
+    mcp_manifest = json.dumps(
+        {
+            "mcpServers": {
+                "kagan": {
+                    "command": "kagan",
+                    "args": ["mcp"],
+                    "env": {},
                 }
             }
-        ),
-        encoding="utf-8",
+        }
     )
 
     fake_conn = _FakeConnection()
@@ -103,7 +101,7 @@ async def test_run_acp_session_terminates_process_after_prompt(
         client=cast("Any", object()),
         worktree_path=tmp_path,
         prompt="one-shot prompt",
-        mcp_json_path=mcp_json,
+        mcp_manifest=mcp_manifest,
     )
 
     assert fake_conn.prompt_called is True
@@ -116,10 +114,8 @@ async def test_run_acp_session_surfaces_early_process_exit_on_initialize_timeout
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp_json = tmp_path / ".mcp.json"
-    mcp_json.write_text(
-        json.dumps({"mcpServers": {"kagan": {"command": "kagan", "args": ["mcp"], "env": {}}}}),
-        encoding="utf-8",
+    mcp_manifest = json.dumps(
+        {"mcpServers": {"kagan": {"command": "kagan", "args": ["mcp"], "env": {}}}}
     )
 
     fake_conn = _SlowInitializeConnection()
@@ -136,5 +132,50 @@ async def test_run_acp_session_surfaces_early_process_exit_on_initialize_timeout
             client=cast("Any", object()),
             worktree_path=tmp_path,
             prompt="one-shot prompt",
-            mcp_json_path=mcp_json,
+            mcp_manifest=mcp_manifest,
         )
+
+
+async def test_map_acp_update_to_event_uses_lightweight_chunk_payload_without_model_dump(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        del self, args, kwargs
+        raise AssertionError("model_dump should not run for message/thought chunks")
+
+    monkeypatch.setattr(AgentMessageChunk, "model_dump", _raise_model_dump)
+    monkeypatch.setattr(AgentThoughtChunk, "model_dump", _raise_model_dump)
+
+    message_update = AgentMessageChunk(
+        content=TextContentBlock(type="text", text="hello"),
+        session_update="agent_message_chunk",
+    )
+    thought_update = AgentThoughtChunk(
+        content=TextContentBlock(type="text", text="plan"),
+        session_update="agent_thought_chunk",
+    )
+
+    message_result = map_acp_update_to_event(message_update)
+    thought_result = map_acp_update_to_event(thought_update)
+
+    assert message_result == (
+        SessionEventType.OUTPUT_CHUNK,
+        {
+            "text": "hello",
+            "acp": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "hello"},
+            },
+        },
+    )
+    assert thought_result == (
+        SessionEventType.OUTPUT_CHUNK,
+        {
+            "text": "plan",
+            "thought": True,
+            "acp": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "plan"},
+            },
+        },
+    )

@@ -47,23 +47,26 @@ class TaskEditorModal(ModalScreen[None]):
         with Container(id="task-editor-container"):
             if editing_task is None:
                 yield TaskEditor(
-                    execution_mode=self._execution_mode or WorkMode.PAIR,
+                    execution_mode=self._execution_mode or WorkMode.AUTO,
                     available_agent_backends=agent_backends,
                     focus_field=self._focus_field,
                 )
-                return
-
-            yield TaskEditor(
-                title=editing_task.title,
-                description=editing_task.description,
-                priority=editing_task.priority,
-                execution_mode=editing_task.execution_mode,
-                agent_backend=editing_task.agent_backend,
-                launcher=editing_task.launcher,
-                available_agent_backends=agent_backends,
-                base_branch=editing_task.base_branch,
-                acceptance_criteria=list(editing_task.acceptance_criteria),
-                focus_field=self._focus_field,
+            else:
+                yield TaskEditor(
+                    title=editing_task.title,
+                    description=editing_task.description,
+                    priority=editing_task.priority,
+                    execution_mode=editing_task.execution_mode,
+                    agent_backend=editing_task.agent_backend,
+                    launcher=editing_task.launcher,
+                    available_agent_backends=agent_backends,
+                    base_branch=editing_task.base_branch,
+                    acceptance_criteria=list(editing_task.acceptance_criteria),
+                    focus_field=self._focus_field,
+                )
+            yield Static(
+                "[bold]Ctrl+S[/] save  [bold]Esc[/] cancel  [bold]Ctrl+.[/] advanced",
+                classes="modal-action-hint",
             )
 
     async def on_task_submitted(self, message: TaskSubmitted) -> None:
@@ -104,6 +107,9 @@ class TaskEditorModal(ModalScreen[None]):
 
     def action_finish(self) -> None:
         self.query_one(TaskEditor).submit()
+
+    def action_save(self) -> None:
+        self.action_finish()
 
     def action_toggle_advanced(self) -> None:
         self.query_one(TaskEditor).action_toggle_advanced()

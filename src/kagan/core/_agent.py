@@ -283,20 +283,23 @@ async def _prepare_spawn(
     task_id: str,
     db_path: str,
     project_id: str | None = None,
-) -> tuple[list[str], dict[str, str], dict[str, object]]:
+    *,
+    write_mcp_manifest: bool = True,
+) -> tuple[list[str], dict[str, str], dict[str, object], str]:
     entry = get_backend(backend_name)
 
     mcp_content = build_mcp_manifest(session_id=session_id, db_path=db_path, project_id=project_id)
-    mcp_path = worktree_path / ".mcp.json"
-    try:
-        await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
-    except OSError as exc:
-        if exc.errno == errno.ENOSPC:  # No space left on device
-            raise AgentError(
-                f"Cannot write MCP manifest to {mcp_path}: Disk is full. "
-                f"Free up disk space and try again."
-            ) from exc
-        raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
+    if write_mcp_manifest:
+        mcp_path = worktree_path / ".mcp.json"
+        try:
+            await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
+        except OSError as exc:
+            if exc.errno == errno.ENOSPC:  # No space left on device
+                raise AgentError(
+                    f"Cannot write MCP manifest to {mcp_path}: Disk is full. "
+                    f"Free up disk space and try again."
+                ) from exc
+            raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
 
     cmd: list[str] = [entry["executable"]]
     if entry["workdir_flag"]:
@@ -312,7 +315,7 @@ async def _prepare_spawn(
         "cwd": str(worktree_path),
         "env": env,
     }
-    return cmd, env, base_kwargs
+    return cmd, env, base_kwargs, mcp_content
 
 
 async def spawn_agent(
@@ -328,7 +331,7 @@ async def spawn_agent(
     """Spawn an agent as a detached OS process."""
     logger.info("Spawning agent backend={}", backend_name)
     entry = get_backend(backend_name)
-    cmd, _env, kwargs = await _prepare_spawn(
+    cmd, _env, kwargs, _mcp_content = await _prepare_spawn(
         backend_name,
         worktree_path,
         prompt,
@@ -378,7 +381,7 @@ async def spawn_agent_via_acp(
     if not entry.get("supports_acp", False):
         raise AgentError(f"Agent backend {backend_name!r} does not support ACP execution.")
 
-    cmd, _env, kwargs = await _prepare_spawn(
+    cmd, _env, kwargs, mcp_content = await _prepare_spawn(
         backend_name,
         worktree_path,
         prompt,
@@ -386,6 +389,7 @@ async def spawn_agent_via_acp(
         task_id,
         db_path,
         project_id,
+        write_mcp_manifest=False,
     )
     acp_cmd = entry.get("acp_command")
     if isinstance(acp_cmd, list) and acp_cmd:
@@ -394,7 +398,6 @@ async def spawn_agent_via_acp(
     if isinstance(acp_args, list) and acp_args:
         cmd.extend(str(arg) for arg in acp_args)
 
-    mcp_path = worktree_path / ".mcp.json"
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
     kwargs["stderr"] = asyncio.subprocess.PIPE
@@ -423,7 +426,7 @@ async def spawn_agent_via_acp(
             client=client,
             worktree_path=worktree_path,
             prompt=prompt,
-            mcp_json_path=mcp_path,
+            mcp_manifest=mcp_content,
         ),
         name=f"acp-session:{task_id}",
     )

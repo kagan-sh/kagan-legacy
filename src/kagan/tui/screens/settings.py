@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Input, Select, Static, Switch, TextArea
 from textual.widgets._option_list import Option, OptionList
 
+from kagan.chat import list_registered_agent_backends
 from kagan.chat.prompt import _ORCHESTRATOR_SYSTEM_PROMPT
 from kagan.core import (
     PERSONA_DEFINITIONS_KEY,
@@ -19,7 +19,7 @@ from kagan.core import (
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
-from kagan.tui.keybindings import SETTINGS_BINDINGS
+from kagan.tui.keybindings import SETTINGS_BINDINGS, SETTINGS_COMMAND_BINDINGS
 
 
 def _is_enabled(value: str | None, *, default: bool) -> bool:
@@ -108,11 +108,7 @@ class CategoryList(OptionList):
 class SettingsModal(ModalScreen[None]):
     BINDINGS = [
         *SETTINGS_BINDINGS,
-        Binding("slash", "focus_search", "Search", key_display="/", show=False),
-        Binding("ctrl+a", "persona_audit", "Audit Repo", key_display="Ctrl+A", show=False),
-        Binding("ctrl+i", "persona_import", "Import Persona", key_display="Ctrl+I", show=False),
-        Binding("ctrl+e", "persona_export", "Export Persona", key_display="Ctrl+E", show=False),
-        Binding("ctrl+.", "toggle_advanced", "Advanced", key_display="Ctrl+.", show=False),
+        *SETTINGS_COMMAND_BINDINGS,
     ]
 
     def __init__(self) -> None:
@@ -187,9 +183,10 @@ class SettingsModal(ModalScreen[None]):
                     yield Static("", classes="settings-detail-title", id="settings-detail-title")
                     with Vertical(id="settings-detail-content"):
                         with Vertical(id="settings-pane-general", classes="settings-pane"):
-                            yield self._text_field(
+                            yield self._select_field(
                                 "Default agent backend",
                                 "settings-default-agent",
+                                [(name, name) for name in list_registered_agent_backends()],
                             )
                             yield self._select_field(
                                 "PAIR launcher",
@@ -343,9 +340,17 @@ class SettingsModal(ModalScreen[None]):
         self._update_search_status("")
 
     def _set_values(self, settings: dict[str, str]) -> None:
-        self.query_one("#settings-default-agent", Input).value = (
+        default_agent = (
             settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
         )
+        agent_select = self.query_one("#settings-default-agent", Select)
+        available_agents = list_registered_agent_backends()
+        if default_agent in available_agents:
+            agent_select.value = default_agent
+        elif available_agents:
+            agent_select.value = available_agents[0]
+        else:
+            agent_select.value = "claude-code"
 
         pair_launcher = settings.get("pair_launcher", "tmux")
         pair_select = self.query_one("#settings-pair-launcher", Select)
@@ -577,9 +582,10 @@ class SettingsModal(ModalScreen[None]):
         await self._persist_settings()
 
     async def _persist_settings(self) -> None:
-        default_agent_backend = self.query_one("#settings-default-agent", Input).value.strip()
-        if not default_agent_backend:
-            default_agent_backend = "claude-code"
+        agent_backend_value = self.query_one("#settings-default-agent", Select).value
+        default_agent_backend = (
+            agent_backend_value if isinstance(agent_backend_value, str) else "claude-code"
+        )
 
         pair_launcher_value = self.query_one("#settings-pair-launcher", Select).value
         strategy_value = self.query_one("#settings-base-ref-strategy", Select).value

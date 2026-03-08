@@ -44,11 +44,11 @@ def _to_task_view(data: dict) -> TaskView:
     except KeyError:
         priority = Priority.MEDIUM
 
-    exec_raw = data.get("execution_mode", "PAIR")
+    exec_raw = data.get("execution_mode", "AUTO")
     try:
         execution_mode = WorkMode(exec_raw)
     except ValueError:
-        execution_mode = WorkMode.PAIR
+        execution_mode = WorkMode.AUTO
 
     return TaskView(
         id=data["id"],

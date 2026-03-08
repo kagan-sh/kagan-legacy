@@ -49,6 +49,7 @@ class KaganDriver:
         db_path = tmp_path / "kagan.db"
         factory = FakeAgentFactory()
         client = KaganCore(db_path=db_path)
+        await client.settings.set({"ui.tui_tutorial_seen": "true"})
         core_driver = CoreDriver(client)
         driver = cls(core_driver, factory, _ctx=client)
         driver._tmp_path = tmp_path

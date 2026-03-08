@@ -104,6 +104,48 @@ def _parse_work_mode(value: str | None) -> WorkMode:
     return WorkMode(value) if value else WorkMode.AUTO
 
 
+def _build_update_verification(
+    task_payload: dict[str, Any],
+    *,
+    title: str | None,
+    description: str | None,
+    priority: Priority | None,
+    execution_mode: WorkMode | None,
+    base_branch: str | None,
+    acceptance_criteria: list[str] | None,
+    agent_backend: str | None,
+    status: TaskStatus | None,
+) -> dict[str, Any]:
+    requested: dict[str, Any] = {}
+    if title is not None:
+        requested["title"] = title
+    if description is not None:
+        requested["description"] = description
+    if priority is not None:
+        requested["priority"] = priority.name
+    if execution_mode is not None:
+        requested["execution_mode"] = execution_mode.value
+    if base_branch is not None:
+        requested["base_branch"] = base_branch
+    if acceptance_criteria is not None:
+        requested["acceptance_criteria"] = acceptance_criteria
+    if agent_backend is not None:
+        requested["agent_backend"] = agent_backend
+    if status is not None:
+        requested["status"] = status.value
+
+    applied = {field: task_payload.get(field) for field in requested}
+    mismatched_fields = [
+        field for field, expected in requested.items() if applied.get(field) != expected
+    ]
+    return {
+        "requested": requested,
+        "applied": applied,
+        "all_applied": not mismatched_fields,
+        "mismatched_fields": mismatched_fields,
+    }
+
+
 @mcp_error_boundary
 async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
     """Get a task by ID."""
@@ -180,6 +222,7 @@ async def _task_update(
     resolved_task_id = _resolve_task_id(ctx, task_id)
     priority_enum = _parse_priority(priority) if priority is not None else None
     mode_enum = _parse_work_mode(execution_mode) if execution_mode is not None else None
+    status_enum = TaskStatus(status) if status is not None else None
     task = await app.client.tasks.update(
         resolved_task_id,
         title=title,
@@ -191,9 +234,21 @@ async def _task_update(
         agent_backend=agent_backend,
         launcher=launcher,
     )
-    if status:
-        task = await app.client.tasks.set_status(resolved_task_id, TaskStatus(status))
-    return _task_to_dict(task)
+    if status_enum is not None:
+        task = await app.client.tasks.set_status(resolved_task_id, status_enum)
+    result = _task_to_dict(task)
+    result["verification"] = _build_update_verification(
+        result,
+        title=title,
+        description=description,
+        priority=priority_enum,
+        execution_mode=mode_enum,
+        base_branch=base_branch,
+        acceptance_criteria=acceptance_criteria,
+        agent_backend=agent_backend,
+        status=status_enum,
+    )
+    return result
 
 
 @mcp_error_boundary
@@ -427,7 +482,12 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
             created.append(_task_to_dict(task))
         except (KaganError, ValueError, TypeError, KeyError) as exc:
             errors.append({"index": str(idx), "error": str(exc)})
-    return {"created": created, "errors": errors}
+    return {
+        "created": created,
+        "errors": errors,
+        "created_count": len(created),
+        "error_count": len(errors),
+    }
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:

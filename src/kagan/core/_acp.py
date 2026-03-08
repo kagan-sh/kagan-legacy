@@ -305,16 +305,31 @@ def map_acp_update_to_event(
     | SessionInfoUpdate,
 ) -> tuple[SessionEventType, dict[str, Any]] | None:
     """Map ACP session updates to kagan event types and payloads."""
-    payload: dict[str, Any] = {
-        "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True)
-    }
-
     if isinstance(update, UserMessageChunk):
         return None
     if isinstance(update, AgentMessageChunk):
-        return SessionEventType.OUTPUT_CHUNK, payload
+        chunk_text = str(getattr(update.content, "text", "") or "")
+        return SessionEventType.OUTPUT_CHUNK, {
+            "text": chunk_text,
+            "acp": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": chunk_text},
+            },
+        }
     if isinstance(update, AgentThoughtChunk):
-        return SessionEventType.OUTPUT_CHUNK, {"acp": payload["acp"], "thought": True}
+        chunk_text = str(getattr(update.content, "text", "") or "")
+        return SessionEventType.OUTPUT_CHUNK, {
+            "text": chunk_text,
+            "thought": True,
+            "acp": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": chunk_text},
+            },
+        }
+
+    payload: dict[str, Any] = {
+        "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True)
+    }
     if isinstance(update, ToolCallStart):
         return SessionEventType.TOOL_CALL_START, payload
     if isinstance(update, ToolCallProgress):
@@ -324,11 +339,11 @@ def map_acp_update_to_event(
     return SessionEventType.AGENT_STATUS, payload
 
 
-def _build_mcp_server_from_json(mcp_json_path: Path) -> McpServerStdio:
-    payload = json.loads(mcp_json_path.read_text("utf-8"))
+def _build_mcp_server_from_manifest(mcp_manifest: str) -> McpServerStdio:
+    payload = json.loads(mcp_manifest)
     servers = payload.get("mcpServers", {})
     if not servers:
-        raise ValueError(f"No MCP servers found in {mcp_json_path}")
+        raise ValueError("No MCP servers found in MCP manifest")
 
     name, config = next(iter(servers.items()))
     command = config["command"]
@@ -372,7 +387,7 @@ async def run_acp_session(
     client: KaganACPClient,
     worktree_path: Path,
     prompt: str,
-    mcp_json_path: Path,
+    mcp_manifest: str,
     backend_name: str | None = None,
 ) -> None:
     """Run ACP handshake and session loop for a spawned agent process."""
@@ -402,7 +417,7 @@ async def run_acp_session(
                 f"{_ACP_TIMEOUT_HINT}"
             )
             raise RuntimeError(timeout_message) from exc
-        mcp_server = await asyncio.to_thread(_build_mcp_server_from_json, mcp_json_path)
+        mcp_server = await asyncio.to_thread(_build_mcp_server_from_manifest, mcp_manifest)
         try:
             session = await asyncio.wait_for(
                 conn.new_session(cwd=str(worktree_path), mcp_servers=[mcp_server]),

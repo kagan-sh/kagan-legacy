@@ -17,7 +17,7 @@ Board up. First task running. Under five minutes.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 uv tool install kagan
-kagan --version   # e.g. 0.5.0
+kagan --version
 ```
 
 ## 2. Launch
@@ -27,31 +27,26 @@ cd your-project-directory
 kagan
 ```
 
-Welcome screen --> open/create project --> board appears (BACKLOG --> IN_PROGRESS --> REVIEW --> DONE).
+Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -> REVIEW -> DONE).
 
 ## 3. Create a task
 
-`n` → title + description → AUTO or PAIR → `Ctrl+S` save. Task appears in BACKLOG.
+`n` -> title + description -> AUTO or PAIR -> `Ctrl+S` save. Task appears in BACKLOG.
 
 ## 4. Run it
 
-- **AUTO:** Select task → `a` or `Enter`.
-  `Enter` opens a dedicated Task Output screen in split view: task/diff details on top, the same chat overlay UI as `Ctrl+O` in the lower half.
-  `Ctrl+P` toggles fullscreen for that task overlay; `Ctrl+O` toggles docked overlay for that task.
-  Use follow-up chat plus `a` (start) and `s` (stop) to steer iterations.
-- **PAIR:** Select task → `Enter` → work in your configured backend (tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, or Antigravity).
-
-PAIR launch does not open the orchestrator chat overlay; it opens or redirects to your configured PAIR backend.
+- **AUTO:** Select task -> `s` (or `Enter` when focused) to start. Use `Shift+S` to stop.
+- **PAIR:** Select task -> `Enter` -> continue in your configured PAIR backend.
 
 [AUTO vs PAIR](guides/modes-auto-vs-pair.md)
 
 ## 5. Review and merge
 
-Move to REVIEW --> `Enter` (Task Output) --> approve/reject --> merge.
+Move to REVIEW -> `Enter` -> approve (`a`) / reject (`x`) -> merge (`m`).
 
 ## Optional: import existing GitHub issues
 
-Use Actions (`.`) on the board and run `github import`, or use:
+Use Command Palette (`Ctrl+P`) and run `github import`, or use:
 
 ```bash
 kagan import github --repo owner/repo
@@ -59,7 +54,9 @@ kagan import github --repo owner/repo
 
 ## Shortcuts
 
-`?` Help · `.` Actions · `,` Settings · `F12` Debug
+`?` Help · `Ctrl+P` Command Palette · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings
+
+Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in the command palette.
 
 ## Session behavior
 
@@ -68,8 +65,7 @@ Need exact orchestrator session behavior (spawn, persistence, close semantics)?
 
 ## When things break
 
-Startup runs doctor checks silently. If a critical blocker is found,
-Kagan prints the report and exits.
+Startup runs doctor checks silently. If a critical blocker is found, Kagan prints the report and exits.
 
 ```bash
 kagan doctor

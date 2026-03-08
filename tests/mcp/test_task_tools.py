@@ -103,6 +103,8 @@ async def test_task_batch_create_accepts_mixed_field_types(mcp_board: ClientSess
     assert not result.isError
     payload = _text(result)
     assert payload["errors"] == []
+    assert payload["created_count"] == 2
+    assert payload["error_count"] == 0
     assert [task["title"] for task in payload["created"]] == ["Batch alpha", "Batch beta"]
 
 
@@ -547,6 +549,9 @@ async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -
     assert payload["base_branch"] == "main"
     assert payload["acceptance_criteria"] == ["Criterion A", "Criterion B"]
     assert payload["agent_backend"] == "kimi-cli"
+    assert payload["verification"]["all_applied"] is True
+    assert payload["verification"]["mismatched_fields"] == []
+    assert payload["verification"]["requested"]["execution_mode"] == "AUTO"
 
 
 # ---------------------------------------------------------------------------

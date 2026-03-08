@@ -3,10 +3,11 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Static
+
+from kagan.tui.keybindings import PLAN_APPROVAL_BINDINGS
 
 PlanStatus = Literal["pending", "in_progress", "completed", "failed"]
 
@@ -52,11 +53,7 @@ class PlanEntryRow(Static):
 
 class PlanApprovalWidget(Vertical):
     DEFAULT_CLASSES = "plan-approval chat-plan-approval"
-    BINDINGS = [
-        Binding("a", "approve", "Approve"),
-        Binding("e", "edit", "Edit"),
-        Binding("d", "dismiss", "Dismiss"),
-    ]
+    BINDINGS = PLAN_APPROVAL_BINDINGS
 
     class Approved(Message):
         def __init__(self, tasks: list[PlanTaskLike]) -> None:

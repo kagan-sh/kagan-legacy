@@ -195,6 +195,18 @@ class KaganApp(App[None]):
         if isinstance(self.screen, WelcomeScreen):
             self.screen.action_new_project()
 
+    def action_help_quit(self) -> None:
+        """Override Textual's default Ctrl+C system binding.
+
+        Instead of showing a quit-hint toast, delegate to the visible
+        ChatPanel so Ctrl+C interrupts the agent or clears input.
+        """
+        from kagan.tui.widgets.chat import ChatPanel
+
+        for panel in self.screen.query(ChatPanel):
+            if panel.display and panel.handle_interrupt():
+                return
+
     async def action_quit(self) -> None:
         settings = await self.core.settings.get()
         if not _is_enabled(settings.get("confirm_quit"), default=True):

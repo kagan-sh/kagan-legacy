@@ -27,6 +27,12 @@
     .ascii-pop { animation:asciiPop 24s ease-in-out infinite; }
     @keyframes asciiGlow { 0%,100%{opacity:.92} 50%{opacity:1} }
     .ascii-glow { animation:asciiGlow 3s ease-in-out infinite; }
+    .ascii-logo {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-variant-ligatures: none;
+      letter-spacing: 0;
+    }
     @keyframes hintPulse { 0%,100%{opacity:.65} 50%{opacity:1} }
     .hint-pulse { animation:hintPulse 2.4s ease-in-out infinite; }
     @keyframes approveGlow { 0%,100%{opacity:.15} 50%{opacity:.32} }
@@ -53,7 +59,6 @@
     @keyframes blink{0%,100%{opacity:1}50%{opacity:0}} .cursor{animation:blink 1s step-end infinite}
     @keyframes think{0%,100%{opacity:.4}50%{opacity:1}} .thinking{animation:think 1.5s ease-in-out infinite}
     @keyframes logAppear{0%,60%{opacity:0}70%,100%{opacity:1}} .log-late{animation:logAppear 6s ease both infinite}
-    @keyframes scan{from{transform:translateY(-8px)}to{transform:translateY(340px)}} .scanline{animation:scan 6s linear infinite;opacity:.02}
   </style>
 
   <rect width="880" height="340" rx="8" fill="#ffffff"/>
@@ -62,8 +67,7 @@
   <g class="splash">
     <g transform="translate(440,138)">
       <g class="ascii-pop">
-        <text class="ascii-glow" x="0" y="0" text-anchor="middle" font-size="16" fill="#b8860b">█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █</text>
-        <text class="ascii-glow" x="0" y="21" text-anchor="middle" font-size="16" fill="#b8860b">█▀▄  █▀█  █▄█  █▀█  █ ▀▄█</text>
+        <text class="ascii-glow ascii-logo" x="0" y="0" text-anchor="middle" font-size="16" fill="#b8860b" xml:space="preserve"><tspan x="0" y="0">█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █</tspan><tspan x="0" y="21">█▀▄  █▀█  █▄█  █▀█  █ ▀▄█</tspan></text>
       </g>
     </g>
     <text class="tag-fade" x="440" y="183" text-anchor="middle" font-size="9" fill="#656d76">kg chat: tasks · orchestrator · review</text>
@@ -274,5 +278,4 @@
   <circle cx="446" cy="330" r="3" class="d2"/>
   <circle cx="458" cy="330" r="3" class="d3"/>
 
-  <rect class="scanline" x="0" y="0" width="880" height="6" fill="#1f2328"/>
 </svg>

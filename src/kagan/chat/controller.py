@@ -192,10 +192,12 @@ class _OrchestratorACPClient(ACPClientBase):
         self._response_chunks: list[str] = []
         self._pending_output_chunks: list[str] = []
         self._last_output_flush = float("-inf")
+        self._flush_handle: asyncio.TimerHandle | None = None
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
+        self._cancel_flush_timer()
         self._response_chunks = []
         self._pending_output_chunks = []
         self._last_output_flush = float("-inf")
@@ -204,16 +206,33 @@ class _OrchestratorACPClient(ACPClientBase):
         self._on_first_update = on_first_update
 
     def _flush_pending_output(self, *, force: bool = False) -> None:
+        self._cancel_flush_timer()
         if not self._pending_output_chunks:
             return
         now = time.monotonic()
         if not force and now - self._last_output_flush < _STREAM_FLUSH_INTERVAL_SECONDS:
+            remaining = _STREAM_FLUSH_INTERVAL_SECONDS - (now - self._last_output_flush)
+            try:
+                loop = asyncio.get_running_loop()
+                self._flush_handle = loop.call_later(remaining, self._do_deferred_flush)
+            except RuntimeError:
+                pass  # No event loop — will flush on next call or finish_turn
             return
         merged = "".join(self._pending_output_chunks)
         self._pending_output_chunks = []
         _console.print(merged, end="", highlight=False)
         _console.file.flush()
         self._last_output_flush = now
+
+    def _cancel_flush_timer(self) -> None:
+        if self._flush_handle is not None:
+            self._flush_handle.cancel()
+            self._flush_handle = None
+
+    def _do_deferred_flush(self) -> None:
+        """Callback invoked by the event-loop timer to flush buffered output."""
+        self._flush_handle = None
+        self._flush_pending_output(force=True)
 
     def _notify_first_update(self) -> None:
         if self._first_update_notified:

@@ -23,6 +23,7 @@ from kagan.core._agent import (
     get_backend,
     list_backends,
 )
+from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
 from kagan.core._db import default_db_path
 from kagan.core._launchers import resolve_launcher
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
@@ -119,6 +120,7 @@ __all__ = [
     "default_db_path",
     "get_backend",
     "get_system_git_identity",
+    "install_asyncio_subprocess_exception_filter",
     "list_backends",
     "load_persona_definitions",
     "prepend_custom_prompt",

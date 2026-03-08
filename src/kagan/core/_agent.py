@@ -88,6 +88,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["npx", "-y", "@zed-industries/codex-acp"],
+        "acp_args": [],
     },
     GEMINI_CLI_BACKEND: {
         "executable": "gemini",
@@ -96,6 +97,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["gemini", "--experimental-acp"],
+        "acp_args": [],
     },
     KIMI_CLI_BACKEND: {
         "executable": "kimi",
@@ -104,6 +106,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["kimi", "acp"],
+        "acp_args": [],
     },
     "github-copilot": {
         "executable": "copilot",
@@ -112,6 +115,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["copilot", "--acp"],
+        "acp_args": [],
     },
     "goose": {
         "executable": "goose",
@@ -120,6 +124,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {"GOOSE_MODEL": ""},
         "supports_acp": True,
         "acp_command": ["goose", "acp"],
+        "acp_args": [],
     },
     "openhands": {
         "executable": "openhands",
@@ -128,6 +133,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["openhands", "acp"],
+        "acp_args": [],
     },
     OPENCODE_BACKEND: {
         "executable": "opencode",
@@ -136,6 +142,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["opencode", "acp"],
+        "acp_args": [],
     },
     "auggie": {
         "executable": "auggie",
@@ -144,6 +151,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["auggie", "--acp"],
+        "acp_args": [],
     },
     "amp": {
         "executable": "amp",
@@ -152,6 +160,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["npx", "-y", "amp-acp"],
+        "acp_args": [],
     },
     "docker-cagent": {
         "executable": "cagent",
@@ -160,6 +169,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["cagent", "acp"],
+        "acp_args": [],
     },
     "stakpak": {
         "executable": "stakpak",
@@ -168,6 +178,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["stakpak", "acp"],
+        "acp_args": [],
     },
     "mistral-vibe": {
         "executable": "vibe",
@@ -176,6 +187,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["vibe-acp"],
+        "acp_args": [],
     },
     "vt-code": {
         "executable": "vtcode",
@@ -184,6 +196,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {},
         "supports_acp": True,
         "acp_command": ["vtcode", "acp"],
+        "acp_args": [],
     },
 }
 _AGENT_BACKEND_ALIASES: dict[str, str] = {

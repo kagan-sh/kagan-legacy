@@ -62,18 +62,7 @@ async def _spawn_and_capture_command(
     [
         ("kimi-cli", ["kimi", "acp"]),
         ("codex", ["npx", "-y", "@zed-industries/codex-acp"]),
-        (
-            "claude-code",
-            [
-                "npx",
-                "claude-code-acp",
-                "--input-format",
-                "stream-json",
-                "--output-format",
-                "stream-json",
-                "--print",
-            ],
-        ),
+        ("claude-code", ["npx", "claude-code-acp"]),
     ],
 )
 async def test_spawn_agent_acp_uses_acp_command_without_prompt_flags(

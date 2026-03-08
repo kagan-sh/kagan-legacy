@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-03-08)
+
+### Documentation
+
+- Tweaks
+  ([`f7aa602`](https://github.com/kagan-sh/kagan/commit/f7aa6023b956b1ba8b0b293ade0d0f156d609bbb))
+
+### Refactoring
+
+- Bug fixes ([#34](https://github.com/kagan-sh/kagan/pull/34),
+  [`d6d5ca2`](https://github.com/kagan-sh/kagan/commit/d6d5ca224d645c5ffce451ce2e9583d98ee09dfe))
+
+
 ## v0.7.0-beta.2 (2026-03-05)
 
 ### Documentation

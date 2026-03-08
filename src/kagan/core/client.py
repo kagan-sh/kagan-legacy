@@ -311,7 +311,8 @@ class KaganCore:
             self._engine.dispose()
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(cleanup_all_spawned_processes())
+            task = loop.create_task(cleanup_all_spawned_processes())
+            logger.debug("Cleanup task scheduled (fire-and-forget): {}", task)
         except RuntimeError:
             asyncio.run(cleanup_all_spawned_processes())
         logger.debug("Client closed")

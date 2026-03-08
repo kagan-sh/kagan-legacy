@@ -336,23 +336,24 @@ class WelcomeScreen(Screen[None]):
         project = self._get_selected_project()
         if project is None:
             return
+
+        captured_id = project.id
+        captured_name = project.name
+
+        async def _on_confirmed(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            await self.kagan_app.core.projects.delete(captured_id)
+            self.app.notify(f"Deleted '{captured_name}'")
+            await self._reload_projects()
+
         self.app.push_screen(
             ConfirmModal(
                 title="Delete Project",
-                message=f"Delete project '{project.name}' and all its tasks?",
+                message=f"Delete project '{captured_name}' and all its tasks?",
             ),
-            callback=self._on_delete_confirmed,
+            callback=_on_confirmed,
         )
-
-    async def _on_delete_confirmed(self, confirmed: bool) -> None:
-        if not confirmed:
-            return
-        project = self._get_selected_project()
-        if project is None:
-            return
-        await self.kagan_app.core.projects.delete(project.id)
-        self.app.notify(f"Deleted '{project.name}'")
-        await self._reload_projects()
 
     def _get_selected_project(self) -> Project | None:
         """Return the currently highlighted project, or None."""

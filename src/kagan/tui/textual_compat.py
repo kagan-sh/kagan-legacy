@@ -54,7 +54,7 @@ def _is_known_asyncio_subprocess_invalid_state(context: dict[str, Any]) -> bool:
     exc = context.get("exception")
     message = str(context.get("message") or "")
     if isinstance(exc, RuntimeError) and "Event loop is closed" in str(exc):
-        if "SubprocessTransport" in message or "BaseSubprocessTransport" in message:
+        if "SubprocessTransport" in message:
             return True
     if not isinstance(exc, asyncio.InvalidStateError):
         return False

@@ -23,12 +23,11 @@ kagan mcp
 
 Start with read-only access:
 
-```text
-command: kagan
-args: ["mcp", "--readonly", "--capability", "viewer"]
+```bash
+kagan mcp --readonly
 ```
 
-Switch to elevated profiles only when needed.
+Switch to default (read+write) or admin tier only when needed.
 
 ## 3. Verify
 
@@ -40,42 +39,24 @@ task_logs(task_id, offset, limit)   → if truncated
 
 ______________________________________________________________________
 
-## Capability profiles
+## Access tiers
 
-| Profile       | Use                                                   |
-| ------------- | ----------------------------------------------------- |
-| `viewer`      | Read-only. Inspect tasks, flag concerns.              |
-| `planner`     | Read + plan submission.                               |
-| `pair_worker` | Task automation — create, update, annotate. No merge. |
-| `operator`    | Day-to-day ops — sessions, reviews.                   |
-| `maintainer`  | Admin/destructive actions. Trusted pipelines only.    |
+Kagan uses three access tiers, controlled by CLI flags:
 
-```bash
-kagan mcp --capability pair_worker
-kagan mcp --identity kagan_admin --capability maintainer
-```
+| Tier       | Flag         | Scope                                                 |
+| ---------- | ------------ | ----------------------------------------------------- |
+| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.   |
+| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs. |
+| `admin`    | `--admin`    | Default + destructive. Delete tasks, modify settings, plugin sync. |
 
-______________________________________________________________________
-
-## Access profile presets
-
-`--preset` applies a named capability + identity combination. Run `kagan profiles` to list all.
-
-| Preset              | Equivalent flags                                 | Use                         |
-| ------------------- | ------------------------------------------------ | --------------------------- |
-| `security-reviewer` | `--capability viewer --identity kagan`           | Read-only auditing          |
-| `test-writer`       | `--capability pair_worker --identity kagan`      | Scoped test generation      |
-| `refactoring-agent` | `--capability pair_worker --identity kagan`      | Bounded refactors           |
-| `pair-worker`       | `--capability pair_worker --identity kagan`      | Interactive PAIR workflow   |
-| `orchestrator`      | `--capability operator --identity kagan_admin`   | AUTO pipeline orchestration |
-| `maintainer`        | `--capability maintainer --identity kagan_admin` | Admin / CI lane             |
+`--readonly` and `--admin` are mutually exclusive.
 
 ```bash
-kagan mcp --preset orchestrator
-kagan mcp --preset security-reviewer --session-id task:abc123
+kagan mcp --readonly                    # read-only auditing
+kagan mcp                               # default read+write
+kagan mcp --admin                       # full admin access
+kagan mcp --session-id task:abc123      # task-scoped session
 ```
-
-Explicit `--capability` / `--identity` flags always override a preset.
 
 ______________________________________________________________________
 
@@ -83,186 +64,187 @@ ______________________________________________________________________
 
 === "Claude Code"
 
-````
-Path: `~/.claude.json` (global) or `.mcp.json` (project)
+    ````
+    Path: `~/.claude.json` (global) or `.mcp.json` (project)
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "VS Code"
 
-````
-Path: `.vscode/mcp.json`
+    ````
+    Path: `.vscode/mcp.json`
 
-```json
-{
-  "servers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "servers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "Cursor"
 
-````
-Path: `.cursor/mcp.json`
+    ````
+    Path: `.cursor/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "OpenCode"
 
-````
-Path: `~/.config/opencode/opencode.json`
+    ````
+    Path: `~/.config/opencode/opencode.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "Codex"
 
-````
-Path: `~/.codex/config.toml`
+    ````
+    Path: `~/.codex/config.toml`
 
-```toml
-[mcp_servers.kagan]
-command = "kagan"
-args = ["mcp", "--capability", "pair_worker"]
-```
-````
+    ```toml
+    [mcp_servers.kagan]
+    command = "kagan"
+    args = ["mcp"]
+    ```
+    ````
 
 === "Gemini CLI"
 
-````
-Path: `~/.gemini/settings.json`
+    ````
+    Path: `~/.gemini/settings.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "Kimi CLI"
 
-````
-Path: `~/.kimi/mcp.json`
+    ````
+    Path: `~/.kimi/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "GitHub Copilot"
 
-````
-Path: `.github/copilot/mcp.json`
+    ````
+    Path: `.github/copilot/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "Goose"
 
-````
-Path: `~/.config/goose/config.yaml`
+    ````
+    Path: `~/.config/goose/config.yaml`
 
-```yaml
-extensions:
-  kagan:
-    type: stdio
-    name: kagan
-    cmd: kagan
-    args:
-      - mcp
-      - --capability
-      - pair_worker
-```
-````
+    ```yaml
+    extensions:
+      kagan:
+        type: stdio
+        name: kagan
+        cmd: kagan
+        args:
+          - mcp
+    ```
+    ````
 
 === "Amp"
 
-````
-Path: `~/.config/amp/settings.json`
+    ````
+    Path: `~/.config/amp/settings.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
 
 === "Auggie"
 
-````
-Path: `~/.augment/mcp.json`
+    ````
+    Path: `~/.augment/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp", "--capability", "pair_worker"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
+    ```
+    ````
+
+!!! tip "Read-only or admin access"
+    Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
 
 ______________________________________________________________________
 

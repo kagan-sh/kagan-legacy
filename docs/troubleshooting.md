@@ -67,14 +67,14 @@ Match symptom text below.
 | ---------------------------------- | ---------------------------------------------------------------- |
 | `GH_CLI_NOT_AVAILABLE`             | `brew install gh` / `apt install gh` / `dnf install gh`          |
 | `GH_AUTH_REQUIRED`                 | `gh auth login`                                                  |
-| `GH_NOT_CONNECTED`                 | MCP `kagan_github_connect_repo` or TUI `.` → Connect GitHub      |
+| `GH_NOT_CONNECTED`                 | TUI: `.` → Connect GitHub, or CLI: `kagan import github --repo owner/repo`    |
 | `LEASE_HELD_BY_OTHER`              | `force_takeover: true` if holder gone; 2h+ lease → auto-takeover |
 | Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login`       |
 
 ## Updates
 
 ```bash
-kagan update --check    # check only
+kagan update --check-only   # check only
 kagan update            # install
 kagan update --force    # skip confirmation
 kagan update --prerelease

@@ -1,5 +1,7 @@
 import os
+import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,6 +24,23 @@ class DoctorCheck:
     message: str
     fix_hint: str
     verify_hint: str
+
+
+def _parse_zellij_version() -> tuple[int, ...] | None:
+    """Parse Zellij version from ``zellij --version`` output."""
+    try:
+        out = subprocess.run(
+            ["zellij", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        match = re.search(r"(\d+\.\d+\.\d+)", out)
+        if match:
+            return tuple(int(p) for p in match.group(1).split("."))
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
 
 
 def _default_agent_backend() -> str:
@@ -105,6 +124,32 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
                     verify_hint=_verify_hint("ide"),
                 )
             )
+
+        if os.environ.get("ZELLIJ"):
+            zellij_version = _parse_zellij_version()
+            if zellij_version and zellij_version < (0, 42, 0):
+                checks.append(
+                    DoctorCheck(
+                        name="terminal multiplexer",
+                        status="warn",
+                        message=(
+                            f"Zellij {'.'.join(map(str, zellij_version))} has known rendering"
+                            " issues with Textual TUIs"
+                        ),
+                        fix_hint="Upgrade Zellij to >= 0.42.0 (fixes synchronized output bug)",
+                        verify_hint="zellij --version",
+                    )
+                )
+            else:
+                checks.append(
+                    DoctorCheck(
+                        name="terminal multiplexer",
+                        status="pass",
+                        message="Zellij detected (compatible version)",
+                        fix_hint="",
+                        verify_hint="zellij --version",
+                    )
+                )
 
         cwd = Path.cwd()
         if (cwd / "pyproject.toml").exists():

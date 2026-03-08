@@ -10,7 +10,6 @@ ______________________________________________________________________
 | Package     | Repo                                                        | Use                                                                                                     |
 | ----------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers, message passing.                            |
-| **Toad**    | [anthropics/toad](https://github.com/anthropics/toad)       | AI agent TUI reference: agent chat, terminal integration, ACP patterns.                                 |
 | **Loguru**  | [Delgan/loguru](https://github.com/Delgan/loguru)           | Structured logging. Config and sink setup in core — see `docs/internal/architecture/core.md` § Logging. |
 
 ______________________________________________________________________
@@ -129,8 +128,7 @@ KaganApp (Textual App)
 ```
 WelcomeScreen ──select project──→ KanbanScreen (switch)
 KanbanScreen  ──Enter──────────────────→ Open/refresh TaskInspector (in-place)
-KanbanScreen  ──O/P on selected task──→ TaskScreen or PAIR attach flow (push/attach)
-KanbanScreen  ──r on REVIEW───→ ReviewModal (push)
+KanbanScreen  ──Enter on selected task──→ TaskScreen or PAIR attach flow (push/attach)
 KanbanScreen  ──Ctrl+R────────→ RepoPickerModal (push)
 Any screen    ──Escape─────────→ pop (back to previous)
 ```
@@ -145,15 +143,17 @@ ______________________________________________________________________
 Key composition (the primary screen):
 
 ```
+
 KanbanScreen
-├── Header              # project name, connection status
+├── Header # project name, connection status
 ├── BoardView + TaskInspector (horizontal pane)
-│   └── Column × 4      → [TaskCard, ...]
-├── PeekOverlay         # hidden by default, shown on Space
-├── ChatPanel           # toggleable, docked right or fullscreen
-│   ├── MessageList / ChatInput / SlashComplete
-│   ├── PlanDisplay / PermissionPrompt
-└── Footer              # keybinding hints
+│ └── Column × 4 → [TaskCard, ...]
+├── PeekOverlay # hidden by default, shown on Space
+├── ChatPanel # toggleable, docked right or fullscreen
+│ ├── MessageList / ChatInput / SlashComplete
+│ ├── PlanDisplay / PermissionPrompt
+└── Footer # keybinding hints
+
 ```
 
 Other screens follow the same pattern — Header, content area, Footer.
@@ -251,10 +251,12 @@ Three TCSS layers, ascending specificity:
 1. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed.
 
 ```
+
 styles/
-├── app.tcss        # theme vars ($primary, $surface, etc.), global layout
-├── kanban.tcss     # board columns, card styles, peek overlay
-└── chat.tcss       # chat panel, messages, input, plan display
+├── app.tcss # theme vars ($primary, $surface, etc.), global layout
+├── kanban.tcss # board columns, card styles, peek overlay
+└── chat.tcss # chat panel, messages, input, plan display
+
 ```
 
 Visibility toggles use CSS classes (e.g., `.chat-hidden` hides ChatPanel, `.peek-visible`
@@ -266,57 +268,59 @@ ______________________________________________________________________
 ## File Layout
 
 ```
+
 src/kagan/tui/
-├── __init__.py              # re-exports KaganApp
-├── app.py                   # KaganApp — top-level Textual App
-├── messages.py              # all custom Message classes
-├── keybindings.py           # binding tables per screen
-├── types.py                 # shared type aliases
+├── __init__.py # re-exports KaganApp
+├── app.py # KaganApp — top-level Textual App
+├── messages.py # all custom Message classes
+├── keybindings.py # binding tables per screen
+├── types.py # shared type aliases
 │
 ├── screens/
-│   ├── __init__.py           # screen exports
-│   ├── welcome.py           # WelcomeScreen
-│   └── setup.py             # OnboardingFlow (modal)
-│   ├── kanban.py            # KanbanScreen
-│   ├── kanban_chat.py       # KanbanChatScreen (orchestrator/task chat modes)
-│   ├── task_screen.py        # TaskScreen
-│   ├── review.py            # ReviewModal
-│   ├── repo_picker.py       # RepoPickerModal
-│   ├── gateway.py           # TmuxGatewayModal
-│   ├── agent_picker.py      # AgentPickerModal
-│   ├── confirm.py           # ConfirmModal
-│   ├── help.py              # HelpScreen
-│   ├── session_picker.py    # SessionPickerModal
-│   ├── settings.py          # SettingsScreen
-│   ├── task_editor_modal.py # TaskEditorModal
-│   └── rejection_input.py   # RejectionInputModal
-│   ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
+│ ├── __init__.py # screen exports
+│ ├── welcome.py # WelcomeScreen
+│ └── setup.py # OnboardingFlow (modal)
+│ ├── kanban.py # KanbanScreen
+│ ├── kanban_chat.py # KanbanChatScreen (orchestrator/task chat modes)
+│ ├── task_screen.py # TaskScreen
+│ ├── review.py # ReviewModal
+│ ├── repo_picker.py # RepoPickerModal
+│ ├── gateway.py # TmuxGatewayModal
+│ ├── agent_picker.py # AgentPickerModal
+│ ├── confirm.py # ConfirmModal
+│ ├── help.py # HelpScreen
+│ ├── session_picker.py # SessionPickerModal
+│ ├── settings.py # SettingsScreen
+│ ├── task_editor_modal.py # TaskEditorModal
+│ └── rejection_input.py # RejectionInputModal
+│ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
 │
 ├── widgets/
-│   ├── __init__.py           # widget exports
-│   ├── board.py             # BoardView, Column
-│   ├── card.py              # TaskCard
-│   ├── peek.py              # PeekOverlay
-│   ├── task_editor.py       # TaskEditor (create/edit form)
-│   ├── chat.py              # ChatPanel, MessageList, ChatInput, SlashComplete
-│   ├── streaming.py         # StreamingOutput, OutputChunk, ToolCallView
+│ ├── __init__.py # widget exports
+│ ├── board.py # BoardView, Column
+│ ├── card.py # TaskCard
+│ ├── peek.py # PeekOverlay
+│ ├── task_editor.py # TaskEditor (create/edit form)
+│ ├── chat.py # ChatPanel, MessageList, ChatInput, SlashComplete
+│ ├── streaming.py # StreamingOutput, OutputChunk, ToolCallView
 
-│   ├── diff.py              # DiffView, DiffStats
-│   ├── plan.py              # PlanDisplay
-│   ├── permission.py        # PermissionPrompt
-│   ├── header.py            # Header
-│   ├── hint_bar.py          # HintBar (contextual keybinding hints)
-│   └── search_bar.py        # SearchBar (board filter input)
-│   ├── agent_status.py      # AgentStatusPanel (backend, status, elapsed, PID)
-│   ├── persona_pipeline.py  # PersonaPipelineMap (horizontal persona chain)
-│   ├── worktree_panel.py    # WorktreePanel (file change stats table)
-│   └── commits_panel.py     # CommitsPanel (task-branch commit log)
+│ ├── diff.py # DiffView, DiffStats
+│ ├── plan.py # PlanDisplay
+│ ├── permission.py # PermissionPrompt
+│ ├── header.py # Header
+│ ├── hint_bar.py # HintBar (contextual keybinding hints)
+│ └── search_bar.py # SearchBar (board filter input)
+│ ├── agent_status.py # AgentStatusPanel (backend, status, elapsed, PID)
+│ ├── persona_pipeline.py # PersonaPipelineMap (horizontal persona chain)
+│ ├── worktree_panel.py # WorktreePanel (file change stats table)
+│ └── commits_panel.py # CommitsPanel (task-branch commit log)
 │
 └── styles/
-    ├── app.tcss             # global theme + layout
-    ├── kanban.tcss          # board styles
-    └── chat.tcss            # chat styles
-    └── session_dashboard.tcss  # dashboard layout + panels
+├── app.tcss # global theme + layout
+├── kanban.tcss # board styles
+└── chat.tcss # chat styles
+└── session_dashboard.tcss # dashboard layout + panels
+
 ```
 
 ~43 files. Each file has one clear responsibility.
@@ -358,20 +362,22 @@ Two-column, six-panel layout. Left column: agent status, persona pipeline,
 live output. Right column: worktree changes, commits, diff preview.
 
 ```
+
 SessionDashboardScreen
 ├── KaganHeader
-├── DashboardStatusBar       # Task title, branch, compact status + persona
+├── DashboardStatusBar # Task title, branch, compact status + persona
 ├── Horizontal (dashboard-body)
-│   ├── Vertical (left-col)
-│   │   ├── AgentStatusPanel     # Backend, status badge, elapsed, run ID, PID
-│   │   ├── PersonaPipelineMap   # Horizontal ✓/●/○ persona chain
-│   │   └── StreamingOutput      # Latest output + tool calls (reused widget)
-│   └── Vertical (right-col)
-│       ├── WorktreePanel        # File change summary table
-│       ├── CommitsPanel         # Commit log since base branch
-│       └── DiffView             # Unified diff (reused widget)
-├── ChatPanel                # Overlay (hidden by default)
-└── HintBar                  # Contextual keybinding hints
+│ ├── Vertical (left-col)
+│ │ ├── AgentStatusPanel # Backend, status badge, elapsed, run ID, PID
+│ │ ├── PersonaPipelineMap # Horizontal ✓/●/○ persona chain
+│ │ └── StreamingOutput # Latest output + tool calls (reused widget)
+│ └── Vertical (right-col)
+│ ├── WorktreePanel # File change summary table
+│ ├── CommitsPanel # Commit log since base branch
+│ └── DiffView # Unified diff (reused widget)
+├── ChatPanel # Overlay (hidden by default)
+└── HintBar # Contextual keybinding hints
+
 ```
 
 ### Data Sources
@@ -389,8 +395,8 @@ SessionDashboardScreen
 
 Chat overlay follows the same pattern as `TaskScreen`:
 
-- `Ctrl+O` opens docked overlay pre-connected to the running agent stream
-- `Ctrl+P` opens fullscreen overlay
+- `Ctrl+T` toggles docked chat overlay pre-connected to the running agent stream
+- `Ctrl+Shift+T` toggles fullscreen chat
 - `Tab` cycles between task agent and orchestrator sessions
 - User messages sent via task chat interject with the running agent
   (cancel current run, append to description, restart)
@@ -406,8 +412,10 @@ The `PersonaPipelineMap` widget renders the persona execution plan as a
 horizontal chain of steps:
 
 ```
-✓ ANALYST  ─→  ✓ PLANNER  ─→  ● IMPLEMENTER  ─→  ○ REVIEWER
-                                   (3/4)
+
+✓ ANALYST ─→ ✓ PLANNER ─→ ● IMPLEMENTER ─→ ○ REVIEWER
+(3/4)
+
 ```
 
 State symbols: `✓` completed (dim green), `●` running (bright yellow,
@@ -421,30 +429,41 @@ animated), `○` pending (dim). The pipeline is derived from:
 ### File Layout
 
 ```
+
 src/kagan/tui/
-  screens/
-    session_dashboard.py     # SessionDashboardScreen
-  widgets/
-    agent_status.py          # AgentStatusPanel
-    persona_pipeline.py      # PersonaPipelineMap
-    worktree_panel.py        # WorktreePanel
-    commits_panel.py         # CommitsPanel
-  styles/
-    session_dashboard.tcss   # Dashboard-specific styles
+screens/
+session_dashboard.py # SessionDashboardScreen
+widgets/
+agent_status.py # AgentStatusPanel
+persona_pipeline.py # PersonaPipelineMap
+worktree_panel.py # WorktreePanel
+commits_panel.py # CommitsPanel
+styles/
+session_dashboard.tcss # Dashboard-specific styles
+
 ```
 
 ### Navigation
 
 ```
+
 KanbanScreen
-  │
-  ├─ Enter ──────────────────────→ show TaskInspector (in place)
-  ├─ O/P on AUTO task ───────────→ TaskScreen (push)
-  └─ O/P on PAIR task ───────────→ Attach/launch session
+│
+├─ Enter ──────────────────────→ show TaskInspector (in place)
+├─ O/P on AUTO task ───────────→ TaskScreen (push)
+└─ O/P on PAIR task ───────────→ Attach/launch session
 
 SessionDashboardScreen
-  ├─ Escape ──────────────────→ pop back to KanbanScreen
-  ├─ Ctrl+O ──────────────────→ toggle docked chat overlay
-  ├─ Ctrl+P ──────────────────→ toggle fullscreen chat
-  └─ Ctrl+C ──────────────────→ cancel running agent
+├─ Escape ──────────────────→ pop back to KanbanScreen
+├─ Ctrl+T ──────────────────→ toggle docked chat overlay
+├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
+└─ Shift+S ─────────────────→ cancel running agent
+
+```
+
+├─ Ctrl+T ──────────────────→ toggle docked chat overlay
+├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
+└─ Ctrl+C ──────────────────→ cancel running agent
+
+```
 ```

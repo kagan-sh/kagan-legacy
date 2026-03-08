@@ -89,7 +89,7 @@ class Tasks:
         *,
         description: str = "",
         priority: Priority = Priority.MEDIUM,
-        execution_mode: WorkMode = WorkMode.PAIR,
+        execution_mode: WorkMode = WorkMode.AUTO,
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
         agent_backend: str | None = None,

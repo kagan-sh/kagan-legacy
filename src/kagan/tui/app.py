@@ -5,6 +5,7 @@ from typing import Any
 
 from loguru import logger
 from textual.app import App, SystemCommand
+from textual.binding import Binding, BindingType
 from textual.screen import Screen
 
 from kagan.core import KaganCore
@@ -23,7 +24,10 @@ from kagan.tui.screens.settings import SettingsModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_screen import TaskScreen
 from kagan.tui.screens.welcome import WelcomeScreen
-from kagan.tui.textual_compat import apply_textual_compat_workarounds
+from kagan.tui.textual_compat import (
+    apply_textual_compat_workarounds,
+    install_asyncio_subprocess_exception_filter,
+)
 from kagan.tui.theme import KAGAN_THEME, KAGAN_THEME_256
 
 
@@ -80,6 +84,7 @@ class KaganApp(App[None]):
         self.theme = KAGAN_THEME.name
 
     async def on_mount(self) -> None:
+        install_asyncio_subprocess_exception_filter()
         await self._route_startup()
         self.run_worker(self._startup_cleanup(), exclusive=False)
 
@@ -233,11 +238,35 @@ class KaganApp(App[None]):
                 await result
 
     def action_show_help(self) -> None:
-        self.push_screen("help-modal")
+        sections: list[tuple[str, tuple[tuple[str, str], ...]]] = []
 
-    def action_toggle_debug_log(self) -> None:
-        """Toggle the debug log viewer (F12). Stub for future implementation."""
-        self.notify("Debug log not yet implemented.", severity="information")
+        def rows_from(bindings: list[BindingType] | None) -> tuple[tuple[str, str], ...]:
+            if not bindings:
+                return ()
+            rows: list[tuple[str, str]] = []
+            seen: set[tuple[str, str]] = set()
+            for binding in bindings:
+                if not isinstance(binding, Binding) or not binding.description:
+                    continue
+                row = (binding.key_display or binding.key, binding.description)
+                if row in seen:
+                    continue
+                rows.append(row)
+                seen.add(row)
+            return tuple(rows)
+
+        focused_widget = self.focused
+        if focused_widget is not None:
+            focused_rows = rows_from(getattr(type(focused_widget), "BINDINGS", None))
+            if focused_rows:
+                sections.append((f"Current Widget: {type(focused_widget).__name__}", focused_rows))
+
+        current_screen = self.screen
+        screen_rows = rows_from(getattr(type(current_screen), "BINDINGS", None))
+        if screen_rows:
+            sections.append((f"Current Screen: {type(current_screen).__name__}", screen_rows))
+
+        self.push_screen(HelpModal(context_sections=tuple(sections)))
 
     async def action_open_project_selector(self) -> None:
         """Return to the project selector (welcome screen)."""

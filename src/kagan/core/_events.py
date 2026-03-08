@@ -1,4 +1,5 @@
 import asyncio
+import builtins
 import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -8,8 +9,8 @@ from sqlalchemy import Engine, desc
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _db_async
-from kagan.core.enums import SessionEventType, SessionStatus
-from kagan.core.models import Session, SessionEvent
+from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.models import SessionEvent
 
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
@@ -17,7 +18,6 @@ BOARD_STREAM_QUEUE_MAX_SIZE = 256
 
 _NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(
     {
-        SessionEventType.OUTPUT_CHUNK,
         SessionEventType.AGENT_STATUS,
         SessionEventType.TOOL_CALL_UPDATE,
         SessionEventType.PLAN_UPDATE,
@@ -108,8 +108,8 @@ class Events:
             pass
 
         if event.event_type in _NON_CRITICAL_EVENT_TYPES:
-            self._coalesce_or_drop_non_critical_event(queue, event)
-            return
+            if self._coalesce_or_drop_non_critical_event(queue, event):
+                return
 
         if not self._drop_oldest_non_critical_event(queue):
             any_queue = cast("Any", queue)
@@ -139,6 +139,16 @@ class Events:
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(event)
 
+    @staticmethod
+    def _is_terminal_live_event(event: SessionEvent) -> bool:
+        if event.event_type in {SessionEventType.AGENT_COMPLETED, SessionEventType.AGENT_FAILED}:
+            return True
+        if event.event_type is not SessionEventType.TASK_STATUS_CHANGED:
+            return False
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        next_status = str(payload.get("to") or "").upper()
+        return next_status != TaskStatus.IN_PROGRESS.value
+
     async def emit(
         self,
         task_id: str,
@@ -146,6 +156,7 @@ class Events:
         payload: dict,
         *,
         session_id: str | None = None,
+        persist: bool = True,
     ) -> SessionEvent:
         event = SessionEvent(
             task_id=task_id,
@@ -153,7 +164,8 @@ class Events:
             event_type=event_type,
             payload=payload,
         )
-        await _db_async(self._engine, lambda s: _add_and_refresh(s, event))
+        if persist:
+            await _db_async(self._engine, lambda s: _add_and_refresh(s, event))
         signal = self._signal_for(task_id)
         signal.set()
         for queue in self._live_queues.get(task_id, []):
@@ -209,6 +221,24 @@ class Events:
             ),
         )
 
+    async def list_recent(self, task_id: str, *, limit: int = 50) -> builtins.list[SessionEvent]:
+        bounded = max(limit, 0)
+        if bounded == 0:
+            return []
+        recent = await _db_async(
+            self._engine,
+            lambda s: list(
+                s.exec(
+                    select(SessionEvent)
+                    .where(SessionEvent.task_id == task_id)
+                    .order_by(desc(cast("Any", SessionEvent.created_at)))
+                    .limit(bounded)
+                ).all()
+            ),
+        )
+        recent.reverse()
+        return recent
+
     async def latest(
         self,
         task_id: str,
@@ -224,43 +254,41 @@ class Events:
 
         return await _db_async(self._engine, op)
 
-    async def stream(self, task_id: str) -> AsyncIterator[SessionEvent]:
-        offset = 0
-        batch = await self.list(task_id, offset=offset, limit=50)
-        for event in batch:
-            yield event
-        offset += len(batch)
-        while len(batch) == 50:
-            batch = await self.list(task_id, offset=offset, limit=50)
-            for event in batch:
-                yield event
-            offset += len(batch)
+    async def stream(
+        self,
+        task_id: str,
+        *,
+        replay: bool = True,
+        replay_limit: int | None = None,
+    ) -> AsyncIterator[SessionEvent]:
+        if replay:
+            if replay_limit is None:
+                offset = 0
+                batch = await self.list(task_id, offset=offset, limit=50)
+                for event in batch:
+                    yield event
+                offset += len(batch)
+                while len(batch) == 50:
+                    batch = await self.list(task_id, offset=offset, limit=50)
+                    for event in batch:
+                        yield event
+                    offset += len(batch)
+            elif replay_limit > 0:
+                for event in await self.list_recent(task_id, limit=replay_limit):
+                    yield event
 
         queue: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=LIVE_STREAM_QUEUE_MAX_SIZE)
         queues = self._live_queues.setdefault(task_id, [])
         queues.append(queue)
+        should_close_when_idle = False
         try:
             while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=5.0)
-                    yield event
-                except TimeoutError:
-                    has_active = await _db_async(
-                        self._engine,
-                        lambda s: (
-                            s.exec(
-                                select(Session).where(
-                                    Session.task_id == task_id,
-                                    cast("Any", Session.status).in_(
-                                        [SessionStatus.PENDING, SessionStatus.RUNNING]
-                                    ),
-                                )
-                            ).first()
-                            is not None
-                        ),
-                    )
-                    if not has_active:
-                        return
+                if should_close_when_idle and queue.empty():
+                    return
+                event = await queue.get()
+                yield event
+                if self._is_terminal_live_event(event):
+                    should_close_when_idle = True
         finally:
             queues = self._live_queues.get(task_id, [])
             with contextlib.suppress(ValueError):

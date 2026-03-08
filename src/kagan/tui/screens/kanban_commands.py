@@ -22,7 +22,7 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
     ),
     KanbanCommandSpec("task.edit", "Edit selected task", "edit_task", requires_task=True),
     KanbanCommandSpec(
-        "task.details", "View selected task details", "view_details", requires_task=True
+        "task.details", "View selected task details", "open_session", requires_task=True
     ),
     KanbanCommandSpec(
         "task.delete", "Delete selected task", "delete_task_direct", requires_task=True
@@ -32,25 +32,23 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
     ),
     KanbanCommandSpec("agent.start", "Start AUTO agent", "start_agent", requires_task=True),
     KanbanCommandSpec("agent.stop", "Stop AUTO agent", "stop_agent", requires_task=True),
-    KanbanCommandSpec("task.import-github", "Import issues from GitHub", "import_from_github"),
+    KanbanCommandSpec("task.import-github", "Import issues from GitHub", "import_github"),
+    KanbanCommandSpec("task.move-left", "Move selected task left", "move_left", requires_task=True),
     KanbanCommandSpec(
-        "task.move-left", "Move selected task left", "move_backward", requires_task=True
+        "task.move-right", "Move selected task right", "move_right", requires_task=True
     ),
     KanbanCommandSpec(
-        "task.move-right", "Move selected task right", "move_forward", requires_task=True
+        "task.set-branch", "Set selected task base branch", "set_branch", requires_task=True
     ),
-    KanbanCommandSpec(
-        "task.set-branch", "Set selected task base branch", "set_task_branch", requires_task=True
-    ),
-    KanbanCommandSpec("view.search", "Toggle board search", "toggle_search"),
-    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant view", "toggle_chat_overlay"),
+    KanbanCommandSpec("view.search", "Toggle board search", "search"),
+    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant view", "toggle_chat"),
     KanbanCommandSpec(
         "view.assistant-fullscreen",
         "Toggle fullscreen AI Assistant",
-        "open_chat_fullscreen",
+        "fullscreen_chat",
     ),
     KanbanCommandSpec("view.settings", "Open settings", "open_settings"),
-    KanbanCommandSpec("view.repo-sync", "Refresh repository/task state", "repo_sync"),
+    KanbanCommandSpec("view.repo-sync", "Refresh repository/task state", "sync_repo"),
 )
 
 

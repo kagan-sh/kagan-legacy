@@ -325,9 +325,9 @@ class SearchBar(Widget):
         if event.key == "slash" and self.is_visible:
             event.prevent_default()
             event.stop()
-            toggle_search = getattr(self.screen, "action_toggle_search", None)
-            if callable(toggle_search):
-                toggle_search()
+            search = getattr(self.screen, "action_search", None)
+            if callable(search):
+                search()
             return
         if self.handle_history_key(event.key):
             event.prevent_default()

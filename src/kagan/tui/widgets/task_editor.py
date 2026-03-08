@@ -18,8 +18,8 @@ _PRIORITY_OPTIONS: list[tuple[str, int]] = [
 ]
 
 _MODE_OPTIONS: list[tuple[str, str]] = [
-    ("Pair", WorkMode.PAIR.value),
     ("Auto", WorkMode.AUTO.value),
+    ("Pair", WorkMode.PAIR.value),
 ]
 
 _LAUNCHER_OPTIONS: list[tuple[str, str]] = [
@@ -65,7 +65,7 @@ class TaskEditor(Vertical):
         title: str = "",
         description: str = "",
         priority: Priority = Priority.MEDIUM,
-        execution_mode: WorkMode = WorkMode.PAIR,
+        execution_mode: WorkMode = WorkMode.AUTO,
         agent_backend: str | None = None,
         launcher: str | None = None,
         available_agent_backends: list[str] | None = None,
@@ -172,8 +172,8 @@ class TaskEditor(Vertical):
         )
 
     def on_mount(self) -> None:
-        self.focus_preferred_field()
         self._sync_advanced_visibility()
+        self.focus_preferred_field()
         self._set_title_error(None)
 
     def _sync_advanced_visibility(self) -> None:
@@ -201,8 +201,21 @@ class TaskEditor(Vertical):
             return None
         return "Title is required."
 
+    _ADVANCED_FIELD_IDS = {
+        "task-acceptance-criteria",
+        "task-agent-backend",
+        "task-launcher",
+        "task-base-branch",
+    }
+
     def focus_preferred_field(self) -> None:
         field_id = self._focus_field or "task-title"
+        if not self._show_advanced and field_id in self._ADVANCED_FIELD_IDS:
+            self._show_advanced = True
+            checkbox = self.query_one("#task-show-advanced", Checkbox)
+            if checkbox.value != self._show_advanced:
+                checkbox.value = self._show_advanced
+            self._sync_advanced_visibility()
         field = self.query_one(f"#{field_id}")
         if isinstance(field, Input | TextArea | Select):
             field.focus()

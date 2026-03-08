@@ -61,7 +61,7 @@ async def test_task_form_stays_scrollable_when_advanced_options_expand(
         form = app.screen.query_one(".task-form", VerticalScroll)
         initial_max_scroll = form.max_scroll_y
 
-        await pilot.press("ctrl+.")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         expanded_max_scroll = form.max_scroll_y
@@ -81,7 +81,7 @@ async def test_task_form_scroll_action_moves_view_when_advanced_expanded(
         await pilot.pause()
         await pilot.press("n")
         await pilot.pause()
-        await pilot.press("ctrl+.")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         form = app.screen.query_one(".task-form", VerticalScroll)
@@ -108,7 +108,7 @@ async def test_toggling_advanced_brings_acceptance_criteria_into_view(
         form = app.screen.query_one(".task-form", VerticalScroll)
         initial_scroll = form.scroll_y
 
-        await pilot.press("ctrl+.")
+        await pilot.press("ctrl+period")
         await pilot.pause()
 
         criteria = app.screen.query_one("#task-acceptance-criteria", TextArea)
@@ -129,7 +129,7 @@ async def test_task_form_saves_pair_launcher_override(board: KaganDriver) -> Non
         await pilot.pause()
         title_input = app.screen.query_one("#task-title", Input)
         title_input.value = "Launcher"
-        await pilot.press("ctrl+.")
+        await pilot.press("ctrl+period")
         await pilot.pause()
         launcher_select = app.screen.query_one("#task-launcher", Select)
         launcher_select.value = "vscode"

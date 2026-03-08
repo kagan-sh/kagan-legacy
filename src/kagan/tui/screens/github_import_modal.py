@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, Select, Static
@@ -21,6 +20,7 @@ from kagan.integrations.github import (
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
+from kagan.tui.keybindings import GITHUB_IMPORT_BINDINGS, get_key_for_action
 from kagan.tui.widgets.hint_bar import KeybindingHint
 
 
@@ -38,11 +38,7 @@ class GitHubImportSummary:
 
 
 class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
-    BINDINGS = [
-        Binding("enter", "run_import", "Import", key_display="Enter"),
-        Binding("ctrl+r", "check_readiness", "Check", key_display="Ctrl+R"),
-        Binding("escape", "dismiss", "Close", key_display="Esc"),
-    ]
+    BINDINGS = GITHUB_IMPORT_BINDINGS
 
     def __init__(self) -> None:
         super().__init__()
@@ -90,8 +86,9 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
 
             with Horizontal(classes="modal-action-hint-row"):
                 yield Static(
-                    "Enter import  Ctrl+R check setup  Esc close",
+                    self._action_hint_text(),
                     classes="modal-action-hint",
+                    id="github-import-action-hint",
                 )
 
         yield KeybindingHint(id="github-import-hint", classes="keybinding-hint")
@@ -106,10 +103,15 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         self.query_one("#github-import-hint", KeybindingHint).show_hints(
             [
                 ("Enter", "import"),
-                ("Ctrl+R", "check"),
                 ("Esc", "close"),
             ]
         )
+        self.query_one("#github-import-action-hint", Static).update(self._action_hint_text())
+
+    def _action_hint_text(self) -> str:
+        import_key = get_key_for_action(GITHUB_IMPORT_BINDINGS, "run_import", default="Enter")
+        close_key = get_key_for_action(GITHUB_IMPORT_BINDINGS, "dismiss", default="Esc")
+        return f"{import_key} import  {close_key} close"
 
     async def action_check_readiness(self) -> None:
         ready, message = await self._check_github_ready()

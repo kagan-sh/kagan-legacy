@@ -348,6 +348,13 @@ ToolCall.-expanded #tool-content {
     display: block;
 }
 
+.tool-call #tool-content {
+    width: 100%;
+    max-height: 14;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 ToolCallHeader {
     width: 100%;
     height: auto;
@@ -885,6 +892,48 @@ ChatPanel #chat-overlay-command-line {
     border: round $border;
 }
 
+ChatPanel #chat-input-with-badge {
+    width: 100%;
+    height: auto;
+}
+
+ChatPanel #chat-overlay-session-badge {
+    display: none;
+    width: auto;
+    min-width: 8;
+    max-width: 20;
+    height: 1;
+    margin-left: 1;
+    padding: 0 1;
+    border: none;
+    background: transparent;
+    color: $text-muted;
+    text-opacity: 80%;
+    text-style: italic;
+    content-align: right middle;
+}
+
+ChatPanel.docked #chat-overlay-session-badge,
+ChatPanel.visible.expanded #chat-overlay-session-badge {
+    display: block;
+}
+
+ChatPanel #chat-overlay-session-badge.session-kind-orchestrator {
+    color: $primary;
+}
+
+ChatPanel #chat-overlay-session-badge.session-kind-auto {
+    color: $success;
+}
+
+ChatPanel #chat-overlay-session-badge.session-kind-review {
+    color: $warning;
+}
+
+ChatPanel #chat-overlay-session-badge.session-kind-pair {
+    color: $text;
+}
+
 ChatPanel #chat-overlay-command-line:focus-within {
     background: $surface;
     border: round $primary;
@@ -1228,6 +1277,7 @@ StreamingOutput {
 .tool-call-body {
     color: $text-muted;
     padding: 0 2;
+    width: 100%;
 }
 
 .streaming-note.error {
@@ -1415,7 +1465,6 @@ ToolCallHeader,
     text-opacity: 100%;
 }
 
-/* Minimal tool-call presentation inspired by references/toad. */
 .chat-tool-call {
     border: none;
     background: transparent;
@@ -1446,10 +1495,17 @@ ToolCallHeader,
     margin: 0 0 0 2;
     padding: 0 0 0 1;
     border-left: blank $border;
+    max-height: 15;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .chat-tool-call .tool-call-body {
+    width: 100%;
     color: $text-muted;
     text-style: dim;
     padding: 0 1;
+    text-wrap: wrap;
+    text-overflow: fold;
+    overflow-x: hidden;
 }

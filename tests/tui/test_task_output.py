@@ -36,11 +36,13 @@ async def _open_task_screen_for_selected_auto_task(pilot) -> None:
 
 
 async def _open_task_screen(pilot) -> None:
-    await pilot.press("o")
+    await pilot.press("enter")
     await pilot.pause()
 
 
 async def test_enter_on_auto_task_opens_task_screen(board: KaganDriver) -> None:
+    from textual.widgets import TabbedContent
+
     from kagan.tui import KaganApp
     from kagan.tui.widgets.task_inspector import TaskInspector
 
@@ -55,9 +57,30 @@ async def test_enter_on_auto_task_opens_task_screen(board: KaganDriver) -> None:
         assert inspector.has_class("is-open")
         await _open_task_screen(pilot)
         assert app.screen.id == "task-screen"
+        tabs = app.screen.query_one("#ts-tabs", TabbedContent)
+        assert tabs.active == "detail"
 
 
-async def test_open_session_shortcut_requires_open_inspector(board: KaganDriver) -> None:
+async def test_task_screen_shows_action_hint_footer(board: KaganDriver) -> None:
+    from textual.widgets import Static
+
+    from kagan.tui import KaganApp
+    from kagan.tui.widgets.task_action_bar import TaskActionBar
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await _open_task_screen_for_selected_auto_task(pilot)
+
+        action_row = app.screen.query_one("#ts-actions", TaskActionBar)
+        assert action_row.display
+
+        hint = app.screen.query_one("#ts-action-hint", Static)
+        hint_text = str(hint.content).lower()
+        assert "tabs" in hint_text
+        assert "back" in hint_text
+
+
+async def test_enter_requires_open_inspector_before_task_screen(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.widgets.task_inspector import TaskInspector
 
@@ -65,7 +88,7 @@ async def test_open_session_shortcut_requires_open_inspector(board: KaganDriver)
     async with app.run_test() as pilot:
         await _enter_project(pilot)
 
-        await pilot.press("o")
+        await pilot.press("v")
         await pilot.pause()
         assert app.screen.id == "kanban-screen"
 
@@ -104,7 +127,7 @@ async def test_enter_starts_and_ctrl_c_stops_run_indicator(board: KaganDriver) -
         await pilot.pause()
         status = app.screen.query_one("#ts-status", Static)
         status_text = str(status.content)
-        assert "Stopped" in status_text or status_text == "Ready · BACKLOG"
+        assert "Stopped" in status_text or status_text == "Ready | BACKLOG"
 
 
 async def test_ctrl_o_on_auto_task_opens_docked_task_chat(board: KaganDriver) -> None:
@@ -116,7 +139,7 @@ async def test_ctrl_o_on_auto_task_opens_docked_task_chat(board: KaganDriver) ->
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_auto_task(pilot)
-        await pilot.press("ctrl+o")
+        await pilot.press("ctrl+t")
         await pilot.pause()
 
         assert app.screen.id == "task-screen"
@@ -143,7 +166,7 @@ async def test_ctrl_p_on_auto_task_opens_fullscreen_task_chat(
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_auto_task(pilot)
-        await pilot.press("ctrl+p")
+        await pilot.press("ctrl+shift+t")
         await pilot.pause()
 
         assert app.screen.id == "task-screen"
@@ -166,7 +189,7 @@ async def test_enter_in_task_chat_submits_follow_up_and_restarts_agent(board: Ka
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_auto_task(pilot)
-        await pilot.press("ctrl+p")
+        await pilot.press("ctrl+shift+t")
         await pilot.pause()
 
         session = app.screen.query_one("#chat-overlay-session-current", Static)
@@ -203,12 +226,12 @@ async def test_tab_switch_does_not_revert_to_previous_tab(board: KaganDriver) ->
         tree.focus()
         await pilot.pause()
 
-        cast("TaskScreen", app.screen).action_switch_tab("review")
+        cast("TaskScreen", app.screen).action_switch_tab("detail")
         await pilot.pause()
         await pilot.pause()
 
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
-        assert tabs.active == "review"
+        assert tabs.active == "detail"
 
 
 async def test_task_chat_restart_failure_surfaces_error_state(
@@ -234,7 +257,7 @@ async def test_task_chat_restart_failure_surfaces_error_state(
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_auto_task(pilot)
-        await pilot.press("ctrl+p")
+        await pilot.press("ctrl+shift+t")
         await pilot.pause()
 
         session = app.screen.query_one("#chat-overlay-session-current", Static)
@@ -274,7 +297,7 @@ async def test_ctrl_o_on_running_auto_task_keeps_task_screen_visible(board: Kaga
 
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+o")
+        await pilot.press("ctrl+t")
         await pilot.pause()
 
         assert app.screen.id == "task-screen"
@@ -341,3 +364,44 @@ async def test_inspector_scrolls_when_description_is_long() -> None:
         scroll.scroll_page_down(animate=False)
         await pilot.pause()
         assert scroll.scroll_y > initial_scroll
+
+
+async def test_task_stream_uses_bounded_replay_and_merges_chunks(
+    board: KaganDriver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from textual.containers import Vertical
+
+    from kagan.core.enums import SessionEventType
+    from kagan.core.models import SessionEvent
+    from kagan.tui import KaganApp
+    from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput
+
+    replay_limits: list[int | None] = []
+
+    async def fake_stream(task_id: str, *, replay: bool = True, replay_limit: int | None = None):
+        del task_id, replay
+        replay_limits.append(replay_limit)
+        for fragment in ("A", "B", "C"):
+            yield SessionEvent(
+                task_id="task",
+                event_type=SessionEventType.OUTPUT_CHUNK,
+                payload={"text": fragment, "kind": "assistant"},
+            )
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    monkeypatch.setattr(app.core.tasks.events, "stream", fake_stream)
+
+    async with app.run_test() as pilot:
+        await _open_task_screen_for_selected_auto_task(pilot)
+        await pilot.pause()
+        await pilot.pause()
+
+        assert replay_limits
+        assert replay_limits[0] == 400
+
+        output = app.screen.query_one("#ts-stream", StreamingOutput)
+        content = output.query_one("#streaming-body-content", Vertical)
+        chunks = [child for child in content.children if isinstance(child, OutputChunk)]
+        assert len(chunks) == 1
+        assert chunks[0]._accumulated_text == "ABC"

@@ -92,6 +92,7 @@ from kagan.core.errors import AgentError, KaganError
 # Markdown syntax patterns that warrant re-rendering
 _MARKDOWN_PATTERNS = ("```", "## ", "### ", "**", "- ", "1. ", "> ")
 _ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
+_STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,14 +190,30 @@ class _OrchestratorACPClient(ACPClientBase):
         self._show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
         self._tool_runs = ToolRunTracker()
         self._response_chunks: list[str] = []
+        self._pending_output_chunks: list[str] = []
+        self._last_output_flush = float("-inf")
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._response_chunks = []
+        self._pending_output_chunks = []
+        self._last_output_flush = float("-inf")
         self._tool_runs.start_turn()
         self._first_update_notified = False
         self._on_first_update = on_first_update
+
+    def _flush_pending_output(self, *, force: bool = False) -> None:
+        if not self._pending_output_chunks:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_output_flush < _STREAM_FLUSH_INTERVAL_SECONDS:
+            return
+        merged = "".join(self._pending_output_chunks)
+        self._pending_output_chunks = []
+        _console.print(merged, end="", highlight=False)
+        _console.file.flush()
+        self._last_output_flush = now
 
     def _notify_first_update(self) -> None:
         if self._first_update_notified:
@@ -207,6 +224,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._on_first_update()
 
     def finish_turn(self) -> str:
+        self._flush_pending_output(force=True)
         response = "".join(self._response_chunks).strip()
         self._response_chunks = []
         return response
@@ -223,8 +241,8 @@ class _OrchestratorACPClient(ACPClientBase):
                     self._streaming = True
                     self._notify_first_update()
                     self._response_chunks.append(text)
-                    _console.print(text, end="", highlight=False)
-                    _console.file.flush()
+                    self._pending_output_chunks.append(text)
+                    self._flush_pending_output()
         elif isinstance(update, AgentThoughtChunk):
             if self._show_thoughts:
                 content = getattr(update, "content", None)
@@ -232,10 +250,12 @@ class _OrchestratorACPClient(ACPClientBase):
                     text = getattr(content, "text", "") or ""
                     if text:
                         self._notify_first_update()
+                        self._flush_pending_output(force=True)
                         _console.print(f"[dim]{text}[/dim]", end="", highlight=False)
                         _console.file.flush()
         elif isinstance(update, ToolCallStart):
             self._notify_first_update()
+            self._flush_pending_output(force=True)
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)
             if self._tool_runs.status_for(tool_key) != "started":
@@ -254,6 +274,7 @@ class _OrchestratorACPClient(ACPClientBase):
                 _console.print(f"\n[dim cyan]{label}[/dim cyan]", highlight=False)
         elif isinstance(update, ToolCallProgress):
             self._notify_first_update()
+            self._flush_pending_output(force=True)
             status = getattr(update, "status", None)
             title = getattr(update, "title", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)

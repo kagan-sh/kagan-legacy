@@ -3,6 +3,7 @@ from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.gateway import PairInstructionsModal
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
+from kagan.tui.screens.message_actions_modal import MessageActionsModal
 from kagan.tui.screens.rejection_input import RejectionInputModal
 from kagan.tui.screens.repo_picker import RepoPickerModal
 from kagan.tui.screens.settings import SettingsModal
@@ -16,6 +17,7 @@ __all__ = [
     "ConfirmModal",
     "HelpModal",
     "KanbanScreen",
+    "MessageActionsModal",
     "OnboardingFlow",
     "PairInstructionsModal",
     "RejectionInputModal",

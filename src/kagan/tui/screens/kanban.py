@@ -1,10 +1,11 @@
 import asyncio
 import contextlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from sqlmodel import Session as DBSession
-from sqlmodel import select
+from sqlmodel import desc, select
 from textual import events, on
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import Container
@@ -41,6 +42,7 @@ from kagan.tui.screens.task_editor_modal import (
     TaskDeleteConfirmModal,
     TaskEditorModal,
 )
+from kagan.tui.screens.tutorial import TutorialOverlay
 from kagan.tui.widgets.board import BoardView
 from kagan.tui.widgets.card import TaskCard
 from kagan.tui.widgets.chat import ChatPanel
@@ -48,6 +50,7 @@ from kagan.tui.widgets.header import KaganHeader
 from kagan.tui.widgets.hint_bar import KanbanHintBar
 from kagan.tui.widgets.peek import PeekOverlay
 from kagan.tui.widgets.search_bar import SearchBar
+from kagan.tui.widgets.streaming import StreamingOutput
 from kagan.tui.widgets.task_inspector import TaskInspector
 
 if TYPE_CHECKING:
@@ -57,6 +60,7 @@ if TYPE_CHECKING:
 
 TASK_WORKER_SESSION_KEY = "task-worker"
 TASK_REVIEWER_SESSION_KEY = "task-reviewer"
+_TUTORIAL_SEEN_SETTING_KEY = "ui.tui_tutorial_seen"
 
 
 MIN_SCREEN_WIDTH = 80
@@ -96,6 +100,41 @@ _SEARCH_SORT_ALIASES: dict[str, str] = {
 }
 
 
+def _is_enabled(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+@dataclass(frozen=True, slots=True)
+class _TaskSessionSummary:
+    has_history: bool = False
+    has_active: bool = False
+    active_mode: WorkMode | None = None
+    latest_mode: WorkMode | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _BoardTaskView:
+    id: str
+    title: str
+    description: str
+    priority: Priority
+    execution_mode: WorkMode
+    status: TaskStatus
+    review_approved: bool
+    acceptance_criteria: list[str]
+    updated_at: object
+    agent_backend: str | None = None
+    base_branch: str | None = None
+    github_issue_number: int | None = None
+    github_pr_number: int | None = None
+    task_type: object | None = None
+    has_active_session: bool = False
+    has_session_history: bool = False
+    latest_session_mode: WorkMode | None = None
+
+
 class KanbanScreen(Screen[None]):
     COMMANDS = {KanbanCommandProvider}
     BINDINGS = KANBAN_BINDINGS
@@ -123,6 +162,7 @@ class KanbanScreen(Screen[None]):
         self._watcher_reload_task: asyncio.Task[None] | None = None
         self._branch_sync_task: asyncio.Task[None] | None = None
         self._inline_action_message: str | None = None
+        self._session_summary_by_task: dict[str, _TaskSessionSummary] = {}
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -141,6 +181,7 @@ class KanbanScreen(Screen[None]):
                     id="review-queue-hint",
                     classes="review-queue-hint kanban-review-queue-hint",
                 )
+            yield TutorialOverlay(id="kanban-tutorial-overlay", classes="kanban-tutorial-overlay")
             yield ChatPanel(classes="chat-overlay")
         with Container(classes="size-warning"):
             yield Static(self._size_warning_message(), classes="size-warning-text")
@@ -154,6 +195,7 @@ class KanbanScreen(Screen[None]):
         await self._load_orchestrator_panel_state(panel)
         panel.set_mode_title("Orchestrator")
         panel.set_session_kind("orchestrator")
+        self._set_tutorial_visible(False)
         self._chat_auto_opened = False
         self._update_search_bar_state()
         self._check_screen_size()
@@ -173,6 +215,35 @@ class KanbanScreen(Screen[None]):
             exclusive=False,
             exit_on_error=False,
         )
+        self.run_worker(
+            self._maybe_show_first_boot_tutorial(),
+            group="kanban-first-boot",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    async def _maybe_show_first_boot_tutorial(self) -> None:
+        settings = await self.kagan_app.core.settings.get()
+        tutorial_seen = _is_enabled(settings.get(_TUTORIAL_SEEN_SETTING_KEY), default=False)
+        panel = self.query_one(ChatPanel)
+        panel.set_first_boot(not tutorial_seen)
+        if tutorial_seen:
+            return
+
+        self._set_tutorial_visible(True)
+        await self.kagan_app.core.settings.set({_TUTORIAL_SEEN_SETTING_KEY: "true"})
+
+    def _tutorial_overlay(self) -> TutorialOverlay:
+        return self.query_one("#kanban-tutorial-overlay", TutorialOverlay)
+
+    def _tutorial_visible(self) -> bool:
+        with contextlib.suppress(NoMatches):
+            return bool(self._tutorial_overlay().display)
+        return False
+
+    def _set_tutorial_visible(self, visible: bool) -> None:
+        with contextlib.suppress(NoMatches):
+            self._tutorial_overlay().set_visible(visible)
 
     async def _bootstrap_initial_state(self) -> None:
         board = self.query_one(BoardView)
@@ -180,6 +251,14 @@ class KanbanScreen(Screen[None]):
         try:
             await self._reload_tasks()
             self.call_after_refresh(self._focus_default_widget)
+
+            # Auto-open chat overlay when no tasks exist
+            if not self._all_tasks:
+                panel = self.query_one(ChatPanel)
+                if not panel.has_class("visible"):
+                    self._chat_overlay_layout_mode = "vertical"
+                    self._chat_auto_opened = True
+                    await self.action_open_orchestrator_chat()
 
             from kagan.core.client import DBWatcher
 
@@ -273,6 +352,8 @@ class KanbanScreen(Screen[None]):
         panel = self.query_one(ChatPanel)
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
+        if not self._all_tasks and visible and not fullscreen:
+            self._chat_overlay_layout_mode = "vertical"
         expanded = visible and (panel.has_class("expanded") or fullscreen)
 
         if visible and not fullscreen and self._chat_overlay_layout_mode == "vertical":
@@ -318,7 +399,81 @@ class KanbanScreen(Screen[None]):
             tasks,
             key=lambda task: (str(getattr(task, "created_at", "") or ""), task.id),
         )
+        self._session_summary_by_task = await self._collect_session_summaries(self._all_tasks)
         self._apply_filter()
+
+    async def _collect_session_summaries(self, tasks: list[Task]) -> dict[str, _TaskSessionSummary]:
+        if not tasks:
+            return {}
+
+        task_ids = [task.id for task in tasks]
+        engine = self.kagan_app.core._engine
+
+        def _query() -> list[Session]:
+            with DBSession(engine) as db:
+                stmt = (
+                    select(Session)
+                    .where(cast("Any", Session.task_id).in_(task_ids))
+                    .order_by(desc(cast("Any", Session.started_at)))
+                )
+                return list(db.exec(stmt).all())
+
+        sessions = await asyncio.to_thread(_query)
+
+        summaries: dict[str, _TaskSessionSummary] = {}
+        active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
+        for session in sessions:
+            existing = summaries.get(session.task_id)
+            is_active = session.status in active_statuses
+
+            if existing is None:
+                summaries[session.task_id] = _TaskSessionSummary(
+                    has_history=True,
+                    has_active=is_active,
+                    active_mode=session.mode if is_active else None,
+                    latest_mode=session.mode,
+                )
+                continue
+
+            active_mode = existing.active_mode
+            if active_mode is None and is_active:
+                active_mode = session.mode
+
+            summaries[session.task_id] = _TaskSessionSummary(
+                has_history=True,
+                has_active=existing.has_active or is_active,
+                active_mode=active_mode,
+                latest_mode=existing.latest_mode,
+            )
+
+        return summaries
+
+    def _board_tasks(self, tasks: list[Task]) -> list[_BoardTaskView]:
+        views: list[_BoardTaskView] = []
+        for task in tasks:
+            summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
+            views.append(
+                _BoardTaskView(
+                    id=task.id,
+                    title=task.title,
+                    description=task.description,
+                    priority=task.priority,
+                    execution_mode=task.execution_mode,
+                    status=task.status,
+                    review_approved=task.review_approved,
+                    acceptance_criteria=list(task.acceptance_criteria),
+                    updated_at=task.updated_at,
+                    agent_backend=task.agent_backend,
+                    base_branch=task.base_branch,
+                    github_issue_number=getattr(task, "github_issue_number", None),
+                    github_pr_number=getattr(task, "github_pr_number", None),
+                    task_type=getattr(task, "task_type", None),
+                    has_active_session=summary.has_active,
+                    has_session_history=summary.has_history,
+                    latest_session_mode=summary.latest_mode,
+                )
+            )
+        return views
 
     async def _watch_board_changes(self) -> None:
         if self._watcher is None:
@@ -371,7 +526,7 @@ class KanbanScreen(Screen[None]):
             self._selected_task_id = None
 
         board = self.query_one(BoardView)
-        board.set_tasks(tasks, selected_task_id=self._selected_task_id)
+        board.set_tasks(self._board_tasks(tasks), selected_task_id=self._selected_task_id)
         if self._inspector_visible():
             if self._selected_task() is None:
                 self._hide_inspector()
@@ -398,6 +553,7 @@ class KanbanScreen(Screen[None]):
         self._update_review_queue_hint()
         self._update_hint_bar()
         self._sync_search_header_swap_state()
+        self._sync_layout_state()
 
     def _update_search_bar_state(self) -> None:
         """Push current filter state to the search bar widget."""
@@ -564,22 +720,18 @@ class KanbanScreen(Screen[None]):
 
     def _task_actions(self, task: Task | None) -> list[tuple[str, str]]:
         open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
-        search_key = get_key_for_action(KANBAN_BINDINGS, "toggle_search", default="/")
+        search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        import_key = get_key_for_action(KANBAN_BINDINGS, "import_from_github", default="g")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat_overlay", default="Ctrl+O")
-        right_key = get_key_for_action(KANBAN_BINDINGS, "move_forward", default="Shift+Right")
-        left_key = get_key_for_action(KANBAN_BINDINGS, "move_backward", default="Shift+Left")
-        session_key = get_key_for_action(KANBAN_BINDINGS, "open_session", default="P")
-        stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="s")
-        duplicate_key = get_key_for_action(KANBAN_BINDINGS, "duplicate_task", default="y")
-        start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="a")
-        review_key = get_key_for_action(KANBAN_BINDINGS, "review_task", default="r")
+        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+T")
+        right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
+        left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
+        session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
+        stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
+        start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
 
         if task is None:
             return [
                 (new_key, "new"),
-                (import_key, "import"),
                 (search_key, "search"),
                 (overlay_key, "assistant dock"),
             ]
@@ -605,7 +757,6 @@ class KanbanScreen(Screen[None]):
 
         if task.status is TaskStatus.REVIEW:
             return [
-                (review_key, "review"),
                 (open_key, "inspect"),
                 (right_key, "merge"),
                 (left_key, "reopen"),
@@ -615,7 +766,6 @@ class KanbanScreen(Screen[None]):
         return [
             (open_key, "inspect"),
             (session_key, "history"),
-            (duplicate_key, "duplicate"),
         ]
 
     def on_board_view_task_selected(self, message: BoardView.TaskSelected) -> None:
@@ -653,13 +803,6 @@ class KanbanScreen(Screen[None]):
 
     def action_focus_down(self) -> None:
         self.action_next_card()
-
-    def action_toggle_chat(self) -> None:
-        panel = self.query_one(ChatPanel)
-        panel.set_visible(not panel.has_class("visible"))
-        if not panel.has_class("visible"):
-            panel.set_fullscreen(False)
-        self._sync_layout_state()
 
     async def action_open_orchestrator_chat(self) -> None:
         panel = self.query_one(ChatPanel)
@@ -765,6 +908,9 @@ class KanbanScreen(Screen[None]):
 
     def _transition_to_horizontal(self, panel: ChatPanel) -> None:
         """Switch from vertical to horizontal layout mode."""
+        if not self._all_tasks:
+            self._transition_to_hidden(panel)
+            return
         self._chat_overlay_layout_mode = "horizontal"
         self._chat_auto_opened = False
         panel.query_one("#chat-overlay-input", Input).focus()
@@ -778,7 +924,7 @@ class KanbanScreen(Screen[None]):
         self._chat_overlay_layout_mode = "vertical"
         self._sync_layout_state()
 
-    def action_toggle_chat_overlay(self) -> None:
+    def action_toggle_chat(self) -> None:
         """Toggle chat overlay through state machine transitions.
 
         State detection and dispatch table pattern for clean transitions:
@@ -808,7 +954,14 @@ class KanbanScreen(Screen[None]):
         else:
             self._transition_to_hidden(panel)
 
-    async def action_open_chat_fullscreen(self) -> None:
+    async def action_switch_session(self) -> None:
+        """Open session picker."""
+        panel = self.query_one(ChatPanel)
+        if not panel.has_class("visible"):
+            await self.action_open_task_overlay()
+        panel.action_open_session_picker()
+
+    async def action_fullscreen_chat(self) -> None:
         panel = self.query_one(ChatPanel)
         if panel.has_class("visible") and panel.has_class("fullscreen"):
             panel.set_visible(False)
@@ -874,14 +1027,14 @@ class KanbanScreen(Screen[None]):
         y_pos = max(PEEK_MIN_Y, card.region.y)
         overlay.show_at(x_pos, y_pos)
 
-    def action_toggle_peek(self) -> None:
-        self.action_peek_task()
-
     def action_open_task(self) -> None:
         task = self._selected_task()
         if task is None:
             return
-        self._show_inspector_for_selected()
+        if self._inspector_visible():
+            self._open_task(task)
+        else:
+            self._show_inspector_for_selected()
 
     def _open_task(self, task: Task) -> None:
         self.kagan_app._active_task_id = task.id
@@ -1104,15 +1257,13 @@ class KanbanScreen(Screen[None]):
         return returncode == 0
 
     def action_open_session(self) -> None:
+        """Open task session (alternative to Enter for PAIR mode)."""
         if not self._require_inspector(action_label="Open session"):
             return
         task = self._selected_task()
         if task is None:
             return
         self._open_task(task)
-
-    def action_view_details(self) -> None:
-        self.action_open_session()
 
     def action_review_task(self) -> None:
         task = self._selected_task()
@@ -1129,7 +1280,7 @@ class KanbanScreen(Screen[None]):
         from kagan.tui.screens.task_screen import TaskScreen
 
         self.kagan_app._active_task_id = task.id
-        self.app.push_screen(TaskScreen(task_id=task.id, initial_tab="review"))
+        self.app.push_screen(TaskScreen(task_id=task.id))
 
     async def action_delete_task(self) -> None:
         if not self._require_inspector(action_label="Delete"):
@@ -1217,20 +1368,36 @@ class KanbanScreen(Screen[None]):
             return
 
         target = order[target_index]
+
+        # Optimistic: move card to new column immediately
+        prev_status = task.status
+        for t in self._all_tasks:
+            if t.id == task.id:
+                t.status = target
+                break
+        self._apply_filter()
+
         try:
             await self.kagan_app.core.tasks.set_status(task.id, target)
         except KaganError as exc:
+            # Revert optimistic update on failure
+            for t in self._all_tasks:
+                if t.id == task.id:
+                    t.status = prev_status
+                    break
+            self._apply_filter()
             self.app.notify(f"Unable to move task: {exc}", severity="warning")
             return
+        # Full reload to reconcile with DB
         await self._reload_tasks()
 
-    async def action_move_backward(self) -> None:
+    async def action_move_left(self) -> None:
         await self._move_selected_task(-1)
 
-    async def action_move_forward(self) -> None:
+    async def action_move_right(self) -> None:
         await self._move_selected_task(1)
 
-    def action_set_task_branch(self) -> None:
+    def action_set_branch(self) -> None:
         if not self._require_inspector(action_label="Set branch"):
             return
         task = self._selected_task()
@@ -1238,10 +1405,10 @@ class KanbanScreen(Screen[None]):
             return
         self.app.push_screen(TaskEditorModal(task=task, focus_field="task-base-branch"))
 
-    def action_switch_global_agent(self) -> None:
+    def action_switch_agent(self) -> None:
         self.app.push_screen("agent-picker-modal")
 
-    def action_repo_sync(self) -> None:
+    def action_sync_repo(self) -> None:
         self.run_worker(
             self._reload_tasks(),
             group="kanban-reload",
@@ -1249,7 +1416,7 @@ class KanbanScreen(Screen[None]):
             exit_on_error=False,
         )
 
-    def action_import_from_github(self) -> None:
+    def action_import_github(self) -> None:
         from kagan.tui.screens.github_import_modal import GitHubImportModal
 
         def _on_result(summary: GitHubImportSummary | None) -> None:
@@ -1272,7 +1439,7 @@ class KanbanScreen(Screen[None]):
             return
         self.app.notify(message, severity="information")
 
-    async def action_deselect(self) -> None:
+    async def action_clear_focus(self) -> None:
         if self.search_visible:
             self._cancel_search()
         overlay = self.query_one(PeekOverlay)
@@ -1292,9 +1459,6 @@ class KanbanScreen(Screen[None]):
         self.search_visible = True
         self._sync_search_header_swap_state()
         self._update_review_queue_hint()
-
-    def action_toggle_search(self) -> None:
-        self.action_search()
 
     def _cancel_search(self) -> None:
         self.query_one(SearchBar).remember_current_query()
@@ -1353,8 +1517,8 @@ class KanbanScreen(Screen[None]):
         hint.remove_class("visible")
 
     def _search_hint_message(self) -> str:
-        clear_key = get_key_for_action(KANBAN_BINDINGS, "deselect", default="Esc")
-        hide_key = get_key_for_action(KANBAN_BINDINGS, "toggle_search", default="/")
+        clear_key = get_key_for_action(KANBAN_BINDINGS, "clear_focus", default="Esc")
+        hide_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         query = self._search_query.strip()
         if not query:
             return f"Search active. Type to filter tasks. {clear_key} clear, {hide_key} hide."
@@ -1485,6 +1649,12 @@ class KanbanScreen(Screen[None]):
         panel.set_fullscreen(False)
         self._chat_overlay_layout_mode = "vertical"
         self._sync_layout_state()
+
+    def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
+        if self._chat_message_task is not None and not self._chat_message_task.done():
+            self._chat_message_task.cancel()
+            return
+        self.run_worker(self.action_stop_agent(), exit_on_error=False)
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
         panel = self.query_one(ChatPanel)
@@ -1653,6 +1823,24 @@ class KanbanScreen(Screen[None]):
         focused = self.focused
         return isinstance(focused, Input | TextArea)
 
+    def _chat_timeline_stream(self) -> StreamingOutput | None:
+        panel = self.query_one(ChatPanel)
+        if not panel.has_class("visible"):
+            return None
+        try:
+            return panel.query_one("#chat-overlay-output", StreamingOutput)
+        except NoMatches:
+            return None
+
+    def _focused_widget_in_chat_timeline(self) -> bool:
+        stream = self._chat_timeline_stream()
+        if stream is None:
+            return False
+        focused = self.focused
+        if focused is None:
+            return False
+        return any(widget is focused for widget in stream.query("#streaming-body-content > *"))
+
     def action_open_repo_picker(self) -> None:
         self.app.push_screen("repo-picker-modal")
 
@@ -1667,34 +1855,46 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
         self.call_after_refresh(self._auto_focus_board)
 
+    def _handle_search_key(self, event: events.Key) -> bool:
+        """Handle key events when search bar is visible. Returns True if handled."""
+        search_bar = self.query_one(SearchBar)
+        if event.key == "slash":
+            event.prevent_default()
+            event.stop()
+            self._cancel_search()
+            return True
+        if event.key in {"up", "down"} and search_bar.handle_history_key(event.key):
+            event.prevent_default()
+            event.stop()
+            return True
+        if event.key in {"left", "right", "enter", "tab"} and search_bar.handle_preset_key(
+            event.key
+        ):
+            event.prevent_default()
+            event.stop()
+            return True
+        if event.key == "enter":
+            search_bar.remember_current_query()
+            event.prevent_default()
+            event.stop()
+            return True
+        if event.key == "escape":
+            event.prevent_default()
+            event.stop()
+            self._cancel_search()
+            return True
+        return False
+
     async def on_key(self, event: events.Key) -> None:
-        if self.search_visible:
-            search_bar = self.query_one(SearchBar)
-            if event.key == "slash":
-                event.prevent_default()
-                event.stop()
-                self._cancel_search()
-                return
-            if event.key in {"up", "down"} and search_bar.handle_history_key(event.key):
-                event.prevent_default()
-                event.stop()
-                return
-            if event.key in {"left", "right", "enter", "tab"} and search_bar.handle_preset_key(
-                event.key
-            ):
-                event.prevent_default()
-                event.stop()
-                return
-            if event.key == "enter":
-                search_bar.remember_current_query()
-                event.prevent_default()
-                event.stop()
-                return
-            if event.key == "escape":
-                event.prevent_default()
-                event.stop()
-                self._cancel_search()
-                return
+        if self._tutorial_visible() and event.key in {"escape", "q"}:
+            event.prevent_default()
+            event.stop()
+            self._set_tutorial_visible(False)
+            self.query_one(ChatPanel).set_first_boot(False)
+            return
+
+        if self.search_visible and self._handle_search_key(event):
+            return
 
         if event.key == "escape":
             overlay = self.query_one(PeekOverlay)
@@ -1710,6 +1910,11 @@ class KanbanScreen(Screen[None]):
                 return
             panel = self.query_one(ChatPanel)
             if panel.has_class("visible"):
+                if self._focused_widget_in_chat_timeline():
+                    event.prevent_default()
+                    event.stop()
+                    panel.query_one("#chat-overlay-input", Input).focus()
+                    return
                 event.prevent_default()
                 event.stop()
                 panel.set_visible(False)
@@ -1736,6 +1941,29 @@ class KanbanScreen(Screen[None]):
                     panel.action_send_message()
                     return
             return
+
+        stream = self._chat_timeline_stream()
+        if stream is not None and self._focused_widget_in_chat_timeline():
+            timeline_actions = {
+                "j": stream.action_focus_next_entry,
+                "down": stream.action_focus_next_entry,
+                "k": stream.action_focus_prev_entry,
+                "up": stream.action_focus_prev_entry,
+                "h": stream.action_collapse_entry,
+                "left": stream.action_collapse_entry,
+                "l": stream.action_expand_entry,
+                "right": stream.action_expand_entry,
+                "g": stream.action_focus_first_entry,
+                "home": stream.action_focus_first_entry,
+                "G": stream.action_jump_to_latest,
+                "end": stream.action_jump_to_latest,
+            }
+            action = timeline_actions.get(event.key)
+            if action is not None:
+                event.prevent_default()
+                event.stop()
+                action()
+                return
 
         navigation_actions = {
             "h": self.action_focus_left,
@@ -1770,13 +1998,17 @@ class KanbanScreen(Screen[None]):
     async def _confirm_delete_task(self, task: Task) -> None:
         worktree = await self.kagan_app.core.worktrees.get(task.id)
         has_worktree = worktree is not None
-        has_active_session = False
-        with DBSession(self.kagan_app.core._engine) as db:
-            stmt = select(Session).where(
-                Session.task_id == task.id,
-                Session.status.in_([SessionStatus.RUNNING, SessionStatus.PENDING]),
-            )
-            has_active_session = db.exec(stmt).first() is not None
+        engine = self.kagan_app.core._engine
+
+        def _check_active() -> bool:
+            with DBSession(engine) as db:
+                stmt = select(Session).where(
+                    Session.task_id == task.id,
+                    Session.status.in_([SessionStatus.RUNNING, SessionStatus.PENDING]),
+                )
+                return db.exec(stmt).first() is not None
+
+        has_active_session = await asyncio.to_thread(_check_active)
 
         def _on_result(confirmed: bool | None) -> None:
             if not confirmed:
@@ -1798,9 +2030,15 @@ class KanbanScreen(Screen[None]):
         )
 
     async def _delete_task(self, task_id: str) -> None:
+        # Optimistic: remove card from board immediately before async delete
+        self._all_tasks = [t for t in self._all_tasks if t.id != task_id]
+        self._session_summary_by_task.pop(task_id, None)
+        self._apply_filter()
+
         await self.kagan_app.core.tasks.delete(task_id)
         if self._chat_active_task_id == task_id:
             self._chat_active_task_id = None
+        # Full reload to reconcile with DB (picks up concurrent changes)
         await self._reload_tasks()
 
     @staticmethod

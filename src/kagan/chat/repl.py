@@ -194,13 +194,15 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
 def _bottom_toolbar() -> str:
     """Toolbar callback for prompt_toolkit — shown at the bottom of the terminal."""
     parts: list[str] = []
+    if _TOOLBAR_STATE.session_label:
+        parts.append(f"session: {_TOOLBAR_STATE.session_label}")
     if _TOOLBAR_STATE.agent_backend:
         parts.append(f"agent: {_TOOLBAR_STATE.agent_backend}")
     if _TOOLBAR_STATE.project_name:
         parts.append(f"project: {_TOOLBAR_STATE.project_name}")
     parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
     parts.append("Up/Down: history")
-    parts.append("Ctrl-U: clear")
+    parts.append("Ctrl-C: clear")
     parts.append("Alt-Enter: newline")
     return " · ".join(parts)
 
@@ -272,8 +274,8 @@ def _down(event) -> None:
     _cycle_history(event, "down")
 
 
-@_kb.add("c-u")
-def _ctrl_u(event) -> None:
+@_kb.add("c-c")
+def _ctrl_c(event) -> None:
     buffer = event.current_buffer
     if not buffer.text:
         return

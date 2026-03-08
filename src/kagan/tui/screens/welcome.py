@@ -195,14 +195,14 @@ class WelcomeScreen(Screen[None]):
     def action_settings(self) -> None:
         self.app.push_screen("settings-modal")
 
-    def action_move_selection_up(self) -> None:
+    def action_move_up(self) -> None:
         option_list = self.query_one("#project-list", OptionList)
         if not self._projects:
             return
         current = option_list.highlighted if option_list.highlighted is not None else 0
         option_list.highlighted = max(0, current - 1)
 
-    def action_move_selection_down(self) -> None:
+    def action_move_down(self) -> None:
         option_list = self.query_one("#project-list", OptionList)
         if not self._projects:
             return
@@ -210,9 +210,10 @@ class WelcomeScreen(Screen[None]):
         option_list.highlighted = min(len(self._projects) - 1, current + 1)
 
     def action_focus_next(self) -> None:
+        """Focus next element."""
         self.focus_next()
 
-    def action_focus_previous(self) -> None:
+    def action_focus_prev(self) -> None:
         self.focus_previous()
 
     async def action_quit(self) -> None:
@@ -274,7 +275,34 @@ class WelcomeScreen(Screen[None]):
             return 0
         return selected_index
 
-    async def action_open_project(self, index: str) -> None:
+    async def action_open_project_1(self) -> None:
+        await self._open_project("0")
+
+    async def action_open_project_2(self) -> None:
+        await self._open_project("1")
+
+    async def action_open_project_3(self) -> None:
+        await self._open_project("2")
+
+    async def action_open_project_4(self) -> None:
+        await self._open_project("3")
+
+    async def action_open_project_5(self) -> None:
+        await self._open_project("4")
+
+    async def action_open_project_6(self) -> None:
+        await self._open_project("5")
+
+    async def action_open_project_7(self) -> None:
+        await self._open_project("6")
+
+    async def action_open_project_8(self) -> None:
+        await self._open_project("7")
+
+    async def action_open_project_9(self) -> None:
+        await self._open_project("8")
+
+    async def _open_project(self, index: str) -> None:
         if not self._projects:
             return
         try:
@@ -286,6 +314,9 @@ class WelcomeScreen(Screen[None]):
         project = self._projects[selected_index]
         await self.kagan_app.activate_project(project)
         self.app.switch_screen("kanban-screen")
+
+    async def action_open_project(self, index: str) -> None:
+        await self._open_project(index)
 
     def action_new_project(self) -> None:
         self.app.push_screen(OnboardingFlow(mode="new-project"))

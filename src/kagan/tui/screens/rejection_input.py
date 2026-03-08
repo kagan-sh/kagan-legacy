@@ -1,7 +1,8 @@
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Rule, Static, TextArea
+from textual.widgets import Button, Footer, Rule, Static, TextArea
 
 from kagan.tui.keybindings import REJECTION_INPUT_BINDINGS
 from kagan.tui.widgets.hint_bar import format_hint
@@ -31,16 +32,32 @@ class RejectionInputModal(ModalScreen[str | None]):
                     format_hint(
                         [
                             ("Enter", "back to in progress"),
-                            ("Shift+B", "send to backlog"),
+                            ("Ctrl+S", "submit"),
                             ("Esc", "cancel"),
                         ]
                     ),
                     classes="modal-action-hint",
                 )
+            with Horizontal(classes="modal-action-row"):
+                yield Button("Send To In Progress", id="rejection-send", variant="primary")
+                yield Button("Send To Backlog", id="rejection-backlog")
+                yield Button("Cancel", id="rejection-cancel")
         yield Footer(show_command_palette=False)
 
     def on_mount(self) -> None:
         self.query_one(TextArea).focus()
+
+    @on(Button.Pressed, "#rejection-send")
+    def _on_send_pressed(self) -> None:
+        self.action_send_back()
+
+    @on(Button.Pressed, "#rejection-backlog")
+    def _on_backlog_pressed(self) -> None:
+        self.action_backlog()
+
+    @on(Button.Pressed, "#rejection-cancel")
+    def _on_cancel_pressed(self) -> None:
+        self.action_cancel()
 
     def action_send_back(self) -> None:
         feedback = self.query_one(TextArea).text.strip()

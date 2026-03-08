@@ -26,7 +26,7 @@ def test_history_cycle_target_from_draft_goes_to_edge_for_direction() -> None:
 def test_bottom_toolbar_mentions_history_and_clear_shortcuts() -> None:
     toolbar = _bottom_toolbar()
     assert "Up/Down: history" in toolbar
-    assert "Ctrl-U: clear" in toolbar
+    assert "Ctrl-C: clear" in toolbar
 
 
 def test_prompt_style_rules_truecolor_use_kagan_night_palette(

@@ -1,26 +1,44 @@
 import contextlib
 import json
+import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
-from textual.events import Click, MouseScrollDown, MouseScrollUp, MouseUp
+from textual.events import Click, MouseScrollDown, MouseScrollUp, MouseUp, Resize
 from textual.reactive import var
 from textual.widget import Widget
 from textual.widgets import Markdown, Static
 from textual.widgets.markdown import MarkdownStream
 
+from kagan.tui.keybindings import (
+    STREAMING_TIMELINE_BINDINGS,
+    TOOL_CALL_VIEW_BINDINGS,
+    USER_INPUT_BINDINGS,
+)
+
 ChunkKind = Literal["assistant", "thought", "note", "user"]
 AgentChunkKind = Literal["assistant", "thought", "note"]
 ConfidenceLevel = Literal["certain", "assumption", "needs-validation"]
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_stream_text(text: str) -> str:
+    normalized_newlines = text.replace("\r\n", "\n").replace("\r", "\n")
+    without_ansi = _ANSI_ESCAPE_RE.sub("", normalized_newlines)
+    return _CONTROL_CHARS_RE.sub("", without_ansi)
+
 
 class UserInputWidget(Horizontal):
+    BINDINGS = [*USER_INPUT_BINDINGS]
+    can_focus = True
+
     def __init__(self, text: str) -> None:
         super().__init__(classes="user-input")
         self._text = text
@@ -32,8 +50,15 @@ class UserInputWidget(Horizontal):
     def rendered_text(self) -> str:
         return f"> {self._text}"
 
+    def action_open_actions(self) -> None:
+        from kagan.tui.screens.message_actions_modal import MessageActionsModal
+
+        self.app.push_screen(MessageActionsModal(self._text))
+
 
 class OutputChunk(Markdown):
+    can_focus = True
+
     def __init__(
         self,
         text: str,
@@ -80,13 +105,11 @@ class OutputChunk(Markdown):
 
 
 class ToolCallView(Vertical):
-    BINDINGS = [
-        Binding("enter", "toggle_expand", "Toggle Details", show=False),
-        Binding("space", "toggle_expand", "Toggle Details", show=False),
-    ]
+    BINDINGS = [*TOOL_CALL_VIEW_BINDINGS]
     can_focus = True
     has_content: var[bool] = var(False, toggle_class="-has-content")
     expanded: var[bool] = var(False, toggle_class="-expanded")
+    _MAX_DETAILS_HEIGHT = 15
 
     def __init__(
         self,
@@ -121,9 +144,15 @@ class ToolCallView(Vertical):
             self._header_line(),
             classes="tool-call-header chat-tool-call-header",
             id="tool-call-header",
+            markup=False,
         )
-        with Vertical(id="tool-content"):
-            yield Static(self._details_line(), classes="tool-call-body", id="tool-call-body")
+        with ScrollableContainer(id="tool-content"):
+            yield Static(
+                self._details_line(),
+                classes="tool-call-body",
+                id="tool-call-body",
+                markup=False,
+            )
 
     @on(Click, "#tool-call-header")
     def _on_header_click(self) -> None:
@@ -136,12 +165,22 @@ class ToolCallView(Vertical):
 
     def watch_expanded(self, expanded: bool) -> None:
         with contextlib.suppress(NoMatches):
-            body = self.query_one("#tool-content", Vertical)
+            body = self.query_one("#tool-content", ScrollableContainer)
             body.display = expanded
+        if expanded:
+            self.call_after_refresh(self._scroll_into_view_then_sync)
+        self._sync_content_bounds()
+        self.call_after_refresh(self._sync_content_bounds)
 
     def on_mount(self) -> None:
         self.watch_expanded(self.expanded)
         self._refresh()
+        self._sync_content_bounds()
+        self.call_after_refresh(self._sync_content_bounds)
+
+    def on_resize(self, _: Resize) -> None:
+        self._sync_content_bounds()
+        self.call_after_refresh(self._sync_content_bounds)
 
     def _refresh(self) -> None:
         self._apply_status_classes()
@@ -155,6 +194,47 @@ class ToolCallView(Vertical):
             header.set_class(status == "failed", "status-failed")
         with contextlib.suppress(NoMatches):
             self.query_one("#tool-call-body", Static).update(self._details_line())
+        self._sync_content_bounds()
+
+    def _sync_content_bounds(self) -> None:
+        with contextlib.suppress(NoMatches):
+            body = self.query_one("#tool-content", ScrollableContainer)
+            bounded_height = self._bounded_details_height()
+            body.styles.max_height = str(bounded_height)
+            if self.expanded and self.has_content:
+                body.styles.height = str(bounded_height)
+            else:
+                body.styles.height = "auto"
+            body.refresh(layout=True)
+        if self.parent is not None:
+            self.parent.refresh(layout=True)
+
+    def _scroll_into_view_then_sync(self) -> None:
+        self.scroll_visible(animate=False)
+        self._sync_content_bounds()
+
+    def _bounded_details_height(self) -> int:
+        viewport = self._streaming_viewport_region()
+        header_bottom = self._header_bottom_y()
+        if viewport is None or header_bottom is None:
+            return 1
+        viewport_bottom = int(viewport.y + viewport.height)
+        allowed = max(1, viewport_bottom - header_bottom)
+        return min(self._MAX_DETAILS_HEIGHT, allowed)
+
+    def _streaming_viewport_region(self):
+        parent = self.parent
+        while parent is not None:
+            if isinstance(parent, ScrollableContainer):
+                return parent.region if int(parent.region.height) > 0 else None
+            parent = parent.parent
+        return None
+
+    def _header_bottom_y(self) -> int | None:
+        with contextlib.suppress(NoMatches):
+            header = self.query_one("#tool-call-header", Static)
+            return int(header.region.y + header.region.height)
+        return None
 
     _STATUS_ALIASES: dict[str, str] = {
         "pending": "running",
@@ -248,7 +328,7 @@ class _Line:
 
 
 class StreamingOutput(Vertical):
-    BINDINGS = [Binding("G", "jump_to_latest", "Jump to Latest", key_display="Shift+G", show=False)]
+    BINDINGS = [*STREAMING_TIMELINE_BINDINGS]
 
     live_follow: var[bool] = var(True)
     unread_count: var[int] = var(0)
@@ -280,6 +360,10 @@ class StreamingOutput(Vertical):
     def on_mount(self) -> None:
         self.call_after_refresh(self._scroll_latest)
 
+    def on_resize(self, _: Resize) -> None:
+        self._resync_expanded_tool_bounds()
+        self.call_after_refresh(self._resync_expanded_tool_bounds)
+
     def append_text(self, text: str) -> None:
         if not text:
             return
@@ -292,6 +376,10 @@ class StreamingOutput(Vertical):
         kind: ChunkKind = "assistant",
         merge: bool = False,
     ) -> Widget:
+        text = _sanitize_stream_text(text)
+        if not text:
+            return self
+
         if merge and self._last_chunk is not None and self._last_chunk_kind == kind:
             if text:
                 self._last_chunk._accumulated_text = f"{self._last_chunk._accumulated_text}{text}"
@@ -405,6 +493,47 @@ class StreamingOutput(Vertical):
 
     def action_jump_to_latest(self) -> None:
         self._scroll_latest()
+        entries = self._focusable_entries()
+        if entries:
+            self._focus_entry(entries[-1])
+
+    def action_focus_next_entry(self) -> None:
+        entries = self._focusable_entries()
+        if not entries:
+            return
+        focused = self.screen.focused
+        if focused in entries:
+            index = min(len(entries) - 1, entries.index(cast("Widget", focused)) + 1)
+        else:
+            index = 0
+        self._focus_entry(entries[index])
+
+    def action_focus_prev_entry(self) -> None:
+        entries = self._focusable_entries()
+        if not entries:
+            return
+        focused = self.screen.focused
+        if focused in entries:
+            index = max(0, entries.index(cast("Widget", focused)) - 1)
+        else:
+            index = len(entries) - 1
+        self._focus_entry(entries[index])
+
+    def action_focus_first_entry(self) -> None:
+        entries = self._focusable_entries()
+        if not entries:
+            return
+        self._focus_entry(entries[0])
+
+    def action_expand_entry(self) -> None:
+        focused = self.screen.focused
+        if isinstance(focused, ToolCallView) and focused.has_content:
+            focused.expanded = True
+
+    def action_collapse_entry(self) -> None:
+        focused = self.screen.focused
+        if isinstance(focused, ToolCallView) and focused.has_content:
+            focused.expanded = False
 
     @on(MouseScrollUp, "#streaming-body")
     def _on_stream_scroll_up(self) -> None:
@@ -450,8 +579,20 @@ class StreamingOutput(Vertical):
         self.unread_count += 1
         self.call_after_refresh(self._maybe_prune)
 
-    def _maybe_prune(self) -> None:
+    def _focusable_entries(self) -> list[Widget]:
         content = self.query_one("#streaming-body-content", Vertical)
+        return [child for child in content.children if child.can_focus]
+
+    def _focus_entry(self, entry: Widget) -> None:
+        entry.focus()
+        entry.scroll_visible(animate=False)
+        self.call_after_refresh(self._sync_live_follow_from_position)
+
+    def _maybe_prune(self) -> None:
+        try:
+            content = self.query_one("#streaming-body-content", Vertical)
+        except NoMatches:
+            return
         child_count = len(content.children)
         if child_count <= self._PRUNE_HIGH_MARK:
             self._trim_line_history()
@@ -493,12 +634,24 @@ class StreamingOutput(Vertical):
                 self._reset_chunk_tracking()
 
     def _scroll_latest(self) -> None:
-        body = self.query_one("#streaming-body", ScrollableContainer)
+        try:
+            body = self.query_one("#streaming-body", ScrollableContainer)
+        except NoMatches:
+            return
         body.scroll_end(animate=False)
         self._sync_live_follow_from_position()
+        self._resync_expanded_tool_bounds()
+
+    def _resync_expanded_tool_bounds(self) -> None:
+        for tool_call in self._tool_calls.values():
+            if tool_call.expanded:
+                tool_call._sync_content_bounds()
 
     def _sync_live_follow_from_position(self) -> None:
-        body = self.query_one("#streaming-body", ScrollableContainer)
+        try:
+            body = self.query_one("#streaming-body", ScrollableContainer)
+        except NoMatches:
+            return
         at_end = self._is_near_vertical_end(body)
         self.live_follow = at_end
         if at_end:

@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.1-beta.1 (2026-03-08)
+
+### Bug Fixes
+
+- Warn when running inside Zellij < 0.42.0
+  ([`da5f143`](https://github.com/kagan-sh/kagan/commit/da5f14349b5f838df9abcb131193ab2e68808333))
+
+
 ## v0.8.0 (2026-03-08)
 
 

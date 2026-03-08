@@ -6,7 +6,7 @@ from loguru import logger
 from textual.widgets._select import SelectOverlay
 
 # Re-export from core so existing TUI imports continue to work.
-from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
+from kagan.core import install_asyncio_subprocess_exception_filter
 
 _PATCH_FLAG = "_kagan_select_overlay_move_page_patched"
 

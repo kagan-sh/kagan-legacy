@@ -11,6 +11,7 @@ from textual.widgets import Footer, OptionList, Static
 from kagan.core.errors import SessionError
 from kagan.core.models import Project
 from kagan.tui.keybindings import WELCOME_BINDINGS, get_key_for_action
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.widgets.hint_bar import KeybindingHint
 
@@ -188,6 +189,7 @@ class WelcomeScreen(Screen[None]):
                 (get_key_for_action(WELCOME_BINDINGS, "focus_next", "Tab"), "next"),
                 (get_key_for_action(WELCOME_BINDINGS, "new_project", "n"), "new"),
                 (get_key_for_action(WELCOME_BINDINGS, "open_folder", "o"), "open folder"),
+                (get_key_for_action(WELCOME_BINDINGS, "delete_project", "x"), "delete"),
                 (get_key_for_action(WELCOME_BINDINGS, "quit", "Esc"), escape_label),
             ]
         )
@@ -329,6 +331,39 @@ class WelcomeScreen(Screen[None]):
             )
         )
 
+    async def action_delete_project(self) -> None:
+        """Delete the selected project after confirmation."""
+        project = self._get_selected_project()
+        if project is None:
+            return
+        self.app.push_screen(
+            ConfirmModal(
+                title="Delete Project",
+                message=f"Delete project '{project.name}' and all its tasks?",
+            ),
+            callback=self._on_delete_confirmed,
+        )
+
+    async def _on_delete_confirmed(self, confirmed: bool) -> None:
+        if not confirmed:
+            return
+        project = self._get_selected_project()
+        if project is None:
+            return
+        await self.kagan_app.core.projects.delete(project.id)
+        self.app.notify(f"Deleted '{project.name}'")
+        await self._reload_projects()
+
+    def _get_selected_project(self) -> Project | None:
+        """Return the currently highlighted project, or None."""
+        if not self._projects:
+            return None
+        option_list = self.query_one("#project-list", OptionList)
+        index = self._selected_project_index(option_list)
+        if index < 0 or index >= len(self._projects):
+            return None
+        return self._projects[index]
+
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
@@ -369,6 +404,11 @@ class WelcomeScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             self.action_open_folder()
+            return
+        if event.key == "x":
+            event.prevent_default()
+            event.stop()
+            await self.action_delete_project()
             return
         if event.key == ",":
             event.prevent_default()

@@ -98,6 +98,10 @@ task_add_note before starting execution.
 - Multi-task plans: create all tasks in ONE call with task_batch_create.
 - Every task in task_create/task_batch_create must include non-empty,
   testable acceptance_criteria.
+- Mutation claims must be evidence-backed: after task_create/task_update/
+  task_batch_create, report values from returned payloads (not assumptions).
+- If a claimed field is missing from a tool payload, call task_get before
+  presenting a final state summary.
 - Autonomous execution: set execution_mode="AUTO" and start each task with
   run_start action="run".
 - For execution waves, launch every non-overlapping task in that wave before
@@ -128,6 +132,8 @@ ALWAYS:
 - Ensure every newly created task has explicit, testable acceptance criteria.
 - Write acceptance criteria as 2-6 verifiable outcomes, not implementation steps.
 - If requirements are underspecified, add discovery criteria instead of guessing.
+- For batch tool outcomes, always report exact created/updated/skipped/error counts
+  and list failed item indexes when present.
 - When blocked, explain the blocker and propose the next actionable step.
 - When tasks reach REVIEW, verify agent commits exist before approving.
 - Guide the user through planning interactively — ask about execution mode and

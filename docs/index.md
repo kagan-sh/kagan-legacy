@@ -20,15 +20,11 @@ uvx kagan
 
 - :material-lightning-bolt:{ .lg .middle } **60-second start**
 
-  ______________________________________________________________________
-
   One command. Any repo. Board up, first task running.
 
   [:octicons-arrow-right-24: Quickstart](quickstart.md)
 
 - :material-robot:{ .lg .middle } **AUTO vs PAIR**
-
-  ______________________________________________________________________
 
   Background agents or interactive sessions. Switch per task, not per project.
 
@@ -36,15 +32,11 @@ uvx kagan
 
 - :material-server-network:{ .lg .middle } **Run from your editor**
 
-  ______________________________________________________________________
-
   Claude Code, VS Code, Cursor, Gemini CLI, or any MCP client. The TUI is optional.
 
   [:octicons-arrow-right-24: MCP setup](guides/mcp-setup.md)
 
 - :material-source-branch:{ .lg .middle } **Review before merge**
-
-  ______________________________________________________________________
 
   Structured review: diff summary, acceptance criteria checklist, your call.
 

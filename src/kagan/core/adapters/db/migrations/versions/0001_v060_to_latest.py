@@ -43,7 +43,7 @@ def _ensure_required_columns(conn: Connection) -> None:
             ("default_branch", "VARCHAR DEFAULT 'main'"),
         ),
         "tasks": (
-            ("execution_mode", "VARCHAR DEFAULT 'PAIR'"),
+            ("execution_mode", "VARCHAR DEFAULT 'AUTO'"),
             ("launcher", "VARCHAR DEFAULT NULL"),
             ("review_approved", "BOOLEAN DEFAULT 0"),
             ("scratchpad", "TEXT DEFAULT ''"),
@@ -183,7 +183,8 @@ def _backfill_tasks(conn: Connection) -> None:
             UPDATE tasks
             SET execution_mode = CASE UPPER(COALESCE(task_type, ''))
                 WHEN 'AUTO' THEN 'AUTO'
-                ELSE 'PAIR'
+                WHEN 'PAIR' THEN 'PAIR'
+                ELSE 'AUTO'
             END
             WHERE task_type IS NOT NULL
             """
@@ -191,7 +192,7 @@ def _backfill_tasks(conn: Connection) -> None:
     conn.exec_driver_sql(
         """
         UPDATE tasks
-        SET execution_mode = 'PAIR'
+        SET execution_mode = 'AUTO'
         WHERE execution_mode IS NULL OR execution_mode = ''
         """
     )

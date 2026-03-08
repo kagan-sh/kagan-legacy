@@ -50,7 +50,7 @@ class Task(SQLModel, table=True):
     description: str = Field(default="")
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, index=True)
     priority: Priority = Field(default=Priority.MEDIUM, index=True)
-    execution_mode: WorkMode = Field(default=WorkMode.PAIR)
+    execution_mode: WorkMode = Field(default=WorkMode.AUTO)
     agent_backend: str | None = Field(default=None)
     launcher: str | None = Field(default=None)
     base_branch: str | None = Field(default=None)

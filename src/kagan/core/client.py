@@ -41,6 +41,7 @@ from kagan.core.models import Task
 class _TaskState:
     title: str
     status: str
+    execution_mode: str
 
 
 class DBWatcher:
@@ -117,7 +118,7 @@ class DBWatcher:
 
     async def _take_snapshot(self) -> dict[str, _TaskState]:
         tasks = await self._core.tasks.list()
-        return {t.id: _TaskState(t.title, t.status.value) for t in tasks}
+        return {t.id: _TaskState(t.title, t.status.value, t.execution_mode.value) for t in tasks}
 
     async def _consume_events(self) -> None:
         async for event in self._core.tasks.events.stream_board():
@@ -168,7 +169,7 @@ class DBWatcher:
     def _detect_modified(
         self, current: dict[str, _TaskState], old_ids: set[str], new_ids: set[str]
     ) -> bool:
-        """Detect status or title changes on existing tasks."""
+        """Detect status, execution mode, or title changes on existing tasks."""
         changed = False
         for task_id in old_ids & new_ids:
             old = self._snapshot[task_id]
@@ -177,6 +178,13 @@ class DBWatcher:
                 self._snapshot[task_id] = new
                 self._record(
                     f"Task '{new.title}' ({task_id}) moved {old.status} \u2192 {new.status}"
+                )
+                changed = True
+            elif old.execution_mode != new.execution_mode:
+                self._snapshot[task_id] = new
+                self._record(
+                    f"Task '{new.title}' ({task_id}) mode changed "
+                    f"{old.execution_mode} \u2192 {new.execution_mode}"
                 )
                 changed = True
             elif old.title != new.title:
@@ -203,7 +211,11 @@ class DBWatcher:
                 return
             title = event.title or task.title
             status = event.status or task.status.value
-            self._snapshot[event.task_id] = _TaskState(title, status)
+            self._snapshot[event.task_id] = _TaskState(
+                title,
+                status,
+                task.execution_mode.value,
+            )
             self._record(f"Task '{title}' ({event.task_id}) created [{status}]")
             return
 
@@ -213,7 +225,11 @@ class DBWatcher:
                 return
             title = event.title or task.title
             status = event.status or task.status.value
-            self._snapshot[event.task_id] = _TaskState(title, status)
+            self._snapshot[event.task_id] = _TaskState(
+                title,
+                status,
+                task.execution_mode.value,
+            )
             self._record(f"Task '{title}' ({event.task_id}) updated")
             return
 
@@ -235,7 +251,11 @@ class DBWatcher:
         title = task.title if snap is None else snap.title
         prev_status = event.from_status or (snap.status if snap is not None else task.status.value)
         new_status = event.to_status or task.status.value
-        self._snapshot[event.task_id] = _TaskState(title, new_status)
+        self._snapshot[event.task_id] = _TaskState(
+            title,
+            new_status,
+            task.execution_mode.value,
+        )
         self._record(f"Task '{title}' ({event.task_id}) moved {prev_status} → {new_status}")
 
     async def _resolve_if_relevant(self, task_id: str) -> Task | None:

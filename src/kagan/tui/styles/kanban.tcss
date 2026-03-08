@@ -160,6 +160,18 @@ TaskCard:focus {
     tint: $primary 8%;
 }
 
+TaskCard.-selected {
+    border-left: thick $accent;
+    border-bottom: solid $border;
+    background: $panel;
+    tint: $accent 10%;
+}
+
+TaskCard.-selected:focus {
+    border-left: thick $primary;
+    background: $panel;
+    tint: $primary 12%;
+}
 TaskCard:hover {
     background: $panel;
 }
@@ -352,6 +364,38 @@ TaskCard .card-readiness.readiness-risk {
 TaskCard .card-readiness.readiness-blocked {
     color: $error;
 }
+
+TaskCard .card-run-state {
+    width: 100%;
+    height: 1;
+    color: $text-muted;
+}
+
+TaskCard .card-run-state.run-state-auto-running {
+    color: $secondary;
+    text-style: bold;
+}
+
+TaskCard .card-run-state.run-state-pair-running {
+    color: $warning;
+    text-style: bold;
+}
+
+TaskCard .card-run-state.run-state-not-started {
+    color: $text-disabled;
+}
+
+TaskCard .card-run-state.run-state-idle {
+    color: $text-muted;
+}
+
+TaskCard .card-run-state.run-state-review {
+    color: $accent;
+}
+
+TaskCard .card-run-state.run-state-done {
+    color: $success;
+}
 /* Card status indicators */
 
 TaskCard .card-indicator {
@@ -360,12 +404,13 @@ TaskCard .card-indicator {
     text-style: bold;
 }
 
-TaskCard .indicator-running { color: $status-running; }
-TaskCard .indicator-idle    { color: $status-idle; }
+TaskCard .indicator-running-auto { color: $status-running; }
+TaskCard .indicator-running-pair { color: $warning; }
+TaskCard .indicator-idle { color: $status-idle; }
 TaskCard .indicator-reviewing { color: $accent; }
-TaskCard .indicator-blocked { color: $status-error; }
-TaskCard .indicator-passed  { color: $status-success; }
-TaskCard .indicator-failed  { color: $status-error; }
+TaskCard .indicator-not-started { color: $text-disabled; }
+TaskCard .indicator-passed { color: $status-success; }
+TaskCard .indicator-failed { color: $status-error; }
 /* Kagan TUI Styles - Screen and modal specific layout/state rules. */
 /* Loaded last so screen-level overrides keep prior cascade behavior. */
 /* === KanbanScreen styles — SCREENS === */
@@ -517,6 +562,78 @@ SearchPresets .preset-pill.focused {
 
 #review-queue-hint.visible {
     display: block;
+}
+
+KanbanScreen .kanban-tutorial-overlay {
+    layer: overlay;
+    width: 100%;
+    height: 1fr;
+    align: center middle;
+    display: none;
+    background: $background 55%;
+}
+
+KanbanScreen .kanban-tutorial-overlay.visible {
+    display: block;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-container {
+    width: 74;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-title {
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+    color: $primary;
+    padding-bottom: 1;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-subtitle {
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-shortcuts {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-row {
+    width: 100%;
+    height: 1;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-key {
+    width: 21;
+    min-width: 21;
+    color: $primary;
+    text-style: bold;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-separator {
+    width: 3;
+    text-align: center;
+    color: $border;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-desc {
+    width: 1fr;
+    color: $text;
+}
+
+KanbanScreen .kanban-tutorial-overlay .tutorial-hint {
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    padding-top: 1;
 }
 /* === KANBAN HINT BAR (two-row — Kanban board) === */
 
@@ -789,6 +906,18 @@ TaskInspector .inspector-message.is-error {
     color: $error;
 }
 
+TaskCard.-selected {
+    border-left: thick $accent;
+    border-bottom: solid $border;
+    background: $panel;
+    tint: $accent 10%;
+}
+
+TaskCard.-selected:focus {
+    border-left: thick $primary;
+    background: $panel;
+    tint: $primary 12%;
+}
 TaskCard:hover {
     background: $panel;
 }

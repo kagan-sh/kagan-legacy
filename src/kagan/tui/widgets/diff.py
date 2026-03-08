@@ -4,11 +4,17 @@ from typing import ClassVar, Literal
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.binding import Binding, BindingType
+from textual.binding import BindingType
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
+
+from kagan.tui.keybindings import (
+    DIFF_CONTENT_PANE_BINDINGS,
+    DIFF_FILE_TREE_BINDINGS,
+    DIFF_VIEW_BINDINGS,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,11 +58,7 @@ class DiffStats(Static):
 
 
 class DiffFileTree(Widget):
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("j,down", "cursor_down", "Next file", show=True),
-        Binding("k,up", "cursor_up", "Prev file", show=True),
-        Binding("enter", "select", "Select", show=True),
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = [*DIFF_FILE_TREE_BINDINGS]
 
     can_focus = True
     DEFAULT_CSS = """
@@ -179,14 +181,7 @@ class DiffFileTree(Widget):
 
 
 class DiffContentPane(Widget):
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("j,down", "scroll_down", "Scroll down", show=True),
-        Binding("k,up", "scroll_up", "Scroll up", show=True),
-        Binding("f,pagedown", "page_down", "Page down", show=True),
-        Binding("b,pageup", "page_up", "Page up", show=True),
-        Binding("g,home", "scroll_home", "Top", show=True),
-        Binding("G,end", "scroll_end", "Bottom", show=True),
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = [*DIFF_CONTENT_PANE_BINDINGS]
 
     can_focus = True
     DEFAULT_CSS = """
@@ -263,10 +258,7 @@ class DiffContentPane(Widget):
 
 
 class DiffView(Widget):
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("h,left", "focus_file_tree", "Files", show=True),
-        Binding("l,right", "focus_diff_content", "Diff", show=True),
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = [*DIFF_VIEW_BINDINGS]
 
     def __init__(
         self,
@@ -286,11 +278,21 @@ class DiffView(Widget):
         with Horizontal(id="diff-browser", classes="diff-browser"):
             yield DiffFileTree(id="diff-file-tree")
             yield DiffContentPane(id="diff-content-pane")
+        yield Static("h/l switch panes", classes="diff-view-hint")
 
     def on_mount(self) -> None:
         self.call_after_refresh(self._focus_default_pane)
 
     def _focus_default_pane(self) -> None:
+        if self.display is False:
+            return
+
+        parent = self.parent
+        while isinstance(parent, Widget):
+            if parent.display is False:
+                return
+            parent = parent.parent
+
         if self._default_focus == "content":
             self.query_one(DiffContentPane).focus()
             return

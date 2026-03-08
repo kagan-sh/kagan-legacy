@@ -18,9 +18,9 @@ tags:
 
 ## Run AUTO
 
-`n` → set AUTO → `a` or `Enter` → dedicated Task Output screen in split view with the same `Ctrl+O` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
+`n` → set AUTO → `s` or `Enter` → dedicated Task Output screen in split view with the same `Ctrl+T` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
 
-Agent runs in the background. Use implementation session follow-ups plus `a`/`s`
+Agent runs in the background. Use implementation session follow-ups plus `s` (start) / `Shift+S` (stop)
 to steer iterations, then review output in REVIEW.
 
 ## Run PAIR
@@ -48,7 +48,7 @@ as context and asking for first-step acknowledgement.
 
 ## Switch mode
 
-`v` (details) → `e` (edit) → change `task_type` → ++ctrl+s++ save.
+`Enter` (open task) → `e` (edit) → change `task_type` → `Ctrl+S` save.
 
 ## Orchestrator session lifecycle
 
@@ -73,7 +73,7 @@ Please confirm these are addressed before approving.
 This is a **soft gate** — the transition to REVIEW always proceeds. The warning is informational,
 surfaced at review time. It never blocks an agent mid-run.
 
-Set criteria when creating or editing a task (`v` → `e` → Acceptance Criteria field).
+Set criteria when creating or editing a task (`Enter` → `e` → Acceptance Criteria field).
 
 ______________________________________________________________________
 

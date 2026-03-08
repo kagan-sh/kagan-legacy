@@ -3,10 +3,11 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Footer, Input, Label, Select, Static
+
+from kagan.tui.keybindings import SETUP_FLOW_BINDINGS
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
@@ -61,10 +62,7 @@ _MODE_COPY: dict[SetupMode, dict[str, str]] = {
 
 
 class OnboardingFlow(ModalScreen[None]):
-    BINDINGS = [
-        Binding("enter", "submit", "Continue"),
-        Binding("escape", "dismiss", "Close"),
-    ]
+    BINDINGS = [*SETUP_FLOW_BINDINGS]
 
     def __init__(
         self,

@@ -540,13 +540,93 @@ body,
   color: #E8E4DC;
 }
 
+/* ===== GRID CARDS ===== */
+/* Grid container */
+.md-typeset .grid.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+/* The <ul> uses display: contents so <li> children become grid items */
+.md-typeset .grid.cards > ul {
+  display: contents;
+}
+
+/* Each <li> is a card */
+.md-typeset .grid.cards > ul > li {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 1.25rem;
+  list-style: none;
+  border: 1px solid #1E1C19;
+  background-color: #0E0C0A;
+  border-radius: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: #2A2724;
+  background-color: #181614;
+}
+
+/* Card title with icon (first paragraph) */
+.md-typeset .grid.cards > ul > li > p:first-child {
+  margin: 0 0 0.75rem 0;
+  font-weight: 600;
+  color: #E8E4DC;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+}
+
+/* Icon styling in title */
+.md-typeset .grid.cards > ul > li > p:first-child .twemoji {
+  color: #C9A46A;
+}
+
+.md-typeset .grid.cards > ul > li > p:first-child .twemoji svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: #C9A46A;
+}
+
+/* Description paragraph */
+.md-typeset .grid.cards > ul > li > p:nth-child(2) {
+  margin: 0 0 1rem 0;
+  color: #7A7468;
+  flex-grow: 1;
+}
+
+/* Link at the bottom */
+.md-typeset .grid.cards > ul > li > p:last-child {
+  margin: 0;
+  margin-top: auto;
+}
+
+.md-typeset .grid.cards > ul > li > p:last-child a {
+  color: #4A9B7F;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 500;
+}
+
+.md-typeset .grid.cards > ul > li > p:last-child a:hover {
+  color: #5AB893;
+}
+
+/* Arrow icon in links */
+.md-typeset .grid.cards > ul > li > p:last-child a .twemoji svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 /* ===== HORIZONTAL RULES ===== */
 .md-typeset hr {
   border-color: #1E1C19;
-}
-
-.md-typeset .grid.cards hr {
-  border-color: transparent;
 }
 
 /* ===== CONTEXTUAL SIDEBAR COLLAPSE ===== */

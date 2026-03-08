@@ -32,8 +32,9 @@ async def _spawn_and_capture_command(
         captured["cmd"] = [str(part) for part in cmd]
         return _FakeProcess()
 
-    async def _fake_run_acp_session(*, process, client, worktree_path, prompt, mcp_json_path):
-        del process, client, worktree_path, prompt, mcp_json_path
+    async def _fake_run_acp_session(*, process, client, worktree_path, prompt, mcp_manifest):
+        del process, client, worktree_path, prompt
+        assert mcp_manifest
         return None
 
     monkeypatch.setattr(
@@ -52,6 +53,7 @@ async def _spawn_and_capture_command(
         on_session_update=lambda *_: None,
     )
     await reader_task
+    assert not (tmp_path / ".mcp.json").exists()
     return captured["cmd"]
 
 

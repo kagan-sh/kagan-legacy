@@ -1068,6 +1068,7 @@ PairInstructionsModal .section-title {
 .tmux-hint {
     padding-top: 1;
 }
+
 /* DiffModal styles */
 
 DiffModal {
@@ -3875,8 +3876,6 @@ TaskDetailsModal.editing #ac-input:focus {
 TaskDetailsModal .modal-action-hint-row .modal-action-hint-end {
     text-align: right;
 }
-/* Settings: compact two-pane layout inspired by toad/textual patterns. */
-
 #settings-container {
     width: 92%;
     max-width: 118;

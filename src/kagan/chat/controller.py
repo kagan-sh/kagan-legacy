@@ -444,6 +444,16 @@ class ChatController:
             await self._persist_session()
         return self._restart_requested
 
+    def _append_turn(self, user_text: str, assistant_reply: str) -> None:
+        """Record a user/assistant exchange in conversation history."""
+        self._chat_history.append(("user", user_text))
+        self._rendered_messages.append(f"You: {user_text.strip()}")
+        if assistant_reply:
+            self._chat_history.append(("assistant", assistant_reply))
+            self._rendered_messages.append(f"Agent: {assistant_reply}")
+        self._chat_history = self._chat_history[-120:]
+        self._rendered_messages = self._rendered_messages[-300:]
+
     async def _persist_session(self) -> None:
         if self._chat_session_id is None or not self._persist_repl_session:
             return
@@ -1023,7 +1033,8 @@ class ChatController:
                 name="chat-prompt",
             )
             original_sigint = signal.getsignal(signal.SIGINT)
-            signal.signal(signal.SIGINT, lambda *_: prompt_task.cancel())
+            loop = asyncio.get_running_loop()
+            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(prompt_task.cancel))
             try:
                 await prompt_task
             except asyncio.CancelledError:
@@ -1039,28 +1050,17 @@ class ChatController:
             finally:
                 signal.signal(signal.SIGINT, original_sigint)
 
-        assistant_reply = self._acp_client.finish_turn() if self._acp_client is not None else ""
+        assistant_reply = ""
+        if self._acp_client is not None:
+            with contextlib.suppress(Exception):
+                assistant_reply = self._acp_client.finish_turn()
+
+        self._append_turn(text, assistant_reply)
 
         if interrupted:
             _console.print("\n[dim]Interrupted.[/dim]")
-            # Save partial conversation state
-            self._chat_history.append(("user", text))
-            self._rendered_messages.append(f"You: {text.strip()}")
-            if assistant_reply:
-                self._chat_history.append(("assistant", assistant_reply))
-                self._rendered_messages.append(f"Agent: {assistant_reply}")
-            self._chat_history = self._chat_history[-120:]
-            self._rendered_messages = self._rendered_messages[-300:]
             await self._persist_session()
             return
-
-        self._chat_history.append(("user", text))
-        self._rendered_messages.append(f"You: {text.strip()}")
-        if assistant_reply:
-            self._chat_history.append(("assistant", assistant_reply))
-            self._rendered_messages.append(f"Agent: {assistant_reply}")
-        self._chat_history = self._chat_history[-120:]
-        self._rendered_messages = self._rendered_messages[-300:]
 
         _console.print()  # newline after streamed output
         # Re-render as markdown if the response contains rich formatting

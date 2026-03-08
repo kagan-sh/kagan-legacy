@@ -448,7 +448,7 @@ async def run_acp_session(
         logger.info(
             "ACP one-shot prompt completed for pid={} rc={}", process.pid, process.returncode
         )
-    except (RequestError, OSError, RuntimeError, ValueError) as exc:
+    except (RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.exception("ACP session failed for pid={} cwd={}", process.pid, worktree_path)
         if process.returncode is None:
             process.terminate()

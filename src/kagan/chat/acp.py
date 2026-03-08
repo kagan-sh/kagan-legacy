@@ -364,7 +364,7 @@ async def run_orchestrator_turn(
                 ]
                 try:
                     await conn.prompt(session_id=sess.session_id, prompt=prompt_blocks)
-                except (acp.RequestError, OSError, RuntimeError, ValueError) as exc:
+                except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
                     raise AgentError(
                         _friendly_acp_error_message(
                             error=exc,
@@ -372,7 +372,7 @@ async def run_orchestrator_turn(
                             during="prompt delivery",
                         )
                     ) from exc
-    except (acp.RequestError, OSError, RuntimeError, ValueError) as exc:
+    except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
         raise AgentError(
             _friendly_acp_error_message(error=exc, agent_backend=agent_backend, during="handshake")
         ) from exc

@@ -79,13 +79,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "env_vars": {"ANTHROPIC_MODEL": ""},
         "supports_acp": True,
         "acp_command": ["npx", "claude-code-acp"],
-        "acp_args": [
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--print",
-        ],
+        "acp_args": [],
     },
     CODEX_BACKEND: {
         "executable": "codex",

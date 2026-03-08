@@ -9,7 +9,7 @@ tags:
 
 # Import from GitHub
 
-Use this guide to import GitHub issues into your board. GitHub support is bundled with Kagan.
+Kagan has built-in GitHub issue import. Bring existing issues onto your board in a few steps.
 
 ## What you need
 

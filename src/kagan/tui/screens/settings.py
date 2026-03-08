@@ -323,6 +323,9 @@ class SettingsModal(ModalScreen[None]):
                                 "settings-default-model-openai",
                             )
 
+            with Horizontal(classes="modal-action-row"):
+                yield Button("Save", id="settings-save", variant="primary")
+                yield Button("Cancel", id="settings-cancel")
             with Horizontal(classes="modal-action-hint-row"):
                 yield Static(
                     "Ctrl+S save  Ctrl+. advanced  / search  Esc close",
@@ -462,6 +465,14 @@ class SettingsModal(ModalScreen[None]):
     @on(Button.Pressed, "#settings-advanced-toggle")
     async def _on_advanced_toggle_pressed(self, _: Button.Pressed) -> None:
         self.action_toggle_advanced()
+
+    @on(Button.Pressed, "#settings-save")
+    async def _on_save_pressed(self, _: Button.Pressed) -> None:
+        await self.action_save()
+
+    @on(Button.Pressed, "#settings-cancel")
+    def _on_cancel_pressed(self, _: Button.Pressed) -> None:
+        self.action_cancel()
 
     def action_toggle_advanced(self) -> None:
         self._show_advanced = not self._show_advanced

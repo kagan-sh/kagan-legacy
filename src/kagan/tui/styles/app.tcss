@@ -4064,11 +4064,19 @@ SettingsModal PersonaField:focus {
     background: $surface;
 }
 
+SettingsModal .modal-action-row {
+    height: auto;
+    max-height: 3;
+    padding: 0 1;
+    align: right middle;
+    border-top: solid $border;
+    background: $surface;
+}
+
 SettingsModal .modal-action-hint-row {
     margin-top: 0;
     padding: 0 1;
     height: 1;
-    border-top: solid $border;
     background: $surface;
 }
 

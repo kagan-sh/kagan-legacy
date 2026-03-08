@@ -54,6 +54,9 @@ class Worktrees:
             raise SessionError(None, f"No repos linked to project {project_id!r}.")
         repo = repos[0]
 
+        if not await git.is_git_repo(repo.path):
+            raise WorktreeError(f"Not a git repository: {repo.path}")
+
         branch_name = f"kagan/{task_id}"
         settings = await self._client.settings.get()
         current_active_branch = await git.current_branch(repo.path)

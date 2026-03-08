@@ -1,6 +1,6 @@
 ---
 title: MCP tools reference
-description: Consolidated tool catalog, contract semantics, and scope rules
+description: Consolidated tool catalog, contract semantics, and access tiers
 icon: material/tools
 tags:
   - mcp
@@ -9,12 +9,11 @@ tags:
 
 # MCP tools reference
 
-Consolidated MCP toolset. Breaking contract — not backward-compatible.
+Consolidated MCP toolset reference for Kagan.
 
 ## Runtime module path
 
 For embedded/runtime integrations, use `kagan.mcp.runtime` as the canonical server module.
-Legacy bridge module paths `kagan.mcp.server` and `kagan.mcp.models` were removed.
 
 ## Annotation model
 
@@ -24,6 +23,8 @@ Legacy bridge module paths `kagan.mcp.server` and `kagan.mcp.models` were remove
 | `mutating`    | Modifies state                    |
 | `mixed`       | Action-dependent read/write modes |
 | `destructive` | Irreversible/high-impact action   |
+
+______________________________________________________________________
 
 ## Tool catalog
 
@@ -65,12 +66,21 @@ Legacy bridge module paths `kagan.mcp.server` and `kagan.mcp.models` were remove
 | `audit_list(...)`   | `read-only`   | List recent audit events                                     |
 | `settings_get()`    | `read-only`   | Read allowlisted settings                                    |
 | `settings_set(...)` | `mutating`    | Update allowlisted settings                                  |
-| `plan_submit(...)`  | `mutating`    | Submit planner proposal payload (planner profile)            |
+| `plan_submit(...)`  | `mutating`    | Submit planner proposal payload                              |
+
+### Plugin tools (experimental)
+
+| Tool                    | Annotation    | Purpose                                    |
+| ----------------------- | ------------- | ------------------------------------------ |
+| `plugins_sync(...)`     | `destructive` | Sync issues via plugin, returns counts     |
+| `plugins_preflight(...)` | `read-only`  | Check plugin prerequisites and readiness   |
 
 Review semantics:
 
 - `review_apply(action="approve")` records approval state but does **not** move task to `DONE`.
 - `DONE` is reached by completion flows (for example `review_apply(action="merge")` or no-change close flow).
+
+______________________________________________________________________
 
 ## `task_get` API
 
@@ -100,6 +110,8 @@ Review semantics:
   - `logs_total_runs`, `logs_returned_runs`
   - `logs_has_more`, `logs_next_offset`
 
+______________________________________________________________________
+
 ## `task_logs` API
 
 Use this tool to fetch additional log history when `task_get(..., include_logs=true)` is truncated
@@ -124,6 +136,8 @@ or indicates more pages are available.
 | `next_offset`   | `int \| null` | Offset to fetch the next older page    |
 | `truncated`     | `bool`        | Whether content was reduced for safety |
 
+______________________________________________________________________
+
 ## `task_patch` API
 
 `task_patch` is the single task mutation endpoint for incremental updates.
@@ -137,6 +151,8 @@ or indicates more pages are available.
 | `transition`  | `string \| null` | `request_review`, `set_status`, or `set_task_type`                            |
 | `append_note` | `string \| null` | Text appended to task notes/scratchpad                                        |
 
+______________________________________________________________________
+
 ## `task_annotate` API
 
 `task_annotate` appends a structured, timestamped reasoning note to a task's scratchpad.
@@ -144,8 +160,8 @@ Use this during agent execution to record decisions, tradeoffs, and observations
 Each call appends a new entry — it never overwrites prior notes.
 
 !!! tip "When to use `task_annotate` vs `task_patch`"
-Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
-Use `task_patch(append_note=...)` for structured state transitions and status updates.
+    Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
+    Use `task_patch(append_note=...)` for structured state transitions and status updates.
 
 ### Parameters
 
@@ -165,10 +181,6 @@ Use `task_patch(append_note=...)` for structured state transitions and status up
 
 Notes are visible in the Resume Context panel when a task is reopened, and are used
 as input to the acceptance criteria coverage check at REVIEW transition time.
-
-### Minimum capability
-
-`pair_worker` and above.
 
 ______________________________________________________________________
 
@@ -199,6 +211,8 @@ ______________________________________________________________________
 | `INVALID_TIMEOUT`      | Invalid timeout value                                                    |
 | `INVALID_PARAMS`       | Invalid parameter payload                                                |
 
+______________________________________________________________________
+
 ## `job_poll` API
 
 `job_poll` consolidates job get/wait/events.
@@ -215,6 +229,8 @@ ______________________________________________________________________
 | `limit`           | `int`    | `50`     | Event page size when `events=true`        |
 | `offset`          | `int`    | `0`      | Event page offset when `events=true`      |
 
+______________________________________________________________________
+
 ## `session_manage` API
 
 `session_manage` consolidates PAIR session lifecycle operations.
@@ -228,13 +244,13 @@ ______________________________________________________________________
 | `reuse_if_exists` | `bool`           | Used by `open`                    |
 | `worktree_path`   | `string \| null` | Optional path override for `open` |
 
+______________________________________________________________________
+
 ## Scope and isolation
 
 - Task mutations are enforced against task-scoped sessions (`task:<task_id>`).
-- PAIR workers use task-scoped MCP sessions with capability lane `pair_worker`.
+- PAIR workers use task-scoped MCP sessions.
 - AUTO workers use task-scoped MCP sessions resolved from runtime permission policy.
-- Orchestrator uses an elevated `ext:orchestrator` MCP session on the `kagan_admin` lane with
-  `maintainer` capability so it can access the full admin MCP surface.
 - Scoped task sessions cannot mutate other task IDs.
 - Global MCP access does not override task-scoped worker isolation.
 
@@ -245,6 +261,22 @@ Default and max timeouts are server-side configurable via settings:
 - `general.tasks_wait_default_timeout_seconds`
 - `general.tasks_wait_max_timeout_seconds`
 
+______________________________________________________________________
+
+## Access tiers
+
+Tool visibility is controlled by the MCP server's access tier (set via `--readonly` / `--admin` flags).
+
+| Tier       | Visible tools                                                         |
+| ---------- | --------------------------------------------------------------------- |
+| `readonly` | Read-only operations (task_get, task_list, task_logs, etc.)           |
+| `default`  | Readonly + task_create, task_patch, task_annotate, jobs, sessions, reviews |
+| `admin`    | Default + task_delete, settings_set, plugins_sync, destructive review |
+
+Unregistered tools are invisible to the host — it never knows they exist.
+
+______________________________________________________________________
+
 ## Task field semantics
 
 - `status` is Kanban state: `BACKLOG`, `IN_PROGRESS`, `REVIEW`, `DONE`.
@@ -253,6 +285,8 @@ Default and max timeouts are server-side configurable via settings:
   Use review completion flows to reach `DONE`.
 - `task_type` is execution mode: `AUTO`, `PAIR`.
 - `acceptance_criteria` accepts either a single string or a list of strings.
+
+______________________________________________________________________
 
 ## Common recovery codes
 
@@ -266,22 +300,3 @@ Default and max timeouts are server-side configurable via settings:
 | `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash       | Restart MCP/TUI session             |
 | `WAIT_TIMEOUT`               | `tasks_wait` timed out without status change | Retry with same or adjusted timeout |
 | `WAIT_INTERRUPTED`           | `tasks_wait` was interrupted/cancelled       | Retry with the same task_ids cursor |
-
-## Capability profiles
-
-Higher profiles include lower-level permissions.
-
-| Profile       | Scope                                                                 |
-| ------------- | --------------------------------------------------------------------- |
-| `viewer`      | Read-only operations                                                  |
-| `planner`     | `viewer` + `plan_submit`                                              |
-| `pair_worker` | `planner` + `task_patch`, jobs, and `session_manage`                  |
-| `operator`    | `pair_worker` + `task_create`, `project_open`, non-destructive review |
-| `maintainer`  | `operator` + `task_delete`, destructive review/admin operations       |
-
-## Identity lanes
-
-| Identity      | Notes                                         |
-| ------------- | --------------------------------------------- |
-| `kagan`       | Default safe lane                             |
-| `kagan_admin` | Explicit elevated lane for trusted automation |

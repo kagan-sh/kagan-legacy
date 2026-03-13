@@ -121,6 +121,24 @@ plugins:
               background_color: "#020202"
               color: "#E8E4DC"
               font_family: Barlow Condensed
+    - redirects:
+          redirect_maps:
+              # Old /how-to/ URLs → /guides/
+              how-to/mcp-setup.md: guides/mcp-setup.md
+              how-to/multi-repo.md: guides/github.md
+              how-to/admin-mcp-editors.md: guides/mcp-setup.md
+              how-to/index.md: guides/mcp-setup.md
+              # Old /getting-started/ URLs → root
+              getting-started/quickstart.md: quickstart.md
+              getting-started/index.md: quickstart.md
+              # Old URL structure fixes
+              reference/architecture.md: concepts/architecture-overview.md
+              keybindings.md: reference/keybindings.md
+              task-modes.md: guides/modes-auto-vs-pair.md
+              multi-repo-guide.md: guides/github.md
+              # Root redirects for old section index pages
+              how-to.md: guides/mcp-setup.md
+              getting-started.md: quickstart.md
 
 exclude_docs: |
     standalone-mcp-core-refactor-execution.md

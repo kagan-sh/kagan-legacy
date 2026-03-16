@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from kagan.core._prompts import _build_auto_run_prompt
+from kagan.core._prompts import _build_auto_run_prompt, resolve_task_prompt
 from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME
 
 
@@ -175,3 +175,29 @@ def test_auto_run_prompt_key_phrases_present() -> None:
     ]
     for phrase in required_phrases:
         assert phrase in result, f"Missing required phrase: {phrase!r}"
+
+
+@pytest.mark.unit
+def test_resolve_task_prompt_with_learnings() -> None:
+    """Learnings inject PROJECT CONTEXT section after base prompt."""
+    task = _make_task(title="Write documentation")
+    learnings = ["Always run poe check before committing", "Use loguru for logging"]
+    result = resolve_task_prompt(task, settings={}, learnings=learnings)
+
+    assert "PROJECT CONTEXT (from prior tasks):" in result
+    assert "- Always run poe check before committing" in result
+    assert "- Use loguru for logging" in result
+    # Base prompt content still present
+    assert "Task: Write documentation" in result
+    assert "MUST DO:" in result
+
+
+@pytest.mark.unit
+def test_resolve_task_prompt_no_learnings() -> None:
+    """Empty or None learnings don't inject the PROJECT CONTEXT section."""
+    task = _make_task(title="Write documentation")
+    result_none = resolve_task_prompt(task, settings={}, learnings=None)
+    result_empty = resolve_task_prompt(task, settings={}, learnings=[])
+
+    assert "PROJECT CONTEXT" not in result_none
+    assert "PROJECT CONTEXT" not in result_empty

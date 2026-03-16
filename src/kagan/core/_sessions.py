@@ -36,7 +36,7 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, Worktree
+from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, TaskNote, Worktree
 
 
 def _terminate_process(pid: int) -> None:
@@ -124,6 +124,28 @@ class Sessions:
         self._set_status = set_status
         self._ensure_workspace = ensure_workspace
         self._db_path: Path | None = db_path
+
+    async def _fetch_project_learnings(self, project_id: str) -> list[str]:
+        """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
+        stmt = (
+            select(TaskNote)
+            .join(Task, TaskNote.task_id == Task.id)
+            .where(Task.project_id == project_id)
+            .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
+            .order_by(desc(cast("Any", TaskNote.created_at)))
+            .limit(30)
+        )
+        notes: list[TaskNote] = await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
+        seen: set[str] = set()
+        result: list[str] = []
+        for note in notes:
+            text = note.content.removeprefix("[LEARNING]").strip()
+            if text and text not in seen:
+                seen.add(text)
+                result.append(text)
+                if len(result) >= 20:
+                    break
+        return result
 
     async def get_latest(self, task_id: str) -> Session | None:
         return await _db_async(
@@ -302,7 +324,8 @@ class Sessions:
         if task.status is TaskStatus.REVIEW:
             prompt = resolve_review_prompt(task_id, settings_dict, project_path)
         else:
-            prompt = resolve_task_prompt(task, settings_dict, project_path)
+            learnings = await self._fetch_project_learnings(task.project_id)
+            prompt = resolve_task_prompt(task, settings_dict, project_path, learnings=learnings)
 
         persona_prompt: str | None = None
         if persona:

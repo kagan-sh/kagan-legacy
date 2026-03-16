@@ -6,6 +6,7 @@ Each test is isolated with its own tmp_path and fresh DB.
 
 import pytest
 
+from kagan.core import TaskStatus
 from tests.helpers.driver import KaganDriver
 
 pytestmark = pytest.mark.core
@@ -65,6 +66,36 @@ async def test_mutations_are_audit_logged(board: KaganDriver) -> None:
     items = audit.get("items", [])
     assert isinstance(items, list)
     assert len(items) >= 1
+
+
+async def test_update_task_is_audit_logged(board: KaganDriver) -> None:
+    """Updating a task surfaces `task.update` in the audit trail."""
+    task = await board.create_task("Audit Update Task")
+    await board.update_task(task.id, title="Updated Title")
+
+    items = (await board.audit_list(limit=5)).get("items", [])
+    actions = [item.get("action") for item in items]
+    assert "task.update" in actions
+
+
+async def test_status_transition_is_audit_logged(board: KaganDriver) -> None:
+    """Moving a task changes status which must be audit recorded."""
+    task = await board.create_task("Audit Status Task")
+    await board.move_task(task.id, TaskStatus.IN_PROGRESS)
+
+    items = (await board.audit_list(limit=5)).get("items", [])
+    actions = [item.get("action") for item in items]
+    assert "task.status_change" in actions
+
+
+async def test_delete_task_is_audit_logged(board: KaganDriver) -> None:
+    """Deleting a task emits a `task.delete` audit entry."""
+    task = await board.create_task("Audit Delete Task")
+    await board.delete_task(task.id)
+
+    items = (await board.audit_list(limit=10)).get("items", [])
+    actions = [item.get("action") for item in items]
+    assert "task.delete" in actions
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import asyncio
 import builtins
 import contextlib
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
@@ -52,6 +53,27 @@ class Tasks:
             set_status=self._set_status,
             ensure_workspace=self._ensure_workspace,
             db_path=db_path,
+        )
+
+    @staticmethod
+    def _serialize_value(value: object) -> object:
+        return value.value if isinstance(value, Enum) else value
+
+    @staticmethod
+    def _record_task_audit(
+        session: Any,
+        *,
+        action: str,
+        task_id: str,
+        detail: dict[str, object] | None = None,
+    ) -> None:
+        session.add(
+            AuditEntry(
+                action=action,
+                entity_type="task",
+                entity_id=task_id,
+                detail=detail or {},
+            )
         )
 
     def _require_project(self) -> str:
@@ -202,6 +224,7 @@ class Tasks:
             "agent_backend": agent_backend,
             "launcher": launcher,
         }
+        changed_fields: dict[str, object] = {}
 
         def op(s):
             db_task = s.get(Task, task.id)
@@ -212,10 +235,21 @@ class Tasks:
                     continue
                 if field == "launcher":
                     db_task.launcher = value if isinstance(value, str) else None
+                    changed_fields["launcher"] = self._serialize_value(
+                        value if isinstance(value, str) else None
+                    )
                     continue
                 if value is not None:
                     setattr(db_task, field, value)
+                    changed_fields[field] = self._serialize_value(value)
             db_task.updated_at = _utc_now()
+            if changed_fields:
+                self._record_task_audit(
+                    s,
+                    action="task.update",
+                    task_id=task.id,
+                    detail={"fields": dict(changed_fields)},
+                )
             s.add(db_task)
             s.commit()
             s.refresh(db_task)
@@ -248,10 +282,17 @@ class Tasks:
             task = s.get(Task, task_id)
             if task is None:
                 raise NotFoundError("Task", task_id)
+            from_status = task.status
             task.status = status
             if status is not TaskStatus.DONE:
                 task.review_approved = False
             task.updated_at = _utc_now()
+            self._record_task_audit(
+                s,
+                action="task.status_change",
+                task_id=task_id,
+                detail={"from": from_status.value, "to": status.value},
+            )
             s.add(task)
             s.commit()
             s.refresh(task)
@@ -280,6 +321,12 @@ class Tasks:
             _delete_task_children(s, task_id)
             task = s.get(Task, task_id)
             if task:
+                self._record_task_audit(
+                    s,
+                    action="task.delete",
+                    task_id=task_id,
+                    detail={"status": task.status.value, "title": task.title},
+                )
                 s.delete(task)
 
         await _db_async(self._engine, op, commit=True)

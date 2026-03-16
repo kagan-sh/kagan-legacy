@@ -1410,8 +1410,20 @@ class TaskScreen(Screen[None]):
         current_status = await self._render_task_summary(task)
         await self._render_criteria_checkboxes(task)
         await self._render_changed_files(task)
+        await self._load_resume_context(task)
         self._set_status(current_status)
         self._sync_merge_readiness()
+
+    async def _load_resume_context(self, task: Task) -> None:
+        pane = self.query_one(TaskDetailPane)
+        if self._task_id is None:
+            pane.set_resume_context([], task.status)
+            return
+        notes: list[str] = []
+        with contextlib.suppress(KaganError, OSError, RuntimeError):
+            entries = await self.kagan_app.core.tasks.list_notes(self._task_id)
+            notes = [entry.content for entry in entries]
+        pane.set_resume_context(notes, task.status)
 
     def _sync_merge_readiness(self) -> None:
         """Update the merge readiness checklist in the Review tab."""

@@ -22,6 +22,15 @@ class TaskDetailPane(Widget):
         with VerticalScroll(id="ts-overview-scroll"):
             yield Static("", id="ts-overview-meta", classes="ts-detail-meta-line")
 
+            with Vertical(id="ts-resume-context-section"):
+                yield Static("Resume Context", classes="ts-section-label")
+                yield Static(
+                    "",
+                    id="ts-resume-context",
+                    classes="ts-section-body ts-resume-context-body",
+                    markup=False,
+                )
+
             yield Static("Description", classes="ts-section-label")
             yield Static("", id="ts-overview-description", classes="ts-section-body", markup=False)
 
@@ -71,8 +80,10 @@ class TaskDetailPane(Widget):
         self.query_one("#ts-overview-base-branch", Static).update("Base branch: repo default")
         self.query_one("#ts-overview-agent-backend", Static).update("Agent: project default")
         self._set_review_section_visible(False)
+        self._hide_resume_context()
 
     def _render_task(self, task: Task) -> None:
+        self._hide_resume_context()
         has_description = bool(task.description and task.description.strip())
         description = (task.description or "").strip() or "No description provided."
         desc_w = self.query_one("#ts-overview-description", Static)
@@ -114,3 +125,31 @@ class TaskDetailPane(Widget):
 
     def _set_review_section_visible(self, is_visible: bool) -> None:
         self.query_one("#ts-detail-review-section", Vertical).display = is_visible
+
+    def _hide_resume_context(self) -> None:
+        container = self.query_one("#ts-resume-context-section", Vertical)
+        container.display = False
+        body = self.query_one("#ts-resume-context", Static)
+        body.update("")
+        body.remove_class("ts-empty")
+
+    def set_resume_context(self, notes: list[str] | None, status: TaskStatus | None) -> None:
+        container = self.query_one("#ts-resume-context-section", Vertical)
+        body = self.query_one("#ts-resume-context", Static)
+        if status not in {TaskStatus.IN_PROGRESS, TaskStatus.REVIEW}:
+            container.display = False
+            body.update("")
+            body.remove_class("ts-empty")
+            return
+        container.display = True
+        cleaned = [note.strip() for note in (notes or []) if note.strip()]
+        if not cleaned:
+            body.update("(No notes yet)")
+            body.add_class("ts-empty")
+            return
+        combined = "\n\n".join(cleaned)
+        trimmed = combined[-500:]
+        if len(combined) > 500:
+            trimmed = f"…{trimmed}"
+        body.update(trimmed)
+        body.remove_class("ts-empty")

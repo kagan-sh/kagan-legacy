@@ -87,6 +87,22 @@ TaskScreen {
     height: auto;
 }
 
+#ts-resume-context-section {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    overflow: hidden;
+}
+
+#ts-resume-context {
+    width: 100%;
+    padding: 0;
+    height: auto;
+    min-height: 4;
+    max-height: 8;
+    overflow-y: auto;
+}
+
 .ts-section-label {
     width: 100%;
     text-style: bold;

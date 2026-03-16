@@ -43,12 +43,12 @@ ______________________________________________________________________
  │  │    Exception      → log + wrap as ClickException(str(exc))            │  │
  │  └───────────────────────────────────────────────────────────────────────┘  │
  │                                                                             │
- | Registers 9 commands: tui, chat, doctor, projects, mcp,                       |
- |                         reset-state, update, tools, plugins                   |
+  | Registers 11 commands: tui, chat, doctor, projects, mcp,                      |
+  |                         reset-state, update, tools, plugins, import, serve    |
  └──────────────────────────────────┬──────────────────────────────────────────┘
                                     │
            ┌────────────────────────┼────────────────────────┐
-           │  9 command modules     │  (flat siblings)       │
+           │  11 command modules    │  (flat siblings)       │
            │  each one file         │  each one function     │
            │  no base class         │  no shared state       │
            ▼                        ▼                        ▼
@@ -138,18 +138,23 @@ src/kagan/cli/
 ├── __init__.py        # re-export `cli` for entry_points
 ├── main.py            # root group, version flag, default-to-tui, error boundary
 ├── _bootstrap.py      # make_client, run_async, update check helpers
+├── _env.py            # environment configuration helpers
+├── entrypoint.py      # entry point wrapper
+├── imports.py         # kagan import github (GitHub issue import group)
 ├── tui.py             # kagan tui
 ├── chat.py            # kagan chat [--prompt] [--session-id]
 ├── doctor.py          # kagan doctor [--verbosity]
 ├── list_projects.py   # kagan projects       (not list.py — shadows builtin)
 ├── mcp.py             # kagan mcp [flags]
 ├── reset.py           # kagan reset-state [--force] [--project]
+├── serve.py           # kagan serve [--port] [--host] [--readonly] [--admin]
 ├── update.py          # kagan update [--check-only] [--prerelease] [--force]
 ├── tools.py           # kagan tools enhance [prompt]
-└── plugins.py         # kagan plugins sync|list|check
+├── plugins.py         # kagan plugins sync|list|check
+└── web.py             # kagan web (web dashboard convenience wrapper)
 ```
 
-**11 modules.** No sub-packages. Every file has one job.
+**17 modules.** No sub-packages. Every file has one job.
 
 ______________________________________________________________________
 
@@ -168,7 +173,7 @@ ______________________________________________________________________
 - Eager `--version` option exits immediately.
 - Hidden `--skip-update-check` flag (also `KAGAN_SKIP_UPDATE_CHECK` envvar).
 - Startup update check: silent, never breaks startup, swallows errors.
-- All 9 commands registered explicitly via `cli.add_command()`.
+- All 11 commands registered explicitly via `cli.add_command()`.
 
 ______________________________________________________________________
 
@@ -222,6 +227,9 @@ Notable exceptions to the standard pattern:
 | `mcp.py`     | Calls `kagan.mcp.server.serve(opts)`, blocks on STDIO           |
 | `tools.py`   | No `KaganCore` — standalone LLM utility, not a domain operation |
 | `plugins.py` | Subgroup with 3 subcommands: `sync`, `list`, `check`            |
+| `imports.py` | Subgroup for `kagan import github`; interactive GitHub issue import |
+| `serve.py`   | Starts HTTP API server; blocks until stopped                    |
+| `web.py`     | Convenience wrapper: starts server + opens browser              |
 
 ______________________________________________________________________
 
@@ -276,7 +284,7 @@ ______________________________________________________________________
 | ------------------------ | ---------------------------------------------------- |
 | Daemon / `kagan core`    | Core is an in-process SDK. No process management.    |
 | Typer                    | Adds indirection without earning it for ~9 commands. |
-| `commands/` subdirectory | Flat is better than nested. 11 files is manageable.  |
+| `commands/` subdirectory | Flat is better than nested. 17 files is manageable.  |
 | Base command class       | Each command is a function. No inheritance.          |
 | `ctx.obj` state passing  | Commands are independent. No hidden coupling.        |
 | Lazy-loading group       | Heavy imports deferred to function bodies instead.   |

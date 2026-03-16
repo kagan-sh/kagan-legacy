@@ -147,7 +147,8 @@ ______________________________________________________________________
 | **WorkMode**      | AUTO, PAIR                                                                                                                                              |
 | **SessionStatus**     | PENDING, RUNNING, COMPLETED, FAILED, CANCELLED                                                                                                                |
 | **Priority**      | LOW, MEDIUM, HIGH, CRITICAL                                                                                                                                   |
-| **SessionEventType**  | OUTPUT_CHUNK, AGENT_STATUS, TOOL_CALL_START, TOOL_CALL_UPDATE, AGENT_COMPLETED, AGENT_FAILED, PLAN_UPDATE, TASK_STATUS_CHANGED, MERGE_COMPLETED, MERGE_FAILED |
+| **SessionEventType**  | OUTPUT_CHUNK, AGENT_STATUS, TOOL_CALL_START, TOOL_CALL_UPDATE, AGENT_COMPLETED, AGENT_FAILED, PLAN_UPDATE, TASK_STATUS_CHANGED, MERGE_COMPLETED, MERGE_FAILED, CRITERION_VERDICT |
+| **BranchRefStrategy** | LOCAL, REMOTE, LOCAL_IF_AHEAD — git ref resolution strategy for worktree operations |
 
 ______________________________________________________________________
 
@@ -162,6 +163,10 @@ ______________________________________________________________________
 | **MergeConflictError** (extends WorktreeError)  | Merge produced conflicts; carries `conflict_files` list |
 | **AgentError**                                  | Agent spawn or communication failure                    |
 | **PreflightError**                              | Blocking preflight issue prevents operation             |
+| **ValidationError**                             | Input validation failures                               |
+| **ConfigurationError**                          | Configuration or state issues                           |
+| **SessionError**                                | Session operation failures                              |
+| **MultiRepoUnsupportedError** (extends WorktreeError) | Task execution attempted against multiple repos   |
 
 ______________________________________________________________________
 
@@ -175,18 +180,20 @@ Use `list` consistently for "list all" operations across namespaces. Avoid other
 
 ### KaganCore (composition root)
 
-| Member               | Type                                  |
-| -------------------- | ------------------------------------- |
-| `client.tasks`        | Tasks                                 |
-| `client.tasks.events` | Events                                |
-| `client.projects`     | Projects                              |
-| `client.worktrees`    | Worktrees                             |
-| `client.reviews`      | Reviews                               |
-| `client.settings`     | Settings                              |
-| `client.audit_log`    | AuditLog                              |
-| `client.close()`     | Dispose engine, cancel running agents |
-| `client.preflight()` | Check system requirements             |
-| `client.reset()`     | Wipe all data                         |
+| Member                  | Type                                  |
+| ----------------------- | ------------------------------------- |
+| `client.tasks`          | Tasks                                 |
+| `client.tasks.events`   | Events                                |
+| `client.projects`       | Projects                              |
+| `client.worktrees`      | Worktrees                             |
+| `client.reviews`        | Reviews                               |
+| `client.settings`       | Settings                              |
+| `client.audit_log`      | AuditLog                              |
+| `client.persona_presets` | PersonaPresetOps                     |
+| `client.close()`        | Dispose engine, cancel running agents |
+| `client.preflight()`    | Check system requirements             |
+| `client.reset()`        | Wipe all data                         |
+| `client.db_version()`   | Current Alembic migration revision    |
 
 Supports async context manager (`async with KaganCore() as client`).
 
@@ -213,14 +220,23 @@ Supports async context manager (`async with KaganCore() as client`).
 | `run(task_id, *, agent_backend)`                                                                         | Start AUTO: provision worktree, spawn detached agent, return Session                                                      |
 | `pair(task_id, *, agent_backend, launcher)`                                                              | Start PAIR: provision worktree, launch environment, return Session                                                               |
 | `cancel(task_id)`                                                                                        | Cancel active run, kill process, move to BACKLOG                                                        |
+| `end_pairing(task_id)`                                                                                   | End an active PAIR session                                                                              |
+| `runtime_summary(task_id)`                                                                               | Execution time summary for a single task                                                                |
+| `runtime_summaries(task_ids)`                                                                            | Execution time summaries for multiple tasks                                                             |
 
 **`client.tasks.events`** — event sub-namespace:
 
-| Method                                 | Description                                                      |
-| -------------------------------------- | ---------------------------------------------------------------- |
-| `list(task_id, *, offset=0, limit=20)` | Paginated event history                                          |
-| `emit(task_id, event_type, payload)`   | Insert event row AND signal waiting streams                      |
-| `stream(task_id)`                      | Async generator yielding events reactively (see Event Streaming) |
+| Method                                          | Description                                                      |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `list(task_id, *, offset=0, limit=20)`          | Paginated event history                                          |
+| `list_all(*, offset, limit)`                    | Paginated events across all tasks                                |
+| `list_recent(task_id, *, limit)`                | Most recent N events for a task                                  |
+| `list_before(task_id, *, before_id, limit)`     | Events before a given event ID (cursor pagination)               |
+| `latest(task_id)`                               | Single most recent event for a task                              |
+| `emit(task_id, event_type, payload)`            | Insert event row AND signal waiting streams                      |
+| `stream(task_id)`                               | Async generator yielding events reactively (see Event Streaming) |
+| `stream_all(*, replay)`                         | Async generator yielding events across all tasks; `replay=True` replays history first |
+| `stream_board()`                                | Async generator yielding board-level events (task creation, deletion, status changes) |
 
 ### Projects — `client.projects`
 
@@ -232,8 +248,12 @@ Supports async context manager (`async with KaganCore() as client`).
 `set_active(project_id)`           | Set active project (required before task/worktree/review ops) |
 | `delete(project_id)`               | Delete project and all its data                                |
 | `add_repo(project_id, repo_path)`  | Link repo to project                                           |
-| `find_by_repo(repo_path)`          | Find project containing a repo path                            |
-| `find_by_name(name)`               | Find project by name                                           |
+| `find_by_repo(repo_path)`                              | Find project containing a repo path                            |
+| `find_by_name(name)`                                   | Find project by name                                           |
+| `repos(project_id)`                                    | List repos linked to a project                                 |
+| `set_repo_default_branch(project_id, repo_id, branch)` | Update the default branch for a repo                           |
+| `resolve_repo(project_id, repo_path)`                  | Resolve a repo by path within a project                        |
+| `resolve_repo_path(project_id)`                        | Resolve the primary repo path for a project                    |
 
 ### Worktrees — `client.worktrees`
 
@@ -258,8 +278,12 @@ a fresh worktree is provisioned when the user next calls `tasks.run()` or `tasks
 | `approve(task_id)`             | Mark task as review-approved               |
 | `reject(task_id, *, feedback)` | Move to BACKLOG/IN_PROGRESS with feedback  |
 | `merge(task_id)`               | Merge worktree → base branch, move to DONE |
-| `rebase(task_id)`              | Rebase worktree on base branch             |
-| `abort_rebase(task_id)`        | Abort in-progress rebase                   |
+| `rebase(task_id)`                                              | Rebase worktree on base branch                                  |
+| `abort_rebase(task_id)`                                        | Abort in-progress rebase                                        |
+| `continue_rebase(task_id)`                                     | Continue a paused rebase after conflict resolution              |
+| `conflicts(task_id)`                                           | List current conflict files for a task                          |
+| `set_criterion_verdict(task_id, criterion_index, verdict, reason)` | Record pass/fail verdict for a single acceptance criterion  |
+| `clear_verdicts(task_id)`                                      | Clear all criterion verdicts for a task                         |
 
 ### Settings — `client.settings`
 
@@ -269,9 +293,10 @@ a fresh worktree is provisioned when the user next calls `tasks.run()` or `tasks
 | `set(updates: Mapping[str, str])`  | Update settings (explicit key-value mapping) |
 ### AuditLog — `client.audit_log`
 
-| Method                | Description          |
-| --------------------- | -------------------- |
-| `list(*, limit=None)` | Recent audit entries |
+| Method                                                    | Description                                      |
+| --------------------------------------------------------- | ------------------------------------------------ |
+| `list(*, limit=None)`                                     | Recent audit entries                             |
+| `record(action, entity_type, entity_id, detail)`          | Insert an audit entry manually                   |
 
 #### Prompt Resolution
 
@@ -286,6 +311,48 @@ Prompt resolution follows a three-layer hierarchy:
 Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`, `detect_dotfile_overrides()`.
 
 `execution.md` dotfile overrides may include template placeholders such as `{task_title}` and `{task_description}`. If template rendering fails, Kagan falls back to the default compiled prompt and logs a warning rather than emitting a broken execution prompt.
+______________________________________________________________________
+
+## Persona Pipeline
+
+`client.persona_presets` — namespace for persona preset management.
+
+### Built-in Personas
+
+| Persona         | Role                                                  |
+| --------------- | ----------------------------------------------------- |
+| `analyst`       | Reads codebase, produces structured analysis          |
+| `planner`       | Breaks work into subtasks, produces a plan            |
+| `implementer`   | Executes code changes against a plan                  |
+| `reviewer`      | Reviews diffs, checks acceptance criteria             |
+
+### PersonaPresetOps — `client.persona_presets`
+
+| Method                                              | Description                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| `audit_repo(project_id, *, persona)`                | Run a persona against the repo for analysis                  |
+| `import_from_github(url, *, token=None)`            | Import a persona preset from a GitHub repo                   |
+| `export_to_github(preset_id, url, *, token=None)`   | Export a persona preset to a GitHub repo                     |
+| `list_whitelist()`                                  | List approved persona source repos                           |
+| `add_to_whitelist(repo_url)`                        | Add a repo to the persona import whitelist                   |
+| `remove_from_whitelist(repo_url)`                   | Remove a repo from the whitelist                             |
+
+### Multi-Session Execution
+
+A task can be executed across multiple sessions with different personas in sequence. Each session runs with its own persona prompt, and the output of one session can feed the next. This enables analyst → planner → implementer → reviewer pipelines without manual handoff.
+
+______________________________________________________________________
+
+## DBWatcher
+
+`DBWatcher` provides reactive board change detection for consumers that need to track the full board state (e.g., chat integration, web dashboard sync).
+
+- Polls the DB at a configurable interval and compares snapshots
+- Detects: task creation, task deletion, status changes, execution mode changes
+- Emits structured change events to registered listeners
+- Used by `kagan.chat` to provide context updates when the board changes while a chat session is active
+- Distinct from `tasks.events.stream()` (which streams agent progress for a single task); DBWatcher tracks board-level structural changes
+
 ______________________________________________________________________
 
 ## Event Streaming (Reactive)
@@ -488,6 +555,8 @@ Each backend entry in the registry specifies: executable name, how to pass the p
 (flag or stdin), how to pass the working directory, and any agent-specific environment
 variables. New backends are added by extending the registry dict — no code changes
 to the launcher.
+
+**Backend aliases:** `claude` resolves to `claude-code`; `gemini` resolves to `gemini-cli`; `kimi` resolves to `kimi-cli`. Aliases are accepted anywhere a backend name is accepted.
 
 **Launch sequence (agent-agnostic):**
 

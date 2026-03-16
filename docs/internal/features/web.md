@@ -9,6 +9,8 @@ ______________________________________________________________________
 - the shipped web app runs in bundled mode against the same-origin Kagan server
 - onboarding state is local to the browser and does not require a separate pairing route
 - startup verifies same-origin server health before entering the board workspace
+- `/welcome` hosts the onboarding/project setup page; first-run users land here before the board
+- `first-boot-tutorial-dialog.tsx` surfaces an in-board tutorial overlay on first launch
 
 ______________________________________________________________________
 

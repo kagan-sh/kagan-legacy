@@ -105,20 +105,25 @@ KaganApp (Textual App)
 │
 ├── RepoPickerModal          # Ctrl+R — switch project / repo
 │
-├── TmuxGatewayModal             # Pre-launch backend readiness check
+├── PairInstructionsModal        # Pre-launch backend readiness check
 
 │
 ├── AgentPickerModal         # Select agent backend for task execution
-│
 ├── ConfirmModal             # Generic confirmation dialog
 │
-├── HelpScreen               # Keybinding reference
+├── GitHubImportModal        # GitHub issue/PR import flow
+│
+├── HelpModal                # Keybinding reference
+│
+├── MessageActionsModal      # Per-message action menu (copy, retry, etc.)
 │
 ├── SessionPickerModal       # Session list / switch
 │
-├── SettingsScreen           # User preferences
+├── SettingsModal            # User preferences
 │
 ├── TaskEditorModal          # Inline task create/edit form
+│
+├── TutorialOverlay          # Interactive onboarding tutorial
 │
 └── RejectionInputModal      # Review rejection feedback input
 ```
@@ -133,8 +138,8 @@ KanbanScreen  ──Ctrl+R────────→ RepoPickerModal (push)
 Any screen    ──Escape─────────→ close active overlay first, then pop (back to previous)
 ```
 
-Screens are lazy — instantiated on first navigation via a `SCREENS` map of names to
-factory callables.
+9 of ~20 screens are registered in the `SCREENS` lazy-loading dict; the remaining
+screens are instantiated as modals directly via `app.push_screen()`.
 
 ______________________________________________________________________
 
@@ -145,14 +150,14 @@ Key composition (the primary screen):
 ```
 
 KanbanScreen
-├── Header # project name, connection status
+├── KaganHeader # project name, connection status
 ├── BoardView + TaskInspector (horizontal pane)
 │ └── Column × 4 → [TaskCard, ...]
 ├── PeekOverlay # hidden by default, shown on P
 ├── ChatPanel # toggleable, docked right or fullscreen
 │ ├── MessageList / ChatInput / SlashComplete
-│ ├── PlanDisplay / PermissionPrompt
-└── Footer # keybinding hints
+│ └── PermissionPrompt
+└── KanbanHintBar # keybinding hints
 
 ```
 
@@ -275,6 +280,10 @@ src/kagan/tui/
 ├── messages.py # all custom Message classes
 ├── keybindings.py # binding tables per screen
 ├── types.py # shared type aliases
+├── _chat_helpers.py # chat helper utilities
+├── orchestrator_sessions.py # TuiOrchestratorSessionStore
+├── textual_compat.py # Textual compatibility workarounds
+├── theme.py # KAGAN_THEME, KAGAN_THEME_256
 │
 ├── screens/
 │ ├── __init__.py # screen exports
@@ -286,49 +295,53 @@ src/kagan/tui/
 │ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
 │ ├── review_no_criteria.py # ReviewNoCriteriaModal (no criteria gate)
 │ ├── repo_picker.py # RepoPickerModal
-│ ├── gateway.py # TmuxGatewayModal
-│ ├── agent_picker.py # AgentPickerModal
-│ ├── confirm.py # ConfirmModal
-│ ├── github_import_modal.py # GitHubImportModal
-│ ├── message_actions_modal.py # MessageActionsModal
-│ ├── help.py # HelpScreen
-│ ├── session_picker.py # SessionPickerModal
-│ ├── settings.py # SettingsScreen
-│ ├── task_editor_modal.py # TaskEditorModal
-│ ├── rejection_input.py # RejectionInputModal
-│ ├── kanban_commands.py # Kanban command palette helpers
-│ ├── task_commands.py # Task command palette helpers
-│ └── tutorial.py # TutorialScreen
+ │ ├── gateway.py # PairInstructionsModal
+ │ ├── agent_picker.py # AgentPickerModal
+ │ ├── confirm.py # ConfirmModal
+ │ ├── github_import_modal.py # GitHubImportModal
+ │ ├── message_actions_modal.py # MessageActionsModal
+ │ ├── help.py # HelpModal
+ │ ├── session_picker.py # SessionPickerModal
+ │ ├── settings.py # SettingsModal
+ │ ├── task_editor_modal.py # TaskEditorModal
+ │ ├── rejection_input.py # RejectionInputModal
+ │ ├── kanban_commands.py # Kanban command palette helpers
+ │ ├── task_commands.py # Task command palette helpers
+ │ └── tutorial.py # TutorialOverlay
 │
 ├── widgets/
 │ ├── __init__.py # widget exports
-│ ├── board.py # BoardView, Column
-│ ├── card.py # TaskCard
-│ ├── peek.py # PeekOverlay
-│ ├── task_editor.py # TaskEditor (create/edit form)
-│ ├── chat.py # ChatPanel, MessageList, ChatInput, SlashComplete
-│ ├── streaming.py # StreamingOutput, OutputChunk, ToolCallView
-│ ├── diff.py # DiffView, DiffStats
-│ ├── plan.py # PlanDisplay
-│ ├── permission.py # PermissionPrompt
-│ ├── header.py # Header
-│ ├── hint_bar.py # HintBar (contextual keybinding hints)
-│ ├── search_bar.py # SearchBar (board filter input)
-│ ├── agent_status.py # AgentStatusPanel (backend, status, elapsed, PID)
-│ ├── persona_pipeline.py # PersonaPipelineMap (horizontal persona chain)
-│ ├── worktree_panel.py # WorktreePanel (file change stats table)
-│ ├── commits_panel.py # CommitsPanel (task-branch commit log)
-│ └── task_detail_pane.py # TaskDetailPane (resume context + detail view)
+ │ ├── board.py # BoardView, Column
+ │ ├── card.py # TaskCard
+ │ ├── peek.py # PeekOverlay
+ │ ├── task_editor.py # TaskEditor (create/edit form)
+ │ ├── task_inspector.py # TaskInspector (docked details panel)
+ │ ├── task_diff_pane.py # TaskDiffPane (diff view for task screen)
+ │ ├── chat.py # ChatPanel, MessageList, ChatInput, SlashComplete
+ │ ├── streaming.py # StreamingOutput, OutputChunk, ToolCallView
+ │ ├── diff.py # DiffView, DiffStats
+ │ ├── permission.py # PermissionPrompt
+ │ ├── header.py # KaganHeader
+ │ ├── hint_bar.py # KanbanHintBar (contextual keybinding hints)
+ │ ├── status_bar.py # StatusBar, SimpleFooter
+ │ ├── context_footer.py # ContextFooter
+ │ ├── search_bar.py # SearchBar (board filter input)
+ │ ├── agent_status.py # AgentStatusPanel (backend, status, elapsed, PID)
+ │ ├── persona_pipeline.py # PersonaPipelineMap (horizontal persona chain)
+ │ ├── worktree_panel.py # WorktreePanel (file change stats table)
+ │ ├── commits_panel.py # CommitsPanel (task-branch commit log)
+ │ └── task_detail_pane.py # TaskDetailPane (resume context + detail view)
 │
 └── styles/
-├── app.tcss # global theme + layout
-├── kanban.tcss # board styles
-└── chat.tcss # chat styles
-└── session_dashboard.tcss # dashboard layout + panels
+ ├── app.tcss # global theme + layout
+ ├── kanban.tcss # board styles
+ ├── chat.tcss # chat styles
+ ├── task_screen.tcss # task screen layout
+ └── session_dashboard.tcss # dashboard layout + panels
 
 ```
 
-~43 files. Each file has one clear responsibility.
+~58 files, 16,966 LOC. Each file has one clear responsibility.
 
 ______________________________________________________________________
 

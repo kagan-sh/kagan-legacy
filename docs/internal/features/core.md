@@ -88,6 +88,10 @@ ______________________________________________________________________
 - Merge can require prior approval (configurable)
 - Rebase a task's worktree onto latest base branch
 - Rebase conflicts are reported with affected file list
+- Continue a paused rebase after resolving conflicts manually
+- Query current conflict files for a task
+- Record a pass/fail verdict for each acceptance criterion individually (`set_criterion_verdict`)
+- Clear all criterion verdicts to reset review state
 
 ______________________________________________________________________
 
@@ -103,7 +107,19 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 10. Preflight
+## 10. Persona Pipeline
+
+- Four built-in personas: `analyst`, `planner`, `implementer`, `reviewer`
+- Each persona has a distinct prompt profile tuned to its role
+- Run a persona against a repo for structured analysis (`audit_repo`)
+- Import persona presets from GitHub repos (subject to whitelist)
+- Export persona presets to GitHub repos
+- Manage an import whitelist of approved persona source repos
+- Multi-session task execution: run a task through a sequence of personas in order (analyst → planner → implementer → reviewer) without manual handoff between sessions
+
+______________________________________________________________________
+
+## 11. Preflight
 
 - Checks: git, configured agent backend executable, tmux, DB writability
 - Each check returns pass, warn, or fail with fix hints

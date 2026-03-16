@@ -50,6 +50,7 @@ ______________________________________________________________________
 ```
 src/kagan/chat/
 ├── __init__.py        # re-exports public API
+├── _completion.py     # fuzzy_match helper for slash command completion
 ├── _title.py          # session title generation (lightweight ACP turn)
 ├── controller.py      # ChatController, _OrchestratorACPClient
 ├── acp.py             # run_orchestrator_turn, ACP bridge utilities
@@ -57,10 +58,11 @@ src/kagan/chat/
 ├── commands.py        # SlashCommandSpec, SlashCommandRegistry, parsing
 ├── prompt.py          # orchestrator system prompt, request formatting
 ├── repl.py            # run_chat, run_chat_async, console setup
-└── sessions.py        # session CRUD, history normalization, persistence
+├── sessions.py        # session CRUD, history normalization, persistence
+└── tool_runs.py       # ToolRunTracker for tracking tool execution during orchestrator turns
 ```
 
-**9 files.** Flat, no sub-packages.
+**11 files.** Flat, no sub-packages.
 
 ## Core Components
 
@@ -73,14 +75,16 @@ src/kagan/chat/
 - Streams agent output to Rich console
 - Maintains conversation state for the current session
 
-**Key methods:**
+**Public API:**
 
-| Method                                                               | Description                              |
-| -------------------------------------------------------------------- | ---------------------------------------- |
-| `process_input(text)`                                                | Main entry: parse slash or send to agent |
-| `run_orchestrator_turn()`                                            | Execute one agent turn via ACP           |
-| `close()`                                                            | Cleanup ACP connection                   |
-| is stored via `sessions.py` helpers that write to `client.settings`. |                                          |
+| Method                                          | Description                                    |
+| ----------------------------------------------- | ---------------------------------------------- |
+| `run(prompt=None)`                              | Main orchestrator lifecycle loop               |
+| `hydrate_persistent_session(explicit_session_id)` | Load or create session                       |
+
+**Internal methods:** `_send(text)`, `_repl_loop()`, `_handle_slash(text)`, `_switch_agent(new_backend)`, `_open_sessions(query)`, `_create_new_session()`, `_persist_session()`
+
+Note: `process_input()`, `run_orchestrator_turn()`, and `close()` do not exist as public methods.
 
 ### SlashCommandRegistry
 
@@ -91,6 +95,7 @@ Slash commands are declaratively registered:
 class SlashCommandSpec:
     name: str
     description: str
+    orchestrator_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,13 +108,15 @@ class SlashCommand:
 
 | Command                               | Description                                  |
 | ------------------------------------- | -------------------------------------------- |
-| `/help`                               | List available commands                      |
-| `/agents`                             | List and switch agent backends               |
-| `/sessions`                           | List, attach, or delete chat sessions        |
-| `/tool`                               | Inspect recent tool calls and full I/O by ID |
-| `/clear`                              | Clear the current session (start fresh)      |
-| `/exit`                               | Exit the REPL                                |
-| (close, clear, switch session, etc.). |                                              |
+| `/help`     | List available commands                                              |
+| `/agents`   | List and switch agent backends                                       |
+| `/sessions` | List, attach, or delete chat sessions                                |
+| `/tool`     | Inspect recent tool calls and full I/O by ID                         |
+| `/clear`    | Clear the current session (start fresh)                              |
+| `/new`      | Start a new chat session                                             |
+| `/session`  | Show current session details                                         |
+| `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator-only)    |
+| `/exit`     | Exit the REPL                                                        |
 
 ### Session Persistence
 
@@ -117,15 +124,33 @@ Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 
 **Key helpers (from `sessions.py`):**
 
-| Function                   | Description                             |
-| -------------------------- | --------------------------------------- |
-| `create_chat_session(...)` | Create a new session record             |
-| `get_chat_session(key)`    | Retrieve a session by ID                |
-| `list_chat_sessions()`     | List all sessions with metadata         |
-| `save_chat_session(...)`   | Persist session with messages and title |
-| `delete_chat_session(key)` | Remove a session                        |
-| `set_last_session_id(...)` | Remember last active session per scope  |
-| **Normalization:**         |                                         |
+| Function                                                          | Description                                          |
+| ----------------------------------------------------------------- | ---------------------------------------------------- |
+| `create_chat_session(...)`                                        | Create a new session record                          |
+| `get_chat_session(key)`                                           | Retrieve a session by ID                             |
+| `list_chat_sessions()`                                            | List all sessions with metadata                      |
+| `save_chat_session(...)`                                          | Persist session with messages and title              |
+| `delete_chat_session(key)`                                        | Remove a session                                     |
+| `set_last_session_id(...)`                                        | Remember last active session per scope               |
+| `get_last_session_id(client, *, scope)`                           | Read last active session ID for a scope              |
+| `get_scope_state(client, *, scope)`                               | Load full scope state dict from settings             |
+| `save_scope_state(client, *, scope, state)`                       | Persist scope state dict to settings                 |
+| `resolve_task_session_binding(client, session_id)`                | Resolve task binding for a given session ID          |
+| `list_chat_session_items(client, *, source, current_session_id)`  | Build display list of sessions for a scope           |
+| `resolve_chat_session_selector(items, query)`                     | Match a query string to a session list item          |
+| `resolve_chat_session_id(items, query)`                           | Resolve query to a session ID                        |
+| `build_chat_session_list_items(sessions, *, current_session_id)`  | Convert raw session records to display items         |
+
+**Constants:**
+
+| Name                        | Value / Purpose                                  |
+| --------------------------- | ------------------------------------------------ |
+| `CHAT_SESSIONS_SETTING_KEY` | Settings key for session storage                 |
+| `CHAT_SCOPE_PREFIX`         | Prefix for scope-keyed settings entries          |
+| `CHAT_LAST_SESSION_PREFIX`  | Prefix for last-session-id entries per scope     |
+| `_SESSION_TITLE_MAX_LENGTH` | `80` — max characters for a generated title      |
+
+**Normalization:**
 
 - `MAX_STORED_SESSIONS = 30` — oldest sessions pruned on save
 - `MAX_STORED_MESSAGES = 300` — messages truncated to recent N
@@ -207,6 +232,11 @@ ChatController.process_input()
 
 - Uses `agent-client-protocol` SDK for bidirectional streaming
 - `_OrchestratorACPClient` (in `controller.py`) implements `ACPClientBase`
+- `_CaptureACPClient` — ACP client variant that captures output instead of printing (used for title generation and other silent turns)
+- `OrchestratorWarmupState` — dataclass holding pre-warmed ACP connection state
+- `warm_orchestrator_backend()` — pre-warms the agent process before the first user message to reduce perceived latency
+- `_acp_handshake_timeout_seconds()` — resolves the handshake timeout from settings or environment
+- `_friendly_acp_error_message()` — formats ACP errors into human-readable REPL output
 - Streams to `Rich.Console` with live updates
 - Tool calls rendered with status indicators (pending ✓/✗)
 

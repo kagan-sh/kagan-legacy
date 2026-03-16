@@ -34,6 +34,7 @@ packages/web/src/
 │   ├── session-page.tsx        # legacy redirect target for /session/:taskId
 │   ├── chat-page.tsx
 │   ├── settings-page.tsx
+│   ├── welcome-page.tsx        # onboarding/project setup page
 ├── components/
 │   ├── board/
 │   ├── chat/
@@ -48,6 +49,51 @@ packages/web/src/
     ├── hooks/
     └── utils/
 ```
+
+______________________________________________________________________
+
+## Components
+
+### `board/`
+
+- `kanban-board.tsx` -- four-lane board with DnD and filter bar
+- `kanban-column.tsx` -- single lane with task card list
+- `task-card.tsx` -- card with telemetry, review state, and session indicators
+- `board-task-inspector.tsx` -- right-rail inspector panel
+- `board-filter-bar.tsx` -- search and status/mode filters
+- `agent-control.tsx` -- run/stop/interrupt controls
+- `create-task-dialog.tsx`, `edit-task-dialog.tsx`, `task-delete-dialog.tsx` -- task CRUD dialogs
+- `diff-viewer.tsx` -- workspace diff renderer
+- `review-panel.tsx` -- review approval surface
+- `task-metadata-panel.tsx` -- metadata inspector section
+- `backlog-list-view.tsx` -- list view for backlog lane
+- `plugin-import-dialog.tsx` -- plugin import flow dialog
+- `task-sidebar.tsx` -- collapsible task sidebar
+- `board-dialogs.tsx` -- shared dialog orchestration for board actions
+- `first-boot-tutorial-dialog.tsx` -- first-run onboarding tutorial dialog
+
+### `session/`
+
+- `chat-side-panel.tsx` -- right-rail streaming overlay with lane toggle and LIVE indicator
+- `orchestrator-chat-panel.tsx` -- orchestrator conversation with streaming and interrupt
+- `event-stream.tsx` -- event list renderer for session output
+- `session-picker.tsx` -- global session switcher
+- `follow-up-queue.tsx` -- queued follow-up message management
+- `task-commits-panel.tsx` -- commit history panel for a task workspace
+- `chat-overlay-empty-state.tsx` -- empty state for the chat overlay when no session is active
+
+______________________________________________________________________
+
+## Hooks
+
+Custom hooks in `src/lib/hooks/`:
+
+- `use-websocket-sync.ts` -- connects WebSocket events to the Jotai atom graph
+- `use-task-events.ts` -- subscribes to task-scoped WebSocket events
+- `use-board-dnd.ts` -- drag-and-drop state and handlers for the kanban board
+- `use-board-keyboard.ts` -- keyboard navigation and shortcuts for the board
+- `use-follow-up-queue.ts` -- manages the follow-up message queue for a task session
+- `use-mobile.ts` -- responsive breakpoint detection
 
 ______________________________________________________________________
 
@@ -78,6 +124,7 @@ ______________________________________________________________________
 - `/session/:taskId` -- legacy redirect to `/task/:id?lane=worker`
 - `/chat/:id` -- orchestrator conversation
 - `/settings` -- categorized system configuration
+- `/welcome` -- onboarding/project setup page
 
 Global overlays in app layout include Session Switcher (`Cmd/Ctrl+Shift+K`) and Help (`?`/`F1`).
 
@@ -106,7 +153,10 @@ ______________________________________________________________________
 - **`src/lib/api/websocket.ts`**
   - manages connect/reconnect lifecycle
   - emits board, run, session, and chat events into the UI
-  - chat events: `CHAT_CHUNK`, `CHAT_TOOL_START`, `CHAT_TOOL_PROGRESS`, `CHAT_DONE`, `CHAT_ERROR`, `CHAT_INTERRUPTED`, `CHAT_SESSION_UPDATED`
+  - chat events: `CHAT_CHUNK`, `CHAT_TOOL_START`, `CHAT_TOOL_PROGRESS`, `CHAT_DONE`, `CHAT_ERROR`, `CHAT_INTERRUPTED`, `CHAT_SESSION_UPDATED`, `CHAT_BUSY`
+  - run events: `RUN_STARTED`, `RUN_CANCELLED`, `RUN_ERROR`
+  - tool permission events: `TOOL_PERMISSION_REQUEST`
+  - follow-up events: `FOLLOW_UP_QUEUED`, `FOLLOW_UP_SENT`, `TASK_FOLLOW_UP_ACK`, `TASK_FOLLOW_UP_ERROR`
   - `OrchestratorChatPanel` manages streaming state locally and passes `disableSend` to `ChatInputBar` for wave/interrupt indicator
 
 Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.

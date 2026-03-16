@@ -104,6 +104,18 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+### `/flow` — Guided Plan → Execute → Orchestrate flow
+
+**Given** the user types `/flow`
+**When** the command executes
+**Then** it displays a guided walkthrough of the Plan → Execute → Orchestrate workflow steps.
+
+**Given** `/flow` is invoked outside an orchestrator context
+**When** the command is parsed
+**Then** it is rejected with a message indicating it is only available in orchestrator mode.
+
+______________________________________________________________________
+
 ### `/clear` — Clear current session
 
 **Given** the user types `/clear`

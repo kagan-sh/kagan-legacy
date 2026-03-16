@@ -50,6 +50,7 @@ ______________________________________________________________________
 ```
 src/kagan/chat/
 ├── __init__.py        # re-exports public API
+├── _title.py          # session title generation (lightweight ACP turn)
 ├── controller.py      # ChatController, _OrchestratorACPClient
 ├── acp.py             # run_orchestrator_turn, ACP bridge utilities
 ├── agents.py          # agent backend selection, formatting utilities
@@ -59,7 +60,7 @@ src/kagan/chat/
 └── sessions.py        # session CRUD, history normalization, persistence
 ```
 
-**8 files.** Flat, no sub-packages.
+**9 files.** Flat, no sub-packages.
 
 ## Core Components
 
@@ -130,9 +131,15 @@ Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 - `MAX_STORED_MESSAGES = 300` — messages truncated to recent N
 - `MAX_STORED_HISTORY = 120` — prompt-toolkit history lines
 
-Title generation: the orchestrator is asked to generate a short title
-from the first exchange. `_clean_generated_title()` strips reasoning
-tags (DeepSeek), quotes, and newlines.
+Title generation (`_title.py`): after the first exchange a background
+task calls `generate_session_title()`, which runs a **lightweight ACP
+turn** — no MCP tools, no orchestrator system prompt, 30 s timeout.
+The agent receives only the title-generation prompt and the first
+user/assistant exchange, keeping the call fast and focused. On success
+the title is persisted; on failure (timeout or any error) the default
+placeholder title is kept. `_clean_generated_title()` strips reasoning
+tags (DeepSeek `<think>`), surrounding quotes, and newlines, truncating
+to 80 characters.
 
 ### REPL (`repl.py`)
 
@@ -203,18 +210,25 @@ ChatController.process_input()
 - Streams to `Rich.Console` with live updates
 - Tool calls rendered with status indicators (pending ✓/✗)
 
+**Lightweight mode** (`run_orchestrator_turn(lightweight=True)`):
+
+- Skips MCP server creation (no `.mcp.json`, no tools exposed)
+- Skips orchestrator system prompt and "User request:" wrapper
+- Sends the prompt as-is for simple completions (title generation)
+- Same ACP handshake and agent spawn, just a bare session
+
 ______________________________________________________________________
 
 ## Orchestrator System Prompt
 
-The orchestrator prompt is built dynamically from:
+The orchestrator prompt is resolved via `resolve_orchestrator_prompt(settings, project_path)`:
 
-1. **Base system prompt** — role, capabilities, constraints
-1. **Runtime guidance** — project context, current task state (if session-bound)
-1. **MCP manifest** — available tools via `kagan mcp --admin`
-1. **User request block** — formatted first message
+1. **Dotfile override** — if `.kagan/prompts/orchestrator.md` exists, it fully replaces the default
+1. **Code default** — `DEFAULT_ORCHESTRATOR_PROMPT` in `core/_prompts.py`
+1. **Behavioral clauses** — compiled from settings (execution mode, review strictness, planning depth, auto-confirm)
+1. **Additional instructions** — `additional_instructions` setting appended as `## Additional Instructions`
 
-See `prompt.py` for construction. Key function: `build_orchestrator_prompt()`.
+See `core/_prompts.py` for the three-layer resolution pipeline.
 
 ______________________________________________________________________
 

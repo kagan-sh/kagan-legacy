@@ -18,7 +18,7 @@ tags:
 
 ## Run AUTO
 
-`n` → set AUTO → `s` or `Enter` → dedicated Task Output screen in split view with the same `Ctrl+T` chat overlay in the lower pane (live stream) → REVIEW → approve/merge.
+`n` → set AUTO → `s` or `Enter` → dedicated Task Output screen in split view with the same `Space` chat split cycle (`Esc` close, `Ctrl+F` fullscreen while open) in the lower pane (live stream) → REVIEW → approve/merge.
 
 Agent runs in the background. Use implementation session follow-ups plus `s` (start) / `Shift+S` (stop)
 to steer iterations, then review output in REVIEW.
@@ -29,7 +29,7 @@ to steer iterations, then review output in REVIEW.
 
 You drive. The session is yours. Kagan tracks state and surfaces it at review time.
 
-PAIR `Enter` does not route to orchestrator chat overlay. It creates/attaches the PAIR session and
+PAIR `Enter` does not route to AI Panel. It creates/attaches the PAIR session and
 redirects into the configured backend (tmux/Neovim suspend attach; VS Code/Cursor/Windsurf/Kiro/Antigravity
 external handoff with startup-prompt guidance).
 If focus briefly clears during board refresh, `Enter` reuses the last focused task; use `Escape` to
@@ -59,19 +59,11 @@ ______________________________________________________________________
 
 ## Acceptance criteria gate
 
-When a task has acceptance criteria defined, Kagan checks coverage when the agent completes.
-If any criteria appear unaddressed in the agent's run notes, a warning is appended to the
-task scratchpad before the task enters REVIEW:
+Acceptance criteria are optional, but they control which review paths are available.
 
-```
-[CRITERIA REVIEW NOTE] The following acceptance criteria may need verification:
-  1. All API endpoints return 4xx on invalid input
-  2. Migration is reversible
-Please confirm these are addressed before approving.
-```
-
-This is a **soft gate** — the transition to REVIEW always proceeds. The warning is informational,
-surfaced at review time. It never blocks an agent mid-run.
+- AUTO and PAIR execution both work without criteria.
+- AI-assisted approve and merge actions require at least one acceptance criterion.
+- Tasks without criteria require explicit human review before approval or merge.
 
 Set criteria when creating or editing a task (`Enter` → `e` → Acceptance Criteria field).
 

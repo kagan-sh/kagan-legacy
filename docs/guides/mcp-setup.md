@@ -43,10 +43,10 @@ ______________________________________________________________________
 
 Kagan uses three access tiers, controlled by CLI flags:
 
-| Tier       | Flag         | Scope                                                 |
-| ---------- | ------------ | ----------------------------------------------------- |
-| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.   |
-| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs. |
+| Tier       | Flag         | Scope                                                              |
+| ---------- | ------------ | ------------------------------------------------------------------ |
+| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.                |
+| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs.            |
 | `admin`    | `--admin`    | Default + destructive. Delete tasks, modify settings, plugin sync. |
 
 `--readonly` and `--admin` are mutually exclusive.
@@ -64,187 +64,209 @@ ______________________________________________________________________
 
 === "Claude Code"
 
-    ````
-    Path: `~/.claude.json` (global) or `.mcp.json` (project)
+`````
+````
+Path: `~/.claude.json` (global) or `.mcp.json` (project)
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "VS Code"
 
-    ````
-    Path: `.vscode/mcp.json`
+`````
+````
+Path: `.vscode/mcp.json`
 
-    ```json
-    {
-      "servers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "servers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "Cursor"
 
-    ````
-    Path: `.cursor/mcp.json`
+`````
+````
+Path: `.cursor/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "OpenCode"
 
-    ````
-    Path: `~/.config/opencode/opencode.json`
+`````
+````
+Path: `~/.config/opencode/opencode.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "Codex"
 
-    ````
-    Path: `~/.codex/config.toml`
+`````
+````
+Path: `~/.codex/config.toml`
 
-    ```toml
-    [mcp_servers.kagan]
-    command = "kagan"
-    args = ["mcp"]
-    ```
-    ````
+```toml
+[mcp_servers.kagan]
+command = "kagan"
+args = ["mcp"]
+```
+````
+`````
 
 === "Gemini CLI"
 
-    ````
-    Path: `~/.gemini/settings.json`
+`````
+````
+Path: `~/.gemini/settings.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "Kimi CLI"
 
-    ````
-    Path: `~/.kimi/mcp.json`
+`````
+````
+Path: `~/.kimi/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "GitHub Copilot"
 
-    ````
-    Path: `.github/copilot/mcp.json`
+`````
+````
+Path: `.github/copilot/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "Goose"
 
-    ````
-    Path: `~/.config/goose/config.yaml`
+`````
+````
+Path: `~/.config/goose/config.yaml`
 
-    ```yaml
-    extensions:
-      kagan:
-        type: stdio
-        name: kagan
-        cmd: kagan
-        args:
-          - mcp
-    ```
-    ````
+```yaml
+extensions:
+  kagan:
+    type: stdio
+    name: kagan
+    cmd: kagan
+    args:
+      - mcp
+```
+````
+`````
 
 === "Amp"
 
-    ````
-    Path: `~/.config/amp/settings.json`
+`````
+````
+Path: `~/.config/amp/settings.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 === "Auggie"
 
-    ````
-    Path: `~/.augment/mcp.json`
+`````
+````
+Path: `~/.augment/mcp.json`
 
-    ```json
-    {
-      "mcpServers": {
-        "kagan": {
-          "command": "kagan",
-          "args": ["mcp"]
-        }
-      }
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp"]
     }
-    ```
-    ````
+  }
+}
+```
+````
+`````
 
 !!! tip "Read-only or admin access"
-    Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
+Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
 
 ______________________________________________________________________
 
@@ -252,7 +274,7 @@ ______________________________________________________________________
 
 **Create:** Kagan → New Project → add repo paths. First repo = active.
 
-**Switch:** `Ctrl+R` → `j`/`k` → `Enter` select · `Ctrl+P` add via palette · `Esc` cancel.
+**Switch:** `Ctrl+R` -> `j`/`k` -> `Enter` select · `Ctrl+Shift+P` Quick Actions · `Esc` cancel.
 
 **Branch:** `b` = task-level base branch override. Repo base from checked-out branch.
 

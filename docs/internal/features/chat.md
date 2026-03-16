@@ -23,7 +23,11 @@ ______________________________________________________________________
 
 **Given** a project context is active
 **When** `run_chat_async()` starts
-**Then** it loads the last session for this scope, restores history, and waits for input.
+**Then** it starts a fresh session by default and waits for input.
+
+**Given** the user wants to continue an earlier conversation
+**When** they use `/sessions` or pass `--session-id`
+**Then** Kagan restores that explicit session and continues from its saved history.
 
 **Given** the user types a message and presses Enter
 **When** the message is processed
@@ -160,13 +164,25 @@ ______________________________________________________________________
 
 ### Title generation
 
+**Given** the first agent response completes in any surface (REPL, web, TUI)
+**When** the session still has a default title
+**Then** a background task calls `generate_session_title()` which runs a lightweight ACP turn — no MCP tools, no orchestrator system prompt — so the agent focuses purely on producing a title.
+
+**Given** title generation succeeds
+**When** the session is saved
+**Then** the title is persisted and, on web, a `CHAT_SESSION_UPDATED` WebSocket event updates the UI.
+
+**Given** title generation times out (30 s) or fails
+**When** the error is caught
+**Then** the default title is kept and the failure is logged at debug level. Title generation never blocks the chat flow.
+
 **Given** an LLM generates a title with reasoning tags (e.g., `<think>...</think>`)
 **When** `_clean_generated_title()` processes it
-**Then** reasoning tags, quotes, and newlines are stripped, returning a clean one-line title.
+**Then** reasoning tags, quotes, and newlines are stripped, returning a clean one-line title (max 80 characters).
 
 **Given** the generated title is empty after cleaning
 **When** the session is saved
-**Then** a fallback title "New conversation" is used.
+**Then** the default placeholder title is kept.
 
 ______________________________________________________________________
 
@@ -177,6 +193,10 @@ ______________________________________________________________________
 **Given** an orchestrator turn starts
 **When** `run_orchestrator_turn()` is called
 **Then** it spawns the agent process, performs ACP handshake (`initialize` → `session/new`), and sends the user prompt.
+
+**Given** `run_orchestrator_turn(lightweight=True)` is called (e.g. for title generation)
+**When** the ACP session is created
+**Then** no MCP servers are attached and the prompt is sent without the orchestrator system prompt or "User request:" wrapper.
 
 ______________________________________________________________________
 

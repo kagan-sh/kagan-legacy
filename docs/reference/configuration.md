@@ -25,9 +25,9 @@ Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 [general]
 default_worker_agent = "claude"
 auto_skill_discovery = false
-worker_persona = "Implementer: ship the smallest correct change and verify with tests."
-orchestrator_persona = "Orchestrator: plan concrete tasks and communicate concisely."
-pr_reviewer_persona = "PR Reviewer: validate requirements, regressions, and test coverage."
+default_execution_mode = "auto"
+review_strictness = "balanced"
+additional_instructions = "Use conventional commit format"
 default_pair_terminal_backend = "tmux"
 doctor_verbosity = "short"
 interaction_verbosity = "short"
@@ -47,9 +47,11 @@ max_concurrent_agents = 3
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
 | `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                                |
-| `worker_persona`                     | string         | Built-in implementer preset      | Global AUTO worker persona prompt                                                   |
-| `orchestrator_persona`               | string         | Built-in orchestrator preset     | Global orchestrator/planning persona prompt                                         |
-| `pr_reviewer_persona`                | string         | Built-in reviewer preset         | Global PR reviewer persona prompt                                                   |
+| `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
+| `default_execution_mode`             | string         | `"ask"`                          | Default task execution mode. Allowed: `ask`, `auto`, `pair`                         |
+| `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
+| `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |
+| `auto_confirm_single_tasks`          | boolean        | `false`                          | Skip confirmation for single-task plans                                             |
 | `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`, `windsurf`, `kiro`, `antigravity`      |
 | `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
 | `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
@@ -138,6 +140,20 @@ discovery = [..., "my_company.kagan_plugins.my_plugin:MyPlugin"]
 ```
 
 ## Environment variables passed into PAIR sessions
+
+## Prompt override files
+
+Place Markdown files in `.kagan/prompts/` at the root of your project repository to fully replace the built-in prompts:
+
+| File              | Replaces                       | Notes                                                                     |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| `orchestrator.md` | Orchestrator system prompt     | Full replacement — settings and additional instructions are skipped       |
+| `execution.md`    | Task execution prompt template | Supports `{title}`, `{description}`, `{acceptance_criteria}` placeholders |
+| `review.md`       | Review prompt                  | Full replacement                                                          |
+
+If a file is absent, the built-in default is used with behavioral settings and additional instructions appended.
+
+The TUI Settings modal and web dashboard show which override files are detected.
 
 | Variable                | Meaning                   |
 | ----------------------- | ------------------------- |

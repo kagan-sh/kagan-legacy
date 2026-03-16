@@ -10,7 +10,7 @@ tags:
 
 # Chat & REPL
 
-Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI overlay** (`Ctrl+T`). Both share the same slash commands and session persistence.
+Kagan includes an AI orchestrator chat that works in two places: the **CLI REPL** (`kagan chat`) and the **TUI overlay** (`Space` split cycle in Kanban/Task screens). Both share the same slash commands and session persistence.
 
 ______________________________________________________________________
 
@@ -27,15 +27,18 @@ The REPL persists conversation history across restarts. Type a message and press
 
 ______________________________________________________________________
 
-## TUI chat overlay
+## AI Panel
 
-| Key              | Action             |
-| ---------------- | ------------------ |
-| ++ctrl+t++       | Toggle docked chat |
-| ++ctrl+shift+t++ | Fullscreen chat    |
-| ++ctrl+k++       | Switch session     |
+| Key        | Action             |
+| ---------- | ------------------ |
+| ++space++  | Cycle split layout |
+| ++ctrl+f++ | Fullscreen chat    |
+| ++ctrl+k++ | Session Switcher   |
+| ++esc++    | Close Panel        |
 
-The overlay runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
+The AI Panel runs as an orchestrator session with access to all project tasks via MCP tools. Messages are persisted per-session.
+
+In Kanban and Task screens, `Space` cycles `vertical -> horizontal -> vertical` while the AI Panel stays open. Use `Esc` to close it.
 
 ______________________________________________________________________
 
@@ -43,17 +46,17 @@ ______________________________________________________________________
 
 Type `/` followed by a command name. All commands work in both the CLI REPL and TUI overlay.
 
-| Command      | Description                                      |
-| ------------ | ------------------------------------------------ |
-| `/help`      | List available slash commands                    |
-| `/exit`      | Exit the chat session (REPL only; `Ctrl+D` also works) |
-| `/clear`     | Clear the current chat view and start fresh      |
-| `/new`       | Start a new chat session                         |
-| `/session`   | Show current session details (ID, title, agent, message count) |
-| `/sessions`  | List, attach, or delete chat sessions            |
-| `/agents`    | List or switch agent backends                    |
-| `/tool`      | Inspect recent tool calls                        |
-| `/flow`      | Show guided Plan → Execute → Orchestrate flow (orchestrator sessions only) |
+| Command     | Description                                                                |
+| ----------- | -------------------------------------------------------------------------- |
+| `/help`     | List available slash commands                                              |
+| `/exit`     | Exit the chat session (REPL only; `Ctrl+D` also works)                     |
+| `/clear`    | Clear the current chat view and start fresh                                |
+| `/new`      | Start a new chat session                                                   |
+| `/session`  | Show current session details (ID, title, agent, message count)             |
+| `/sessions` | List, attach, or delete chat sessions                                      |
+| `/agents`   | List or switch agent backends                                              |
+| `/tool`     | Inspect recent tool calls                                                  |
+| `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator sessions only) |
 
 ### `/sessions` usage
 
@@ -87,14 +90,14 @@ ______________________________________________________________________
 - Sessions are saved after each message exchange
 - History is bounded: max 300 messages per session, max 30 sessions total
 - Oldest sessions are pruned automatically when the limit is reached
-- Session titles are auto-generated from the first exchange
+- Session titles are auto-generated after the first exchange using a lightweight agent call (no tools, no orchestrator prompt). If generation fails or times out, the default title is kept
 
 ### Session scoping
 
-| Mode             | Flag / Context                          | Behavior                              |
-| ---------------- | --------------------------------------- | ------------------------------------- |
-| **Global**       | No `--session-id`                       | Orchestrator has access to all project tasks |
-| **Task-scoped**  | `--session-id <task_id>`                | Orchestrator sees task state, worktree diff, recent events |
+| Mode            | Flag / Context           | Behavior                                                   |
+| --------------- | ------------------------ | ---------------------------------------------------------- |
+| **Global**      | No `--session-id`        | Orchestrator has access to all project tasks               |
+| **Task-scoped** | `--session-id <task_id>` | Orchestrator sees task state, worktree diff, recent events |
 
 ### Session layers
 
@@ -113,15 +116,15 @@ ______________________________________________________________________
 
 ## Input behavior
 
-| Key             | Action                          |
-| --------------- | ------------------------------- |
-| ++enter++       | Send message                    |
-| ++shift+enter++ | Insert newline                  |
-| ++tab++         | Accept completion               |
-| ++ctrl+j++      | Focus latest output             |
-| ++ctrl+c++      | Clear input / cancel when empty |
-| ++ctrl+k++      | Open session picker             |
-| ++esc++         | Close chat (TUI overlay)        |
+| Key             | Action              |
+| --------------- | ------------------- |
+| ++enter++       | Send message        |
+| ++shift+enter++ | Insert newline      |
+| ++tab++         | Accept completion   |
+| ++ctrl+j++      | Focus latest output |
+| ++ctrl+c++      | Clear input         |
+| ++esc++         | Stop agent          |
+| ++ctrl+k++      | Session Switcher    |
 
 ______________________________________________________________________
 

@@ -11,15 +11,19 @@ docs/internal/
     core.md         # KaganCore SDK
     chat.md         # Chat module, REPL, slash commands
     tui.md          # Textual TUI
+    web.md          # React web client
     cli.md          # Click CLI
     mcp.md          # MCP server
+    server.md       # HTTP API server (REST + WebSocket)
     plugins.md      # Plugin system
   features/         # What the system does (behavioral catalogs)
     core.md         # Core domain behaviors
     chat.md         # REPL and orchestrator behaviors
     tui.md          # TUI behaviors
+    web.md          # Web client behaviors
     cli.md          # CLI behaviors
     mcp.md          # MCP tool behaviors
+    server.md       # Server features (REST, WebSocket, API auth)
     plugins.md      # Plugin behaviors
     github_import_user_experience.md # Layman-first GitHub import rollout plan
   testing.md        # Acceptance test commandments

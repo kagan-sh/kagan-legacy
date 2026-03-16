@@ -63,13 +63,13 @@ Match symptom text below.
 
 ## GitHub plugin
 
-| Code                               | Fix                                                              |
-| ---------------------------------- | ---------------------------------------------------------------- |
-| `GH_CLI_NOT_AVAILABLE`             | `brew install gh` / `apt install gh` / `dnf install gh`          |
-| `GH_AUTH_REQUIRED`                 | `gh auth login`                                                  |
-| `GH_NOT_CONNECTED`                 | TUI: `.` → Connect GitHub, or CLI: `kagan import github --repo owner/repo`    |
-| `LEASE_HELD_BY_OTHER`              | `force_takeover: true` if holder gone; 2h+ lease → auto-takeover |
-| Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login`       |
+| Code                               | Fix                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `GH_CLI_NOT_AVAILABLE`             | `brew install gh` / `apt install gh` / `dnf install gh`                    |
+| `GH_AUTH_REQUIRED`                 | `gh auth login`                                                            |
+| `GH_NOT_CONNECTED`                 | TUI: `.` → Connect GitHub, or CLI: `kagan import github --repo owner/repo` |
+| `LEASE_HELD_BY_OTHER`              | `force_takeover: true` if holder gone; 2h+ lease → auto-takeover           |
+| Sync shows 0 but GitHub has issues | `gh issue list --repo owner/repo`; re-auth `gh auth login`                 |
 
 ## Updates
 

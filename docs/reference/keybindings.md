@@ -13,7 +13,7 @@ Press `?` any time to open context-aware help for the current screen.
 | Key                   | Action                   |
 | --------------------- | ------------------------ |
 | ++question++ / ++f1++ | Open help                |
-| ++ctrl+p++            | Open command palette     |
+| 16:PS                 | ++ctrl+i++               |
 | ++ctrl+o++            | Open project selector    |
 | ++ctrl+r++            | Open repository selector |
 | ++ctrl+comma++        | Open settings            |
@@ -26,7 +26,8 @@ Press `?` any time to open context-aware help for the current screen.
 | ++n++                            | New task             |
 | ++shift+n++                      | New AUTO task        |
 | ++enter++                        | Open task            |
-| ++space++                        | Peek task            |
+| ++space++                        | Cycle AI split       |
+| ++p++                            | Peek task            |
 | ++e++                            | Edit task            |
 | ++x++                            | Delete task          |
 | ++y++                            | Copy task ID         |
@@ -35,31 +36,35 @@ Press `?` any time to open context-aware help for the current screen.
 | ++shift+left++ / ++shift+right++ | Move task left/right |
 | ++slash++                        | Search               |
 | ++f++                            | Expand description   |
-| ++ctrl+t++                       | Toggle AI chat       |
-| ++ctrl+shift+t++                 | Fullscreen AI chat   |
-| ++ctrl+k++                       | Switch AI session    |
+| ++ctrl+f++                       | Fullscreen AI chat   |
+| 40:PQ                            | ++ctrl+i++           |
+| ++ctrl+k++                       | Session Switcher     |
+| ++esc++                          | Close AI Panel       |
 | ++b++                            | Set branch           |
 
-Rare actions like GitHub import, repo sync, and AI review are available via command palette (`Ctrl+P`).
+45:VN|Press `Ctrl+I` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
+
+Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
 
 ## Task Screen
 
-| Key              | Action             |
-| ---------------- | ------------------ |
-| ++1++ / ++2++    | Switch tabs        |
-| ++enter++        | Primary action     |
-| ++e++            | Edit task          |
-| ++d++            | Delete task        |
-| ++a++            | Approve            |
-| ++x++            | Reject             |
-| ++m++            | Merge              |
-| ++b++            | Rebase             |
-| ++ctrl+t++       | Toggle AI chat     |
-| ++ctrl+shift+t++ | Fullscreen AI chat |
-| ++ctrl+k++       | Switch session     |
-| ++esc++          | Back               |
+| Key           | Action             |
+| ------------- | ------------------ |
+| ++1++ / ++2++ | Switch tabs        |
+| ++enter++     | Primary action     |
+| ++e++         | Edit task          |
+| ++d++         | Delete task        |
+| ++a++         | Approve            |
+| ++x++         | Reject             |
+| ++m++         | Merge              |
+| ++b++         | Rebase             |
+| ++space++     | Cycle AI split     |
+| ++ctrl+f++    | Fullscreen AI chat |
+| 63:PQ         | ++ctrl+i++         |
+| ++ctrl+k++    | Session Switcher   |
+| ++esc++       | Back               |
 
-AI review is command-palette first (`Ctrl+P` -> `review.ai`).
+AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
 ## Session Dashboard
 
@@ -69,22 +74,22 @@ AI review is command-palette first (`Ctrl+P` -> `review.ai`).
 | ++s++            | Start agent        |
 | ++x++            | Stop agent         |
 | ++r++            | Restart agent      |
-| ++ctrl+t++       | Toggle AI chat     |
+| 77:PQ            | ++ctrl+i++         |
 | ++ctrl+shift+t++ | Fullscreen AI chat |
-| ++ctrl+k++       | Switch session     |
+| ++ctrl+k++       | Session Switcher   |
 | ++esc++          | Back               |
 
-## Chat Panel
+## AI Panel
 
-| Key             | Action                          |
-| --------------- | ------------------------------- |
-| ++enter++       | Send message                    |
-| ++shift+enter++ | Insert newline                  |
-| ++tab++         | Accept completion               |
-| ++ctrl+j++      | Focus latest output             |
-| ++ctrl+c++      | Clear input / cancel when empty |
-| ++ctrl+k++      | Open session picker             |
-| ++esc++         | Close chat                      |
+| Key             | Action              |
+| --------------- | ------------------- |
+| ++enter++       | Send message        |
+| ++shift+enter++ | Insert newline      |
+| ++tab++         | Accept completion   |
+| ++ctrl+j++      | Focus latest output |
+| ++ctrl+c++      | Clear input         |
+| ++esc++         | Stop agent          |
+| ++ctrl+k++      | Session Switcher    |
 
 ## Welcome Screen
 

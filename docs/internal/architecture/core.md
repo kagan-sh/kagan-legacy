@@ -78,7 +78,7 @@ kagan/core/
 ├── _persona.py            # persona pipeline definitions
 ├── _preflight.py          # system health checks
 ├── _projects.py           # project repository
-├── _prompts.py            # agent prompt templates
+├── _prompts.py            # three-layer prompt resolution (defaults, behavioral compilation, dotfile overrides)
 ├── _reviews.py            # review repository
 ├── _sessions.py           # agent session repository
 ├── _settings.py           # settings repository
@@ -273,6 +273,17 @@ a fresh worktree is provisioned when the user next calls `tasks.run()` or `tasks
 | --------------------- | -------------------- |
 | `list(*, limit=None)` | Recent audit entries |
 
+#### Prompt Resolution
+
+Prompt resolution follows a three-layer hierarchy:
+
+| Layer | Mechanism | Effect |
+|-------|-----------|--------|
+| **Layer 0** | Code defaults + behavioral settings | Invisible; compiles `default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks` into prompt clauses |
+| **Layer 1** | `additional_instructions` setting | Single text field appended to all prompts; additive, never replaces |
+| **Layer 2** | `.kagan/prompts/*.md` dotfiles | Full replacement; bypasses Layer 0 and Layer 1 |
+
+Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`, `detect_dotfile_overrides()`.
 ______________________________________________________________________
 
 ## Event Streaming (Reactive)

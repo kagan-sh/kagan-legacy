@@ -192,6 +192,47 @@ Use `app.run_test()` with `Pilot`. Use targeted waits (`wait_for_screen`,
 
 ______________________________________________________________________
 
+## Web Client Tests
+
+Web tests follow a two-layer split:
+
+1. **Vitest + @testing-library/svelte** for component/store behavior in isolation (fast, no running server)
+1. **Playwright** for end-to-end behavior against a real running `kagan web` instance
+
+Vitest conventions:
+
+- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.svelte.test.ts`
+- Use `.svelte.test.ts` for tests importing rune modules from `*.svelte.ts`
+- Mock API singletons (`apiClient`, `kaganWs`) with `vi.mock()`
+- Prefer behavior assertions (rendered output, grouped state, visible status labels)
+
+```bash
+cd packages/web
+npx vitest run
+```
+
+Playwright conventions:
+
+- Tests live in `packages/web/e2e/*.spec.ts`
+- Start the server first (`kagan web`) and run tests against `BASE_URL` (default `http://127.0.0.1:8765`)
+- Focus on high-value flows (board visibility, route transitions, creation actions)
+- Keep E2E suites small and resilient; avoid brittle selectors tied to styling
+
+```bash
+cd packages/web
+npx playwright test
+```
+
+Relationship to Python tests:
+
+- Python behavioral suites (`tests/server/`) validate the REST/WS contract directly
+- Web tests validate browser behavior and UI integration with that contract
+- Both layers are complementary; neither replaces the other
+
+Prioritize web tests in this order: **stores -> components -> E2E smoke flows**.
+
+______________________________________________________________________
+
 ## Priority
 
 What to test first:

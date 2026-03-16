@@ -94,7 +94,10 @@ ______________________________________________________________________
 ## 9. Settings & Audit
 
 - Read and update key-value settings persisted in DB
-- Known keys: default agent backend, default launcher, auto-review, require approval
+- Behavioral settings: execution mode, review strictness, planning depth, auto-confirm
+- Additional instructions: single free-text field appended to all agent prompts
+- Dotfile overrides: `.kagan/prompts/` files fully replace built-in prompts when present
+- Known keys: default agent backend, default launcher, auto-review, require approval, additional instructions, execution mode, review strictness, planning depth
 - All mutations are audit-logged automatically (who, what, when)
 - Audit trail is queryable with limit
 

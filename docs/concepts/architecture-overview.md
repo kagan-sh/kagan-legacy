@@ -10,13 +10,14 @@ One core process. Multiple frontends. Every interface sees the same state in rea
 
 ## Components
 
-| Component     | Purpose                          |
-| ------------- | -------------------------------- |
-| TUI           | Keyboard-first Kanban board      |
-| MCP server    | AI tools that read/mutate state  |
-| Core process  | Coordinates operations and state |
-| SQLite        | Projects, tasks, reviews         |
-| Git worktrees | Isolated task workspaces         |
+| Component     | Purpose                                 |
+| ------------- | --------------------------------------- |
+| TUI           | Keyboard-first Kanban board             |
+| MCP server    | AI tools that read/mutate state         |
+| API server    | REST + WebSocket for the bundled dashboard and API clients |
+| Core process  | Coordinates operations and state        |
+| SQLite        | Projects, tasks, reviews                |
+| Git worktrees | Isolated task workspaces                |
 
 ## Flow
 
@@ -25,11 +26,15 @@ flowchart LR
   TUI[TUI client] --> CORE[Core process]
   MCP[MCP client] --> CORE
   CLI[CLI commands] --> CORE
+  WEB["Bundled web dashboard"] --> API[API server] --> CORE
+  REMOTE["Optional API client"] --> API
   CORE --> DB[(SQLite)]
   CORE --> WT[Git worktrees]
 ```
 
 All interfaces share the same state. A task created via MCP appears on the TUI board. A review completed in the TUI is visible to every MCP client.
+
+The bundled dashboard is served by `kagan web` and talks to the same same-origin API server instance. `kagan serve` remains available for integrations and non-dashboard API clients. See [Remote access](../guides/remote-access.md).
 
 ## Supported agents
 

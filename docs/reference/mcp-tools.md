@@ -70,10 +70,10 @@ ______________________________________________________________________
 
 ### Plugin tools (experimental)
 
-| Tool                    | Annotation    | Purpose                                    |
-| ----------------------- | ------------- | ------------------------------------------ |
-| `plugins_sync(...)`     | `destructive` | Sync issues via plugin, returns counts     |
-| `plugins_preflight(...)` | `read-only`  | Check plugin prerequisites and readiness   |
+| Tool                     | Annotation    | Purpose                                  |
+| ------------------------ | ------------- | ---------------------------------------- |
+| `plugins_sync(...)`      | `destructive` | Sync issues via plugin, returns counts   |
+| `plugins_preflight(...)` | `read-only`   | Check plugin prerequisites and readiness |
 
 Review semantics:
 
@@ -160,8 +160,8 @@ Use this during agent execution to record decisions, tradeoffs, and observations
 Each call appends a new entry — it never overwrites prior notes.
 
 !!! tip "When to use `task_annotate` vs `task_patch`"
-    Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
-    Use `task_patch(append_note=...)` for structured state transitions and status updates.
+Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
+Use `task_patch(append_note=...)` for structured state transitions and status updates.
 
 ### Parameters
 
@@ -267,11 +267,11 @@ ______________________________________________________________________
 
 Tool visibility is controlled by the MCP server's access tier (set via `--readonly` / `--admin` flags).
 
-| Tier       | Visible tools                                                         |
-| ---------- | --------------------------------------------------------------------- |
-| `readonly` | Read-only operations (task_get, task_list, task_logs, etc.)           |
+| Tier       | Visible tools                                                              |
+| ---------- | -------------------------------------------------------------------------- |
+| `readonly` | Read-only operations (task_get, task_list, task_logs, etc.)                |
 | `default`  | Readonly + task_create, task_patch, task_annotate, jobs, sessions, reviews |
-| `admin`    | Default + task_delete, settings_set, plugins_sync, destructive review |
+| `admin`    | Default + task_delete, settings_set, plugins_sync, destructive review      |
 
 Unregistered tools are invisible to the host — it never knows they exist.
 

@@ -7,18 +7,20 @@ icon: material/puzzle
 # Plugins
 
 !!! warning "Early stage"
-    The plugin system exists but is not fully fleshed out yet. GitHub import is the only shipping integration — it works as a native feature, not something you configure as a plugin.
+The plugin system exists but is not fully fleshed out yet. GitHub import is the only shipping integration — it works as a native feature, not something you configure as a plugin.
 
-    If you have ideas for plugins you'd like to see (Jira import, Linear sync, Slack notifications, custom CI hooks, etc.), tell us:
+```
+If you have ideas for plugins you'd like to see (Jira import, Linear sync, Slack notifications, custom CI hooks, etc.), tell us:
 
-    - **[GitHub Discussions](https://github.com/kagan-sh/kagan/discussions)** — shape the roadmap
-    - **[Feature requests](https://github.com/kagan-sh/kagan/issues/new?template=feature_request.md)** — propose a specific plugin
+- **[GitHub Discussions](https://github.com/kagan-sh/kagan/discussions)** — shape the roadmap
+- **[Feature requests](https://github.com/kagan-sh/kagan/issues/new?template=feature_request.md)** — propose a specific plugin
+```
 
 ## GitHub import
 
 GitHub issue import is built into Kagan. No plugin configuration needed.
 
-- **TUI**: Command palette (`Ctrl+P`) → `github import`, or `.` → `github import`
+- **TUI**: Quick Actions (`Ctrl+Shift+P`) -> `github import`, or `.` -> `github import`
 - **CLI**: `kagan import github --repo owner/repo`
 
 [:octicons-arrow-right-24: Full GitHub import guide](../guides/github.md)

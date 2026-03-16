@@ -17,10 +17,11 @@ ______________________________________________________________________
 
 - Four columns: BACKLOG, IN_PROGRESS, REVIEW, DONE
 - Vim + arrow navigation across cards/columns
-- `Enter` opens selected task workflow, `Space` peeks, `/` toggles search
+- `Enter` opens selected task workflow, `Space` cycles AI split overlay, `/` toggles search
+- `p` opens task peek overlay without changing chat layout
 - `x` deletes selected task (with confirm), `s` starts agent, `Shift+S` stops agent
 - `Shift+Left/Right` moves task between workflow columns
-- `Ctrl+R` opens repo picker; command palette (`Ctrl+P`) handles rare actions
+- `Ctrl+R` opens repo picker; Quick Actions (`Ctrl+Shift+P`) handles rare actions
 
 ______________________________________________________________________
 
@@ -33,19 +34,19 @@ ______________________________________________________________________
 
 ## 4. Task Screen
 
-- Shows task context, diff, stream, and chat overlay
+- Shows task context, diff, stream, and AI Panel
 - `a` approve, `x` reject, `m` merge, `b` rebase
-- AI review is palette-first on task screen (`Ctrl+P` -> `review.ai`)
+- AI review is Quick Actions first on task screen (`Ctrl+Shift+P` -> `review.ai`)
 - `Esc` returns to board
 
 ______________________________________________________________________
 
-## 5. Chat Overlay
+## 5. AI Panel
 
 - Two modes: orchestrator and task session
-- `Ctrl+T` toggles docked chat, `Ctrl+Shift+T` fullscreen, `Ctrl+K` session switch
+  47:ZS|- `Ctrl+I` toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
 - `Enter` send, `Shift+Enter` newline, `Tab` accept completion
-- `Ctrl+C` clears input; if empty, emits interrupt intent to parent screen
+- `Ctrl+C` clears input text; `Esc` stops the active agent
 
 ______________________________________________________________________
 
@@ -60,14 +61,14 @@ ______________________________________________________________________
 
 ### Global
 
-| Key        | Action              |
-| ---------- | ------------------- |
-| `?` / `F1` | Help                |
-| `Ctrl+P`   | Command palette     |
-| `Ctrl+O`   | Project selector    |
-| `Ctrl+R`   | Repository selector |
-| `Ctrl+,`   | Settings            |
-| `Ctrl+Q`   | Quit                |
+| Key            | Action              |
+| -------------- | ------------------- |
+| `?` / `F1`     | Help                |
+| `Ctrl+Shift+P` | Quick Actions       |
+| `Ctrl+O`       | Project selector    |
+| `Ctrl+R`       | Repository selector |
+| `Ctrl+,`       | Settings            |
+| `Ctrl+Q`       | Quit                |
 
 ### Kanban
 
@@ -75,7 +76,8 @@ ______________________________________________________________________
 | ------------------ | -------------------- |
 | `n` / `Shift+N`    | New PAIR / AUTO task |
 | `Enter`            | Open task flow       |
-| `Space`            | Peek                 |
+| `Space`            | Cycle AI split       |
+| `p`                | Peek                 |
 | `e`                | Edit                 |
 | `x`                | Delete (confirm)     |
 | `s` / `Shift+S`    | Start / stop agent   |
@@ -88,4 +90,6 @@ ______________________________________________________________________
 | --------------------- | --------------------------------- |
 | `1` / `2`             | Switch tabs                       |
 | `a` / `x` / `m` / `b` | Approve / reject / merge / rebase |
+| `Space`               | Cycle AI split                    |
+| `Ctrl+F`              | Fullscreen AI chat (when open)    |
 | `Esc`                 | Back                              |

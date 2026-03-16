@@ -46,7 +46,7 @@ Move to REVIEW -> `Enter` -> approve (`a`) / reject (`x`) -> merge (`m`).
 
 ## Optional: import existing GitHub issues
 
-Use Command Palette (`Ctrl+P`) and run `github import`, or use:
+Use Quick Actions (`Ctrl+Shift+P`) and run `github import`, or use:
 
 ```bash
 kagan import github --repo owner/repo
@@ -54,13 +54,13 @@ kagan import github --repo owner/repo
 
 ## Shortcuts
 
-`?` Help · `Ctrl+P` Command Palette · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+T` Chat
+57:MW|`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split
 
-Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in the command palette.
+Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in Quick Actions.
 
-## Chat
+## AI Panel
 
-`Ctrl+T` toggles the AI chat overlay on any screen. Or use the standalone REPL:
+63:JV|`Ctrl+I` toggles the AI Panel. `Space` cycles split layout while open. Press `Esc` to close and `Ctrl+F` to fullscreen it. Or use the standalone REPL:
 
 ```bash
 kagan chat
@@ -69,6 +69,16 @@ kagan chat
 Type `/help` for slash commands, `/sessions` to manage conversations.
 
 [Chat guide](guides/chat.md) · [ACP session lifecycle](guides/acp-session-lifecycle.md)
+
+## Remote access
+
+Open the web dashboard from any browser:
+
+```bash
+kagan web --host 0.0.0.0
+```
+
+Open the URL shown in the terminal on any device on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. [Remote access guide](guides/remote-access.md)
 
 ## When things break
 

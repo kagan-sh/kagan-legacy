@@ -86,15 +86,11 @@ Approve records intent but does not move the task. **Only merge transitions to D
 
 ## Acceptance criteria
 
-Optional. When set, Kagan checks coverage after the agent completes. If any criteria appear unaddressed, a warning is appended to the task scratchpad before REVIEW:
+Optional. Kagan stores acceptance criteria with the task and shows them during review.
 
-```
-[CRITERIA REVIEW NOTE] The following acceptance criteria may need verification:
-  1. All API endpoints return 4xx on invalid input
-  2. Migration is reversible
-```
-
-This is a **soft gate** — informational only. It never blocks the agent mid-run.
+- Tasks with criteria can use AI-assisted review and approval flows.
+- Tasks without criteria still run normally, but automated approve/merge actions stay blocked.
+- Human review remains available either way.
 
 ## Scratchpad and resume
 

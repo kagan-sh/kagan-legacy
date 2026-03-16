@@ -85,8 +85,8 @@ KaganApp (Textual App)
 ├── KanbanScreen             # Main screen after project selected
 │   ├── BoardView            # 4-column kanban (BACKLOG → DONE)
 │   ├── TaskInspector        # Docked details panel opened from board selection
-│   ├── ChatPanel            # Docked / fullscreen AI chat overlay
-│   └── PeekOverlay          # Task preview on Space
+│   ├── ChatPanel            # Docked / fullscreen AI Panel
+│   └── PeekOverlay          # Task preview on P
 │
 ├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
 │
@@ -99,7 +99,7 @@ KaganApp (Textual App)
 │   ├── WorktreePanel        # File-level diff stats per modified file
 │   ├── CommitsPanel         # Task-branch commits since base
 │   ├── DiffPreviewPanel     # Unified diff of selected file
-│   └── ChatPanel            # Docked / fullscreen overlay streaming from agent
+│   └── ChatPanel            # Docked / fullscreen AI Panel streaming from agent
 │
 ├── ReviewModal              # Pushed when task enters REVIEW
 │
@@ -130,7 +130,7 @@ WelcomeScreen ──select project──→ KanbanScreen (switch)
 KanbanScreen  ──Enter──────────────────→ Open/refresh TaskInspector (in-place)
 KanbanScreen  ──Enter on selected task──→ TaskScreen or PAIR attach flow (push/attach)
 KanbanScreen  ──Ctrl+R────────→ RepoPickerModal (push)
-Any screen    ──Escape─────────→ pop (back to previous)
+Any screen    ──Escape─────────→ close active overlay first, then pop (back to previous)
 ```
 
 Screens are lazy — instantiated on first navigation via a `SCREENS` map of names to
@@ -148,7 +148,7 @@ KanbanScreen
 ├── Header # project name, connection status
 ├── BoardView + TaskInspector (horizontal pane)
 │ └── Column × 4 → [TaskCard, ...]
-├── PeekOverlay # hidden by default, shown on Space
+├── PeekOverlay # hidden by default, shown on P
 ├── ChatPanel # toggleable, docked right or fullscreen
 │ ├── MessageList / ChatInput / SlashComplete
 │ ├── PlanDisplay / PermissionPrompt
@@ -165,15 +165,15 @@ ______________________________________________________________________
 
 ### Reactive Declarations
 
-| Owner        | Name           | Type                        | Purpose                    |
-| ------------ | -------------- | --------------------------- | -------------------------- |
-| KaganApp     | `project`      | `reactive[Project \| None]` | Currently active project   |
-| KanbanScreen | `tasks`        | `reactive[list[Task]]`      | Tasks for the board        |
-| KanbanScreen | `selected`     | `var[str \| None]`          | Selected task ID           |
-| KanbanScreen | `filter_text`  | `var[str]`                  | Search filter              |
-| KanbanScreen | `chat_visible` | `var[bool]`                 | Chat panel toggle          |
-| TaskScreen   | `run`          | `reactive[Session \| None]` | Active execution run       |
-| TaskScreen   | `running`      | `var[bool]`                 | Whether agent is executing |
+| Owner        | Name          | Type                        | Purpose                    |
+| ------------ | ------------- | --------------------------- | -------------------------- |
+| KaganApp     | `project`     | `reactive[Project \| None]` | Currently active project   |
+| KanbanScreen | `tasks`       | `reactive[list[Task]]`      | Tasks for the board        |
+| KanbanScreen | `selected`    | `var[str \| None]`          | Selected task ID           |
+| KanbanScreen | `filter_text` | `var[str]`                  | Search filter              |
+| 174:PJ       |               | KanbanScreen                | `chat_visible`             |
+| TaskScreen   | `run`         | `reactive[Session \| None]` | Active execution run       |
+| TaskScreen   | `running`     | `var[bool]`                 | Whether agent is executing |
 
 ### Data Flow Direction
 
@@ -255,7 +255,7 @@ Three TCSS layers, ascending specificity:
 styles/
 ├── app.tcss # theme vars ($primary, $surface, etc.), global layout
 ├── kanban.tcss # board columns, card styles, peek overlay
-└── chat.tcss # chat panel, messages, input, plan display
+└── chat.tcss # AI Panel, messages, input, plan display
 
 ```
 
@@ -354,7 +354,7 @@ ______________________________________________________________________
 A dedicated monitoring screen for running AUTO tasks. Shows all relevant
 information about the active agent session: worktree changes, commits,
 agent status, persona pipeline progress, live output, and unified diffs.
-Supports chat overlay for streaming agent output and user interjection.
+Supports AI Panel for streaming agent output and user interjection.
 
 ### Layout
 
@@ -391,18 +391,25 @@ SessionDashboardScreen
 | CommitsPanel       | `worktrees.diff(task_id)` + git log                | 5s timer                 |
 | DiffView           | `worktrees.diff(task_id)`                          | 5s timer                 |
 
-### Chat Overlay Integration
+### AI Panel Integration
 
-Chat overlay follows the same pattern as `TaskScreen`:
+Session Dashboard keeps its dedicated chat shortcuts:
 
-- `Ctrl+T` toggles docked chat overlay pre-connected to the running agent stream
+398:XH|- `Ctrl+I` toggles AI Panel pre-connected to the running agent stream
+
 - `Ctrl+Shift+T` toggles fullscreen chat
 - `Tab` cycles between task agent and orchestrator sessions
 - User messages sent via task chat interject with the running agent
   (cancel current run, append to description, restart)
 - Orchestrator messages go through the separate orchestrator flow
 
-When the chat overlay opens, the dashboard body gets a CSS class
+Kanban and Task screens use a newer control contract:
+
+- `Space` cycles split layout (`vertical -> horizontal -> vertical`)
+- `Esc` closes the open overlay
+- `Ctrl+F` expands an open overlay to fullscreen
+
+When the AI Panel opens, the dashboard body gets a CSS class
 `dashboard-chat-active` that collapses the six-panel layout into a
 compact status bar, giving maximum vertical space to the chat.
 
@@ -455,15 +462,8 @@ KanbanScreen
 
 SessionDashboardScreen
 ├─ Escape ──────────────────→ pop back to KanbanScreen
-├─ Ctrl+T ──────────────────→ toggle docked chat overlay
+464:XX|├─ Ctrl+I ────────────────────→ toggle docked AI Panel
 ├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
 └─ Shift+S ─────────────────→ cancel running agent
 
-```
-
-├─ Ctrl+T ──────────────────→ toggle docked chat overlay
-├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
-└─ Ctrl+C ──────────────────→ cancel running agent
-
-```
 ```

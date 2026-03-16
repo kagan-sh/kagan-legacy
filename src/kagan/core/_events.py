@@ -1,11 +1,13 @@
 import asyncio
 import builtins
 import contextlib
+import re
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, cast
 
+from loguru import logger
 from sqlalchemy import Engine, desc
 from sqlmodel import select
 
@@ -16,6 +18,43 @@ from kagan.core.models import SessionEvent
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
 BOARD_STREAM_QUEUE_MAX_SIZE = 256
+
+# Secret scrubbing — compiled at module level for performance.
+_SECRET_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"AKIA[A-Z0-9]{16}"),  # AWS access key IDs
+    re.compile(r"ghp_[a-zA-Z0-9]{36}"),  # GitHub personal access tokens
+    re.compile(r"ghu_[a-zA-Z0-9]{36}"),  # GitHub user tokens
+    re.compile(r"sk-[a-zA-Z0-9]{20,}"),  # OpenAI API keys
+    re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),  # Private key blocks
+    re.compile(r"Bearer [a-zA-Z0-9._\-]{20,}"),  # Bearer tokens
+]
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {"password", "secret", "token", "api_key", "apikey", "authorization"}
+)
+
+
+def _scrub_secrets(payload: dict) -> dict:
+    """Deep-copy payload replacing secrets with [REDACTED]. Never mutates input."""
+
+    def _scrub_value(value: object) -> object:
+        if isinstance(value, dict):
+            return {
+                k: "[REDACTED]" if k.lower() in _SENSITIVE_KEYS else _scrub_value(v)
+                for k, v in value.items()
+            }
+        if isinstance(value, list):
+            return [_scrub_value(item) for item in value]
+        if isinstance(value, str):
+            result = value
+            for pattern in _SECRET_PATTERNS:
+                result = pattern.sub("[REDACTED]", result)
+            if result != value:
+                logger.debug("Scrubbing secret from event payload")
+            return result
+        return value
+
+    return _scrub_value(payload)  # type: ignore[return-value]
+
 
 _NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(
     {
@@ -188,11 +227,12 @@ class Events:
         session_id: str | None = None,
         persist: bool = True,
     ) -> SessionEvent:
+        scrubbed_payload = _scrub_secrets(payload)
         event = SessionEvent(
             task_id=task_id,
             session_id=session_id,
             event_type=event_type,
-            payload=payload,
+            payload=scrubbed_payload,
         )
         if persist:
             await _db_async(self._engine, lambda s: _add_and_refresh(s, event))

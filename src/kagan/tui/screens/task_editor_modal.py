@@ -143,6 +143,24 @@ class TaskDeleteConfirmModal(ModalScreen[bool]):
         border: round $error;
         padding: 1 2;
     }
+
+    TaskDeleteConfirmModal .task-details-title {
+        text-style: bold;
+        text-align: center;
+        color: $error;
+        padding-bottom: 1;
+    }
+
+    TaskDeleteConfirmModal .task-details-meta {
+        text-align: center;
+        color: $text-muted;
+        padding-bottom: 1;
+    }
+
+    TaskDeleteConfirmModal .task-details-body {
+        color: $text;
+        padding-bottom: 1;
+    }
     """
 
     def __init__(

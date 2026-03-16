@@ -406,7 +406,7 @@ def register_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def create_project(request: Request, *, ctx: Any) -> JSONResponse:
         forbidden = _require_access(
-            ctx, operation="Project creation", minimum_tier=AccessTier.ADMIN
+            ctx, operation="Project creation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
             return cast("JSONResponse", forbidden)

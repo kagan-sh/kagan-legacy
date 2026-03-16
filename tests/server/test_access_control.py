@@ -34,6 +34,15 @@ class _FakeTasksClient:
         )
 
 
+class _FakeProjectsClient:
+    def __init__(self) -> None:
+        self.created: list[str] = []
+
+    async def create(self, name: str) -> Any:
+        self.created.append(name)
+        return SimpleNamespace(id="project-1", name=name, description=None)
+
+
 def _make_api_server(opts: ServerOptions | None = None) -> FastMCP:
     return create_api_server(ApiServerOptions(mcp_opts=opts or ServerOptions()))
 
@@ -117,6 +126,28 @@ async def test_default_server_rejects_settings_changes(monkeypatch: pytest.Monke
     assert cast("JSONResponse", response).status_code == 403
     assert payload["ok"] is False
     assert payload["error_code"] == "ACCESS_TIER_FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_default_server_allows_project_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp = _make_api_server(ServerOptions())
+    endpoint = _get_endpoint(mcp, "/api/projects", "POST")
+    projects = _FakeProjectsClient()
+    fake_ctx = SimpleNamespace(
+        client=SimpleNamespace(projects=projects, active_project_id=None),
+        opts=ServerOptions(),
+    )
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
+
+    response = await endpoint(_make_request("POST", "/api/projects", body={"name": "Web Project"}))
+    payload = _response_json(response)
+
+    assert cast("JSONResponse", response).status_code == 200
+    assert payload["ok"] is True
+    assert payload["data"]["name"] == "Web Project"
+    assert projects.created == ["Web Project"]
 
 
 @pytest.mark.asyncio

@@ -48,3 +48,19 @@ class BranchRefStrategy(StrEnum):
     LOCAL = "local"
     REMOTE = "remote"
     LOCAL_IF_AHEAD = "local_if_ahead"
+
+
+def parse_priority(value: str | int | None) -> Priority:
+    """Parse a string, int, or None into a Priority enum value."""
+    if value is None:
+        return Priority.MEDIUM
+    if isinstance(value, int):
+        return Priority(value)
+    if value.isdigit():
+        return Priority(int(value))
+    return Priority[value]
+
+
+def parse_work_mode(value: str | None) -> WorkMode:
+    """Parse a string or None into a WorkMode enum value."""
+    return WorkMode(value) if value else WorkMode.AUTO

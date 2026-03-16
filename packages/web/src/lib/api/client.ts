@@ -12,7 +12,6 @@ import type {
   ReviewDecisionInput,
   ReviewStatusResponse,
   TaskCommitsResponse,
-  TaskCountsResponse,
   TaskDeletedResponse,
   TaskStatus,
   TaskWorktreeResponse,
@@ -146,11 +145,6 @@ export class KaganApiClient {
       method: 'POST',
       body: input,
     });
-  }
-
-  /** GET /api/tasks/counts */
-  async getTaskCounts(): Promise<TaskCountsResponse> {
-    return this.request<TaskCountsResponse>('/api/tasks/counts');
   }
 
   /** GET /api/tasks/:taskId */

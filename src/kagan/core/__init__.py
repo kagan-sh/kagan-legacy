@@ -22,6 +22,7 @@ from kagan.core._agent import (
     build_mcp_manifest,
     get_backend,
     list_backends,
+    resolve_default_agent_backend,
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
 from kagan.core._db import default_db_path
@@ -53,6 +54,8 @@ from kagan.core.enums import (
     SessionStatus,
     TaskStatus,
     WorkMode,
+    parse_priority,
+    parse_work_mode,
 )
 from kagan.core.errors import (
     AgentError,
@@ -138,7 +141,10 @@ __all__ = [
     "install_asyncio_subprocess_exception_filter",
     "list_backends",
     "load_persona_definitions",
+    "parse_priority",
+    "parse_work_mode",
     "prepend_custom_prompt",
+    "resolve_default_agent_backend",
     "resolve_launcher",
     "resolve_orchestrator_prompt",
     "resolve_review_prompt",

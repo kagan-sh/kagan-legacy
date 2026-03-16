@@ -18,10 +18,8 @@ __all__ = [
     "PairTerminalBackendLiteral",
     "PairTerminalBackendSpec",
     "coerce_pair_terminal_backend",
-    "default_pair_terminal_backend_for_os",
     "pair_terminal_backend_executable",
     "pair_terminal_backend_fallback_order",
-    "pair_terminal_backend_install_hint",
 ]
 
 from dataclasses import dataclass
@@ -143,18 +141,9 @@ def coerce_pair_terminal_backend(value: object) -> PairTerminalBackendLiteral | 
     return None
 
 
-def default_pair_terminal_backend_for_os(os_name: str) -> PairTerminalBackendLiteral:
-    return VSCODE_BACKEND if os_name == "windows" else TMUX_BACKEND
-
-
 def pair_terminal_backend_executable(backend: str) -> str | None:
     spec = PAIR_TERMINAL_BACKEND_SPECS_BY_VALUE.get(backend)
     return spec.executable if spec is not None else None
-
-
-def pair_terminal_backend_install_hint(backend: str) -> str | None:
-    spec = PAIR_TERMINAL_BACKEND_SPECS_BY_VALUE.get(backend)
-    return spec.install_hint if spec is not None else None
 
 
 def pair_terminal_backend_fallback_order(

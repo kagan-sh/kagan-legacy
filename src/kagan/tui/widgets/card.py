@@ -393,41 +393,19 @@ class TaskCard(Widget):
             self._status_label.add_class(cls)
 
         # Backend
-        backend = (getattr(task, "agent_backend", None) or "").strip()
-        show_extended = False
-
-        if backend and show_extended:
-            self._backend_label.update(_truncate_text(backend, _BACKEND_MAX))
-            self._backend_label.display = True
-        else:
-            self._backend_label.update("")
-            self._backend_label.display = False
+        self._backend_label.update("")
+        self._backend_label.display = False
 
         # Branch
-        branch = (getattr(task, "base_branch", None) or "").strip()
-        if branch and show_extended:
-            self._branch_label.update(f"⎇ {branch}")
-            self._branch_label.display = True
-        else:
-            self._branch_label.update("")
-            self._branch_label.display = False
+        self._branch_label.update("")
+        self._branch_label.display = False
 
         # GitHub badges
-        issue_number = getattr(task, "github_issue_number", None)
-        if isinstance(issue_number, int) and show_extended:
-            self._issue_label.update(f"GH#{issue_number}")
-            self._issue_label.display = True
-        else:
-            self._issue_label.update("")
-            self._issue_label.display = False
+        self._issue_label.update("")
+        self._issue_label.display = False
 
-        pr_number = getattr(task, "github_pr_number", None)
-        if isinstance(pr_number, int) and show_extended:
-            self._pr_label.update(f"PR #{pr_number}")
-            self._pr_label.display = True
-        else:
-            self._pr_label.update("")
-            self._pr_label.display = False
+        self._pr_label.update("")
+        self._pr_label.display = False
 
         # Type
         task_type = str(getattr(getattr(task, "task_type", None), "value", "")).strip()

@@ -62,15 +62,6 @@ export interface WireRepository {
   selected?: boolean;
 }
 
-/** Serialisable representation of a Kagan session. */
-export interface WireSession {
-  id: string;
-  task_id: string;
-  status: string;
-  mode: string;
-  created_at: string;
-}
-
 /** Serialisable representation of a chat message. */
 export interface WireChatMessage {
   role: string;

@@ -1,4 +1,3 @@
-const DEVICE_ID_KEY = 'kagan_device_id';
 const DIFF_VIEW_MODE_KEY = 'kagan_diff_view_mode';
 const WEB_ONBOARDING_TUTORIAL_SEEN_KEY = 'kagan_web_onboarding_tutorial_seen_v1';
 
@@ -22,22 +21,6 @@ function getStorage(): StorageLike | null {
   }
 
   return storage;
-}
-
-export function getOrCreateDeviceId(): string {
-  const storage = getStorage();
-  if (storage === null) {
-    return Math.random().toString(36).slice(2, 10);
-  }
-
-  const existing = storage.getItem(DEVICE_ID_KEY);
-  if (existing) {
-    return existing;
-  }
-
-  const deviceId = Math.random().toString(36).slice(2, 10);
-  storage.setItem(DEVICE_ID_KEY, deviceId);
-  return deviceId;
 }
 
 export function saveDiffViewMode(mode: DiffViewModePreference): void {

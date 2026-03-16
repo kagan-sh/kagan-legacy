@@ -6,12 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from starlette.responses import JSONResponse
-from starlette.websockets import WebSocket
 
 from kagan.core import TaskStatus
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.mcp.server import get_server_context
-from kagan.server._access import http_forbidden, is_access_allowed, websocket_forbidden
+from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.wire.envelopes import WireEnvelope
 from kagan.wire.models import WireTask, WireTaskActiveSession, utc_iso
 
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from mcp.server.fastmcp import FastMCP
-    from starlette.requests import Request
 
     from kagan.mcp._policy import AccessTier
 
@@ -93,38 +91,18 @@ def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> di
 
 def _require_access(
     ctx: Any,
-    tier: AccessTier | None = None,
-    request_or_websocket: Request | WebSocket | None = None,
     *,
     operation: str | None = None,
     minimum_tier: AccessTier | None = None,
-    event_type: str = "ERROR",
-    extra: dict[str, object] | None = None,
-) -> JSONResponse | dict[str, object] | None:
-    resolved_tier = minimum_tier or tier
-    if resolved_tier is None:
+) -> JSONResponse | None:
+    if minimum_tier is None:
         raise ValueError("Access tier is required")
 
-    if is_access_allowed(ctx, resolved_tier):
+    if is_access_allowed(ctx, minimum_tier):
         return None
 
-    resolved_operation = operation
-    if resolved_operation is None:
-        if isinstance(request_or_websocket, WebSocket):
-            resolved_operation = "WebSocket operation"
-        elif request_or_websocket is not None:
-            resolved_operation = f"{request_or_websocket.method} {request_or_websocket.url.path}"
-        else:
-            resolved_operation = "Operation"
-
-    if isinstance(request_or_websocket, WebSocket):
-        return websocket_forbidden(
-            event_type=event_type,
-            operation=resolved_operation,
-            minimum_tier=resolved_tier,
-            extra=extra,
-        )
-    return http_forbidden(operation=resolved_operation, minimum_tier=resolved_tier)
+    resolved_operation = operation or "Operation"
+    return http_forbidden(operation=resolved_operation, minimum_tier=minimum_tier)
 
 
 def require_context(

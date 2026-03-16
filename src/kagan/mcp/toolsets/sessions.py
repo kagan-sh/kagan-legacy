@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from kagan.core import resolve_default_agent_backend
 from kagan.core.errors import KaganError, SessionError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -30,10 +31,6 @@ _SESSION_ACTIONS = frozenset(item.value for item in SessionAction)
 class SessionStartAction(StrEnum):
     RUN = "run"
     PAIR = "pair"
-
-
-def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or "claude-code"
 
 
 def _parse_session_action(action: str) -> SessionAction:
@@ -66,7 +63,7 @@ async def _handle_create(client: Any, task_id: str) -> dict:
                 None, f"Failed to provision workspace for task {task_id!r}: {prov_exc}"
             ) from prov_exc
     settings = await client.settings.get()
-    backend = _resolve_default_agent_backend(settings)
+    backend = resolve_default_agent_backend(settings)
     launcher = settings.get("pair_launcher", "tmux")
     from kagan.core import resolve_launcher as _resolve_launcher
 
@@ -117,7 +114,7 @@ async def _run_start(
                 None, f"Failed to provision workspace for task {task_id!r}: {prov_exc}"
             ) from prov_exc
     settings = await app.client.settings.get()
-    resolved_backend = agent_backend or _resolve_default_agent_backend(settings)
+    resolved_backend = agent_backend or resolve_default_agent_backend(settings)
 
     if parsed_action is SessionStartAction.RUN:
         session = await app.client.tasks.run(

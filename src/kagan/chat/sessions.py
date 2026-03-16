@@ -225,21 +225,6 @@ def resolve_chat_session_selector(
     return None
 
 
-def resolve_chat_session_id(items: Sequence[ChatSessionListItem], query: str | None) -> str | None:
-    item = resolve_chat_session_selector(items, query)
-    return None if item is None else item.session_id
-
-
-async def list_chat_session_items(
-    client: Any,
-    *,
-    source: str | None = None,
-    current_session_id: str | None = None,
-) -> list[ChatSessionListItem]:
-    sessions = await list_chat_sessions(client, source=source)
-    return build_chat_session_list_items(sessions, current_session_id=current_session_id)
-
-
 async def list_chat_sessions(client: Any, *, source: str | None = None) -> list[dict[str, Any]]:
     settings = await client.settings.get()
     sessions = _parse_sessions_blob(settings.get(CHAT_SESSIONS_SETTING_KEY))

@@ -693,7 +693,7 @@ class TaskScreen(Screen[None]):
             panel.add_system_message("Unable to load task")
             return
 
-        self._task_model = await send_task_message(self.kagan_app.core, task_model, text, panel)
+        self._task_model = await send_task_message(self.kagan_app.core, task_model, text)
 
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")

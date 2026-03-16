@@ -1747,7 +1747,7 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         try:
-            updated_task = await send_task_message(self.kagan_app.core, task, text, panel)
+            updated_task = await send_task_message(self.kagan_app.core, task, text)
 
             settings = await self.kagan_app.core.settings.get()
             backend = (

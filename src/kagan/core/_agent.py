@@ -49,6 +49,11 @@ async def cleanup_all_spawned_processes() -> None:
     _spawned_processes.clear()
 
 
+def resolve_default_agent_backend(settings: dict[str, str]) -> str:
+    """Return the default agent backend from settings, falling back to claude-code."""
+    return settings.get("default_agent_backend") or "claude-code"
+
+
 class AgentBackendConfig(TypedDict, total=False):
     """Schema for an agent backend registry entry."""
 

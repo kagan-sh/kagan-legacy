@@ -6,7 +6,12 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from kagan.core import Priority, TaskStatus, WorkMode, detect_dotfile_overrides
+from kagan.core import (
+    TaskStatus,
+    detect_dotfile_overrides,
+    parse_priority,
+    parse_work_mode,
+)
 from kagan.mcp._policy import AccessTier
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._helpers import (
@@ -91,20 +96,6 @@ async def _body(request: Request) -> dict[str, Any]:
     return cast("dict[str, Any]", payload)
 
 
-def _parse_priority(value: str | int | None) -> Priority:
-    if value is None:
-        return Priority.MEDIUM
-    if isinstance(value, int):
-        return Priority(value)
-    if value.isdigit():
-        return Priority(int(value))
-    return Priority[value]
-
-
-def _parse_work_mode(value: str | None) -> WorkMode:
-    return WorkMode(value) if value else WorkMode.AUTO
-
-
 def _manual_review_required(task_id: str) -> JSONResponse:
     return _ok(
         {
@@ -182,8 +173,8 @@ def register_routes(mcp: FastMCP) -> None:
         task = await ctx.client.tasks.create(
             cast("str", payload["title"]),
             description=cast("str", payload.get("description", "")),
-            execution_mode=_parse_work_mode(cast("str | None", payload.get("execution_mode"))),
-            priority=_parse_priority(cast("str | int | None", payload.get("priority"))),
+            execution_mode=parse_work_mode(cast("str | None", payload.get("execution_mode"))),
+            priority=parse_priority(cast("str | int | None", payload.get("priority"))),
             base_branch=cast("str | None", payload.get("base_branch")),
             acceptance_criteria=cast("list[str] | None", acceptance_criteria),
             agent_backend=cast("str | None", payload.get("agent_backend")),
@@ -225,11 +216,11 @@ def register_routes(mcp: FastMCP) -> None:
         if "description" in payload:
             update_args["description"] = payload["description"]
         if "priority" in payload:
-            update_args["priority"] = _parse_priority(
+            update_args["priority"] = parse_priority(
                 cast("str | int | None", payload.get("priority"))
             )
         if "execution_mode" in payload:
-            update_args["execution_mode"] = _parse_work_mode(
+            update_args["execution_mode"] = parse_work_mode(
                 cast("str | None", payload.get("execution_mode"))
             )
         if "base_branch" in payload:

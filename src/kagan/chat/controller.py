@@ -37,6 +37,7 @@ from kagan.chat.acp import (
     _ACP_CLIENT_NAME,
     _ACP_CLIENT_TITLE,
     _ACP_CLIENT_VERSION,
+    _ACP_STDIO_BUFFER_LIMIT_BYTES,
     _acp_handshake_timeout_seconds,
 )
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
@@ -86,7 +87,6 @@ from kagan.core import (
 )
 from kagan.core.errors import AgentError, KaganError
 
-_ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 

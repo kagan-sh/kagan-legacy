@@ -67,9 +67,7 @@ async def send_task_message(
     core: "KaganCore",
     task: Task,
     message: str,
-    chat_session: "ChatPanel",
 ) -> Task:
-    del chat_session
     with contextlib.suppress(KaganError, OSError, RuntimeError):
         await core.tasks.cancel(task.id)
     description = merge_task_follow_up_description(task.description, message)

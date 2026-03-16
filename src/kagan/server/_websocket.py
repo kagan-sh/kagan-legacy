@@ -10,6 +10,7 @@ from loguru import logger
 from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from kagan.core import resolve_default_agent_backend
 from kagan.core._utils import utc_iso
 from kagan.mcp._policy import AccessTier
 from kagan.mcp.server import get_server_context
@@ -273,10 +274,6 @@ async def _sender_loop(
             raise WebSocketDisconnect(code=1001) from exc
 
 
-def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or "claude-code"
-
-
 async def _resolve_project_cwd(client: Any) -> Path | None:
     settings = await client.settings.get()
     return await client.projects.resolve_repo_path(settings=settings)
@@ -422,7 +419,7 @@ async def _handle_run_start(
     try:
         task = await ctx.client.tasks.get(task_id)
         settings = await ctx.client.settings.get()
-        backend = task.agent_backend or _resolve_default_agent_backend(settings)
+        backend = task.agent_backend or resolve_default_agent_backend(settings)
         session = await ctx.client.tasks.run(task_id, agent_backend=backend)
         await websocket.send_json(
             {
@@ -522,7 +519,7 @@ async def _handle_task_follow_up(
         task = await ctx.client.tasks.update(task_id, description=updated_desc)
 
         settings = await ctx.client.settings.get()
-        backend = getattr(task, "agent_backend", None) or _resolve_default_agent_backend(settings)
+        backend = getattr(task, "agent_backend", None) or resolve_default_agent_backend(settings)
         session = await ctx.client.tasks.run(task_id, agent_backend=backend)
 
         await websocket.send_json(
@@ -770,7 +767,7 @@ async def _handle_chat_send(
 
     settings = await ctx.client.settings.get()
     backend = (
-        agent_backend or session.get("agent_backend") or _resolve_default_agent_backend(settings)
+        agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
     )
     throttler = ChatChunkThrottler(websocket=websocket, session_id=session_id)
 

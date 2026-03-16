@@ -580,7 +580,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.add_system_message("Unable to load task")
             return
 
-        self._task_model = await send_task_message(self.kagan_app.core, task, text, panel)
+        self._task_model = await send_task_message(self.kagan_app.core, task, text)
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")
         await self._start_or_attach_session(backend_hint=panel.preferred_agent_backend())

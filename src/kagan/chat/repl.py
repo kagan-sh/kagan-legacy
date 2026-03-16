@@ -348,14 +348,6 @@ def _find_git_root(path: Path) -> Path | None:
     return None
 
 
-def _setting_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
-    value = settings.get(key)
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    return normalized not in {"0", "false", "no", "off"}
-
-
 def _env_flag_enabled(name: str, *, default: bool) -> bool:
     value = os.environ.get(name)
     if value is None:

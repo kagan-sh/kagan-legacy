@@ -43,6 +43,8 @@ TOOL_TIERS: dict[str, AccessTier] = {
     "review_continue_rebase": AccessTier.STANDARD,
     "review_abort_rebase": AccessTier.STANDARD,
     "review_conflicts": AccessTier.READONLY,
+    "review_set_criterion_verdict": AccessTier.STANDARD,
+    "review_clear_verdicts": AccessTier.STANDARD,
     "task_batch_create": AccessTier.STANDARD,
     # Admin-only tools
     "task_delete": AccessTier.ADMIN,

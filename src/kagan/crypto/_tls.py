@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import hashlib
 import ipaddress
 from pathlib import Path
 
@@ -110,17 +109,3 @@ def ensure_tls_cert(
         return cert_path, key_path
 
     return generate_self_signed_cert(host, tls_dir)
-
-
-def cert_fingerprint(cert_path: Path) -> str:
-    """Compute the SHA-256 fingerprint of a PEM certificate.
-
-    Args:
-        cert_path: Path to the PEM-encoded certificate.
-
-    Returns:
-        Hex-encoded SHA-256 digest of the DER-encoded certificate.
-    """
-    cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-    der = cert.public_bytes(serialization.Encoding.DER)
-    return hashlib.sha256(der).hexdigest()

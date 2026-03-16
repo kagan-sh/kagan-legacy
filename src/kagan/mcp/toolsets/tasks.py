@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import Priority, TaskStatus, WorkMode
+from kagan.core import Priority, TaskStatus, WorkMode, parse_priority, parse_work_mode
 from kagan.core.errors import KaganError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -87,20 +87,6 @@ def _parse_wait_for_task_statuses(
             "wait_for_status",
             f"Unknown task status in {normalized!r}. Allowed values: {allowed}",
         ) from exc
-
-
-def _parse_priority(value: str | int | None) -> Priority:
-    if value is None:
-        return Priority.MEDIUM
-    if isinstance(value, int):
-        return Priority(value)
-    if value.isdigit():
-        return Priority(int(value))
-    return Priority[value]
-
-
-def _parse_work_mode(value: str | None) -> WorkMode:
-    return WorkMode(value) if value else WorkMode.AUTO
 
 
 def _build_update_verification(
@@ -207,8 +193,8 @@ async def _task_create(
     launcher: str | None = None,
 ) -> dict:
     app = get_context(ctx)
-    priority_enum = _parse_priority(priority)
-    mode_enum = _parse_work_mode(execution_mode)
+    priority_enum = parse_priority(priority)
+    mode_enum = parse_work_mode(execution_mode)
     task = await app.client.tasks.create(
         title,
         description=description,
@@ -241,8 +227,8 @@ async def _task_update(
 ) -> dict:
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
-    priority_enum = _parse_priority(priority) if priority is not None else None
-    mode_enum = _parse_work_mode(execution_mode) if execution_mode is not None else None
+    priority_enum = parse_priority(priority) if priority is not None else None
+    mode_enum = parse_work_mode(execution_mode) if execution_mode is not None else None
     status_enum = TaskStatus(status) if status is not None else None
     task = await app.client.tasks.update(
         resolved_task_id,
@@ -480,8 +466,8 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
             errors.append({"index": str(idx), "error": "title is required"})
             continue
         try:
-            mode = _parse_work_mode(entry.get("execution_mode"))
-            pri = _parse_priority(entry.get("priority"))
+            mode = parse_work_mode(entry.get("execution_mode"))
+            pri = parse_priority(entry.get("priority"))
             criteria_raw = entry.get("acceptance_criteria")
             criteria = criteria_raw if isinstance(criteria_raw, list) else None
             task = await app.client.tasks.create(

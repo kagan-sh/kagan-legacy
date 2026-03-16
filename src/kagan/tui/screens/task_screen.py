@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import re
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from textual import events, on
 from textual.containers import Vertical, VerticalScroll
@@ -20,7 +19,6 @@ from textual.widgets import (
     TextArea,
 )
 
-from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import SessionEventType, TaskStatus, WorkMode
 from kagan.core.errors import (
@@ -31,12 +29,17 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
+from kagan.tui._chat_helpers import (
+    TitleGenerationSession,
+    build_session_options,
+    kick_title_generation,
+    send_task_message,
+)
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.kanban_chat import (
     acp_payload,
-    apply_task_chat_event,
     stream_chunk_kind,
     stream_chunk_text,
     tool_call_args,
@@ -58,13 +61,25 @@ from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, ToolCallVi
 from kagan.tui.widgets.task_action_bar import TaskActionBar
 from kagan.tui.widgets.task_detail_pane import TaskDetailPane
 from kagan.tui.widgets.task_diff_pane import TaskDiffPane
+from kagan.tui.widgets.task_event_handler import TaskEventHandler
+from kagan.tui.widgets.task_review_helpers import (
+    build_merge_readiness_text,
+    render_ai_verdict_summary,
+    render_criteria_checkboxes,
+)
+from kagan.tui.widgets.task_workspace_helpers import (
+    diff_totals,
+    hydrate_workspace_panels,
+    merged_commit_diff_fallback,
+    resolve_latest_merge_event,
+)
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
     from textual.timer import Timer
     from textual.widget import Widget
 
-    from kagan.core.models import ReviewVerdict, Task
+    from kagan.core.models import Task
     from kagan.tui.app import KaganApp
 
 
@@ -392,7 +407,7 @@ class TaskScreen(Screen[None]):
         panel.set_mode_title("Task Chat")
         panel.set_session_kind("auto")
         panel.set_sessions(
-            [*self.kagan_app.orchestrator_sessions.options(), *self._task_session_options()],
+            build_session_options(self.kagan_app, self._task_session_options()),
             self._active_task_session_key(),
         )
         if self._task_id is not None:
@@ -637,16 +652,21 @@ class TaskScreen(Screen[None]):
             )
             # Auto-generate a session title after the first turn
             if should_title and self._chat_orchestrator_history:
-                assistant_reply = (
-                    self._chat_orchestrator_history[-1][1]
-                    if self._chat_orchestrator_history[-1][0] == "assistant"
-                    else ""
-                )
-                backend = panel.preferred_agent_backend() or resolve_default_agent_backend(
-                    await self.kagan_app.core.settings.get()
-                )
                 asyncio.create_task(
-                    self._update_orchestrator_session_title(panel, text, assistant_reply, backend),
+                    kick_title_generation(
+                        TitleGenerationSession(
+                            orchestrator_sessions=self.kagan_app.orchestrator_sessions,
+                            panel=panel,
+                            user_message=text,
+                            history=self._chat_orchestrator_history,
+                            session_options=build_session_options(
+                                self.kagan_app,
+                                self._task_session_options(),
+                            ),
+                            is_mounted=lambda: self.is_mounted,
+                        ),
+                        self.kagan_app.core,
+                    ),
                     name="task-chat-title-gen",
                 )
         except asyncio.CancelledError:
@@ -657,30 +677,6 @@ class TaskScreen(Screen[None]):
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {exc}")
-
-    async def _update_orchestrator_session_title(
-        self,
-        panel: ChatPanel,
-        user_message: str,
-        assistant_reply: str,
-        agent_backend: str,
-    ) -> None:
-        """Generate a session title and update the Session Switcher."""
-        try:
-            title = await self.kagan_app.orchestrator_sessions.generate_title(
-                user_message=user_message,
-                assistant_reply=assistant_reply,
-                agent_backend=agent_backend,
-            )
-            if title and self.is_mounted:
-                task_sessions = self._task_session_options()
-                active_key = self.kagan_app.orchestrator_sessions.active_key()
-                panel.set_sessions(
-                    [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                    active_key,
-                )
-        except Exception:
-            pass  # Title generation is best-effort
 
     async def _send_task_message(self, text: str) -> None:
         panel = self._overlay_panel()
@@ -698,15 +694,7 @@ class TaskScreen(Screen[None]):
             panel.add_system_message("Unable to load task")
             return
 
-        merged_description = task_model.description.strip()
-        follow_up = f"User follow-up:\n{text}".strip()
-        updated_description = (
-            f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-        )
-        self._task_model = await self.kagan_app.core.tasks.update(
-            self._task_id,
-            description=updated_description,
-        )
+        self._task_model = await send_task_message(self.kagan_app.core, task_model, text, panel)
 
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")
@@ -755,180 +743,33 @@ class TaskScreen(Screen[None]):
         if task.agent_backend:
             return task.agent_backend
         settings = await self.kagan_app.core.settings.get()
-        return (
-            settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
-        )
+        return settings.get("default_agent_backend") or "claude-code"
 
     async def _hydrate_workspace_panels(self) -> None:
-        if self._task_id is None:
-            return
-
-        workspace = await self.kagan_app.core.worktrees.get(self._task_id)
-        diff_pane = self.query_one(TaskDiffPane)
-        bar_w = diff_pane.get_workspace_bar()
-        diff_view = diff_pane.get_diff_view()
-
-        if workspace is None:
-            merged_fallback = await self._merged_commit_diff_fallback()
-            if merged_fallback is None:
-                bar_w.update("No worktree provisioned")
-                bar_w.remove_class("loading")
-                bar_w.add_class("ts-no-workspace")
-                diff_view.set_diff("")
-                return
-
-            diff_text, stats, repo_path, short_sha, target_branch = merged_fallback
-            files = self._changed_files(diff_text)
-            n_files = int(stats.get("files", 0))
-            ins = int(stats.get("insertions", 0))
-            dels = int(stats.get("deletions", 0))
-
-            bar_w.update(
-                " | ".join(
-                    [
-                        f"Merged {short_sha} -> {target_branch}",
-                        f"{n_files} files",
-                        f"+{ins} -{dels}",
-                        f"{len(files)} changed",
-                    ]
-                )
-                + f"\n{repo_path}"
-            )
-            bar_w.remove_class("loading")
-            bar_w.remove_class("ts-no-workspace")
-
-            diff_view.set_diff(diff_text)
-            if files:
-                diff_view.set_selected_file(files[0])
-            return
-
-        diff_text = ""
-        with contextlib.suppress(SessionError, WorktreeError):
-            diff_text = await self.kagan_app.core.worktrees.diff(self._task_id)
-        stats: dict[str, Any] = {"files": 0, "insertions": 0, "deletions": 0}
-        with contextlib.suppress(SessionError, WorktreeError):
-            stats = await self.kagan_app.core.worktrees.diff_stats(self._task_id)
-
-        files = self._changed_files(diff_text)
-        n_files = int(stats.get("files", 0))
-        ins = int(stats.get("insertions", 0))
-        dels = int(stats.get("deletions", 0))
-
-        bar_w.update(
-            " | ".join(
-                [
-                    "Workspace",
-                    f"{n_files} files",
-                    f"+{ins} -{dels}",
-                    f"{len(files)} changed",
-                ]
-            )
-            + f"\n{workspace.worktree_path}"
-        )
-        bar_w.remove_class("loading")
-        bar_w.remove_class("ts-no-workspace")
-
-        if self._active_tab() == "diff":
-            selected_path = diff_view.current_file_path()
-            diff_view.set_diff(diff_text)
-            if selected_path is not None and selected_path in files:
-                diff_view.set_selected_file(selected_path)
-
-    @staticmethod
-    def _changed_files(diff_text: str) -> list[str]:
-        files: list[str] = []
-        for line in diff_text.splitlines():
-            if not line.startswith("diff --git a/"):
-                continue
-            parts = line.split(" b/", maxsplit=1)
-            if len(parts) != 2:
-                continue
-            files.append(parts[1].strip())
-        seen: set[str] = set()
-        unique: list[str] = []
-        for item in files:
-            if item in seen:
-                continue
-            seen.add(item)
-            unique.append(item)
-        return unique
-
-    @staticmethod
-    def _workspace_snapshot_text(
-        worktree_path: str,
-        files: list[str],
-        stats: dict[str, Any],
-    ) -> str:
-        n_files = int(stats.get("files", 0))
-        ins = int(stats.get("insertions", 0))
-        dels = int(stats.get("deletions", 0))
-        return (
-            f"Workspace · {n_files} files · +{ins} / -{dels} · {len(files)} changed\n"
-            f"{worktree_path}"
+        await hydrate_workspace_panels(
+            task_id=self._task_id,
+            active_tab=self._active_tab(),
+            diff_pane=self.query_one(TaskDiffPane),
+            get_workspace=self.kagan_app.core.worktrees.get,
+            get_workspace_diff=self.kagan_app.core.worktrees.diff,
+            get_workspace_stats=self.kagan_app.core.worktrees.diff_stats,
+            resolve_merged_fallback=self._resolve_merged_commit_diff_fallback,
         )
 
-    @staticmethod
-    def _merged_snapshot_text(
-        repo_path: str,
-        short_sha: str,
-        target_branch: str,
-        files: list[str],
-        stats: dict[str, Any],
-    ) -> str:
-        n_files = int(stats.get("files", 0))
-        ins = int(stats.get("insertions", 0))
-        dels = int(stats.get("deletions", 0))
-        return (
-            f"Merged {short_sha} -> {target_branch} · {n_files} files · +{ins} / -{dels} · "
-            f"{len(files)} changed\n{repo_path}"
-        )
-
-    async def _merged_commit_diff_fallback(
+    async def _resolve_merged_commit_diff_fallback(
         self,
     ) -> tuple[str, dict[str, int], str, str, str] | None:
         if self._task_id is None:
             return None
-
-        task = self._task_model
-        if task is None:
-            with contextlib.suppress(KaganError, OSError, RuntimeError, ValueError):
-                task = await self.kagan_app.core.tasks.get(self._task_id)
-        if task is None or task.status is not TaskStatus.DONE:
-            return None
-
-        merge_event = await self.kagan_app.core.tasks.events.latest(
-            self._task_id,
-            event_type=SessionEventType.MERGE_COMPLETED,
-        )
-        if merge_event is None:
-            return None
-
-        payload = merge_event.payload or {}
-        commit_sha = str(payload.get("commit_sha") or "").strip()
-        if not commit_sha:
-            return None
-
-        repo_path, default_branch = await self._task_repo_path(task.project_id)
-        if repo_path is None:
-            return None
-
-        diff_text = ""
-        with contextlib.suppress(WorktreeError):
-            diff_text = await git.show_commit_diff(repo_path, commit_sha=commit_sha)
-        if not diff_text.strip():
-            return None
-
-        files, insertions, deletions = self._diff_totals(diff_text)
-        target_branch = str(
-            payload.get("target_branch") or task.base_branch or default_branch or "main"
-        )
-        target_branch = target_branch.strip() or "main"
-        return (
-            diff_text,
-            {"files": files, "insertions": insertions, "deletions": deletions},
-            repo_path,
-            commit_sha[:8],
-            target_branch,
+        return await merged_commit_diff_fallback(
+            task_id=self._task_id,
+            task=self._task_model,
+            get_task=self.kagan_app.core.tasks.get,
+            latest_merge_event=lambda task_id: resolve_latest_merge_event(
+                self.kagan_app.core.tasks.events,
+                task_id,
+            ),
+            resolve_repo_path=self._task_repo_path,
         )
 
     async def _task_repo_path(self, project_id: str) -> tuple[str | None, str]:
@@ -950,16 +791,18 @@ class TaskScreen(Screen[None]):
             return
         self._stream_task = asyncio.create_task(self._stream_events(self._task_id))
 
-    def _maybe_apply_chat_event(
-        self, overlay_chat: ChatPanel, event_type: SessionEventType, payload: dict[str, Any]
-    ) -> None:
-        """Apply chat event if in task chat mode."""
-        if self._chat_mode == "task":
-            apply_task_chat_event(overlay_chat, event_type, payload)
-
     async def _stream_events(self, task_id: str) -> None:
         output = self._output_stream()
         overlay_chat = self._overlay_panel()
+        event_handler = TaskEventHandler(
+            output=output,
+            overlay_chat=overlay_chat,
+            is_task_chat_mode=lambda: self._chat_mode == "task",
+            payload_text=self._payload_text,
+            queue_refresh=self._queue_stream_refresh,
+            set_running=self._set_running,
+            set_status=self._set_status,
+        )
         self._replay_count = 0
         self._oldest_event_ts = None
         try:
@@ -975,63 +818,10 @@ class TaskScreen(Screen[None]):
                 if self._replay_count == TASK_SCREEN_REPLAY_EVENT_LIMIT:
                     output.show_load_more_bar()
                 payload = event.payload or {}
-                match event.event_type:
-                    case SessionEventType.OUTPUT_CHUNK:
-                        self._render_stream_chunk(output, payload)
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                    case SessionEventType.TOOL_CALL_START:
-                        output.upsert_tool_call(
-                            tool_call_id(payload),
-                            tool_call_title(payload),
-                            status=tool_call_status(payload, default="running"),
-                            args=tool_call_args(payload),
-                            result=tool_call_result(payload),
-                            kind=tool_call_kind(payload),
-                        )
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                    case SessionEventType.TOOL_CALL_UPDATE:
-                        output.update_tool_status(
-                            tool_call_id(payload),
-                            tool_call_status(payload, default="updated"),
-                            result=tool_call_result(payload),
-                        )
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                    case SessionEventType.AGENT_STATUS:
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                        output.post_note(self._payload_text(payload) or "Agent status update")
-                    case SessionEventType.CRITERION_VERDICT:
-                        verdict = str(payload.get("verdict", "")).upper()
-                        criterion_index = payload.get("criterion_index")
-                        if isinstance(criterion_index, int):
-                            output.post_note(f"Criterion {criterion_index + 1}: AI {verdict}")
-                        else:
-                            output.post_note(f"Criterion verdict: AI {verdict}")
-                    case SessionEventType.TASK_STATUS_CHANGED:
-                        output.post_note(self._payload_text(payload) or "Task status changed")
-                        self._queue_stream_refresh(runtime=True)
-                    case SessionEventType.AGENT_COMPLETED:
-                        self._running = False
-                        self._set_status("Completed")
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                        output.post_note("Agent completed")
-                    case SessionEventType.AGENT_FAILED:
-                        self._running = False
-                        self._set_status("Failed")
-                        self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
-                        output.post_note(self._payload_text(payload) or "Agent failed")
-                    case SessionEventType.MERGE_COMPLETED:
-                        output.post_note(self._payload_text(payload) or "Merge completed")
-                    case SessionEventType.MERGE_FAILED:
-                        output.post_note(self._payload_text(payload) or "Merge failed")
-                if event.event_type in {
-                    SessionEventType.OUTPUT_CHUNK,
-                    SessionEventType.TOOL_CALL_START,
-                    SessionEventType.TOOL_CALL_UPDATE,
-                    SessionEventType.CRITERION_VERDICT,
-                    SessionEventType.AGENT_COMPLETED,
-                    SessionEventType.AGENT_FAILED,
-                    SessionEventType.TASK_STATUS_CHANGED,
-                }:
+                handler = event_handler.event_handlers.get(event.event_type)
+                if handler is not None:
+                    handler(payload)
+                if self._should_refresh_after_event(event.event_type):
                     self._queue_stream_refresh(workspace=True, review=True)
         except asyncio.CancelledError:
             pass
@@ -1040,18 +830,23 @@ class TaskScreen(Screen[None]):
             self._set_status("Failed")
             output.post_note(f"Stream ended unexpectedly: {exc}")
 
+    def _set_running(self, running: bool) -> None:
+        self._running = running
+
+    @staticmethod
+    def _should_refresh_after_event(event_type: SessionEventType) -> bool:
+        return event_type in {
+            SessionEventType.OUTPUT_CHUNK,
+            SessionEventType.TOOL_CALL_START,
+            SessionEventType.TOOL_CALL_UPDATE,
+            SessionEventType.CRITERION_VERDICT,
+            SessionEventType.AGENT_COMPLETED,
+            SessionEventType.AGENT_FAILED,
+            SessionEventType.TASK_STATUS_CHANGED,
+        }
+
     def _output_stream(self) -> StreamingOutput:
         return self.query_one("#ts-stream", StreamingOutput)
-
-    def _render_stream_chunk(self, output: StreamingOutput, payload: dict[str, Any]) -> None:
-        text = stream_chunk_text(payload)
-        kind = stream_chunk_kind(payload)
-        if not text:
-            return
-        if kind in {"assistant", "thought", "note", "user"}:
-            output.append_chunk(text, kind=cast("Any", kind), merge=True)
-            return
-        output.append_text(text)
 
     @on(StreamingOutput.LoadMore)
     async def _on_load_more(self) -> None:
@@ -1108,6 +903,8 @@ class TaskScreen(Screen[None]):
                             stream_chunk_text(payload) or "Task status changed", kind="note"
                         )
                     )
+                case _:
+                    continue
 
         if widgets:
             output.prepend_widgets(widgets)
@@ -1567,141 +1364,16 @@ class TaskScreen(Screen[None]):
             self.query_one("#ts-detail-status", Static).update(current_status)
         return current_status
 
-    @staticmethod
-    def _review_verdicts_by_index(task: Task, total_criteria: int) -> dict[int, ReviewVerdict]:
-        verdicts_by_index: dict[int, ReviewVerdict] = {}
-        for raw in task.review_verdicts or []:
-            if not isinstance(raw, dict):
-                continue
-            index = raw.get("criterion_index")
-            verdict = str(raw.get("verdict", "")).upper()
-            reason_raw = raw.get("reason")
-            reason = str(reason_raw).strip() if reason_raw is not None else ""
-            if (
-                isinstance(index, int)
-                and 0 <= index < total_criteria
-                and verdict in {"PASS", "FAIL"}
-            ):
-                verdicts_by_index[index] = {
-                    "criterion_index": index,
-                    "verdict": cast("Literal['PASS', 'FAIL']", verdict),
-                    "reason": reason,
-                }
-        return verdicts_by_index
-
-    @staticmethod
-    def _set_criterion_verdict_widget(
-        verdict_widget: Static,
-        reason_widget: Static,
-        verdict: ReviewVerdict | None,
-        *,
-        review_running: bool,
-    ) -> None:
-        verdict_widget.remove_class(
-            "ts-criteria-complete",
-            "ts-criteria-fail",
-            "ts-criteria-pending",
-        )
-        reason_text = verdict["reason"].strip() if verdict is not None else ""
-        if reason_text:
-            reason_text = "\n".join(f"    {line}" for line in reason_text.splitlines())
-        reason_widget.update(reason_text)
-        if verdict is not None and verdict["verdict"] == "PASS":
-            verdict_widget.update("  ✓ AI: PASS")
-            verdict_widget.add_class("ts-criteria-complete")
-            return
-        if verdict is not None and verdict["verdict"] == "FAIL":
-            verdict_widget.update("  ✗ AI: FAIL")
-            verdict_widget.add_class("ts-criteria-fail")
-            return
-        if review_running:
-            verdict_widget.update("  ⋯ AI: pending")
-            verdict_widget.add_class("ts-criteria-pending")
-            reason_widget.update("")
-            return
-        verdict_widget.update("")
-        reason_widget.update("")
-
-    def _render_ai_verdict_summary(self, task: Task, total_criteria: int) -> tuple[str, str]:
-        verdicts = self._review_verdicts_by_index(task, total_criteria)
-        if verdicts:
-            pass_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "PASS")
-            fail_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "FAIL")
-            if fail_count:
-                return f"AI: {pass_count}/{total_criteria} passed ({fail_count} failed)", "fail"
-            return f"AI: {pass_count}/{total_criteria} passed", "pass"
-        if task.status is TaskStatus.REVIEW and self._running:
-            return "AI Reviewing...", "pending"
-        return "", ""
-
     async def _render_criteria_checkboxes(self, task: Task) -> None:
-        criteria_container = self.query_one("#ts-detail-criteria-list", Vertical)
-        criteria_status = self.query_one("#ts-detail-criteria-status", Static)
-
-        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-        signature = tuple(criteria)
-        verdicts_by_index = self._review_verdicts_by_index(task, len(criteria))
-        review_running = task.status is TaskStatus.REVIEW and self._running
-
-        if criteria:
-            if signature != self._review_criteria_signature:
-                await criteria_container.remove_children()
-                for i, criterion in enumerate(criteria):
-                    checkbox = Checkbox(
-                        criterion,
-                        id=f"ts-detail-criterion-{i}",
-                        classes="ts-detail-criterion",
-                    )
-                    checkbox.styles.width = "100%"
-                    checkbox.styles.height = "auto"
-                    await criteria_container.mount(checkbox)
-                    verdict_widget = Static(
-                        id=f"ts-detail-criterion-verdict-{i}",
-                        classes="ts-detail-criterion-verdict",
-                    )
-                    verdict_widget.styles.width = "100%"
-                    verdict_widget.styles.height = "auto"
-                    await criteria_container.mount(verdict_widget)
-
-                    reason_widget = Static(
-                        id=f"ts-detail-criterion-reason-{i}",
-                        classes="ts-detail-criterion-reason",
-                    )
-                    reason_widget.styles.width = "100%"
-                    reason_widget.styles.height = "auto"
-                    await criteria_container.mount(reason_widget)
-
-                    verdict_info = verdicts_by_index.get(i)
-                    self._set_criterion_verdict_widget(
-                        verdict_widget,
-                        reason_widget,
-                        verdict_info,
-                        review_running=review_running,
-                    )
-                self._review_criteria_signature = signature
-
-            for i, _criterion in enumerate(criteria):
-                try:
-                    verdict_widget = self.query_one(f"#ts-detail-criterion-verdict-{i}", Static)
-                    reason_widget = self.query_one(f"#ts-detail-criterion-reason-{i}", Static)
-                except NoMatches:
-                    self._review_criteria_signature = None
-                    await self._render_criteria_checkboxes(task)
-                    return
-
-                verdict_info = verdicts_by_index.get(i)
-                self._set_criterion_verdict_widget(
-                    verdict_widget,
-                    reason_widget,
-                    verdict_info,
-                    review_running=review_running,
-                )
-            self._sync_criteria_status_widget(criteria_status)
-        else:
-            if self._review_criteria_signature != signature:
-                await criteria_container.remove_children()
-                self._review_criteria_signature = signature
-            criteria_status.update("")
+        self._review_criteria_signature = await render_criteria_checkboxes(
+            task=task,
+            criteria_container=self.query_one("#ts-detail-criteria-list", Vertical),
+            criteria_status=self.query_one("#ts-detail-criteria-status", Static),
+            previous_signature=self._review_criteria_signature,
+            running=self._running,
+            get_static=lambda selector: self.query_one(selector, Static),
+            sync_criteria_status=self._sync_criteria_status_widget,
+        )
 
     async def _render_changed_files(self, task: Task) -> None:
         try:
@@ -1709,11 +1381,11 @@ class TaskScreen(Screen[None]):
         except (SessionError, WorktreeError):
             diff_text = ""
         if not diff_text:
-            merged_fallback = await self._merged_commit_diff_fallback()
+            merged_fallback = await self._resolve_merged_commit_diff_fallback()
             if merged_fallback is not None:
                 diff_text = merged_fallback[0]
 
-        files, insertions, deletions = self._diff_totals(diff_text)
+        files, insertions, deletions = diff_totals(diff_text)
         with contextlib.suppress(NoMatches):
             self.query_one("#ts-detail-changes-summary", Static).update(
                 f"Changes - {files} files  +{insertions} -{deletions}"
@@ -1743,85 +1415,16 @@ class TaskScreen(Screen[None]):
 
     def _sync_merge_readiness(self) -> None:
         """Update the merge readiness checklist in the Review tab."""
-        task = self._task_model
         try:
             widget = self.query_one("#ts-merge-readiness", Static)
         except NoMatches:
             return
-
-        if task is None:
-            widget.update("")
-            return
-
-        if task.status is TaskStatus.DONE and task.review_verdicts:
-            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-            verdicts = self._review_verdicts_by_index(task, len(criteria))
-            pass_count = sum(1 for v in verdicts.values() if v["verdict"] == "PASS")
-            total = len(criteria)
-            widget.update(f"Review Summary (merged)\n  ✓ {pass_count}/{total} criteria passed")
-            return
-
-        if task.status is not TaskStatus.REVIEW:
-            widget.update("")
-            return
-
-        lines: list[str] = []
-        if task.review_approved:
-            lines.append("  ✓ Approved")
-        else:
-            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-            if criteria:
-                lines.append("  ✗ Not approved  →  a to approve")
-            else:
-                lines.append("  ✗ Not approved (no criteria)  →  a for options")
-
-        if self._last_merge_blocker:
-            lines.append(f"  ✗ {self._last_merge_blocker}")
-        else:
-            lines.append("  ✓ No merge blockers")
-
-        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-        verdicts = self._review_verdicts_by_index(task, len(criteria))
-        if verdicts:
-            pass_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "PASS")
-            fail_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "FAIL")
-            total = len(criteria)
-            if fail_count == 0 and pass_count == total:
-                lines.append(f"  ✓ AI review: all {total} criteria passed")
-            elif fail_count:
-                lines.append(f"  ✗ AI review: {fail_count}/{total} criteria failed")
-            else:
-                lines.append(f"  ⋯ AI review: {pass_count}/{total} criteria processed")
-        else:
-            lines.append("  ⋯ AI review: not run yet")
-
-        widget.update("Merge Readiness\n" + "\n".join(lines))
-
-    @staticmethod
-    def _parse_file_diff_summary(diff_text: str) -> list[tuple[str, int, int]]:
-        """Parse unified diff into per-file (path, insertions, deletions) tuples."""
-        entries: list[tuple[str, int, int]] = []
-        current_file: str | None = None
-        ins = 0
-        dels = 0
-        for line in diff_text.splitlines():
-            if line.startswith("diff --git a/"):
-                if current_file is not None:
-                    entries.append((current_file, ins, dels))
-                parts = line.split(" b/", maxsplit=1)
-                current_file = parts[1].strip() if len(parts) == 2 else None
-                ins = 0
-                dels = 0
-            elif current_file is not None:
-                if line.startswith("+++") or line.startswith("---"):
-                    continue
-                if line.startswith("+"):
-                    ins += 1
-                elif line.startswith("-"):
-                    dels += 1
-        if current_file is not None:
-            entries.append((current_file, ins, dels))
-        return entries
+        widget.update(
+            build_merge_readiness_text(
+                self._task_model,
+                last_merge_blocker=self._last_merge_blocker,
+            )
+        )
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         if not event.checkbox.has_class("ts-detail-criterion"):
@@ -1842,7 +1445,7 @@ class TaskScreen(Screen[None]):
         ai_summary = ""
         ai_state = ""
         if task is not None:
-            ai_summary, ai_state = self._render_ai_verdict_summary(task, total)
+            ai_summary, ai_state = render_ai_verdict_summary(task, total, running=self._running)
         if checked == total:
             human_summary = f"All {total} criteria verified"
             status.add_class("ts-criteria-complete")
@@ -1858,21 +1461,6 @@ class TaskScreen(Screen[None]):
         status.remove_class("ts-ai-pass", "ts-ai-fail")
         status.set_class(ai_state == "pass", "ts-ai-pass")
         status.set_class(ai_state == "fail", "ts-ai-fail")
-
-    def _diff_totals(self, diff_text: str) -> tuple[int, int, int]:
-        files = len(
-            {match.group(1) for match in re.finditer(r"^diff --git a/(.+?) b/", diff_text, re.M)}
-        )
-        insertions = 0
-        deletions = 0
-        for line in diff_text.splitlines():
-            if line.startswith("+++") or line.startswith("---"):
-                continue
-            if line.startswith("+"):
-                insertions += 1
-            elif line.startswith("-"):
-                deletions += 1
-        return files, insertions, deletions
 
     def on_diff_file_tree_file_selected(self, message: DiffFileTree.FileSelected) -> None:
         if message.entry is None:
@@ -1985,36 +1573,8 @@ class TaskScreen(Screen[None]):
 
     def _sync_overlay_layout_class(self) -> None:
         panel = self._overlay_panel()
-        tabs = self.query_one("#ts-tabs", TabbedContent)
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
-        if visible:
-            if fullscreen:
-                panel.styles.layer = "default"
-                panel.styles.dock = "bottom"
-                panel.styles.width = "100%"
-                panel.styles.height = "1fr"
-                panel.styles.max_height = "1fr"
-                panel.styles.min_height = "0"
-                tabs.styles.height = "1fr"
-            elif self._overlay_layout_mode == "vertical":
-                panel.styles.layer = "default"
-                panel.styles.dock = "right"
-                panel.styles.width = "44%"
-                panel.styles.height = "1fr"
-                panel.styles.max_height = "1fr"
-                panel.styles.min_height = "0"
-                tabs.styles.height = "1fr"
-            else:
-                panel.styles.layer = "default"
-                panel.styles.dock = "bottom"
-                panel.styles.width = "100%"
-                panel.styles.height = "50%"
-                panel.styles.max_height = "50%"
-                panel.styles.min_height = "8"
-                tabs.styles.height = "1fr"
-        else:
-            tabs.styles.height = "1fr"
         self.set_class(visible, "ts-chat-visible")
         self.set_class(fullscreen, "ts-chat-fullscreen")
         self.set_class(
@@ -2080,7 +1640,7 @@ class TaskScreen(Screen[None]):
             panel.set_mode_title("Task Chat")
             panel.set_session_kind("auto")
             panel.set_sessions(
-                [*self.kagan_app.orchestrator_sessions.options(), *self._task_session_options()],
+                build_session_options(self.kagan_app, self._task_session_options()),
                 self._active_task_session_key(),
             )
             if self._task_id is not None:
@@ -2137,7 +1697,7 @@ class TaskScreen(Screen[None]):
 
         active_key = self.kagan_app.orchestrator_sessions.active_key()
         panel.set_sessions(
-            [*self.kagan_app.orchestrator_sessions.options(), *self._task_session_options()],
+            build_session_options(self.kagan_app, self._task_session_options()),
             active_key,
         )
         panel.hydrate_current_session_history(self._chat_orchestrator_history)

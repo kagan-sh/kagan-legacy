@@ -284,6 +284,8 @@ Prompt resolution follows a three-layer hierarchy:
 | **Layer 2** | `.kagan/prompts/*.md` dotfiles | Full replacement; bypasses Layer 0 and Layer 1 |
 
 Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`, `detect_dotfile_overrides()`.
+
+`execution.md` dotfile overrides may include template placeholders such as `{task_title}` and `{task_description}`. If template rendering fails, Kagan falls back to the default compiled prompt and logs a warning rather than emitting a broken execution prompt.
 ______________________________________________________________________
 
 ## Event Streaming (Reactive)

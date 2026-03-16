@@ -163,7 +163,7 @@ class OnboardingFlow(ModalScreen[None]):
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()
-        default_agent = settings.get("default_agent_backend") or settings.get("default_agent")
+        default_agent = settings.get("default_agent_backend")
         agent_select = self.query_one("#setup-default-agent", Select)
         allowed_agents = {value for _, value in _AGENT_OPTIONS}
         if isinstance(default_agent, str) and default_agent in allowed_agents:
@@ -281,7 +281,6 @@ class OnboardingFlow(ModalScreen[None]):
         await self.kagan_app.core.settings.set(
             {
                 "default_agent_backend": default_agent,
-                "default_agent": default_agent,
                 "pair_launcher": pair_launcher,
                 "auto_review": "true" if auto_review else "false",
             }

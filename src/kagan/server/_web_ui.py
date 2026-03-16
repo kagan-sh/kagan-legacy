@@ -19,11 +19,9 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.types import Receive, Scope, Send
 
-# Resolved once at import time; overridden only by tests.
 _WEB_STATIC_DIR: Path = Path(__file__).parent / "_web_static"
 
-# Paths that must NOT be intercepted by the SPA fallback.
-_RESERVED_PREFIXES = ("/api/", "/auth/", "/health", "/ws", "/mcp", "/sse")
+_RESERVED_PREFIXES = ("/api/", "/health", "/ws", "/mcp", "/sse")
 
 
 def web_static_dir() -> Path:
@@ -52,7 +50,7 @@ class _SPAStaticFiles:
 
         path: str = scope.get("path", "/")
 
-        # Never intercept reserved API/auth/ws paths.
+        # Never intercept reserved API/ws paths.
         if any(path.startswith(prefix) for prefix in _RESERVED_PREFIXES):
             from starlette.responses import Response
 
@@ -77,7 +75,7 @@ def register_web_ui(mcp: FastMCP) -> None:
     """Mount the bundled web UI on the server.
 
     Appends a catch-all ``Mount`` to the FastMCP custom Starlette routes.
-    Must be called **after** all API/auth/ws routes have been registered so
+    Must be called **after** all API/ws routes have been registered so
     the SPA fallback is the lowest-priority route.
 
     No-ops silently when the web bundle directory is missing or empty.

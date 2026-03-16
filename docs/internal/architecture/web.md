@@ -101,13 +101,15 @@ ______________________________________________________________________
 ## API Layer
 
 - **`src/lib/api/client.ts`**
-  - owns base URL, bearer token, refresh token, bundled-web mode, and REST helpers
+  - owns base URL, bundled-web mode, and REST helpers
   - unwraps `WireEnvelope<T>` responses and normalizes API errors
 - **`src/lib/api/websocket.ts`**
-  - manages connect/auth/reconnect lifecycle
+  - manages connect/reconnect lifecycle
   - emits board, run, session, and chat events into the UI
   - chat events: `CHAT_CHUNK`, `CHAT_TOOL_START`, `CHAT_TOOL_PROGRESS`, `CHAT_DONE`, `CHAT_ERROR`, `CHAT_INTERRUPTED`, `CHAT_SESSION_UPDATED`
   - `OrchestratorChatPanel` manages streaming state locally and passes `disableSend` to `ChatInputBar` for wave/interrupt indicator
+
+Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.
 
 ______________________________________________________________________
 

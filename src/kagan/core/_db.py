@@ -1,4 +1,3 @@
-import logging
 import os
 import sqlite3
 from pathlib import Path
@@ -14,6 +13,9 @@ from sqlmodel import create_engine
 
 _HEAD_REVISION = "0001_v060_to_latest"
 _LEGACY_REVISION_REMAP = {"5b95758fdb4d": _HEAD_REVISION}
+
+logger.disable("sqlalchemy")
+logger.disable("alembic")
 
 
 def _make_alembic_config(database_url: str, connection: Connection | None = None) -> Config:
@@ -51,7 +53,6 @@ def _run_alembic_upgrade(database_url: str, connection: Connection | None = None
     config = _make_alembic_config(database_url, connection)
     if connection is not None:
         _normalize_revision_state(config, connection)
-    logging.getLogger("alembic.runtime.migration").setLevel(logging.WARNING)
     command.upgrade(config, "head")
 
 

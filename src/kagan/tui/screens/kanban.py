@@ -21,6 +21,12 @@ from kagan.core.enums import Priority, TaskStatus, WorkMode
 from kagan.core.errors import KaganError
 from kagan.core.models import Task
 from kagan.runtime_env import build_sanitized_subprocess_environment
+from kagan.tui._chat_helpers import (
+    TitleGenerationSession,
+    build_session_options,
+    kick_title_generation,
+    send_task_message,
+)
 from kagan.tui.keybindings import (
     KANBAN_BINDINGS,
     get_global_shortcut_help_rows,
@@ -354,35 +360,6 @@ class KanbanScreen(Screen[None]):
         if not self._all_tasks and visible and not fullscreen:
             self._chat_overlay_layout_mode = "vertical"
         expanded = visible and (panel.has_class("expanded") or fullscreen)
-
-        if visible and fullscreen:
-            panel.styles.layer = "default"
-            panel.styles.dock = "bottom"
-            panel.styles.width = "100%"
-            panel.styles.height = "1fr"
-            panel.styles.max_height = "1fr"
-            panel.styles.min_height = "0"
-        elif visible and not fullscreen and self._chat_overlay_layout_mode == "vertical":
-            panel.styles.layer = "default"
-            panel.styles.dock = "right"
-            panel.styles.width = "44%"
-            panel.styles.height = "1fr"
-            panel.styles.max_height = "1fr"
-            panel.styles.min_height = "0"
-        elif visible and not fullscreen:
-            panel.styles.layer = "default"
-            panel.styles.dock = "bottom"
-            panel.styles.width = "100%"
-            panel.styles.height = "50%"
-            panel.styles.max_height = "50%"
-            panel.styles.min_height = "3"
-        else:
-            panel.styles.layer = "overlay"
-            panel.styles.dock = "bottom"
-            panel.styles.width = "100%"
-            panel.styles.height = "1fr"
-            panel.styles.max_height = "1fr"
-            panel.styles.min_height = "0"
 
         self.set_class(visible, "chat-overlay-visible")
         self.set_class(expanded, "chat-overlay-expanded")
@@ -871,13 +848,7 @@ class KanbanScreen(Screen[None]):
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
         panel.set_session_kind("auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            TASK_WORKER_SESSION_KEY,
-        )
+        panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
 
@@ -897,13 +868,7 @@ class KanbanScreen(Screen[None]):
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
         panel.set_session_kind("auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            TASK_WORKER_SESSION_KEY,
-        )
+        panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
 
@@ -1629,13 +1594,7 @@ class KanbanScreen(Screen[None]):
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
         panel.set_session_kind("review" if "review" in message.key.casefold() else "auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            message.key,
-        )
+        panel.set_sessions(build_session_options(self.kagan_app, task), message.key)
         self._ensure_chat_stream_worker(task.id)
 
     def on_chat_panel_session_picker_requested(
@@ -1711,18 +1670,20 @@ class KanbanScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
-            # Auto-generate a session title after the first turn
             if should_title and self._chat_orchestrator_history:
-                assistant_reply = (
-                    self._chat_orchestrator_history[-1][1]
-                    if self._chat_orchestrator_history[-1][0] == "assistant"
-                    else ""
-                )
-                backend = panel.preferred_agent_backend() or resolve_default_agent_backend(
-                    await self.kagan_app.core.settings.get()
-                )
+                task = self._selected_task()
                 asyncio.create_task(
-                    self._update_orchestrator_session_title(panel, text, assistant_reply, backend),
+                    kick_title_generation(
+                        TitleGenerationSession(
+                            orchestrator_sessions=self.kagan_app.orchestrator_sessions,
+                            panel=panel,
+                            user_message=text,
+                            history=self._chat_orchestrator_history,
+                            session_options=build_session_options(self.kagan_app, task),
+                            is_mounted=lambda: self.is_mounted,
+                        ),
+                        self.kagan_app.core,
+                    ),
                     name="tui-chat-title-gen",
                 )
         except asyncio.CancelledError:
@@ -1733,32 +1694,6 @@ class KanbanScreen(Screen[None]):
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {exc}")
-
-    async def _update_orchestrator_session_title(
-        self,
-        panel: ChatPanel,
-        user_message: str,
-        assistant_reply: str,
-        agent_backend: str,
-    ) -> None:
-        """Generate a session title and update the Session Switcher."""
-        try:
-            title = await self.kagan_app.orchestrator_sessions.generate_title(
-                user_message=user_message,
-                assistant_reply=assistant_reply,
-                agent_backend=agent_backend,
-            )
-            if title and self.is_mounted:
-                # Refresh session options in the chat panel
-                task = self._selected_task()
-                task_sessions = self._task_session_options(task) if task is not None else []
-                active_key = self.kagan_app.orchestrator_sessions.active_key()
-                panel.set_sessions(
-                    [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                    active_key,
-                )
-        except Exception:
-            pass  # Title generation is best-effort
 
     async def _switch_orchestrator_session(
         self,
@@ -1814,11 +1749,7 @@ class KanbanScreen(Screen[None]):
 
         active_key = self.kagan_app.orchestrator_sessions.active_key()
         task = self._selected_task()
-        task_sessions = self._task_session_options(task) if task is not None else []
-        panel.set_sessions(
-            [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-            active_key,
-        )
+        panel.set_sessions(build_session_options(self.kagan_app, task), active_key)
         panel.hydrate_current_session_history(self._chat_orchestrator_history)
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
@@ -1839,25 +1770,13 @@ class KanbanScreen(Screen[None]):
             return
 
         self._chat_active_task_id = task.id
-        with contextlib.suppress(KaganError, OSError, RuntimeError):
-            await self.kagan_app.core.tasks.cancel(task.id)
-
-        merged_description = task.description.strip()
-        follow_up = f"User follow-up:\n{text}".strip()
-        updated_description = (
-            f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-        )
         try:
-            await self.kagan_app.core.tasks.update(task.id, description=updated_description)
-
-            workspace = await self.kagan_app.core.worktrees.get(task.id)
-            if workspace is None:
-                await self.kagan_app.core.worktrees.create(task.id)
+            updated_task = await send_task_message(self.kagan_app.core, task, text, panel)
 
             settings = await self.kagan_app.core.settings.get()
             backend = (
                 panel.preferred_agent_backend()
-                or task.agent_backend
+                or updated_task.agent_backend
                 or resolve_default_agent_backend(settings)
             )
             panel.set_runtime_status("initializing")

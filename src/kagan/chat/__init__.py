@@ -3,6 +3,7 @@
 Public API re-exported from private sub-modules.
 """
 
+from kagan.chat._completion import fuzzy_match
 from kagan.chat._title import ensure_session_title, generate_session_title, is_default_title
 from kagan.chat.acp import run_orchestrator_turn, warm_orchestrator_backend
 from kagan.chat.agents import (
@@ -34,6 +35,7 @@ from kagan.chat.prompt import (
     build_chat_status_line,
     build_orchestrator_prompt,
     format_session_payload,
+    merge_task_follow_up_description,
     normalize_chat_input,
 )
 from kagan.chat.repl import (
@@ -83,6 +85,7 @@ __all__ = [
     "format_agent_usage",
     "format_session_payload",
     "format_unknown_slash_command",
+    "fuzzy_match",
     "generate_session_title",
     "get_chat_session",
     "get_last_session_id",
@@ -90,6 +93,7 @@ __all__ = [
     "is_default_title",
     "list_chat_sessions",
     "list_registered_agent_backends",
+    "merge_task_follow_up_description",
     "normalize_chat_input",
     "parse_slash_invocation",
     "resolve_agent_backend_selection",

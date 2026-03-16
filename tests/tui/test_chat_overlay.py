@@ -143,7 +143,7 @@ async def test_chat_overlay_keeps_empty_board_review_hint_visible(tmp_path) -> N
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
-        await app.workers.wait_for_complete()
+        await pilot.pause()
         await pilot.pause()
 
         hint = app.screen.query_one("#review-queue-hint", Static)
@@ -323,7 +323,7 @@ async def test_board_orchestrator_message_does_not_fall_back_to_task_chat(
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
-        await app.workers.wait_for_complete()
+        await pilot.pause()
         await pilot.pause()
 
         app.screen.query_one("#chat-overlay-input", Input).focus()
@@ -376,7 +376,7 @@ async def test_chat_input_is_disabled_while_orchestrator_reply_is_running(
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
-        await app.workers.wait_for_complete()
+        await pilot.pause()
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -665,7 +665,7 @@ async def test_ctrl_o_focuses_input_when_no_tasks(tmp_path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
-        await app.workers.wait_for_complete()
+        await pilot.pause()
         await pilot.pause()
 
         # On empty boards the chat auto-opens — verify panel is visible
@@ -679,7 +679,7 @@ async def test_ctrl_o_focuses_input_when_no_tasks(tmp_path) -> None:
         assert not panel.has_class("visible")
 
         await pilot.press("ctrl+i")
-        await app.workers.wait_for_complete()
+        await pilot.pause()
         await pilot.pause()
         assert panel.has_class("visible")
 

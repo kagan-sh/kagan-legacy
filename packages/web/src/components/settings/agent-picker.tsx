@@ -32,7 +32,6 @@ export function AgentPicker() {
       try {
         await apiClient.setSettings({
           default_agent_backend: backend,
-          default_agent: backend,
         });
         setDefaultBackend(backend);
         toast.success(`Agent backend set to ${backend}`);

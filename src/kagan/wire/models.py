@@ -1,30 +1,16 @@
 """Wire-format models for Kagan remote clients.
 
-Pure Pydantic v2 models — no SQLModel, no kagan.core imports.
+Pure Pydantic v2 models — no SQLModel dependencies.
 Field names and types match ``_task_to_dict()`` exactly.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
-def utc_iso(dt: datetime | None) -> str | None:
-    """Format a datetime as an ISO 8601 UTC string with trailing 'Z'.
-
-    SQLite returns naive datetimes (no tzinfo) even though they are stored as
-    UTC.  This helper normalises both naive and aware datetimes to a consistent
-    ``YYYY-MM-DDTHH:MM:SS.ffffffZ`` representation so every consumer (web,
-    TUI, MCP, chat) can unambiguously interpret them as UTC.
-    """
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        dt = dt.astimezone(UTC).replace(tzinfo=None)
-    return dt.isoformat() + "Z"
+from kagan.core._utils import utc_iso
 
 
 class WireTaskActiveSession(BaseModel):
@@ -97,14 +83,27 @@ class WireSession(BaseModel):
     task_id: str
     status: str
     mode: str
-    created_at: str
+    started_at: str
+    created_at: str | None = None
 
 
 class WireEvent(BaseModel):
     """Serialisable representation of a Kagan event."""
 
     id: str
-    session_id: str
+    session_id: str | None = None
     type: str
     payload: dict[str, object] = Field(default_factory=dict)
     created_at: str
+
+
+__all__ = [
+    "WireEvent",
+    "WireProject",
+    "WireRepository",
+    "WireReviewVerdict",
+    "WireSession",
+    "WireTask",
+    "WireTaskActiveSession",
+    "utc_iso",
+]

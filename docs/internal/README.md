@@ -23,7 +23,7 @@ docs/internal/
     web.md          # Web client behaviors
     cli.md          # CLI behaviors
     mcp.md          # MCP tool behaviors
-    server.md       # Server features (REST, WebSocket, API auth)
+server.md       # Server features (REST, WebSocket)
     plugins.md      # Plugin behaviors
     github_import_user_experience.md # Layman-first GitHub import rollout plan
   testing.md        # Acceptance test commandments

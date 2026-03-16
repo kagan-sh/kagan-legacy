@@ -12,7 +12,7 @@ export const hydrateAuthAtom = atom(null, async (_get, set) => {
     await apiClient.getHealth();
     apiClient.configureBundledWeb();
     if (typeof window !== 'undefined') {
-      kaganWs.configure(window.location.origin, '');
+      kaganWs.configure(window.location.origin);
     }
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
@@ -29,7 +29,7 @@ export const retryHealthCheckAtom = atom(null, async (_get, set) => {
     await apiClient.getHealth();
     apiClient.configureBundledWeb();
     if (typeof window !== 'undefined') {
-      kaganWs.configure(window.location.origin, '');
+      kaganWs.configure(window.location.origin);
     }
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
@@ -42,7 +42,6 @@ export const retryHealthCheckAtom = atom(null, async (_get, set) => {
 });
 
 export const logoutAtom = atom(null, (_get, set) => {
-  apiClient.setToken(null);
   kaganWs.disconnect();
   set(isAuthenticatedAtom, false);
   set(isAuthLoadingAtom, false);

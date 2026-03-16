@@ -8,7 +8,7 @@ from kagan.cli._bootstrap import run_async
     name="serve",
     help=(
         "Run the Kagan HTTP API server.\n\n"
-        "Starts a REST + WebSocket server for integrations and API clients.\n\n"
+        "Starts a REST + WebSocket server for local integrations.\n\n"
         "Common usage:\n"
         "  kagan serve\n"
         "  kagan serve --host 0.0.0.0 --port 8765 --tls"
@@ -19,9 +19,6 @@ from kagan.cli._bootstrap import run_async
 @click.option("--port", default=8765, show_default=True, type=int, help="Bind port")
 @click.option("--readonly", is_flag=True, help="Read-only access tier")
 @click.option("--admin", is_flag=True, help="Admin access tier")
-@click.option(
-    "--token", "auth_token", type=str, default=None, help="Auth token (auto-generated if omitted)"
-)
 @click.option("--db", "db_path", type=str, hidden=True)
 @click.option("--project-id", "project_id", type=str, hidden=True)
 @click.option("--tls", "enable_tls", is_flag=True, help="Enable HTTPS with self-signed certificate")
@@ -30,7 +27,6 @@ def serve(
     port: int,
     readonly: bool,
     admin: bool,
-    auth_token: str | None,
     db_path: str | None,
     project_id: str | None,
     enable_tls: bool,
@@ -52,7 +48,6 @@ def serve(
         mcp_opts=mcp_opts,
         host=host,
         port=port,
-        auth_token=auth_token,
         enable_tls=enable_tls,
     )
 

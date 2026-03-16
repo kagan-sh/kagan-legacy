@@ -1,6 +1,6 @@
 # Server Architecture — `kagan.server`
 
-*Design principles: FastMCP native, REST + WebSocket, bundled dashboard first, optional API auth.*
+*Design principles: FastMCP native, REST + WebSocket, bundled dashboard first.*
 
 ______________________________________________________________________
 
@@ -26,7 +26,7 @@ ______________________________________________________________________
 1. **Hybrid Transport** — Standard MCP (STDIO) + StreamableHTTP (REST/WS).
 1. **Stateless REST** — Standard HTTP verbs for resource management.
 1. **Reactive WebSocket** — Event-driven board synchronization and run management.
-1. **Optional API Auth** — Pairing and bearer tokens exist for non-bundled API clients only.
+1. **Same-origin dashboard** — the bundled web app talks directly to the server that serves it.
 
 ______________________________________________________________________
 
@@ -36,7 +36,6 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py        # re-export create_api_server
 ├── server.py          # ApiServer factory, entry point
-├── _auth.py           # Pairing and Bearer token middleware
 ├── _routes.py         # REST API implementation
 └── _websocket.py      # WebSocket protocol and event broadcasting
 ```
@@ -58,24 +57,7 @@ ______________________________________________________________________
 1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
 1. Calls `register_routes(mcp)` to add the REST API.
-1. Calls `register_auth(mcp)` to install security middleware for non-bundled API clients.
 1. Calls `register_websocket(mcp)` to add the real-time stream.
-
-______________________________________________________________________
-
-## Authentication Flow
-
-Kagan uses a two-stage pairing process for non-bundled API clients:
-
-1. **Pairing**:
-   - Server generates a one-time `_pairing_secret` at startup.
-   - CLI displays a QR code containing the server URI and secret.
-   - API client scans QR or submits credentials and POSTs to `/auth/pair`.
-   - Server validates secret and returns a long-lived `token`.
-1. **Authorization**:
-   - `BearerAuthMiddleware` (Starlette) intercepts all API requests (except `/health`, `/auth/pair`).
-   - Clients must provide `Authorization: Bearer <token>`.
-   - WebSocket handshake also requires an `AUTH` message with the token.
 
 ______________________________________________________________________
 
@@ -86,8 +68,6 @@ All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: st
 | Endpoint                           | Method | Description                           |
 | ---------------------------------- | ------ | ------------------------------------- |
 | `/health`                          | GET    | Service health check                  |
-| `/auth/pair`                       | POST   | Pair a new API client with secret     |
-| `/auth/verify`                     | GET    | Verify validity of bearer token       |
 | `/api/tasks`                       | GET    | List tasks (optional `status` filter) |
 | `/api/tasks`                       | POST   | Create a new task                     |
 | `/api/tasks/counts`                | GET    | Get task counts grouped by status     |
@@ -114,11 +94,6 @@ ______________________________________________________________________
 ## WebSocket Protocol
 
 Endpoint: `/ws`
-
-### Handshake
-
-1. Client sends: `{ "t": "AUTH", "token": "..." }`
-1. Server responds: `{ "t": "AUTH_OK" }` or `{ "t": "AUTH_FAIL" }`
 
 ### Client Messages
 
@@ -148,7 +123,7 @@ When `kagan web` is used, the API server starts in `web_ui=True` mode and mounts
 
 ### Mount strategy
 
-- `create_api_server()` registers REST/chat/auth/websocket routes first.
+- `create_api_server()` registers REST/chat/websocket routes first.
 - `register_web_ui(mcp)` is called last so SPA fallback has the lowest route priority.
 - `_web_ui.py` mounts `_SPAStaticFiles` at `/`.
 
@@ -159,7 +134,6 @@ When `kagan web` is used, the API server starts in `web_ui=True` mode and mounts
 Reserved prefixes bypass fallback and stay server-owned:
 
 - `/api/`
-- `/auth/`
 - `/health`
 - `/ws`
 - `/mcp`
@@ -175,9 +149,10 @@ uv run poe web-build
 
 This flows from `packages/web/build/` into `src/kagan/server/_web_static/` via `scripts/build_web_ui.sh`.
 
-### Bundled mode auth behavior
+### Bundled mode behavior
 
-- In bundled mode, `register_websocket(mcp, require_auth=not opts.web_ui)` disables token handshake.
-- Browser and API share origin, so the bundled dashboard bootstraps from `/health` and skips pairing.
+- `kagan web` is the supported dashboard mode.
+- Browser and API share origin, so the bundled dashboard bootstraps from `/health` and connects to `/ws` directly.
+- `--host 0.0.0.0` allows LAN access to that same local dashboard server; there is no separate remote pairing flow.
 
 For web-client internals (stores, routing, components), see `docs/internal/architecture/web.md`.

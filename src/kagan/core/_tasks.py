@@ -19,10 +19,10 @@ from kagan.core._db_helpers import (
 from kagan.core._events import BoardEvent, Events
 from kagan.core._sessions import Sessions
 from kagan.core._transitions import validate_move
+from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
 from kagan.core.errors import KaganError, NotFoundError, SessionError
 from kagan.core.models import AuditEntry, Project, Session, SessionEvent, Task, TaskNote, Worktree
-from kagan.wire.models import utc_iso
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore

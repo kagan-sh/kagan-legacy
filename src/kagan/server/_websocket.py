@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 from typing import TYPE_CHECKING, Any, cast
 
+from loguru import logger
 from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from kagan.core._utils import utc_iso
 from kagan.mcp._policy import AccessTier
 from kagan.mcp.server import get_server_context
 from kagan.server._access import is_access_allowed, websocket_forbidden
-from kagan.server._auth import _is_authorized_token
-from kagan.wire.models import utc_iso
+from kagan.server._helpers import task_to_wire_dict
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -27,12 +27,107 @@ if TYPE_CHECKING:
 _CHAT_CHUNK_THROTTLE_SECONDS = 0.05
 
 
-_WS_AUTH_TIMEOUT_SECONDS = 10.0
 _WS_HEARTBEAT_INTERVAL_SECONDS = 30.0
 _WS_HEARTBEAT_TIMEOUT_SECONDS = 10.0
 _WS_QUEUE_MAXSIZE = 1000
 _ws_connections: set[asyncio.Queue[dict[str, object]]] = set()
 _chat_turn_tasks: dict[str, asyncio.Task[None]] = {}
+
+
+class ChatChunkThrottler:
+    def __init__(
+        self,
+        *,
+        websocket: WebSocket,
+        session_id: str,
+        min_interval: float = _CHAT_CHUNK_THROTTLE_SECONDS,
+    ) -> None:
+        self._websocket = websocket
+        self._session_id = session_id
+        self._min_interval = min_interval
+        self._send_lock = asyncio.Lock()
+        self._last_send_time = 0.0
+        self._pending_content = ""
+        self._pending_thought = False
+
+    async def flush(self) -> None:
+        async with self._send_lock:
+            if not self._pending_content:
+                return
+            content = self._pending_content
+            thought = self._pending_thought
+            self._pending_content = ""
+            self._pending_thought = False
+            self._last_send_time = asyncio.get_running_loop().time()
+            payload: dict[str, object] = {
+                "t": "CHAT_CHUNK",
+                "session_id": self._session_id,
+                "content": content,
+            }
+            if thought:
+                payload["thought"] = True
+            try:
+                await self._websocket.send_json(payload)
+            except Exception:
+                logger.debug("Failed to send chat chunk update", exc_info=True)
+
+    async def on_update(self, update: Any) -> None:
+        from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
+
+        if isinstance(update, AgentMessageChunk):
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                chunk_text = getattr(content, "text", "") or ""
+                if chunk_text:
+                    if self._pending_thought and self._pending_content:
+                        await self.flush()
+                    self._pending_thought = False
+                    self._pending_content += chunk_text
+                    now = asyncio.get_running_loop().time()
+                    if now - self._last_send_time >= self._min_interval:
+                        await self.flush()
+                    return
+        elif isinstance(update, AgentThoughtChunk):
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                chunk_text = getattr(content, "text", "") or ""
+                if chunk_text:
+                    if not self._pending_thought and self._pending_content:
+                        await self.flush()
+                    self._pending_thought = True
+                    self._pending_content += chunk_text
+                    now = asyncio.get_running_loop().time()
+                    if now - self._last_send_time >= self._min_interval:
+                        await self.flush()
+                    return
+        elif isinstance(update, ToolCallStart):
+            await self.flush()
+            title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
+            try:
+                await self._websocket.send_json(
+                    {
+                        "t": "CHAT_TOOL_START",
+                        "session_id": self._session_id,
+                        "tool": title,
+                    }
+                )
+            except Exception:
+                logger.debug("Failed to send tool start update", exc_info=True)
+        elif isinstance(update, ToolCallProgress):
+            await self.flush()
+            status = getattr(update, "status", None)
+            title = getattr(update, "title", None) or "tool"
+            try:
+                await self._websocket.send_json(
+                    {
+                        "t": "CHAT_TOOL_PROGRESS",
+                        "session_id": self._session_id,
+                        "tool": title,
+                        "status": str(status) if status else None,
+                    }
+                )
+            except Exception:
+                logger.debug("Failed to send tool progress update", exc_info=True)
 
 
 def _track_chat_turn_task(session_id: str, task: asyncio.Task[None]) -> None:
@@ -96,6 +191,7 @@ async def _board_event_bridge(mcp: FastMCP) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
+            logger.debug("Board event bridge stream failed; retrying", exc_info=True)
             await asyncio.sleep(1.0)
 
 
@@ -141,6 +237,7 @@ async def _cross_process_sync(mcp: FastMCP) -> None:
                 broadcast({"t": "TASK_UPDATED", "task_id": tid})
             snapshot = current
         except Exception:
+            logger.debug("Cross-process sync poll failed; continuing", exc_info=True)
             continue
 
 
@@ -158,32 +255,8 @@ async def _close_safely(websocket: WebSocket, code: int, reason: str) -> None:
     try:
         await websocket.close(code=code, reason=reason)
     except Exception:
+        logger.debug("WebSocket close failed", exc_info=True)
         return
-
-
-async def _authenticate(websocket: WebSocket) -> bool:
-    try:
-        raw = await asyncio.wait_for(
-            websocket.receive_json(),
-            timeout=_WS_AUTH_TIMEOUT_SECONDS,
-        )
-    except Exception:
-        await _close_safely(websocket, code=4001, reason="Auth timeout")
-        return False
-
-    if not isinstance(raw, dict):
-        await websocket.send_json({"t": "AUTH_FAIL"})
-        await _close_safely(websocket, code=4003, reason="Unauthorized")
-        return False
-
-    token = raw.get("token")
-    if raw.get("t") != "AUTH" or not isinstance(token, str) or not _is_authorized_token(token):
-        await websocket.send_json({"t": "AUTH_FAIL"})
-        await _close_safely(websocket, code=4003, reason="Unauthorized")
-        return False
-
-    await websocket.send_json({"t": "AUTH_OK"})
-    return True
 
 
 async def _sender_loop(
@@ -208,7 +281,7 @@ async def _sender_loop(
 
 
 def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
+    return settings.get("default_agent_backend") or "claude-code"
 
 
 async def _resolve_project_cwd(client: Any) -> Path | None:
@@ -216,36 +289,12 @@ async def _resolve_project_cwd(client: Any) -> Path | None:
     return await client.projects.resolve_repo_path(settings=settings)
 
 
-def _task_to_dict(task: Any, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
-    runtime = runtime or {}
-    active_session = runtime.get("active_session")
-    is_review_task = getattr(getattr(task, "status", None), "value", None) == "REVIEW"
-    return {
-        "id": task.id,
-        "title": task.title,
-        "description": getattr(task, "description", ""),
-        "status": task.status.value,
-        "priority": task.priority.name,
-        "execution_mode": task.execution_mode.value,
-        "base_branch": getattr(task, "base_branch", None),
-        "acceptance_criteria": getattr(task, "acceptance_criteria", []),
-        "agent_backend": getattr(task, "agent_backend", None),
-        "launcher": getattr(task, "launcher", None),
-        "review_approved": getattr(task, "review_approved", False),
-        "review_verdicts": getattr(task, "review_verdicts", []) or [],
-        "updated_at": utc_iso(getattr(task, "updated_at", None)),
-        "last_event_at": runtime.get("last_event_at"),
-        "has_workspace": bool(runtime.get("has_workspace", False)),
-        "review_running": is_review_task and isinstance(active_session, dict),
-        "active_session": active_session,
-    }
-
-
 def _event_to_wire_dict(event: Any) -> dict[str, Any]:
     created_at = getattr(event, "created_at", None)
+    raw_session_id = getattr(event, "session_id", None)
     return {
         "id": str(getattr(event, "id", "")),
-        "session_id": str(getattr(event, "session_id", "") or ""),
+        "session_id": str(raw_session_id) if raw_session_id else None,
         "type": str(getattr(getattr(event, "event_type", None), "value", "")),
         "payload": cast("dict[str, object]", getattr(event, "payload", {})),
         "created_at": utc_iso(created_at) or "",
@@ -264,7 +313,7 @@ async def _forward_live_session_events(
 
     try:
         async for event in ctx.client.tasks.events.stream_all(replay=False):
-            with contextlib.suppress(Exception):
+            try:
                 await websocket.send_json(
                     {
                         "t": "SESSION_EVENT",
@@ -272,9 +321,12 @@ async def _forward_live_session_events(
                         "event": _event_to_wire_dict(event),
                     }
                 )
+            except Exception:
+                logger.debug("Failed to forward live session event to websocket", exc_info=True)
     except asyncio.CancelledError:
         raise
     except Exception:
+        logger.debug("Live session event forward loop failed", exc_info=True)
         return
 
 
@@ -335,7 +387,7 @@ async def _handle_board_subscribe(
     await websocket.send_json(
         {
             "t": "BOARD_SYNC",
-            "tasks": [_task_to_dict(task, runtime=runtime.get(task.id)) for task in tasks],
+            "tasks": [task_to_wire_dict(task, runtime=runtime.get(task.id)) for task in tasks],
         }
     )
 
@@ -441,8 +493,6 @@ async def _handle_task_follow_up(
     Mirrors TUI ``_send_task_message``: cancel the current agent, append the
     follow-up to the task description, then restart the agent.
     """
-    from loguru import logger
-
     task_id = raw.get("task_id")
     text = raw.get("text")
     if not isinstance(task_id, str) or not task_id or not isinstance(text, str) or not text.strip():
@@ -472,8 +522,10 @@ async def _handle_task_follow_up(
 
     try:
         # Cancel the running agent (ignore errors if not running)
-        with contextlib.suppress(Exception):
+        try:
             await ctx.client.tasks.cancel(task_id)
+        except Exception:
+            logger.debug("Task follow-up cancel best-effort failed", exc_info=True)
 
         # Get the current task and append follow-up to description
         task = await ctx.client.tasks.get(task_id)
@@ -601,6 +653,16 @@ async def _handle_chat_send_message(
             }
         )
         return
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="CHAT_ERROR",
+                operation="Chat messages",
+                minimum_tier=AccessTier.STANDARD,
+                extra={"session_id": session_id},
+            )
+        )
+        return
 
     running_task = _chat_turn_tasks.get(session_id)
     if running_task is not None and not running_task.done():
@@ -677,8 +739,14 @@ async def _handle_chat_interrupt(
         return
 
     running_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError, TimeoutError, Exception):
+    try:
         await asyncio.wait_for(running_task, timeout=5.0)
+    except asyncio.CancelledError:
+        logger.debug("Chat interrupt wait cancelled", exc_info=True)
+    except TimeoutError:
+        logger.debug("Chat interrupt wait timed out", exc_info=True)
+    except Exception:
+        logger.debug("Chat interrupt wait failed", exc_info=True)
 
     await websocket.send_json(
         {
@@ -698,12 +766,6 @@ async def _handle_chat_send(
     agent_backend: str | None,
     attachments: list[dict[str, str]] | None = None,
 ) -> None:
-    """Run an orchestrator turn and stream ACP events back via WebSocket."""
-    from asyncio import Lock
-
-    from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
-    from loguru import logger
-
     from kagan.chat.acp import run_orchestrator_turn
     from kagan.chat.prompt import build_orchestrator_prompt
     from kagan.chat.sessions import get_chat_session, save_chat_session
@@ -727,86 +789,7 @@ async def _handle_chat_send(
     backend = (
         agent_backend or session.get("agent_backend") or _resolve_default_agent_backend(settings)
     )
-
-    # Throttle state for CHAT_CHUNK messages
-    send_lock = Lock()
-    last_send_time = 0.0
-    pending_content = [""]
-    pending_thought = [False]
-
-    async def _flush_chunk() -> None:
-        nonlocal last_send_time
-        async with send_lock:
-            if not pending_content[0]:
-                return
-            content = pending_content[0]
-            thought = pending_thought[0]
-            pending_content[0] = ""
-            pending_thought[0] = False
-            last_send_time = asyncio.get_event_loop().time()
-            with contextlib.suppress(Exception):
-                msg: dict[str, object] = {
-                    "t": "CHAT_CHUNK",
-                    "session_id": session_id,
-                    "content": content,
-                }
-                if thought:
-                    msg["thought"] = True
-                await websocket.send_json(msg)
-
-    async def on_update(update: Any) -> None:
-        nonlocal last_send_time
-        if isinstance(update, AgentMessageChunk):
-            content = getattr(update, "content", None)
-            if content and getattr(content, "type", None) == "text":
-                chunk_text = getattr(content, "text", "") or ""
-                if chunk_text:
-                    # If switching from thought to text, flush pending thought first
-                    if pending_thought[0] and pending_content[0]:
-                        await _flush_chunk()
-                    pending_thought[0] = False
-                    pending_content[0] += chunk_text
-                    now = asyncio.get_event_loop().time()
-                    if now - last_send_time >= _CHAT_CHUNK_THROTTLE_SECONDS:
-                        await _flush_chunk()
-                    return
-        elif isinstance(update, AgentThoughtChunk):
-            content = getattr(update, "content", None)
-            if content and getattr(content, "type", None) == "text":
-                chunk_text = getattr(content, "text", "") or ""
-                if chunk_text:
-                    # If switching from text to thought, flush pending text first
-                    if not pending_thought[0] and pending_content[0]:
-                        await _flush_chunk()
-                    pending_thought[0] = True
-                    pending_content[0] += chunk_text
-                    now = asyncio.get_event_loop().time()
-                    if now - last_send_time >= _CHAT_CHUNK_THROTTLE_SECONDS:
-                        await _flush_chunk()
-                    return
-        elif isinstance(update, ToolCallStart):
-            await _flush_chunk()
-            title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
-            with contextlib.suppress(Exception):
-                await websocket.send_json(
-                    {
-                        "t": "CHAT_TOOL_START",
-                        "session_id": session_id,
-                        "tool": title,
-                    }
-                )
-        elif isinstance(update, ToolCallProgress):
-            status = getattr(update, "status", None)
-            title = getattr(update, "title", None) or "tool"
-            with contextlib.suppress(Exception):
-                await websocket.send_json(
-                    {
-                        "t": "CHAT_TOOL_PROGRESS",
-                        "session_id": session_id,
-                        "tool": title,
-                        "status": str(status) if status else None,
-                    }
-                )
+    throttler = ChatChunkThrottler(websocket=websocket, session_id=session_id)
 
     try:
         # Include conversation history so the agent retains context across turns
@@ -821,12 +804,11 @@ async def _handle_chat_send(
             ctx.client,
             prompt=prompt,
             agent_backend=backend,
-            on_update=on_update,
+            on_update=throttler.on_update,
             attachments=attachments,
             cwd=project_cwd,
         )
-        # Flush any remaining buffered content
-        await _flush_chunk()
+        await throttler.flush()
 
         # Persist the conversation turn to the session
         history = list(session.get("orchestrator_history") or [])
@@ -860,11 +842,11 @@ async def _handle_chat_send(
                 name=f"chat-title-gen:{session_id}",
             )
     except asyncio.CancelledError:
-        await _flush_chunk()
+        await throttler.flush()
         return
     except Exception as exc:
         logger.exception("Chat orchestrator turn failed for session {}", session_id)
-        with contextlib.suppress(Exception):
+        try:
             await websocket.send_json(
                 {
                     "t": "CHAT_ERROR",
@@ -872,6 +854,8 @@ async def _handle_chat_send(
                     "error": str(exc),
                 }
             )
+        except Exception:
+            logger.debug("Failed to send chat error event", exc_info=True)
 
 
 async def _generate_chat_session_title(
@@ -895,31 +879,27 @@ async def _generate_chat_session_title(
             agent_backend=agent_backend,
         )
         if title:
-            with contextlib.suppress(Exception):
+            try:
                 await websocket.send_json(
                     {
                         "t": "CHAT_SESSION_UPDATED",
-                        "session_id": str(session.get("id") or ""),
+                        "session_id": (
+                            str(session.get("id")) if session.get("id") is not None else None
+                        ),
                         "label": title,
                     }
                 )
+            except Exception:
+                logger.debug("Failed to send generated chat session title", exc_info=True)
     except Exception:
-        pass  # Title generation is best-effort
+        logger.debug("Chat session title generation failed", exc_info=True)
 
 
-def register_websocket(mcp: FastMCP, *, require_auth: bool = True) -> None:
-    """Register WebSocket transport on the API server.
-
-    Args:
-        mcp: The FastMCP server instance to configure.
-        require_auth: When ``False`` (e.g. bundled web UI mode), skip the
-            token-based authentication handshake.
-    """
+def register_websocket(mcp: FastMCP) -> None:
+    """Register WebSocket transport on the API server."""
 
     async def ws_handler(websocket: WebSocket) -> None:
         await websocket.accept()
-        if require_auth and not await _authenticate(websocket):
-            return
 
         _ = get_server_context(mcp)
         _ensure_board_sync(mcp)

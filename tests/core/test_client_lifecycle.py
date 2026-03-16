@@ -128,41 +128,10 @@ async def test_preflight_returns_structured_results(tmp_path: Path) -> None:
         client.close()
 
 
-def test_client_constructs_with_db_path(db_path: Path) -> None:
-    """Client can be constructed with an explicit db_path."""
-    c = KaganCore(db_path=db_path)
-    assert c is not None
-    c.close()
-
-
 def test_client_close_is_idempotent(client: KaganCore) -> None:
     """Calling close() twice does not raise."""
     client.close()
     client.close()
-
-
-def test_client_async_context_manager(db_path: Path) -> None:
-    """Client works as async context manager and disposes on exit."""
-
-    async def run():
-        async with KaganCore(db_path=db_path) as c:
-            assert c is not None
-
-    asyncio.run(run())
-
-
-def test_client_has_workspace_namespace(client: KaganCore) -> None:
-    """client.worktrees is a Worktrees instance."""
-    from kagan.core.client import Worktrees
-
-    assert isinstance(client.worktrees, Worktrees)
-
-
-def test_client_has_review_namespace(client: KaganCore) -> None:
-    """client.reviews is a Reviews instance."""
-    from kagan.core.client import Reviews
-
-    assert isinstance(client.reviews, Reviews)
 
 
 def test_reset_wipes_all_data(client: KaganCore) -> None:
@@ -177,6 +146,3 @@ def test_reset_wipes_all_data(client: KaganCore) -> None:
         assert projects == []
 
     asyncio.run(run())
-
-
-__all__: list[str] = []

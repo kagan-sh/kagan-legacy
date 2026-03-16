@@ -197,12 +197,13 @@ async def test_settings_set_returns_confirmation_on_admin_server() -> None:
     session, task, ready = await _admin_session()
     try:
         result = await session.call_tool(
-            "settings_set", {"section": "general", "key": "default_agent", "value": "claude-code"}
+            "settings_set",
+            {"section": "general", "key": "default_agent_backend", "value": "claude-code"},
         )
         assert not result.isError
         payload = _text(result)
         assert "key" in payload
-        assert payload["key"] == "default_agent"
+        assert payload["key"] == "default_agent_backend"
     finally:
         ready.set()
         await task

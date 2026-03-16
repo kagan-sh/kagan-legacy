@@ -6,7 +6,7 @@
 
 ## OVERVIEW
 
-Kagan — AI-powered Kanban TUI (Python 3.12+/Textual) that orchestrates coding agents on your codebase. Supports 14 agent backends, auto/pair execution modes, MCP protocol, web dashboard (React 19), and encrypted remote pairing.
+Kagan — AI-powered Kanban TUI (Python 3.12+/Textual) that orchestrates coding agents on your codebase. Supports 14 agent backends, auto/pair execution modes, MCP protocol, and a bundled web dashboard (React 19).
 
 ## STRUCTURE
 

@@ -203,7 +203,7 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
     ):
         return (
             f"{prefix} Account usage/subscription limit reached. "
-            "Review your Anthropic plan and billing limits."
+            "Review your provider plan and billing limits."
         )
     if (
         "authentication" in lowered
@@ -231,7 +231,7 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
             "Check connection, VPN/proxy, then retry."
         )
     if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
-        return f"{prefix} Anthropic service is overloaded right now. Retry shortly."
+        return f"{prefix} The provider service is overloaded right now. Retry shortly."
     return f"{prefix} {raw}"
 
 

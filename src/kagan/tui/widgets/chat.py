@@ -15,6 +15,7 @@ from textual.widgets.option_list import Option
 from kagan.chat import (
     SLASH_COMMAND_REGISTRY,
     build_slash_presentation_lines,
+    fuzzy_match,
     list_registered_agent_backends,
     normalize_chat_input,
     resolve_slash_input,
@@ -28,19 +29,6 @@ from kagan.tui.screens.session_picker import (
 from kagan.tui.widgets.permission import PermissionPrompt
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
-
-
-def _fuzzy_match(pattern: str, text: str) -> bool:
-    """Check if all chars of *pattern* appear in *text* in order (case-insensitive)."""
-    lower_text = text.casefold()
-    pos = 0
-    for ch in pattern.casefold():
-        idx = lower_text.find(ch, pos)
-        if idx < 0:
-            return False
-        pos = idx + 1
-    return True
-
 
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",
@@ -1125,7 +1113,7 @@ class ChatPanel(Vertical):
             # Skip orchestrator-only commands in non-orchestrator sessions
             if spec.orchestrator_only and not is_orchestrator:
                 continue
-            if (not query or _fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
+            if (not query or fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
                 seen.add(spec.name)
                 matches.append((spec.name, spec.description))
         # 2. Exact alias match

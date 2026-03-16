@@ -87,7 +87,6 @@ from kagan.core import (
 from kagan.core.errors import AgentError, KaganError
 
 _ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
-_ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 

@@ -19,25 +19,9 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.text import Text
 
+from kagan.chat._completion import fuzzy_match
 from kagan.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.runtime_env import build_sanitized_subprocess_environment
-
-# ---------------------------------------------------------------------------
-# Fuzzy match helper
-# ---------------------------------------------------------------------------
-
-
-def _fuzzy_match(pattern: str, text: str) -> bool:
-    """Check if all chars of *pattern* appear in *text* in order (case-insensitive)."""
-    lower_text = text.casefold()
-    pos = 0
-    for ch in pattern.casefold():
-        idx = lower_text.find(ch, pos)
-        if idx < 0:
-            return False
-        pos = idx + 1
-    return True
-
 
 # ---------------------------------------------------------------------------
 # Slash command aliases  (short form → canonical command name)
@@ -63,7 +47,7 @@ class _SlashCompleter(Completer):
         seen: set[str] = set()
         # 1. Fuzzy-match against command names
         for spec in SLASH_COMMAND_REGISTRY.specs():
-            if _fuzzy_match(partial, spec.name) and spec.name not in seen:
+            if fuzzy_match(partial, spec.name) and spec.name not in seen:
                 seen.add(spec.name)
                 yield Completion(
                     spec.name,

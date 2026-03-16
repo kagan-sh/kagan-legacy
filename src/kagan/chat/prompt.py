@@ -96,3 +96,9 @@ def format_session_payload(
 
 def normalize_chat_input(text: str) -> str:
     return text.strip()
+
+
+def merge_task_follow_up_description(current_description: str, follow_up_message: str) -> str:
+    merged_description = current_description.strip()
+    follow_up = f"User follow-up:\n{follow_up_message.strip()}".strip()
+    return f"{merged_description}\n\n{follow_up}" if merged_description else follow_up

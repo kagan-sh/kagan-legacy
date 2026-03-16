@@ -8,17 +8,15 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from starlette.requests import Request
-from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
 
-import kagan.server._auth as auth_module
+import kagan.server._helpers as server_helpers
 import kagan.server._routes as routes_module
 import kagan.server._websocket as websocket_module
 from kagan.core import Priority, TaskStatus, WorkMode
 from kagan.core import git as git_module
 from kagan.mcp.server import ServerOptions
-from kagan.server._auth import _is_authorized_token
-from kagan.server.server import ApiServerOptions, create_api_server
+from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -96,36 +94,6 @@ class _FakeTasksClient:
         return {"has_workspace": False, "last_event_at": None, "active_session": None}
 
 
-class _FakeWebSocket:
-    def __init__(self, incoming: list[dict[str, object] | Exception] | None = None) -> None:
-        self.sent_json: list[dict[str, object]] = []
-        self._incoming: asyncio.Queue[dict[str, object] | Exception] = asyncio.Queue()
-        for item in incoming or []:
-            self._incoming.put_nowait(item)
-
-    async def accept(self) -> None:
-        return
-
-    async def receive_json(self) -> dict[str, object]:
-        item = await self._incoming.get()
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    async def send_json(self, payload: dict[str, object]) -> None:
-        self.sent_json.append(payload)
-
-    async def close(self, code: int = 1000, reason: str = "") -> None:
-        _ = (code, reason)
-
-    async def push(self, item: dict[str, object] | Exception) -> None:
-        await self._incoming.put(item)
-
-
-def _make_api_server() -> FastMCP:
-    return create_api_server(ApiServerOptions(mcp_opts=ServerOptions()))
-
-
 def _get_http_endpoint(
     mcp: FastMCP,
     path: str,
@@ -135,15 +103,6 @@ def _get_http_endpoint(
         route
         for route in mcp._custom_starlette_routes
         if route.path == path and route.methods is not None and method in route.methods
-    )
-    return route.endpoint
-
-
-def _get_ws_endpoint(mcp: FastMCP):
-    route = next(
-        route
-        for route in mcp._custom_starlette_routes
-        if isinstance(route, WebSocketRoute) and route.path == "/ws"
     )
     return route.endpoint
 
@@ -223,28 +182,14 @@ def _json_data(response: object) -> dict[str, Any]:
     return cast("dict[str, Any]", json.loads(body))
 
 
-async def _pair_token(mcp: FastMCP, *, device_id: str) -> str:
-    pair = _get_http_endpoint(mcp, "/auth/pair", "POST")
-    response = _as_json_response(
-        await pair(
-            _make_request(
-                "POST",
-                "/auth/pair",
-                body={"secret": auth_module._pairing_secret, "device_id": device_id},
-            )
-        )
-    )
-    return cast("str", json.loads(bytes(response.body))["data"]["token"])
-
-
-async def _wait_for_payload_type(websocket: _FakeWebSocket, *, payload_type: str) -> None:
+async def _wait_for_payload_type(websocket: FakeWebSocket, *, payload_type: str) -> None:
     while True:
         if any(payload.get("t") == payload_type for payload in websocket.sent_json):
             return
         await asyncio.sleep(0)
 
 
-async def _wait_for_board_sync_count(websocket: _FakeWebSocket, *, count: int) -> None:
+async def _wait_for_board_sync_count(websocket: FakeWebSocket, *, count: int) -> None:
     while True:
         board_syncs = [
             payload for payload in websocket.sent_json if payload.get("t") == "BOARD_SYNC"
@@ -254,7 +199,7 @@ async def _wait_for_board_sync_count(websocket: _FakeWebSocket, *, count: int) -
         await asyncio.sleep(0)
 
 
-async def _wait_for_board_sync_task_title(websocket: _FakeWebSocket, *, title: str) -> None:
+async def _wait_for_board_sync_task_title(websocket: FakeWebSocket, *, title: str) -> None:
     while True:
         board_syncs = [
             cast("dict[str, object]", payload)
@@ -270,35 +215,21 @@ async def _wait_for_board_sync_task_title(websocket: _FakeWebSocket, *, title: s
 
 @pytest.fixture(autouse=True)
 def _reset_server_state() -> Iterator[None]:
-    auth_module._paired_devices.clear()
     websocket_module._ws_connections.clear()
     yield
-    auth_module._paired_devices.clear()
     websocket_module._ws_connections.clear()
 
 
 @pytest.mark.asyncio
-async def test_pairing_rest_lifecycle_create_update_transition_delete(
+async def test_rest_lifecycle_create_update_transition_delete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
-    # Full lifecycle includes DELETE which requires admin tier.
     monkeypatch.setattr(
-        routes_module,
+        server_helpers,
         "get_server_context",
         lambda _mcp: _ctx(tasks, opts=ServerOptions(admin=True)),
-    )
-    token = await _pair_token(mcp, device_id="dev-1")
-    assert _is_authorized_token(token)
-    verify = _get_http_endpoint(mcp, "/auth/verify", "GET")
-    assert (
-        _as_json_response(
-            await verify(
-                _make_request("GET", "/auth/verify", headers={"Authorization": f"Bearer {token}"})
-            )
-        ).status_code
-        == 200
     )
     create = _get_http_endpoint(mcp, "/api/tasks", "POST")
     created = _json_data(
@@ -307,7 +238,6 @@ async def test_pairing_rest_lifecycle_create_update_transition_delete(
                 "POST",
                 "/api/tasks",
                 body={"title": "Ship"},
-                headers={"Authorization": f"Bearer {token}"},
             )
         )
     )["data"]
@@ -379,11 +309,11 @@ async def test_task_commits_route_returns_task_branch_history(
         captured["kwargs"] = kwargs
         return _FakeProc()
 
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
     task = await tasks.create("Ship parity", base_branch="develop")
     monkeypatch.setattr(
-        routes_module,
+        server_helpers,
         "get_server_context",
         lambda _mcp: _ctx(tasks, worktrees=_FakeWorktreesClient()),
     )
@@ -432,13 +362,12 @@ async def test_task_commits_route_returns_task_branch_history(
 async def test_websocket_board_subscribe_returns_board_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
     await tasks.create("Task from API")
-    auth_module._paired_devices["dev-1"] = "valid-token"
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: _ctx(tasks))
-    websocket = _FakeWebSocket([{"t": "AUTH", "token": "valid-token"}, {"t": "BOARD_SUBSCRIBE"}])
-    worker = asyncio.create_task(_get_ws_endpoint(mcp)(websocket))
+    websocket = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
+    worker = asyncio.create_task(get_ws_endpoint(mcp)(websocket))
     await asyncio.wait_for(
         _wait_for_payload_type(websocket, payload_type="BOARD_SYNC"), timeout=1.0
     )
@@ -456,14 +385,13 @@ async def test_websocket_board_subscribe_returns_board_sync(
 async def test_two_clients_see_board_sync_after_rest_create(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: _ctx(tasks))
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: _ctx(tasks))
-    token = await _pair_token(mcp, device_id="dev-2")
-    ws_handler = _get_ws_endpoint(mcp)
-    ws_a = _FakeWebSocket([{"t": "AUTH", "token": token}, {"t": "BOARD_SUBSCRIBE"}])
-    ws_b = _FakeWebSocket([{"t": "AUTH", "token": token}, {"t": "BOARD_SUBSCRIBE"}])
+    ws_handler = get_ws_endpoint(mcp)
+    ws_a = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
+    ws_b = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
     worker_a = asyncio.create_task(ws_handler(ws_a))
     worker_b = asyncio.create_task(ws_handler(ws_b))
     await asyncio.wait_for(_wait_for_board_sync_count(ws_b, count=1), timeout=1.0)
@@ -485,24 +413,14 @@ async def test_two_clients_see_board_sync_after_rest_create(
 
 
 @pytest.mark.asyncio
-async def test_invalid_token_and_missing_fields_return_error_envelopes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mcp = _make_api_server()
+async def test_missing_fields_return_error_envelopes(monkeypatch: pytest.MonkeyPatch) -> None:
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: _ctx(tasks))
-    verify = _get_http_endpoint(mcp, "/auth/verify", "GET")
-    pair = _get_http_endpoint(mcp, "/auth/pair", "POST")
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
     create = _get_http_endpoint(mcp, "/api/tasks", "POST")
-    invalid = _as_json_response(
-        await verify(_make_request("GET", "/auth/verify", headers={"Authorization": "Bearer no"}))
-    )
-    pair_missing = await pair(_make_request("POST", "/auth/pair", body={"secret": "x"}))
     create_missing = _as_json_response(
         await create(_make_request("POST", "/api/tasks", body={"description": "x"}))
     )
-    assert invalid.status_code == 401
-    assert _json_data(pair_missing) == {"ok": False, "error": "Missing secret or device_id"}
     create_payload = _json_data(create_missing)
     assert create_missing.status_code == 400
     assert create_payload["ok"] is False
@@ -511,9 +429,9 @@ async def test_invalid_token_and_missing_fields_return_error_envelopes(
 
 @pytest.mark.asyncio
 async def test_malformed_create_request_body_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: _ctx(tasks))
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
     create = _get_http_endpoint(mcp, "/api/tasks", "POST")
     response = _as_json_response(
         await create(_make_request("POST", "/api/tasks", body=["not", "an", "object"]))
@@ -528,10 +446,10 @@ async def test_malformed_create_request_body_returns_400(monkeypatch: pytest.Mon
 async def test_resolved_settings_includes_workflow_wip_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
+    mcp = make_api_server()
     tasks = _FakeTasksClient()
     monkeypatch.setattr(
-        routes_module,
+        server_helpers,
         "get_server_context",
         lambda _mcp: _ctx(
             tasks,

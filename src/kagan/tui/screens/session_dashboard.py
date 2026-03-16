@@ -9,7 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
-from kagan.chat import resolve_default_agent_backend
+from kagan.core import git
 from kagan.core.enums import SessionEventType, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
@@ -17,6 +17,12 @@ from kagan.runtime_env import build_sanitized_subprocess_environment
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
+from kagan.tui._chat_helpers import (
+    TitleGenerationSession,
+    build_session_options,
+    kick_title_generation,
+    send_task_message,
+)
 from kagan.tui.keybindings import SESSION_DASHBOARD_BINDINGS, get_key_for_action
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.kanban_chat import (
@@ -375,10 +381,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.set_session_kind("orchestrator")
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.active_history()
             active_key = self.kagan_app.orchestrator_sessions.active_key()
-            panel.set_sessions(
-                [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                active_key,
-            )
+            panel.set_sessions(build_session_options(self.kagan_app, task_sessions), active_key)
             panel.hydrate_current_session_history(self._chat_orchestrator_history)
             session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
             if session_backend is not None:
@@ -388,8 +391,7 @@ class SessionDashboardScreen(Screen[None]):
             selected_task_key = active_task_key or TASK_WORKER_SESSION_KEY
             panel.set_session_kind("review" if "review" in selected_task_key.casefold() else "auto")
             panel.set_sessions(
-                [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                selected_task_key,
+                build_session_options(self.kagan_app, task_sessions), selected_task_key
             )
         self._chat_mode = mode
 
@@ -546,18 +548,19 @@ class SessionDashboardScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
-            # Auto-generate a session title after the first turn
             if should_title and self._chat_orchestrator_history:
-                assistant_reply = (
-                    self._chat_orchestrator_history[-1][1]
-                    if self._chat_orchestrator_history[-1][0] == "assistant"
-                    else ""
-                )
-                backend = panel.preferred_agent_backend() or resolve_default_agent_backend(
-                    await self.kagan_app.core.settings.get()
-                )
                 asyncio.create_task(
-                    self._update_orchestrator_session_title(panel, text, assistant_reply, backend),
+                    kick_title_generation(
+                        TitleGenerationSession(
+                            orchestrator_sessions=self.kagan_app.orchestrator_sessions,
+                            panel=panel,
+                            user_message=text,
+                            history=self._chat_orchestrator_history,
+                            session_options=build_session_options(self.kagan_app, self._task_model),
+                            is_mounted=lambda: self.is_mounted,
+                        ),
+                        self.kagan_app.core,
+                    ),
                     name="dashboard-chat-title-gen",
                 )
         except asyncio.CancelledError:
@@ -568,29 +571,6 @@ class SessionDashboardScreen(Screen[None]):
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {exc}")
-
-    async def _update_orchestrator_session_title(
-        self,
-        panel: ChatPanel,
-        user_message: str,
-        assistant_reply: str,
-        agent_backend: str,
-    ) -> None:
-        """Generate a session title and update the Session Switcher."""
-        try:
-            title = await self.kagan_app.orchestrator_sessions.generate_title(
-                user_message=user_message,
-                assistant_reply=assistant_reply,
-                agent_backend=agent_backend,
-            )
-            if title and self.is_mounted:
-                active_key = self.kagan_app.orchestrator_sessions.active_key()
-                panel.set_sessions(
-                    self.kagan_app.orchestrator_sessions.options(),
-                    active_key,
-                )
-        except Exception:
-            pass  # Title generation is best-effort
 
     async def _send_task_message(self, text: str) -> None:
         panel = self._chat_panel()
@@ -603,14 +583,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.add_system_message("Unable to load task")
             return
 
-        merged_description = task.description.strip()
-        follow_up = f"User follow-up:\n{text}".strip()
-        updated_description = (
-            f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-        )
-        self._task_model = await self.kagan_app.core.tasks.update(
-            self._task_id, description=updated_description
-        )
+        self._task_model = await send_task_message(self.kagan_app.core, task, text, panel)
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")
         await self._start_or_attach_session(backend_hint=panel.preferred_agent_backend())
@@ -627,7 +600,6 @@ class SessionDashboardScreen(Screen[None]):
             backend_hint
             or task.agent_backend
             or settings.get("default_agent_backend")
-            or settings.get("default_agent")
             or "claude-code"
         )
 
@@ -747,7 +719,7 @@ class SessionDashboardScreen(Screen[None]):
                 "deletions": int(raw_stats.get("deletions", 0)),
             }
 
-        files = self._parse_diff_files(diff_text)
+        files = git.parse_diff_file_entries(diff_text)
         if files:
             worktree_panel.set_changes(files, stats)
         else:
@@ -871,47 +843,3 @@ class SessionDashboardScreen(Screen[None]):
             return "DEFAULT"
         cleaned = value.strip()
         return cleaned.upper() if cleaned else "DEFAULT"
-
-    @staticmethod
-    def _parse_diff_files(diff_text: str) -> list[dict[str, object]]:
-        entries: list[dict[str, object]] = []
-        current: dict[str, object] | None = None
-        for line in diff_text.splitlines():
-            if line.startswith("diff --git a/"):
-                if current is not None:
-                    entries.append(current)
-                parts = line.split(" b/", maxsplit=1)
-                path = parts[1].strip() if len(parts) == 2 else "-"
-                current = {
-                    "path": path,
-                    "status": "modified",
-                    "insertions": 0,
-                    "deletions": 0,
-                }
-                continue
-            if current is None:
-                continue
-            if line.startswith("new file mode") or line.startswith("--- /dev/null"):
-                current["status"] = "added"
-                continue
-            if line.startswith("deleted file mode") or line.startswith("+++ /dev/null"):
-                current["status"] = "deleted"
-                continue
-            if line.startswith("+") and not line.startswith("+++"):
-                current["insertions"] = int(current["insertions"]) + 1
-                continue
-            if line.startswith("-") and not line.startswith("---"):
-                current["deletions"] = int(current["deletions"]) + 1
-
-        if current is not None:
-            entries.append(current)
-
-        deduped: list[dict[str, object]] = []
-        seen: set[str] = set()
-        for entry in entries:
-            path = str(entry.get("path", ""))
-            if path in seen:
-                continue
-            seen.add(path)
-            deduped.append(entry)
-        return deduped

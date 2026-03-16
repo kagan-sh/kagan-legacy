@@ -119,7 +119,6 @@ export function SettingsPanel() {
     try {
       const apiValue = typeof value === 'boolean' ? String(value) : (value as string);
       const payload: Record<string, string> = { [key]: apiValue };
-      if (key === 'default_agent_backend') payload.default_agent = apiValue;
       await apiClient.setSettings(payload);
       savedRef.current = { ...savedRef.current, [key]: value };
       toast.success('Updated', { duration: 1500 });
@@ -160,7 +159,7 @@ export function SettingsPanel() {
           git_user_mode: settings.git_user_mode || DEFAULT_FORM.git_user_mode,
           git_user_name: settings.git_user_name || resolved.git_user_name || '',
           git_user_email: settings.git_user_email || resolved.git_user_email || '',
-          default_agent_backend: settings.default_agent_backend || settings.default_agent || agents.default || DEFAULT_FORM.default_agent_backend,
+          default_agent_backend: settings.default_agent_backend || agents.default || DEFAULT_FORM.default_agent_backend,
           default_model_claude: settings.default_model_claude || '',
           default_model_openai: settings.default_model_openai || '',
           additional_instructions: settings.additional_instructions || '',

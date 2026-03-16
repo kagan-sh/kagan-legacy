@@ -57,12 +57,10 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 
 export class KaganApiClient {
   private baseUrl: string;
-  private token: string | null;
   private _bundledWeb: boolean = false;
 
-  constructor(baseUrl = '', token: string | null = null) {
+  constructor(baseUrl = '') {
     this.baseUrl = baseUrl;
-    this.token = token;
   }
 
   // -- Configuration --------------------------------------------------------
@@ -75,14 +73,6 @@ export class KaganApiClient {
     return this.baseUrl;
   }
 
-  setToken(token: string | null): void {
-    this.token = token;
-  }
-
-  getToken(): string | null {
-    return this.token;
-  }
-
   /**
    * Mark this client as running in bundled-web mode.
    * In this mode the app is served from the same origin as the API,
@@ -91,7 +81,6 @@ export class KaganApiClient {
   configureBundledWeb(): void {
     this._bundledWeb = true;
     this.baseUrl = '';
-    this.token = null;
   }
 
   get isBundledWeb(): boolean {
@@ -100,7 +89,7 @@ export class KaganApiClient {
 
   isConfigured(): boolean {
     if (this._bundledWeb) return true;
-    return Boolean(this.baseUrl) && Boolean(this.token);
+    return Boolean(this.baseUrl);
   }
 
   // -- Core request ---------------------------------------------------------
@@ -112,10 +101,6 @@ export class KaganApiClient {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> ?? {}),
     };
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
@@ -145,28 +130,6 @@ export class KaganApiClient {
    */
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     return this._doRequest<T>(path, options);
-  }
-
-  // -- Auth -----------------------------------------------------------------
-
-  /**
-   * Verify the current bearer token is still valid.
-   * GET /auth/verify
-   */
-  async verifyToken(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/auth/verify`, {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          Accept: 'application/json',
-        },
-      });
-
-      const envelope = (await response.json()) as WireEnvelope<null>;
-      return envelope.ok === true;
-    } catch {
-      return false;
-    }
   }
 
   // -- Tasks ----------------------------------------------------------------

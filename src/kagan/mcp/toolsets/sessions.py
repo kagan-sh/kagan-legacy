@@ -34,7 +34,7 @@ class SessionStartAction(StrEnum):
 
 
 def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
+    return settings.get("default_agent_backend") or "claude-code"
 
 
 def _parse_session_action(action: str) -> SessionAction:

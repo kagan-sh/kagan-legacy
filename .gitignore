@@ -250,3 +250,5 @@ src/kagan/server/_web_static/*
 !src/kagan/server/_web_static/.gitkeep
 
 packages/web/.svelte-kit/
+
+.results/

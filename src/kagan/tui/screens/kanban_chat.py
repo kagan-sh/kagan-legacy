@@ -14,7 +14,6 @@ from kagan.chat import (
 from kagan.core import KaganCore
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import KaganError
-from kagan.core.models import Task
 from kagan.tui.widgets.chat import ChatPanel
 
 StreamChunkKind = Literal["assistant", "thought", "note", "user"]
@@ -282,40 +281,6 @@ async def send_orchestrator_message(
     panel.increment_turn_count()
     panel.set_stream_action("Waiting for prompt", confidence="certain")
     return [*history, ("user", text), ("assistant", response)]
-
-
-async def send_task_message(
-    *,
-    core: KaganCore,
-    panel: ChatPanel,
-    task: Task,
-    text: str,
-) -> str:
-    with contextlib.suppress(KaganError, OSError, RuntimeError):
-        await core.tasks.cancel(task.id)
-
-    merged_description = task.description.strip()
-    follow_up = f"User follow-up:\n{text}".strip()
-    updated_description = (
-        f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-    )
-
-    await core.tasks.update(task.id, description=updated_description)
-
-    workspace = await core.worktrees.get(task.id)
-    if workspace is None:
-        await core.worktrees.create(task.id)
-
-    settings = await core.settings.get()
-    backend = (
-        panel.preferred_agent_backend()
-        or task.agent_backend
-        or resolve_default_agent_backend(settings)
-    )
-    panel.set_runtime_status("initializing")
-    panel.set_stream_action("Restarting task agent...", confidence="assumption")
-    await core.tasks.run(task.id, agent_backend=backend)
-    return task.id
 
 
 async def stream_task_chat(

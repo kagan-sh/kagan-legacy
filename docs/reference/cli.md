@@ -166,7 +166,7 @@ ______________________________________________________________________
 
 ## `kagan serve`
 
-Starts the HTTP API server for integrations and non-bundled API clients. REST + WebSocket endpoints with token-based auth and pairing.
+Starts the HTTP API server for local integrations. REST + WebSocket endpoints are served from the same local process.
 
 | Option       | Description                            |
 | ------------ | -------------------------------------- |

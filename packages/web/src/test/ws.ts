@@ -42,7 +42,7 @@ export class FakeWebSocket {
     this._connected = false;
   }
 
-  configure(): void {}
+  configure(_baseUrl?: string): void {}
   subscribeToBoardUpdates(): void {}
   send(): void {}
   startRun(): void {}

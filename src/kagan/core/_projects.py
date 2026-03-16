@@ -16,7 +16,13 @@ from kagan.core._db_helpers import (
     _setting_branch,
     _setting_enabled,
 )
-from kagan.core.errors import MultiRepoUnsupportedError, NotFoundError, SessionError, WorktreeError
+from kagan.core.errors import (
+    KaganError,
+    MultiRepoUnsupportedError,
+    NotFoundError,
+    SessionError,
+    WorktreeError,
+)
 from kagan.core.models import Project, Repository, Task
 
 if TYPE_CHECKING:
@@ -71,13 +77,23 @@ class Projects:
 
         # 1. Cancel running sessions (terminates agent processes)
         for tid in task_ids:
-            with contextlib.suppress(Exception):
+            try:
                 await self._client.tasks.sessions.cancel(tid)
+            except (KaganError, OSError):
+                logger.warning(
+                    "Failed to cancel session during project cleanup task_id={}", tid, exc_info=True
+                )
 
         # 2. Clean up git worktrees (git worktree remove + DB row deletion)
         for tid in task_ids:
-            with contextlib.suppress(Exception):
+            try:
                 await self._client.worktrees.cleanup(tid)
+            except (WorktreeError, OSError, RuntimeError):
+                logger.warning(
+                    "Failed to cleanup worktree during project cleanup task_id={}",
+                    tid,
+                    exc_info=True,
+                )
 
         # --- DB transaction: delete remaining rows ---
         def op(s):

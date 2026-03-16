@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import ipaddress
 from pathlib import Path
 
 from cryptography import x509
@@ -53,10 +54,15 @@ def generate_self_signed_cert(
     )
 
     now = datetime.datetime.now(datetime.UTC)
-    san_entries: list[x509.GeneralName] = [x509.DNSName(host)]
+    try:
+        host_address = ipaddress.ip_address(host)
+    except ValueError:
+        san_entries: list[x509.GeneralName] = [x509.DNSName(host)]
+    else:
+        san_entries = [x509.IPAddress(host_address)]
     if host in ("localhost", "127.0.0.1", "0.0.0.0"):
         san_entries.append(x509.DNSName("localhost"))
-        san_entries.append(x509.IPAddress(__import__("ipaddress").IPv4Address("127.0.0.1")))
+        san_entries.append(x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")))
 
     cert = (
         x509.CertificateBuilder()

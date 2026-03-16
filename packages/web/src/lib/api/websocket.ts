@@ -3,7 +3,6 @@
  *
  * Wraps native WebSocket with:
  * - Auto-reconnect with exponential backoff (1s → 30s)
- * - Auth-on-connect (AUTH message with stored token)
  * - Typed event emitter pattern
  * - Board subscription + agent control helpers
  */
@@ -27,7 +26,6 @@ export interface WsInboundMessage {
 /** Outbound message sent to the Kagan WebSocket server. */
 export interface WsOutboundMessage {
   t: string;
-  token?: string;
   task_id?: string;
   mode?: string;
   [key: string]: unknown;
@@ -41,8 +39,6 @@ export interface WsOutboundMessage {
 export type WsEventName =
   | 'connected'
   | 'disconnected'
-  | 'AUTH_OK'
-  | 'AUTH_FAIL'
   | 'BOARD_SYNC'
   | 'TASK_UPDATED'
   | 'SESSION_EVENT'
@@ -73,23 +69,21 @@ export type WsEventHandler = (data: WsInboundMessage) => void;
 export class KaganWebSocket {
   private ws: WebSocket | null = null;
   private url: string = '';
-  private token: string = '';
   private listeners: Map<string, Set<WsEventHandler>> = new Map();
   private reconnectAttempts: number = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private maxReconnectDelay: number = 30_000;
   private shouldReconnect: boolean = true;
-  private authenticated: boolean = false;
+  private connected: boolean = false;
 
   // -- Configuration --------------------------------------------------------
 
   /**
-   * Set server URL and auth token.
+   * Set server URL.
    * The URL should be the HTTP base URL — it will be converted to ws:// internally.
    */
-  configure(baseUrl: string, token: string): void {
+  configure(baseUrl: string): void {
     this.url = httpToWs(baseUrl);
-    this.token = token;
   }
 
   // -- Connection lifecycle -------------------------------------------------
@@ -111,20 +105,14 @@ export class KaganWebSocket {
     }
 
     this.shouldReconnect = true;
-    this.authenticated = false;
+    this.connected = false;
 
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      if (this.token) {
-        // Remote mode: authenticate with token, wait for AUTH_OK
-        this.sendRaw({ t: 'AUTH', token: this.token });
-      } else {
-        // Bundled mode: no auth required, mark as connected immediately
-        this.authenticated = true;
-        this.reconnectAttempts = 0;
-        this.emit('connected', { t: 'connected' });
-      }
+      this.connected = true;
+      this.reconnectAttempts = 0;
+      this.emit('connected', { t: 'connected' });
     };
 
     this.ws.onmessage = (event: MessageEvent) => {
@@ -132,7 +120,7 @@ export class KaganWebSocket {
     };
 
     this.ws.onclose = () => {
-      this.authenticated = false;
+      this.connected = false;
       this.emit('disconnected', { t: 'disconnected' });
       this.scheduleReconnect();
     };
@@ -145,7 +133,7 @@ export class KaganWebSocket {
   /** Close the connection and stop auto-reconnect. */
   disconnect(): void {
     this.shouldReconnect = false;
-    this.authenticated = false;
+    this.connected = false;
 
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
@@ -164,14 +152,14 @@ export class KaganWebSocket {
     this.emit('disconnected', { t: 'disconnected' });
   }
 
-  /** Send a typed message to the server. Only works when authenticated. */
+  /** Send a typed message to the server. */
   send(message: WsOutboundMessage): void {
     this.sendRaw(message);
   }
 
-  /** Whether the connection is open and authenticated. */
+  /** Whether the connection is open. */
   isConnected(): boolean {
-    return this.authenticated && this.ws?.readyState === WebSocket.OPEN;
+    return this.connected && this.ws?.readyState === WebSocket.OPEN;
   }
 
   // -- Event emitter --------------------------------------------------------
@@ -179,8 +167,8 @@ export class KaganWebSocket {
   /**
    * Subscribe to a message type. Returns an unsubscribe function.
    *
-   * Special types: 'connected', 'disconnected' — lifecycle events.
-   * Server types: 'AUTH_OK', 'BOARD_SYNC', 'TASK_UPDATED', 'SESSION_EVENT', etc.
+     * Special types: 'connected', 'disconnected' — lifecycle events.
+     * Server types: 'BOARD_SYNC', 'TASK_UPDATED', 'SESSION_EVENT', etc.
    */
   on(type: WsEventName, handler: WsEventHandler): () => void {
     let handlers = this.listeners.get(type);
@@ -285,22 +273,6 @@ export class KaganWebSocket {
 
     const type = msg.t;
     if (!type) {
-      return;
-    }
-
-    // Handle auth flow
-    if (type === 'AUTH_OK') {
-      this.authenticated = true;
-      this.reconnectAttempts = 0;
-      this.emit('connected', msg);
-      this.emit('AUTH_OK', msg);
-      return;
-    }
-
-    if (type === 'AUTH_FAIL') {
-      this.shouldReconnect = false; // Don't reconnect on auth failure
-      this.emit('AUTH_FAIL', msg);
-      this.disconnect();
       return;
     }
 

@@ -555,6 +555,84 @@ def _extract_number(text: str, word: str) -> int:
     return int(match.group(1)) if match else 0
 
 
+def parse_diff_changed_files(diff_text: str) -> list[str]:
+    files: list[str] = []
+    for line in diff_text.splitlines():
+        if not line.startswith("diff --git a/"):
+            continue
+        parts = line.split(" b/", maxsplit=1)
+        if len(parts) != 2:
+            continue
+        files.append(parts[1].strip())
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for path in files:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
+def parse_diff_totals(diff_text: str) -> tuple[int, int, int]:
+    insertions = 0
+    deletions = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        if line.startswith("+"):
+            insertions += 1
+            continue
+        if line.startswith("-"):
+            deletions += 1
+    return len(parse_diff_changed_files(diff_text)), insertions, deletions
+
+
+def parse_diff_file_entries(diff_text: str) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    current: dict[str, object] | None = None
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git a/"):
+            if current is not None:
+                entries.append(current)
+            parts = line.split(" b/", maxsplit=1)
+            path = parts[1].strip() if len(parts) == 2 else "-"
+            current = {
+                "path": path,
+                "status": "modified",
+                "insertions": 0,
+                "deletions": 0,
+            }
+            continue
+        if current is None:
+            continue
+        if line.startswith("new file mode") or line.startswith("--- /dev/null"):
+            current["status"] = "added"
+            continue
+        if line.startswith("deleted file mode") or line.startswith("+++ /dev/null"):
+            current["status"] = "deleted"
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            current["insertions"] = int(current["insertions"]) + 1
+            continue
+        if line.startswith("-") and not line.startswith("---"):
+            current["deletions"] = int(current["deletions"]) + 1
+
+    if current is not None:
+        entries.append(current)
+
+    deduped: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        path = str(entry.get("path", ""))
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(entry)
+    return deduped
+
+
 # ---------------------------------------------------------------------------
 # Commit enforcement helpers — used by agent completion to gate REVIEW transition
 # ---------------------------------------------------------------------------
@@ -712,6 +790,9 @@ __all__ = [
     "is_git_repo",
     "is_rebase_in_progress",
     "merge",
+    "parse_diff_changed_files",
+    "parse_diff_file_entries",
+    "parse_diff_totals",
     "prune_kagan_branches",
     "rebase",
     "resolve_worktree_base",

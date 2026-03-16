@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.requests import Request
 
+import kagan.server._helpers as server_helpers
 import kagan.server._routes as routes_module
 from kagan.mcp.server import ServerOptions
 from kagan.server.server import ApiServerOptions, create_api_server
@@ -93,7 +94,7 @@ async def test_readonly_server_rejects_task_creation(monkeypatch: pytest.MonkeyP
     mcp = _make_api_server(ServerOptions(readonly=True))
     endpoint = _get_endpoint(mcp, "/api/tasks", "POST")
     fake_ctx = SimpleNamespace(client=SimpleNamespace(), opts=ServerOptions(readonly=True))
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: fake_ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
 
     response = await endpoint(_make_request("POST", "/api/tasks", body={"title": "Blocked"}))
     payload = _response_json(response)
@@ -108,7 +109,7 @@ async def test_default_server_rejects_settings_changes(monkeypatch: pytest.Monke
     mcp = _make_api_server(ServerOptions())
     endpoint = _get_endpoint(mcp, "/api/settings", "POST")
     fake_ctx = SimpleNamespace(client=SimpleNamespace(), opts=ServerOptions())
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: fake_ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
 
     response = await endpoint(_make_request("POST", "/api/settings", body={"key": "value"}))
     payload = _response_json(response)
@@ -124,7 +125,7 @@ async def test_admin_server_allows_task_deletion(monkeypatch: pytest.MonkeyPatch
     endpoint = _get_endpoint(mcp, "/api/tasks/{task_id}", "DELETE")
     tasks = _FakeTasksClient()
     fake_ctx = SimpleNamespace(client=SimpleNamespace(tasks=tasks), opts=ServerOptions(admin=True))
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: fake_ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
 
     response = await endpoint(
         _make_request(
@@ -150,7 +151,7 @@ async def test_review_decide_returns_structured_manual_review_block(
     tasks = _FakeTasksClient()
     fake_client = SimpleNamespace(tasks=tasks, reviews=SimpleNamespace())
     fake_ctx = SimpleNamespace(client=fake_client, opts=ServerOptions())
-    monkeypatch.setattr(routes_module, "get_server_context", lambda _mcp: fake_ctx)
+    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
 
     response = await endpoint(
         _make_request(

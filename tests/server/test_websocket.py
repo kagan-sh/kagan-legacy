@@ -7,56 +7,15 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
 
-import kagan.server._auth as auth_module
 import kagan.server._websocket as websocket_module
 from kagan.mcp.server import ServerOptions
-from kagan.server.server import ApiServerOptions, create_api_server
 from kagan.wire.models import utc_iso
+from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from mcp.server.fastmcp import FastMCP
-
-
-class FakeWebSocket:
-    def __init__(self, incoming: list[dict[str, object] | Exception] | None = None) -> None:
-        self.accepted = False
-        self.sent_json: list[dict[str, object]] = []
-        self.close_calls: list[tuple[int, str]] = []
-        self.auth_ok_sent = asyncio.Event()
-        self.pong_sent = asyncio.Event()
-        self.event_sent = asyncio.Event()
-        self._incoming: asyncio.Queue[dict[str, object] | Exception] = asyncio.Queue()
-        for item in incoming or []:
-            self._incoming.put_nowait(item)
-
-    async def accept(self) -> None:
-        self.accepted = True
-
-    async def receive_json(self) -> dict[str, object]:
-        item = await self._incoming.get()
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    async def send_json(self, payload: dict[str, object]) -> None:
-        self.sent_json.append(payload)
-        if payload.get("t") == "AUTH_OK":
-            self.auth_ok_sent.set()
-        if payload.get("t") == "PONG":
-            self.pong_sent.set()
-        if payload.get("t") == "TASK_UPDATED":
-            self.event_sent.set()
-
-    async def close(self, code: int = 1000, reason: str = "") -> None:
-        self.close_calls.append((code, reason))
-
-    async def push(self, item: dict[str, object] | Exception) -> None:
-        await self._incoming.put(item)
 
 
 class _FakeTasksClient:
@@ -118,59 +77,21 @@ def _fake_task(task_id: str, *, title: str = "Task", agent_backend: str | None =
     )
 
 
-def _make_api_server() -> FastMCP:
-    return create_api_server(ApiServerOptions(mcp_opts=ServerOptions()))
-
-
-def _get_ws_endpoint(mcp: FastMCP):
-    route = next(
-        route
-        for route in mcp._custom_starlette_routes
-        if isinstance(route, WebSocketRoute) and route.path == "/ws"
-    )
-    return route.endpoint
-
-
 @pytest.fixture(autouse=True)
 def _reset_websocket_state() -> Iterator[None]:
     websocket_module._ws_connections.clear()
-    auth_module._paired_devices.clear()
     yield
     websocket_module._ws_connections.clear()
-    auth_module._paired_devices.clear()
-
-
-def test_create_api_server_registers_websocket_route() -> None:
-    mcp = _make_api_server()
-
-    assert any(
-        isinstance(route, WebSocketRoute) and route.path == "/ws"
-        for route in mcp._custom_starlette_routes
-    )
-
-
-@pytest.mark.asyncio
-async def test_websocket_rejects_invalid_auth_token() -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    websocket = FakeWebSocket([{"t": "AUTH", "token": "invalid-token"}])
-
-    await ws_handler(websocket)
-
-    assert websocket.accepted is True
-    assert websocket.sent_json == [{"t": "AUTH_FAIL"}]
-    assert websocket.close_calls == [(4003, "Unauthorized")]
 
 
 @pytest.mark.asyncio
 async def test_websocket_tracks_connection_and_handles_ping_and_broadcast() -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    auth_module._paired_devices["device-1"] = "valid-token"
-    websocket = FakeWebSocket([{"t": "AUTH", "token": "valid-token"}])
+    mcp = make_api_server()
+    ws_handler = get_ws_endpoint(mcp)
+    websocket = FakeWebSocket([])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(websocket.auth_ok_sent.wait(), timeout=1.0)
+    await asyncio.sleep(0)
     assert len(websocket_module._ws_connections) == 1
 
     websocket_module.broadcast({"t": "TASK_UPDATED", "task_id": "task-1"})
@@ -182,7 +103,6 @@ async def test_websocket_tracks_connection_and_handles_ping_and_broadcast() -> N
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
 
-    assert {"t": "AUTH_OK"} in websocket.sent_json
     assert {"t": "TASK_UPDATED", "task_id": "task-1"} in websocket.sent_json
     assert {"t": "PONG"} in websocket.sent_json
     assert len(websocket_module._ws_connections) == 0
@@ -192,27 +112,19 @@ async def test_websocket_tracks_connection_and_handles_ping_and_broadcast() -> N
 async def test_websocket_board_subscribe_returns_board_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    auth_module._paired_devices["device-1"] = "valid-token"
+    mcp = make_api_server()
+    ws_handler = get_ws_endpoint(mcp)
 
     fake_client = _FakeCoreClient()
     fake_client.tasks._tasks = [_fake_task("task-1", title="Ship feature")]
     fake_ctx = SimpleNamespace(client=fake_client)
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: fake_ctx)
 
-    websocket = FakeWebSocket(
-        [
-            {"t": "AUTH", "token": "valid-token"},
-            {"t": "BOARD_SUBSCRIBE"},
-        ]
-    )
+    websocket = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(websocket.auth_ok_sent.wait(), timeout=1.0)
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="BOARD_SYNC"),
-        timeout=1.0,
+        _wait_for_payload_type(websocket, payload_type="BOARD_SYNC"), timeout=1.0
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -245,27 +157,19 @@ async def test_websocket_board_subscribe_returns_board_sync(
 
 @pytest.mark.asyncio
 async def test_websocket_run_start_starts_session_and_acks(monkeypatch: pytest.MonkeyPatch) -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    auth_module._paired_devices["device-1"] = "valid-token"
+    mcp = make_api_server()
+    ws_handler = get_ws_endpoint(mcp)
 
     fake_client = _FakeCoreClient()
     fake_client.tasks._tasks = [_fake_task("task-1", agent_backend="cursor-agent")]
     fake_ctx = SimpleNamespace(client=fake_client)
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: fake_ctx)
 
-    websocket = FakeWebSocket(
-        [
-            {"t": "AUTH", "token": "valid-token"},
-            {"t": "RUN_START", "task_id": "task-1", "mode": "AUTO"},
-        ]
-    )
+    websocket = FakeWebSocket([{"t": "RUN_START", "task_id": "task-1", "mode": "AUTO"}])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(websocket.auth_ok_sent.wait(), timeout=1.0)
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="RUN_STARTED"),
-        timeout=1.0,
+        _wait_for_payload_type(websocket, payload_type="RUN_STARTED"), timeout=1.0
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -283,26 +187,18 @@ async def test_websocket_run_start_starts_session_and_acks(monkeypatch: pytest.M
 async def test_websocket_run_cancel_cancels_session_and_acks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    auth_module._paired_devices["device-1"] = "valid-token"
+    mcp = make_api_server()
+    ws_handler = get_ws_endpoint(mcp)
 
     fake_client = _FakeCoreClient()
     fake_ctx = SimpleNamespace(client=fake_client)
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: fake_ctx)
 
-    websocket = FakeWebSocket(
-        [
-            {"t": "AUTH", "token": "valid-token"},
-            {"t": "RUN_CANCEL", "task_id": "task-1"},
-        ]
-    )
+    websocket = FakeWebSocket([{"t": "RUN_CANCEL", "task_id": "task-1"}])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(websocket.auth_ok_sent.wait(), timeout=1.0)
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="RUN_CANCELLED"),
-        timeout=1.0,
+        _wait_for_payload_type(websocket, payload_type="RUN_CANCELLED"), timeout=1.0
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -316,27 +212,17 @@ async def test_websocket_run_cancel_cancels_session_and_acks(
 async def test_websocket_run_start_rejects_readonly_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mcp = _make_api_server()
-    ws_handler = _get_ws_endpoint(mcp)
-    auth_module._paired_devices["device-1"] = "valid-token"
+    mcp = make_api_server()
+    ws_handler = get_ws_endpoint(mcp)
 
     fake_client = _FakeCoreClient()
     fake_ctx = SimpleNamespace(client=fake_client, opts=ServerOptions(readonly=True))
     monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: fake_ctx)
 
-    websocket = FakeWebSocket(
-        [
-            {"t": "AUTH", "token": "valid-token"},
-            {"t": "RUN_START", "task_id": "task-1", "mode": "AUTO"},
-        ]
-    )
+    websocket = FakeWebSocket([{"t": "RUN_START", "task_id": "task-1", "mode": "AUTO"}])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(websocket.auth_ok_sent.wait(), timeout=1.0)
-    await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="RUN_ERROR"),
-        timeout=1.0,
-    )
+    await asyncio.wait_for(_wait_for_payload_type(websocket, payload_type="RUN_ERROR"), timeout=1.0)
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
 

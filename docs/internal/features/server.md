@@ -1,6 +1,6 @@
 # Server Features — `kagan.server`
 
-*The Kagan API server provides the bundled dashboard surface plus optional API-client access via REST and WebSockets.*
+*The Kagan API server provides the bundled dashboard surface plus local REST and WebSockets access.*
 
 ______________________________________________________________________
 
@@ -28,20 +28,6 @@ The server supports the same access tiers as the MCP server:
 
 ______________________________________________________________________
 
-## Pairing Remote Clients
-
-Kagan uses a secure pairing mechanism to authorize remote API clients:
-
-1. Start the server. A QR code and pairing URI will be printed to the terminal.
-1. Pair the client against `/auth/pair` using the printed secret or URI.
-1. The client receives a long-lived auth token for subsequent REST and WebSocket calls.
-
-### Security
-
-The pairing secret is generated at startup and is valid for a single session. Authorization is managed via `Bearer` tokens in the `Authorization` header.
-
-______________________________________________________________________
-
 ## Using the REST API
 
 The API provides endpoints for managing the board, projects, and task lifecycles.
@@ -55,14 +41,13 @@ curl http://localhost:8765/health
 ### Listing Tasks
 
 ```bash
-curl -H "Authorization: Bearer <TOKEN>" http://localhost:8765/api/tasks
+curl http://localhost:8765/api/tasks
 ```
 
 ### Creating a Task
 
 ```bash
-curl -X POST -H "Authorization: Bearer <TOKEN>" \
-     -H "Content-Type: application/json" \
+curl -X POST -H "Content-Type: application/json" \
      -d '{"title": "Implement feature X"}' \
      http://localhost:8765/api/tasks
 ```
@@ -70,8 +55,7 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
 ### Updating a Task
 
 ```bash
-curl -X PATCH -H "Authorization: Bearer <TOKEN>" \
-     -H "Content-Type: application/json" \
+curl -X PATCH -H "Content-Type: application/json" \
      -d '{"priority": "HIGH"}' \
      http://localhost:8765/api/tasks/<TASK_ID>
 ```
@@ -79,8 +63,7 @@ curl -X PATCH -H "Authorization: Bearer <TOKEN>" \
 ### Moving a Task
 
 ```bash
-curl -X POST -H "Authorization: Bearer <TOKEN>" \
-     -H "Content-Type: application/json" \
+curl -X POST -H "Content-Type: application/json" \
      -d '{"status": "IN_PROGRESS"}' \
      http://localhost:8765/api/tasks/<TASK_ID>/status
 ```
@@ -90,14 +73,6 @@ ______________________________________________________________________
 ## WebSocket Connection
 
 The WebSocket stream provides real-time updates for the board and agent executions.
-
-### Handshake
-
-Clients must authenticate immediately after connecting:
-
-```json
-{ "t": "AUTH", "token": "<TOKEN>" }
-```
 
 ### Subscribing to Board Updates
 
@@ -131,6 +106,6 @@ kagan serve --port 8420
 
 When connecting from another device, ensure both devices can reach each other on the network. Check firewall settings and allow incoming traffic on the configured port.
 
-### Invalid Token
+### Access Issues
 
-If you see 401 Unauthorized errors, re-pair the device by restarting the server and scanning the new QR code. Tokens are stored locally on the device and validated against the current server instance.
+If another device cannot reach the server, verify host binding, firewall settings, and the selected port.

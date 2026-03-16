@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from textual import on
 from textual.app import ComposeResult
@@ -54,6 +55,17 @@ class SettingCategory:
     name: str
     search_terms: tuple[str, ...]
     is_advanced: bool = False
+
+
+@dataclass(frozen=True)
+class SettingFieldSpec:
+    kind: Literal["switch", "select", "text", "textarea", "static"]
+    label: str = ""
+    field_id: str | None = None
+    options: tuple[tuple[str, str], ...] = ()
+    options_factory: Callable[[], list[tuple[str, str]]] | None = None
+    text: str = ""
+    classes: str = "settings-field-label-top"
 
 
 class CategoryList(OptionList):
@@ -183,6 +195,143 @@ class SettingsModal(ModalScreen[None]):
                 is_advanced=True,
             ),
         ]
+        self._category_fields: dict[str, tuple[SettingFieldSpec, ...]] = {
+            "orchestration": (
+                SettingFieldSpec(
+                    "switch", "Auto-confirm plans for single tasks", "settings-auto-confirm-single"
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Default execution mode",
+                    "settings-execution-mode",
+                    options=(
+                        ("Ask each time", "ask"),
+                        ("Auto (autonomous)", "auto"),
+                        ("Pair (co-pilot)", "pair"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Review strictness",
+                    "settings-review-strictness",
+                    options=(
+                        ("Strict", "strict"),
+                        ("Balanced", "balanced"),
+                        ("Relaxed", "relaxed"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Planning depth",
+                    "settings-planning-depth",
+                    options=(
+                        ("Always plan", "always"),
+                        ("Multi-task only", "multi_task"),
+                        ("Never plan", "never"),
+                    ),
+                ),
+            ),
+            "general": (
+                SettingFieldSpec(
+                    "select",
+                    "Default agent backend",
+                    "settings-default-agent",
+                    options_factory=list_registered_agent_backends,
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "PAIR launcher",
+                    "settings-pair-launcher",
+                    options=(
+                        ("tmux", "tmux"),
+                        ("nvim", "nvim"),
+                        ("vscode", "vscode"),
+                        ("cursor", "cursor"),
+                        ("windsurf", "windsurf"),
+                        ("kiro", "kiro"),
+                        ("antigravity", "antigravity"),
+                    ),
+                ),
+                SettingFieldSpec("text", "Default base branch", "settings-default-base-branch"),
+                SettingFieldSpec(
+                    "switch", "Open last project on launch", "settings-open-last-project"
+                ),
+            ),
+            "worktree": (
+                SettingFieldSpec(
+                    "select",
+                    "Worktree base ref strategy",
+                    "settings-base-ref-strategy",
+                    options=(
+                        ("Local if ahead", "local_if_ahead"),
+                        ("Remote", "remote"),
+                        ("Local", "local"),
+                    ),
+                ),
+            ),
+            "automation": (
+                SettingFieldSpec("switch", "Enable auto review", "settings-auto-review"),
+                SettingFieldSpec("switch", "Auto init git repo", "settings-auto-init-repo"),
+                SettingFieldSpec(
+                    "switch", "Auto create initial commit", "settings-auto-init-commit"
+                ),
+            ),
+            "merge": (
+                SettingFieldSpec(
+                    "switch", "Require approval before merge", "settings-require-review-approval"
+                ),
+                SettingFieldSpec("switch", "Serialize manual merges", "settings-serialize-merges"),
+            ),
+            "appearance": (
+                SettingFieldSpec(
+                    "select",
+                    "Theme",
+                    "settings-theme",
+                    options_factory=_build_theme_options,
+                ),
+                SettingFieldSpec(
+                    "switch", "Skip PAIR instructions popup", "settings-skip-pair-instructions"
+                ),
+            ),
+            "instructions": (
+                SettingFieldSpec(
+                    "textarea", "Additional instructions", "settings-additional-instructions"
+                ),
+                SettingFieldSpec(
+                    "static",
+                    text=(
+                        "[dim]Appended to every agent prompt — your preferences,\n"
+                        "conventions, and workflow rules.\n\n"
+                        "Examples: 'Use conventional commits' ·\n"
+                        "'Always explain tradeoffs first' ·\n"
+                        "'Commit messages in Portuguese'[/dim]"
+                    ),
+                ),
+                SettingFieldSpec("static", field_id="settings-dotfile-status"),
+                SettingFieldSpec(
+                    "static",
+                    text="[dim]Full prompt overrides -> .kagan/prompts/[/dim]",
+                ),
+            ),
+            "git_identity": (
+                SettingFieldSpec(
+                    "select",
+                    "Git user mode",
+                    "settings-git-user-mode",
+                    options=(
+                        ("Kagan Agent (default)", "kagan_agent"),
+                        ("System git profile", "system_default"),
+                        ("Custom", "custom"),
+                    ),
+                ),
+                SettingFieldSpec("text", "Git user name (custom mode)", "settings-git-user-name"),
+                SettingFieldSpec("text", "Git email (custom mode)", "settings-git-user-email"),
+            ),
+            "models": (
+                SettingFieldSpec("text", "Claude default model", "settings-default-model-claude"),
+                SettingFieldSpec("text", "OpenAI default model", "settings-default-model-openai"),
+            ),
+        }
         self._show_advanced = False
 
     @property
@@ -207,161 +356,12 @@ class SettingsModal(ModalScreen[None]):
                 with Vertical(id="settings-detail-pane"):
                     yield Static("", classes="settings-detail-title", id="settings-detail-title")
                     with Vertical(id="settings-detail-content"):
-                        # --- Orchestration (NEW) ---
-                        with Vertical(id="settings-pane-orchestration", classes="settings-pane"):
-                            yield self._switch_field(
-                                "Auto-confirm plans for single tasks",
-                                "settings-auto-confirm-single",
-                            )
-                            yield self._select_field(
-                                "Default execution mode",
-                                "settings-execution-mode",
-                                [
-                                    ("Ask each time", "ask"),
-                                    ("Auto (autonomous)", "auto"),
-                                    ("Pair (co-pilot)", "pair"),
-                                ],
-                            )
-                            yield self._select_field(
-                                "Review strictness",
-                                "settings-review-strictness",
-                                [
-                                    ("Strict", "strict"),
-                                    ("Balanced", "balanced"),
-                                    ("Relaxed", "relaxed"),
-                                ],
-                            )
-                            yield self._select_field(
-                                "Planning depth",
-                                "settings-planning-depth",
-                                [
-                                    ("Always plan", "always"),
-                                    ("Multi-task only", "multi_task"),
-                                    ("Never plan", "never"),
-                                ],
-                            )
-                        # --- General ---
-                        with Vertical(id="settings-pane-general", classes="settings-pane"):
-                            yield self._select_field(
-                                "Default agent backend",
-                                "settings-default-agent",
-                                [(name, name) for name in list_registered_agent_backends()],
-                            )
-                            yield self._select_field(
-                                "PAIR launcher",
-                                "settings-pair-launcher",
-                                [
-                                    ("tmux", "tmux"),
-                                    ("nvim", "nvim"),
-                                    ("vscode", "vscode"),
-                                    ("cursor", "cursor"),
-                                    ("windsurf", "windsurf"),
-                                    ("kiro", "kiro"),
-                                    ("antigravity", "antigravity"),
-                                ],
-                            )
-                            yield self._text_field(
-                                "Default base branch",
-                                "settings-default-base-branch",
-                            )
-                            yield self._switch_field(
-                                "Open last project on launch",
-                                "settings-open-last-project",
-                            )
-                        # --- Worktree ---
-                        with Vertical(id="settings-pane-worktree", classes="settings-pane"):
-                            yield self._select_field(
-                                "Worktree base ref strategy",
-                                "settings-base-ref-strategy",
-                                [
-                                    ("Local if ahead", "local_if_ahead"),
-                                    ("Remote", "remote"),
-                                    ("Local", "local"),
-                                ],
-                            )
-                        # --- Automation ---
-                        with Vertical(id="settings-pane-automation", classes="settings-pane"):
-                            yield self._switch_field(
-                                "Enable auto review",
-                                "settings-auto-review",
-                            )
-                            yield self._switch_field(
-                                "Auto init git repo",
-                                "settings-auto-init-repo",
-                            )
-                            yield self._switch_field(
-                                "Auto create initial commit",
-                                "settings-auto-init-commit",
-                            )
-                        # --- Merge Policy ---
-                        with Vertical(id="settings-pane-merge", classes="settings-pane"):
-                            yield self._switch_field(
-                                "Require approval before merge",
-                                "settings-require-review-approval",
-                            )
-                            yield self._switch_field(
-                                "Serialize manual merges",
-                                "settings-serialize-merges",
-                            )
-                        # --- Appearance ---
-                        with Vertical(id="settings-pane-appearance", classes="settings-pane"):
-                            yield self._select_field(
-                                "Theme",
-                                "settings-theme",
-                                _build_theme_options(),
-                            )
-                            yield self._switch_field(
-                                "Skip PAIR instructions popup",
-                                "settings-skip-pair-instructions",
-                            )
-                        # --- Additional Instructions (NEW) ---
-                        with Vertical(id="settings-pane-instructions", classes="settings-pane"):
-                            yield self._textarea_field(
-                                "Additional instructions",
-                                "settings-additional-instructions",
-                            )
-                            yield Static(
-                                "[dim]Appended to every agent prompt — your preferences,\n"
-                                "conventions, and workflow rules.\n\n"
-                                "Examples: 'Use conventional commits' ·\n"
-                                "'Always explain tradeoffs first' ·\n"
-                                "'Commit messages in Portuguese'[/dim]",
-                                classes="settings-field-label-top",
-                            )
-                            yield Static("", id="settings-dotfile-status")
-                            yield Static(
-                                "[dim]Full prompt overrides → .kagan/prompts/[/dim]",
-                                classes="settings-field-label-top",
-                            )
-                        # --- Git Identity ---
-                        with Vertical(id="settings-pane-git_identity", classes="settings-pane"):
-                            yield self._select_field(
-                                "Git user mode",
-                                "settings-git-user-mode",
-                                [
-                                    ("Kagan Agent (default)", "kagan_agent"),
-                                    ("System git profile", "system_default"),
-                                    ("Custom", "custom"),
-                                ],
-                            )
-                            yield self._text_field(
-                                "Git user name (custom mode)",
-                                "settings-git-user-name",
-                            )
-                            yield self._text_field(
-                                "Git email (custom mode)",
-                                "settings-git-user-email",
-                            )
-                        # --- Models ---
-                        with Vertical(id="settings-pane-models", classes="settings-pane"):
-                            yield self._text_field(
-                                "Claude default model",
-                                "settings-default-model-claude",
-                            )
-                            yield self._text_field(
-                                "OpenAI default model",
-                                "settings-default-model-openai",
-                            )
+                        for category in self._categories:
+                            with Vertical(
+                                id=f"settings-pane-{category.id}",
+                                classes="settings-pane",
+                            ):
+                                yield from self._build_category_fields(category.id)
 
             with Horizontal(classes="modal-action-row"):
                 yield Button("Save", id="settings-save", variant="primary")
@@ -407,9 +407,7 @@ class SettingsModal(ModalScreen[None]):
         )
 
         # --- General ---
-        default_agent = (
-            settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
-        )
+        default_agent = settings.get("default_agent_backend") or "claude-code"
         agent_select = self.query_one("#settings-default-agent", Select)
         available_agents = list_registered_agent_backends()
         if default_agent in available_agents:
@@ -581,20 +579,36 @@ class SettingsModal(ModalScreen[None]):
 
     def _show_pane(self, category_id: str | None) -> None:
         panes = {
-            "orchestration": self.query_one("#settings-pane-orchestration", Vertical),
-            "general": self.query_one("#settings-pane-general", Vertical),
-            "automation": self.query_one("#settings-pane-automation", Vertical),
-            "merge": self.query_one("#settings-pane-merge", Vertical),
-            "appearance": self.query_one("#settings-pane-appearance", Vertical),
-            "worktree": self.query_one("#settings-pane-worktree", Vertical),
-            "instructions": self.query_one("#settings-pane-instructions", Vertical),
-            "git_identity": self.query_one("#settings-pane-git_identity", Vertical),
-            "models": self.query_one("#settings-pane-models", Vertical),
+            category.id: self.query_one(f"#settings-pane-{category.id}", Vertical)
+            for category in self._categories
         }
         for pane_id, pane in panes.items():
             visible = pane_id == category_id
             pane.display = visible
             pane.set_class(visible, "active-pane")
+
+    def _build_category_fields(self, category_id: str) -> list[Static | Vertical | Horizontal]:
+        return [self._render_field(field) for field in self._category_fields[category_id]]
+
+    def _render_field(self, field: SettingFieldSpec) -> Static | Vertical | Horizontal:
+        if field.kind == "switch" and field.field_id is not None:
+            return self._switch_field(field.label, field.field_id)
+        if field.kind == "select" and field.field_id is not None:
+            raw_options = (
+                field.options_factory() if field.options_factory is not None else field.options
+            )
+            if field.field_id == "settings-default-agent":
+                options = [(name, name) for name in cast("list[str]", raw_options)]
+            else:
+                options = list(raw_options)
+            return self._select_field(field.label, field.field_id, options)
+        if field.kind == "text" and field.field_id is not None:
+            return self._text_field(field.label, field.field_id)
+        if field.kind == "textarea" and field.field_id is not None:
+            return self._textarea_field(field.label, field.field_id)
+        if field.field_id is not None:
+            return Static(field.text, id=field.field_id, classes=field.classes)
+        return Static(field.text, classes=field.classes)
 
     def _text_field(self, label: str, field_id: str) -> Vertical:
         return Vertical(
@@ -680,7 +694,6 @@ class SettingsModal(ModalScreen[None]):
 
         updates: dict[str, str] = {
             "default_agent_backend": default_agent_backend,
-            "default_agent": default_agent_backend,
             "pair_launcher": pair_launcher,
             "default_base_branch": base_branch,
             "worktree_base_ref_strategy": strategy,

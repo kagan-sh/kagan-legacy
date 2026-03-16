@@ -10,7 +10,6 @@ from loguru import logger
 from starlette.responses import JSONResponse
 
 from kagan.mcp.server import ServerContext, ServerOptions, _set_server_context, create_server
-from kagan.server._auth import register_auth
 from kagan.server._chat_routes import register_chat_routes
 from kagan.server._plugin_routes import register_plugin_routes
 from kagan.server._routes import register_routes
@@ -33,10 +32,9 @@ class ApiServerOptions:
     mcp_opts: ServerOptions
     host: str = "127.0.0.1"
     port: int = 8765
-    auth_token: str | None = None  # if None, auto-generated at startup
     enable_tls: bool = False  # generate self-signed cert and serve HTTPS
     web_ui: bool = False  # mount bundled local web UI at /
-    dev_mode: bool = False  # dev mode: skip auth, no bundled UI (for Vite proxy)
+    dev_mode: bool = False
 
 
 def create_api_server(opts: ApiServerOptions) -> FastMCP:
@@ -53,7 +51,6 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     """
     mcp = create_server(opts.mcp_opts)
 
-    # Set host/port BEFORE register_auth so QR code gets the right values
     mcp.settings.host = opts.host
     mcp.settings.port = opts.port
 
@@ -88,19 +85,7 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_chat_routes(mcp)
     register_plugin_routes(mcp)
 
-    # Bundled web mode is same-origin and does not pair to a separate server
-    # instance. Only non-web API clients use auth routes.
-    skip_auth = opts.dev_mode or opts.web_ui
-    if not skip_auth:
-        # Resolve TLS cert fingerprint for QR code if TLS enabled.
-        fp: str | None = None
-        if opts.enable_tls:
-            from kagan.crypto import cert_fingerprint, ensure_tls_cert
-
-            cert_path, _key_path = ensure_tls_cert(opts.host)
-            fp = cert_fingerprint(cert_path)
-        register_auth(mcp, cert_fingerprint=fp, tls_enabled=opts.enable_tls)
-    register_websocket(mcp, require_auth=not skip_auth)
+    register_websocket(mcp)
 
     # Web UI must be last — it mounts a catch-all SPA fallback at /
     if opts.web_ui:
@@ -136,7 +121,6 @@ async def serve_http(
         mcp_opts=opts.mcp_opts,
         host=effective_host,
         port=effective_port,
-        auth_token=opts.auth_token,
         enable_tls=opts.enable_tls,
         web_ui=opts.web_ui,
         dev_mode=opts.dev_mode,

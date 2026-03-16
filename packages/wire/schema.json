@@ -1,0 +1,387 @@
+{
+  "version": "1",
+  "models": {
+    "WireTaskActiveSession": {
+      "description": "Live session metadata associated with a task.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "agent_backend": {
+          "title": "Agent Backend",
+          "type": "string"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "mode",
+        "agent_backend",
+        "started_at"
+      ],
+      "title": "WireTaskActiveSession",
+      "type": "object"
+    },
+    "WireReviewVerdict": {
+      "properties": {
+        "criterion_index": {
+          "title": "Criterion Index",
+          "type": "integer"
+        },
+        "verdict": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_index",
+        "verdict",
+        "reason"
+      ],
+      "title": "WireReviewVerdict",
+      "type": "object"
+    },
+    "WireTask": {
+      "$defs": {
+        "WireTaskActiveSession": {
+          "description": "Live session metadata associated with a task.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "mode": {
+              "title": "Mode",
+              "type": "string"
+            },
+            "agent_backend": {
+              "title": "Agent Backend",
+              "type": "string"
+            },
+            "started_at": {
+              "title": "Started At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "mode",
+            "agent_backend",
+            "started_at"
+          ],
+          "title": "WireTaskActiveSession",
+          "type": "object"
+        }
+      },
+      "description": "Serialisable representation of a Kagan task.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "status": {
+          "description": "Value of TaskStatus enum, e.g. 'BACKLOG'.",
+          "title": "Status",
+          "type": "string"
+        },
+        "priority": {
+          "description": "Name of Priority enum, e.g. 'HIGH'.",
+          "title": "Priority",
+          "type": "string"
+        },
+        "execution_mode": {
+          "description": "Value of WorkMode enum, e.g. 'AUTO'.",
+          "title": "Execution Mode",
+          "type": "string"
+        },
+        "base_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Branch"
+        },
+        "acceptance_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Acceptance Criteria",
+          "type": "array"
+        },
+        "agent_backend": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Backend"
+        },
+        "launcher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Launcher"
+        },
+        "review_approved": {
+          "default": false,
+          "title": "Review Approved",
+          "type": "boolean"
+        },
+        "review_verdicts": {
+          "items": {
+            "$ref": "#/$defs/WireReviewVerdict"
+          },
+          "title": "Review Verdicts",
+          "type": "array",
+          "default": []
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        },
+        "last_event_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Event At"
+        },
+        "has_workspace": {
+          "default": false,
+          "title": "Has Workspace",
+          "type": "boolean"
+        },
+        "review_running": {
+          "default": false,
+          "title": "Review Running",
+          "type": "boolean"
+        },
+        "active_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WireTaskActiveSession"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "priority",
+        "execution_mode"
+      ],
+      "title": "WireTask",
+      "type": "object"
+    },
+    "WireProject": {
+      "description": "Serialisable representation of a Kagan project.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "WireProject",
+      "type": "object"
+    },
+    "WireSession": {
+      "description": "Serialisable representation of a Kagan session.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "task_id",
+        "status",
+        "mode",
+        "created_at"
+      ],
+      "title": "WireSession",
+      "type": "object"
+    },
+    "WireEvent": {
+      "description": "Serialisable representation of a Kagan event.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "type",
+        "created_at"
+      ],
+      "title": "WireEvent",
+      "type": "object"
+    },
+    "WireEnvelope": {
+      "description": "Generic wrapper for all wire responses.\n\n``ok=True`` \u2192 ``data`` carries payload.\n``ok=False`` \u2192 ``error`` carries a human-readable message.",
+      "properties": {
+        "ok": {
+          "default": true,
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "data": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "title": "WireEnvelope",
+      "type": "object"
+    },
+    "WireRequest": {
+      "description": "Base request envelope shared by all wire calls.",
+      "properties": {
+        "version": {
+          "default": "1",
+          "title": "Version",
+          "type": "string"
+        },
+        "trace_id": {
+          "title": "Trace Id",
+          "type": "string"
+        }
+      },
+      "title": "WireRequest",
+      "type": "object"
+    }
+  }
+}

@@ -166,9 +166,11 @@ def _register_commands() -> None:
     from kagan.cli.mcp import mcp
     from kagan.cli.plugins import plugins
     from kagan.cli.reset import reset
+    from kagan.cli.serve import serve
     from kagan.cli.tools import tools
     from kagan.cli.tui import tui
     from kagan.cli.update import update
+    from kagan.cli.web import web
 
     cli.add_command(tui)
     cli.add_command(chat)
@@ -176,9 +178,11 @@ def _register_commands() -> None:
     cli.add_command(import_cmd)
     cli.add_command(list_projects)
     cli.add_command(mcp)
+    cli.add_command(serve)
     cli.add_command(reset)
     cli.add_command(update)
     cli.add_command(tools)
+    cli.add_command(web)
     if _plugins_cli_enabled():
         cli.add_command(plugins)
 

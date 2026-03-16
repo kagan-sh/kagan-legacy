@@ -1,0 +1,11 @@
+{
+  "name": "@kagan/wire",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kagan wire protocol types",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "generate": "bash generate.sh"
+  }
+}

@@ -1,0 +1,962 @@
+"""kagan.server._websocket — WebSocket event streaming transport."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+from typing import TYPE_CHECKING, Any, cast
+
+from starlette.routing import WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
+
+from kagan.mcp._policy import AccessTier
+from kagan.mcp.server import get_server_context
+from kagan.server._access import is_access_allowed, websocket_forbidden
+from kagan.server._auth import _is_authorized_token
+from kagan.wire.models import utc_iso
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Mapping
+    from pathlib import Path
+
+    from mcp.server.fastmcp import FastMCP
+
+
+# Throttle interval for CHAT_CHUNK messages to avoid flooding the client.
+_CHAT_CHUNK_THROTTLE_SECONDS = 0.05
+
+
+_WS_AUTH_TIMEOUT_SECONDS = 10.0
+_WS_HEARTBEAT_INTERVAL_SECONDS = 30.0
+_WS_HEARTBEAT_TIMEOUT_SECONDS = 10.0
+_WS_QUEUE_MAXSIZE = 1000
+_ws_connections: set[asyncio.Queue[dict[str, object]]] = set()
+_chat_turn_tasks: dict[str, asyncio.Task[None]] = {}
+
+
+def _track_chat_turn_task(session_id: str, task: asyncio.Task[None]) -> None:
+    _chat_turn_tasks[session_id] = task
+
+    def _cleanup(done_task: asyncio.Task[None]) -> None:
+        if _chat_turn_tasks.get(session_id) is done_task:
+            _chat_turn_tasks.pop(session_id, None)
+
+    task.add_done_callback(_cleanup)
+
+
+def _enqueue_with_backpressure(
+    queue: asyncio.Queue[dict[str, object]],
+    event: dict[str, object],
+) -> None:
+    try:
+        queue.put_nowait(event)
+        return
+    except asyncio.QueueFull:
+        pass
+
+    try:
+        queue.get_nowait()
+    except asyncio.QueueEmpty:
+        return
+
+    try:
+        queue.put_nowait(event)
+    except asyncio.QueueFull:
+        return
+
+
+def broadcast(event: Mapping[str, object]) -> None:
+    payload = dict(event)
+    for queue in tuple(_ws_connections):
+        _enqueue_with_backpressure(queue, payload)
+
+
+# ---------------------------------------------------------------------------
+# Board-change sync: push task mutations to all WebSocket clients.
+# Two independent loops:
+#   1. _board_event_bridge  — in-process core BoardEvents → instant broadcast
+#   2. _cross_process_sync  — DB snapshot poll → near-instant broadcast
+# ---------------------------------------------------------------------------
+
+_CROSS_PROCESS_POLL_SECONDS = 0.75
+_board_sync_started = False
+
+
+async def _board_event_bridge(mcp: FastMCP) -> None:
+    """Forward in-process board events to WebSocket clients instantly."""
+    while True:
+        ctx = get_server_context(mcp)
+        while ctx is None:
+            await asyncio.sleep(0.5)
+            ctx = get_server_context(mcp)
+        try:
+            async for event in ctx.client.tasks.events.stream_board():
+                broadcast({"t": "TASK_UPDATED", "task_id": event.task_id})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await asyncio.sleep(1.0)
+
+
+async def _cross_process_sync(mcp: FastMCP) -> None:
+    """Detect DB changes from other processes and broadcast to WebSocket clients."""
+    ctx = get_server_context(mcp)
+    while ctx is None:
+        await asyncio.sleep(0.5)
+        ctx = get_server_context(mcp)
+
+    snapshot: frozenset[tuple[str, str, str | None]] = frozenset()
+    last_project: str | None = ctx.client.active_project_id
+
+    while True:
+        await asyncio.sleep(_CROSS_PROCESS_POLL_SECONDS)
+        try:
+            current_project = ctx.client.active_project_id
+            if current_project != last_project:
+                last_project = current_project
+                snapshot = frozenset()
+                broadcast({"t": "TASK_UPDATED"})
+                continue
+
+            if not current_project:
+                continue
+
+            tasks = await ctx.client.tasks.list()
+            current = frozenset(
+                (
+                    t.id,
+                    t.status.value,
+                    t.updated_at.isoformat() if getattr(t, "updated_at", None) else None,
+                )
+                for t in tasks
+            )
+            if current == snapshot:
+                continue
+
+            old_ids = {k[0] for k in snapshot}
+            for key in current - snapshot:
+                broadcast({"t": "TASK_UPDATED", "task_id": key[0]})
+            for tid in old_ids - {k[0] for k in current}:
+                broadcast({"t": "TASK_UPDATED", "task_id": tid})
+            snapshot = current
+        except Exception:
+            continue
+
+
+def _ensure_board_sync(mcp: FastMCP) -> None:
+    """Start board sync background tasks (once per server lifetime)."""
+    global _board_sync_started
+    if _board_sync_started:
+        return
+    _board_sync_started = True
+    asyncio.create_task(_board_event_bridge(mcp), name="ws-board-event-bridge")
+    asyncio.create_task(_cross_process_sync(mcp), name="ws-cross-process-sync")
+
+
+async def _close_safely(websocket: WebSocket, code: int, reason: str) -> None:
+    try:
+        await websocket.close(code=code, reason=reason)
+    except Exception:
+        return
+
+
+async def _authenticate(websocket: WebSocket) -> bool:
+    try:
+        raw = await asyncio.wait_for(
+            websocket.receive_json(),
+            timeout=_WS_AUTH_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        await _close_safely(websocket, code=4001, reason="Auth timeout")
+        return False
+
+    if not isinstance(raw, dict):
+        await websocket.send_json({"t": "AUTH_FAIL"})
+        await _close_safely(websocket, code=4003, reason="Unauthorized")
+        return False
+
+    token = raw.get("token")
+    if raw.get("t") != "AUTH" or not isinstance(token, str) or not _is_authorized_token(token):
+        await websocket.send_json({"t": "AUTH_FAIL"})
+        await _close_safely(websocket, code=4003, reason="Unauthorized")
+        return False
+
+    await websocket.send_json({"t": "AUTH_OK"})
+    return True
+
+
+async def _sender_loop(
+    websocket: WebSocket,
+    queue: asyncio.Queue[dict[str, object]],
+    pong_event: asyncio.Event,
+) -> None:
+    while True:
+        try:
+            event = await asyncio.wait_for(queue.get(), timeout=_WS_HEARTBEAT_INTERVAL_SECONDS)
+            await websocket.send_json(event)
+            continue
+        except TimeoutError:
+            pass
+
+        pong_event.clear()
+        await websocket.send_json({"t": "PING"})
+        try:
+            await asyncio.wait_for(pong_event.wait(), timeout=_WS_HEARTBEAT_TIMEOUT_SECONDS)
+        except TimeoutError as exc:
+            raise WebSocketDisconnect(code=1001) from exc
+
+
+def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
+    return settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
+
+
+async def _resolve_project_cwd(client: Any) -> Path | None:
+    settings = await client.settings.get()
+    return await client.projects.resolve_repo_path(settings=settings)
+
+
+def _task_to_dict(task: Any, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
+    runtime = runtime or {}
+    active_session = runtime.get("active_session")
+    is_review_task = getattr(getattr(task, "status", None), "value", None) == "REVIEW"
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": getattr(task, "description", ""),
+        "status": task.status.value,
+        "priority": task.priority.name,
+        "execution_mode": task.execution_mode.value,
+        "base_branch": getattr(task, "base_branch", None),
+        "acceptance_criteria": getattr(task, "acceptance_criteria", []),
+        "agent_backend": getattr(task, "agent_backend", None),
+        "launcher": getattr(task, "launcher", None),
+        "review_approved": getattr(task, "review_approved", False),
+        "review_verdicts": getattr(task, "review_verdicts", []) or [],
+        "updated_at": utc_iso(getattr(task, "updated_at", None)),
+        "last_event_at": runtime.get("last_event_at"),
+        "has_workspace": bool(runtime.get("has_workspace", False)),
+        "review_running": is_review_task and isinstance(active_session, dict),
+        "active_session": active_session,
+    }
+
+
+def _event_to_wire_dict(event: Any) -> dict[str, Any]:
+    created_at = getattr(event, "created_at", None)
+    return {
+        "id": str(getattr(event, "id", "")),
+        "session_id": str(getattr(event, "session_id", "") or ""),
+        "type": str(getattr(getattr(event, "event_type", None), "value", "")),
+        "payload": cast("dict[str, object]", getattr(event, "payload", {})),
+        "created_at": utc_iso(created_at) or "",
+    }
+
+
+async def _forward_live_session_events(
+    *,
+    websocket: WebSocket,
+    mcp: FastMCP,
+) -> None:
+    ctx = get_server_context(mcp)
+    while ctx is None:
+        await asyncio.sleep(0.5)
+        ctx = get_server_context(mcp)
+
+    try:
+        async for event in ctx.client.tasks.events.stream_all(replay=False):
+            with contextlib.suppress(Exception):
+                await websocket.send_json(
+                    {
+                        "t": "SESSION_EVENT",
+                        "task_id": str(getattr(event, "task_id", "")),
+                        "event": _event_to_wire_dict(event),
+                    }
+                )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        return
+
+
+async def _receiver_loop(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    pong_event: asyncio.Event,
+) -> None:
+    handlers: dict[
+        str,
+        Callable[[WebSocket, FastMCP, dict[str, object]], Awaitable[None]],
+    ] = {
+        "BOARD_SUBSCRIBE": _handle_board_subscribe,
+        "RUN_START": _handle_run_start,
+        "RUN_CANCEL": _handle_run_cancel,
+        "CHAT_SUBSCRIBE": _handle_chat_subscribe,
+        "CHAT_SEND": _handle_chat_send_message,
+        "CHAT_INTERRUPT": _handle_chat_interrupt,
+        "TASK_FOLLOW_UP": _handle_task_follow_up,
+    }
+
+    while True:
+        try:
+            raw = await websocket.receive_json()
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw, dict):
+            continue
+
+        msg_type = raw.get("t")
+
+        if msg_type == "PING":
+            await websocket.send_json({"t": "PONG"})
+            continue
+
+        if msg_type == "PONG":
+            pong_event.set()
+            continue
+
+        handler = handlers.get(msg_type) if isinstance(msg_type, str) else None
+        if handler is not None:
+            await handler(websocket, mcp, raw)
+
+
+async def _handle_board_subscribe(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    del raw
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json({"t": "BOARD_SYNC", "tasks": []})
+        return
+
+    tasks = await ctx.client.tasks.list()
+    runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
+    await websocket.send_json(
+        {
+            "t": "BOARD_SYNC",
+            "tasks": [_task_to_dict(task, runtime=runtime.get(task.id)) for task in tasks],
+        }
+    )
+
+
+async def _handle_run_start(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json({"t": "RUN_ERROR", "error": "Server not ready"})
+        return
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="RUN_ERROR",
+                operation="Task execution",
+                minimum_tier=AccessTier.STANDARD,
+            )
+        )
+        return
+
+    task_id = raw.get("task_id")
+    if not isinstance(task_id, str) or not task_id:
+        await websocket.send_json({"t": "RUN_ERROR", "error": "task_id is required"})
+        return
+
+    mode = raw.get("mode", "AUTO")
+    if mode != "AUTO":
+        await websocket.send_json(
+            {
+                "t": "RUN_ERROR",
+                "error": "Only AUTO mode is supported",
+            }
+        )
+        return
+
+    try:
+        task = await ctx.client.tasks.get(task_id)
+        settings = await ctx.client.settings.get()
+        backend = task.agent_backend or _resolve_default_agent_backend(settings)
+        session = await ctx.client.tasks.run(task_id, agent_backend=backend)
+        await websocket.send_json(
+            {
+                "t": "RUN_STARTED",
+                "session_id": session.id,
+                "task_id": task_id,
+            }
+        )
+        broadcast({"t": "TASK_UPDATED", "task_id": task_id})
+    except Exception as exc:
+        payload: dict[str, object] = {"t": "RUN_ERROR", "task_id": task_id, "error": str(exc)}
+        error_code = getattr(exc, "code", None)
+        if isinstance(error_code, str):
+            payload["error_code"] = error_code
+        await websocket.send_json(payload)
+
+
+async def _handle_run_cancel(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json({"t": "RUN_ERROR", "error": "Server not ready"})
+        return
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="RUN_ERROR",
+                operation="Task cancellation",
+                minimum_tier=AccessTier.STANDARD,
+            )
+        )
+        return
+
+    task_id = raw.get("task_id")
+    if not isinstance(task_id, str) or not task_id:
+        await websocket.send_json({"t": "RUN_ERROR", "error": "task_id is required"})
+        return
+
+    try:
+        await ctx.client.tasks.cancel(task_id)
+        await websocket.send_json({"t": "RUN_CANCELLED", "task_id": task_id})
+        broadcast({"t": "TASK_UPDATED", "task_id": task_id})
+    except Exception as exc:
+        payload: dict[str, object] = {"t": "RUN_ERROR", "error": str(exc)}
+        error_code = getattr(exc, "code", None)
+        if isinstance(error_code, str):
+            payload["error_code"] = error_code
+        await websocket.send_json(payload)
+
+
+async def _handle_task_follow_up(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    """Handle a user follow-up message for a running task.
+
+    Mirrors TUI ``_send_task_message``: cancel the current agent, append the
+    follow-up to the task description, then restart the agent.
+    """
+    from loguru import logger
+
+    task_id = raw.get("task_id")
+    text = raw.get("text")
+    if not isinstance(task_id, str) or not task_id or not isinstance(text, str) or not text.strip():
+        await websocket.send_json(
+            {"t": "TASK_FOLLOW_UP_ERROR", "error": "task_id and text are required"}
+        )
+        return
+
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json(
+            {"t": "TASK_FOLLOW_UP_ERROR", "task_id": task_id, "error": "Server not ready"}
+        )
+        return
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="TASK_FOLLOW_UP_ERROR",
+                operation="Task follow-up messages",
+                minimum_tier=AccessTier.STANDARD,
+                extra={"task_id": task_id},
+            )
+        )
+        return
+
+    text = text.strip()
+
+    try:
+        # Cancel the running agent (ignore errors if not running)
+        with contextlib.suppress(Exception):
+            await ctx.client.tasks.cancel(task_id)
+
+        # Get the current task and append follow-up to description
+        task = await ctx.client.tasks.get(task_id)
+        current_desc = (getattr(task, "description", "") or "").strip()
+        follow_up = f"User follow-up:\n{text}"
+        updated_desc = f"{current_desc}\n\n{follow_up}" if current_desc else follow_up
+
+        task = await ctx.client.tasks.update(task_id, description=updated_desc)
+
+        # Restart the agent
+        settings = await ctx.client.settings.get()
+        backend = getattr(task, "agent_backend", None) or _resolve_default_agent_backend(settings)
+        session = await ctx.client.tasks.run(task_id, agent_backend=backend)
+
+        await websocket.send_json(
+            {
+                "t": "TASK_FOLLOW_UP_ACK",
+                "task_id": task_id,
+                "session_id": session.id,
+            }
+        )
+        broadcast({"t": "TASK_UPDATED", "task_id": task_id})
+    except Exception as exc:
+        logger.exception("Task follow-up failed for task {}", task_id)
+        payload: dict[str, object] = {
+            "t": "TASK_FOLLOW_UP_ERROR",
+            "task_id": task_id,
+            "error": str(exc),
+        }
+        error_code = getattr(exc, "code", None)
+        if isinstance(error_code, str):
+            payload["error_code"] = error_code
+        await websocket.send_json(payload)
+
+
+async def _handle_chat_subscribe(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    session_id = raw.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        await websocket.send_json({"t": "CHAT_ERROR", "error": "session_id is required"})
+        return
+
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json(
+            {
+                "t": "CHAT_ERROR",
+                "session_id": session_id,
+                "error": "Server not ready",
+            }
+        )
+        return
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="CHAT_ERROR",
+                operation="Chat messages",
+                minimum_tier=AccessTier.STANDARD,
+                extra={"session_id": session_id},
+            )
+        )
+        return
+
+    from kagan.chat.sessions import get_chat_session
+
+    session = await get_chat_session(ctx.client, session_id)
+    if session is None:
+        await websocket.send_json(
+            {
+                "t": "CHAT_ERROR",
+                "session_id": session_id,
+                "error": "Session not found",
+            }
+        )
+        return
+
+    history = session.get("orchestrator_history") or []
+    messages: list[dict[str, str]] = []
+    for item in history:
+        if isinstance(item, list | tuple) and len(item) == 2:
+            messages.append({"role": str(item[0]), "content": str(item[1])})
+
+    await websocket.send_json(
+        {
+            "t": "CHAT_SUBSCRIBED",
+            "session_id": session_id,
+            "label": session.get("label", ""),
+            "agent_backend": session.get("agent_backend"),
+            "messages": messages,
+        }
+    )
+
+
+async def _handle_chat_send_message(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    session_id = raw.get("session_id")
+    text = raw.get("text")
+    if (
+        not isinstance(session_id, str)
+        or not session_id
+        or not isinstance(text, str)
+        or not text.strip()
+    ):
+        await websocket.send_json(
+            {
+                "t": "CHAT_ERROR",
+                "error": "session_id and text are required",
+            }
+        )
+        return
+
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json(
+            {
+                "t": "CHAT_ERROR",
+                "session_id": session_id,
+                "error": "Server not ready",
+            }
+        )
+        return
+
+    running_task = _chat_turn_tasks.get(session_id)
+    if running_task is not None and not running_task.done():
+        await websocket.send_json(
+            {
+                "t": "CHAT_BUSY",
+                "session_id": session_id,
+                "error": "Chat turn already running",
+            }
+        )
+        return
+
+    # Extract attachments (list of {type, name, mime_type, data})
+    raw_attachments = raw.get("attachments")
+    attachments: list[dict[str, str]] | None = None
+    if isinstance(raw_attachments, list):
+        attachments = [
+            {
+                "type": str(a.get("type", "")),
+                "name": str(a.get("name", "")),
+                "mime_type": str(a.get("mime_type", "")),
+                "data": str(a.get("data", "")),
+            }
+            for a in raw_attachments
+            if isinstance(a, dict) and a.get("data")
+        ]
+        if not attachments:
+            attachments = None
+
+    turn_task = asyncio.create_task(
+        _handle_chat_send(
+            websocket=websocket,
+            mcp=mcp,
+            session_id=session_id,
+            text=text.strip(),
+            agent_backend=cast("str | None", raw.get("agent_backend")),
+            attachments=attachments,
+        ),
+        name=f"chat-turn:{session_id}",
+    )
+    _track_chat_turn_task(session_id, turn_task)
+
+
+async def _handle_chat_interrupt(
+    websocket: WebSocket,
+    mcp: FastMCP,
+    raw: dict[str, object],
+) -> None:
+    session_id = raw.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        await websocket.send_json({"t": "CHAT_ERROR", "error": "session_id is required"})
+        return
+    ctx = get_server_context(mcp)
+    if not is_access_allowed(ctx, AccessTier.STANDARD):
+        await websocket.send_json(
+            websocket_forbidden(
+                event_type="CHAT_ERROR",
+                operation="Chat interruption",
+                minimum_tier=AccessTier.STANDARD,
+                extra={"session_id": session_id},
+            )
+        )
+        return
+
+    running_task = _chat_turn_tasks.get(session_id)
+    if running_task is None or running_task.done():
+        await websocket.send_json(
+            {
+                "t": "CHAT_INTERRUPTED",
+                "session_id": session_id,
+                "interrupted": False,
+            }
+        )
+        return
+
+    running_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, TimeoutError, Exception):
+        await asyncio.wait_for(running_task, timeout=5.0)
+
+    await websocket.send_json(
+        {
+            "t": "CHAT_INTERRUPTED",
+            "session_id": session_id,
+            "interrupted": True,
+        }
+    )
+
+
+async def _handle_chat_send(
+    *,
+    websocket: WebSocket,
+    mcp: FastMCP,
+    session_id: str,
+    text: str,
+    agent_backend: str | None,
+    attachments: list[dict[str, str]] | None = None,
+) -> None:
+    """Run an orchestrator turn and stream ACP events back via WebSocket."""
+    from asyncio import Lock
+
+    from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
+    from loguru import logger
+
+    from kagan.chat.acp import run_orchestrator_turn
+    from kagan.chat.prompt import build_orchestrator_prompt
+    from kagan.chat.sessions import get_chat_session, save_chat_session
+
+    ctx = get_server_context(mcp)
+    if ctx is None:
+        await websocket.send_json(
+            {"t": "CHAT_ERROR", "session_id": session_id, "error": "Server not ready"}
+        )
+        return
+
+    session = await get_chat_session(ctx.client, session_id)
+    if session is None:
+        await websocket.send_json(
+            {"t": "CHAT_ERROR", "session_id": session_id, "error": "Session not found"}
+        )
+        return
+
+    # Resolve agent backend: explicit > session > default
+    settings = await ctx.client.settings.get()
+    backend = (
+        agent_backend or session.get("agent_backend") or _resolve_default_agent_backend(settings)
+    )
+
+    # Throttle state for CHAT_CHUNK messages
+    send_lock = Lock()
+    last_send_time = 0.0
+    pending_content = [""]
+    pending_thought = [False]
+
+    async def _flush_chunk() -> None:
+        nonlocal last_send_time
+        async with send_lock:
+            if not pending_content[0]:
+                return
+            content = pending_content[0]
+            thought = pending_thought[0]
+            pending_content[0] = ""
+            pending_thought[0] = False
+            last_send_time = asyncio.get_event_loop().time()
+            with contextlib.suppress(Exception):
+                msg: dict[str, object] = {
+                    "t": "CHAT_CHUNK",
+                    "session_id": session_id,
+                    "content": content,
+                }
+                if thought:
+                    msg["thought"] = True
+                await websocket.send_json(msg)
+
+    async def on_update(update: Any) -> None:
+        nonlocal last_send_time
+        if isinstance(update, AgentMessageChunk):
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                chunk_text = getattr(content, "text", "") or ""
+                if chunk_text:
+                    # If switching from thought to text, flush pending thought first
+                    if pending_thought[0] and pending_content[0]:
+                        await _flush_chunk()
+                    pending_thought[0] = False
+                    pending_content[0] += chunk_text
+                    now = asyncio.get_event_loop().time()
+                    if now - last_send_time >= _CHAT_CHUNK_THROTTLE_SECONDS:
+                        await _flush_chunk()
+                    return
+        elif isinstance(update, AgentThoughtChunk):
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                chunk_text = getattr(content, "text", "") or ""
+                if chunk_text:
+                    # If switching from text to thought, flush pending text first
+                    if not pending_thought[0] and pending_content[0]:
+                        await _flush_chunk()
+                    pending_thought[0] = True
+                    pending_content[0] += chunk_text
+                    now = asyncio.get_event_loop().time()
+                    if now - last_send_time >= _CHAT_CHUNK_THROTTLE_SECONDS:
+                        await _flush_chunk()
+                    return
+        elif isinstance(update, ToolCallStart):
+            await _flush_chunk()
+            title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
+            with contextlib.suppress(Exception):
+                await websocket.send_json(
+                    {
+                        "t": "CHAT_TOOL_START",
+                        "session_id": session_id,
+                        "tool": title,
+                    }
+                )
+        elif isinstance(update, ToolCallProgress):
+            status = getattr(update, "status", None)
+            title = getattr(update, "title", None) or "tool"
+            with contextlib.suppress(Exception):
+                await websocket.send_json(
+                    {
+                        "t": "CHAT_TOOL_PROGRESS",
+                        "session_id": session_id,
+                        "tool": title,
+                        "status": str(status) if status else None,
+                    }
+                )
+
+    try:
+        # Include conversation history so the agent retains context across turns
+        prior_history: list[tuple[str, str]] = [
+            (str(item[0]), str(item[1]))
+            for item in (session.get("orchestrator_history") or [])
+            if isinstance(item, list | tuple) and len(item) == 2
+        ]
+        prompt = build_orchestrator_prompt(prior_history, text)
+        project_cwd = await _resolve_project_cwd(ctx.client)
+        full_response = await run_orchestrator_turn(
+            ctx.client,
+            prompt=prompt,
+            agent_backend=backend,
+            on_update=on_update,
+            attachments=attachments,
+            cwd=project_cwd,
+        )
+        # Flush any remaining buffered content
+        await _flush_chunk()
+
+        # Persist the conversation turn to the session
+        history = list(session.get("orchestrator_history") or [])
+        is_first_message = len(history) == 0
+        history.append(["user", text])
+        if full_response:
+            history.append(["assistant", full_response])
+        session["orchestrator_history"] = history
+        session["agent_backend"] = backend
+        await save_chat_session(ctx.client, session)
+
+        await websocket.send_json(
+            {
+                "t": "CHAT_DONE",
+                "session_id": session_id,
+                "full_response": full_response,
+            }
+        )
+
+        # Auto-generate a human-readable title after the first message
+        if is_first_message:
+            asyncio.create_task(
+                _generate_chat_session_title(
+                    websocket=websocket,
+                    client=ctx.client,
+                    session=session,
+                    user_message=text,
+                    assistant_reply=full_response or "",
+                    agent_backend=backend,
+                ),
+                name=f"chat-title-gen:{session_id}",
+            )
+    except asyncio.CancelledError:
+        await _flush_chunk()
+        return
+    except Exception as exc:
+        logger.exception("Chat orchestrator turn failed for session {}", session_id)
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {
+                    "t": "CHAT_ERROR",
+                    "session_id": session_id,
+                    "error": str(exc),
+                }
+            )
+
+
+async def _generate_chat_session_title(
+    *,
+    websocket: WebSocket,
+    client: Any,
+    session: dict[str, Any],
+    user_message: str,
+    assistant_reply: str,
+    agent_backend: str,
+) -> None:
+    """Generate a title for a chat session and push it to the client."""
+    from kagan.chat._title import ensure_session_title
+
+    try:
+        title = await ensure_session_title(
+            client,
+            session,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            agent_backend=agent_backend,
+        )
+        if title:
+            with contextlib.suppress(Exception):
+                await websocket.send_json(
+                    {
+                        "t": "CHAT_SESSION_UPDATED",
+                        "session_id": str(session.get("id") or ""),
+                        "label": title,
+                    }
+                )
+    except Exception:
+        pass  # Title generation is best-effort
+
+
+def register_websocket(mcp: FastMCP, *, require_auth: bool = True) -> None:
+    """Register WebSocket transport on the API server.
+
+    Args:
+        mcp: The FastMCP server instance to configure.
+        require_auth: When ``False`` (e.g. bundled web UI mode), skip the
+            token-based authentication handshake.
+    """
+
+    async def ws_handler(websocket: WebSocket) -> None:
+        await websocket.accept()
+        if require_auth and not await _authenticate(websocket):
+            return
+
+        _ = get_server_context(mcp)
+        _ensure_board_sync(mcp)
+
+        queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=_WS_QUEUE_MAXSIZE)
+        _ws_connections.add(queue)
+        pong_event = asyncio.Event()
+
+        sender_task = asyncio.create_task(_sender_loop(websocket, queue, pong_event))
+        receiver_task = asyncio.create_task(_receiver_loop(websocket, mcp, pong_event))
+        session_events_task = asyncio.create_task(
+            _forward_live_session_events(websocket=websocket, mcp=mcp)
+        )
+        try:
+            try:
+                done, pending = await asyncio.wait(
+                    {sender_task, receiver_task, session_events_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+
+                for task in done:
+                    exc = task.exception()
+                    if isinstance(exc, WebSocketDisconnect):
+                        continue
+                    if exc is not None:
+                        await _close_safely(websocket, code=1011, reason="WebSocket error")
+                        break
+            except WebSocketDisconnect:
+                pass
+        finally:
+            _ws_connections.discard(queue)
+            await _close_safely(websocket, code=1000, reason="Disconnected")
+
+    route = WebSocketRoute("/ws", ws_handler)
+    routes = cast("list[Any]", mcp._custom_starlette_routes)
+    routes.append(route)

@@ -36,7 +36,7 @@ _SENSITIVE_KEYS: frozenset[str] = frozenset(
 def _scrub_secrets(payload: dict) -> dict:
     """Deep-copy payload replacing secrets with [REDACTED]. Never mutates input."""
 
-    def _scrub_value(value: object) -> object:
+    def _scrub_value(value: Any) -> Any:
         if isinstance(value, dict):
             return {
                 k: "[REDACTED]" if k.lower() in _SENSITIVE_KEYS else _scrub_value(v)
@@ -53,7 +53,7 @@ def _scrub_secrets(payload: dict) -> dict:
             return result
         return value
 
-    return _scrub_value(payload)  # type: ignore[return-value]
+    return _scrub_value(payload)
 
 
 _NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(

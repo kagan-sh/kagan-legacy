@@ -1,5 +1,7 @@
 """Tests for list_project_learnings query and learnings injection."""
 
+from pathlib import Path
+
 import pytest
 
 from kagan.core._prompts import resolve_task_prompt
@@ -78,7 +80,7 @@ def test_learnings_section_after_base_prompt() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_list_project_learnings_dedup_and_cap(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
     """list_project_learnings deduplicates and caps at 20."""
     from sqlalchemy import create_engine
     from sqlmodel import SQLModel, Session as DBSession
@@ -136,7 +138,7 @@ async def test_list_project_learnings_dedup_and_cap(tmp_path) -> None:  # type: 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_list_project_learnings_project_isolation(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_list_project_learnings_project_isolation(tmp_path: Path) -> None:
     """Learnings from other projects are NOT included."""
     from sqlalchemy import create_engine
     from sqlmodel import SQLModel, Session as DBSession

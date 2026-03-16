@@ -36,7 +36,7 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Repository, Session, Setting, Task, Worktree
+from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, Worktree
 
 
 def _terminate_process(pid: int) -> None:
@@ -535,6 +535,22 @@ class Sessions:
             if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
                 obj.status = SessionStatus.COMPLETED
                 obj.ended_at = _utc_now()
+
+                # Populate context window fields from the latest UsageUpdate event
+                usage_event = s.exec(
+                    select(SessionEvent)
+                    .where(
+                        SessionEvent.session_id == session_id,
+                        SessionEvent.event_type == SessionEventType.AGENT_STATUS,
+                    )
+                    .order_by(desc(SessionEvent.created_at))
+                ).first()
+                if usage_event and isinstance(usage_event.payload, dict):
+                    usage = usage_event.payload.get("usage")
+                    if isinstance(usage, dict):
+                        obj.context_window_used = usage.get("used")
+                        obj.context_window_size = usage.get("size")
+
                 s.add(obj)
 
         _db_sync(self._engine, op, commit=True)

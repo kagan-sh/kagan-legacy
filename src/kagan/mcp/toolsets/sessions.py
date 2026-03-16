@@ -170,19 +170,32 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     if id_filter:
         tasks = [task for task in tasks if task.id in id_filter]
 
-    rows: list[dict[str, str | None]] = []
+    rows: list[dict[str, Any]] = []
     for task in tasks:
         session = await _get_latest_session(app.client, task.id)
-        rows.append(
-            {
-                "task_id": task.id,
-                "status": task.status.value,
-                "execution_mode": task.execution_mode.value,
-                "agent_backend": task.agent_backend,
-                "session_id": session.id if session is not None else None,
-                "session_backend": session.agent_backend if session is not None else None,
+        row: dict[str, Any] = {
+            "task_id": task.id,
+            "status": task.status.value,
+            "execution_mode": task.execution_mode.value,
+            "agent_backend": task.agent_backend,
+            "session_id": session.id if session is not None else None,
+            "session_backend": session.agent_backend if session is not None else None,
+        }
+        if session is not None:
+            row["token_usage"] = {
+                "input_tokens": session.input_tokens,
+                "output_tokens": session.output_tokens,
+                "context_window_used": session.context_window_used,
+                "context_window_size": session.context_window_size,
             }
-        )
+        else:
+            row["token_usage"] = {
+                "input_tokens": None,
+                "output_tokens": None,
+                "context_window_used": None,
+                "context_window_size": None,
+            }
+        rows.append(row)
     return {"rows": rows}
 
 

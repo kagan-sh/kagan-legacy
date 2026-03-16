@@ -92,6 +92,10 @@ class Session(SQLModel, table=True):
     started_at: datetime = Field(default_factory=_utc_now)
     ended_at: datetime | None = Field(default=None)
     persona: str | None = Field(default=None)
+    input_tokens: int | None = Field(default=None)
+    output_tokens: int | None = Field(default=None)
+    context_window_used: int | None = Field(default=None)
+    context_window_size: int | None = Field(default=None)
 
 
 class SessionEvent(SQLModel, table=True):

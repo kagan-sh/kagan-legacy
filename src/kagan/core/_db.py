@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 from pathlib import Path
@@ -50,7 +51,31 @@ def _run_alembic_upgrade(database_url: str, connection: Connection | None = None
     config = _make_alembic_config(database_url, connection)
     if connection is not None:
         _normalize_revision_state(config, connection)
+    logging.getLogger("alembic.runtime.migration").setLevel(logging.WARNING)
     command.upgrade(config, "head")
+
+
+def _ensure_workspace_fk_compat(connection: Connection) -> None:
+    if connection.dialect.name != "sqlite":
+        return
+
+    tables = {
+        str(row[0])
+        for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if "workspaces" in tables:
+        return
+
+    schema_rows = connection.exec_driver_sql(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL"
+    )
+    has_workspace_refs = any(
+        "references workspaces" in str(row[0]).lower() for row in schema_rows if row and row[0]
+    )
+    if not has_workspace_refs:
+        return
+
+    connection.exec_driver_sql("CREATE TABLE IF NOT EXISTS workspaces (id VARCHAR PRIMARY KEY)")
 
 
 def default_db_path() -> Path:
@@ -87,11 +112,14 @@ def create_db_engine(db_path: str | Path | None = None) -> Engine:
     if resolved == ":memory:":
         with engine.begin() as connection:
             _run_alembic_upgrade(url, connection)
+            _ensure_workspace_fk_compat(connection)
     else:
         with engine.begin() as connection:
             config = _make_alembic_config(url, connection)
             _normalize_revision_state(config, connection)
         _run_alembic_upgrade(url)
+        with engine.begin() as connection:
+            _ensure_workspace_fk_compat(connection)
 
     logger.debug("Database engine created and migrations applied")
     return engine

@@ -21,7 +21,12 @@ from kagan.core._db import default_db_path
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _utc_now
 from kagan.core._events import Events
 from kagan.core._launchers import get_launcher
-from kagan.core._prompts import PROMPT_TASK_KEY, build_persona_section, get_persona_prompt
+from kagan.core._prompts import (
+    build_persona_section,
+    get_persona_prompt,
+    resolve_review_prompt,
+    resolve_task_prompt,
+)
 from kagan.core.enums import SessionEventType, SessionStatus, TaskStatus, WorkMode
 from kagan.core.errors import (
     AgentError,
@@ -73,78 +78,6 @@ def _is_shutdown_runtime_error(exc: RuntimeError) -> bool:
     return "Executor shutdown has been called" in message or "Event loop is closed" in message
 
 
-def _build_auto_run_prompt(
-    task: Task,
-    *,
-    custom_instructions: str | None = None,
-    persona_prompt: str | None = None,
-) -> str:
-    description = (task.description or "").strip()
-    lines = [
-        f"Task: {task.title}",
-        "",
-    ]
-    if description:
-        lines.extend(["Description:", description, ""])
-
-    criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
-    if criteria:
-        lines.append("Acceptance Criteria (EVERY item must pass):")
-        lines.extend(f"- {item}" for item in criteria)
-        lines.append("")
-        lines.extend(
-            [
-                "EXPECTED OUTCOME:",
-                "All acceptance criteria above are satisfied. Tests pass. No regressions.",
-                "",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "EXPECTED OUTCOME:",
-                "Task completed as described. Code compiles and tests pass.",
-                "Note: this task has no acceptance criteria — it will require manual human review.",
-                "",
-            ]
-        )
-
-    lines.extend(
-        [
-            "MUST DO:",
-            "- Commit ALL changes before signaling completion.",
-            "- Run the project's test/lint commands if they exist.",
-            "- Write a clear commit message explaining WHY, not just what.",
-            "",
-            "After changing files, run:",
-            "git add -A",
-            (
-                'git -c user.name="'
-                f"{git.KAGAN_AGENT_NAME}"
-                '" -c user.email="'
-                f"{git.KAGAN_AGENT_EMAIL}"
-                '" -c commit.gpgsign=false '
-                'commit -m "feat: explain why this change was needed"'
-            ),
-            "",
-            "MUST NOT DO:",
-            "- Do NOT modify files outside the scope of this task.",
-            "- Do NOT delete or skip existing tests to make the build pass.",
-            "- Do NOT suppress type errors or linter warnings.",
-            "- Do NOT leave uncommitted changes.",
-            "",
-            "Only signal completion after committing.",
-            "If blocked, explain the reason and signal blocked.",
-        ]
-    )
-    base = "\n".join(lines).strip()
-    if persona_prompt and persona_prompt.strip():
-        base = f"{build_persona_section(persona_prompt)}\n\n{base}"
-    if custom_instructions and custom_instructions.strip():
-        return f"## Custom Instructions\n\n{custom_instructions.strip()}\n\n{base}"
-    return base
-
-
 def _build_pair_startup_prompt(task: Task) -> str:
     description = (task.description or "").strip()
     criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
@@ -183,13 +116,48 @@ class Sessions:
         *,
         get_task: Callable[[str], Awaitable[Task]],
         set_status: Callable[[str, TaskStatus], Task],
+        ensure_workspace: Callable[[str], Awaitable[Worktree]],
         db_path: Path | None = None,
     ) -> None:
         self._engine = engine
         self._events = events
         self._get_task = get_task
         self._set_status = set_status
+        self._ensure_workspace = ensure_workspace
         self._db_path: Path | None = db_path
+
+    async def get_latest(self, task_id: str) -> Session | None:
+        return await _db_async(
+            self._engine,
+            lambda s: s.exec(
+                select(Session)
+                .where(Session.task_id == task_id)
+                .order_by(desc(cast("Any", Session.started_at)))
+            ).first(),
+        )
+
+    async def list_active(self) -> list[Session]:
+        return await _db_async(
+            self._engine,
+            lambda s: list(
+                s.exec(
+                    select(Session).where(
+                        (Session.status == SessionStatus.PENDING)
+                        | (Session.status == SessionStatus.RUNNING)
+                    )
+                ).all()
+            ),
+        )
+
+    async def resolve_binding(self, session_id: str) -> tuple[str | None, str | None]:
+        def op(s) -> tuple[str | None, str | None]:
+            bound = s.get(Session, session_id)
+            if bound is None:
+                return None, None
+            task = s.get(Task, bound.task_id)
+            return bound.task_id, (task.project_id if task is not None else None)
+
+        return await _db_async(self._engine, op)
 
     async def _ref_strategy(self) -> str:
         """Read the configured branch-ref resolution strategy from settings."""
@@ -201,6 +169,83 @@ class Sessions:
         if value in {"local", "remote", "local_if_ahead"}:
             return value
         return "local_if_ahead"
+
+    async def list_for_task(self, task_id: str) -> list[Session]:
+        return await _db_async(
+            self._engine,
+            lambda s: list(
+                s.exec(
+                    select(Session)
+                    .where(Session.task_id == task_id)
+                    .order_by(cast("Any", Session.started_at))
+                ).all()
+            ),
+        )
+
+    async def get_latest_for_task(self, task_id: str) -> Session | None:
+        return await _db_async(
+            self._engine,
+            lambda s: s.exec(
+                select(Session)
+                .where(Session.task_id == task_id)
+                .order_by(desc(cast("Any", Session.started_at)))
+            ).first(),
+        )
+
+    async def has_active(self, task_id: str) -> bool:
+        active_session = await _db_async(
+            self._engine,
+            lambda s: s.exec(
+                select(Session).where(
+                    Session.task_id == task_id,
+                    cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                )
+            ).first(),
+        )
+        return active_session is not None
+
+    async def active_session_summaries(self, task_ids: list[str]) -> dict[str, dict[str, Any]]:
+        if not task_ids:
+            return {}
+
+        sessions = await _db_async(
+            self._engine,
+            lambda s: list(
+                s.exec(
+                    select(Session)
+                    .where(cast("Any", Session.task_id).in_(task_ids))
+                    .order_by(desc(cast("Any", Session.started_at)))
+                ).all()
+            ),
+        )
+
+        summaries: dict[str, dict[str, Any]] = {}
+        active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
+        for session in sessions:
+            existing = summaries.get(session.task_id)
+            is_active = session.status in active_statuses
+
+            if existing is None:
+                summaries[session.task_id] = {
+                    "has_history": True,
+                    "has_active": is_active,
+                    "active_mode": session.mode if is_active else None,
+                    "latest_mode": session.mode,
+                }
+                continue
+
+            active_mode = existing.get("active_mode")
+            if active_mode is None and is_active:
+                active_mode = session.mode
+
+            summaries[session.task_id] = {
+                "has_history": True,
+                "has_active": bool(existing.get("has_active")) or is_active,
+                "active_mode": active_mode,
+                "latest_mode": existing.get("latest_mode"),
+            }
+
+        return summaries
 
     async def _prepare_session(
         self,
@@ -217,12 +262,11 @@ class Sessions:
             lambda s: s.exec(select(Worktree).where(Worktree.task_id == task_id)).first(),
         )
         if ws is None:
-            raise SessionError(
-                None, f"Task {task_id!r} has no workspace. Call workspace.provision() first."
-            )
-
-        # Rebase onto latest base branch before starting (local_if_ahead policy)
-        await self._rebase_if_enabled(task_id)
+            ws = await self._ensure_workspace(task_id)
+        else:
+            # Existing worktrees may be stale. Freshly created worktrees already
+            # resolve against the current base branch, so only rebase reused ones.
+            await self._rebase_if_enabled(task_id)
 
         session_obj = Session(
             task_id=task_id,
@@ -252,22 +296,22 @@ class Sessions:
             persona=persona,
         )
 
-        custom_task_prompt: str | None = None
         settings_dict = await _db_async(
             self._engine,
             lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
         )
-        raw_custom = settings_dict.get(PROMPT_TASK_KEY, "").strip()
-        if raw_custom:
-            custom_task_prompt = raw_custom
+
+        project_path = Path(ws.worktree_path)
+        if task.status is TaskStatus.REVIEW:
+            prompt = resolve_review_prompt(task_id, settings_dict, project_path)
+        else:
+            prompt = resolve_task_prompt(task, settings_dict, project_path)
+
         persona_prompt: str | None = None
         if persona:
             persona_prompt = get_persona_prompt(persona, settings_dict)
-        prompt = _build_auto_run_prompt(
-            task,
-            custom_instructions=custom_task_prompt,
-            persona_prompt=persona_prompt,
-        )
+            if persona_prompt and persona_prompt.strip():
+                prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
         db_path_str = str(self._db_path or default_db_path())
         entry = get_backend(agent_backend)
 
@@ -520,7 +564,6 @@ class Sessions:
                     event_type,
                     payload,
                     session_id=session_id,
-                    persist=event_type is not SessionEventType.OUTPUT_CHUNK,
                 )
 
         return on_update

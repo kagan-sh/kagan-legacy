@@ -27,6 +27,19 @@ class WorktreeError(KaganError):
     """Raised when a git worktree operation fails."""
 
 
+class MultiRepoUnsupportedError(WorktreeError):
+    """Raised when task execution is attempted against multiple linked repos."""
+
+    code = "MULTI_REPO_UNSUPPORTED"
+
+    def __init__(self, repo_count: int) -> None:
+        self.repo_count = repo_count
+        super().__init__(
+            f"{self.code}: task execution currently supports exactly one linked repo; "
+            f"found {repo_count}"
+        )
+
+
 class MergeConflictError(WorktreeError):
     """Raised when a merge produces conflicts; carries the list of conflicting files."""
 

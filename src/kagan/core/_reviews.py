@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from loguru import logger
 from sqlalchemy import Engine
@@ -16,7 +16,7 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Task
+from kagan.core.models import ReviewVerdict, Task
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
@@ -57,6 +57,79 @@ class Reviews:
             )
             return moved
         return task
+
+    async def set_criterion_verdict(
+        self,
+        task_id: str,
+        criterion_index: int,
+        verdict: str,
+        reason: str,
+    ) -> Task:
+        """Record an AI verdict (PASS/FAIL) for a specific acceptance criterion."""
+        allowed = {"PASS", "FAIL"}
+        if verdict not in allowed:
+            raise ValueError(f"verdict must be one of {sorted(allowed)}, got {verdict!r}")
+
+        verdict_typed = cast('Literal["PASS", "FAIL"]', verdict)
+
+        task = await self._client.tasks.get(task_id)
+        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+        if criterion_index < 0 or criterion_index >= len(criteria):
+            raise ValueError(
+                f"criterion_index {criterion_index} out of range"
+                f" (task has {len(criteria)} criteria)"
+            )
+
+        def op(s) -> Task:
+            db_task = cast("Task | None", s.get(Task, task_id))
+            if db_task is None:
+                raise NotFoundError("Task", task_id)
+            verdicts: list[ReviewVerdict] = list(db_task.review_verdicts or [])
+            # Replace existing verdict for this index if present
+            verdicts = [v for v in verdicts if v["criterion_index"] != criterion_index]
+            verdicts.append(
+                {
+                    "criterion_index": criterion_index,
+                    "verdict": verdict_typed,
+                    "reason": reason,
+                }
+            )
+            verdicts.sort(key=lambda v: v["criterion_index"])
+            db_task.review_verdicts = verdicts
+            db_task.updated_at = _utc_now()
+            s.add(db_task)
+            s.commit()
+            s.refresh(db_task)
+            return db_task
+
+        updated = await _db_async(self._engine, op)
+        await self._client.tasks.events.emit(
+            task_id,
+            SessionEventType.CRITERION_VERDICT,
+            {
+                "criterion_index": criterion_index,
+                "verdict": verdict,
+                "reason": reason,
+            },
+        )
+        return updated
+
+    async def clear_verdicts(self, task_id: str) -> Task:
+        """Clear all AI review verdicts for a task (e.g. before a new review run)."""
+        await self._client.tasks.get(task_id)
+
+        def op(s) -> Task:
+            db_task = cast("Task | None", s.get(Task, task_id))
+            if db_task is None:
+                raise NotFoundError("Task", task_id)
+            db_task.review_verdicts = []
+            db_task.updated_at = _utc_now()
+            s.add(db_task)
+            s.commit()
+            s.refresh(db_task)
+            return db_task
+
+        return await _db_async(self._engine, op)
 
     async def merge(self, task_id: str) -> Task:
         task = await self._client.tasks.get(task_id)

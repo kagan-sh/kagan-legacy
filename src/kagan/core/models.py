@@ -1,7 +1,7 @@
 """SQLModel table classes for kagan.core — single class is both validation model and DB table."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 from uuid import uuid4
 
 from sqlalchemy import JSON, Column
@@ -16,6 +16,12 @@ def _new_id() -> str:
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class ReviewVerdict(TypedDict):
+    criterion_index: int
+    verdict: Literal["PASS", "FAIL"]
+    reason: str
 
 
 class Project(SQLModel, table=True):
@@ -56,7 +62,7 @@ class Task(SQLModel, table=True):
     base_branch: str | None = Field(default=None)
     acceptance_criteria: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     review_approved: bool = Field(default=False)
-    scratchpad: str = Field(default="")
+    review_verdicts: list[ReviewVerdict] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 
@@ -130,6 +136,7 @@ __all__ = [
     "AuditEntry",
     "Project",
     "Repository",
+    "ReviewVerdict",
     "Session",
     "SessionEvent",
     "Setting",

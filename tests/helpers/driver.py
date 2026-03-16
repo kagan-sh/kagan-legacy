@@ -207,11 +207,12 @@ class KaganDriver:
         """Read the task's scratchpad."""
         return await self._driver.get_scratchpad(task_id)
 
+    async def list_notes(self, task_id: str) -> list[str]:
+        return await self._driver.list_notes(task_id)
+
     async def annotate(self, task_id: str, note: str) -> None:
         """Append a note to the task's scratchpad."""
-        existing = await self._driver.get_scratchpad(task_id)
-        separator = "\n\n" if existing else ""
-        await self._driver.update_scratchpad(task_id, existing + separator + note)
+        await self._driver.update_scratchpad(task_id, note)
 
     # ======================================================================
     # Automation lifecycle (composite operations)

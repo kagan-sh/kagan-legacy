@@ -164,8 +164,5 @@ async def test_add_and_read_notes_chronologically(board: KaganDriver) -> None:
     await board.annotate(task.id, "First note")
     await board.annotate(task.id, "Second note")
 
-    scratchpad = await board.get_scratchpad(task.id)
-    assert "First note" in scratchpad
-    assert "Second note" in scratchpad
-    # First note appears before second note
-    assert scratchpad.index("First note") < scratchpad.index("Second note")
+    notes = await board.list_notes(task.id)
+    assert notes == ["First note", "Second note"]

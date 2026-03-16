@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from loguru import logger
-from sqlalchemy import Engine
+from sqlalchemy import Engine, desc
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -19,9 +19,10 @@ from kagan.core._db_helpers import (
 from kagan.core._events import BoardEvent, Events
 from kagan.core._sessions import Sessions
 from kagan.core._transitions import validate_move
-from kagan.core.enums import Priority, SessionEventType, TaskStatus, WorkMode
+from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
 from kagan.core.errors import KaganError, NotFoundError, SessionError
-from kagan.core.models import AuditEntry, Project, Task, TaskNote, Worktree
+from kagan.core.models import AuditEntry, Project, Session, SessionEvent, Task, TaskNote, Worktree
+from kagan.wire.models import utc_iso
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
@@ -49,6 +50,7 @@ class Tasks:
             self.events,
             get_task=self.get,
             set_status=self._set_status,
+            ensure_workspace=self._ensure_workspace,
             db_path=db_path,
         )
 
@@ -56,6 +58,11 @@ class Tasks:
         if self._active_project_id is None:
             raise SessionError(None, "No active project. Call client.projects.set_active() first.")
         return self._active_project_id
+
+    async def _ensure_workspace(self, task_id: str) -> Worktree:
+        if self._client is None:
+            raise SessionError(None, "Workspace provisioning requires a KaganCore client.")
+        return await self._client.worktrees.create(task_id)
 
     async def run(self, task_id: str, *, agent_backend: str, persona: str | None = None):
         return await self.sessions.run(task_id, agent_backend=agent_backend, persona=persona)
@@ -294,6 +301,62 @@ class Tasks:
             lambda s: s.exec(select(Worktree).where(Worktree.task_id == task_id)).first(),
         )
         return {"task": task, "workspace": ws, "recent_events": events}
+
+    async def runtime_summaries(self, task_ids: builtins.list[str]) -> dict[str, dict[str, Any]]:
+        task_ids = list(dict.fromkeys(task_ids))
+        if not task_ids:
+            return {}
+
+        running_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
+
+        def op(s):
+            worktrees = {
+                worktree.task_id
+                for worktree in s.exec(
+                    select(Worktree).where(cast("Any", Worktree.task_id).in_(task_ids))
+                ).all()
+            }
+
+            latest_events: dict[str, str] = {}
+            for event in s.exec(
+                select(SessionEvent)
+                .where(cast("Any", SessionEvent.task_id).in_(task_ids))
+                .order_by(desc(cast("Any", SessionEvent.created_at)))
+            ).all():
+                latest_events.setdefault(event.task_id, utc_iso(event.created_at) or "")
+
+            active_sessions: dict[str, dict[str, str]] = {}
+            for session in s.exec(
+                select(Session)
+                .where(cast("Any", Session.task_id).in_(task_ids))
+                .order_by(desc(cast("Any", Session.started_at)))
+            ).all():
+                if session.status not in running_statuses or session.task_id in active_sessions:
+                    continue
+                active_sessions[session.task_id] = {
+                    "id": session.id,
+                    "status": session.status.value,
+                    "mode": session.mode.value,
+                    "agent_backend": session.agent_backend,
+                    "started_at": utc_iso(session.started_at) or "",
+                }
+
+            return {
+                task_id: {
+                    "has_workspace": task_id in worktrees,
+                    "last_event_at": latest_events.get(task_id),
+                    "active_session": active_sessions.get(task_id),
+                }
+                for task_id in task_ids
+            }
+
+        return await _db_async(self._engine, op)
+
+    async def runtime_summary(self, task_id: str) -> dict[str, Any]:
+        return (await self.runtime_summaries([task_id])).get(
+            task_id,
+            {"has_workspace": False, "last_event_at": None, "active_session": None},
+        )
 
     async def counts(self, *, project_id: str | None = None) -> dict[TaskStatus, int]:
         pid = project_id or self._require_project()

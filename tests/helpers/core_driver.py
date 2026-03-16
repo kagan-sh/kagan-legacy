@@ -24,7 +24,7 @@ from kagan.core import (
     TaskStatus,
     WorkMode,
 )
-from kagan.core.models import Repository, Task, Worktree
+from kagan.core.models import Repository, Worktree
 
 # ---------------------------------------------------------------------------
 # Result types (protocol-independent DTOs for test assertions)
@@ -298,22 +298,15 @@ class CoreDriver:
     # -- Scratchpad ---------------------------------------------------------
 
     async def get_scratchpad(self, task_id: str) -> str:
-        """Get task scratchpad content."""
-        task = await self._ctx.tasks.get(task_id)
-        return task.scratchpad
+        notes = await self._ctx.tasks.list_notes(task_id)
+        return "\n\n".join(note.content for note in notes)
+
+    async def list_notes(self, task_id: str) -> list[str]:
+        notes = await self._ctx.tasks.list_notes(task_id)
+        return [note.content for note in notes]
 
     async def update_scratchpad(self, task_id: str, content: str) -> None:
-        """Update task scratchpad via direct DB write."""
-
-        def _set_scratchpad() -> None:
-            with Session(self._ctx._engine) as session:
-                task = session.get(Task, task_id)
-                if task:
-                    task.scratchpad = content
-                    session.add(task)
-                    session.commit()
-
-        await asyncio.to_thread(_set_scratchpad)
+        await self._ctx.tasks.add_note(task_id, content)
 
     # -- Automation (agent lifecycle) ---------------------------------------
 

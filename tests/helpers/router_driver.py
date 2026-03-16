@@ -164,14 +164,9 @@ class RouterDriver:
 
     async def append_scratchpad(self, task_id: str, content: str) -> dict[str, Any]:
         """Append to task scratchpad."""
-        return await self.raw_call(
-            "tasks",
-            "update_scratchpad",
-            {"task_id": task_id, "content": content},
-        )
+        return await self.raw_call("tasks", "add_note", {"task_id": task_id, "note": content})
 
     async def get_task_context(self, task_id: str) -> dict[str, Any]:
-        """Get rich task context (includes scratchpad)."""
         return await self._call_ok("tasks", "context", {"task_id": task_id})
 
     async def request_review(self, task_id: str, summary: str = "") -> dict[str, Any]:

@@ -207,35 +207,70 @@ class Events:
         *,
         offset: int = 0,
         limit: int = 20,
+        session_id: str | None = None,
     ) -> list[SessionEvent]:
-        return await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(SessionEvent)
-                    .where(SessionEvent.task_id == task_id)
-                    .order_by(cast("Any", SessionEvent.created_at))
-                    .offset(offset)
-                    .limit(limit)
-                ).all()
-            ),
-        )
+        def _query(s):
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(cast("Any", SessionEvent.created_at)).offset(offset).limit(limit)
+            return list(s.exec(stmt).all())
 
-    async def list_recent(self, task_id: str, *, limit: int = 50) -> builtins.list[SessionEvent]:
+        return await _db_async(self._engine, _query)
+
+    async def list_recent(
+        self,
+        task_id: str,
+        *,
+        limit: int = 50,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
         bounded = max(limit, 0)
         if bounded == 0:
             return []
-        recent = await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(SessionEvent)
-                    .where(SessionEvent.task_id == task_id)
-                    .order_by(desc(cast("Any", SessionEvent.created_at)))
-                    .limit(bounded)
-                ).all()
-            ),
-        )
+
+        def _query(s):
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at))).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        recent = await _db_async(self._engine, _query)
+        recent.reverse()
+        return recent
+
+    async def list_before(
+        self,
+        task_id: str,
+        *,
+        before: str,
+        limit: int = 50,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
+        """Return up to *limit* events created before *before* (ISO 8601), chronological."""
+        from datetime import datetime
+
+        bounded = max(limit, 0)
+        if bounded == 0:
+            return []
+
+        # Normalise to ISO 8601 with T-separator and +00:00 suffix so that
+        # SQLite string comparison matches the stored format.
+        parsed = datetime.fromisoformat(before.replace("Z", "+00:00"))
+        cutoff_str = parsed.isoformat()
+
+        def _query(s):
+            stmt = select(SessionEvent).where(
+                SessionEvent.task_id == task_id,
+                cast("Any", SessionEvent.created_at) < cutoff_str,
+            )
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at))).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        recent = await _db_async(self._engine, _query)
         recent.reverse()
         return recent
 

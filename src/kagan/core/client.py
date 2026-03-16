@@ -45,9 +45,9 @@ class _TaskState:
 
 
 class DBWatcher:
-    _POLL_INTERVAL_MIN: float = 2.0
-    _POLL_INTERVAL_MAX: float = 8.0
-    _POLL_BACKOFF_FACTOR: float = 2.0
+    _POLL_INTERVAL_MIN: float = 0.5
+    _POLL_INTERVAL_MAX: float = 2.0
+    _POLL_BACKOFF_FACTOR: float = 1.5
     _MAX_PENDING_CONTEXT_LINES: int = 200
 
     def __init__(self, core: "KaganCore") -> None:

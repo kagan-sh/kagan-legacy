@@ -4,9 +4,12 @@ Behavioral specs using KaganDriver DSL. No private imports.
 Each test is isolated with its own tmp_path and fresh DB.
 """
 
+import contextlib
+
 import pytest
 
-from kagan.core import AgentError, SessionError, TaskStatus, WorkMode
+from kagan.core import AgentError, TaskStatus, WorkMode
+from kagan.core.errors import MultiRepoUnsupportedError
 from tests.helpers.driver import KaganDriver
 from tests.helpers.helpers import make_git_repo
 
@@ -35,13 +38,36 @@ async def git_board(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_pair_requires_workspace(git_board: KaganDriver) -> None:
-    """Starting a PAIR session without a workspace raises an error."""
+async def test_pair_provisions_workspace_before_launch(git_board: KaganDriver) -> None:
+    """Starting a PAIR session provisions the workspace before launch."""
     task = await git_board.create_task("Unprepared Pair Task", task_type=WorkMode.PAIR)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
 
-    with pytest.raises(SessionError):
+    with contextlib.suppress(AgentError, FileNotFoundError, OSError):
         await git_board.pair_task(task.id, agent_backend="claude-code", launcher="tmux")
+
+    ws_path = await git_board.get_workspace_path(task.id)
+    assert ws_path is not None
+
+
+async def test_pair_rejects_multi_repo_projects_explicitly(tmp_path) -> None:
+    """PAIR startup fails fast with an explicit multi-repo error."""
+    repo_one = tmp_path / "repo-one"
+    repo_two = tmp_path / "repo-two"
+    await make_git_repo(repo_one, base_branch="main")
+    await make_git_repo(repo_two, base_branch="main")
+
+    driver = await KaganDriver.boot(tmp_path)
+    try:
+        await driver.create_project("Multi Repo Project", repo_path=str(repo_one))
+        await driver.add_repo(repo_two)
+        task = await driver.create_task("Multi Repo Pair Task", task_type=WorkMode.PAIR)
+        await driver.move_task(task.id, TaskStatus.IN_PROGRESS)
+
+        with pytest.raises(MultiRepoUnsupportedError, match="MULTI_REPO_UNSUPPORTED"):
+            await driver.pair_task(task.id, agent_backend="claude-code", launcher="tmux")
+    finally:
+        await driver.teardown()
 
 
 async def test_pair_with_workspace_creates_session(git_board: KaganDriver) -> None:

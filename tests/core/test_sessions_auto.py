@@ -34,14 +34,16 @@ async def git_board(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_start_auto_requires_workspace(git_board: KaganDriver) -> None:
-    """Starting AUTO on a task without a workspace returns False (cannot run)."""
+async def test_start_auto_provisions_workspace_before_launch(git_board: KaganDriver) -> None:
+    """Starting AUTO provisions a workspace before attempting the launch."""
     task = await git_board.create_task("Unprepared Task", task_type=WorkMode.AUTO)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
 
     started = await git_board.start_auto(task.id)
 
     assert started is False
+    ws_path = await git_board.get_workspace_path(task.id)
+    assert ws_path is not None
 
 
 async def test_start_auto_with_workspace_attempts_launch(git_board: KaganDriver) -> None:

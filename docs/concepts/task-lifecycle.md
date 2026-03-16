@@ -71,7 +71,7 @@ When work finishes — agent completes (AUTO) or you move the task (PAIR) — it
 
 - Diff summary (files changed, lines added/removed)
 - Acceptance criteria checklist (if defined)
-- Agent reasoning notes (from `task_annotate` calls during the run)
+- Agent reasoning notes (from `task_add_note` scratchpad entries during the run)
 
 **What you can do:**
 
@@ -94,7 +94,7 @@ Optional. Kagan stores acceptance criteria with the task and shows them during r
 
 ## Scratchpad and resume
 
-Each task accumulates notes — agent decisions, status changes, your annotations. When you reopen a task, the last 500 characters appear at the top of the detail view. No hunting through tabs.
+Each task accumulates notes — agent decisions, status changes, your annotations. When you reopen an `IN_PROGRESS` or `REVIEW` task, the Resume Context strip shows the most recent ~500 characters at the top of the detail view. The full scratchpad remains available through `task_get(..., include_scratchpad=true)` or `task_events`.
 
 ______________________________________________________________________
 

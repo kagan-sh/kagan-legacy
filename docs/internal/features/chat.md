@@ -1,7 +1,7 @@
 # Chat Behaviors — `kagan.chat`
 
 *Observable behaviors for REPL, slash commands, and orchestrator turns.*
-*Each section maps to test coverage in `tests/chat/`.*
+*Each section maps to test coverage in `tests/unit/test_chat_*` and `tests/tui/test_chat_*`.*
 
 ______________________________________________________________________
 
@@ -300,11 +300,15 @@ ______________________________________________________________________
 
 ## Test Coverage
 
-| File                              | Tests                               |
-| --------------------------------- | ----------------------------------- |
-| `tests/chat/test_repl.py`         | REPL entry points, loop behavior    |
-| `tests/chat/test_commands.py`     | Slash command parsing and execution |
-| `tests/chat/test_sessions.py`     | Session CRUD, persistence limits    |
-| `tests/chat/test_orchestrator.py` | ACP handshake, streaming, errors    |
+| File                                             | Tests                                           |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `tests/unit/test_chat_repl.py`                   | REPL entry points, loop behavior, scope binding |
+| `tests/unit/test_chat_commands.py`               | Slash command parsing and execution             |
+| `tests/unit/test_chat_policy.py`                 | Authorization checks and session gating         |
+| `tests/unit/test_chat_controller_streaming.py`   | ACP streaming, chunk handling, error paths      |
+| `tests/unit/test_chat_acp_warmup.py`             | Warmup handshake + prompt initialization        |
+| `tests/tui/test_chat_modes.py`                   | Mode switching in Textual chat widgets          |
+| `tests/tui/test_chat_overlay.py`                 | Fullscreen chat overlays and panel visibility   |
+| `tests/tui/test_task_screen_chat_persistence.py` | Task chat state across screen navigation        |
 
 **All tests use mocked ACP connections.** Real agent spawn is integration-level.

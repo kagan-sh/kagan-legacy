@@ -43,14 +43,14 @@ There is no separate browser pairing flow for the dashboard. The web UI is bundl
 
 ## 4. Use it
 
-| Action         | How                                           |
-| -------------- | --------------------------------------------- |
-| Create task    | Click or tap **+ New Task**                   |
-| Move task      | Drag and drop task cards (board)              |
-| Start agent    | Open task details → **Start run**             |
-| View details   | Click or tap a task card                      |
-| Review & merge | Open a REVIEW task → approve / reject / merge |
-| Switch project | Use the project manager in settings           |
+| Action         | How                                                |
+| -------------- | -------------------------------------------------- |
+| Create task    | Click or tap **+ New Task**                        |
+| Move task      | Drag and drop task cards (board)                   |
+| Start agent    | Open task details → **Start run**                  |
+| View details   | Click or tap a task card                           |
+| Review & merge | Open a REVIEW task → approve / reject / merge      |
+| Switch project | Use the project manager in settings                |
 | Open locally   | Run `kagan web` on the machine that owns the board |
 
 Changes sync in real-time across all connected clients and the TUI.

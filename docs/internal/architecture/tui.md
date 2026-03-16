@@ -90,7 +90,7 @@ KaganApp (Textual App)
 │
 ├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
 │
-├── TaskScreen              # Pushed from kanban for AUTO tasks (idle / past runs)
+├── TaskScreen              # Pushed from kanban for AUTO tasks (idle / past runs) and REVIEW surveys
 │
 ├── SessionDashboardScreen   # Pushed from kanban for running AUTO tasks
 │   ├── AgentStatusPanel     # Backend, status, elapsed, run ID, PID
@@ -101,7 +101,7 @@ KaganApp (Textual App)
 │   ├── DiffPreviewPanel     # Unified diff of selected file
 │   └── ChatPanel            # Docked / fullscreen AI Panel streaming from agent
 │
-├── ReviewModal              # Pushed when task enters REVIEW
+├── ReviewNoCriteriaModal    # Shown when reviewers encounter tasks with no acceptance criteria
 │
 ├── RepoPickerModal          # Ctrl+R — switch project / repo
 │
@@ -279,21 +279,26 @@ src/kagan/tui/
 ├── screens/
 │ ├── __init__.py # screen exports
 │ ├── welcome.py # WelcomeScreen
-│ └── setup.py # OnboardingFlow (modal)
+│ ├── setup.py # OnboardingFlow (modal)
 │ ├── kanban.py # KanbanScreen
 │ ├── kanban_chat.py # KanbanChatScreen (orchestrator/task chat modes)
-│ ├── task_screen.py # TaskScreen
-│ ├── review.py # ReviewModal
+│ ├── task_screen.py # TaskScreen (AUTO/REVIEW detail view)
+│ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
+│ ├── review_no_criteria.py # ReviewNoCriteriaModal (no criteria gate)
 │ ├── repo_picker.py # RepoPickerModal
 │ ├── gateway.py # TmuxGatewayModal
 │ ├── agent_picker.py # AgentPickerModal
 │ ├── confirm.py # ConfirmModal
+│ ├── github_import_modal.py # GitHubImportModal
+│ ├── message_actions_modal.py # MessageActionsModal
 │ ├── help.py # HelpScreen
 │ ├── session_picker.py # SessionPickerModal
 │ ├── settings.py # SettingsScreen
 │ ├── task_editor_modal.py # TaskEditorModal
-│ └── rejection_input.py # RejectionInputModal
-│ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
+│ ├── rejection_input.py # RejectionInputModal
+│ ├── kanban_commands.py # Kanban command palette helpers
+│ ├── task_commands.py # Task command palette helpers
+│ └── tutorial.py # TutorialScreen
 │
 ├── widgets/
 │ ├── __init__.py # widget exports
@@ -303,17 +308,17 @@ src/kagan/tui/
 │ ├── task_editor.py # TaskEditor (create/edit form)
 │ ├── chat.py # ChatPanel, MessageList, ChatInput, SlashComplete
 │ ├── streaming.py # StreamingOutput, OutputChunk, ToolCallView
-
 │ ├── diff.py # DiffView, DiffStats
 │ ├── plan.py # PlanDisplay
 │ ├── permission.py # PermissionPrompt
 │ ├── header.py # Header
 │ ├── hint_bar.py # HintBar (contextual keybinding hints)
-│ └── search_bar.py # SearchBar (board filter input)
+│ ├── search_bar.py # SearchBar (board filter input)
 │ ├── agent_status.py # AgentStatusPanel (backend, status, elapsed, PID)
 │ ├── persona_pipeline.py # PersonaPipelineMap (horizontal persona chain)
 │ ├── worktree_panel.py # WorktreePanel (file change stats table)
-│ └── commits_panel.py # CommitsPanel (task-branch commit log)
+│ ├── commits_panel.py # CommitsPanel (task-branch commit log)
+│ └── task_detail_pane.py # TaskDetailPane (resume context + detail view)
 │
 └── styles/
 ├── app.tcss # global theme + layout

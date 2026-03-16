@@ -69,20 +69,17 @@ Set criteria when creating or editing a task (`Enter` → `e` → Acceptance Cri
 
 ______________________________________________________________________
 
-## Resume Context panel
+## Resume Context
 
-When you reopen an `IN_PROGRESS` or `REVIEW` task, the last 500 characters of its scratchpad
-notes appear at the top of the task detail view — before description, before criteria.
+Agents append reasoning notes to a task's scratchpad as they run. The Task detail view now includes a **Resume Context** strip (IN_PROGRESS/REVIEW only) that shows the most recent notes, trimmed to the last ~500 characters. If no notes exist, it shows `(No notes yet)`.
 
-This is the one screen you read after an interruption. No hunting through tabs or logs.
-
-If the task has no notes yet, the panel shows `(No notes yet)` and stays out of the way.
+You can still fetch the full scratchpad via `task_get(..., include_scratchpad=true)` when you need the complete history.
 
 ______________________________________________________________________
 
 ## Review Summary panel
 
-When a task enters REVIEW, the review modal surfaces a structured summary tab:
+When a task enters REVIEW, TaskScreen shows a structured Review summary pane:
 
 - Task title, status, priority on one line
 - Acceptance criteria as a checklist (`□ criterion text`)
@@ -94,15 +91,13 @@ ______________________________________________________________________
 
 ## Recording agent decisions
 
-During AUTO runs, agents can append structured reasoning notes mid-task via `task_annotate`:
+During AUTO runs, agents can append structured reasoning notes mid-task via `task_add_note`:
 
 ```
-task_annotate(task_id="abc123", note="Chose approach B over A — A required a schema migration.")
+task_add_note(task_id="abc123", note="Chose approach B over A — A required a schema migration.")
 ```
 
-Each call appends a timestamped entry. Notes accumulate in the scratchpad and appear in the
-Resume Context panel when you reopen the task. They also inform the acceptance criteria coverage
-check when the run completes.
+Each call appends a timestamped entry. Notes accumulate in the scratchpad (request them with `task_get(..., include_scratchpad=true)`) and inform the acceptance criteria coverage check when the run completes.
 
 ______________________________________________________________________
 

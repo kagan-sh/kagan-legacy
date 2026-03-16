@@ -196,13 +196,13 @@ ______________________________________________________________________
 
 Web tests follow a two-layer split:
 
-1. **Vitest + @testing-library/svelte** for component/store behavior in isolation (fast, no running server)
+1. **Vitest + @testing-library/react** for isolated component/state behavior (fast, no server)
 1. **Playwright** for end-to-end behavior against a real running `kagan web` instance
 
 Vitest conventions:
 
-- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.svelte.test.ts`
-- Use `.svelte.test.ts` for tests importing rune modules from `*.svelte.ts`
+- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.test.tsx`
+- Prefer `.test.tsx` for component suites that render React trees
 - Mock API singletons (`apiClient`, `kaganWs`) with `vi.mock()`
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 

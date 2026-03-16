@@ -11,21 +11,21 @@ tags:
 
 `kagan` with no subcommand launches the TUI (same as `kagan tui`).
 
-| Command   | Description                                    |
-| --------- | ---------------------------------------------- |
-| `chat`    | Orchestrator REPL / one-shot prompt            |
-| `core`    | Manage core process                            |
-| `doctor`  | Environment diagnostics                        |
-| `import`  | Import tasks from external sources             |
-| `list`    | List projects with task counts                 |
-| `mcp`     | Run MCP server (stdio)                         |
-| `plugins` | Plugin management (requires opt-in, see below) |
-| `reset`   | Remove local state                             |
+| Command   | Description                                      |
+| --------- | ------------------------------------------------ |
+| `chat`    | Orchestrator REPL / one-shot prompt              |
+| `core`    | Manage core process                              |
+| `doctor`  | Environment diagnostics                          |
+| `import`  | Import tasks from external sources               |
+| `list`    | List projects with task counts                   |
+| `mcp`     | Run MCP server (stdio)                           |
+| `plugins` | Plugin management (requires opt-in, see below)   |
+| `reset`   | Remove local state                               |
 | `serve`   | Run HTTP API server for integrations/API clients |
-| `tools`   | Stateless utilities                            |
-| `tui`     | Run TUI explicitly                             |
-| `update`  | Check/install updates                          |
-| `web`     | Start API server with bundled web UI           |
+| `tools`   | Stateless utilities                              |
+| `tui`     | Run TUI explicitly                               |
+| `update`  | Check/install updates                            |
+| `web`     | Start API server with bundled web UI             |
 
 ### Global options
 
@@ -128,11 +128,11 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 
 ### Access tiers
 
-| Tier       | Scope                                                      |
-| ---------- | ---------------------------------------------------------- |
-| `readonly` | Read-only operations (task_get, task_list, etc.)           |
-| `default`  | Read + write (task_create, task_patch, jobs, sessions)     |
-| `admin`    | Default + destructive (task_delete, settings, plugin sync) |
+| Tier       | Scope                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `readonly` | Read-only operations (task_get, task_list, etc.)                                                                       |
+| `default`  | Read + write (`task_create`, `task_update`, `task_add_note`, `run_start`, `run_update`, `run_cancel`, `review_decide`) |
+| `admin`    | Default + destructive (task_delete, settings, plugin sync)                                                             |
 
 ```bash
 kagan mcp --readonly                    # read-only auditing
@@ -192,13 +192,13 @@ ______________________________________________________________________
 
 Starts the bundled web dashboard and opens your browser.
 
-| Option       | Description                            |
-| ------------ | -------------------------------------- |
-| `--host`     | Bind address (default: `127.0.0.1`)    |
-| `--port`     | Bind port (default: `8765`)            |
-| `--no-open`  | Do not auto-open a browser window      |
-| `--readonly` | Read-only access tier                  |
-| `--admin`    | Admin access tier                      |
+| Option       | Description                         |
+| ------------ | ----------------------------------- |
+| `--host`     | Bind address (default: `127.0.0.1`) |
+| `--port`     | Bind port (default: `8765`)         |
+| `--no-open`  | Do not auto-open a browser window   |
+| `--readonly` | Read-only access tier               |
+| `--admin`    | Admin access tier                   |
 
 `--readonly` and `--admin` are mutually exclusive.
 

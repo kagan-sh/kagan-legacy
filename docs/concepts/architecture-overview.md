@@ -10,14 +10,14 @@ One core process. Multiple frontends. Every interface sees the same state in rea
 
 ## Components
 
-| Component     | Purpose                                 |
-| ------------- | --------------------------------------- |
-| TUI           | Keyboard-first Kanban board             |
-| MCP server    | AI tools that read/mutate state         |
+| Component     | Purpose                                                    |
+| ------------- | ---------------------------------------------------------- |
+| TUI           | Keyboard-first Kanban board                                |
+| MCP server    | AI tools that read/mutate state                            |
 | API server    | REST + WebSocket for the bundled dashboard and API clients |
-| Core process  | Coordinates operations and state        |
-| SQLite        | Projects, tasks, reviews                |
-| Git worktrees | Isolated task workspaces                |
+| Core process  | Coordinates operations and state                           |
+| SQLite        | Projects, tasks, reviews                                   |
+| Git worktrees | Isolated task workspaces                                   |
 
 ## Flow
 

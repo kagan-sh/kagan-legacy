@@ -98,7 +98,7 @@ ______________________________________________________________________
 - Additional instructions: single free-text field appended to all agent prompts
 - Dotfile overrides: `.kagan/prompts/` files fully replace built-in prompts when present
 - Known keys: default agent backend, default launcher, auto-review, require approval, additional instructions, execution mode, review strictness, planning depth
-- All mutations are audit-logged automatically (who, what, when)
+- Task mutations are audit-logged automatically (`task.create`, `task.update`, `task.status_change`, `task.delete`).
 - Audit trail is queryable with limit
 
 ______________________________________________________________________

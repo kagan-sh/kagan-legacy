@@ -1,6 +1,6 @@
 ---
-title: Kagan
-description: AI-powered Kanban TUI for autonomous development workflows
+title: "Kagan Docs — AI Agent Orchestration"
+description: "Documentation for Kagan: orchestrate AI coding agents with a terminal Kanban board, MCP server, and CLI."
 hide:
   - navigation
   - toc

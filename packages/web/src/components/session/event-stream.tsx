@@ -159,8 +159,9 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
       entries.push({ kind: 'note', label: `Status: ${from} \u2192 ${to}`, time, ts });
     } else if (event.type === 'PLAN_UPDATE') {
       entries.push({ kind: 'note', label: 'Plan updated', time, ts });
+    } else if (event.type === 'AUTO_REVIEW_STARTED') {
+      entries.push({ kind: 'note', label: 'Auto-review started', time, ts });
     } else if (event.type === 'AGENT_STATUS') {
-      // Generic status, often noisy — only show if there's meaningful text
       const text = (payload.text as string) ?? '';
       if (text) {
         entries.push({ kind: 'note', label: text, time, ts });
@@ -328,7 +329,7 @@ function ToolCallRow({ title, status, payload, time }: { title: string; status: 
         <span className="font-code text-[10px] text-[var(--muted-foreground)]">{time}</span>
         {hasDetail ? (
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon-xs" className="size-5 ">
+            <Button variant="ghost" size="icon-xs" className="size-5 " aria-label={`Toggle ${title} details`}>
               <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
             </Button>
           </CollapsibleTrigger>

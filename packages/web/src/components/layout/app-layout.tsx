@@ -119,7 +119,6 @@ function AppLayout() {
         setChatRailLayout(next);
       }
     } else if (railOpen) {
-      // Fullscreen or other state — just close
       closeChatRail();
     } else if (hasTask) {
       openChatRail('chat-right');
@@ -219,7 +218,7 @@ function AppLayout() {
         return;
       }
 
-      // Cmd/Ctrl+I — AI Panel toggle (canonical)
+      // Cmd/Ctrl+I — AI Panel cycle (right → bottom → close)
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && lowerKey === 'i') {
         event.preventDefault();
         if (railOpen && (railMode === 'chat-right' || railMode === 'chat-bottom')) {
@@ -303,22 +302,7 @@ function AppLayout() {
         return;
       }
 
-      // Space — cycle chat layout (secondary accelerator, not primary binding)
-      if (!isEditableTarget(event.target) && event.key === ' ') {
-        event.preventDefault();
-        if (!railOpen && hasTask) {
-          openChatRail('chat-right');
-        } else if (railOpen && (railMode === 'chat-right' || railMode === 'chat-bottom')) {
-          const next = cycleDockMode(railMode);
-          if (next === 'none') {
-            closeChatRail();
-          } else {
-            setChatRailLayout(next);
-          }
-        } else if (railOpen) {
-          closeChatRail();
-        }
-      }
+
     };
 
     window.addEventListener('keydown', onKeyDown);

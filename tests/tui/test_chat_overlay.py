@@ -44,7 +44,7 @@ async def test_ctrl_o_cycles_chat_panel_vertical_horizontal_off(board: KaganDriv
         assert not chat_panel.has_class("visible")
 
 
-async def test_space_cycles_chat_panel_vertical_horizontal_vertical(board: KaganDriver) -> None:
+async def test_ctrl_i_cycles_vertical_horizontal_closed(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
@@ -54,20 +54,19 @@ async def test_space_cycles_chat_panel_vertical_horizontal_vertical(board: Kagan
         await pilot.pause()
 
         chat_panel = app.screen.query_one("#chat-panel")
-        await pilot.press("space")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert chat_panel.has_class("visible")
         assert app.screen.has_class("chat-overlay-vertical")
 
-        await pilot.press("space")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert chat_panel.has_class("visible")
         assert app.screen.has_class("chat-overlay-horizontal")
 
-        await pilot.press("space")
+        await pilot.press("ctrl+i")
         await pilot.pause()
-        assert chat_panel.has_class("visible")
-        assert app.screen.has_class("chat-overlay-vertical")
+        assert not chat_panel.has_class("visible")
 
 
 async def test_ctrl_f_fullscreens_only_when_overlay_open(board: KaganDriver) -> None:
@@ -86,7 +85,7 @@ async def test_ctrl_f_fullscreens_only_when_overlay_open(board: KaganDriver) -> 
         await pilot.pause()
         assert not chat_panel.has_class("visible")
 
-        await pilot.press("space")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         await pilot.press("ctrl+f")
         await pilot.pause()

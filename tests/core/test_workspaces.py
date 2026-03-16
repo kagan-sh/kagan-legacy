@@ -10,6 +10,7 @@ from tests.helpers.helpers import make_git_repo
 
 pytestmark = [pytest.mark.core, pytest.mark.slow]
 
+
 @pytest.fixture
 async def git_board(tmp_path):
     repo_path = tmp_path / "repo"
@@ -19,9 +20,6 @@ async def git_board(tmp_path):
     await driver.create_project("Workspace Tests Project", repo_path=str(repo_path))
     yield driver
     await driver.teardown()
-
-
-
 
 
 async def test_provision_creates_git_worktree(git_board: KaganDriver) -> None:
@@ -35,9 +33,6 @@ async def test_provision_creates_git_worktree(git_board: KaganDriver) -> None:
     assert Path(ws_path).is_dir()
 
 
-
-
-
 async def test_worktree_branches_from_default_branch(git_board: KaganDriver) -> None:
     task = await git_board.create_task("Branch Task")
 
@@ -47,9 +42,6 @@ async def test_worktree_branches_from_default_branch(git_board: KaganDriver) -> 
     assert len(workspaces) == 1
     ws = workspaces[0]
     assert task.id in ws["branch_name"]
-
-
-
 
 
 async def test_diff_shows_changes_in_worktree(git_board: KaganDriver) -> None:
@@ -63,9 +55,6 @@ async def test_diff_shows_changes_in_worktree(git_board: KaganDriver) -> None:
 
     diff_result = await git_board.get_workspace_diff(task.id)
     assert diff_result["diff"]
-
-
-
 
 
 async def test_merge_removes_workspace(git_board: KaganDriver) -> None:

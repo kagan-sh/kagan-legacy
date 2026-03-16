@@ -61,14 +61,14 @@ class TaskActionBar(Widget):
         ]
         if self.chat_visible:
             shared_specs = [
-                ("cycle_chat_overlay", "split"),
+                ("toggle_chat", "split"),
                 ("expand_chat_overlay", "fullscreen"),
                 ("back", "close"),
                 *shared_specs,
             ]
             esc = []
         else:
-            shared_specs = [("cycle_chat_overlay", "split"), *shared_specs]
+            shared_specs = [("toggle_chat", "split"), *shared_specs]
             esc = action_hints_from_bindings(b, [("back", "back")])
 
         if active == "detail":

@@ -55,7 +55,7 @@ describe('AppLayout', () => {
     expect(within(dialog).getByRole('option', { name: /^Session Switcher/ })).toBeVisible();
   });
 
-  it('cycles chat rail with Space and closes, Mod+I toggles AI panel', async () => {
+  it('Space does not cycle chat rail; Escape closes it', async () => {
     const store = createStore();
     store.set(rightRailModeAtom, 'chat-right');
     store.set(rightRailTaskIdAtom, 'task-123');
@@ -65,7 +65,7 @@ describe('AppLayout', () => {
     expect(await screen.findByTestId('chat-side-panel')).toHaveAttribute('data-layout', 'chat-right');
 
     fireEvent.keyDown(window, { key: ' ' });
-    expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
+    expect(store.get(rightRailModeAtom)).toBe('chat-right');
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(store.get(rightRailModeAtom)).toBe('none');

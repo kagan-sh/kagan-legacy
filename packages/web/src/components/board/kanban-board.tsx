@@ -399,7 +399,19 @@ export function KanbanBoard() {
 
       <div className="flex min-h-0 flex-1 gap-px overflow-hidden pt-3">
         <div className="min-w-0 flex-1">
-          {showFilteredEmpty ? (
+          {showBoardEmpty ? (
+            <ActionEmptyState
+              title="Start the first autonomous task"
+              description="Create an initial task and Kagan will begin filling this workspace with execution telemetry, review state, and session history."
+              icon={<Plus className="size-6" />}
+              action={(
+                <Button onClick={() => openCreateDialog('AUTO')} className="cta-glow">
+                  <Plus className="size-4" />
+                  Create first task
+                </Button>
+              )}
+            />
+          ) : showFilteredEmpty ? (
             <ActionEmptyState
               title="No tasks match the active filters"
               description="Broaden your mode/status filters to bring more of the workspace back into view."
@@ -448,18 +460,6 @@ export function KanbanBoard() {
                 ) : null}
               </DragOverlay>
             </DndContext>
-          ) : showBoardEmpty ? (
-            <ActionEmptyState
-              title="Start the first autonomous task"
-              description="Create an initial task and Kagan will begin filling this workspace with execution telemetry, review state, and session history."
-              icon={<Plus className="size-6" />}
-              action={(
-                <Button onClick={() => openCreateDialog('AUTO')} className="cta-glow">
-                  <Plus className="size-4" />
-                  Create first task
-                </Button>
-              )}
-            />
           ) : (
             <BacklogListView
               tasks={allFilteredTasks}

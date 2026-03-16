@@ -675,7 +675,7 @@ class KanbanScreen(Screen[None]):
         open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "cycle_chat_overlay", default="Space")
+        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+I")
         right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
         left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
         session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
@@ -740,32 +740,6 @@ class KanbanScreen(Screen[None]):
             (session_key, "history"),
             *overlay_hints,
         ]
-
-    async def action_cycle_chat_overlay(self) -> None:
-        panel = self.query_one(ChatPanel)
-
-        if panel.has_class("visible") and panel.has_class("fullscreen"):
-            panel.set_fullscreen(False)
-            self._chat_auto_opened = False
-            self._chat_overlay_layout_mode = "vertical"
-            self._sync_layout_state()
-            self._auto_focus_board()
-            return
-
-        if not panel.has_class("visible"):
-            self._chat_overlay_layout_mode = "vertical"
-            self._chat_auto_opened = False
-            await self.action_open_orchestrator_chat()
-            self._auto_focus_board()
-            return
-
-        self._chat_auto_opened = False
-        if self._chat_overlay_layout_mode == "vertical":
-            self._chat_overlay_layout_mode = "horizontal"
-        else:
-            self._chat_overlay_layout_mode = "vertical"
-        self._sync_layout_state()
-        self._auto_focus_board()
 
     def on_board_view_task_selected(self, message: BoardView.TaskSelected) -> None:
         self._selected_task_id = message.task_id
@@ -876,11 +850,6 @@ class KanbanScreen(Screen[None]):
         panel.query_one("#chat-overlay-input", Input).focus()
         self._sync_layout_state()
 
-    def _transition_from_auto_opened(self, panel: ChatPanel) -> None:
-        """Clear auto-opened flag and advance to horizontal layout."""
-        self._chat_auto_opened = False
-        self._transition_to_horizontal(panel)
-
     def _transition_from_hidden(self) -> None:
         """Open the orchestrator chat when panel is not visible."""
         self._chat_overlay_layout_mode = "vertical"
@@ -912,17 +881,12 @@ class KanbanScreen(Screen[None]):
     def action_toggle_chat(self) -> None:
         panel = self.query_one(ChatPanel)
 
-        # State detection
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
-        auto_opened = self._chat_auto_opened
         vertical = self._chat_overlay_layout_mode == "vertical"
 
-        # State -> Action dispatch
         if fullscreen:
             self._transition_from_fullscreen(panel)
-        elif visible and auto_opened:
-            self._transition_from_auto_opened(panel)
         elif not visible:
             self._transition_from_hidden()
         elif vertical:
@@ -1914,22 +1878,6 @@ class KanbanScreen(Screen[None]):
                 event.stop()
                 await self.action_expand_chat_overlay()
                 return
-
-        if event.key == "space":
-            chat_input: Input | None = None
-            with contextlib.suppress(NoMatches):
-                chat_input = self.query_one(ChatPanel).query_one("#chat-overlay-input", Input)
-            focused = self.focused
-            if (
-                isinstance(focused, Input | TextArea)
-                and focused is chat_input
-                and bool(chat_input is not None and chat_input.value)
-            ):
-                return
-            event.prevent_default()
-            event.stop()
-            await self.action_cycle_chat_overlay()
-            return
 
         if self._focused_widget_accepts_text():
             if event.key == "enter":

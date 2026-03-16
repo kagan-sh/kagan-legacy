@@ -212,6 +212,8 @@ class Events:
                     to_status=str(payload.get("to") or ""),
                 )
             )
+        elif event_type is SessionEventType.AUTO_REVIEW_STARTED:
+            self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
         return event
 
     def publish_board(self, event: BoardEvent) -> None:

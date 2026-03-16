@@ -53,6 +53,7 @@ class TaskEventHandler:
             SessionEventType.AGENT_FAILED: self._handle_agent_failed,
             SessionEventType.MERGE_COMPLETED: self._handle_merge_completed,
             SessionEventType.MERGE_FAILED: self._handle_merge_failed,
+            SessionEventType.AUTO_REVIEW_STARTED: self._handle_auto_review_started,
         }
 
     def _maybe_apply_chat_event(
@@ -127,3 +128,9 @@ class TaskEventHandler:
 
     def _handle_merge_failed(self, payload: dict[str, Any]) -> None:
         self._output.post_note(self._payload_text(payload) or "Merge failed")
+
+    def _handle_auto_review_started(self, payload: dict[str, Any]) -> None:
+        self._set_running(True)
+        self._set_status("AI Reviewing...")
+        self._output.post_note("Auto-review started")
+        self._queue_refresh(runtime=True, review=True)

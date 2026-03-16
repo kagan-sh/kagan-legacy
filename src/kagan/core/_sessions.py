@@ -13,12 +13,13 @@ from sqlmodel import desc, select
 from kagan.core import git
 from kagan.core._agent import (
     get_backend,
+    resolve_default_agent_backend,
     spawn_agent,
     spawn_agent_via_acp,
     unregister_spawned_process,
 )
 from kagan.core._db import default_db_path
-from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _utc_now
+from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
 from kagan.core._events import Events
 from kagan.core._launchers import get_launcher
 from kagan.core._prompts import (
@@ -660,6 +661,7 @@ class Sessions:
             else:
                 await asyncio.to_thread(self._complete_session, session_id)
                 db_task = await self._get_task(task_id)
+                transitioned_to_review = False
                 if db_task.status == TaskStatus.IN_PROGRESS:
                     next_status = await self._resolve_post_agent_status(task_id)
                     if next_status != db_task.status:
@@ -670,12 +672,15 @@ class Sessions:
                             {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                             session_id=session_id,
                         )
+                        transitioned_to_review = next_status == TaskStatus.REVIEW
                 await self._events.emit(
                     task_id,
                     SessionEventType.AGENT_COMPLETED,
                     {},
                     session_id=session_id,
                 )
+                if transitioned_to_review:
+                    await self._maybe_auto_review(task_id)
         except RuntimeError as exc:
             if _is_shutdown_runtime_error(exc):
                 logger.debug(
@@ -697,6 +702,7 @@ class Sessions:
                 await unregister_spawned_process(session_id)
                 await asyncio.to_thread(self._complete_session, session_id)
                 task = await self._get_task(task_id)
+                transitioned_to_review = False
                 if task.status == TaskStatus.IN_PROGRESS:
                     next_status = await self._resolve_post_agent_status(task_id)
                     if next_status != task.status:
@@ -707,16 +713,62 @@ class Sessions:
                             {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                             session_id=session_id,
                         )
+                        transitioned_to_review = next_status == TaskStatus.REVIEW
                 await self._events.emit(
                     task_id,
                     SessionEventType.AGENT_COMPLETED,
                     {},
                     session_id=session_id,
                 )
+                if transitioned_to_review:
+                    await self._maybe_auto_review(task_id)
                 logger.info("Detached agent exited, session={} task={}", session_id, task_id)
                 return
             except PermissionError:
                 continue
+
+    async def _maybe_auto_review(self, task_id: str) -> None:
+        settings = await _db_async(
+            self._engine,
+            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
+        )
+        if not _setting_enabled(settings, "auto_review", default=False):
+            return
+
+        task = await self._get_task(task_id)
+        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+        if not criteria:
+            logger.info("Skipping auto-review for task={}: no acceptance criteria", task_id)
+            return
+
+        # Clear stale verdicts before starting fresh review
+        def clear_verdicts(s) -> None:
+            db_task = s.get(Task, task_id)
+            if db_task is not None:
+                db_task.review_verdicts = []
+                db_task.updated_at = _utc_now()
+                s.add(db_task)
+
+        await _db_async(self._engine, clear_verdicts, commit=True)
+
+        backend = task.agent_backend or resolve_default_agent_backend(settings)
+
+        await self._events.emit(
+            task_id,
+            SessionEventType.AUTO_REVIEW_STARTED,
+            {"agent_backend": backend},
+        )
+
+        try:
+            await self.run(task_id, agent_backend=backend)
+            logger.info("Auto-review launched for task={}", task_id)
+        except (AgentError, SessionError, ConfigurationError, WorktreeError, OSError) as exc:
+            logger.warning("Auto-review failed for task={}: {}", task_id, exc)
+            await self._events.emit(
+                task_id,
+                SessionEventType.AGENT_FAILED,
+                {"error": f"Auto-review failed: {exc}"},
+            )
 
     async def _rebase_if_enabled(self, task_id: str) -> None:
         settings = await _db_async(

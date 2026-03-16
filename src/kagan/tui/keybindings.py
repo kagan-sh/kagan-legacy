@@ -56,7 +56,6 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
     Binding("shift+n", "new_auto_task", "New Auto", key_display="Shift+N"),
     Binding("enter", "open_task", "Open"),
-    Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
     Binding("y", "copy_task_id", "Copy ID"),
@@ -94,7 +93,6 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("x", "reject", "Reject"),
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
-    Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
@@ -305,7 +303,7 @@ class FooterBuilder:
     def kanban_with_card() -> list[tuple[str, str]]:
         return [
             ("Enter", "open"),
-            ("Space", "assistant split"),
+            ("Ctrl+I", "AI panel"),
             ("P", "peek"),
             ("e", "edit"),
             ("x", "delete"),
@@ -322,7 +320,7 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
-            ("Space", "assistant split"),
+            ("Ctrl+I", "AI panel"),
             ("Ctrl+F", "assistant full"),
             ("e", "edit"),
             ("d", "delete"),

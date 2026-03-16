@@ -8,8 +8,6 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
 
 
-
-
 async def test_create_task_appears_in_backlog_with_id(board: KaganDriver) -> None:
     task_a = await board.create_task("First Task")
     task_b = await board.create_task("Second Task")
@@ -19,9 +17,6 @@ async def test_create_task_appears_in_backlog_with_id(board: KaganDriver) -> Non
     assert task_a.id
     assert task_b.id
     assert task_a.id != task_b.id
-
-
-
 
 
 async def test_create_task_with_optional_fields(board: KaganDriver) -> None:
@@ -46,9 +41,6 @@ async def test_create_task_with_optional_fields(board: KaganDriver) -> None:
     assert fetched.acceptance_criteria == ["AC1: works", "AC2: tested"]
 
 
-
-
-
 async def test_update_task_mutable_fields(board: KaganDriver) -> None:
     task = await board.create_task("Original Title", description="Original desc")
 
@@ -71,9 +63,6 @@ async def test_update_task_mutable_fields(board: KaganDriver) -> None:
     assert fetched.launcher == "nvim"
 
 
-
-
-
 async def test_delete_task_removes_it_from_list(board: KaganDriver) -> None:
     task = await board.create_task("Task to Delete")
     tasks_before = await board.list_tasks()
@@ -84,9 +73,6 @@ async def test_delete_task_removes_it_from_list(board: KaganDriver) -> None:
 
     tasks_after = await board.list_tasks()
     assert not any(t.id == task.id for t in tasks_after)
-
-
-
 
 
 async def test_list_tasks_filtered_by_status(board: KaganDriver) -> None:
@@ -106,9 +92,6 @@ async def test_list_tasks_filtered_by_status(board: KaganDriver) -> None:
     assert backlog_task.id not in in_progress_ids
 
 
-
-
-
 async def test_search_tasks_by_title_and_description(board: KaganDriver) -> None:
     await board.create_task("Implement OAuth login", description="Add OAuth2 support")
     await board.create_task("Fix database migration", description="Schema update needed")
@@ -124,9 +107,6 @@ async def test_search_tasks_by_title_and_description(board: KaganDriver) -> None
 
     no_results = await board.search_tasks("xyzzy_nonexistent_keyword")
     assert len(no_results) == 0
-
-
-
 
 
 async def test_add_and_read_notes_chronologically(board: KaganDriver) -> None:

@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import type { WireProject, WireRepository } from '@/lib/api/types';
 import { isAuthenticatedAtom, retryHealthCheckAtom } from '@/lib/atoms/auth';
+import { projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -44,6 +45,7 @@ export function Component() {
   const navigate = useNavigate();
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
   const retryHealthCheck = useSetAtom(retryHealthCheckAtom);
+  const bumpProjectVersion = useSetAtom(projectSwitchVersionAtom);
   const [retrying, setRetrying] = useState(false);
   const [projects, setProjects] = useState<ProjectWithRepos[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,12 +95,13 @@ export function Component() {
     async (projectId: string) => {
       try {
         await apiClient.activateProject(projectId);
+        bumpProjectVersion((v) => v + 1);
         navigate('/board');
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to open project');
       }
     },
-    [navigate],
+    [bumpProjectVersion, navigate],
   );
 
   const handleOpenProject = useCallback(
@@ -120,12 +123,13 @@ export function Component() {
       try {
         await apiClient.activateProject(project.id);
         await apiClient.selectProjectRepo(project.id, repo.id);
+        bumpProjectVersion((v) => v + 1);
         navigate('/board');
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to open project');
       }
     },
-    [navigate],
+    [bumpProjectVersion, navigate],
   );
 
   // Keyboard shortcuts: 1-9 quick-open, n = new, o = open folder
@@ -167,6 +171,7 @@ export function Component() {
         await apiClient.selectProjectRepo(created.id, repo.id);
       }
       await apiClient.activateProject(created.id);
+      bumpProjectVersion((v) => v + 1);
       setCreateOpen(false);
       setNewName('');
       setNewRepoPath('');
@@ -177,7 +182,7 @@ export function Component() {
     } finally {
       setCreating(false);
     }
-  }, [newName, newRepoPath, creating, navigate]);
+  }, [newName, newRepoPath, creating, bumpProjectVersion, navigate]);
 
   const handleOpenFolder = useCallback(
     async (folderPath: string) => {
@@ -195,13 +200,14 @@ export function Component() {
         const repo = await apiClient.addProjectRepo(created.id, folderPath);
         await apiClient.selectProjectRepo(created.id, repo.id);
         await apiClient.activateProject(created.id);
+        bumpProjectVersion((v) => v + 1);
         toast.success(`Created ${created.name}`);
         navigate('/board');
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to open folder');
       }
     },
-    [projects, activateAndNavigate, navigate],
+    [projects, activateAndNavigate, bumpProjectVersion, navigate],
   );
 
   const handleDelete = useCallback(async () => {

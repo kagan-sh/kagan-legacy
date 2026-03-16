@@ -204,6 +204,7 @@ export function ChatInputBar({
         multiple
         accept="image/*,.md,.markdown,.txt,.js,.ts,.tsx,.jsx,.py,.rs,.go,.java,.cpp,.c,.h,.rb,.php,.json,.yaml,.yml,.toml"
         className="hidden"
+        aria-label="Upload files"
         onChange={(e) => {
           handleFileSelect(e.target.files);
           e.target.value = ''; // Reset for re-selection

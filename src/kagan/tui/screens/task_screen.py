@@ -440,34 +440,6 @@ class TaskScreen(Screen[None]):
         panel.query_one("#chat-overlay-input", Input).focus()
         self._sync_overlay_layout_class()
 
-    async def action_cycle_chat_overlay(self) -> None:
-        panel = self._overlay_panel()
-        if panel.has_class("visible") and panel.has_class("fullscreen"):
-            panel.set_fullscreen(False)
-            self._overlay_layout_mode = "vertical"
-            self._sync_overlay_layout_class()
-            return
-
-        if not panel.has_class("visible"):
-            self._overlay_layout_mode = "vertical"
-            self._configure_overlay_chat(
-                visible=True,
-                fullscreen=False,
-                mode="task",
-                layout_mode="vertical",
-                focus=False,
-            )
-            if self._task_id is not None:
-                self._ensure_stream_worker()
-            self._sync_overlay_layout_class()
-            return
-
-        if self._overlay_layout_mode == "vertical":
-            self._overlay_layout_mode = "horizontal"
-        else:
-            self._overlay_layout_mode = "vertical"
-        self._sync_overlay_layout_class()
-
     async def action_toggle_chat(self) -> None:
         panel = self._overlay_panel()
         if panel.has_class("visible") and panel.has_class("fullscreen"):
@@ -842,6 +814,7 @@ class TaskScreen(Screen[None]):
             SessionEventType.AGENT_COMPLETED,
             SessionEventType.AGENT_FAILED,
             SessionEventType.TASK_STATUS_CHANGED,
+            SessionEventType.AUTO_REVIEW_STARTED,
         }
 
     def _output_stream(self) -> StreamingOutput:
@@ -1491,22 +1464,6 @@ class TaskScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             await self.action_expand_chat_overlay()
-            return
-
-        if event.key == "space":
-            chat_input: Input | None = None
-            with contextlib.suppress(NoMatches):
-                chat_input = panel.query_one("#chat-overlay-input", Input)
-            focused = self.focused
-            if (
-                isinstance(focused, Input | TextArea)
-                and focused is chat_input
-                and bool(chat_input is not None and chat_input.value)
-            ):
-                return
-            event.prevent_default()
-            event.stop()
-            await self.action_cycle_chat_overlay()
             return
 
         if event.key == "q":

@@ -40,6 +40,7 @@ function formatEventSummary(event: WireEvent) {
   }
   if (event.type === 'PLAN_UPDATE') return 'Execution plan updated';
   if (event.type === 'AGENT_COMPLETED') return 'Agent completed the current run';
+  if (event.type === 'AUTO_REVIEW_STARTED') return 'Auto-review started';
   if (event.type === 'AGENT_FAILED') return 'Agent reported a failure';
   if (event.type === 'OUTPUT_CHUNK') {
     const text = typeof event.payload?.text === 'string' ? event.payload.text.trim() : '';

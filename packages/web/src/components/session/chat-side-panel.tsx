@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { List, MoreVertical, PanelRight, PanelBottom, Maximize2, X } from 'lucide-react';
 import { useSetAtom } from 'jotai';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { sessionPickerOpenAtom, type RightRailMode } from '@/lib/atoms/ui';
+import type { WireEvent } from '@/lib/api/types';
 
 interface ChatSidePanelProps {
   taskId: string;
@@ -34,13 +35,21 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
     }
   }, [searchParams]);
 
-  // Show all events for this task — covers both worker and reviewer sessions
   const {
     task, events, isRunning,
     sentFollowUps, queue, sendingFollowUp,
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
   } = useTaskEvents(taskId, { initialLimit: 200 });
+
+  const sessionOrder = useMemo(() => buildSessionOrder(events), [events]);
+  const laneSessionId = lane === 'reviewer' ? sessionOrder[1] : sessionOrder[0];
+  const displayedEvents = useMemo(() => {
+    if (!laneSessionId) {
+      return events;
+    }
+    return events.filter((event) => event.session_id === laneSessionId);
+  }, [events, laneSessionId]);
 
   return (
     <aside
@@ -109,7 +118,15 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
         </div>
       </div>
 
-      <EventStream events={events} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+      <EventStream
+        events={displayedEvents}
+        userFollowUps={sentFollowUps}
+        isRunning={isRunning}
+        className="min-h-0 flex-1"
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadEarlier={loadEarlier}
+      />
 
       {queue.length > 0 && (
         <div className="border-t border-[color:var(--border-subtle)] px-3 py-2">
@@ -126,7 +143,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
 
       <ChatInputBar
         onSend={queuePrompt}
-        disableSend={false}
+        disableSend={isRunning}
         placeholder={`Queue a follow-up for the ${lane} agent...`}
       />
 
@@ -137,4 +154,23 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
       )}
     </aside>
   );
+}
+
+const SESSION_ORDER_LIMIT = 2;
+
+function buildSessionOrder(events: WireEvent[]): string[] {
+  const firstSeen = new Map<string, number>();
+  for (const event of events) {
+    const sessionId = event.session_id;
+    if (!sessionId) continue;
+    if (firstSeen.has(sessionId)) continue;
+    const parsed = Date.parse(event.created_at);
+    const timestamp = Number.isFinite(parsed) ? parsed : 0;
+    firstSeen.set(sessionId, timestamp);
+  }
+
+  return [...firstSeen.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, SESSION_ORDER_LIMIT)
+    .map(([sessionId]) => sessionId);
 }

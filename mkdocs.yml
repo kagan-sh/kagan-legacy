@@ -139,6 +139,16 @@ plugins:
               # Root redirects for old section index pages
               how-to.md: guides/mcp-setup.md
               getting-started.md: quickstart.md
+              # Fix 404s - TODO delete after q2 2026
+              mcp.md: guides/mcp-setup.md
+              user-guide.md: quickstart.md
+              guides/editor-mcp-setup.md: guides/mcp-setup.md
+              contributing.md: index.md
+              install.md: quickstart.md
+              config.md: reference/configuration.md
+              reference/index.md: reference/cli.md
+              reference/plugin-sdk.md: reference/plugins.md
+              getting-started/commands.md: reference/cli.md
 
 exclude_docs: |
     standalone-mcp-core-refactor-execution.md

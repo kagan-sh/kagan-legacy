@@ -1,5 +1,5 @@
 ---
-title: CLI reference
+title: CLI Reference
 description: Complete command and option reference for the kagan CLI
 icon: material/console
 tags:

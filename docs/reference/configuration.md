@@ -1,5 +1,5 @@
 ---
-title: Configuration reference
+title: Configuration Reference
 description: Full schema for config.toml, locations, and environment overrides
 icon: material/cog
 ---

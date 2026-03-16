@@ -1,5 +1,5 @@
 ---
-title: MCP setup
+title: "MCP Setup — Connect Editors to Kagan"
 description: Connect external AI clients to Kagan over MCP
 icon: material/server-network
 tags:

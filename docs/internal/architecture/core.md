@@ -119,7 +119,7 @@ ______________________________________________________________________
 | **Repository** | id, project_id, path, default_branch                                                               | Git repo linked to project               |
 | **Task**       | id, project_id, title, description, status, execution_mode, priority, base_branch, review_approved, acceptance_criteria, agent_backend | The core abstraction — a kanban ticket   |
 | **Worktree**   | id, task_id, repo_id, worktree_path, branch_name | Git worktree for a task. Stored at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (override: `KAGAN_WORKTREE_BASE` env). Removed on merge, task delete, or orphan scan. |
-| **Session**    | id, task_id, mode (AUTO\|PAIR), agent_backend, status, launcher, pid                          | Agent execution — unified for both modes |
+| **Session**    | id, task_id, mode (AUTO\|PAIR), agent_backend, status, launcher, pid, input_tokens, output_tokens, context_window_used, context_window_size | Agent execution — unified for both modes. Token fields populated from ACP `UsageUpdate` on session completion; nullable until available. |
 | **SessionEvent**   | id, task_id, run_id, event_type, payload (JSON), created_at                                    | Agent progress stream                    |
 | **TaskNote**   | id, task_id, content, created_at                                                                   | Timestamped notes on a task              |
 | **Setting**    | key (PK), value                                                                                    | Key-value settings                       |
@@ -311,6 +311,14 @@ Prompt resolution follows a three-layer hierarchy:
 Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`, `detect_dotfile_overrides()`.
 
 `execution.md` dotfile overrides may include template placeholders such as `{task_title}` and `{task_description}`. If template rendering fails, Kagan falls back to the default compiled prompt and logs a warning rather than emitting a broken execution prompt.
+
+#### Project Learnings Injection
+
+`resolve_task_prompt()` accepts an optional `learnings: list[str] | None` keyword argument. When provided and non-empty, a `PROJECT CONTEXT (from prior tasks):` section is appended to the base prompt (after `_build_auto_run_prompt`, before behavioral settings layers).
+
+Learnings are sourced from `TaskNote` rows whose `content` starts with `[LEARNING]`. The query JOINs `TaskNote` with `Task` on `task_id` and filters by `Task.project_id`, ensuring **strict project isolation** — no learning from a different project is ever injected. Results are ordered newest-first, deduplicated by content (after stripping the `[LEARNING]` prefix), and capped at 20 items.
+
+The call site is `Sessions._fetch_project_learnings()` in `_sessions.py`, invoked just before `resolve_task_prompt()` in the AUTO run path. To save a learning for future tasks, an agent simply calls `task_add_note` with content starting with `[LEARNING] `.
 ______________________________________________________________________
 
 ## Persona Pipeline
@@ -429,6 +437,23 @@ and the TUI/CLI renders it. The consumer doesn't know which path wrote the event
 Accumulated text via `task_events`          |
 | Bidirectional | Yes — kagan sends prompts, cancel, set_mode            | No — caller invokes tools, kagan reads DB |
 | Process model | Kagan owns (can terminate)                             | Agent runs in external environment        |
+
+### Secret Scrubbing
+
+`Events.emit()` calls `_scrub_secrets(payload)` before constructing `SessionEvent`, ensuring **both persisted events and live-streamed events** contain no secrets.
+
+`_scrub_secrets()` deep-traverses the payload dict and applies two complementary rules:
+
+1. **Pattern matching** — string values are scanned against six compiled `re.Pattern` objects:
+   - `AKIA[A-Z0-9]{16}` — AWS access key IDs
+   - `ghp_[a-zA-Z0-9]{36}` / `ghu_[a-zA-Z0-9]{36}` — GitHub PAT / user tokens
+   - `sk-[a-zA-Z0-9]{20,}` — OpenAI API keys
+   - `-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----` — private key PEM blocks
+   - `Bearer [a-zA-Z0-9._\-]{20,}` — bearer tokens in authorization headers
+
+2. **Sensitive key names** — dict keys matching `password`, `secret`, `token`, `api_key`, `apikey`, `authorization` (case-insensitive) have their values replaced regardless of pattern match.
+
+Patterns have minimum-length requirements to avoid false positives (e.g., `sk-short` is not scrubbed). The function is **non-mutating** — it always returns a new dict; the caller's original dict is unchanged.
 
 ______________________________________________________________________
 

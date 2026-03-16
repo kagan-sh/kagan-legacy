@@ -45,6 +45,12 @@ class SessionEventType(StrEnum):
     AUTO_REVIEW_STARTED = "AUTO_REVIEW_STARTED"
 
 
+class ToolProfile(StrEnum):
+    TASK = "TASK"
+    REVIEWER = "REVIEWER"
+    ORCHESTRATOR = "ORCHESTRATOR"
+
+
 class BranchRefStrategy(StrEnum):
     LOCAL = "local"
     REMOTE = "remote"

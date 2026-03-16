@@ -270,6 +270,58 @@ are available. `--readonly` and `--admin` are mutually exclusive.
 
 ______________________________________________________________________
 
+## Tool Profiles
+
+Tool profiles provide **per-role tool filtering** on top of access tiers. While access tiers control _which tier_ of tools is available, profiles further restrict _which tools_ within that tier an agent can see.
+
+### ToolProfile StrEnum
+
+Defined in `kagan.core.enums`:
+
+| Profile | Intended consumer | Tool count |
+|---|---|---|
+| `TASK` | Autonomous task agent (AUTO mode) | ~8 |
+| `REVIEWER` | Reviewer agent checking acceptance criteria | ~13 |
+| `ORCHESTRATOR` | Orchestrator with full visibility | All tools in tier |
+
+### TOOL_PROFILES Dict
+
+`TOOL_PROFILES: dict[ToolProfile, frozenset[str]]` in `kagan.mcp._policy` maps each profile to an explicit allowlist of tool names:
+
+- **TASK**: `task_get`, `task_list`, `task_search`, `task_events`, `task_add_note`, `run_update`, `run_summary`, `settings_get`
+- **REVIEWER**: all TASK tools + `review_decide`, `review_set_criterion_verdict`, `review_clear_verdicts`, `review_conflicts`, `tasks_wait`, `task_counts`
+- **ORCHESTRATOR**: all tools in `TOOL_TIERS` (no additional restriction — effective tier still applies)
+
+### Composition with Access Tiers
+
+Profile filtering is **additive** — both the tier check AND the profile check must pass:
+
+```python
+# Both conditions must be true for a tool to be registered:
+effective_tier.value >= required_tier.value   # tier check
+AND
+(profile is None or tool_name in TOOL_PROFILES[profile])  # profile check
+```
+
+`profile=None` (the default) disables profile filtering entirely — all tools for the effective tier are visible. This preserves full backwards compatibility.
+
+### Who Gets What Profile
+
+| Consumer | Tier | Profile | Effect |
+|---|---|---|---|
+| Task agent (AUTO) | Standard | `TASK` | ~8 task-focused tools |
+| Reviewer agent | Standard | `REVIEWER` | ~13 tools including review ops |
+| Orchestrator | Admin | `ORCHESTRATOR` | All tools |
+| External / manual | Any | `None` (default) | All tools for tier |
+
+Profile is passed via `--profile <name>` CLI flag on `kagan mcp`. `build_mcp_manifest()` in `_agent.py` propagates the profile flag automatically when spawning agents.
+
+### Exhaustiveness Guarantee
+
+A test in `tests/unit/test_tool_profiles.py` (`test_profile_exhaustiveness`) asserts that the union of all `TOOL_PROFILES` values equals `set(TOOL_TIERS.keys())`. This ensures no tool is ever "orphaned" (unassigned to any profile).
+
+______________________________________________________________________
+
 ## Session Binding
 
 When `--session-id` is provided:

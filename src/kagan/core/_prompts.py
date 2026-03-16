@@ -402,7 +402,11 @@ def _build_auto_run_prompt(task: Any) -> str:
 
 
 def resolve_task_prompt(
-    task: Any, settings: dict[str, str], project_path: Path | None = None
+    task: Any,
+    settings: dict[str, str],
+    project_path: Path | None = None,
+    *,
+    learnings: list[str] | None = None,
 ) -> str:
     overrides = detect_dotfile_overrides(project_path)
     override_path = overrides.get("execution")
@@ -429,7 +433,12 @@ def resolve_task_prompt(
                     exc,
                 )
 
-    return _append_layer_sections(_build_auto_run_prompt(task), settings)
+    base = _build_auto_run_prompt(task)
+    if learnings:
+        parts = [base, "", "PROJECT CONTEXT (from prior tasks):"]
+        parts.extend(f"- {item}" for item in learnings)
+        base = "\n".join(parts)
+    return _append_layer_sections(base, settings)
 
 
 def resolve_review_prompt(

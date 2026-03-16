@@ -124,3 +124,13 @@ ______________________________________________________________________
 - Checks: git, configured agent backend executable, tmux, DB writability
 - Each check returns pass, warn, or fail with fix hints
 - Blocking checks prevent operations; warnings are informational
+
+______________________________________________________________________
+
+## 12. Project Learnings
+
+- Agents save project-wide learnings by calling `task_add_note` with content starting with `[LEARNING] `
+- Before each AUTO task run, kagan queries all `[LEARNING]`-prefixed notes across every task in the current project
+- Up to 20 unique learnings (newest-first, deduplicated) are injected into the task prompt as a `PROJECT CONTEXT (from prior tasks):` section
+- Learnings are strictly scoped to the project — notes from other projects are never included
+- No new data model required: `TaskNote` with the `[LEARNING]` prefix convention is the storage mechanism

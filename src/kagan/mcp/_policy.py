@@ -2,6 +2,7 @@
 
 from enum import Enum, auto
 
+from kagan.core.enums import ToolProfile
 from kagan.mcp.server import ServerOptions
 
 
@@ -60,6 +61,40 @@ TOOL_TIERS: dict[str, AccessTier] = {
     "plugins_preflight": AccessTier.READONLY,
 }
 
+# Maps ToolProfile → allowed tool names within that profile.
+TOOL_PROFILES: dict[ToolProfile, frozenset[str]] = {
+    ToolProfile.TASK: frozenset(
+        {
+            "task_get",
+            "task_list",
+            "task_search",
+            "task_events",
+            "task_add_note",
+            "run_update",
+            "run_summary",
+            "settings_get",
+        }
+    ),
+    ToolProfile.REVIEWER: frozenset(
+        {
+            "task_get",
+            "task_list",
+            "task_search",
+            "task_events",
+            "task_add_note",
+            "tasks_wait",
+            "task_counts",
+            "run_summary",
+            "settings_get",
+            "review_decide",
+            "review_set_criterion_verdict",
+            "review_clear_verdicts",
+            "review_conflicts",
+        }
+    ),
+    ToolProfile.ORCHESTRATOR: frozenset(TOOL_TIERS.keys()),
+}
+
 
 def _effective_tier(opts: ServerOptions) -> AccessTier:
     """Compute the effective access tier from ServerOptions."""
@@ -75,4 +110,6 @@ def is_tool_allowed(tool_name: str, opts: ServerOptions) -> bool:
     required = TOOL_TIERS.get(tool_name, AccessTier.STANDARD)
     effective = _effective_tier(opts)
     # Order in enum definition determines access level
-    return effective.value >= required.value
+    if effective.value < required.value:
+        return False
+    return not (opts.profile is not None and tool_name not in TOOL_PROFILES[opts.profile])

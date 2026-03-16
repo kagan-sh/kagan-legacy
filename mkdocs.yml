@@ -139,7 +139,7 @@ plugins:
               # Root redirects for old section index pages
               how-to.md: guides/mcp-setup.md
               getting-started.md: quickstart.md
-              # Fix 404s - TODO delete after q2 2026
+              # Fix 404s reported in Google Search Console (2026-03-16)
               mcp.md: guides/mcp-setup.md
               user-guide.md: quickstart.md
               guides/editor-mcp-setup.md: guides/mcp-setup.md

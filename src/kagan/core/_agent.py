@@ -261,6 +261,7 @@ def build_mcp_manifest(
     db_path: str,
     access_tier: str = "default",
     project_id: str | None = None,
+    profile: str | None = None,
 ) -> str:
     """Build the .mcp.json content string for a given session."""
     if access_tier not in _VALID_ACCESS_TIERS:
@@ -275,6 +276,8 @@ def build_mcp_manifest(
         mcp_args.append("--readonly")
     if project_id is not None:
         mcp_args += ["--project-id", project_id]
+    if profile is not None:
+        mcp_args += ["--profile", profile]
 
     payload = {
         "mcpServers": {

@@ -34,7 +34,7 @@ classifiers = [
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-  "agent-client-protocol>=0.7.0,<1.0.0",
+  "agent-client-protocol>=0.8.0,<1.0.0",
   "alembic>=1.16.0",
   "click>=8.1.0",
   "cryptography>=46.0",

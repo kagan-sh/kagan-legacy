@@ -483,5 +483,33 @@ class Tasks:
         )
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 
+    async def list_project_learnings(self, project_id: str) -> builtins.list[str]:
+        """Return up to 20 unique [LEARNING]-prefixed notes across all tasks in a project.
+
+        Notes are ordered newest-first and deduplicated by content after stripping the prefix.
+        Only notes whose content starts with "[LEARNING]" are included.
+        """
+        stmt = (
+            select(TaskNote)
+            .join(Task, TaskNote.task_id == Task.id)
+            .where(Task.project_id == project_id)
+            .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
+            .order_by(desc(cast("Any", TaskNote.created_at)))
+            .limit(30)
+        )
+        notes: builtins.list[TaskNote] = await _db_async(
+            self._engine, lambda s: list(s.exec(stmt).all())
+        )
+        seen: set[str] = set()
+        result: builtins.list[str] = []
+        for note in notes:
+            text = note.content.removeprefix("[LEARNING]").strip()
+            if text and text not in seen:
+                seen.add(text)
+                result.append(text)
+                if len(result) >= 20:
+                    break
+        return result
+
 
 __all__ = ["Tasks"]

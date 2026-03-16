@@ -1,24 +1,26 @@
 import { test, expect } from '@playwright/test';
+import { ensureBoardReady } from './helpers';
 
 test.describe('Board', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await ensureBoardReady(page, request);
+  });
+
   test('shows 4 columns', async ({ page }) => {
-    await page.goto('/board');
     await expect(page.getByRole('heading', { name: 'Backlog', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'In Progress', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Done', exact: true })).toBeVisible();
   });
 
-  test('shows New Task button', async ({ page }) => {
-    await page.goto('/board');
-    await expect(page.getByText('New Task')).toBeVisible();
+  test('shows new-task button', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
   });
 
   test('supports desktop inspect and peek flow', async ({ page }) => {
     const title = `Inspector parity ${Date.now()}`;
 
-    await page.goto('/board');
-    await page.getByRole('button', { name: 'New Task' }).click();
+    await page.getByRole('button', { name: 'New', exact: true }).click();
     await page.getByPlaceholder('What needs to be done?').fill(title);
     await page.getByRole('button', { name: 'Create' }).click();
 
@@ -27,7 +29,7 @@ test.describe('Board', () => {
 
     await taskCard.click();
     await expect(page.getByText('Task Inspector', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Open stream' })).toBeVisible();
+    await expect(page.getByText('Open task', { exact: true })).toBeVisible();
 
     await page.keyboard.press('p');
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -43,8 +45,7 @@ test.describe('Board', () => {
   test('supports board delete confirmation', async ({ page }) => {
     const title = `Delete parity ${Date.now()}`;
 
-    await page.goto('/board');
-    await page.getByRole('button', { name: 'New Task' }).click();
+    await page.getByRole('button', { name: 'New', exact: true }).click();
     await page.getByPlaceholder('What needs to be done?').fill(title);
     await page.getByRole('button', { name: 'Create' }).click();
 

@@ -27,6 +27,7 @@ export default defineConfig({
   // temp dir created inline above; no globalSetup needed.
   globalTeardown: useExternalServer ? undefined : './e2e/global-teardown.ts',
   reporter: 'list',
+  workers: 1,
 
   use: {
     baseURL: process.env.BASE_URL || E2E_BASE,

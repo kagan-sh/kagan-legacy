@@ -1,17 +1,20 @@
 import { test, expect } from '@playwright/test';
+import { ensureBoardReady } from './helpers';
 
 test.describe('Chat', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await ensureBoardReady(page, request);
+  });
+
   test('Session Switcher opens from board', async ({ page }) => {
-    await page.goto('/board');
     await page.keyboard.press('Control+Shift+k');
     await expect(page.getByRole('dialog', { name: 'Session Switcher' })).toBeVisible();
   });
 
-  test('session page shows commits panel state', async ({ page }) => {
-    const title = `Session commits ${Date.now()}`;
+  test('task page opens the chat rail', async ({ page }) => {
+    const title = `Task chat ${Date.now()}`;
 
-    await page.goto('/board');
-    await page.getByRole('button', { name: 'New Task' }).click();
+    await page.getByRole('button', { name: 'New', exact: true }).click();
     await page.getByPlaceholder('What needs to be done?').fill(title);
     await page.getByRole('button', { name: 'Create' }).click();
 
@@ -20,9 +23,9 @@ test.describe('Chat', () => {
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/task\//);
 
-    await page.getByRole('button', { name: 'Open stream' }).click();
-    await expect(page).toHaveURL(/\/session\//);
-    await expect(page.getByRole('heading', { name: 'Commits', exact: true })).toBeVisible();
-    await expect(page.getByText('No workspace yet')).toBeVisible();
+    await page.getByRole('button', { name: 'Open chat' }).click();
+    await expect(page.locator('[data-chat-layout="chat-right"]')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Worker' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Queue a follow-up for the worker agent...' })).toBeVisible();
   });
 });

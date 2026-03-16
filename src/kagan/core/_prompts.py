@@ -370,6 +370,13 @@ def _build_auto_run_prompt(task: Any) -> str:
 
     lines.extend(
         [
+            "COORDINATION (check before starting):",
+            "- Call task_list() to see other tasks in this project.",
+            "- If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
+            "- Call task_get(task_id) on related tasks for full context.",
+            "- Call task_search(query) to find tasks by keyword.",
+            "- If overlap exists, coordinate: avoid shared files or sequence edits.",
+            "",
             "MUST DO:",
             "- Commit ALL changes before signaling completion.",
             "- Run the project's test/lint commands if they exist.",
@@ -392,7 +399,12 @@ def _build_auto_run_prompt(task: Any) -> str:
             "- Do NOT suppress type errors or linter warnings.",
             "- Do NOT leave uncommitted changes.",
             "",
-            "Only signal completion after committing.",
+            "PRE-COMPLETION CHECKLIST:",
+            "- [ ] All changes committed to git",
+            "- [ ] Tests/lint pass (if applicable)",
+            "- [ ] No uncommitted files left behind",
+            "",
+            "Only signal completion after the checklist passes.",
             "If blocked, explain the reason and signal blocked.",
         ]
     )

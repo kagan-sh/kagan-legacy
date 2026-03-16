@@ -150,13 +150,38 @@ def _build_update_verification(
 
 @mcp_error_boundary
 async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
-    """Get a task by ID."""
+    """Get a task by ID.
+
+    The response includes a ``board_hint`` field summarizing other active
+    tasks in the same project so the agent can decide whether to call
+    ``task_list()`` for coordination.
+    """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     task = await app.client.tasks.get(resolved_task_id)
     result = _task_to_dict(task)
     if app.bound_session_id is not None:
         result["session_id"] = app.bound_session_id
+
+    try:
+        all_tasks = await app.client.tasks.list()
+        siblings = [t for t in all_tasks if t.id != resolved_task_id]
+        active = [t for t in siblings if t.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)]
+        if active:
+            hint_lines = [f"{len(active)} active sibling task(s):"]
+            for t in active[:5]:
+                hint_lines.append(f"- {t.id} | {t.title} | {t.status.value}")
+            if len(active) > 5:
+                hint_lines.append(f"  ... and {len(active) - 5} more")
+            hint_lines.append("Call task_list() or task_get(id) for full details.")
+            result["board_hint"] = "\n".join(hint_lines)
+        elif siblings:
+            result["board_hint"] = (
+                f"{len(siblings)} other task(s) in project (none currently active)."
+            )
+    except Exception:
+        pass  # Board hint is best-effort; never block task_get
+
     return result
 
 

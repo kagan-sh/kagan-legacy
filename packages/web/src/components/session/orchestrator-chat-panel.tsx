@@ -98,6 +98,9 @@ export function OrchestratorChatPanel({
     kaganWs.subscribeToChatSession(sessionId);
 
     const cleanups = [
+      kaganWs.on('connected', () => {
+        kaganWs.subscribeToChatSession(sessionId);
+      }),
       kaganWs.on('CHAT_SUBSCRIBED', (data: WsInboundMessage) => {
         if (data.session_id === sessionId && Array.isArray(data.messages)) {
           const incoming = data.messages as WireChatMessage[];

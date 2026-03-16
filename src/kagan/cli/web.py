@@ -128,7 +128,7 @@ def web(
 
     mcp_opts = ServerOptions(
         readonly=readonly,
-        admin=admin,
+        admin=not readonly,  # Local orchestrator gets admin by default
         db_path=db_path,
         project_id=project_id,
     )

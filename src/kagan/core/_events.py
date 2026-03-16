@@ -287,15 +287,15 @@ class Events:
         if bounded == 0:
             return []
 
-        # Normalise to ISO 8601 with T-separator and +00:00 suffix so that
-        # SQLite string comparison matches the stored format.
         parsed = datetime.fromisoformat(before.replace("Z", "+00:00"))
-        cutoff_str = parsed.isoformat()
+        from datetime import UTC
+
+        cutoff = parsed.astimezone(UTC).replace(tzinfo=None)
 
         def _query(s):
             stmt = select(SessionEvent).where(
                 SessionEvent.task_id == task_id,
-                cast("Any", SessionEvent.created_at) < cutoff_str,
+                cast("Any", SessionEvent.created_at) < cutoff,
             )
             if session_id is not None:
                 stmt = stmt.where(SessionEvent.session_id == session_id)

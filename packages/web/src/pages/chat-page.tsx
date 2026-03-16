@@ -73,6 +73,9 @@ export function Component() {
     kaganWs.subscribeToChatSession(id);
 
     const cleanups = [
+      kaganWs.on('connected', () => {
+        kaganWs.subscribeToChatSession(id);
+      }),
       kaganWs.on('CHAT_SUBSCRIBED', (data: WsInboundMessage) => {
         if (data.session_id === id && Array.isArray(data.messages)) {
           const incoming = data.messages as WireChatMessage[];

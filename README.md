@@ -51,6 +51,26 @@ iwr -useb uvget.me/install.ps1 -OutFile install.ps1; .\install.ps1 kagan
 
 **[docs.kagan.sh](https://docs.kagan.sh/)** — everything else lives there.
 
+## TUI Controls
+
+On Kanban and Task screens, press `Space` to cycle AI chat split layout (`vertical -> horizontal -> vertical`), `Esc` to close the overlay, and `Ctrl+F` to expand the open overlay fullscreen.
+
+## Web Dashboard
+
+Run the bundled web UI locally:
+
+```bash
+kagan web
+```
+
+To access from another device on your network:
+
+```bash
+kagan web --host 0.0.0.0
+```
+
+See [Remote access](https://docs.kagan.sh/guides/remote-access/) for network setup.
+
 ## License
 
 [MIT](LICENSE)

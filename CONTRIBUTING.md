@@ -56,4 +56,27 @@ Maintainers may remove entries at any time if trust signals change.
 ## Documentation
 
 - Architecture and feature specs live in `docs/internal/`
+
 - User docs live in `docs/`
+
+- If you change TUI controls, update all of: `src/kagan/tui/keybindings.py`, in-app hints/help, `docs/reference/keybindings.md`, and related tests.
+
+- Current chat-overlay control contract (Kanban/Task): `Space` cycles split orientation, `Esc` closes overlay, `Ctrl+F` opens fullscreen when overlay is visible.
+
+- If you change behavioral settings or prompt resolution, update: `src/kagan/core/_prompts.py`, the TUI settings modal, the web settings panel, `docs/reference/configuration.md`, and the AGENTS.md knowledge base.
+
+## Web Client Changes
+
+If your PR touches `packages/web`, run these checks before opening the PR:
+
+```bash
+cd packages/web
+pnpm run typecheck
+pnpm run build
+```
+
+If the bundled server assets are affected, also run:
+
+```bash
+uv run poe web-build
+```

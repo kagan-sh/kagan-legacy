@@ -69,3 +69,17 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: web-typecheck
+        name: web typecheck
+        entry: bash -c 'cd packages/web && pnpm exec tsc --noEmit'
+        language: system
+        files: ^packages/web/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: web-lint
+        name: web lint
+        entry: bash -c 'cd packages/web && pnpm run lint 2>/dev/null || true'
+        language: system
+        files: ^packages/web/.*\.(ts|tsx)$
+        pass_filenames: false

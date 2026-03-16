@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
 
 def _normalize_base_ref_strategy(value: str | None) -> str:
-    """Validate and normalize a raw strategy setting to a known enum value."""
     if value is None:
         return BranchRefStrategy.LOCAL_IF_AHEAD
     normalized = value.strip().lower()

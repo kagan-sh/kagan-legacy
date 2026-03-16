@@ -23,10 +23,6 @@ from kagan.chat._completion import fuzzy_match
 from kagan.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
-# ---------------------------------------------------------------------------
-# Slash command aliases  (short form → canonical command name)
-# ---------------------------------------------------------------------------
-
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",
     "?": "help",
@@ -38,7 +34,6 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 
 class _SlashCompleter(Completer):
     def get_completions(self, document, complete_event):
-        _complete_event = complete_event  # Unused: only document.text_before_cursor is needed
         text = document.text_before_cursor
         if not text.startswith("/"):
             return
@@ -68,11 +63,6 @@ class _SlashCompleter(Completer):
                 )
 
 
-# ---------------------------------------------------------------------------
-# Toolbar state — mutable singleton updated by controller
-# ---------------------------------------------------------------------------
-
-
 @dataclass(slots=True)
 class ToolbarState:
     agent_backend: str = ""
@@ -81,12 +71,7 @@ class ToolbarState:
     session_label: str = "orchestrator"
 
 
-def create_toolbar_state() -> ToolbarState:
-    return ToolbarState()
-
-
-# Module-level instance
-_TOOLBAR_STATE = create_toolbar_state()
+_TOOLBAR_STATE = ToolbarState()
 
 _REPL_COLORS: Final[dict[str, str]] = {
     "bg": "#0B0A09",
@@ -112,7 +97,6 @@ def _supports_truecolor_terminal() -> bool:
         return False
     colorterm = os.environ.get("COLORTERM", "").casefold()
     term = os.environ.get("TERM", "").casefold()
-    _width = _height = None  # Unused: TrueColor detection only needs env vars
     return "truecolor" in colorterm or "24bit" in colorterm or "direct" in term
 
 
@@ -176,7 +160,6 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
 
 
 def _bottom_toolbar() -> str:
-    """Toolbar callback for prompt_toolkit — shown at the bottom of the terminal."""
     parts: list[str] = []
     if _TOOLBAR_STATE.session_label:
         parts.append(f"session: {_TOOLBAR_STATE.session_label}")
@@ -192,13 +175,7 @@ def _bottom_toolbar() -> str:
     return " · ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Rich prompt builder
-# ---------------------------------------------------------------------------
-
-
 def _build_prompt_message() -> FormattedText:
-    """Build a coloured ``user@project`` prompt for prompt_toolkit."""
     project = Path.cwd().name
     if _supports_truecolor_terminal():
         user_style = f"bold {_REPL_COLORS['accent']}"
@@ -217,10 +194,6 @@ def _build_prompt_message() -> FormattedText:
         ]
     )
 
-
-# ---------------------------------------------------------------------------
-# Multiline key bindings (Alt-Enter / Ctrl-J insert newline)
-# ---------------------------------------------------------------------------
 
 _kb = KeyBindings()
 
@@ -271,10 +244,6 @@ def _ctrl_c(event) -> None:
     buffer.cursor_position = 0
 
 
-# ---------------------------------------------------------------------------
-# Console & prompt
-# ---------------------------------------------------------------------------
-
 _console = Console(highlight=False)
 _prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
 _prompt_session: PromptSession[str] | None = None
@@ -291,10 +260,6 @@ def _get_prompt_session() -> PromptSession[str]:
         )
     return _prompt_session
 
-
-# ---------------------------------------------------------------------------
-# Banner & wave animation
-# ---------------------------------------------------------------------------
 
 LOGO = r"""█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
 █▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
@@ -357,7 +322,6 @@ def _write_boot_banner(
 
 
 def _animate_connecting() -> None:
-    """Quick one-shot wave for non-Live contexts (e.g. tests)."""
     if os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1":
         _console.print(Text(WAVE_FRAMES[-1], style="dim cyan"))
         return
@@ -365,11 +329,6 @@ def _animate_connecting() -> None:
         _console.print(f"\r[dim cyan]{frame}[/dim cyan]", end="")
         time.sleep(0.08)
     _console.print()
-
-
-# ---------------------------------------------------------------------------
-# Git helpers (for standalone bootstrap)
-# ---------------------------------------------------------------------------
 
 
 def _find_git_root(path: Path) -> Path | None:
@@ -405,28 +364,17 @@ def _env_flag_enabled(name: str, *, default: bool) -> bool:
     return normalized not in {"0", "false", "no", "off"}
 
 
-# ---------------------------------------------------------------------------
-# Public entry points — used by cli/chat.py
-# ---------------------------------------------------------------------------
-
-
 async def run_chat_async(
     *,
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
 ) -> str | None:
-    """Async entry point for the chat command.
-
-    With --prompt: single-shot mode — send to agent, stream output, exit.
-    Without: interactive REPL.
-    """
     from kagan.chat.agents import resolve_default_agent_backend
     from kagan.chat.controller import ChatController
     from kagan.core import KaganCore
 
     async with KaganCore() as client:
-        # Resolve agent: explicit --agent flag > saved setting > fallback
         backend = agent
         if not backend:
             settings = await client.settings.get()
@@ -456,5 +404,4 @@ def run_chat(
     session_id: str | None = None,
     agent: str | None = None,
 ) -> str | None:
-    """Sync wrapper — the one function cli/chat.py calls."""
     return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent))

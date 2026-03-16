@@ -4,9 +4,8 @@ import time
 from dataclasses import dataclass
 
 
-# Note: ToolRunRecord is intentionally mutable (no frozen=True).
-# Fields are updated during tool execution (status, args, result, ended_at),
-# and records are modified in-place by ToolRunTracker.ensure_tool_run().
+# ToolRunRecord is intentionally mutable (no frozen=True).
+# Fields are updated during tool execution and modified in-place.
 @dataclass(slots=True)
 class ToolRunRecord:
     tool_key: str

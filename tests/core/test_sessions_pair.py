@@ -1,8 +1,4 @@
-"""Feature tests: PAIR Sessions — docs/internal/features/core.md §7.
-
-Behavioral specs using KaganDriver DSL. No private imports.
-Each test is isolated with its own tmp_path and fresh DB.
-"""
+"""Feature tests: PAIR Sessions — docs/internal/features/core.md §7."""
 
 import contextlib
 
@@ -16,14 +12,8 @@ from tests.helpers.helpers import make_git_repo
 pytestmark = [pytest.mark.core, pytest.mark.slow]
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 async def git_board(tmp_path):
-    """Fresh KaganDriver with an active project linked to a real git repo."""
     repo_path = tmp_path / "repo"
     await make_git_repo(repo_path, base_branch="main")
 
@@ -33,13 +23,7 @@ async def git_board(tmp_path):
     await driver.teardown()
 
 
-# ---------------------------------------------------------------------------
-# §7.1 — Pair on task provisions worktree and launches environment
-# ---------------------------------------------------------------------------
-
-
 async def test_pair_provisions_workspace_before_launch(git_board: KaganDriver) -> None:
-    """Starting a PAIR session provisions the workspace before launch."""
     task = await git_board.create_task("Unprepared Pair Task", task_type=WorkMode.PAIR)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
 
@@ -51,7 +35,6 @@ async def test_pair_provisions_workspace_before_launch(git_board: KaganDriver) -
 
 
 async def test_pair_rejects_multi_repo_projects_explicitly(tmp_path) -> None:
-    """PAIR startup fails fast with an explicit multi-repo error."""
     repo_one = tmp_path / "repo-one"
     repo_two = tmp_path / "repo-two"
     await make_git_repo(repo_one, base_branch="main")
@@ -71,33 +54,19 @@ async def test_pair_rejects_multi_repo_projects_explicitly(tmp_path) -> None:
 
 
 async def test_pair_with_workspace_creates_session(git_board: KaganDriver) -> None:
-    """Starting a PAIR session with a workspace creates a session record.
-
-    The launcher (tmux) is unavailable in test, so the session may fail
-    during launch. We verify the session object is created before launch.
-    """
     task = await git_board.create_task("Pair Session Task", task_type=WorkMode.PAIR)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
     await git_board.provision_workspace(task.id)
 
-    # tmux is not available in test CI, so we catch the launch failure
-    # but the session record should still be created
     try:
         session = await git_board.pair_task(task.id, agent_backend="claude-code", launcher="tmux")
         assert session.task_id == task.id
         assert session.mode == WorkMode.PAIR
     except (AgentError, FileNotFoundError, OSError):
-        # tmux unavailable — expected in test environment
         pass
 
 
-# ---------------------------------------------------------------------------
-# §7.3 — Agent backend and launcher are orthogonal choices
-# ---------------------------------------------------------------------------
-
-
 async def test_unknown_launcher_raises_agent_error(git_board: KaganDriver) -> None:
-    """Requesting an unknown launcher raises AgentError with known launchers."""
     task = await git_board.create_task("Bad Launcher Task", task_type=WorkMode.PAIR)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
     await git_board.provision_workspace(task.id)
@@ -106,13 +75,7 @@ async def test_unknown_launcher_raises_agent_error(git_board: KaganDriver) -> No
         await git_board.pair_task(task.id, agent_backend="claude-code", launcher="nonexistent")
 
 
-# ---------------------------------------------------------------------------
-# §7.5 — Session status tracked in DB; survives client restart
-# ---------------------------------------------------------------------------
-
-
 async def test_cancel_pair_session_moves_to_backlog(git_board: KaganDriver) -> None:
-    """Cancelling an in-progress PAIR task moves it back to BACKLOG."""
     task = await git_board.create_task("Cancellable Pair Task", task_type=WorkMode.PAIR)
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
     await git_board.provision_workspace(task.id)

@@ -32,7 +32,6 @@ _KAGAN_THEME_NAMES = {"kagan", "kagan-256"}
 
 
 def _build_theme_options() -> list[tuple[str, str]]:
-    """Build theme dropdown options: Kagan custom themes + Textual built-in themes."""
     options: list[tuple[str, str]] = [
         ("Auto (Kagan Night)", ""),
         ("Kagan Night", "kagan"),
@@ -45,7 +44,6 @@ def _build_theme_options() -> list[tuple[str, str]]:
 
 
 def _valid_theme_names() -> set[str]:
-    """Return all valid theme identifiers (empty string = auto)."""
     return {"", *_KAGAN_THEME_NAMES, *BUILTIN_THEMES}
 
 

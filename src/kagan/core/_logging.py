@@ -15,23 +15,12 @@ LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {name}:{function}:{l
 
 
 def default_log_path() -> Path:
-    """Return log file path using platformdirs."""
     from platformdirs import user_log_dir
 
     return Path(user_log_dir("kagan", "kagan")) / "kagan.log"
 
 
 def configure_logging(*, log_level: str = "INFO", verbose: bool = False) -> None:
-    """Loguru configuration. Safe to call multiple times (idempotent).
-
-    The file sink is set up once. A stderr sink is added only when *verbose* is
-    True and has not been added yet, so the CLI can upgrade logging after the
-    initial import-time call in ``kagan.core.__init__``.
-
-    Args:
-        log_level: Level for file sink. Reads KAGAN_LOG_LEVEL env var as override.
-        verbose: If True, also add a stderr sink for console output.
-    """
     global _configured, _verbose_added
 
     with _lock:
@@ -53,7 +42,6 @@ def configure_logging(*, log_level: str = "INFO", verbose: bool = False) -> None
                     enqueue=True,
                 )
             except OSError as exc:
-                # Fall back to stderr-only logging
                 logger.add(sys.stderr, level="WARNING")
                 logger.error("Failed to setup file logging: {}", exc)
 

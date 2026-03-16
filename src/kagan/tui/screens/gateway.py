@@ -1,5 +1,3 @@
-"""PAIR instructions modal shown before opening a PAIR session."""
-
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -21,8 +19,6 @@ TMUX_DOCS_URL = "https://github.com/tmux/tmux/wiki"
 
 
 class PairInstructionsModal(ModalScreen[str | None]):
-    """Instructions popup shown before launching PAIR tool."""
-
     BINDINGS = TMUX_GATEWAY_BINDINGS
 
     def __init__(

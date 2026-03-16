@@ -9,7 +9,6 @@ from click.testing import CliRunner
 from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
-# Check if rich_click is available for extended CLI output
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
@@ -21,7 +20,6 @@ def _runner_env(tmp_path: Path) -> dict[str, str]:
         "KAGAN_DATA_DIR": str(tmp_path),
         "KAGAN_CONFIG_DIR": str(tmp_path),
         "COLUMNS": "120",
-        # Prevent tests from accidentally spawning real agent binaries
         "KAGAN_INTEGRATION_TESTS": "",
     }
 
@@ -244,7 +242,6 @@ def test_chat_prompt_single_shot_prints_response(monkeypatch, tmp_path: Path) ->
     result = runner.invoke(cli, ["chat", "--prompt", "hello"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    # With no projects, the controller prints a "no projects" message.
     assert "project" in result.output.lower() or "hello" in result.output
 
 

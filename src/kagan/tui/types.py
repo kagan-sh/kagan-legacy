@@ -48,8 +48,6 @@ class TaskView(Protocol):
 
 
 class TaskUpdateResult(Protocol):
-    """Result shape returned from task create/edit modals."""
-
     title: str
     description: str
     priority: Priority
@@ -63,12 +61,9 @@ class TaskUpdateResult(Protocol):
 
 
 class ModalActionResult(Protocol):
-    """Result shape for special modal actions (e.g. DELETE)."""
-
     action: str
 
 
-# Union of possible screen results.
 ScreenResult = TaskUpdateResult | ModalActionResult | dict[str, object] | None
 
 

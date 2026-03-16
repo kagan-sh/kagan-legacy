@@ -125,7 +125,6 @@ class DBWatcher:
             await self._handle_event(event)
 
     async def _poll_db_loop(self) -> None:
-        """Periodically poll the DB to detect cross-process changes (e.g. from MCP)."""
         while True:
             await asyncio.sleep(self._poll_interval)
             try:
@@ -148,7 +147,6 @@ class DBWatcher:
     def _detect_created(
         self, current: dict[str, _TaskState], old_ids: set[str], new_ids: set[str]
     ) -> bool:
-        """Detect newly created tasks and update snapshot."""
         changed = False
         for task_id in new_ids - old_ids:
             state = current[task_id]
@@ -158,7 +156,6 @@ class DBWatcher:
         return changed
 
     def _detect_deleted(self, old_ids: set[str], new_ids: set[str]) -> bool:
-        """Detect deleted tasks and update snapshot."""
         changed = False
         for task_id in old_ids - new_ids:
             state = self._snapshot.pop(task_id)
@@ -169,7 +166,6 @@ class DBWatcher:
     def _detect_modified(
         self, current: dict[str, _TaskState], old_ids: set[str], new_ids: set[str]
     ) -> bool:
-        """Detect status, execution mode, or title changes on existing tasks."""
         changed = False
         for task_id in old_ids & new_ids:
             old = self._snapshot[task_id]
@@ -194,7 +190,6 @@ class DBWatcher:
         return changed
 
     def _diff_snapshot(self, current: dict[str, _TaskState]) -> bool:
-        """Compare *current* DB state against cached snapshot, emit synthetic events."""
         old_ids = set(self._snapshot)
         new_ids = set(current)
 
@@ -282,8 +277,6 @@ class DBWatcher:
 
 
 class KaganCore:
-    """Composition root for kagan.core."""
-
     def __init__(self, db_path: str | Path | None = None) -> None:
         resolved = Path(db_path) if db_path is not None else default_db_path()
         self._db_path: Path = resolved
@@ -303,7 +296,6 @@ class KaganCore:
 
     @property
     def engine(self) -> Any:
-        """SQLAlchemy engine for direct DB access (use sparingly)."""
         return self._engine
 
     def close(self) -> None:

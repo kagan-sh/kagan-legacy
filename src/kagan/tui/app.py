@@ -78,7 +78,6 @@ class KaganApp(App[None]):
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
 
-        # Register themes in __init__ so the correct theme is visible from first paint.
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)
         self.theme = KAGAN_THEME.name
@@ -93,13 +92,11 @@ class KaganApp(App[None]):
         self.core.close()
 
     async def _apply_saved_theme(self) -> None:
-        """Read the persisted theme setting and activate it."""
         settings = await self.core.settings.get()
         theme_name = settings.get("theme", "")
         if theme_name and theme_name in self.available_themes:
             self.theme = theme_name
         elif not theme_name:
-            # Auto → default Kagan Night
             self.theme = KAGAN_THEME.name
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
@@ -119,7 +116,6 @@ class KaganApp(App[None]):
             try:
                 project = await self.core.projects.get(last_project_id)
             except NotFoundError:
-                # Project was deleted, clear the setting
                 await self.core.settings.set({"ui.last_project_id": None})
                 self.push_screen("welcome-screen")
                 return
@@ -167,7 +163,6 @@ class KaganApp(App[None]):
         return f"ui.selected_repo.{project_id}"
 
     async def _startup_cleanup(self) -> None:
-        """Remove orphaned worktrees left from prior sessions (best-effort)."""
         import contextlib
 
         with contextlib.suppress(KaganError, OSError, RuntimeError):
@@ -206,11 +201,6 @@ class KaganApp(App[None]):
             self.screen.action_new_project()
 
     def action_help_quit(self) -> None:
-        """Override Textual's default Ctrl+C system binding.
-
-        Instead of showing a quit-hint toast, delegate to the visible
-        ChatPanel so Ctrl+C clears input text (Esc handles agent interrupt).
-        """
         from kagan.tui.widgets.chat import ChatPanel
 
         for panel in self.screen.query(ChatPanel):
@@ -291,11 +281,9 @@ class KaganApp(App[None]):
         self.push_screen(HelpModal(context_sections=tuple(sections)))
 
     async def action_open_project_selector(self) -> None:
-        """Return to the project selector (welcome screen)."""
         self.switch_screen("welcome-screen")
 
     async def action_open_repo_selector(self) -> None:
-        """Open the repository selector for the active project."""
         await self._open_repo_picker()
 
     async def _open_repo_picker(self) -> None:

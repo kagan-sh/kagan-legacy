@@ -14,10 +14,9 @@ from kagan.runtime_env import build_sanitized_subprocess_environment
 KAGAN_AGENT_NAME = "Kagan Agent"
 KAGAN_AGENT_EMAIL = "info@kagan.sh"
 
-# Timeout constants for git operations (in seconds)
-TIMEOUT_DEFAULT = 30.0  # Regular operations
-TIMEOUT_FETCH = 120.0  # Fetch/pull operations
-TIMEOUT_CLONE = 300.0  # Clone operations
+TIMEOUT_DEFAULT = 30.0
+TIMEOUT_FETCH = 120.0
+TIMEOUT_CLONE = 300.0
 
 
 async def _run_git(
@@ -26,7 +25,6 @@ async def _run_git(
     check: bool = True,
     timeout: float = TIMEOUT_DEFAULT,
 ) -> tuple[str, str]:
-    """Run a git command, returning (stdout, stderr). Raises WorktreeError on failure."""
     logger.debug("git {}", " ".join(args))
     proc = await asyncio.create_subprocess_exec(
         "git",
@@ -58,7 +56,6 @@ async def _run_git_result(
     cwd: Path,
     timeout: float = TIMEOUT_DEFAULT,
 ) -> tuple[int, str, str]:
-    """Run a git command, returning (returncode, stdout, stderr). Never raises."""
     logger.debug("git {}", " ".join(args))
     proc = await asyncio.create_subprocess_exec(
         "git",
@@ -112,12 +109,6 @@ async def current_branch(repo_path: str | Path) -> str | None:
 
 
 async def get_system_git_identity() -> tuple[str, str]:
-    """Get the system-configured git user identity.
-
-    Checks environment variables first (GIT_AUTHOR_NAME, GIT_COMMITTER_NAME,
-    GIT_AUTHOR_EMAIL, GIT_COMMITTER_EMAIL), then falls back to git config.
-    Returns (name, email) tuple with Kagan Agent defaults as final fallback.
-    """
     env_name = os.environ.get("GIT_AUTHOR_NAME") or os.environ.get("GIT_COMMITTER_NAME")
     env_email = os.environ.get("GIT_AUTHOR_EMAIL") or os.environ.get("GIT_COMMITTER_EMAIL")
 
@@ -138,13 +129,6 @@ async def get_system_git_identity() -> tuple[str, str]:
 
 
 async def get_git_user_identity(settings: dict[str, str]) -> tuple[str, str]:
-    """Resolve git identity based on settings.
-
-    Three modes controlled by ``git_user_mode`` setting:
-    - ``kagan_agent`` (default): Uses Kagan Agent <info@kagan.sh>.
-    - ``system_default``: Uses the system git config / env vars.
-    - ``custom``: Uses ``git_user_name`` / ``git_user_email`` from settings.
-    """
     mode = settings.get("git_user_mode", "kagan_agent")
 
     if mode == "system_default":
@@ -202,7 +186,7 @@ async def resolve_worktree_base(
 ) -> str:
     repo = Path(repo_path)
 
-    # Fetch from origin before resolving (kagan2 sync-on-start pattern).
+    # Fetch from origin before resolving.
     # Skipped for "local" strategy which never consults the remote.
     if refresh_remote and strategy != "local" and await _has_remote(repo, "origin"):
         await _run_git(
@@ -328,8 +312,7 @@ async def merge(
 
     Squashes all commits from branch into a single commit on target_branch,
     then updates the branch ref to the squash SHA so follow-up work can
-    continue from the merged state without conflicts (kagan2 / vibe-kanban
-    pattern).
+    continue from the merged state without conflicts.
 
     Returns the SHA of the squash commit.
     Raises MergeConflictError on merge conflicts.
@@ -362,7 +345,7 @@ async def merge(
             head_sha, _ = await _run_git("rev-parse", "HEAD", cwd=repo)
             return head_sha.strip()
         # Commit with explicit agent identity so the repo's local config is
-        # left untouched (mirrors commit_all / kagan2 squash pattern).
+        # left untouched.
         await _run_git(
             "-c",
             f"user.name={user_name}",
@@ -435,25 +418,12 @@ async def detect_conflict_op(worktree_path: str | Path) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
 async def _resolve_base_ref(
     cwd: Path,
     base_branch: str,
     *,
     strategy: str = "local_if_ahead",
 ) -> str:
-    """Resolve the best ref for *base_branch* according to *strategy*.
-
-    Strategies:
-        local          — prefer refs/heads/<branch>.
-        remote         — prefer origin/<branch>.
-        local_if_ahead — use local when it has commits ahead of origin,
-                         otherwise fall back to origin/<branch>.  (default)
-    """
     local_exists = await _has_local_branch(cwd, base_branch)
     remote_exists = await _has_remote_branch(cwd, base_branch)
     remote_ref = f"origin/{base_branch}"
@@ -505,7 +475,6 @@ async def _has_remote_branch(repo: Path, branch: str) -> bool:
 
 
 async def _has_remote(repo: Path, remote: str) -> bool:
-    """Return True if the named remote (e.g. 'origin') is configured."""
     stdout, _ = await _run_git("remote", "get-url", remote, cwd=repo, check=False)
     return bool(stdout)
 
@@ -530,16 +499,11 @@ async def _is_local_ahead_of_origin(repo: Path, branch: str) -> bool:
 
 
 async def _abort_merge(repo: Path) -> None:
-    """Abort an in-progress merge and hard-reset to a clean state.
-
-    Safe to call even when no merge is in progress.
-    """
     await _run_git("merge", "--abort", cwd=repo, check=False)
     await _run_git("reset", "--hard", cwd=repo, check=False)
 
 
 async def _collect_conflict_files(repo: Path) -> list[str]:
-    """Return list of files with merge conflicts."""
     stdout, _ = await _run_git("diff", "--name-only", "--diff-filter=U", cwd=repo, check=False)
     files = [line.strip() for line in stdout.splitlines() if line.strip()]
     if files:
@@ -550,7 +514,6 @@ async def _collect_conflict_files(repo: Path) -> list[str]:
 
 
 def _extract_number(text: str, word: str) -> int:
-    """Extract the integer before 'word' in a git stat summary line."""
     match = re.search(rf"(\d+)\s+{word}", text)
     return int(match.group(1)) if match else 0
 
@@ -633,11 +596,6 @@ def parse_diff_file_entries(diff_text: str) -> list[dict[str, object]]:
     return deduped
 
 
-# ---------------------------------------------------------------------------
-# Commit enforcement helpers — used by agent completion to gate REVIEW transition
-# ---------------------------------------------------------------------------
-
-
 # Paths generated by Kagan or agent tooling — not meaningful uncommitted work.
 _KAGAN_GENERATED: frozenset[str] = frozenset(
     {
@@ -649,16 +607,11 @@ _KAGAN_GENERATED: frozenset[str] = frozenset(
 
 
 def _is_kagan_generated(path: str) -> bool:
-    """Return True if *path* is a Kagan/agent-generated config file."""
     basename = Path(path).name
     return basename in _KAGAN_GENERATED or path.startswith(".kagan/")
 
 
 async def has_uncommitted_changes(worktree_path: str | Path) -> bool:
-    """Return True if the worktree has tracked uncommitted changes.
-
-    Ignores untracked files (`??`) and Kagan-generated config files.
-    """
     wt = Path(worktree_path)
     stdout, _ = await _run_git("status", "--porcelain", cwd=wt, check=False)
     for line in stdout.splitlines():
@@ -674,10 +627,6 @@ async def has_uncommitted_changes(worktree_path: str | Path) -> bool:
 
 
 async def has_pending_changes(worktree_path: str | Path) -> bool:
-    """Return True if the worktree has any uncommitted or untracked meaningful changes.
-
-    Ignores Kagan-generated config files.
-    """
     wt = Path(worktree_path)
     stdout, _ = await _run_git("status", "--porcelain", cwd=wt, check=False)
     for line in stdout.splitlines():
@@ -696,10 +645,6 @@ async def commit_all(
     user_name: str = KAGAN_AGENT_NAME,
     user_email: str = KAGAN_AGENT_EMAIL,
 ) -> None:
-    """Stage all tracked changes and commit with *message*.
-
-    Uses `-c` flags for identity so the worktree's local config is untouched.
-    """
     wt = Path(worktree_path)
     await _run_git("add", "-A", cwd=wt)
     await _run_git(
@@ -738,14 +683,6 @@ async def has_commits_since(
 
 
 async def prune_kagan_branches(repo_path: str | Path) -> list[str]:
-    """Delete kagan/* branches that have no live worktree.
-
-    After a squash-merge the task branch ref is updated to the squash SHA but
-    the branch still exists. This cleans up orphaned kagan/* branches that no
-    worktree is currently checked out on.
-
-    Returns the list of branch names that were deleted.
-    """
     repo = Path(repo_path)
     stdout, _ = await _run_git(
         "branch", "--list", "kagan/*", "--format=%(refname:short)", cwd=repo, check=False

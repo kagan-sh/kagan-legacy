@@ -408,9 +408,9 @@ async def spawn_agent_via_acp(
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
     kwargs["stderr"] = asyncio.subprocess.PIPE
-    # Raise the StreamReader pipe limit to 50 MB (matches acp.DEFAULT_STDIO_BUFFER_LIMIT_BYTES)
-    # so large JSON-RPC lines (e.g. file reads, multimodal payloads) don't hit the
-    # default 64 KB cap and crash the receive loop with ValueError/LimitOverrunError.
+    # Raise the StreamReader pipe limit to 50 MB so large JSON-RPC lines
+    # (e.g. file reads, multimodal payloads) don't hit the default 64 KB cap
+    # and crash the receive loop with ValueError/LimitOverrunError.
     kwargs["limit"] = 50 * 1024 * 1024
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, **cast("Any", kwargs))

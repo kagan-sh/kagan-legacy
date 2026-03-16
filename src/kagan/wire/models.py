@@ -14,8 +14,6 @@ from kagan.core._utils import utc_iso
 
 
 class WireTaskActiveSession(BaseModel):
-    """Live session metadata associated with a task."""
-
     id: str
     status: str
     mode: str
@@ -30,8 +28,6 @@ class WireReviewVerdict(BaseModel):
 
 
 class WireTask(BaseModel):
-    """Serialisable representation of a Kagan task."""
-
     id: str
     title: str
     description: str = ""
@@ -58,16 +54,12 @@ class WireTask(BaseModel):
 
 
 class WireProject(BaseModel):
-    """Serialisable representation of a Kagan project."""
-
     id: str
     name: str
     active: bool = True
 
 
 class WireRepository(BaseModel):
-    """Serialisable representation of a Kagan repository."""
-
     id: str
     project_id: str
     name: str
@@ -77,8 +69,6 @@ class WireRepository(BaseModel):
 
 
 class WireSession(BaseModel):
-    """Serialisable representation of a Kagan session."""
-
     id: str
     task_id: str
     status: str
@@ -88,8 +78,6 @@ class WireSession(BaseModel):
 
 
 class WireEvent(BaseModel):
-    """Serialisable representation of a Kagan event."""
-
     id: str
     session_id: str | None = None
     type: str

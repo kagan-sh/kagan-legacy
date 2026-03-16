@@ -129,9 +129,7 @@ class MentionQuery(Message):
 
 @dataclass
 class MentionDismissed(Message):
-    """User dismissed the mention autocomplete overlay."""
-
-    ...
+    pass
 
 
 @dataclass
@@ -146,19 +144,17 @@ class SlashCompletionCompleted(Message):
 
 @dataclass
 class SlashCompletionDismissed(Message):
-    """User dismissed the slash command completion overlay."""
-
-    ...
+    pass
 
 
 @dataclass
 class OfflineReconnectRequested(Message):
-    """User requested to reconnect to the server."""
+    pass
 
 
 @dataclass
 class OfflineBannerDismissed(Message):
-    """User dismissed the offline banner."""
+    pass
 
 
 @dataclass

@@ -24,7 +24,6 @@ def _setting_branch(settings: Mapping[str, str], key: str, *, default: str) -> s
 
 
 def _db_sync(engine: Engine, fn: Callable, *, commit: bool = False):
-    """Run fn(session) inside a Session context. Commits if commit=True."""
     with DBSession(engine) as session:
         result = fn(session)
         if commit:
@@ -33,12 +32,10 @@ def _db_sync(engine: Engine, fn: Callable, *, commit: bool = False):
 
 
 async def _db_async(engine: Engine, fn: Callable, *, commit: bool = False):
-    """Async wrapper: runs _db_sync in a thread."""
     return await asyncio.to_thread(_db_sync, engine, fn, commit=commit)
 
 
 def _add_and_refresh(s, obj):
-    """Add obj, commit, refresh, return — for use inside a session callback."""
     s.add(obj)
     s.commit()
     s.refresh(obj)
@@ -46,7 +43,6 @@ def _add_and_refresh(s, obj):
 
 
 def _delete_task_children(session, task_id: str) -> None:
-    """Delete notes, events, runs, and worktrees for a task within an open session."""
     for note in session.exec(select(TaskNote).where(TaskNote.task_id == task_id)).all():
         session.delete(note)
     for event in session.exec(select(SessionEvent).where(SessionEvent.task_id == task_id)).all():

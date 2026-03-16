@@ -71,7 +71,6 @@ async def test_ctrl_p_opens_chat_fullscreen(board: KaganDriver) -> None:
 
 
 async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
-    """Switching from docked overlay to fullscreen must not clear the stream."""
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
@@ -81,7 +80,6 @@ async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        # Open docked overlay (orchestrator mode)
         await pilot.press("ctrl+i")
         await pilot.pause()
 
@@ -91,7 +89,6 @@ async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
         assert not panel.has_class("fullscreen")
         mode_before = str(title.content)
 
-        # Switch to fullscreen — session/mode must be preserved
         await pilot.press("ctrl+shift+t")
         await pilot.pause()
 

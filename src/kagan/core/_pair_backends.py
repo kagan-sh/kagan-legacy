@@ -136,7 +136,6 @@ UNIX_PAIR_TERMINAL_FALLBACK_ORDER: Final[tuple[PairTerminalBackendLiteral, ...]]
 
 
 def coerce_pair_terminal_backend(value: object) -> PairTerminalBackendLiteral | None:
-    """Coerce a value to a canonical PAIR backend string."""
     if isinstance(value, str):
         normalized = value.strip().lower()
         if normalized in PAIR_TERMINAL_BACKEND_VALUE_SET:
@@ -145,18 +144,15 @@ def coerce_pair_terminal_backend(value: object) -> PairTerminalBackendLiteral | 
 
 
 def default_pair_terminal_backend_for_os(os_name: str) -> PairTerminalBackendLiteral:
-    """Return the default PAIR backend for a normalized OS name."""
     return VSCODE_BACKEND if os_name == "windows" else TMUX_BACKEND
 
 
 def pair_terminal_backend_executable(backend: str) -> str | None:
-    """Return executable name for a backend, if known."""
     spec = PAIR_TERMINAL_BACKEND_SPECS_BY_VALUE.get(backend)
     return spec.executable if spec is not None else None
 
 
 def pair_terminal_backend_install_hint(backend: str) -> str | None:
-    """Return install hint URL for a backend, if known."""
     spec = PAIR_TERMINAL_BACKEND_SPECS_BY_VALUE.get(backend)
     return spec.install_hint if spec is not None else None
 
@@ -165,5 +161,4 @@ def pair_terminal_backend_fallback_order(
     *,
     windows: bool,
 ) -> tuple[PairTerminalBackendLiteral, ...]:
-    """Return backend fallback order for the current operating system class."""
     return WINDOWS_PAIR_TERMINAL_FALLBACK_ORDER if windows else UNIX_PAIR_TERMINAL_FALLBACK_ORDER

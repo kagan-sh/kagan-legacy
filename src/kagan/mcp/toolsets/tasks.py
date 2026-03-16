@@ -44,7 +44,6 @@ def _resolve_task_ids(ctx: Context, task_ids: list[str] | None) -> list[str]:
 
 
 def _task_to_dict(task: Any) -> dict[str, Any]:
-    """Convert a core Task model to a plain dict."""
     return {
         "id": task.id,
         "title": task.title,
@@ -91,7 +90,6 @@ def _parse_wait_for_task_statuses(
 
 
 def _parse_priority(value: str | int | None) -> Priority:
-    """Parse a priority value from string, int, or None."""
     if value is None:
         return Priority.MEDIUM
     if isinstance(value, int):
@@ -102,7 +100,6 @@ def _parse_priority(value: str | int | None) -> Priority:
 
 
 def _parse_work_mode(value: str | None) -> WorkMode:
-    """Parse a work mode value from string or None."""
     return WorkMode(value) if value else WorkMode.AUTO
 
 
@@ -187,7 +184,6 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
 
 @mcp_error_boundary
 async def _task_list(ctx: Context, status: str | None = None) -> dict:
-    """List tasks with optional status filter."""
     app = get_context(ctx)
     status_enum = TaskStatus(status) if status else None
     tasks = await app.client.tasks.list(status=status_enum)
@@ -210,7 +206,6 @@ async def _task_create(
     agent_backend: str | None = None,
     launcher: str | None = None,
 ) -> dict:
-    """Create a new task."""
     app = get_context(ctx)
     priority_enum = _parse_priority(priority)
     mode_enum = _parse_work_mode(execution_mode)
@@ -244,7 +239,6 @@ async def _task_update(
     launcher: str | None = None,
     status: str | None = None,
 ) -> dict:
-    """Patch task fields or transition status."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     priority_enum = _parse_priority(priority) if priority is not None else None
@@ -280,7 +274,6 @@ async def _task_update(
 
 @mcp_error_boundary
 async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) -> dict:
-    """Annotate a task with a timestamped note."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     await app.client.tasks.add_note(resolved_task_id, note)
@@ -289,7 +282,6 @@ async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) ->
 
 @mcp_error_boundary
 async def _task_search(ctx: Context, query: str) -> dict:
-    """Search tasks by title or description."""
     app = get_context(ctx)
     tasks = await app.client.tasks.search(query)
     return {"tasks": [_task_to_dict(t) for t in tasks]}
@@ -305,7 +297,6 @@ async def _task_events(
     max_payload_bytes: int = 16384,
     max_total_bytes: int = 262144,
 ) -> dict:
-    """Get paginated execution logs for a task."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     safe_limit = _clamp_int(limit, minimum=1, maximum=200)
@@ -384,7 +375,6 @@ async def _tasks_wait(
     wait_for_status: list[str] | str | None = None,
     resolve_when_any: bool = False,
 ) -> dict:
-    """Wait for task lifecycle progress using event-driven status transitions."""
     app = get_context(ctx)
     resolved_task_ids = _resolve_task_ids(ctx, task_ids)
     statuses = _parse_wait_for_task_statuses(wait_for_status)
@@ -461,14 +451,12 @@ async def _tasks_wait(
 
 @mcp_error_boundary
 async def _task_counts(ctx: Context) -> dict:
-    """Get per-status task counts."""
     app = get_context(ctx)
     return await app.client.tasks.counts()
 
 
 @mcp_error_boundary
 async def _task_delete(ctx: Context, task_id: str) -> dict:
-    """Delete a task and all associated data (admin only)."""
     app = get_context(ctx)
     await app.client.tasks.delete(task_id)
     return {"task_id": task_id, "deleted": True}

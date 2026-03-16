@@ -262,7 +262,6 @@ class ToolCallView(Vertical):
     )
 
     def _extract_key_arg(self) -> str | None:
-        """Extract the first meaningful key argument from args for display."""
         if not self.args:
             return None
         parsed: dict[str, object] | None = None
@@ -304,7 +303,6 @@ class ToolCallView(Vertical):
 
     @staticmethod
     def _truncate(text: str, max_lines: int = 12, max_chars: int = 600) -> str:
-        """Truncate long text for display, preserving structure."""
         if len(text) > max_chars:
             text = text[:max_chars] + "\n… (truncated)"
         lines = text.splitlines()
@@ -332,7 +330,7 @@ class StreamingOutput(Vertical):
     BINDINGS = [*STREAMING_TIMELINE_BINDINGS]
 
     class LoadMore(Message):
-        """Posted when user clicks the load-earlier bar."""
+        pass
 
     live_follow: var[bool] = var(True)
     unread_count: var[int] = var(0)
@@ -389,11 +387,9 @@ class StreamingOutput(Vertical):
             self.query_one("#load-more-bar").display = False
 
     def prepend_widgets(self, widgets: list[Widget]) -> None:
-        """Mount historical widgets at the top, after the load-more bar."""
         if not widgets:
             return
         content = self.query_one("#streaming-body-content", Vertical)
-        # Find the first non-bar child to insert before
         anchor: Widget | None = None
         for child in content.children:
             if child.id != "load-more-bar":
@@ -687,12 +683,7 @@ class StreamingOutput(Vertical):
         self._resync_expanded_tool_bounds()
 
     def _schedule_follow_scroll(self) -> None:
-        """Coalesce auto-scroll requests during merge streaming.
-
-        Multiple fragments may arrive within the same Textual frame.
-        Only one `call_after_refresh(_scroll_latest)` per frame is needed;
-        a simple boolean flag avoids redundant scheduling.
-        """
+        """Coalesce auto-scroll requests during merge streaming."""
         if not self.live_follow:
             return
         if self._scroll_scheduled:
@@ -701,7 +692,6 @@ class StreamingOutput(Vertical):
         self.call_after_refresh(self._do_follow_scroll)
 
     def _do_follow_scroll(self) -> None:
-        """Perform the coalesced scroll and reset the scheduling flag."""
         self._scroll_scheduled = False
         self._scroll_latest()
 

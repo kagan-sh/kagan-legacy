@@ -1,8 +1,7 @@
 """Session title generation — LLM-powered human-readable titles for chat sessions.
 
-Inspired by opencode's title generation pattern: after the first user message,
-fire off a lightweight ACP call (no MCP tools, no orchestrator system prompt)
-to produce a short, memorable session title.
+After the first user message, fire off a lightweight ACP call (no MCP tools,
+no orchestrator system prompt) to produce a short, memorable session title.
 """
 
 from __future__ import annotations

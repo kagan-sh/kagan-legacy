@@ -26,8 +26,6 @@ _WELCOME_LOGO = """\
 
 
 class WelcomeScreen(Screen[None]):
-    """Project launcher — one list, one action, zero redundancy."""
-
     BINDINGS = [*WELCOME_BINDINGS]
 
     def __init__(
@@ -51,10 +49,6 @@ class WelcomeScreen(Screen[None]):
     @property
     def kagan_app(self) -> "KaganApp":
         return cast("KaganApp", self.app)
-
-    # ------------------------------------------------------------------
-    # Compose — logo, optional CWD banner, project list. Nothing else.
-    # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         with Container(id="welcome-container"):
@@ -92,10 +86,6 @@ class WelcomeScreen(Screen[None]):
             )
             yield KeybindingHint(id="welcome-hint")
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
-
     async def on_mount(self) -> None:
         await self._reload_projects()
         await self._maybe_hide_cwd_banner()
@@ -107,7 +97,6 @@ class WelcomeScreen(Screen[None]):
         self._update_keybinding_hints()
 
     async def _maybe_hide_cwd_banner(self) -> None:
-        """Hide CWD banner when the path is already linked to a project."""
         if not self._suggest_cwd or not self._cwd_path:
             return
         banner = self.query_one("#cwd-suggestion-banner", Container)
@@ -115,10 +104,6 @@ class WelcomeScreen(Screen[None]):
         existing = await self.kagan_app.core.projects.find_by_repo(resolved)
         if existing is not None:
             banner.display = False
-
-    # ------------------------------------------------------------------
-    # Data loading
-    # ------------------------------------------------------------------
 
     async def action_reload_projects(self) -> None:
         await self._reload_projects()
@@ -165,10 +150,6 @@ class WelcomeScreen(Screen[None]):
         repo_label = "repo" if repo_count == 1 else "repos"
         updated = self._relative_timestamp(project.updated_at)
         return f"{shortcut} {project.name} · {repo_count} {repo_label} · {updated}"
-
-    # ------------------------------------------------------------------
-    # Navigation
-    # ------------------------------------------------------------------
 
     def _update_keybinding_hints(self) -> None:
         hint_widget = self.query_one("#welcome-hint", KeybindingHint)
@@ -218,7 +199,6 @@ class WelcomeScreen(Screen[None]):
         option_list.highlighted = min(len(self._projects) - 1, current + 1)
 
     def action_focus_next(self) -> None:
-        """Focus next element."""
         self.focus_next()
 
     def action_focus_prev(self) -> None:
@@ -226,10 +206,6 @@ class WelcomeScreen(Screen[None]):
 
     async def action_quit(self) -> None:
         await self.kagan_app.action_quit()
-
-    # ------------------------------------------------------------------
-    # Project actions
-    # ------------------------------------------------------------------
 
     async def _create_project_from_cwd(self) -> None:
         if not self._cwd_path:
@@ -338,7 +314,6 @@ class WelcomeScreen(Screen[None]):
         )
 
     async def action_delete_project(self) -> None:
-        """Delete the selected project after confirmation."""
         project = self._get_selected_project()
         if project is None:
             return
@@ -365,7 +340,6 @@ class WelcomeScreen(Screen[None]):
         )
 
     def _get_selected_project(self) -> Project | None:
-        """Return the currently highlighted project, or None."""
         if not self._projects:
             return None
         option_list = self.query_one("#project-list", OptionList)
@@ -373,10 +347,6 @@ class WelcomeScreen(Screen[None]):
         if index < 0 or index >= len(self._projects):
             return None
         return self._projects[index]
-
-    # ------------------------------------------------------------------
-    # Event handlers
-    # ------------------------------------------------------------------
 
     async def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         if event.option_list.id != "project-list":
@@ -429,10 +399,6 @@ class WelcomeScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             await self.action_reload_projects()
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _relative_timestamp(self, value: datetime) -> str:
         delta = datetime.now(UTC) - value.astimezone(UTC)

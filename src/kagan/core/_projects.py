@@ -66,7 +66,7 @@ class Projects:
     async def delete(self, project_id: str) -> None:
         await self.get(project_id)
 
-        # --- Pre-delete cleanup (async, outside DB transaction) ---
+        # Pre-delete cleanup
         # Collect task IDs for this project
         task_ids: list[str] = await _db_async(
             self._engine,
@@ -75,7 +75,7 @@ class Projects:
             ],
         )
 
-        # 1. Cancel running sessions (terminates agent processes)
+        # Cancel running sessions
         for tid in task_ids:
             try:
                 await self._client.tasks.sessions.cancel(tid)
@@ -84,7 +84,7 @@ class Projects:
                     "Failed to cancel session during project cleanup task_id={}", tid, exc_info=True
                 )
 
-        # 2. Clean up git worktrees (git worktree remove + DB row deletion)
+        # Clean up git worktrees
         for tid in task_ids:
             try:
                 await self._client.worktrees.cleanup(tid)
@@ -95,7 +95,7 @@ class Projects:
                     exc_info=True,
                 )
 
-        # --- DB transaction: delete remaining rows ---
+        # DB transaction: delete remaining rows
         def op(s):
             tasks = list(s.exec(select(Task).where(Task.project_id == project_id)).all())
             for task in tasks:
@@ -251,11 +251,6 @@ class Projects:
         *,
         selected_repo_id: str | None = None,
     ) -> Repository:
-        """Return the single repo for *project_id*, honouring a UI selection.
-
-        Raises ``MultiRepoUnsupportedError`` when multiple repos are linked and
-        none has been explicitly selected.
-        """
         repos = await self.repos(project_id)
         if not repos:
             raise SessionError(None, f"No repos linked to project {project_id!r}.")
@@ -273,12 +268,6 @@ class Projects:
         project_id: str | None = None,
         settings: dict[str, str] | None = None,
     ) -> Path | None:
-        """Resolve the working repo path for a project (defaults to active).
-
-        Uses ``ui.selected_repo.<project_id>`` from *settings* then falls
-        back to the single linked repo.  Returns ``None`` when the project has
-        no repos or the path does not exist on disk.
-        """
         project_id = project_id or self._client.active_project_id
         if not project_id:
             return None

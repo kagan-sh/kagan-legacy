@@ -42,7 +42,6 @@ def _utc_now() -> str:
 
 
 def _format_relative_time(iso_timestamp: str) -> str:
-    """Format an ISO timestamp as a human-readable relative time."""
     try:
         dt = datetime.fromisoformat(iso_timestamp)
         if dt.tzinfo is None:
@@ -68,8 +67,6 @@ def _format_relative_time(iso_timestamp: str) -> str:
 
 
 def _clean_generated_title(raw: str) -> str:
-    """Clean an LLM-generated session title to a short, human-readable string."""
-    # Strip think tags (reasoning models like DeepSeek)
     import re
 
     cleaned = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
@@ -327,7 +324,6 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:
-    """Delete a session by ID. Returns True if deleted, False if not found."""
     normalized_id = session_id.strip()
     if not normalized_id:
         return False

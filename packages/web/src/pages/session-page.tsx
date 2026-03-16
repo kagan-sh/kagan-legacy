@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { useSetAtom } from 'jotai';
 import { ArrowLeft } from 'lucide-react';
@@ -19,6 +19,7 @@ import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { Panel } from '@/components/shared/workspace';
 import { rightRailChatSessionIdAtom, rightRailModeAtom, rightRailTaskIdAtom } from '@/lib/atoms/ui';
 import { STATUS_LABELS } from '@/lib/utils/constants';
+import { buildSessionOrder, filterEventsForLane } from '@/lib/utils/events';
 
 export function Component() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -34,8 +35,6 @@ export function Component() {
   // Derive lane from URL or task status
   const requestedLane = searchParams.get('lane');
 
-  // Show all events for the task — the full chronological timeline covers
-  // both worker and reviewer phases so lane-switching works naturally.
   const {
     task, events, loading, runningSince, isRunning,
     sentFollowUps, queue, sendingFollowUp,
@@ -49,6 +48,13 @@ export function Component() {
       : task?.status === 'REVIEW'
         ? 'reviewer'
         : 'worker';
+
+  const sessionOrder = useMemo(() => buildSessionOrder(events), [events]);
+  const hasReviewerSession = sessionOrder.length >= 2;
+  const displayedEvents = useMemo(
+    () => filterEventsForLane(events, sessionOrder, streamLane),
+    [events, sessionOrder, streamLane],
+  );
 
   // Keep rail task ID in sync so Cmd+L opens chat for this task
   const setRailMode = useSetAtom(rightRailModeAtom);
@@ -215,12 +221,12 @@ export function Component() {
                     <Tabs value={streamLane} onValueChange={(v) => updateLane(v as 'worker' | 'reviewer')}>
                       <TabsList>
                         <TabsTrigger value="worker">Worker</TabsTrigger>
-                        <TabsTrigger value="reviewer">Reviewer</TabsTrigger>
+                        <TabsTrigger value="reviewer" disabled={!hasReviewerSession}>Reviewer</TabsTrigger>
                       </TabsList>
                     </Tabs>
 
                     <div className="flex min-h-0 flex-1 flex-col">
-                      <EventStream events={events} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                      <EventStream events={displayedEvents} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                       <ChatInputBar
                         onSend={queuePrompt}
                         disableSend={false}
@@ -247,12 +253,12 @@ export function Component() {
                 <Tabs value={streamLane} onValueChange={(v) => updateLane(v as 'worker' | 'reviewer')}>
                   <TabsList>
                     <TabsTrigger value="worker">Worker</TabsTrigger>
-                    <TabsTrigger value="reviewer">Reviewer</TabsTrigger>
+                    <TabsTrigger value="reviewer" disabled={!hasReviewerSession}>Reviewer</TabsTrigger>
                   </TabsList>
                 </Tabs>
 
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <EventStream events={events} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                  <EventStream events={displayedEvents} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                   <ChatInputBar
                     onSend={queuePrompt}
                     disableSend={false}

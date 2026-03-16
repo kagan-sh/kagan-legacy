@@ -39,7 +39,6 @@ from kagan.core.models import Repository, Session, Setting, Task, Worktree
 
 
 def _terminate_process(pid: int) -> None:
-    """Terminate a process cross-platform."""
     if sys.platform == "win32":
         import ctypes
 
@@ -54,7 +53,6 @@ def _terminate_process(pid: int) -> None:
 
 
 def _process_exists(pid: int) -> bool:
-    """Check if a process exists cross-platform."""
     if sys.platform == "win32":
         import ctypes
 
@@ -160,7 +158,6 @@ class Sessions:
         return await _db_async(self._engine, op)
 
     async def _ref_strategy(self) -> str:
-        """Read the configured branch-ref resolution strategy from settings."""
         settings = await _db_async(
             self._engine,
             lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
@@ -264,8 +261,7 @@ class Sessions:
         if ws is None:
             ws = await self._ensure_workspace(task_id)
         else:
-            # Existing worktrees may be stale. Freshly created worktrees already
-            # resolve against the current base branch, so only rebase reused ones.
+            # Rebase existing worktrees against current base branch
             await self._rebase_if_enabled(task_id)
 
         session_obj = Session(
@@ -723,18 +719,10 @@ class Sessions:
                 continue
 
     async def _rebase_if_enabled(self, task_id: str) -> None:
-        """Rebase worktree onto latest base branch before starting task.
-
-        This implements the local_if_ahead policy: when a user switches branches
-        and starts a task, the worktree is automatically rebased onto the latest
-        version of the current branch.
-        """
-
         settings = await _db_async(
             self._engine,
             lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
         )
-        # Check if auto-rebase is enabled (default: True for local_if_ahead policy)
         strategy = settings.get("worktree_base_ref_strategy", "local_if_ahead")
         if strategy != "local_if_ahead":
             return

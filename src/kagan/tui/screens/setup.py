@@ -92,7 +92,6 @@ class OnboardingFlow(ModalScreen[None]):
                 yield Label(self._copy["subtitle"], id="setup-subtitle")
 
                 with VerticalScroll(id="onboarding-form"):
-                    # ── Project section ──
                     with Vertical(id="setup-section-project", classes="setup-section"):
                         yield Label("Project", classes="setup-section-title")
                         yield Label("Project Name", classes="form-label")
@@ -109,7 +108,6 @@ class OnboardingFlow(ModalScreen[None]):
                             id="new-project-repo-path",
                         )
 
-                    # ── Configuration section ──
                     with Vertical(id="setup-section-config", classes="setup-section"):
                         yield Label("Configuration", classes="setup-section-title")
 

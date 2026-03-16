@@ -70,7 +70,6 @@ async def test_instructions_section_shows_additional_instructions_field(board: K
         app.screen.query_one("#settings-search-input", Input).value = "instructions"
         await pilot.pause()
 
-        # The additional instructions textarea should exist and be empty by default
         instructions = app.screen.query_one("#settings-additional-instructions", TextArea).text
         assert instructions == ""
 

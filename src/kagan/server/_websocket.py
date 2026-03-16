@@ -1,4 +1,4 @@
-"""kagan.server._websocket — WebSocket event streaming transport."""
+"""WebSocket event streaming transport."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
 
-# Throttle interval for CHAT_CHUNK messages to avoid flooding the client.
+# Throttle CHAT_CHUNK messages to avoid flooding.
 _CHAT_CHUNK_THROTTLE_SECONDS = 0.05
 
 
@@ -167,19 +167,14 @@ def broadcast(event: Mapping[str, object]) -> None:
         _enqueue_with_backpressure(queue, payload)
 
 
-# ---------------------------------------------------------------------------
-# Board-change sync: push task mutations to all WebSocket clients.
-# Two independent loops:
-#   1. _board_event_bridge  — in-process core BoardEvents → instant broadcast
-#   2. _cross_process_sync  — DB snapshot poll → near-instant broadcast
-# ---------------------------------------------------------------------------
+# Board-change sync: push task mutations to WebSocket clients.
+# Two loops: _board_event_bridge (in-process) and _cross_process_sync (DB poll).
 
 _CROSS_PROCESS_POLL_SECONDS = 0.75
 _board_sync_started = False
 
 
 async def _board_event_bridge(mcp: FastMCP) -> None:
-    """Forward in-process board events to WebSocket clients instantly."""
     while True:
         ctx = get_server_context(mcp)
         while ctx is None:
@@ -196,7 +191,6 @@ async def _board_event_bridge(mcp: FastMCP) -> None:
 
 
 async def _cross_process_sync(mcp: FastMCP) -> None:
-    """Detect DB changes from other processes and broadcast to WebSocket clients."""
     ctx = get_server_context(mcp)
     while ctx is None:
         await asyncio.sleep(0.5)
@@ -242,7 +236,6 @@ async def _cross_process_sync(mcp: FastMCP) -> None:
 
 
 def _ensure_board_sync(mcp: FastMCP) -> None:
-    """Start board sync background tasks (once per server lifetime)."""
     global _board_sync_started
     if _board_sync_started:
         return
@@ -488,11 +481,6 @@ async def _handle_task_follow_up(
     mcp: FastMCP,
     raw: dict[str, object],
 ) -> None:
-    """Handle a user follow-up message for a running task.
-
-    Mirrors TUI ``_send_task_message``: cancel the current agent, append the
-    follow-up to the task description, then restart the agent.
-    """
     task_id = raw.get("task_id")
     text = raw.get("text")
     if not isinstance(task_id, str) or not task_id or not isinstance(text, str) or not text.strip():
@@ -521,13 +509,11 @@ async def _handle_task_follow_up(
     text = text.strip()
 
     try:
-        # Cancel the running agent (ignore errors if not running)
         try:
             await ctx.client.tasks.cancel(task_id)
         except Exception:
             logger.debug("Task follow-up cancel best-effort failed", exc_info=True)
 
-        # Get the current task and append follow-up to description
         task = await ctx.client.tasks.get(task_id)
         current_desc = (getattr(task, "description", "") or "").strip()
         follow_up = f"User follow-up:\n{text}"
@@ -535,7 +521,6 @@ async def _handle_task_follow_up(
 
         task = await ctx.client.tasks.update(task_id, description=updated_desc)
 
-        # Restart the agent
         settings = await ctx.client.settings.get()
         backend = getattr(task, "agent_backend", None) or _resolve_default_agent_backend(settings)
         session = await ctx.client.tasks.run(task_id, agent_backend=backend)
@@ -675,7 +660,6 @@ async def _handle_chat_send_message(
         )
         return
 
-    # Extract attachments (list of {type, name, mime_type, data})
     raw_attachments = raw.get("attachments")
     attachments: list[dict[str, str]] | None = None
     if isinstance(raw_attachments, list):
@@ -784,7 +768,6 @@ async def _handle_chat_send(
         )
         return
 
-    # Resolve agent backend: explicit > session > default
     settings = await ctx.client.settings.get()
     backend = (
         agent_backend or session.get("agent_backend") or _resolve_default_agent_backend(settings)
@@ -792,7 +775,6 @@ async def _handle_chat_send(
     throttler = ChatChunkThrottler(websocket=websocket, session_id=session_id)
 
     try:
-        # Include conversation history so the agent retains context across turns
         prior_history: list[tuple[str, str]] = [
             (str(item[0]), str(item[1]))
             for item in (session.get("orchestrator_history") or [])
@@ -810,7 +792,6 @@ async def _handle_chat_send(
         )
         await throttler.flush()
 
-        # Persist the conversation turn to the session
         history = list(session.get("orchestrator_history") or [])
         is_first_message = len(history) == 0
         history.append(["user", text])
@@ -828,7 +809,6 @@ async def _handle_chat_send(
             }
         )
 
-        # Auto-generate a human-readable title after the first message
         if is_first_message:
             asyncio.create_task(
                 _generate_chat_session_title(
@@ -867,7 +847,6 @@ async def _generate_chat_session_title(
     assistant_reply: str,
     agent_backend: str,
 ) -> None:
-    """Generate a title for a chat session and push it to the client."""
     from kagan.chat._title import ensure_session_title
 
     try:
@@ -896,8 +875,6 @@ async def _generate_chat_session_title(
 
 
 def register_websocket(mcp: FastMCP) -> None:
-    """Register WebSocket transport on the API server."""
-
     async def ws_handler(websocket: WebSocket) -> None:
         await websocket.accept()
 

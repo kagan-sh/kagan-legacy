@@ -531,7 +531,6 @@ class TaskScreen(Screen[None]):
         )
 
     def action_cycle_session(self) -> None:
-        """Cycle to next chat session."""
         panel = self._overlay_panel()
         fullscreen = panel.has_class("visible") and panel.has_class("fullscreen")
         next_mode = "orchestrator" if self._chat_mode == "task" else "task"
@@ -1286,7 +1285,6 @@ class TaskScreen(Screen[None]):
         await self._load_review_context()
 
     async def action_run_review(self) -> None:
-        """Run AI review — verifies each acceptance criterion via structured verdicts."""
         if self._task_id is None or self._task_model is None:
             return
         criteria = [
@@ -1298,7 +1296,6 @@ class TaskScreen(Screen[None]):
                 severity="warning",
             )
             return
-        # Clear previous verdicts before starting new review
         with contextlib.suppress(KaganError, OSError, RuntimeError):
             await self.kagan_app.core.reviews.clear_verdicts(self._task_id)
         backend = await self._resolve_backend(self._task_model)
@@ -1313,7 +1310,6 @@ class TaskScreen(Screen[None]):
         self.run_worker(self._open_repo_picker_flow(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
-        """Open Session Switcher to switch sessions."""
         panel = self._overlay_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -1340,7 +1336,6 @@ class TaskScreen(Screen[None]):
         await self._load_review_context()
 
     async def _load_task_or_fail(self) -> Task | None:
-        """Load the task model or set error status and return None."""
         if self._task_id is None:
             return None
 
@@ -1402,7 +1397,6 @@ class TaskScreen(Screen[None]):
                 self.query_one("#ts-detail-status", Static).update(f"Ready | {badge}")
 
     async def _load_review_context(self) -> None:
-        """Load and render the review context for the current task."""
         task = await self._load_task_or_fail()
         if task is None:
             return
@@ -1426,7 +1420,6 @@ class TaskScreen(Screen[None]):
         pane.set_resume_context(notes, task.status)
 
     def _sync_merge_readiness(self) -> None:
-        """Update the merge readiness checklist in the Review tab."""
         try:
             widget = self.query_one("#ts-merge-readiness", Static)
         except NoMatches:
@@ -1628,15 +1621,6 @@ class TaskScreen(Screen[None]):
         layout_mode: str | None = None,
         focus: bool = False,
     ) -> None:
-        """Configure the chat overlay panel with common setup logic.
-
-        Args:
-            visible: Whether the panel should be visible
-            fullscreen: Whether the panel should be fullscreen
-            mode: Either "task" or "orchestrator" mode
-            layout_mode: Layout mode ("vertical" or "horizontal"), defaults to current
-            focus: Whether to focus the input field
-        """
         panel = self._overlay_panel()
         panel.set_visible(visible)
         panel.set_fullscreen(fullscreen)

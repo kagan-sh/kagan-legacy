@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { sessionPickerOpenAtom, type RightRailMode } from '@/lib/atoms/ui';
-import type { WireEvent } from '@/lib/api/types';
+import { buildSessionOrder, filterEventsForLane } from '@/lib/utils/events';
 
 interface ChatSidePanelProps {
   taskId: string;
@@ -43,13 +43,11 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
   } = useTaskEvents(taskId, { initialLimit: 200 });
 
   const sessionOrder = useMemo(() => buildSessionOrder(events), [events]);
-  const laneSessionId = lane === 'reviewer' ? sessionOrder[1] : sessionOrder[0];
-  const displayedEvents = useMemo(() => {
-    if (!laneSessionId) {
-      return events;
-    }
-    return events.filter((event) => event.session_id === laneSessionId);
-  }, [events, laneSessionId]);
+  const hasReviewerSession = sessionOrder.length >= 2;
+  const displayedEvents = useMemo(
+    () => filterEventsForLane(events, sessionOrder, lane),
+    [events, sessionOrder, lane],
+  );
 
   return (
     <aside
@@ -77,7 +75,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
         <Tabs value={lane} onValueChange={(v) => setLane(v as 'worker' | 'reviewer')} className="ml-auto mr-2">
           <TabsList className="h-7">
             <TabsTrigger value="worker" className="text-[10px] px-2 py-0.5">Worker</TabsTrigger>
-            <TabsTrigger value="reviewer" className="text-[10px] px-2 py-0.5">Reviewer</TabsTrigger>
+            <TabsTrigger value="reviewer" className="text-[10px] px-2 py-0.5" disabled={!hasReviewerSession}>Reviewer</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex shrink-0 items-center gap-1">
@@ -156,21 +154,4 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
   );
 }
 
-const SESSION_ORDER_LIMIT = 2;
 
-function buildSessionOrder(events: WireEvent[]): string[] {
-  const firstSeen = new Map<string, number>();
-  for (const event of events) {
-    const sessionId = event.session_id;
-    if (!sessionId) continue;
-    if (firstSeen.has(sessionId)) continue;
-    const parsed = Date.parse(event.created_at);
-    const timestamp = Number.isFinite(parsed) ? parsed : 0;
-    firstSeen.set(sessionId, timestamp);
-  }
-
-  return [...firstSeen.entries()]
-    .sort((a, b) => a[1] - b[1])
-    .slice(0, SESSION_ORDER_LIMIT)
-    .map(([sessionId]) => sessionId);
-}

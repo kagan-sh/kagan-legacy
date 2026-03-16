@@ -9,10 +9,6 @@ from typing import Any
 
 from loguru import logger
 
-# ---------------------------------------------------------------------------
-# Prompt layer settings keys
-# ---------------------------------------------------------------------------
-
 ADDITIONAL_INSTRUCTIONS_KEY = "additional_instructions"
 DEFAULT_EXECUTION_MODE_KEY = "default_execution_mode"
 REVIEW_STRICTNESS_KEY = "review_strictness"
@@ -22,9 +18,6 @@ AUTO_CONFIRM_SINGLE_KEY = "auto_confirm_single_tasks"
 PERSONA_DEFINITIONS_KEY = "persona_definitions"
 PERSONA_USER_WHITELIST_KEY = "persona_repo_whitelist"
 
-# ---------------------------------------------------------------------------
-# Layer 0 defaults
-# ---------------------------------------------------------------------------
 
 DEFAULT_ORCHESTRATOR_PROMPT = """\
 <identity>
@@ -265,7 +258,6 @@ def _append_layer_sections(base: str, settings: dict[str, str]) -> str:
 
 
 def _compile_behavioral_clauses(settings: dict[str, str]) -> str:
-    """Compile non-default behavioral settings into prompt clauses."""
     clauses: list[str] = []
 
     execution_mode = settings.get(DEFAULT_EXECUTION_MODE_KEY, "ask").strip().lower()
@@ -306,7 +298,6 @@ def _compile_behavioral_clauses(settings: dict[str, str]) -> str:
 
 
 def detect_dotfile_overrides(project_path: Path | None = None) -> dict[str, Path]:
-    """Return map of prompt_type to file_path for detected .kagan/prompts overrides."""
     if project_path is None:
         return {}
     prompts_dir = project_path / ".kagan" / "prompts"
@@ -322,7 +313,6 @@ def detect_dotfile_overrides(project_path: Path | None = None) -> dict[str, Path
 
 
 def resolve_orchestrator_prompt(settings: dict[str, str], project_path: Path | None = None) -> str:
-    """Resolve orchestrator prompt from dotfile override or layered defaults."""
     overrides = detect_dotfile_overrides(project_path)
     override_path = overrides.get("orchestrator")
     if override_path is not None:
@@ -414,7 +404,6 @@ def _build_auto_run_prompt(task: Any) -> str:
 def resolve_task_prompt(
     task: Any, settings: dict[str, str], project_path: Path | None = None
 ) -> str:
-    """Resolve execution prompt from dotfile template or layered defaults."""
     overrides = detect_dotfile_overrides(project_path)
     override_path = overrides.get("execution")
     if override_path is not None:
@@ -448,7 +437,6 @@ def resolve_review_prompt(
     settings: dict[str, str],
     project_path: Path | None = None,
 ) -> str:
-    """Resolve review prompt from dotfile override or layered defaults."""
     overrides = detect_dotfile_overrides(project_path)
     override_path = overrides.get("review")
     if override_path is not None:
@@ -461,7 +449,7 @@ def resolve_review_prompt(
 
 
 # ---------------------------------------------------------------------------
-# Default persona definitions (OMO-inspired pipeline phases)
+# Default persona definitions
 # ---------------------------------------------------------------------------
 
 DEFAULT_PERSONAS: dict[str, dict[str, str]] = {
@@ -508,13 +496,7 @@ DEFAULT_PERSONAS: dict[str, dict[str, str]] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Persona loading
-# ---------------------------------------------------------------------------
-
-
 def load_persona_definitions(settings: dict[str, str]) -> dict[str, dict[str, str]]:
-    """Load persona definitions from settings, falling back to defaults."""
     raw = settings.get(PERSONA_DEFINITIONS_KEY)
     if not raw:
         return dict(DEFAULT_PERSONAS)
@@ -528,7 +510,6 @@ def load_persona_definitions(settings: dict[str, str]) -> dict[str, dict[str, st
 
 
 def get_persona_prompt(persona_key: str, settings: dict[str, str]) -> str | None:
-    """Get the system prompt for a named persona, or None if not found."""
     personas = load_persona_definitions(settings)
     persona = personas.get(persona_key)
     if persona and isinstance(persona.get("prompt"), str):
@@ -536,25 +517,17 @@ def get_persona_prompt(persona_key: str, settings: dict[str, str]) -> str | None
     return None
 
 
-# ---------------------------------------------------------------------------
-# Prompt injection helpers
-# ---------------------------------------------------------------------------
-
-
 def prepend_custom_prompt(base_prompt: str, custom: str | None) -> str:
-    """Prepend a custom prompt section to a base prompt if provided."""
     if not custom or not custom.strip():
         return base_prompt
     return f"## Custom Instructions\n\n{custom.strip()}\n\n{base_prompt}"
 
 
 def build_persona_section(persona_prompt: str) -> str:
-    """Format a persona prompt as a section to prepend to agent prompts."""
     return f"## Persona\n\n{persona_prompt.strip()}"
 
 
 def serialize_persona_definitions(personas: dict[str, Any]) -> str:
-    """Serialize persona definitions to JSON for storage in settings."""
     return json.dumps(personas, indent=2, ensure_ascii=False)
 
 
@@ -571,11 +544,6 @@ def load_persona_repo_whitelist(settings: dict[str, str]) -> set[str]:
     return {str(item).strip().lower() for item in parsed if str(item).strip()}
 
 
-# ---------------------------------------------------------------------------
-# Conflict resolution feedback
-# ---------------------------------------------------------------------------
-
-
 _MAX_CONFLICT_FILES_SHOWN = 20
 
 
@@ -585,11 +553,6 @@ def build_conflict_resolution_feedback(
     target_branch: str,
     task_title: str,
 ) -> str:
-    """Build agent feedback for resolving merge conflicts with the base branch.
-
-    Returns a structured instruction string suitable for ``reject(feedback=...)``
-    or direct agent prompting.  Pure function — no IO, no side effects.
-    """
     files_block = "\n".join(f"  - {f}" for f in conflict_files[:_MAX_CONFLICT_FILES_SHOWN])
     overflow = ""
     if len(conflict_files) > _MAX_CONFLICT_FILES_SHOWN:

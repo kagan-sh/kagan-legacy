@@ -70,8 +70,6 @@ class BoardEvent:
 
 
 class Events:
-    """Event operations for a task — emit, list, stream."""
-
     def __init__(self, engine: Engine, signals: dict[str, asyncio.Event]) -> None:
         self._engine = engine
         self._signals = signals
@@ -280,7 +278,6 @@ class Events:
         limit: int = 50,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
-        """Return up to *limit* events created before *before* (ISO 8601), chronological."""
         from datetime import datetime
 
         bounded = max(limit, 0)

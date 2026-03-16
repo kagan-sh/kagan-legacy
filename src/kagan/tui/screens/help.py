@@ -1,11 +1,3 @@
-"""Help screen with context-organized shortcuts documentation.
-
-The help screen is organized into three tabs:
-1. Shortcuts - Organized by context (Global, Board, Task, etc.)
-2. Flows - Common workflows and how to accomplish them
-3. Concepts - Explanation of Kagan's model and terminology
-"""
-
 from collections.abc import Iterable
 
 from textual import on
@@ -51,8 +43,6 @@ HelpSection = tuple[str, tuple[HelpRow, ...]]
 
 
 class HelpModal(ModalScreen[None]):
-    """Modal help screen with searchable shortcuts."""
-
     BINDINGS = HELP_BINDINGS
 
     def __init__(self, context_sections: tuple[HelpSection, ...] | None = None) -> None:
@@ -101,7 +91,6 @@ class HelpModal(ModalScreen[None]):
         self.dismiss(result)
 
     def _compose_shortcuts(self) -> Widget:
-        """Compose the shortcuts help content."""
         sections: tuple[HelpSection, ...] = (
             *self._context_sections,
             ("Global", tuple(self._rows_from_bindings(APP_BINDINGS))),
@@ -133,7 +122,6 @@ class HelpModal(ModalScreen[None]):
         return self._render_sections(sections)
 
     def _rows_from_bindings(self, bindings: list) -> list[HelpRow]:
-        """Build help rows from binding metadata."""
         rows: list[HelpRow] = []
         seen: set[tuple[str, str]] = set()
         for binding in bindings:
@@ -148,7 +136,6 @@ class HelpModal(ModalScreen[None]):
         return rows
 
     def _compose_flows(self) -> Widget:
-        """Compose the workflows help content."""
         return Vertical(
             Static("Quick Start", classes="help-section-title"),
             Static(
@@ -202,7 +189,6 @@ class HelpModal(ModalScreen[None]):
         )
 
     def _compose_concepts(self) -> Widget:
-        """Compose the concepts help content."""
         return Vertical(
             Static("Projects", classes="help-section-title"),
             Static(
@@ -257,7 +243,6 @@ class HelpModal(ModalScreen[None]):
         )
 
     def _render_sections(self, sections: Iterable[HelpSection]) -> Widget:
-        """Render help sections with filtering."""
         query = self._search_query.casefold()
         widgets: list[Widget] = []
         for title, rows in sections:

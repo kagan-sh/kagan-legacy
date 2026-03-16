@@ -21,5 +21,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # SQLite doesn't support DROP COLUMN before 3.35.0; leave column in place.
     pass

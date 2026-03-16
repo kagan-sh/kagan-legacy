@@ -1,12 +1,4 @@
-"""Refined keyboard bindings for Kagan TUI.
-
-Design Principles:
-1. One key, one meaning — never overload the same key with different meanings
-2. Mnemonic over clever — keys should hint at their function
-3. Vim navigation everywhere — hjkl for movement
-4. Cascading complexity — basic keys are obvious, Ctrl/Shift for power users
-5. Contextual relevance — show only relevant shortcuts per screen
-"""
+"""Keyboard bindings for Kagan TUI."""
 
 from collections.abc import Iterable, Sequence
 
@@ -51,74 +43,35 @@ __all__ = [
     "get_keys_for_action",
 ]
 
-# =============================================================================
-# GLOBAL APP BINDINGS (Available everywhere)
-# =============================================================================
-
 APP_BINDINGS: list[BindingType] = [
-    # Help & Meta
     Binding("question_mark,f1", "show_help", "Help", key_display="?"),
     Binding("ctrl+shift+p,f2", "command_palette", "Quick Actions", key_display="Ctrl+Shift+P"),
-    # Navigation
     Binding("ctrl+o", "open_project_selector", "Projects", key_display="Ctrl+O"),
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
-    # Settings
     Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),
-    # Quit
     Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
 ]
 
-# =============================================================================
-# KANBAN BOARD (Main View)
-# =============================================================================
-
 KANBAN_BINDINGS: list[BindingType] = [
-    # -------------------------------------------------------------------------
-    # Core CRUD (Always visible in footer)
-    # -------------------------------------------------------------------------
     Binding("n", "new_task", "New Task"),
     Binding("shift+n", "new_auto_task", "New Auto", key_display="Shift+N"),
     Binding("enter", "open_task", "Open"),
     Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
-    # -------------------------------------------------------------------------
-    # Task Lifecycle (Visible when card focused)
-    # -------------------------------------------------------------------------
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
     Binding("y", "copy_task_id", "Copy ID"),
-    # -------------------------------------------------------------------------
-    # Agent Control
-    # -------------------------------------------------------------------------
     Binding("s", "start_agent", "Start"),
     Binding("shift+s", "stop_agent", "Stop", key_display="Shift+S"),
-    # -------------------------------------------------------------------------
-    # Workflow
-    # -------------------------------------------------------------------------
     Binding("shift+left", "move_left", "Move Left", key_display="Shift+←"),
     Binding("shift+right", "move_right", "Move Right", key_display="Shift+→"),
-    # -------------------------------------------------------------------------
-    # Search & View
-    # -------------------------------------------------------------------------
     Binding("slash", "search", "Search", key_display="/"),
     Binding("f", "expand_description", "Expand Description"),
     Binding("p", "peek_task", "Peek"),
-    # -------------------------------------------------------------------------
-    # AI Assistant
-    # -------------------------------------------------------------------------
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
-    Binding(
-        "ctrl+shift+t",
-        "fullscreen_chat",
-        "",
-        key_display="Ctrl+Shift+T",
-        show=False,
-    ),
+    Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("b", "set_branch", "Branch"),
-    # -------------------------------------------------------------------------
-    # Navigation (Vim-style)
-    # -------------------------------------------------------------------------
     Binding("h,left", "focus_left", "Left", show=False),
     Binding("j,down", "focus_down", "Down", show=False),
     Binding("k,up", "focus_up", "Up", show=False),
@@ -127,68 +80,38 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("G,end", "jump_last", "Last", show=False),
     Binding("tab", "focus_next_card", "Next Card", show=False),
     Binding("shift+tab", "focus_prev_card", "Prev Card", show=False),
-    # -------------------------------------------------------------------------
-    # System
-    # -------------------------------------------------------------------------
     Binding("escape", "clear_focus", "Clear", show=False),
     Binding("ctrl+period", "interrupt", "Interrupt", show=False),
 ]
 
-# =============================================================================
-# TASK SCREEN (Task Detail View)
-# =============================================================================
-
 TASK_SCREEN_BINDINGS: list[BindingType] = [
-    # Tabs
     Binding("1", "tab_detail", "Detail"),
     Binding("2", "tab_diff", "Diff"),
-    # Primary Actions (context-aware)
     Binding("enter", "primary_action", "Primary Action"),
-    # Task Operations
     Binding("e", "edit_task", "Edit"),
     Binding("d", "delete_task", "Delete"),
-    # Review Workflow
     Binding("a", "approve", "Approve"),
     Binding("x", "reject", "Reject"),
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
-    # AI Assistant
     Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
-    Binding(
-        "ctrl+shift+t",
-        "fullscreen_chat",
-        "",
-        key_display="Ctrl+Shift+T",
-        show=False,
-    ),
+    Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    # Navigation
     Binding("escape", "back", "Back"),
 ]
 
-# =============================================================================
-# SESSION DASHBOARD
-# =============================================================================
-
 SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
-    # Primary
     Binding("enter", "primary_action", "Start/Focus"),
     Binding("s", "start_agent", "Start"),
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
-    # AI Assistant
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
     Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
-    # Navigation
     Binding("escape", "back", "Back"),
 ]
-
-# =============================================================================
-# CHAT PANEL
-# =============================================================================
 
 CHAT_BINDINGS: list[BindingType] = [
     Binding("enter", "send_message", "Send"),
@@ -199,22 +122,16 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
 ]
 
-# =============================================================================
-# WELCOME SCREEN
-# =============================================================================
-
 WELCOME_BINDINGS: list[BindingType] = [
     Binding("enter", "open_selected", "Open"),
     Binding("n", "new_project", "New"),
     Binding("o", "open_folder", "Open Folder"),
     Binding("x", "delete_project", "Delete"),
     Binding("escape", "quit", "Quit"),
-    # Navigation
     Binding("j,down", "move_down", "Down", show=False),
     Binding("k,up", "move_up", "Up", show=False),
     Binding("tab", "focus_next", "Next", show=False),
     Binding("shift+tab", "focus_prev", "Prev", show=False),
-    # Quick access
     Binding("1", "open_project_1", "Quick Open", show=False),
     Binding("2", "open_project_2", "Quick Open", show=False),
     Binding("3", "open_project_3", "Quick Open", show=False),
@@ -225,10 +142,6 @@ WELCOME_BINDINGS: list[BindingType] = [
     Binding("8", "open_project_8", "Quick Open", show=False),
     Binding("9", "open_project_9", "Quick Open", show=False),
 ]
-
-# =============================================================================
-# SETTINGS
-# =============================================================================
 
 SETTINGS_BINDINGS: list[BindingType] = [
     Binding("ctrl+s", "save", "Save"),
@@ -246,10 +159,6 @@ SETUP_FLOW_BINDINGS: list[BindingType] = [
     Binding("enter", "submit", "Continue"),
     Binding("escape", "dismiss", "Close"),
 ]
-
-# =============================================================================
-# MODALS & DIALOGS
-# =============================================================================
 
 CONFIRM_BINDINGS: list[BindingType] = [
     Binding("enter", "confirm", "Confirm"),
@@ -383,38 +292,17 @@ TASK_EDITOR_BINDINGS = EDITOR_BINDINGS
 REJECTION_INPUT_BINDINGS = REJECTION_BINDINGS
 
 
-# =============================================================================
-# FOOTER BUILDER - Context-aware footer generation
-# =============================================================================
-
-
 class FooterBuilder:
-    """Builds context-aware footer hints for screens.
-
-    Each screen defines which actions are primary (always shown),
-    secondary (shown when space available), and contextual (shown
-    based on state like focused card).
-    """
-
     @staticmethod
     def global_hints() -> list[tuple[str, str]]:
-        """Global hints shown on all screens."""
-        return [
-            ("?", "help"),
-            ("Ctrl+Shift+P", "quick actions"),
-        ]
+        return [("?", "help"), ("Ctrl+Shift+P", "quick actions")]
 
     @staticmethod
     def kanban_core() -> list[tuple[str, str]]:
-        """Core kanban actions always visible."""
-        return [
-            ("n", "new"),
-            ("/", "search"),
-        ]
+        return [("n", "new"), ("/", "search")]
 
     @staticmethod
     def kanban_with_card() -> list[tuple[str, str]]:
-        """Actions when a card is focused."""
         return [
             ("Enter", "open"),
             ("Space", "assistant split"),
@@ -427,15 +315,10 @@ class FooterBuilder:
 
     @staticmethod
     def kanban_navigation() -> list[tuple[str, str]]:
-        """Navigation hints for kanban."""
-        return [
-            ("h/j/k/l", "navigate"),
-            ("Shift+←/→", "move"),
-        ]
+        return [("h/j/k/l", "navigate"), ("Shift+←/→", "move")]
 
     @staticmethod
     def task_screen() -> list[tuple[str, str]]:
-        """Task screen footer."""
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
@@ -450,7 +333,6 @@ class FooterBuilder:
 
     @staticmethod
     def task_screen_review() -> list[tuple[str, str]]:
-        """Task screen in review tab."""
         return [
             ("1/2", "tabs"),
             ("a", "approve"),
@@ -461,7 +343,6 @@ class FooterBuilder:
 
     @staticmethod
     def session_dashboard() -> list[tuple[str, str]]:
-        """Session dashboard footer."""
         return [
             ("Enter", "start"),
             ("s", "start"),
@@ -473,34 +354,18 @@ class FooterBuilder:
 
     @staticmethod
     def welcome() -> list[tuple[str, str]]:
-        """Welcome screen footer."""
-        return [
-            ("Enter", "open"),
-            ("n", "new"),
-            ("o", "folder"),
-            ("Ctrl+,", "settings"),
-        ]
+        return [("Enter", "open"), ("n", "new"), ("o", "folder"), ("Ctrl+,", "settings")]
 
     @staticmethod
     def settings() -> list[tuple[str, str]]:
-        """Settings footer."""
-        return [
-            ("Ctrl+S", "save"),
-            ("/", "search"),
-            ("Esc", "cancel"),
-        ]
+        return [("Ctrl+S", "save"), ("/", "search"), ("Esc", "cancel")]
 
     @staticmethod
     def confirm() -> list[tuple[str, str]]:
-        """Confirm dialog footer."""
-        return [
-            ("Enter/y", "yes"),
-            ("Esc/n", "no"),
-        ]
+        return [("Enter/y", "yes"), ("Esc/n", "no")]
 
     @staticmethod
     def chat() -> list[tuple[str, str]]:
-        """Chat panel footer."""
         return [
             ("Enter", "send"),
             ("Shift+Enter", "newline"),
@@ -509,13 +374,7 @@ class FooterBuilder:
         ]
 
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-
 def get_key_for_action(bindings: list[BindingType], action: str, default: str = "?") -> str:
-    """Get the key display for an action."""
     for binding in bindings:
         if isinstance(binding, Binding) and binding.action == action:
             return binding.key_display or binding.key
@@ -523,7 +382,6 @@ def get_key_for_action(bindings: list[BindingType], action: str, default: str = 
 
 
 def get_keys_for_action(bindings: list[BindingType], action: str) -> list[str]:
-    """Get all key displays for an action."""
     keys: list[str] = []
     for binding in bindings:
         if not isinstance(binding, Binding) or binding.action != action:

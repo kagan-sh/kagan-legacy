@@ -5,7 +5,6 @@ from kagan.cli._bootstrap import run_async
 
 
 def _is_server_running(host: str, port: int) -> bool:
-    """Check whether a kagan server is already listening by hitting /health."""
     import urllib.error
     import urllib.request
 
@@ -27,12 +26,6 @@ def _open_browser(url: str) -> None:
 
 
 def _resolve_lan_ip() -> str:
-    """Detect the machine's LAN-facing IP address.
-
-    Uses the UDP-connect trick: connect a datagram socket to an external
-    address (never actually sends data) and read back the local endpoint.
-    Falls back to ``127.0.0.1`` if detection fails.
-    """
     import socket
 
     try:
@@ -114,7 +107,6 @@ def web(
             click.echo(f"  Network: http://{lan_ip}:{port}")
     click.echo()
     if not no_open:
-        # Schedule browser open after a short delay so the server has time to start.
         import threading
 
         timer = threading.Timer(1.5, _open_browser, args=[url])

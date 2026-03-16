@@ -25,9 +25,6 @@ class ReviewVerdict(TypedDict):
 
 
 class Project(SQLModel, table=True):
-    # SQLModel requires __tablename__ as a ClassVar[str], but type checkers
-    # see the class-body assignment as an instance attribute. This is a known
-    # SQLModel/SQLAlchemy typing limitation and is safe to ignore.
     __tablename__ = "projects"  # type: ignore[assignment]
 
     id: str = Field(default_factory=_new_id, primary_key=True)

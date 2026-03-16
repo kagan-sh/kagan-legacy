@@ -24,8 +24,6 @@ class SessionStatus(StrEnum):
 
 
 class Priority(IntEnum):
-    """Task priority — higher value means higher urgency."""
-
     LOW = 0
     MEDIUM = 1
     HIGH = 2
@@ -47,14 +45,6 @@ class SessionEventType(StrEnum):
 
 
 class BranchRefStrategy(StrEnum):
-    """How to resolve the base ref when diffing or creating worktrees.
-
-    LOCAL          — always use the local branch.
-    REMOTE         — always prefer origin/<branch>.
-    LOCAL_IF_AHEAD — use local when it has commits ahead of origin,
-                     otherwise fall back to origin/<branch>.
-    """
-
     LOCAL = "local"
     REMOTE = "remote"
     LOCAL_IF_AHEAD = "local_if_ahead"

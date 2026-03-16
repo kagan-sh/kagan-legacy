@@ -64,7 +64,6 @@ def _sync_rich_click_groups(root_group: click.Group) -> None:
 
 _configure_rich_click()
 
-# Explicit type for base class to satisfy type checkers while preserving runtime behavior
 _CLIGroupBase: type[click.Group] = _RICH_GROUP_BASE
 
 
@@ -133,7 +132,6 @@ def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
     _sanitize_startup_environment()
     configure_logging(verbose=verbose)
 
-    # Ensure commands are registered before accessing them
     _register_commands()
 
     latest = maybe_check_for_updates(skip=skip_update_check)

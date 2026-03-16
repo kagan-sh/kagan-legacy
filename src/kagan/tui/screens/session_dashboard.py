@@ -194,14 +194,12 @@ class SessionDashboardScreen(Screen[None]):
             await self.kagan_app.core.tasks.cancel(self._task_id)
 
     async def action_stop_agent(self) -> None:
-        """Stop the running agent with chat feedback."""
         chat = self._chat_panel()
         await self.action_cancel_run()
         chat.add_system_message("Agent stopped.")
         await self._refresh_agent_status()
 
     async def action_restart_agent(self) -> None:
-        """Restart the agent (stop current and start fresh)."""
         chat = self._chat_panel()
         if self._running:
             await self.action_cancel_run()
@@ -344,7 +342,6 @@ class SessionDashboardScreen(Screen[None]):
         self.run_worker(self.action_cancel_run(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
-        """Open Session Switcher."""
         panel = self._chat_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()

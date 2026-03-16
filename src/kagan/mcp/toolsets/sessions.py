@@ -13,7 +13,6 @@ from kagan.mcp.toolsets import mcp_error_boundary
 
 
 async def _get_latest_session(client: Any, task_id: str) -> Any:
-    """Return the most recent session for a task, or None."""
     return await client.tasks.sessions.get_latest(task_id)
 
 
@@ -100,11 +99,6 @@ async def _run_start(
     launcher: str | None = None,
     persona: str | None = None,
 ) -> dict:
-    """Start an agent session for a task.
-
-    If no workspace exists for the task, one is provisioned automatically.
-    ``agent_backend`` overrides the default from settings when provided.
-    """
     app = get_context(ctx)
     try:
         parsed_action = SessionStartAction(action)
@@ -166,7 +160,6 @@ async def _run_start(
 
 @mcp_error_boundary
 async def _run_cancel(session_id: str, task_id: str, ctx: Context) -> dict:
-    """Cancel a running session."""
     app = get_context(ctx)
     await app.client.tasks.cancel(task_id)
     return {"session_id": session_id, "task_id": task_id, "cancelled": True}
@@ -197,14 +190,12 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
 
 
 async def _run_update(action: str, task_id: str, ctx: Context) -> dict:
-    """Manage PAIR session lifecycle: exists, create, get, or kill."""
     app = get_context(ctx)
     return await _run_update_core(action, task_id, app.client)
 
 
 @mcp_error_boundary
 async def _run_update_core(action: str, task_id: str, client: Any) -> dict:
-    """Dispatch run_update action against the real core client."""
     parsed = _parse_session_action(action)
 
     handlers: dict[SessionAction, Callable[[], Awaitable[dict]]] = {

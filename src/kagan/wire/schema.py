@@ -50,18 +50,7 @@ _SCHEMA_MODELS: dict[str, Any] = {
 
 
 def export_schema() -> dict[str, object]:
-    """Return a combined JSON-schema document for every wire model.
-
-    Returns a dict of the form::
-
-        {
-            "version": "1",
-            "models": {
-                "WireTask": { ... json schema ... },
-                ...
-            }
-        }
-    """
+    """Return a combined JSON-schema document for every wire model."""
     models: dict[str, object] = {}
     for name, model in _SCHEMA_MODELS.items():
         models[name] = model.model_json_schema()

@@ -507,4 +507,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("Downgrade is not supported for the bootstrap migration")
+    raise RuntimeError("Downgrade is not supported")

@@ -123,7 +123,6 @@ class DiffFileTree(Widget):
             row_classes = f"diff-tree-file-row {entry.status.lower()}"
             if index == self._cursor:
                 row_classes += " cursor"
-            # Cleaner markers: ◈ modified, + added, - deleted
             marker = {"added": "+", "deleted": "-", "modified": "◈"}.get(
                 entry.status.lower(),
                 "?",

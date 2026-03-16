@@ -65,7 +65,6 @@ class Reviews:
         verdict: str,
         reason: str,
     ) -> Task:
-        """Record an AI verdict (PASS/FAIL) for a specific acceptance criterion."""
         allowed = {"PASS", "FAIL"}
         if verdict not in allowed:
             raise ValueError(f"verdict must be one of {sorted(allowed)}, got {verdict!r}")
@@ -115,7 +114,6 @@ class Reviews:
         return updated
 
     async def clear_verdicts(self, task_id: str) -> Task:
-        """Clear all AI review verdicts for a task (e.g. before a new review run)."""
         await self._client.tasks.get(task_id)
 
         def op(s) -> Task:

@@ -321,7 +321,6 @@ class KanbanScreen(Screen[None]):
         self.set_class(too_small, "too-small")
 
     def _auto_focus_board(self) -> None:
-        """Focus the first task card on the board so arrow keys work immediately."""
         board = self.query_one(BoardView)
         cards = list(board.query("TaskCard"))
         if not cards:
@@ -511,7 +510,6 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
 
     def _update_search_bar_state(self) -> None:
-        """Push current filter state to the search bar widget."""
         status_counts = {status.value: 0 for status in TaskStatus}
         high_priority_count = 0
         for task in self._all_tasks:
@@ -646,7 +644,6 @@ class KanbanScreen(Screen[None]):
         )
 
     async def _sync_branch(self) -> None:
-        """Detect git branch changes and update header + repo default_branch."""
         app = self.kagan_app
         repo_id = app.selected_repo_id
         project = app.project
@@ -669,7 +666,6 @@ class KanbanScreen(Screen[None]):
             await app.core.projects.set_repo_default_branch(project.id, repo_id, branch)
 
     async def _run_branch_sync_loop(self) -> None:
-        """Periodically sync the git branch."""
         while True:
             await asyncio.sleep(BRANCH_SYNC_INTERVAL)
             with contextlib.suppress(KaganError, OSError, RuntimeError):
@@ -914,15 +910,6 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
 
     def action_toggle_chat(self) -> None:
-        """Toggle chat overlay through state machine transitions.
-
-        State detection and dispatch table pattern for clean transitions:
-        - fullscreen -> vertical overlay
-        - visible+auto_opened -> reset auto, keep vertical
-        - hidden -> open orchestrator chat
-        - vertical -> horizontal
-        - horizontal -> hidden
-        """
         panel = self.query_one(ChatPanel)
 
         # State detection
@@ -944,7 +931,6 @@ class KanbanScreen(Screen[None]):
             self._transition_to_hidden(panel)
 
     async def action_switch_session(self) -> None:
-        """Open Session Switcher."""
         panel = self.query_one(ChatPanel)
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -1045,7 +1031,6 @@ class KanbanScreen(Screen[None]):
         self.app.push_screen(TaskScreen(task_id=task.id))
 
     async def _open_pair_session_flow(self, task: Task) -> None:
-        """Full PAIR session flow: resolve backend → show instructions → suspend + attach."""
         import platform
         from pathlib import Path
 
@@ -1068,7 +1053,6 @@ class KanbanScreen(Screen[None]):
         is_windows = platform.system() == "Windows"
         self._set_inline_action_message(f"Checking {backend} backend...")
 
-        # --- Ensure backend is available ---
         if not check_terminal_installed(backend):
             # Try to find a fallback
             fallback = first_available_pair_backend(windows=is_windows)
@@ -1088,7 +1072,6 @@ class KanbanScreen(Screen[None]):
                 self._set_inline_action_message(None)
                 return
 
-        # --- Check skip preference ---
         skip_instructions_raw = settings.get("skip_pair_instructions_popup", "")
         skip_instructions = str(skip_instructions_raw).strip().lower() in {
             "1",
@@ -1111,7 +1094,6 @@ class KanbanScreen(Screen[None]):
             if result == "skip_future":
                 await self.kagan_app.core.settings.set({"skip_pair_instructions_popup": "true"})
 
-        # --- Ensure workspace exists ---
         if workspace is None:
             self._set_inline_action_message("Provisioning workspace...")
             self.app.notify("Creating workspace...", severity="information")
@@ -1130,7 +1112,6 @@ class KanbanScreen(Screen[None]):
         wt_path = Path(workspace.worktree_path)
         prompt_path = wt_path / ".kagan" / "start_prompt.md"
 
-        # --- Launch PAIR session via core ---
         agent_backend = task.agent_backend or resolve_default_agent_backend(settings)
         launcher, ide_name = resolve_launcher(backend)
 
@@ -1147,7 +1128,6 @@ class KanbanScreen(Screen[None]):
             self._set_inline_action_message(None)
             return
 
-        # --- Suspend TUI + attach for tmux/nvim ---
         attached = False
         if backend == "tmux":
             self._set_inline_action_message("Attaching tmux session...")
@@ -1183,7 +1163,6 @@ class KanbanScreen(Screen[None]):
             self._set_inline_action_message(None)
             return
 
-        # --- Post-detach: evaluate session state and offer REVIEW transition ---
         if attached:
             with contextlib.suppress(KaganError):
                 await self.kagan_app.core.tasks.end_pairing(task.id)
@@ -1204,7 +1183,6 @@ class KanbanScreen(Screen[None]):
 
     @staticmethod
     async def _attach_tmux_session(session_name: str) -> bool:
-        """Attach to tmux session in foreground (called within app.suspend())."""
         import asyncio as _aio
 
         try:
@@ -1222,7 +1200,6 @@ class KanbanScreen(Screen[None]):
 
     @staticmethod
     async def _attach_nvim_session(workspace_path: Path, prompt_path: Path) -> bool:
-        """Attach to Neovim in foreground (called within app.suspend())."""
         import asyncio as _aio
 
         target = str(prompt_path) if prompt_path.exists() else "."
@@ -1255,7 +1232,6 @@ class KanbanScreen(Screen[None]):
         return returncode == 0
 
     def action_open_session(self) -> None:
-        """Open task session (alternative to Enter for PAIR mode)."""
         if not self._require_inspector(action_label="Open session"):
             return
         task = self._selected_task()
@@ -1856,7 +1832,6 @@ class KanbanScreen(Screen[None]):
         self.call_after_refresh(self._auto_focus_board)
 
     def _handle_search_key(self, event: events.Key) -> bool:
-        """Handle key events when search bar is visible. Returns True if handled."""
         search_bar = self.query_one(SearchBar)
         if event.key == "slash":
             event.prevent_default()

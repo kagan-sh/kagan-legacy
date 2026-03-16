@@ -28,10 +28,6 @@ from kagan.core._agent import (
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
-# ---------------------------------------------------------------------------
-# IDE binary map
-# ---------------------------------------------------------------------------
-
 _IDE_BINARIES: dict[str, str] = {
     "vscode": "code",
     "cursor": "cursor",
@@ -40,19 +36,13 @@ _IDE_BINARIES: dict[str, str] = {
     "antigravity": "agy",
 }
 
-# ---------------------------------------------------------------------------
-# VSCode/Cursor chat autostart support
-# ---------------------------------------------------------------------------
 
-# Extension ID for GitHub Copilot Chat (required for IDE chat functionality)
 COPILOT_CHAT_EXTENSION_ID: str = "github.copilot-chat"
 
-# IDEs that support chat via GitHub Copilot extension (uses `code chat` command)
 _CHAT_CAPABLE_IDES: frozenset[str] = frozenset(
     {"vscode", "cursor", "windsurf", "kiro", "antigravity"}
 )
 
-# VSCode extension directories to check for copilot-chat installation
 _VSCODE_EXTENSION_DIRS: tuple[str, ...] = (
     "~/.vscode/extensions",
     "~/.cursor/extensions",
@@ -65,14 +55,6 @@ _VSCODE_EXTENSION_DIRS: tuple[str, ...] = (
 
 
 def _get_vscode_extensions_dirs(ide: str = "vscode") -> list[Path]:
-    """Return list of potential VSCode extension directories for the IDE.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-
-    Returns:
-        List of Path objects pointing to potential extension directories.
-    """
     dirs: list[Path] = []
     home = Path.home()
 
@@ -120,17 +102,6 @@ def _get_vscode_extensions_dirs(ide: str = "vscode") -> list[Path]:
 
 
 def detect_vscode_chat_autostart(ide: str = "vscode") -> bool:
-    """Detect if the IDE has chat capability via github.copilot-chat extension.
-
-    Checks for the presence of the GitHub Copilot Chat extension in the
-    IDE's extension directories.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-
-    Returns:
-        True if the IDE has the copilot-chat extension installed, False otherwise.
-    """
     if ide not in _CHAT_CAPABLE_IDES:
         return False
 
@@ -140,7 +111,6 @@ def detect_vscode_chat_autostart(ide: str = "vscode") -> bool:
         try:
             if not ext_dir.exists():
                 continue
-            # Check for copilot-chat extension directory (e.g., github.copilot-chat-0.37.6)
             for entry in ext_dir.iterdir():
                 if entry.is_dir() and entry.name.startswith(COPILOT_CHAT_EXTENSION_ID):
                     return True
@@ -157,43 +127,17 @@ def build_vscode_chat_launcher_command(
     prompt_file: str,
     seed_prompt: str | None = None,
 ) -> list[str]:
-    """Build the VSCode/Cursor chat launcher command for PAIR mode.
-
-    Constructs a command like:
-    ``code chat --mode agent --add-file {prompt_file} --new-window {seed_prompt}``
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        worktree_path: Absolute path to the git worktree.
-        prompt_file: Path to the prompt file to include in the chat context.
-        seed_prompt: Optional initial prompt text to seed the chat conversation.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-
-    Raises:
-        AgentError: If *ide* is not a recognised IDE name.
-    """
     binary = _IDE_BINARIES.get(ide)
     if binary is None:
         known = ", ".join(sorted(_IDE_BINARIES))
         raise AgentError(f"unknown ide {ide!r}. Known: {known}")
 
     cmd = [binary, "chat", "--mode", "agent", "--add-file", prompt_file]
-
-    # Add new-window flag to open in separate window
     cmd.append("--new-window")
-
-    # Add seed prompt if provided
     if seed_prompt and seed_prompt.strip():
         cmd.append(seed_prompt.strip())
 
     return cmd
-
-
-# ---------------------------------------------------------------------------
-# Command builders (pure functions — no I/O, testable without execution)
-# ---------------------------------------------------------------------------
 
 
 def build_tmux_command(
@@ -202,16 +146,6 @@ def build_tmux_command(
     worktree_path: str,
     agent_cmd: str,
 ) -> list[str]:
-    """Build the tmux new-session command for a PAIR session.
-
-    Args:
-        session_name: Unique tmux session name (e.g. ``"kagan-abc123"``).
-        worktree_path: Absolute path to the git worktree.
-        agent_cmd: Full agent CLI command string to run inside the session.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-    """
     return [
         "tmux",
         "new-session",
@@ -225,18 +159,6 @@ def build_tmux_command(
 
 
 def build_ide_command(*, ide: str, worktree_path: str) -> list[str]:
-    """Build the IDE open command for a PAIR session.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        worktree_path: Absolute path to the git worktree to open.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-
-    Raises:
-        AgentError: If *ide* is not a recognised IDE name.
-    """
     binary = _IDE_BINARIES.get(ide)
     if binary is None:
         known = ", ".join(sorted(_IDE_BINARIES))
@@ -245,24 +167,10 @@ def build_ide_command(*, ide: str, worktree_path: str) -> list[str]:
 
 
 def build_neovim_command(*, worktree_path: str) -> list[str]:
-    """Build the Neovim launch command for a PAIR session.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-    """
     return ["nvim", worktree_path]
 
 
-# ---------------------------------------------------------------------------
-# Async launcher functions
-# ---------------------------------------------------------------------------
-
-
 async def _write_mcp_json(worktree_path: Path, session_id: str, db_path: str) -> None:
-    """Write .mcp.json into the worktree for agent/IDE discovery."""
     content = build_mcp_manifest(session_id=session_id, db_path=db_path, access_tier="default")
     mcp_path = worktree_path / ".mcp.json"
     try:
@@ -526,7 +434,6 @@ async def _run_detached(
     if use_start_new_session and sys.platform != "win32":
         kwargs["start_new_session"] = True
     elif use_start_new_session and sys.platform == "win32":
-        # Windows: create detached process
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     kwargs["env"] = build_sanitized_subprocess_environment()
 
@@ -543,20 +450,6 @@ async def launch_tmux(
     db_path: str = "",
     startup_prompt: str | None = None,
 ) -> None:
-    """Launch a detached tmux session for PAIR mode.
-
-    Writes ``.mcp.json`` into the worktree, then starts a detached tmux
-    session running *agent_cmd* in the worktree directory.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        agent_cmd: Full agent CLI command string to run inside the session.
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-
-    Raises:
-        AgentError: If called on Windows (tmux is not available).
-    """
     if sys.platform == "win32":
         raise AgentError(
             "tmux is not available on Windows. "
@@ -615,21 +508,6 @@ async def launch_ide(
     startup_prompt: str | None = None,
     **_kwargs: Any,
 ) -> None:
-    """Launch an IDE for PAIR mode.
-
-    Writes ``.mcp.json`` into the worktree so the IDE can discover kagan's
-    MCP server, then opens the worktree folder in the specified IDE.
-
-    If the IDE has chat capability (via github.copilot-chat extension),
-    auto-starts the chat interface with the startup prompt.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-        startup_prompt: Optional startup prompt to inject into the chat session.
-    """
     logger.info("Launching ide session")
     if db_path:
         await _write_mcp_json(worktree_path, session_id, db_path)
@@ -638,7 +516,6 @@ async def launch_ide(
     if startup_prompt and startup_prompt.strip():
         prompt_path = await _write_startup_prompt(worktree_path, startup_prompt)
 
-    # Check if IDE has chat capability and auto-start chat if available
     if prompt_path is not None and detect_vscode_chat_autostart(ide):
         logger.info(f"IDE {ide} has chat capability, launching chat interface")
         cmd = build_vscode_chat_launcher_command(
@@ -662,18 +539,6 @@ async def launch_neovim(
     startup_prompt: str | None = None,
     **_kwargs: Any,
 ) -> None:
-    """Prepare the worktree for a Neovim PAIR session.
-
-    Writes ``.mcp.json`` into the worktree so Neovim plugins can discover
-    kagan's MCP server.  Unlike tmux/IDE launchers, Neovim is an interactive
-    terminal application that must be spawned by the TUI within
-    ``app.suspend()`` — the core launcher only performs file-system setup.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-    """
     logger.info("Preparing neovim session (TUI will attach interactively)")
     if db_path:
         await _write_mcp_json(worktree_path, session_id, db_path)
@@ -681,10 +546,6 @@ async def launch_neovim(
         await _write_startup_prompt(worktree_path, startup_prompt)
     logger.debug("Neovim preparation complete")
 
-
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
 
 LaunchFn = Callable[..., Coroutine[Any, Any, None]]
 
@@ -696,17 +557,6 @@ LAUNCHERS: dict[str, LaunchFn] = {
 
 
 def get_launcher(name: str) -> LaunchFn:
-    """Return the launch function for *name*, raising AgentError if unknown.
-
-    Args:
-        name: Launcher name — one of ``tmux``, ``ide``, ``neovim``.
-
-    Returns:
-        Async callable for the launcher.
-
-    Raises:
-        AgentError: If *name* is not registered in :data:`LAUNCHERS`.
-    """
     try:
         return LAUNCHERS[name]
     except KeyError:
@@ -715,7 +565,6 @@ def get_launcher(name: str) -> LaunchFn:
 
 
 def list_launchers() -> list[str]:
-    """Return all registered launcher names."""
     return list(str(k) for k in LAUNCHERS)
 
 
@@ -723,17 +572,6 @@ _IDE_BACKENDS: frozenset[str] = frozenset({"vscode", "cursor", "windsurf", "kiro
 
 
 def resolve_launcher(backend: str) -> tuple[str, str | None]:
-    """Map a user-facing backend name to (launcher_key, ide_name | None).
-
-    Args:
-        backend: Raw backend name from settings — e.g. ``"tmux"``, ``"nvim"``,
-            ``"vscode"``, ``"cursor"``, ``"windsurf"``, ``"kiro"``, ``"antigravity"``.
-
-    Returns:
-        A tuple of (launcher_key, ide) where *launcher_key* is one of
-        ``"tmux"``, ``"neovim"``, ``"ide"`` and *ide* is the specific IDE name
-        (only set when launcher_key == ``"ide"``).
-    """
     if backend == "tmux":
         return ("tmux", None)
     if backend in {"nvim", "neovim"}:
@@ -743,10 +581,6 @@ def resolve_launcher(backend: str) -> tuple[str, str | None]:
     # Fall through — treat unknown as ide with the raw name
     return ("ide", backend)
 
-
-# ---------------------------------------------------------------------------
-# Public exports
-# ---------------------------------------------------------------------------
 
 __all__ = [
     "COPILOT_CHAT_EXTENSION_ID",

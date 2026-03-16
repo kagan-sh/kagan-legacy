@@ -154,7 +154,6 @@ class TuiOrchestratorSessionStore:
         return self._normalize_history(session.get("orchestrator_history") or [])
 
     def should_generate_title(self, key: str | None = None) -> bool:
-        """Return True if the active (or given) session still has a default title."""
         target = key or self.active_key()
         session = self._sessions_by_key.get(target)
         if session is None:
@@ -169,7 +168,6 @@ class TuiOrchestratorSessionStore:
         agent_backend: str,
         key: str | None = None,
     ) -> str | None:
-        """Generate and persist a title for the active (or given) session."""
         target = key or self.active_key()
         session = self._sessions_by_key.get(target)
         if session is None:

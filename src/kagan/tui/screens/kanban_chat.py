@@ -97,11 +97,6 @@ def tool_call_id(payload: dict[str, Any]) -> str:
 
 
 def _format_tool_name(raw: str) -> str:
-    """Convert raw tool names to human-readable form.
-
-    ``mcp__kagan__run_wait`` → ``kagan / run_wait``
-    ``toolu_01Vzz...`` → ``tool call`` (fallback for raw IDs)
-    """
     if raw.startswith("toolu_") or raw.startswith("call_"):
         return "tool call"
     if "__" in raw:

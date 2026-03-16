@@ -605,12 +605,6 @@ def register_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/fs/browse", methods=["GET"])
     @handle_errors
     async def browse_filesystem(request: Request) -> JSONResponse:
-        """List directories at *path* (defaults to user home).
-
-        Returns entries sorted: directories first, then alphabetically.
-        Each entry reports whether it is a git repository so the UI can
-        highlight selectable repos.
-        """
         import asyncio
 
         raw_path = request.query_params.get("path", "~")

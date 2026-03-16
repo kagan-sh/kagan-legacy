@@ -92,8 +92,6 @@ _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 @dataclass(frozen=True, slots=True)
 class _WaveIndicator:
-    """Animated wave indicator for Rich.Live during ACP handshake."""
-
     _start: float = field(default_factory=time.monotonic)
 
     def __rich_console__(self, console, options):
@@ -125,12 +123,10 @@ class _TurnWaveAnimation:
         self._write_wave(f"\r{' ' * self._line_width}\r")
 
     def stop(self) -> None:
-        """Stop the animation."""
         if self._active:
             self._stop_event.set()
 
     async def _animate(self) -> None:
-        """Animation loop."""
         self._active = True
         frame_index = 0
         while not self._stop_event.is_set():
@@ -145,11 +141,9 @@ class _TurnWaveAnimation:
         self._active = False
 
     async def start(self) -> None:
-        """Start the animation."""
         self._task = asyncio.create_task(self._animate(), name="chat-turn-wave")
 
     async def shutdown(self) -> None:
-        """Shutdown the animation and cleanup."""
         self._stop_event.set()
         if self._task is not None:
             with contextlib.suppress(asyncio.CancelledError):
@@ -162,7 +156,6 @@ class _TurnWaveAnimation:
 async def _turn_wave_animation(
     _console, frames: tuple[str, ...]
 ) -> AsyncIterator[Callable[[], None]]:
-    """Context manager for turn wave animation. Yields callback to stop animation."""
     animator = _TurnWaveAnimation(_console, frames)
     await animator.start()
     try:
@@ -172,8 +165,6 @@ async def _turn_wave_animation(
 
 
 class _OrchestratorACPClient(ACPClientBase):
-    """ACP client that streams agent output to the Rich console."""
-
     def __init__(self) -> None:
         self._conn: acp.Agent | None = None
         self._streaming = False
@@ -206,7 +197,7 @@ class _OrchestratorACPClient(ACPClientBase):
                 loop = asyncio.get_running_loop()
                 self._flush_handle = loop.call_later(remaining, self._do_deferred_flush)
             except RuntimeError:
-                pass  # No event loop — will flush on next call or finish_turn
+                pass
             return
         merged = "".join(self._pending_output_chunks)
         self._pending_output_chunks = []
@@ -220,7 +211,6 @@ class _OrchestratorACPClient(ACPClientBase):
             self._flush_handle = None
 
     def _do_deferred_flush(self) -> None:
-        """Callback invoked by the event-loop timer to flush buffered output."""
         self._flush_handle = None
         self._flush_pending_output(force=True)
 
@@ -327,12 +317,6 @@ class _OrchestratorACPClient(ACPClientBase):
 
 
 class ChatController:
-    """Manages the orchestrator agent lifecycle.
-
-    Spawns a claude-code ACP agent with admin MCP access in CWD.
-    User messages are forwarded to the agent; responses stream back.
-    """
-
     def __init__(
         self,
         client: Any,
@@ -359,7 +343,6 @@ class ChatController:
         self._restored_messages_printed = False
         self._session_title: str | None = None
         self._title_task: asyncio.Task[None] | None = None
-        # DB-change context injection
         self._watcher = DBWatcher(client)
 
     async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
@@ -429,7 +412,6 @@ class ChatController:
         return self._restart_requested
 
     def _append_turn(self, user_text: str, assistant_reply: str) -> None:
-        """Record a user/assistant exchange in conversation history."""
         self._chat_history.append(("user", user_text))
         self._rendered_messages.append(f"You: {user_text.strip()}")
         if assistant_reply:
@@ -455,7 +437,6 @@ class ChatController:
         await set_last_session_id(self.client, scope="repl", session_id=self._chat_session_id)
 
     async def _generate_session_title(self, user_message: str, assistant_reply: str) -> None:
-        """Generate a human-readable session title from the first exchange."""
         title = await generate_session_title(
             self.client,
             user_message=user_message,
@@ -526,7 +507,6 @@ class ChatController:
         return should_restart
 
     async def _create_new_session(self) -> bool:
-        """Create a fresh session and attach it. Returns True if agent restart needed."""
         created = await create_chat_session(
             self.client,
             source="repl",
@@ -538,7 +518,6 @@ class ChatController:
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
-        """Delete a session by number or ID prefix."""
         sessions = await list_chat_sessions(self.client, source="repl")
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
@@ -566,8 +545,6 @@ class ChatController:
             _console.print(f"[green]Deleted:[/green] {target_label} [{target_id}]")
         else:
             _console.print(f"[red]Failed to delete session {target_id}.[/red]")
-
-    # -- project resolution --------------------------------------------------
 
     async def ensure_project(self) -> bool:
         """Resolve an active project from CWD.  Always checks CWD on every boot.
@@ -631,19 +608,16 @@ class ChatController:
 
         name = name.strip() or default_name
 
-        # -- git identity setup (first-time only) ---
         await self._ensure_git_identity()
 
         return await self._create_project(name, repo_path)
 
     async def _ensure_git_identity(self) -> None:
-        """Prompt for git identity mode if not yet configured."""
         settings = await self.client.settings.get()
         if "git_user_mode" in settings:
-            return  # already configured
+            return
 
         if not sys.stdin.isatty():
-            # non-interactive — use default
             await self.client.settings.set({"git_user_mode": "kagan_agent"})
             return
 
@@ -731,10 +705,7 @@ class ChatController:
             _console.print(f"[red]Failed to create project:[/red] {exc}")
             return False
 
-    # -- agent lifecycle (spawn_agent_process context manager) ---------------
-
     def _resolve_acp_command(self) -> tuple[str, list[str]]:
-        """Return (executable, args) for the ACP agent process."""
         backend = get_backend(self.agent_backend)
         if not backend.get("supports_acp", True):
             raise AgentError(
@@ -748,7 +719,6 @@ class ChatController:
         if not acp_cmd:
             raise AgentError(f"No ACP command configured for backend {self.agent_backend!r}")
 
-        # Verify the executable is available
         exe = acp_cmd[0]
         if shutil.which(exe) is None:
             hint = ""
@@ -759,28 +729,23 @@ class ChatController:
         return acp_cmd[0], acp_cmd[1:]
 
     async def run(self, *, prompt: str | None = None) -> None:
-        """Run the full orchestrator lifecycle, restarting on agent switch."""
         while True:
             self._restart_requested = False
             self._is_primed = False
             await self._run_agent_session(prompt=prompt)
             if not self._restart_requested:
                 break
-            # On restart, don't re-send the original prompt
             prompt = None
             _console.print()
             _console.print(f"[bold cyan]Switching to {self.agent_backend}...[/bold cyan]")
 
     async def _run_agent_session(self, *, prompt: str | None = None) -> None:
-        """Single agent session lifecycle inside spawn_agent_process context."""
-        # Resolve the ACP command
         try:
             exe, exe_args = self._resolve_acp_command()
         except AgentError as exc:
             _console.print(f"[red]{exc}[/red]")
             return
 
-        # Prepare MCP server config
         session_id = self._mcp_session_id or uuid4().hex[:8]
         db_path = str(default_db_path())
         mcp_content = build_mcp_manifest(
@@ -804,7 +769,6 @@ class ChatController:
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
         logger.debug("Wrote .mcp.json with admin access at {}", mcp_path)
 
-        # Prepare environment
         backend = get_backend(self.agent_backend)
         env = build_agent_environment(
             session_id=session_id,
@@ -812,11 +776,9 @@ class ChatController:
             backend_env_vars=backend.get("env_vars", {}),
         )
 
-        # Spawn ACP agent process (context manager owns the lifecycle)
         self._acp_client = _OrchestratorACPClient()
 
         async def _handshake(conn_inner):
-            """Run ACP initialize + new_session."""
             timeout_s = _acp_handshake_timeout_seconds(self.agent_backend)
             client_caps = ClientCapabilities(terminal=False)
             await asyncio.wait_for(
@@ -869,7 +831,6 @@ class ChatController:
                 self._acp_conn = conn
                 logger.info("ACP agent process spawned pid={}", proc.pid)
 
-                # Run handshake with live wave animation
                 ready_event = asyncio.Event()
                 handshake_error: Exception | None = None
 
@@ -940,7 +901,6 @@ class ChatController:
                 await self._watcher.initialize()
                 await self._watcher.subscribe()
 
-                # Run single-shot or REPL inside the context
                 if prompt is not None:
                     await self._send(text=prompt)
                 else:
@@ -955,18 +915,15 @@ class ChatController:
             await self._watcher.close()
             self._acp_conn = None
             self._acp_session_id = None
-            # Clean up .mcp.json
             if mcp_path.exists():
                 with contextlib.suppress(OSError):
                     mcp_path.unlink()
 
     async def _send(self, text: str) -> None:
-        """Send a user message to the orchestrator agent and stream the response."""
         if self._acp_conn is None or self._acp_session_id is None:
             _console.print("[red]No agent connected. Try restarting.[/red]")
             return
 
-        # Prepend accumulated DB-change context (invisible to user)
         ctx = self._watcher.drain_context()
         request_text = f"{ctx}\n\n{text}" if ctx else text
 
@@ -1041,7 +998,6 @@ class ChatController:
         self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
 
-        # Auto-generate session title after first turn
         if self._turn_count == 1 and self._session_title is None:
             self._title_task = asyncio.create_task(
                 self._generate_session_title(text, assistant_reply),
@@ -1057,7 +1013,6 @@ class ChatController:
         await self._persist_session()
 
     async def _repl_loop(self) -> None:
-        """Interactive REPL loop — runs inside spawn_agent_process context."""
         _console.print(
             "[dim]Type [bold]/help[/bold] for commands, [bold]/flow[/bold] for guided mode, "
             "[bold]Ctrl-C[/bold] to interrupt, "
@@ -1076,7 +1031,6 @@ class ChatController:
                 if not stripped:
                     continue
 
-                # Slash command dispatch
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
                         break  # /exit or agent switch
@@ -1094,8 +1048,6 @@ class ChatController:
                 _console.print("\n[dim]Session ended.[/dim]")
 
     async def _handle_slash(self, text: str) -> bool:
-        """Handle a slash command. Returns True if exit requested."""
-
         result = resolve_slash_input(
             text,
             session_label="Orchestrator",
@@ -1110,7 +1062,6 @@ class ChatController:
         if result.clear_requested:
             click.clear()
 
-        # REPL text fallback for TUI-native actions
         if result.help_overlay_requested:
             self._print_help_documentation()
 
@@ -1193,7 +1144,6 @@ class ChatController:
         _console.print(report, highlight=False)
 
     async def _switch_agent(self, new_backend: str) -> bool:
-        """Request agent switch and persist to settings. Returns True to exit REPL loop."""
         if new_backend == self.agent_backend:
             _console.print(f"[dim]Already using {new_backend}.[/dim]")
             return False

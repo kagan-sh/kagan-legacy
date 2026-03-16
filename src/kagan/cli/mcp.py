@@ -28,6 +28,9 @@ from kagan.cli._bootstrap import run_async
     is_flag=True,
     help="Expose diagnostics instrumentation tool",
 )
+@click.option(
+    "--profile", type=str, default=None, help="Tool profile filter (TASK, REVIEWER, ORCHESTRATOR)"
+)
 def mcp(
     readonly: bool,
     admin: bool,
@@ -35,12 +38,24 @@ def mcp(
     db_path: str | None,
     project_id: str | None,
     enable_internal_instrumentation: bool,
+    profile: str | None,
 ) -> None:
     logger.debug("MCP server starting")
     if readonly and admin:
         raise click.UsageError("--readonly and --admin are mutually exclusive")
 
+    from kagan.core.enums import ToolProfile
     from kagan.mcp.server import ServerOptions, serve
+
+    resolved_profile: ToolProfile | None = None
+    if profile is not None:
+        try:
+            resolved_profile = ToolProfile(profile)
+        except ValueError:
+            valid = ", ".join(p.value for p in ToolProfile)
+            raise click.UsageError(
+                f"Invalid profile {profile!r}. Must be one of: {valid}"
+            ) from None
 
     opts = ServerOptions(
         readonly=readonly,
@@ -49,5 +64,6 @@ def mcp(
         enable_instrumentation=enable_internal_instrumentation,
         db_path=db_path,
         project_id=project_id,
+        profile=resolved_profile,
     )
     run_async(serve(opts))

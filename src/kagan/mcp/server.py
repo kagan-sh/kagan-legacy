@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -12,6 +12,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 if TYPE_CHECKING:
     from kagan.core import KaganCore
+    from kagan.core.enums import ToolProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,7 @@ class ServerOptions:
     enable_instrumentation: bool = False
     db_path: str | None = None  # optional path for KaganCore; None = default
     project_id: str | None = None  # if set, activate this project at lifespan start
+    profile: ToolProfile | None = field(default=None)
 
     def __post_init__(self) -> None:
         if self.readonly and self.admin:

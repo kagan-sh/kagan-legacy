@@ -28,8 +28,6 @@ __all__ = [
     "KANBAN_BINDINGS",
     "MESSAGE_ACTIONS_BINDINGS",
     "PERMISSION_BINDINGS",
-    "PLANNER_BINDINGS",
-    "PLAN_APPROVAL_BINDINGS",
     "REJECTION_BINDINGS",
     "REJECTION_INPUT_BINDINGS",
     "REPO_PICKER_BINDINGS",
@@ -60,7 +58,7 @@ __all__ = [
 APP_BINDINGS: list[BindingType] = [
     # Help & Meta
     Binding("question_mark,f1", "show_help", "Help", key_display="?"),
-    Binding("ctrl+p", "command_palette", "Command Palette", key_display="Ctrl+P"),
+    Binding("ctrl+shift+p,f2", "command_palette", "Quick Actions", key_display="Ctrl+Shift+P"),
     # Navigation
     Binding("ctrl+o", "open_project_selector", "Projects", key_display="Ctrl+O"),
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
@@ -81,7 +79,7 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
     Binding("shift+n", "new_auto_task", "New Auto", key_display="Shift+N"),
     Binding("enter", "open_task", "Open"),
-    Binding("space", "peek_task", "Peek"),
+    Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
     # -------------------------------------------------------------------------
     # Task Lifecycle (Visible when card focused)
     # -------------------------------------------------------------------------
@@ -103,12 +101,20 @@ KANBAN_BINDINGS: list[BindingType] = [
     # -------------------------------------------------------------------------
     Binding("slash", "search", "Search", key_display="/"),
     Binding("f", "expand_description", "Expand Description"),
+    Binding("p", "peek_task", "Peek"),
     # -------------------------------------------------------------------------
     # AI Assistant
     # -------------------------------------------------------------------------
-    Binding("ctrl+t", "toggle_chat", "AI Toggle", key_display="Ctrl+T"),
-    Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
-    Binding("ctrl+k", "switch_session", "AI Switch", key_display="Ctrl+K"),
+    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
+    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
+    Binding(
+        "ctrl+shift+t",
+        "fullscreen_chat",
+        "",
+        key_display="Ctrl+Shift+T",
+        show=False,
+    ),
+    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("b", "set_branch", "Branch"),
     # -------------------------------------------------------------------------
     # Navigation (Vim-style)
@@ -147,9 +153,17 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
     # AI Assistant
-    Binding("ctrl+t", "toggle_chat", "AI Toggle", key_display="Ctrl+T"),
-    Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
-    Binding("ctrl+k", "switch_session", "AI Switch", key_display="Ctrl+K"),
+    Binding("space", "cycle_chat_overlay", "AI Split", key_display="Space"),
+    Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
+    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
+    Binding(
+        "ctrl+shift+t",
+        "fullscreen_chat",
+        "",
+        key_display="Ctrl+Shift+T",
+        show=False,
+    ),
+    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     # Navigation
     Binding("escape", "back", "Back"),
 ]
@@ -165,9 +179,9 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
     # AI Assistant
-    Binding("ctrl+t", "toggle_chat", "AI Toggle", key_display="Ctrl+T"),
+    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
     Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
-    Binding("ctrl+k", "switch_session", "AI Switch", key_display="Ctrl+K"),
+    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     # Navigation
     Binding("escape", "back", "Back"),
 ]
@@ -181,8 +195,8 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("shift+enter", "insert_newline", "Newline", key_display="Shift+Enter"),
     Binding("tab", "accept_completion", "Complete"),
     Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
-    Binding("ctrl+k", "open_session_picker", "Switch", key_display="Ctrl+K"),
-    Binding("escape", "dismiss", "Close"),
+    Binding("escape", "dismiss", "Stop", key_display="Esc"),
+    Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
 ]
 
 # =============================================================================
@@ -220,17 +234,11 @@ SETTINGS_BINDINGS: list[BindingType] = [
     Binding("ctrl+s", "save", "Save"),
     Binding("escape", "cancel", "Cancel"),
     Binding("slash", "search", "Search", key_display="/"),
-    Binding("ctrl+a", "persona_audit", "Audit", key_display="Ctrl+A"),
-    Binding("ctrl+i", "persona_import", "Import", key_display="Ctrl+I"),
-    Binding("ctrl+e", "persona_export", "Export", key_display="Ctrl+E"),
     Binding("ctrl+period", "toggle_advanced", "Advanced", key_display="Ctrl+."),
 ]
 
 SETTINGS_COMMAND_BINDINGS: list[BindingType] = [
     Binding("slash", "focus_search", "Search", key_display="/", show=False),
-    Binding("ctrl+a", "persona_audit", "Audit Repo", key_display="Ctrl+A", show=False),
-    Binding("ctrl+i", "persona_import", "Import Persona", key_display="Ctrl+I", show=False),
-    Binding("ctrl+e", "persona_export", "Export Persona", key_display="Ctrl+E", show=False),
     Binding("ctrl+.", "toggle_advanced", "Advanced", key_display="Ctrl+.", show=False),
 ]
 
@@ -315,14 +323,6 @@ TMUX_GATEWAY_BINDINGS: list[BindingType] = [
     Binding("s", "skip", "Skip"),
 ]
 
-PLANNER_BINDINGS: list[BindingType] = [
-    Binding("escape", "to_board", "Back to Board"),
-    Binding("ctrl+e", "enhance", "Enhance", key_display="Ctrl+E"),
-    Binding("a", "approve", "Approve"),
-    Binding("e", "edit", "Edit"),
-    Binding("d", "dismiss", "Dismiss"),
-    Binding("b", "set_branch", "Branch"),
-]
 
 SESSION_PICKER_BINDINGS: list[BindingType] = [
     Binding("escape", "cancel", "Cancel", show=False),
@@ -347,12 +347,6 @@ GITHUB_IMPORT_BINDINGS: list[BindingType] = [
 AGENT_PICKER_BINDINGS: list[BindingType] = [
     Binding("enter", "select_agent", "Select", show=False, priority=True),
     Binding("escape", "dismiss", "Close"),
-]
-
-PLAN_APPROVAL_BINDINGS: list[BindingType] = [
-    Binding("a", "approve", "Approve"),
-    Binding("e", "edit", "Edit"),
-    Binding("d", "dismiss", "Dismiss"),
 ]
 
 CHAT_PERMISSION_BINDINGS: list[BindingType] = [
@@ -407,7 +401,7 @@ class FooterBuilder:
         """Global hints shown on all screens."""
         return [
             ("?", "help"),
-            ("Ctrl+P", "palette"),
+            ("Ctrl+Shift+P", "quick actions"),
         ]
 
     @staticmethod
@@ -423,7 +417,8 @@ class FooterBuilder:
         """Actions when a card is focused."""
         return [
             ("Enter", "open"),
-            ("Space", "peek"),
+            ("Space", "assistant split"),
+            ("P", "peek"),
             ("e", "edit"),
             ("x", "delete"),
             ("s", "start"),
@@ -444,6 +439,8 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
+            ("Space", "assistant split"),
+            ("Ctrl+F", "assistant full"),
             ("e", "edit"),
             ("d", "delete"),
             ("a", "approve"),
@@ -470,7 +467,7 @@ class FooterBuilder:
             ("s", "start"),
             ("x", "stop"),
             ("r", "restart"),
-            ("Ctrl+T", "chat"),
+            ("Ctrl+I", "AI panel"),
             ("Esc", "back"),
         ]
 
@@ -507,7 +504,7 @@ class FooterBuilder:
         return [
             ("Enter", "send"),
             ("Shift+Enter", "newline"),
-            ("Ctrl+K", "switch"),
+            ("Ctrl+K", "sessions"),
             ("Esc", "close"),
         ]
 

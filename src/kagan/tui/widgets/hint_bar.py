@@ -6,8 +6,8 @@ from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Static
 
-KANBAN_GLOBAL_STRIP_FULL = "[bold]?[/] help  [bold]Ctrl+P[/] palette  [bold]/[/] search"
-KANBAN_GLOBAL_STRIP_NARROW = "[bold]?[/]  [bold]Ctrl+P[/]  [bold]/[/]"
+KANBAN_GLOBAL_STRIP_FULL = "[bold]?[/] help  [bold]Ctrl+Shift+P[/] quick actions  [bold]/[/] search"
+KANBAN_GLOBAL_STRIP_NARROW = "[bold]?[/]  [bold]Ctrl+Shift+P[/]  [bold]/[/]"
 KEYBINDING_HINT_NARROW_TERMINAL_WIDTH = 80
 
 
@@ -148,7 +148,7 @@ class KanbanHintBar(Widget):
         except NoMatches:
             return
 
-        self.has_card = bool(navigation)
+        self.has_card = bool(navigation or actions)
 
         left = navigation[0] if navigation else ("", "")
         right = navigation[1] if len(navigation) > 1 else ("", "")

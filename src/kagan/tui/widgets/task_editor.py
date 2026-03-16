@@ -174,7 +174,11 @@ class TaskEditor(Vertical):
     def on_mount(self) -> None:
         self._sync_advanced_visibility()
         self.focus_preferred_field()
+        self.call_after_refresh(self._restore_initial_title)
         self._set_title_error(None)
+
+    def _restore_initial_title(self) -> None:
+        self.query_one("#task-title", Input).value = self._initial_title
 
     def _sync_advanced_visibility(self) -> None:
         advanced = self.query_one("#task-advanced-fields", Vertical)

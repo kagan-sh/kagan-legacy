@@ -15,6 +15,8 @@ class TaskActionBar(Widget):
     task_data: reactive[Task | None] = reactive(None)
     task_running: reactive[bool] = reactive(False)
     has_criteria: reactive[bool] = reactive(False)
+    chat_visible: reactive[bool] = reactive(False)
+    chat_fullscreen: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     TaskActionBar {
@@ -42,6 +44,12 @@ class TaskActionBar(Widget):
     def watch_has_criteria(self, _value: bool) -> None:
         self._sync_hints()
 
+    def watch_chat_visible(self, _value: bool) -> None:
+        self._sync_hints()
+
+    def watch_chat_fullscreen(self, _value: bool) -> None:
+        self._sync_hints()
+
     def _sync_hints(self) -> None:
         hint = self.query_one("#ts-action-hint", Static)
         active = self.active_tab
@@ -49,11 +57,19 @@ class TaskActionBar(Widget):
         b = TASK_SCREEN_BINDINGS
         tabs_hint: tuple[str, str] = ("1-2", "tabs")
         shared_specs: list[tuple[str | tuple[str, ...], str]] = [
-            ("toggle_chat", "overlay"),
-            ("fullscreen_chat", "fullscreen"),
             ("switch_session", "sessions"),
         ]
-        esc = action_hints_from_bindings(b, [("back", "back")])
+        if self.chat_visible:
+            shared_specs = [
+                ("cycle_chat_overlay", "split"),
+                ("expand_chat_overlay", "fullscreen"),
+                ("back", "close"),
+                *shared_specs,
+            ]
+            esc = []
+        else:
+            shared_specs = [("cycle_chat_overlay", "split"), *shared_specs]
+            esc = action_hints_from_bindings(b, [("back", "back")])
 
         if active == "detail":
             self._sync_detail_hints(hint, task, b, tabs_hint, shared_specs, esc)

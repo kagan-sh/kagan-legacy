@@ -26,19 +26,18 @@ from acp.schema import (
 )
 from loguru import logger
 from rich.live import Live
-from rich.markdown import Markdown as RichMarkdown
+from rich.markup import escape as _rich_escape
 from rich.measure import Measurement
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from kagan.chat._title import generate_session_title
 from kagan.chat.acp import (
     _ACP_CLIENT_NAME,
     _ACP_CLIENT_TITLE,
     _ACP_CLIENT_VERSION,
     _acp_handshake_timeout_seconds,
-    run_orchestrator_turn,
 )
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.chat.commands import (
@@ -47,7 +46,6 @@ from kagan.chat.commands import (
     resolve_slash_input,
 )
 from kagan.chat.prompt import (
-    _ORCHESTRATOR_SYSTEM_PROMPT,
     _format_user_request_block,
     _runtime_guidance_for_request,
     build_chat_status_line,
@@ -63,7 +61,6 @@ from kagan.chat.repl import (
     _get_prompt_session,
 )
 from kagan.chat.sessions import (
-    _clean_generated_title,
     build_chat_session_list_items,
     create_chat_session,
     delete_chat_session,
@@ -78,7 +75,6 @@ from kagan.chat.tool_runs import ToolRunTracker
 from kagan.core import (
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
-    PROMPT_ORCHESTRATOR_KEY,
     ACPClientBase,
     DBWatcher,
     build_agent_environment,
@@ -86,12 +82,11 @@ from kagan.core import (
     default_db_path,
     get_backend,
     get_system_git_identity,
-    prepend_custom_prompt,
+    resolve_orchestrator_prompt,
 )
 from kagan.core.errors import AgentError, KaganError
 
-# Markdown syntax patterns that warrant re-rendering
-_MARKDOWN_PATTERNS = ("```", "## ", "### ", "**", "- ", "1. ", "> ")
+_ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 _ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
@@ -177,11 +172,6 @@ async def _turn_wave_animation(
         await animator.shutdown()
 
 
-def _has_markdown_syntax(text: str) -> bool:
-    """Return True if *text* contains markdown formatting worth re-rendering."""
-    return any(p in text for p in _MARKDOWN_PATTERNS)
-
-
 class _OrchestratorACPClient(ACPClientBase):
     """ACP client that streams agent output to the Rich console."""
 
@@ -221,7 +211,7 @@ class _OrchestratorACPClient(ACPClientBase):
             return
         merged = "".join(self._pending_output_chunks)
         self._pending_output_chunks = []
-        _console.print(merged, end="", highlight=False)
+        _console.print(merged, end="", highlight=False, markup=False)
         _console.file.flush()
         self._last_output_flush = now
 
@@ -271,7 +261,7 @@ class _OrchestratorACPClient(ACPClientBase):
                     if text:
                         self._notify_first_update()
                         self._flush_pending_output(force=True)
-                        _console.print(f"[dim]{text}[/dim]", end="", highlight=False)
+                        _console.print(f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False)
                         _console.file.flush()
         elif isinstance(update, ToolCallStart):
             self._notify_first_update()
@@ -368,7 +358,6 @@ class ChatController:
         self._chat_history: list[tuple[str, str]] = []
         self._rendered_messages: list[str] = []
         self._restored_messages_printed = False
-        self._custom_orchestrator_prompt: str | None = None
         self._session_title: str | None = None
         self._title_task: asyncio.Task[None] | None = None
         # DB-change context injection
@@ -384,10 +373,6 @@ class ChatController:
                 agent_backend=self.agent_backend,
             )
         await self._attach_session(selected, switching=False)
-        # Load custom orchestrator prompt from settings
-        settings = await self.client.settings.get()
-        custom = settings.get(PROMPT_ORCHESTRATOR_KEY, "").strip()
-        self._custom_orchestrator_prompt = custom if custom else None
 
     async def _resolve_initial_session(
         self, explicit_session_id: str | None
@@ -472,29 +457,15 @@ class ChatController:
 
     async def _generate_session_title(self, user_message: str, assistant_reply: str) -> None:
         """Generate a human-readable session title from the first exchange."""
-        try:
-            context = user_message.strip()
-            if assistant_reply:
-                # Include start of reply for better context
-                reply_preview = assistant_reply.strip()[:200]
-                context = f"User: {context}\nAssistant: {reply_preview}"
-            title = await run_orchestrator_turn(
-                self.client,
-                prompt=(
-                    "Generate a very short title (3-8 words) for a chat session "
-                    "that starts with this exchange. Return ONLY the title, nothing else. "
-                    "No quotes, no punctuation at the end, no prefixes like 'Title:'.\n\n"
-                    f"{context}"
-                ),
-                agent_backend=self.agent_backend,
-            )
-            cleaned = _clean_generated_title(title)
-            if cleaned:
-                self._session_title = cleaned
-                await self._persist_session()
-                logger.debug("Auto-generated session title: {}", cleaned)
-        except (AgentError, OSError, RuntimeError, ValueError):
-            logger.debug("Session title generation failed, keeping default")
+        title = await generate_session_title(
+            self.client,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            agent_backend=self.agent_backend,
+        )
+        if title:
+            self._session_title = title
+            await self._persist_session()
 
     def _print_restored_messages(self) -> None:
         if self._restored_messages_printed or not self._rendered_messages:
@@ -637,7 +608,11 @@ class ChatController:
         default_name = repo_root.name
 
         if not sys.stdin.isatty():
-            return await self._create_project(default_name, repo_path)
+            _console.print(
+                "[red]No project found.[/red] Run [bold]kagan[/bold] interactively "
+                "or use [bold]kg chat --project <name>[/bold] to specify one."
+            )
+            return False
 
         _console.print()
         _console.print("[bold]No project found.[/bold] Let's create one.")
@@ -1006,12 +981,8 @@ class ChatController:
             resumed_text = build_orchestrator_prompt(
                 self._chat_history, request_text, history_limit=20
             )
-            system_prompt = _ORCHESTRATOR_SYSTEM_PROMPT
-            # Inject custom orchestrator prompt from settings if configured
-            if self._custom_orchestrator_prompt:
-                system_prompt = prepend_custom_prompt(
-                    system_prompt, self._custom_orchestrator_prompt
-                )
+            settings = await self.client.settings.get()
+            system_prompt = resolve_orchestrator_prompt(settings, Path.cwd())
             prompt_blocks = [
                 acp.text_block(system_prompt),
                 acp.text_block(_format_user_request_block(resumed_text)),
@@ -1034,8 +1005,11 @@ class ChatController:
             )
             original_sigint = signal.getsignal(signal.SIGINT)
             loop = asyncio.get_running_loop()
-            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(prompt_task.cancel))
             try:
+                signal.signal(
+                    signal.SIGINT,
+                    lambda *_: loop.call_soon_threadsafe(prompt_task.cancel),
+                )
                 await prompt_task
             except asyncio.CancelledError:
                 interrupted = True
@@ -1052,8 +1026,10 @@ class ChatController:
 
         assistant_reply = ""
         if self._acp_client is not None:
-            with contextlib.suppress(Exception):
+            try:
                 assistant_reply = self._acp_client.finish_turn()
+            except Exception:
+                logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
 
         self._append_turn(text, assistant_reply)
 
@@ -1063,10 +1039,6 @@ class ChatController:
             return
 
         _console.print()  # newline after streamed output
-        # Re-render as markdown if the response contains rich formatting
-        if assistant_reply and _has_markdown_syntax(assistant_reply):
-            _console.print(Rule(style="dim"))
-            _console.print(RichMarkdown(assistant_reply))
         self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
 

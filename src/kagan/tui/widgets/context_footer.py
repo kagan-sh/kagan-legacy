@@ -147,14 +147,14 @@ class ContextFooter(Horizontal):
         elif self.context == "task":
             return "[dim]1/2 tabs · Esc back[/]"
         elif self.context == "session":
-            return "[dim]Ctrl+K switch · Ctrl+T chat[/]"
+            return "[dim]Ctrl+K sessions · Ctrl+I AI panel[/]"
         return ""
 
     def _build_global_hints(self, width: int) -> str:
         """Build the global shortcuts section."""
         if width < 80:
             return "[bold]?[/]"
-        return "[bold]?[/] help  [bold]Ctrl+P[/] palette"
+        return "[bold]?[/] help  [bold]Ctrl+Shift+P[/] quick actions"
 
     def _format_hints(
         self,

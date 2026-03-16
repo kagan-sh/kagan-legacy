@@ -716,10 +716,10 @@ KanbanHintBar .hint-global {
     padding: 0 1;
     color: $text-disabled;
 }
-/* Hide board hint bar whenever chat overlay is visible (any mode). */
+/* Keep board hint bar visible while chat overlay is visible. */
 
 KanbanScreen.chat-overlay-visible KanbanHintBar {
-    display: none;
+    display: block;
 }
 
 KanbanScreen.chat-overlay-horizontal .kanban-main-pane {
@@ -775,7 +775,7 @@ KanbanScreen.chat-overlay-expanded .kanban-board {
 }
 
 KanbanScreen.chat-overlay-expanded KanbanHintBar {
-    display: none;
+    display: block;
 }
 
 KanbanScreen.chat-overlay-expanded #review-queue-hint {
@@ -863,9 +863,13 @@ TaskInspector .inspector-title {
 
 TaskInspector .inspector-head {
     text-style: bold;
-    margin-top: 1;
+    margin: 1 0 1 0;
     height: auto;
     text-wrap: wrap;
+}
+
+TaskInspector #inspector-head {
+    height: auto;
 }
 
 TaskInspector .inspector-meta {

@@ -107,7 +107,10 @@ class TaskDetailPane(Widget):
         self.query_one("#ts-overview-agent-backend", Static).update(
             f"Agent: {task.agent_backend or 'project default'}"
         )
-        self._set_review_section_visible(task.status is TaskStatus.REVIEW)
+        has_verdicts = bool(task.review_verdicts)
+        self._set_review_section_visible(
+            task.status is TaskStatus.REVIEW or (task.status is TaskStatus.DONE and has_verdicts)
+        )
 
     def _set_review_section_visible(self, is_visible: bool) -> None:
         self.query_one("#ts-detail-review-section", Vertical).display = is_visible

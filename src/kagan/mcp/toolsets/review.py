@@ -61,6 +61,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                     return {
                         "task_id": task_id,
                         "action": "blocked",
+                        "reason_code": "MANUAL_REVIEW_REQUIRED",
                         "reason": (
                             "This task has no acceptance criteria. "
                             "Cannot auto-approve — manual human review required."
@@ -128,3 +129,41 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             app = get_context(ctx)
             await app.client.reviews.abort_rebase(task_id)
             return {"task_id": task_id, "action": "abort_conflicts"}
+
+    if is_tool_allowed("review_set_criterion_verdict", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_set_criterion_verdict(
+            task_id: str,
+            criterion_index: int,
+            verdict: str,
+            reason: str,
+            ctx: Context,
+        ) -> dict:
+            """Report the AI review verdict for a single acceptance criterion.
+
+            Call this once per criterion during review, BEFORE calling review_decide.
+            verdict must be 'PASS' or 'FAIL'. reason is a one-line justification.
+            """
+            app = get_context(ctx)
+            task = await app.client.reviews.set_criterion_verdict(
+                task_id, criterion_index, verdict, reason
+            )
+            return {
+                "task_id": task_id,
+                "criterion_index": criterion_index,
+                "verdict": verdict,
+                "reason": reason,
+                "total_criteria": len(task.acceptance_criteria or []),
+            }
+
+    if is_tool_allowed("review_clear_verdicts", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def review_clear_verdicts(task_id: str, ctx: Context) -> dict:
+            """Clear all AI review verdicts for a task. Call before starting a new review."""
+            app = get_context(ctx)
+            await app.client.reviews.clear_verdicts(task_id)
+            return {"task_id": task_id, "verdicts_cleared": True}

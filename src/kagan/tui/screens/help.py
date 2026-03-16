@@ -29,8 +29,6 @@ from kagan.tui.keybindings import (
     KANBAN_BINDINGS,
     MESSAGE_ACTIONS_BINDINGS,
     PERMISSION_BINDINGS,
-    PLAN_APPROVAL_BINDINGS,
-    PLANNER_BINDINGS,
     REJECTION_BINDINGS,
     REPO_PICKER_BINDINGS,
     REVIEW_NO_CRITERIA_BINDINGS,
@@ -112,7 +110,6 @@ class HelpModal(ModalScreen[None]):
             ("Task Screen", tuple(self._rows_from_bindings(TASK_SCREEN_BINDINGS))),
             ("Session Dashboard", tuple(self._rows_from_bindings(SESSION_DASHBOARD_BINDINGS))),
             ("Chat Panel", tuple(self._rows_from_bindings(CHAT_BINDINGS))),
-            ("Planner", tuple(self._rows_from_bindings(PLANNER_BINDINGS))),
             ("Diff Viewer", tuple(self._rows_from_bindings(DIFF_BINDINGS))),
             ("Diff File Tree", tuple(self._rows_from_bindings(DIFF_FILE_TREE_BINDINGS))),
             ("Diff Content", tuple(self._rows_from_bindings(DIFF_CONTENT_PANE_BINDINGS))),
@@ -121,12 +118,11 @@ class HelpModal(ModalScreen[None]):
             ("Editors", tuple(self._rows_from_bindings(EDITOR_BINDINGS))),
             ("Settings", tuple(self._rows_from_bindings(SETTINGS_BINDINGS))),
             ("Repo Picker", tuple(self._rows_from_bindings(REPO_PICKER_BINDINGS))),
-            ("Session Picker", tuple(self._rows_from_bindings(SESSION_PICKER_BINDINGS))),
+            ("Session Switcher", tuple(self._rows_from_bindings(SESSION_PICKER_BINDINGS))),
             ("GitHub Import", tuple(self._rows_from_bindings(GITHUB_IMPORT_BINDINGS))),
             ("Agent Picker", tuple(self._rows_from_bindings(AGENT_PICKER_BINDINGS))),
             ("Permission Prompt", tuple(self._rows_from_bindings(PERMISSION_BINDINGS))),
             ("Chat Permission", tuple(self._rows_from_bindings(CHAT_PERMISSION_BINDINGS))),
-            ("Plan Approval", tuple(self._rows_from_bindings(PLAN_APPROVAL_BINDINGS))),
             ("Message Actions", tuple(self._rows_from_bindings(MESSAGE_ACTIONS_BINDINGS))),
             ("Review (No Criteria)", tuple(self._rows_from_bindings(REVIEW_NO_CRITERIA_BINDINGS))),
             ("Rejection Input", tuple(self._rows_from_bindings(REJECTION_BINDINGS))),
@@ -186,7 +182,7 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("AI Review (Advisory)", classes="help-section-title"),
             Static(
-                "Open Command Palette (Ctrl+P) and run AI review in the Review stage. "
+                "Open Quick Actions (Ctrl+Shift+P) and run AI review in the Review stage. "
                 "This is advisory only — it does not approve or merge. "
                 "You make the final decision with 'a' (approve) and 'm' (merge).",
                 classes="help-paragraph",
@@ -200,7 +196,7 @@ class HelpModal(ModalScreen[None]):
             Static("Repository Management", classes="help-section-title"),
             Static(
                 "Use Ctrl+R to select a repository. "
-                "Open Command Palette (Ctrl+P) for repo sync and GitHub import.",
+                "Open Quick Actions (Ctrl+Shift+P) for repo sync and GitHub import.",
                 classes="help-paragraph",
             ),
         )
@@ -235,13 +231,20 @@ class HelpModal(ModalScreen[None]):
             Static(
                 "Task session: Context-aware chat tied to the current task. "
                 "Orchestrator session: General assistant for planning and questions. "
-                "Switch with Ctrl+K.",
+                "Switch sessions with Ctrl+K. Toggle the AI chat overlay with Ctrl+I.",
                 classes="help-paragraph",
             ),
             Static("Agent Backends", classes="help-section-title"),
             Static(
                 "Configure default backend in Settings (claude-code, codex, gemini-cli, etc.). "
-                "Change backends from Settings or the Command Palette.",
+                "Change backends from Settings or Quick Actions.",
+                classes="help-paragraph",
+            ),
+            Static("Settings Layers", classes="help-section-title"),
+            Static(
+                "Settings has typed controls (execution mode, review strictness, planning depth). "
+                "Additional Instructions lets you add free-text rules to every agent prompt. "
+                "For full prompt replacement, place .kagan/prompts/ files in your repo.",
                 classes="help-paragraph",
             ),
             Static("Keyboard Philosophy", classes="help-section-title"),

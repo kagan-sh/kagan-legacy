@@ -56,6 +56,8 @@ def _task_to_dict(task: Any) -> dict[str, Any]:
         "acceptance_criteria": getattr(task, "acceptance_criteria", []),
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
+        "review_approved": getattr(task, "review_approved", False),
+        "review_verdicts": getattr(task, "review_verdicts", []) or [],
     }
 
 

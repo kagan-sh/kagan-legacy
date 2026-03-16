@@ -230,6 +230,9 @@ class SessionPickerModal(ModalScreen[str | None]):
                         self._active_group_id = group.group_id
                         return
 
+        if not self._filtered_groups:
+            self._active_group_id = None
+            return
         self._active_group_id = self._filtered_groups[0].group_id
 
     def _sync_group_from_highlight(self) -> None:

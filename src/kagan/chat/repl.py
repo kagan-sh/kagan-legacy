@@ -203,6 +203,7 @@ def _bottom_toolbar() -> str:
     parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
     parts.append("Up/Down: history")
     parts.append("Ctrl-C: clear")
+    parts.append("Esc: interrupt")
     parts.append("Alt-Enter: newline")
     return " · ".join(parts)
 

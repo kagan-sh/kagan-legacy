@@ -26,7 +26,6 @@ from kagan.tui.screens.session_picker import (
     SessionPickerOption,
 )
 from kagan.tui.widgets.permission import PermissionPrompt
-from kagan.tui.widgets.plan import PlanApprovalWidget, PlanDisplay
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
 
@@ -57,7 +56,6 @@ class _SessionState:
     draft: str = ""
     prompt_history: list[str] = field(default_factory=list)
     history_index: int | None = None
-    plan_entries: list[str | dict[str, str]] = field(default_factory=list)
     decision_surface: tuple[str, dict[str, Any]] | None = None
 
 
@@ -138,6 +136,9 @@ class ChatPanel(Vertical):
         self._chat_input_disable_depth = 0
         self._runtime_input_locked = False
         self._history_programmatic_update = False
+        self._overlay_split_key = "Ctrl+I"
+        self._overlay_fullscreen_key = "Ctrl+Shift+T"
+        self._overlay_close_key = "Esc"
 
     def compose(self) -> ComposeResult:
         yield Static("Orchestrator", id="chat-title")
@@ -179,11 +180,10 @@ class ChatPanel(Vertical):
                                         f"  • {example}", classes="chat-overlay-empty-example"
                                     )
                             yield Static(
-                                "Tip: press Ctrl+T to toggle AI chat.",
+                                "Tip: use this screen's chat shortcut to open AI chat.",
                                 id="chat-overlay-first-boot-nudge",
                             )
                 yield StreamingOutput(id="chat-overlay-output", classes="chat-output")
-                yield PlanDisplay(id="chat-plan-display")
                 yield Vertical(id="chat-inline-surface")
                 yield Static(
                     self._EMPTY_TEXT,
@@ -201,7 +201,7 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             yield Input(
-                                placeholder=("What's next? Try /flow · Ctrl+C to clear"),
+                                placeholder=("What's next? Try /flow · Esc to interrupt"),
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
@@ -242,7 +242,6 @@ class ChatPanel(Vertical):
 
         self.query_one("#slash-complete", Vertical).display = False
         self.query_one("#task-mention-complete", Vertical).display = False
-        self.query_one("#chat-plan-display", PlanDisplay).display = False
         self.query_one("#chat-inline-surface", Vertical).display = False
         self.query_one("#chat-messages", Static).display = False
 
@@ -328,6 +327,12 @@ class ChatPanel(Vertical):
             badge = self.query_one("#chat-overlay-session-badge", Static)
             for css_kind in ("orchestrator", "auto", "review", "pair"):
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
+
+    def set_overlay_shortcuts(self, *, split: str, fullscreen: str, close: str = "Esc") -> None:
+        self._overlay_split_key = split.strip() or self._overlay_split_key
+        self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
+        self._overlay_close_key = close.strip() or self._overlay_close_key
+        self._refresh_status()
 
     def set_first_boot(self, enabled: bool = True) -> None:
         self.set_class(enabled, "first-boot")
@@ -422,12 +427,6 @@ class ChatPanel(Vertical):
                 self._schedule_deferred_update()
             return
 
-    def set_plan_entries(self, entries: list[str | dict[str, str]]) -> None:
-        state = self._current_state()
-        state.plan_entries = list(entries)
-        if self.is_mounted:
-            self._render_plan_display()
-
     def request_permission(self, text: str, *, timeout_seconds: int = 30) -> None:
         state = self._current_state()
         state.decision_surface = (
@@ -437,16 +436,9 @@ class ChatPanel(Vertical):
         if self.is_mounted:
             self._render_decision_surface()
 
-    def show_plan_approval(self, tasks: list[Any]) -> None:
-        state = self._current_state()
-        state.decision_surface = ("plan_approval", {"tasks": tasks})
-        if self.is_mounted:
-            self._render_decision_surface()
-
     def clear_messages(self) -> None:
         state = self._current_state()
         state.entries.clear()
-        state.plan_entries.clear()
         state.decision_surface = None
         self._runtime_status = "ready"
         self._cancel_deferred_timer()
@@ -494,32 +486,26 @@ class ChatPanel(Vertical):
                 status_bar.turn_count += 1
 
     def handle_interrupt(self) -> bool:
-        """Handle Ctrl+C: interrupt active agent or clear input text.
+        """Handle Ctrl+C: clear input text only.
 
         Called by the App-level ``action_help_quit`` override so that the
         Textual system binding for Ctrl+C is redirected here instead of
         showing a quit-hint toast.
 
-        Returns True if the interrupt was handled.
+        Returns True if the clear was handled.
         """
-        # Agent active → interrupt (highest priority)
-        if self._runtime_status in {"thinking", "initializing", "waiting"}:
-            self.post_message(ChatPanel.InterruptRequested())
-            return True
-        # Agent idle → clear input text if any
         try:
             input_widget = self._input_widget()
             if input_widget.value:
                 self.action_clear_input()
                 return True
-        except Exception:
+        except NoMatches:
             pass
         return False
 
     def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
         state = self._current_state()
         state.entries.clear()
-        state.plan_entries.clear()
         state.decision_surface = None
         self._cancel_deferred_timer()
         for role, content in history:
@@ -591,24 +577,6 @@ class ChatPanel(Vertical):
         self.add_system_message(f"Permission {event.decision}")
         self._render_decision_surface()
 
-    @on(PlanApprovalWidget.Approved)
-    def _on_plan_approved(self, _event: PlanApprovalWidget.Approved) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan approved")
-        self._render_decision_surface()
-
-    @on(PlanApprovalWidget.EditRequested)
-    def _on_plan_edit_requested(self, _event: PlanApprovalWidget.EditRequested) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan sent back for editing")
-        self._render_decision_surface()
-
-    @on(PlanApprovalWidget.Dismissed)
-    def _on_plan_dismissed(self, _event: PlanApprovalWidget.Dismissed) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan dismissed")
-        self._render_decision_surface()
-
     def on_key(self, event: Key) -> None:
         """Intercept arrow keys for slash/mention completion overlay navigation."""
         overlay_visible = bool(self._slash_matches or self._mention_matches)
@@ -669,11 +637,7 @@ class ChatPanel(Vertical):
         if event.key == "ctrl+c":
             event.prevent_default()
             event.stop()
-            # Agent active → interrupt first (regardless of input text)
-            if self._runtime_status in {"thinking", "initializing", "waiting"}:
-                self.post_message(ChatPanel.InterruptRequested())
-                return
-            # Agent idle → clear input text if any
+            # Ctrl+C always clears input — Esc interrupts the agent
             if self._input_widget().value:
                 self.action_clear_input()
             return
@@ -746,6 +710,10 @@ class ChatPanel(Vertical):
     def action_dismiss(self) -> None:
         if self._mention_matches or self._slash_matches:
             self._hide_overlays()
+            return
+        # Esc interrupts the active agent instead of closing the panel
+        if self._runtime_status in {"thinking", "initializing", "waiting"}:
+            self.post_message(ChatPanel.InterruptRequested())
             return
         self._request_close()
 
@@ -990,7 +958,6 @@ class ChatPanel(Vertical):
             stream.clear()
             for kind, payload in self._current_state().entries:
                 self._render_entry(stream, kind, payload)
-        self._render_plan_display()
         self._render_decision_surface()
         self._update_hidden_buffer()
         self._update_content_state()
@@ -1021,16 +988,6 @@ class ChatPanel(Vertical):
                 kind=payload.get("kind"),
             )
 
-    def _render_plan_display(self) -> None:
-        plan_display = self.query_one("#chat-plan-display", PlanDisplay)
-        entries = self._current_state().plan_entries
-        if not entries:
-            plan_display.clear()
-            plan_display.display = False
-            return
-        plan_display.set_entries(entries)
-        plan_display.display = True
-
     def _render_decision_surface(self) -> None:
         container = self.query_one("#chat-inline-surface", Vertical)
         for child in list(container.children):
@@ -1048,10 +1005,6 @@ class ChatPanel(Vertical):
                     timeout_seconds=int(payload.get("timeout_seconds") or 30),
                 )
             )
-        elif kind == "plan_approval":
-            tasks = payload.get("tasks")
-            if isinstance(tasks, list):
-                container.mount(PlanApprovalWidget(tasks))
         container.display = True
 
     def _rendered_messages(self) -> list[str]:
@@ -1084,7 +1037,7 @@ class ChatPanel(Vertical):
 
     def _update_content_state(self) -> None:
         state = self._current_state()
-        has_content = bool(state.entries or state.plan_entries or state.decision_surface)
+        has_content = bool(state.entries or state.decision_surface)
         self.set_class(has_content, "has-content")
 
     def _cancel_deferred_timer(self) -> None:
@@ -1273,17 +1226,22 @@ class ChatPanel(Vertical):
 
     def _refresh_status(self) -> None:
         input_disabled = self._input_widget().disabled
+        split_key = self._overlay_split_key
+        fullscreen_key = self._overlay_fullscreen_key
+        close_key = self._overlay_close_key
         if input_disabled:
             right = "Read-only timeline"
         elif bool(self._slash_matches or self._mention_matches):
             right = (
                 "Enter send · Tab complete · Ctrl+J timeline · "
-                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
+                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
+                f"Ctrl+C clear · Esc interrupt · {close_key} close"
             )
         else:
             right = (
                 "Enter send · Up/Down history · Ctrl+J timeline · "
-                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
+                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
+                f"Ctrl+C clear · Esc interrupt · {close_key} close"
             )
         status_bar = self._status_bar()
         if status_bar is None:

@@ -6,7 +6,6 @@ from kagan.tui.widgets.diff import DiffStats, DiffView
 from kagan.tui.widgets.hint_bar import KanbanHintBar, KeybindingHint, action_hints_from_bindings
 from kagan.tui.widgets.peek import PeekOverlay
 from kagan.tui.widgets.permission import PermissionPrompt
-from kagan.tui.widgets.plan import PlanDisplay
 from kagan.tui.widgets.search_bar import SearchBar
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, ToolCallView
@@ -28,7 +27,6 @@ __all__ = [
     "OutputChunk",
     "PeekOverlay",
     "PermissionPrompt",
-    "PlanDisplay",
     "SearchBar",
     "SimpleFooter",
     "StatusBar",

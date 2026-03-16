@@ -2,8 +2,6 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlmodel import Session as DBSession
-from sqlmodel import desc, select
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -11,6 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core.enums import SessionEventType, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
@@ -339,7 +338,7 @@ class SessionDashboardScreen(Screen[None]):
         self.run_worker(self.action_cancel_run(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
-        """Open session picker."""
+        """Open Session Switcher."""
         panel = self._chat_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -534,6 +533,7 @@ class SessionDashboardScreen(Screen[None]):
 
     async def _send_orchestrator_message(self, text: str) -> None:
         panel = self._chat_panel()
+        should_title = self.kagan_app.orchestrator_sessions.should_generate_title()
         try:
             self._chat_orchestrator_history = await send_orchestrator_message(
                 core=self.kagan_app.core,
@@ -546,6 +546,20 @@ class SessionDashboardScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
+            # Auto-generate a session title after the first turn
+            if should_title and self._chat_orchestrator_history:
+                assistant_reply = (
+                    self._chat_orchestrator_history[-1][1]
+                    if self._chat_orchestrator_history[-1][0] == "assistant"
+                    else ""
+                )
+                backend = panel.preferred_agent_backend() or resolve_default_agent_backend(
+                    await self.kagan_app.core.settings.get()
+                )
+                asyncio.create_task(
+                    self._update_orchestrator_session_title(panel, text, assistant_reply, backend),
+                    name="dashboard-chat-title-gen",
+                )
         except asyncio.CancelledError:
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
@@ -554,6 +568,29 @@ class SessionDashboardScreen(Screen[None]):
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {exc}")
+
+    async def _update_orchestrator_session_title(
+        self,
+        panel: ChatPanel,
+        user_message: str,
+        assistant_reply: str,
+        agent_backend: str,
+    ) -> None:
+        """Generate a session title and update the Session Switcher."""
+        try:
+            title = await self.kagan_app.orchestrator_sessions.generate_title(
+                user_message=user_message,
+                assistant_reply=assistant_reply,
+                agent_backend=agent_backend,
+            )
+            if title and self.is_mounted:
+                active_key = self.kagan_app.orchestrator_sessions.active_key()
+                panel.set_sessions(
+                    self.kagan_app.orchestrator_sessions.options(),
+                    active_key,
+                )
+        except Exception:
+            pass  # Title generation is best-effort
 
     async def _send_task_message(self, text: str) -> None:
         panel = self._chat_panel()
@@ -745,28 +782,10 @@ class SessionDashboardScreen(Screen[None]):
         self.query_one(DashboardStatusBar).update_persona(summary)
 
     async def _latest_run(self) -> Session | None:
-        def op() -> Session | None:
-            with DBSession(self.kagan_app.core._engine) as db:
-                stmt = (
-                    select(Session)
-                    .where(Session.task_id == self._task_id)
-                    .order_by(desc(cast("Any", Session.started_at)))
-                )
-                return db.exec(stmt).first()
-
-        return await asyncio.to_thread(op)
+        return await self.kagan_app.core.tasks.sessions.get_latest_for_task(self._task_id)
 
     async def _all_runs(self) -> list[Session]:
-        def op() -> list[Session]:
-            with DBSession(self.kagan_app.core._engine) as db:
-                stmt = (
-                    select(Session)
-                    .where(Session.task_id == self._task_id)
-                    .order_by(cast("Any", Session.started_at))
-                )
-                return list(db.exec(stmt).all())
-
-        return await asyncio.to_thread(op)
+        return await self.kagan_app.core.tasks.sessions.list_for_task(self._task_id)
 
     async def _load_commits(self, worktree_path: str, base_branch: str) -> list[tuple[str, str]]:
         proc = await asyncio.create_subprocess_exec(

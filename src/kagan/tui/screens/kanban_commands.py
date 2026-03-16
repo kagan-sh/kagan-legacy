@@ -41,7 +41,7 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
         "task.set-branch", "Set selected task base branch", "set_branch", requires_task=True
     ),
     KanbanCommandSpec("view.search", "Toggle board search", "search"),
-    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant view", "toggle_chat"),
+    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant split", "cycle_chat_overlay"),
     KanbanCommandSpec(
         "view.assistant-fullscreen",
         "Toggle fullscreen AI Assistant",

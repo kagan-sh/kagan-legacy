@@ -453,22 +453,6 @@ ToolCall:focus ToolCallHeader {
     background: $border;
     color: $text-disabled;
 }
-/* Enhanced plan display */
-
-.plan-display {
-    width: 100%;
-    height: auto;
-    margin: 1 0;
-    padding: 1;
-    border: round $border;
-    background: $surface;
-}
-
-.plan-display .plan-title {
-    color: $text-muted;
-    text-style: bold;
-    margin-bottom: 1;
-}
 /* === Permission Prompt Widget — PERMISSION PROMPT WIDGET === */
 .permission-prompt {
     background: $surface;
@@ -571,93 +555,6 @@ ToolCall:focus ToolCallHeader {
 .task-mention-complete #mention-options > .option-list--option-disabled {
     color: $text-disabled;
     text-opacity: 100%;
-}
-/* === Plan approval inline widget - similar pattern to permission-prompt — PLAN APPROVAL WIDGET (Inline Plan Review) === */
-.plan-approval {
-    background: $panel;
-    border: round $primary;
-    padding: 1 2;
-    margin: 1 0;
-    width: 100%;
-    height: auto;
-}
-
-.plan-approval:focus {
-    border: round $primary-lighten-1;
-    background: $surface;
-}
-
-.plan-approval .plan-header {
-    text-style: bold;
-    color: $primary;
-    padding-bottom: 0;
-}
-
-.plan-approval .plan-hint {
-    color: $text-muted;
-    text-style: italic;
-    padding-bottom: 1;
-}
-
-.plan-approval #task-list {
-    width: 100%;
-    height: auto;
-    max-height: 15;
-    padding: 0;
-    margin-bottom: 1;
-}
-
-.plan-approval .task-row {
-    width: 100%;
-    height: auto;
-    padding: 0 1;
-    margin-bottom: 0;
-    border-left: solid $border;
-}
-
-.plan-approval .task-row:hover {
-    background: $surface;
-}
-
-.plan-approval .task-row.selected {
-    background: $primary 20%;
-    border-left: thick $primary;
-    color: $text;
-}
-/* Priority accent colors for task rows */
-
-.plan-approval .task-row.priority-critical {
-    border-left: solid $error;
-    color: $error;
-}
-
-.plan-approval .task-row.priority-high {
-    border-left: solid $warning;
-}
-
-.plan-approval .task-row.priority-medium {
-    border-left: solid #b8a965;
-}
-
-.plan-approval .task-row.priority-low {
-    border-left: solid $success;
-}
-
-.plan-approval .task-title-text {
-    color: $text;
-}
-
-.plan-approval .task-priority-badge {
-    color: $text-muted;
-    padding-left: 1;
-}
-
-
-.plan-approval .approval-hint {
-    width: 100%;
-    text-align: center;
-    color: $text-muted;
-    padding-top: 1;
 }
 /* === CHAT OVERLAY (bottom dock, expand from bottom) === */
 
@@ -1138,7 +1035,6 @@ ChatPanel.has-content #chat-overlay-output {
 }
 /* Streaming conversation clarity */
 
-.plan-entry,
 .tool-call {
     border: round $border;
     padding: 0 1;
@@ -1147,13 +1043,11 @@ ChatPanel.has-content #chat-overlay-output {
     background-tint: 3%;
 }
 
-.plan-entry:focus,
 .tool-call:focus {
     border: round $primary;
     background-tint: 10%;
 }
 
-.plan-entry:hover,
 .tool-call:hover {
     tint: $primary 8%;
 }
@@ -1164,26 +1058,22 @@ ToolCallHeader {
 /* Decision surfaces */
 
 .permission-prompt,
-.plan-approval,
 WorkspaceReposWidget {
     background: $surface;
     border: round $border;
 }
 
 .permission-prompt:focus,
-.plan-approval:focus,
 WorkspaceReposWidget:focus {
     border: round $primary;
     background: $panel;
 }
 
-.plan-approval .plan-header,
 WorkspaceReposWidget .section-header {
     color: $text;
     text-style: bold;
 }
 
-.plan-approval .plan-hint,
 WorkspaceReposWidget .workspace-repos-hint {
     color: $text-muted;
 }
@@ -1261,7 +1151,6 @@ StreamingOutput {
     background: $panel;
 }
 
-.plan-entry,
 .tool-call {
     border: round $border;
     background: $surface;
@@ -1373,9 +1262,7 @@ StreamingOutput {
     background: $panel;
 }
 
-.plan-entry,
 .tool-call,
-.chat-plan-entry,
 .chat-tool-call {
     border: round $border;
     background: $surface;
@@ -1384,17 +1271,13 @@ StreamingOutput {
     background-tint: 3%;
 }
 
-.plan-entry:focus,
 .tool-call:focus,
-.chat-plan-entry:focus,
 .chat-tool-call:focus {
     border: round $primary;
     background-tint: 10%;
 }
 
-.plan-entry:hover,
 .tool-call:hover,
-.chat-plan-entry:hover,
 .chat-tool-call:hover {
     tint: $primary 8%;
 }
@@ -1412,30 +1295,15 @@ ToolCallHeader,
 }
 
 .permission-prompt,
-.plan-approval,
-.chat-permission-prompt,
-.chat-plan-approval {
+.chat-permission-prompt {
     background: $surface;
     border: round $border;
 }
 
 .permission-prompt:focus,
-.plan-approval:focus,
-.chat-permission-prompt:focus,
-.chat-plan-approval:focus {
+.chat-permission-prompt:focus {
     border: round $primary;
     background: $panel;
-}
-
-.plan-approval .plan-header,
-.chat-plan-approval .plan-header {
-    color: $text;
-    text-style: bold;
-}
-
-.plan-approval .plan-hint,
-.chat-plan-approval .plan-hint {
-    color: $text-muted;
 }
 
 #stream-current-action,

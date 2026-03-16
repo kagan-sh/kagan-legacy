@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.events import Click, MouseScrollDown, MouseScrollUp, MouseUp, Resize
+from textual.message import Message
 from textual.reactive import var
 from textual.widget import Widget
 from textual.widgets import Markdown, Static
@@ -330,6 +331,9 @@ class _Line:
 class StreamingOutput(Vertical):
     BINDINGS = [*STREAMING_TIMELINE_BINDINGS]
 
+    class LoadMore(Message):
+        """Posted when user clicks the load-earlier bar."""
+
     live_follow: var[bool] = var(True)
     unread_count: var[int] = var(0)
     _SCROLL_END_TOLERANCE: float = 1.0
@@ -347,6 +351,7 @@ class StreamingOutput(Vertical):
         self._last_chunk: OutputChunk | None = None
         self._last_chunk_kind: AgentChunkKind | None = None
         self._last_chunk_line_key: str | None = None
+        self._scroll_scheduled = False
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -355,14 +360,49 @@ class StreamingOutput(Vertical):
             classes="stream-current-action chat-stream-current-action confidence-certain",
         )
         with ScrollableContainer(id="streaming-body"):
-            yield Vertical(id="streaming-body-content")
+            with Vertical(id="streaming-body-content"):
+                yield Static(
+                    "Load earlier events",
+                    id="load-more-bar",
+                    classes="load-more-bar",
+                )
 
     def on_mount(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one("#load-more-bar").display = False
         self.call_after_refresh(self._scroll_latest)
 
     def on_resize(self, _: Resize) -> None:
         self._resync_expanded_tool_bounds()
         self.call_after_refresh(self._resync_expanded_tool_bounds)
+
+    @on(Click, "#load-more-bar")
+    def _on_load_more_click(self) -> None:
+        self.post_message(self.LoadMore())
+
+    def show_load_more_bar(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one("#load-more-bar").display = True
+
+    def hide_load_more_bar(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one("#load-more-bar").display = False
+
+    def prepend_widgets(self, widgets: list[Widget]) -> None:
+        """Mount historical widgets at the top, after the load-more bar."""
+        if not widgets:
+            return
+        content = self.query_one("#streaming-body-content", Vertical)
+        # Find the first non-bar child to insert before
+        anchor: Widget | None = None
+        for child in content.children:
+            if child.id != "load-more-bar":
+                anchor = child
+                break
+        if anchor is not None:
+            content.mount(*widgets, before=anchor)
+        else:
+            content.mount(*widgets)
 
     def append_text(self, text: str) -> None:
         if not text:
@@ -385,6 +425,7 @@ class StreamingOutput(Vertical):
                 self._last_chunk._accumulated_text = f"{self._last_chunk._accumulated_text}{text}"
             if self.is_mounted:
                 self.call_later(self._last_chunk.write_fragment, text)
+                self._schedule_follow_scroll()
             if self._last_chunk_line_key is not None:
                 self._push_line(
                     self._last_chunk.rendered_text(),
@@ -479,12 +520,14 @@ class StreamingOutput(Vertical):
         self._line_key_by_widget_id.clear()
         content = self.query_one("#streaming-body-content", Vertical)
         for child in list(content.children):
-            child.remove()
+            if child.id != "load-more-bar":
+                child.remove()
         self._tool_calls.clear()
         self._counter = 0
         self._reset_chunk_tracking()
         self.live_follow = True
         self.unread_count = 0
+        self.hide_load_more_bar()
         self.set_current_action("Waiting for prompt", confidence="certain")
         self.call_after_refresh(self._scroll_latest)
 
@@ -553,13 +596,12 @@ class StreamingOutput(Vertical):
             if existing_order is not None:
                 line = self._lines.get(existing_order)
                 if line is not None:
-                    line.content = f"{key}::{content}"
+                    line.content = content
                     return
                 self._line_order_by_key.pop(key, None)
 
         self._counter += 1
-        line_content = content if key is None else f"{key}::{content}"
-        self._lines[self._counter] = _Line(order=self._counter, content=line_content, key=key)
+        self._lines[self._counter] = _Line(order=self._counter, content=content, key=key)
         if key is not None:
             self._line_order_by_key[key] = self._counter
 
@@ -581,7 +623,9 @@ class StreamingOutput(Vertical):
 
     def _focusable_entries(self) -> list[Widget]:
         content = self.query_one("#streaming-body-content", Vertical)
-        return [child for child in content.children if child.can_focus]
+        return [
+            child for child in content.children if child.can_focus and child.id != "load-more-bar"
+        ]
 
     def _focus_entry(self, entry: Widget) -> None:
         entry.focus()
@@ -593,12 +637,12 @@ class StreamingOutput(Vertical):
             content = self.query_one("#streaming-body-content", Vertical)
         except NoMatches:
             return
-        child_count = len(content.children)
-        if child_count <= self._PRUNE_HIGH_MARK:
+        prunable = [c for c in content.children if c.id != "load-more-bar"]
+        if len(prunable) <= self._PRUNE_HIGH_MARK:
             self._trim_line_history()
             return
-        excess = child_count - self._PRUNE_LOW_MARK
-        to_remove = list(content.children[:excess])
+        excess = len(prunable) - self._PRUNE_LOW_MARK
+        to_remove = prunable[:excess]
         for child in to_remove:
             line_key = self._line_key_by_widget_id.pop(id(child), None)
             if line_key is not None:
@@ -641,6 +685,25 @@ class StreamingOutput(Vertical):
         body.scroll_end(animate=False)
         self._sync_live_follow_from_position()
         self._resync_expanded_tool_bounds()
+
+    def _schedule_follow_scroll(self) -> None:
+        """Coalesce auto-scroll requests during merge streaming.
+
+        Multiple fragments may arrive within the same Textual frame.
+        Only one `call_after_refresh(_scroll_latest)` per frame is needed;
+        a simple boolean flag avoids redundant scheduling.
+        """
+        if not self.live_follow:
+            return
+        if self._scroll_scheduled:
+            return
+        self._scroll_scheduled = True
+        self.call_after_refresh(self._do_follow_scroll)
+
+    def _do_follow_scroll(self) -> None:
+        """Perform the coalesced scroll and reset the scheduling flag."""
+        self._scroll_scheduled = False
+        self._scroll_latest()
 
     def _resync_expanded_tool_bounds(self) -> None:
         for tool_call in self._tool_calls.values():

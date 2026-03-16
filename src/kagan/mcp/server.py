@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -63,20 +62,7 @@ def get_server_context(mcp: FastMCP) -> ServerContext | None:
 
 
 async def _resolve_binding(client: KaganCore, session_id: str) -> tuple[str | None, str | None]:
-    from sqlmodel import Session as DBSession
-
-    from kagan.core.models import Session as CoreRun
-    from kagan.core.models import Task
-
-    def _read() -> tuple[str | None, str | None]:
-        with DBSession(client._engine) as session:
-            bound = session.get(CoreRun, session_id)
-            if bound is None:
-                return None, None
-            task = session.get(Task, bound.task_id)
-            return bound.task_id, (task.project_id if task is not None else None)
-
-    return await asyncio.to_thread(_read)
+    return await client.tasks.sessions.resolve_binding(session_id)
 
 
 async def _ensure_active_project(client: KaganCore) -> str:

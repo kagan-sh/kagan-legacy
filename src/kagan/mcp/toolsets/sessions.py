@@ -1,6 +1,5 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Any
@@ -15,21 +14,7 @@ from kagan.mcp.toolsets import mcp_error_boundary
 
 async def _get_latest_session(client: Any, task_id: str) -> Any:
     """Return the most recent session for a task, or None."""
-    from sqlmodel import Session as DBSession
-    from sqlmodel import desc, select
-
-    from kagan.core.models import Session as KaganRun
-
-    def _query():
-        with DBSession(client.engine) as session:
-            stmt = (
-                select(KaganRun)
-                .where(KaganRun.task_id == task_id)
-                .order_by(desc(KaganRun.started_at))
-            )
-            return session.exec(stmt).first()
-
-    return await asyncio.to_thread(_query)
+    return await client.tasks.sessions.get_latest(task_id)
 
 
 class SessionAction(StrEnum):

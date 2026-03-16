@@ -20,9 +20,6 @@ __all__ = [
     "OfflineBannerDismissed",
     "OfflineReconnectRequested",
     "OnboardingCompleted",
-    "PlanApprovalDismissed",
-    "PlanApprovalEditRequested",
-    "PlanApprovalRequested",
     "ProjectOpened",
     "RepoPickerRequested",
     "ReviewRequested",
@@ -152,21 +149,6 @@ class SlashCompletionDismissed(Message):
     """User dismissed the slash command completion overlay."""
 
     ...
-
-
-@dataclass
-class PlanApprovalRequested(Message):
-    tasks: list[object]
-
-
-@dataclass
-class PlanApprovalEditRequested(Message):
-    tasks: list[object]
-
-
-@dataclass
-class PlanApprovalDismissed(Message):
-    """User dismissed the plan approval overlay."""
 
 
 @dataclass

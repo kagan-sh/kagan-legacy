@@ -41,7 +41,7 @@ class TutorialOverlay(Widget):
                 yield self._shortcut_row("Enter", "Inspect selected task")
                 yield self._shortcut_row("Shift+Left / Shift+Right", "Move task between columns")
                 yield self._shortcut_row("n / Shift+N", "Create PAIR / AUTO task")
-                yield self._shortcut_row("Ctrl+P", "Open Command Palette")
+                yield self._shortcut_row("F2 / Ctrl+Shift+P", "Open Quick Actions")
                 yield self._shortcut_row("Ctrl+O / Ctrl+R", "Projects / Repositories")
                 yield self._shortcut_row("? / F1", "Open full help")
             yield Static("Esc to dismiss", classes="tutorial-hint")

@@ -50,7 +50,7 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         assert settings.get("auto_init_git_initial_commit") == "false"
 
 
-async def test_prompts_section_prefills_default_prompt_templates(board: KaganDriver) -> None:
+async def test_instructions_section_shows_additional_instructions_field(board: KaganDriver) -> None:
     from textual.widgets import Input, TextArea
 
     from kagan.tui import KaganApp
@@ -67,19 +67,12 @@ async def test_prompts_section_prefills_default_prompt_templates(board: KaganDri
 
         await pilot.press("/")
         await pilot.pause()
-        app.screen.query_one("#settings-search-input", Input).value = "prompts"
+        app.screen.query_one("#settings-search-input", Input).value = "instructions"
         await pilot.pause()
 
-        orchestrator = app.screen.query_one("#settings-custom-orchestrator-prompt", TextArea).text
-        task_prompt = app.screen.query_one("#settings-custom-task-prompt", TextArea).text
-        review_prompt = app.screen.query_one("#settings-custom-review-prompt", TextArea).text
-        orchestrator_editor = app.screen.query_one("#settings-custom-orchestrator-prompt", TextArea)
-
-        assert "<identity>" in orchestrator
-        assert "MUST DO:" in task_prompt
-        assert "<review-protocol>" in review_prompt
-        assert orchestrator_editor.has_focus
-        assert orchestrator_editor.cursor_location == orchestrator_editor.document.end
+        # The additional instructions textarea should exist and be empty by default
+        instructions = app.screen.query_one("#settings-additional-instructions", TextArea).text
+        assert instructions == ""
 
 
 async def test_show_advanced_toggle_is_clickable_and_updates_navigation_state(

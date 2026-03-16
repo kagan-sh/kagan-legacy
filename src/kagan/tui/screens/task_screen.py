@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import re
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from textual import events
-from textual.app import ComposeResult
+from textual import events, on
 from textual.containers import Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import Screen
@@ -19,6 +20,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import SessionEventType, TaskStatus, WorkMode
 from kagan.core.errors import (
@@ -29,7 +31,6 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Task
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.confirm import ConfirmModal
@@ -53,14 +54,17 @@ from kagan.tui.screens.task_commands import TaskScreenCommandProvider
 from kagan.tui.widgets.chat import ChatPanel
 from kagan.tui.widgets.diff import DiffFileTree
 from kagan.tui.widgets.header import KaganHeader
-from kagan.tui.widgets.streaming import StreamingOutput
+from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, ToolCallView, UserInputWidget
 from kagan.tui.widgets.task_action_bar import TaskActionBar
 from kagan.tui.widgets.task_detail_pane import TaskDetailPane
 from kagan.tui.widgets.task_diff_pane import TaskDiffPane
 
 if TYPE_CHECKING:
+    from textual.app import ComposeResult
     from textual.timer import Timer
+    from textual.widget import Widget
 
+    from kagan.core.models import ReviewVerdict, Task
     from kagan.tui.app import KaganApp
 
 
@@ -95,9 +99,11 @@ class TaskScreen(Screen[None]):
         self._review_file_entries_signature: tuple[tuple[str, int, int], ...] | None = None
         self._stream_source: str | None = None
         self._last_merge_blocker: str | None = None
+        self._oldest_event_ts: str | None = None
+        self._replay_count: int = 0
 
     @property
-    def kagan_app(self) -> "KaganApp":
+    def kagan_app(self) -> KaganApp:
         return cast("KaganApp", self.app)
 
     def compose(self) -> ComposeResult:
@@ -196,7 +202,7 @@ class TaskScreen(Screen[None]):
 
     def action_back(self) -> None:
         panel = self._overlay_panel()
-        # If chat overlay is fullscreen, exit fullscreen first (like Ctrl+T)
+        # If chat overlay is fullscreen, exit fullscreen first (same as split-cycle shortcut)
         if panel.has_class("visible") and panel.has_class("fullscreen"):
             panel.set_fullscreen(False)
             self._overlay_layout_mode = "vertical"
@@ -256,13 +262,19 @@ class TaskScreen(Screen[None]):
     async def action_primary_action(self) -> None:
         if self._overlay_panel().has_class("visible") and self._focused_widget_accepts_text():
             return
+
+        task = self._task_model
+
+        def _approve_or_merge() -> None:
+            if task is not None and task.review_approved:
+                self.action_merge()
+            else:
+                self.action_approve()
+
         active = self._active_tab()
         if active == "detail":
-            if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
-                if self._task_model.review_approved:
-                    self.action_merge()
-                else:
-                    self.action_approve()
+            if task is not None and task.status is TaskStatus.REVIEW:
+                _approve_or_merge()
                 return
             self._switch_tab("diff")
             if self._running:
@@ -276,17 +288,11 @@ class TaskScreen(Screen[None]):
             return
 
         if active == "diff":
-            if self._task_model is not None and self._task_model.review_approved:
-                self.action_merge()
-            else:
-                self.action_approve()
+            _approve_or_merge()
             return
 
-        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
-            if self._task_model.review_approved:
-                self.action_merge()
-            else:
-                self.action_approve()
+        if task is not None and task.status is TaskStatus.REVIEW:
+            _approve_or_merge()
             return
         if self._running:
             self._set_status("Running")
@@ -410,6 +416,42 @@ class TaskScreen(Screen[None]):
             self._sync_overlay_layout_class()
             return
         await self._open_chat_from_current_mode(fullscreen=True)
+
+    async def action_expand_chat_overlay(self) -> None:
+        panel = self._overlay_panel()
+        if not panel.has_class("visible"):
+            return
+        panel.set_fullscreen(True)
+        panel.query_one("#chat-overlay-input", Input).focus()
+        self._sync_overlay_layout_class()
+
+    async def action_cycle_chat_overlay(self) -> None:
+        panel = self._overlay_panel()
+        if panel.has_class("visible") and panel.has_class("fullscreen"):
+            panel.set_fullscreen(False)
+            self._overlay_layout_mode = "vertical"
+            self._sync_overlay_layout_class()
+            return
+
+        if not panel.has_class("visible"):
+            self._overlay_layout_mode = "vertical"
+            self._configure_overlay_chat(
+                visible=True,
+                fullscreen=False,
+                mode="task",
+                layout_mode="vertical",
+                focus=False,
+            )
+            if self._task_id is not None:
+                self._ensure_stream_worker()
+            self._sync_overlay_layout_class()
+            return
+
+        if self._overlay_layout_mode == "vertical":
+            self._overlay_layout_mode = "horizontal"
+        else:
+            self._overlay_layout_mode = "vertical"
+        self._sync_overlay_layout_class()
 
     async def action_toggle_chat(self) -> None:
         panel = self._overlay_panel()
@@ -580,6 +622,7 @@ class TaskScreen(Screen[None]):
 
     async def _send_orchestrator_message(self, text: str) -> None:
         panel = self._overlay_panel()
+        should_title = self.kagan_app.orchestrator_sessions.should_generate_title()
         try:
             self._chat_orchestrator_history = await send_chat_message(
                 core=self.kagan_app.core,
@@ -592,6 +635,20 @@ class TaskScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
+            # Auto-generate a session title after the first turn
+            if should_title and self._chat_orchestrator_history:
+                assistant_reply = (
+                    self._chat_orchestrator_history[-1][1]
+                    if self._chat_orchestrator_history[-1][0] == "assistant"
+                    else ""
+                )
+                backend = panel.preferred_agent_backend() or resolve_default_agent_backend(
+                    await self.kagan_app.core.settings.get()
+                )
+                asyncio.create_task(
+                    self._update_orchestrator_session_title(panel, text, assistant_reply, backend),
+                    name="task-chat-title-gen",
+                )
         except asyncio.CancelledError:
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
@@ -600,6 +657,30 @@ class TaskScreen(Screen[None]):
             panel.set_runtime_status("error")
             panel.set_stream_action("Orchestrator error", confidence="needs-validation")
             panel.add_system_message(f"Orchestrator error: {exc}")
+
+    async def _update_orchestrator_session_title(
+        self,
+        panel: ChatPanel,
+        user_message: str,
+        assistant_reply: str,
+        agent_backend: str,
+    ) -> None:
+        """Generate a session title and update the Session Switcher."""
+        try:
+            title = await self.kagan_app.orchestrator_sessions.generate_title(
+                user_message=user_message,
+                assistant_reply=assistant_reply,
+                agent_backend=agent_backend,
+            )
+            if title and self.is_mounted:
+                task_sessions = self._task_session_options()
+                active_key = self.kagan_app.orchestrator_sessions.active_key()
+                panel.set_sessions(
+                    [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
+                    active_key,
+                )
+        except Exception:
+            pass  # Title generation is best-effort
 
     async def _send_task_message(self, text: str) -> None:
         panel = self._overlay_panel()
@@ -851,10 +932,15 @@ class TaskScreen(Screen[None]):
         )
 
     async def _task_repo_path(self, project_id: str) -> tuple[str | None, str]:
-        repos = await self.kagan_app.core.projects.repos(project_id)
-        if not repos:
+        from kagan.core.errors import KaganError
+
+        try:
+            repo = await self.kagan_app.core.projects.resolve_repo(
+                project_id,
+                selected_repo_id=self.kagan_app.selected_repo_id,
+            )
+        except KaganError:
             return None, "main"
-        repo = repos[0]
         return repo.path, repo.default_branch
 
     def _ensure_stream_worker(self) -> None:
@@ -874,11 +960,20 @@ class TaskScreen(Screen[None]):
     async def _stream_events(self, task_id: str) -> None:
         output = self._output_stream()
         overlay_chat = self._overlay_panel()
+        self._replay_count = 0
+        self._oldest_event_ts = None
         try:
             async for event in self.kagan_app.core.tasks.events.stream(
                 task_id,
                 replay_limit=TASK_SCREEN_REPLAY_EVENT_LIMIT,
             ):
+                self._replay_count += 1
+                if self._oldest_event_ts is None and event.created_at:
+                    from kagan.wire.models import utc_iso
+
+                    self._oldest_event_ts = utc_iso(event.created_at)
+                if self._replay_count == TASK_SCREEN_REPLAY_EVENT_LIMIT:
+                    output.show_load_more_bar()
                 payload = event.payload or {}
                 match event.event_type:
                     case SessionEventType.OUTPUT_CHUNK:
@@ -904,8 +999,13 @@ class TaskScreen(Screen[None]):
                     case SessionEventType.AGENT_STATUS:
                         self._maybe_apply_chat_event(overlay_chat, event.event_type, payload)
                         output.post_note(self._payload_text(payload) or "Agent status update")
-                    case SessionEventType.PLAN_UPDATE:
-                        output.post_note(self._payload_text(payload) or "Plan updated")
+                    case SessionEventType.CRITERION_VERDICT:
+                        verdict = str(payload.get("verdict", "")).upper()
+                        criterion_index = payload.get("criterion_index")
+                        if isinstance(criterion_index, int):
+                            output.post_note(f"Criterion {criterion_index + 1}: AI {verdict}")
+                        else:
+                            output.post_note(f"Criterion verdict: AI {verdict}")
                     case SessionEventType.TASK_STATUS_CHANGED:
                         output.post_note(self._payload_text(payload) or "Task status changed")
                         self._queue_stream_refresh(runtime=True)
@@ -927,6 +1027,7 @@ class TaskScreen(Screen[None]):
                     SessionEventType.OUTPUT_CHUNK,
                     SessionEventType.TOOL_CALL_START,
                     SessionEventType.TOOL_CALL_UPDATE,
+                    SessionEventType.CRITERION_VERDICT,
                     SessionEventType.AGENT_COMPLETED,
                     SessionEventType.AGENT_FAILED,
                     SessionEventType.TASK_STATUS_CHANGED,
@@ -951,6 +1052,68 @@ class TaskScreen(Screen[None]):
             output.append_chunk(text, kind=cast("Any", kind), merge=True)
             return
         output.append_text(text)
+
+    @on(StreamingOutput.LoadMore)
+    async def _on_load_more(self) -> None:
+        if self._task_id is None or self._oldest_event_ts is None:
+            return
+        output = self._output_stream()
+        output.hide_load_more_bar()
+
+        older_events = await self.kagan_app.core.tasks.events.list_before(
+            self._task_id,
+            before=self._oldest_event_ts,
+            limit=200,
+        )
+        if not older_events:
+            return
+
+        if older_events[0].created_at:
+            from kagan.wire.models import utc_iso
+
+            self._oldest_event_ts = utc_iso(older_events[0].created_at) or self._oldest_event_ts
+
+        widgets: list[Widget] = []
+        for event in older_events:
+            payload = event.payload or {}
+            match event.event_type:
+                case SessionEventType.OUTPUT_CHUNK:
+                    text = stream_chunk_text(payload)
+                    kind = stream_chunk_kind(payload)
+                    if text and kind in {"assistant", "thought", "note", "user"}:
+                        if kind == "user":
+                            widgets.append(UserInputWidget(text))
+                        else:
+                            widgets.append(OutputChunk(text, kind=kind))
+                case SessionEventType.TOOL_CALL_START:
+                    widgets.append(
+                        ToolCallView(
+                            tool_call_title(payload),
+                            status=tool_call_status(payload, default="running"),
+                            args=tool_call_args(payload),
+                            result=tool_call_result(payload),
+                            tool_id=tool_call_id(payload),
+                            kind=tool_call_kind(payload),
+                        )
+                    )
+                case SessionEventType.AGENT_COMPLETED:
+                    widgets.append(OutputChunk("Agent completed", kind="note"))
+                case SessionEventType.AGENT_FAILED:
+                    widgets.append(
+                        OutputChunk(stream_chunk_text(payload) or "Agent failed", kind="note")
+                    )
+                case SessionEventType.TASK_STATUS_CHANGED:
+                    widgets.append(
+                        OutputChunk(
+                            stream_chunk_text(payload) or "Task status changed", kind="note"
+                        )
+                    )
+
+        if widgets:
+            output.prepend_widgets(widgets)
+
+        if len(older_events) >= 200:
+            output.show_load_more_bar()
 
     def _payload_text(self, payload: Any) -> str:
         if payload is None:
@@ -998,12 +1161,16 @@ class TaskScreen(Screen[None]):
         source = self._effective_stream_source()
         source_label = "AI REVIEWER" if source == "reviewer" else "WORKER"
         advisory = " (Advisory)" if source == "reviewer" else ""
+        backend = ""
+        if self._task_model is not None:
+            backend = getattr(self._task_model, "agent_backend", "") or ""
+        backend_suffix = f" · {backend}" if backend else ""
         if self._running:
-            text = f"Stream: {source_label}{advisory} · LIVE"
-            stream_title = f"{source_label} STREAM · LIVE"
+            text = f"Stream: {source_label}{advisory} · LIVE{backend_suffix}"
+            stream_title = f"{source_label} STREAM · LIVE{backend_suffix}"
         else:
-            text = f"Stream: {source_label} · IDLE"
-            stream_title = f"{source_label} STREAM"
+            text = f"Stream: {source_label} · IDLE{backend_suffix}"
+            stream_title = f"{source_label} STREAM{backend_suffix}"
 
         with contextlib.suppress(NoMatches):
             source_widget = self.query_one("#ts-detail-stream-source", Static)
@@ -1022,7 +1189,7 @@ class TaskScreen(Screen[None]):
                 and self._task_model.status is TaskStatus.REVIEW
             )
             stream.border_subtitle = (
-                "Ctrl+P command palette: AI review (advisory)" if show_hint else ""
+                "Ctrl+Shift+P quick actions: AI review (advisory)" if show_hint else ""
             )
 
     def _refresh_header_labels(self) -> None:
@@ -1322,22 +1489,34 @@ class TaskScreen(Screen[None]):
         await self._load_review_context()
 
     async def action_run_review(self) -> None:
-        """Run AI review (advisory — does not approve or merge)."""
+        """Run AI review — verifies each acceptance criterion via structured verdicts."""
         if self._task_id is None or self._task_model is None:
             return
+        criteria = [
+            c.strip() for c in (self._task_model.acceptance_criteria or []) if c and c.strip()
+        ]
+        if not criteria:
+            self.app.notify(
+                "Cannot run AI review — no acceptance criteria defined",
+                severity="warning",
+            )
+            return
+        # Clear previous verdicts before starting new review
+        with contextlib.suppress(KaganError, OSError, RuntimeError):
+            await self.kagan_app.core.reviews.clear_verdicts(self._task_id)
         backend = await self._resolve_backend(self._task_model)
         await self.kagan_app.core.tasks.run(self._task_id, agent_backend=backend)
         self._running = True
         self._set_stream_source("reviewer")
-        self._set_status("AI Reviewing (Advisory)")
-        self.app.notify("AI review started (advisory only)", severity="information")
+        self._set_status("AI Reviewing...")
+        self.app.notify("AI review started", severity="information")
         self._ensure_stream_worker()
 
     def action_open_repo_picker(self) -> None:
         self.run_worker(self._open_repo_picker_flow(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
-        """Open session picker to switch sessions."""
+        """Open Session Switcher to switch sessions."""
         panel = self._overlay_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -1377,11 +1556,83 @@ class TaskScreen(Screen[None]):
             return None
 
     async def _render_task_summary(self, task: Task) -> str:
-        badge = "APPROVED" if task.review_approved else task.status.value.upper()
+        if task.review_approved:
+            badge = "APPROVED"
+        elif task.status is TaskStatus.REVIEW and self._running:
+            badge = "REVIEWING..."
+        else:
+            badge = task.status.value.upper()
         current_status = f"Ready | {badge}"
         with contextlib.suppress(NoMatches):
             self.query_one("#ts-detail-status", Static).update(current_status)
         return current_status
+
+    @staticmethod
+    def _review_verdicts_by_index(task: Task, total_criteria: int) -> dict[int, ReviewVerdict]:
+        verdicts_by_index: dict[int, ReviewVerdict] = {}
+        for raw in task.review_verdicts or []:
+            if not isinstance(raw, dict):
+                continue
+            index = raw.get("criterion_index")
+            verdict = str(raw.get("verdict", "")).upper()
+            reason_raw = raw.get("reason")
+            reason = str(reason_raw).strip() if reason_raw is not None else ""
+            if (
+                isinstance(index, int)
+                and 0 <= index < total_criteria
+                and verdict in {"PASS", "FAIL"}
+            ):
+                verdicts_by_index[index] = {
+                    "criterion_index": index,
+                    "verdict": cast("Literal['PASS', 'FAIL']", verdict),
+                    "reason": reason,
+                }
+        return verdicts_by_index
+
+    @staticmethod
+    def _set_criterion_verdict_widget(
+        verdict_widget: Static,
+        reason_widget: Static,
+        verdict: ReviewVerdict | None,
+        *,
+        review_running: bool,
+    ) -> None:
+        verdict_widget.remove_class(
+            "ts-criteria-complete",
+            "ts-criteria-fail",
+            "ts-criteria-pending",
+        )
+        reason_text = verdict["reason"].strip() if verdict is not None else ""
+        if reason_text:
+            reason_text = "\n".join(f"    {line}" for line in reason_text.splitlines())
+        reason_widget.update(reason_text)
+        if verdict is not None and verdict["verdict"] == "PASS":
+            verdict_widget.update("  ✓ AI: PASS")
+            verdict_widget.add_class("ts-criteria-complete")
+            return
+        if verdict is not None and verdict["verdict"] == "FAIL":
+            verdict_widget.update("  ✗ AI: FAIL")
+            verdict_widget.add_class("ts-criteria-fail")
+            return
+        if review_running:
+            verdict_widget.update("  ⋯ AI: pending")
+            verdict_widget.add_class("ts-criteria-pending")
+            reason_widget.update("")
+            return
+        verdict_widget.update("")
+        reason_widget.update("")
+
+    def _render_ai_verdict_summary(self, task: Task, total_criteria: int) -> tuple[str, str]:
+        verdicts = self._review_verdicts_by_index(task, total_criteria)
+        if verdicts:
+            pass_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "PASS")
+            fail_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "FAIL")
+            if fail_count:
+                return f"AI: {pass_count}/{total_criteria} passed ({fail_count} failed)", "fail"
+            return f"AI: {pass_count}/{total_criteria} passed", "pass"
+        if task.status is TaskStatus.REVIEW and self._running:
+            return "AI Reviewing...", "pending"
+        return "", ""
 
     async def _render_criteria_checkboxes(self, task: Task) -> None:
         criteria_container = self.query_one("#ts-detail-criteria-list", Vertical)
@@ -1389,6 +1640,8 @@ class TaskScreen(Screen[None]):
 
         criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
         signature = tuple(criteria)
+        verdicts_by_index = self._review_verdicts_by_index(task, len(criteria))
+        review_running = task.status is TaskStatus.REVIEW and self._running
 
         if criteria:
             if signature != self._review_criteria_signature:
@@ -1402,7 +1655,47 @@ class TaskScreen(Screen[None]):
                     checkbox.styles.width = "100%"
                     checkbox.styles.height = "auto"
                     await criteria_container.mount(checkbox)
+                    verdict_widget = Static(
+                        id=f"ts-detail-criterion-verdict-{i}",
+                        classes="ts-detail-criterion-verdict",
+                    )
+                    verdict_widget.styles.width = "100%"
+                    verdict_widget.styles.height = "auto"
+                    await criteria_container.mount(verdict_widget)
+
+                    reason_widget = Static(
+                        id=f"ts-detail-criterion-reason-{i}",
+                        classes="ts-detail-criterion-reason",
+                    )
+                    reason_widget.styles.width = "100%"
+                    reason_widget.styles.height = "auto"
+                    await criteria_container.mount(reason_widget)
+
+                    verdict_info = verdicts_by_index.get(i)
+                    self._set_criterion_verdict_widget(
+                        verdict_widget,
+                        reason_widget,
+                        verdict_info,
+                        review_running=review_running,
+                    )
                 self._review_criteria_signature = signature
+
+            for i, _criterion in enumerate(criteria):
+                try:
+                    verdict_widget = self.query_one(f"#ts-detail-criterion-verdict-{i}", Static)
+                    reason_widget = self.query_one(f"#ts-detail-criterion-reason-{i}", Static)
+                except NoMatches:
+                    self._review_criteria_signature = None
+                    await self._render_criteria_checkboxes(task)
+                    return
+
+                verdict_info = verdicts_by_index.get(i)
+                self._set_criterion_verdict_widget(
+                    verdict_widget,
+                    reason_widget,
+                    verdict_info,
+                    review_running=review_running,
+                )
             self._sync_criteria_status_widget(criteria_status)
         else:
             if self._review_criteria_signature != signature:
@@ -1428,7 +1721,12 @@ class TaskScreen(Screen[None]):
 
         if diff_text and task.status is TaskStatus.REVIEW:
             with contextlib.suppress(NoMatches):
-                badge = "APPROVED" if task.review_approved else task.status.value.upper()
+                if task.review_approved:
+                    badge = "APPROVED"
+                elif self._running:
+                    badge = "REVIEWING..."
+                else:
+                    badge = task.status.value.upper()
                 self.query_one("#ts-detail-status", Static).update(f"Ready | {badge}")
 
     async def _load_review_context(self) -> None:
@@ -1446,28 +1744,58 @@ class TaskScreen(Screen[None]):
     def _sync_merge_readiness(self) -> None:
         """Update the merge readiness checklist in the Review tab."""
         task = self._task_model
-        with contextlib.suppress(NoMatches):
+        try:
             widget = self.query_one("#ts-merge-readiness", Static)
-            if task is None or task.status is not TaskStatus.REVIEW:
-                widget.update("")
-                return
+        except NoMatches:
+            return
 
-            lines: list[str] = []
-            if task.review_approved:
-                lines.append("  ✓ Approved")
+        if task is None:
+            widget.update("")
+            return
+
+        if task.status is TaskStatus.DONE and task.review_verdicts:
+            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+            verdicts = self._review_verdicts_by_index(task, len(criteria))
+            pass_count = sum(1 for v in verdicts.values() if v["verdict"] == "PASS")
+            total = len(criteria)
+            widget.update(f"Review Summary (merged)\n  ✓ {pass_count}/{total} criteria passed")
+            return
+
+        if task.status is not TaskStatus.REVIEW:
+            widget.update("")
+            return
+
+        lines: list[str] = []
+        if task.review_approved:
+            lines.append("  ✓ Approved")
+        else:
+            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+            if criteria:
+                lines.append("  ✗ Not approved  →  a to approve")
             else:
-                criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-                if criteria:
-                    lines.append("  ✗ Not approved  →  a to approve")
-                else:
-                    lines.append("  ✗ Not approved (no criteria)  →  a for options")
+                lines.append("  ✗ Not approved (no criteria)  →  a for options")
 
-            if self._last_merge_blocker:
-                lines.append(f"  ✗ {self._last_merge_blocker}")
+        if self._last_merge_blocker:
+            lines.append(f"  ✗ {self._last_merge_blocker}")
+        else:
+            lines.append("  ✓ No merge blockers")
+
+        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+        verdicts = self._review_verdicts_by_index(task, len(criteria))
+        if verdicts:
+            pass_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "PASS")
+            fail_count = sum(1 for verdict in verdicts.values() if verdict["verdict"] == "FAIL")
+            total = len(criteria)
+            if fail_count == 0 and pass_count == total:
+                lines.append(f"  ✓ AI review: all {total} criteria passed")
+            elif fail_count:
+                lines.append(f"  ✗ AI review: {fail_count}/{total} criteria failed")
             else:
-                lines.append("  ✓ No merge blockers")
+                lines.append(f"  ⋯ AI review: {pass_count}/{total} criteria processed")
+        else:
+            lines.append("  ⋯ AI review: not run yet")
 
-            widget.update("Merge Readiness\n" + "\n".join(lines))
+        widget.update("Merge Readiness\n" + "\n".join(lines))
 
     @staticmethod
     def _parse_file_diff_summary(diff_text: str) -> list[tuple[str, int, int]]:
@@ -1510,12 +1838,26 @@ class TaskScreen(Screen[None]):
             status.remove_class("ts-criteria-complete")
             return
         checked = sum(1 for checkbox in checkboxes if checkbox.value)
+        task = self._task_model
+        ai_summary = ""
+        ai_state = ""
+        if task is not None:
+            ai_summary, ai_state = self._render_ai_verdict_summary(task, total)
         if checked == total:
-            status.update(f"All {total} criteria verified")
+            human_summary = f"All {total} criteria verified"
             status.add_class("ts-criteria-complete")
         else:
-            status.update(f"{checked}/{total} verified")
+            human_summary = f"{checked}/{total} verified"
             status.remove_class("ts-criteria-complete")
+
+        if ai_summary:
+            status.update(f"{human_summary}\n{ai_summary}")
+        else:
+            status.update(human_summary)
+
+        status.remove_class("ts-ai-pass", "ts-ai-fail")
+        status.set_class(ai_state == "pass", "ts-ai-pass")
+        status.set_class(ai_state == "fail", "ts-ai-fail")
 
     def _diff_totals(self, diff_text: str) -> tuple[int, int, int]:
         files = len(
@@ -1550,6 +1892,36 @@ class TaskScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             await self.action_open_session_picker()
+            return
+
+        if event.key == "ctrl+f" and panel.has_class("visible"):
+            event.prevent_default()
+            event.stop()
+            await self.action_expand_chat_overlay()
+            return
+
+        if event.key == "space":
+            chat_input: Input | None = None
+            with contextlib.suppress(NoMatches):
+                chat_input = panel.query_one("#chat-overlay-input", Input)
+            focused = self.focused
+            if (
+                isinstance(focused, Input | TextArea)
+                and focused is chat_input
+                and bool(chat_input is not None and chat_input.value)
+            ):
+                return
+            event.prevent_default()
+            event.stop()
+            await self.action_cycle_chat_overlay()
+            return
+
+        if event.key == "q":
+            if panel.has_class("visible") or self._focused_widget_accepts_text():
+                return
+            event.prevent_default()
+            event.stop()
+            self.action_back()
             return
 
         if event.key == "escape":
@@ -1598,9 +1970,12 @@ class TaskScreen(Screen[None]):
     def _sync_action_bar(self) -> None:
         action_bar = self.query_one(TaskActionBar)
         task = self._task_model
+        panel = self._overlay_panel()
         action_bar.active_tab = self._active_tab()
         action_bar.task_data = task
         action_bar.task_running = self._running
+        action_bar.chat_visible = panel.has_class("visible")
+        action_bar.chat_fullscreen = panel.has_class("visible") and panel.has_class("fullscreen")
         criteria = (
             [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
             if task is not None
@@ -1615,7 +1990,7 @@ class TaskScreen(Screen[None]):
         fullscreen = visible and panel.has_class("fullscreen")
         if visible:
             if fullscreen:
-                panel.styles.layer = "overlay"
+                panel.styles.layer = "default"
                 panel.styles.dock = "bottom"
                 panel.styles.width = "100%"
                 panel.styles.height = "1fr"
@@ -1650,6 +2025,7 @@ class TaskScreen(Screen[None]):
             visible and not fullscreen and self._overlay_layout_mode == "horizontal",
             "ts-chat-horizontal",
         )
+        self._sync_action_bar()
 
     def _conflict_message(
         self, conflict_files: list[str], *, prefix: str = "Rebase has conflicts"
@@ -1692,6 +2068,7 @@ class TaskScreen(Screen[None]):
         panel = self._overlay_panel()
         panel.set_visible(visible)
         panel.set_fullscreen(fullscreen)
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
 
         if layout_mode is not None:
             self._overlay_layout_mode = layout_mode

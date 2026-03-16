@@ -1,43 +1,31 @@
 """kagan.mcp.prompts — MCP prompt registrations."""
 
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts.base import UserMessage
 
-from kagan.core import PROMPT_REVIEW_KEY, prepend_custom_prompt
+from kagan.core import resolve_review_prompt
 from kagan.mcp.server import ServerOptions, get_server_context
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register all kagan MCP prompts — always available regardless of access tier."""
 
-    async def _inject_review_customizations(base_prompt: str) -> str:
+    async def _resolve_project_path(settings: dict[str, str]) -> Path | None:
         app = get_server_context(mcp)
         if app is None:
-            return base_prompt
-        settings = await app.client.settings.get()
-        custom = settings.get(PROMPT_REVIEW_KEY, "").strip()
-        return prepend_custom_prompt(base_prompt, custom if custom else None)
+            return None
+        pid = app.bound_project_id or app.client.active_project_id
+        return await app.client.projects.resolve_repo_path(project_id=pid, settings=settings)
 
     @mcp.prompt()
     async def review_task(task_id: str) -> list[UserMessage]:
         """Return a structured code-review prompt for the given task."""
-        base_prompt = (
-            f"Review task {task_id}.\n\n"
-            "<review-protocol>\n"
-            "1. Retrieve the task with task_get to read its acceptance criteria.\n"
-            "2. If the task has NO acceptance criteria, STOP. Respond with:\n"
-            "   'This task has no acceptance criteria — manual human review required.'\n"
-            "   Do NOT approve or reject.\n"
-            "3. If acceptance criteria exist, verify EACH criterion:\n"
-            "   - Check the diff/code changes for evidence that the criterion is met.\n"
-            "   - Mark each criterion as PASS or FAIL with a one-line justification.\n"
-            "4. Review code quality: bugs, missing edge cases, style violations.\n"
-            "5. Verdict:\n"
-            "   - ALL criteria PASS and no blocking issues → approve.\n"
-            "   - ANY criterion FAIL or blocking issue → reject with specific feedback.\n"
-            "</review-protocol>"
-        )
-        prompt = await _inject_review_customizations(base_prompt)
+        app = get_server_context(mcp)
+        settings = await app.client.settings.get() if app is not None else {}
+        project_path = await _resolve_project_path(settings)
+        prompt = resolve_review_prompt(task_id, settings, project_path)
         return [UserMessage(prompt)]
 
     @mcp.prompt()

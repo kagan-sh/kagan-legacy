@@ -1,9 +1,6 @@
 """kagan.mcp.toolsets.projects — Project and repo domain MCP tools."""
 
-import asyncio
-
 from mcp.server.fastmcp import Context, FastMCP
-from sqlmodel import Session, select
 
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -42,24 +39,11 @@ async def _project_set_repo_default_branch(
     app = get_context(ctx)
     await app.client.projects.get(project_id)
 
-    def _update_repo() -> bool:
-        from kagan.core.models import Repository
-
-        with Session(app.client.engine) as session:
-            stmt = select(Repository).where(
-                Repository.id == repo_id, Repository.project_id == project_id
-            )
-            repo = session.exec(stmt).first()
-            if repo is None:
-                return False
-            repo.default_branch = branch
-            session.add(repo)
-            session.commit()
-            return True
-
-    updated = await asyncio.to_thread(_update_repo)
-    if not updated:
+    repos = await app.client.projects.repos(project_id)
+    if not any(repo.id == repo_id for repo in repos):
         raise ValueError(f"Repo not found: {repo_id}")
+
+    await app.client.projects.set_repo_default_branch(project_id, repo_id, branch)
     return {"project_id": project_id, "repo_id": repo_id, "branch": branch}
 
 

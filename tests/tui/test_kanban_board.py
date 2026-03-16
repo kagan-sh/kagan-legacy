@@ -41,7 +41,7 @@ async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         chat_panel = app.screen.query_one("#chat-panel")
         assert chat_panel.has_class("visible")
@@ -130,7 +130,7 @@ async def test_kanban_mount_remains_interactive_while_bootstrap_runs(
         await pilot.pause()
 
 
-async def test_space_opens_peek_overlay(board: KaganDriver) -> None:
+async def test_p_opens_peek_overlay(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
@@ -141,7 +141,7 @@ async def test_space_opens_peek_overlay(board: KaganDriver) -> None:
         peek = app.screen.query_one("#peek-overlay")
         assert not peek.has_class("visible")
         assert not peek.display
-        await pilot.press("space")
+        await pilot.press("p")
         await pilot.pause()
         assert peek.has_class("visible")
         assert peek.display
@@ -277,7 +277,7 @@ async def test_ctrl_o_on_selected_auto_task_opens_docked_task_overlay(board: Kag
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one(ChatPanel)

@@ -22,6 +22,7 @@ class ToolRunRecord:
 
 class ToolRunTracker:
     _MAX_TOOL_RUNS = 200
+    _REVIEW_VERDICT_TITLE = "review_set_criterion_verdict"
 
     def __init__(self) -> None:
         self._tool_status_by_key: dict[str, str] = {}
@@ -58,16 +59,15 @@ class ToolRunTracker:
         raw = ToolRunTracker.extract_tool_args(update)
         if raw is None:
             return None
-        parsed: dict[str, object] | None = None
-        if isinstance(raw, dict):
-            parsed = {str(key): value for key, value in raw.items()}
-        elif isinstance(raw, str) and raw.strip():
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                obj = json.loads(raw)
-                if isinstance(obj, dict):
-                    parsed = {str(key): value for key, value in obj.items()}
+        parsed = ToolRunTracker._parse_dict_payload(raw)
         if parsed is None:
             return None
+        title = str(getattr(update, "title", None) or getattr(update, "name", None) or "")
+        if title == ToolRunTracker._REVIEW_VERDICT_TITLE:
+            criterion_index = parsed.get("criterion_index")
+            verdict = str(parsed.get("verdict", "")).upper()
+            if isinstance(criterion_index, int) and verdict in {"PASS", "FAIL"}:
+                return f"criterion {criterion_index + 1}: {verdict}"
         for key in key_priority:
             value = parsed.get(key)
             if value is not None:
@@ -101,6 +101,34 @@ class ToolRunTracker:
             return json.dumps(value, indent=2, ensure_ascii=True, sort_keys=True)
         except TypeError:
             return str(value)
+
+    @staticmethod
+    def _parse_dict_payload(raw: object | None) -> dict[str, object] | None:
+        if isinstance(raw, dict):
+            return {str(key): value for key, value in raw.items()}
+        if isinstance(raw, str) and raw.strip():
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return {str(key): value for key, value in parsed.items()}
+        return None
+
+    @classmethod
+    def _review_verdict_summary(cls, record: ToolRunRecord) -> str | None:
+        if record.title != cls._REVIEW_VERDICT_TITLE:
+            return None
+        payload = cls._parse_dict_payload(record.args)
+        if payload is None:
+            return None
+        criterion_index = payload.get("criterion_index")
+        verdict = str(payload.get("verdict", "")).upper()
+        reason = str(payload.get("reason", "")).strip()
+        if not isinstance(criterion_index, int) or verdict not in {"PASS", "FAIL"}:
+            return None
+        summary = f"criterion {criterion_index + 1} {verdict}"
+        if reason:
+            summary = f"{summary} - {reason}"
+        return summary
 
     def status_for(self, tool_key: str) -> str | None:
         return self._tool_status_by_key.get(tool_key)
@@ -146,6 +174,35 @@ class ToolRunTracker:
         elapsed = max(0.0, end - record.started_at)
         return f"{elapsed:.2f}s"
 
+    @staticmethod
+    def _try_parse_json_object(text: str | None) -> dict[str, object] | None:
+        if not text or not text.strip():
+            return None
+        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                return {str(k): v for k, v in obj.items()}
+        return None
+
+    @staticmethod
+    def _format_review_set_criterion_verdict(payload: dict[str, object] | None) -> str | None:
+        if not payload:
+            return None
+        index = payload.get("criterion_index")
+        verdict = payload.get("verdict")
+        reason = payload.get("reason")
+        if not isinstance(index, int):
+            return None
+        verdict_text = str(verdict or "").strip().upper()
+        if verdict_text not in {"PASS", "FAIL"}:
+            return None
+        reason_text = " ".join(str(reason or "").strip().split())
+        if len(reason_text) > 140:
+            reason_text = f"{reason_text[:137].rstrip()}..."
+        if reason_text:
+            return f"#{index} {verdict_text} - {reason_text}"
+        return f"#{index} {verdict_text}"
+
     def tool_report(self, query: str | None) -> tuple[str, bool]:
         normalized = (query or "").strip()
         if not normalized:
@@ -158,6 +215,9 @@ class ToolRunTracker:
                     f"[{record.display_id}] {record.title} · {record.status}"
                     f" · {self.duration_text(record)}"
                 )
+                review_summary = self._review_verdict_summary(record)
+                if review_summary:
+                    summary = f"{summary} · {review_summary}"
                 if record.key_arg:
                     summary = f"{summary} · {record.key_arg}"
                 lines.append(summary)
@@ -189,10 +249,28 @@ class ToolRunTracker:
         if record.key_arg:
             lines.append(f"Key arg: {record.key_arg}")
 
+        review_summary = self._review_verdict_summary(record)
+        if review_summary:
+            lines.append(f"Review verdict: {review_summary}")
+
         lines.append("")
         lines.append("Input:")
-        lines.append(record.args if record.args else "(none)")
+        input_text = record.args if record.args else "(none)"
+        if record.title == "review_set_criterion_verdict":
+            pretty = self._format_review_set_criterion_verdict(
+                self._try_parse_json_object(record.args)
+            )
+            if pretty:
+                input_text = pretty
+        lines.append(input_text)
         lines.append("")
         lines.append("Output:")
-        lines.append(record.result if record.result else "(none)")
+        output_text = record.result if record.result else "(none)"
+        if record.title == "review_set_criterion_verdict":
+            pretty = self._format_review_set_criterion_verdict(
+                self._try_parse_json_object(record.result)
+            )
+            if pretty:
+                output_text = pretty
+        lines.append(output_text)
         return "\n".join(lines), True

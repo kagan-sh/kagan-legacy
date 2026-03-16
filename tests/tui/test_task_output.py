@@ -139,7 +139,7 @@ async def test_ctrl_o_on_auto_task_opens_docked_task_chat(board: KaganDriver) ->
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_auto_task(pilot)
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         assert app.screen.id == "task-screen"
@@ -297,7 +297,7 @@ async def test_ctrl_o_on_running_auto_task_keeps_task_screen_visible(board: Kaga
 
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         assert app.screen.id == "task-screen"

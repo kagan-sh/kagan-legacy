@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
+from kagan.chat._title import ensure_session_title, is_default_title
 from kagan.chat.sessions import (
     build_chat_session_list_items,
     create_chat_session,
@@ -151,6 +152,38 @@ class TuiOrchestratorSessionStore:
         if session is None:
             return []
         return self._normalize_history(session.get("orchestrator_history") or [])
+
+    def should_generate_title(self, key: str | None = None) -> bool:
+        """Return True if the active (or given) session still has a default title."""
+        target = key or self.active_key()
+        session = self._sessions_by_key.get(target)
+        if session is None:
+            return False
+        return is_default_title(str(session.get("label") or ""))
+
+    async def generate_title(
+        self,
+        *,
+        user_message: str,
+        assistant_reply: str,
+        agent_backend: str,
+        key: str | None = None,
+    ) -> str | None:
+        """Generate and persist a title for the active (or given) session."""
+        target = key or self.active_key()
+        session = self._sessions_by_key.get(target)
+        if session is None:
+            return None
+        title = await ensure_session_title(
+            self._client,
+            session,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            agent_backend=agent_backend,
+        )
+        if title:
+            self._sessions_by_key[target] = session
+        return title
 
     def agent_backend_for_key(self, key: str) -> str | None:
         session = self._sessions_by_key.get(key)

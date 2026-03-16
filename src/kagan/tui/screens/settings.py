@@ -1,20 +1,18 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.theme import BUILTIN_THEMES
 from textual.widgets import Button, Footer, Input, Select, Static, Switch, TextArea
 from textual.widgets._option_list import Option, OptionList
 
 from kagan.chat import list_registered_agent_backends
-from kagan.chat.prompt import _ORCHESTRATOR_SYSTEM_PROMPT
 from kagan.core import (
-    PERSONA_DEFINITIONS_KEY,
-    PERSONA_USER_WHITELIST_KEY,
-    load_persona_definitions,
-    serialize_persona_definitions,
+    detect_dotfile_overrides,
 )
 
 if TYPE_CHECKING:
@@ -26,6 +24,28 @@ def _is_enabled(value: str | None, *, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+# Kagan custom theme names.
+_KAGAN_THEME_NAMES = {"kagan", "kagan-256"}
+
+
+def _build_theme_options() -> list[tuple[str, str]]:
+    """Build theme dropdown options: Kagan custom themes + Textual built-in themes."""
+    options: list[tuple[str, str]] = [
+        ("Auto (Kagan Night)", ""),
+        ("Kagan Night", "kagan"),
+        ("Kagan 256-color", "kagan-256"),
+    ]
+    for name in sorted(BUILTIN_THEMES):
+        label = name.replace("-", " ").title()
+        options.append((label, name))
+    return options
+
+
+def _valid_theme_names() -> set[str]:
+    """Return all valid theme identifiers (empty string = auto)."""
+    return {"", *_KAGAN_THEME_NAMES, *BUILTIN_THEMES}
 
 
 @dataclass(frozen=True)
@@ -115,6 +135,11 @@ class SettingsModal(ModalScreen[None]):
         super().__init__(id="settings-modal")
         self._categories = [
             SettingCategory(
+                id="orchestration",
+                name="Orchestration",
+                search_terms=("execution", "mode", "review", "strict", "planning", "confirm"),
+            ),
+            SettingCategory(
                 id="general",
                 name="General",
                 search_terms=("agent", "launcher", "base", "branch", "startup", "recent"),
@@ -140,15 +165,15 @@ class SettingsModal(ModalScreen[None]):
                 search_terms=("strategy", "ref", "remote", "local"),
             ),
             SettingCategory(
-                id="git_identity",
-                name="Git Identity",
-                search_terms=("git", "user", "name", "email", "identity", "agent", "kagan"),
+                id="instructions",
+                name="Additional Instructions",
+                search_terms=("instructions", "custom", "prompt", "additional", "dotfile"),
                 is_advanced=True,
             ),
             SettingCategory(
-                id="prompts",
-                name="Prompts",
-                search_terms=("prompt", "orchestrator", "task", "review", "custom", "persona"),
+                id="git_identity",
+                name="Git Identity",
+                search_terms=("git", "user", "name", "email", "identity", "agent", "kagan"),
                 is_advanced=True,
             ),
             SettingCategory(
@@ -182,6 +207,40 @@ class SettingsModal(ModalScreen[None]):
                 with Vertical(id="settings-detail-pane"):
                     yield Static("", classes="settings-detail-title", id="settings-detail-title")
                     with Vertical(id="settings-detail-content"):
+                        # --- Orchestration (NEW) ---
+                        with Vertical(id="settings-pane-orchestration", classes="settings-pane"):
+                            yield self._switch_field(
+                                "Auto-confirm plans for single tasks",
+                                "settings-auto-confirm-single",
+                            )
+                            yield self._select_field(
+                                "Default execution mode",
+                                "settings-execution-mode",
+                                [
+                                    ("Ask each time", "ask"),
+                                    ("Auto (autonomous)", "auto"),
+                                    ("Pair (co-pilot)", "pair"),
+                                ],
+                            )
+                            yield self._select_field(
+                                "Review strictness",
+                                "settings-review-strictness",
+                                [
+                                    ("Strict", "strict"),
+                                    ("Balanced", "balanced"),
+                                    ("Relaxed", "relaxed"),
+                                ],
+                            )
+                            yield self._select_field(
+                                "Planning depth",
+                                "settings-planning-depth",
+                                [
+                                    ("Always plan", "always"),
+                                    ("Multi-task only", "multi_task"),
+                                    ("Never plan", "never"),
+                                ],
+                            )
+                        # --- General ---
                         with Vertical(id="settings-pane-general", classes="settings-pane"):
                             yield self._select_field(
                                 "Default agent backend",
@@ -209,6 +268,7 @@ class SettingsModal(ModalScreen[None]):
                                 "Open last project on launch",
                                 "settings-open-last-project",
                             )
+                        # --- Worktree ---
                         with Vertical(id="settings-pane-worktree", classes="settings-pane"):
                             yield self._select_field(
                                 "Worktree base ref strategy",
@@ -219,6 +279,7 @@ class SettingsModal(ModalScreen[None]):
                                     ("Local", "local"),
                                 ],
                             )
+                        # --- Automation ---
                         with Vertical(id="settings-pane-automation", classes="settings-pane"):
                             yield self._switch_field(
                                 "Enable auto review",
@@ -232,6 +293,7 @@ class SettingsModal(ModalScreen[None]):
                                 "Auto create initial commit",
                                 "settings-auto-init-commit",
                             )
+                        # --- Merge Policy ---
                         with Vertical(id="settings-pane-merge", classes="settings-pane"):
                             yield self._switch_field(
                                 "Require approval before merge",
@@ -241,20 +303,37 @@ class SettingsModal(ModalScreen[None]):
                                 "Serialize manual merges",
                                 "settings-serialize-merges",
                             )
+                        # --- Appearance ---
                         with Vertical(id="settings-pane-appearance", classes="settings-pane"):
                             yield self._select_field(
                                 "Theme",
                                 "settings-theme",
-                                [
-                                    ("Auto (Kagan Night)", ""),
-                                    ("Kagan Night", "kagan"),
-                                    ("Kagan 256-color", "kagan-256"),
-                                ],
+                                _build_theme_options(),
                             )
                             yield self._switch_field(
                                 "Skip PAIR instructions popup",
                                 "settings-skip-pair-instructions",
                             )
+                        # --- Additional Instructions (NEW) ---
+                        with Vertical(id="settings-pane-instructions", classes="settings-pane"):
+                            yield self._textarea_field(
+                                "Additional instructions",
+                                "settings-additional-instructions",
+                            )
+                            yield Static(
+                                "[dim]Appended to every agent prompt — your preferences,\n"
+                                "conventions, and workflow rules.\n\n"
+                                "Examples: 'Use conventional commits' ·\n"
+                                "'Always explain tradeoffs first' ·\n"
+                                "'Commit messages in Portuguese'[/dim]",
+                                classes="settings-field-label-top",
+                            )
+                            yield Static("", id="settings-dotfile-status")
+                            yield Static(
+                                "[dim]Full prompt overrides → .kagan/prompts/[/dim]",
+                                classes="settings-field-label-top",
+                            )
+                        # --- Git Identity ---
                         with Vertical(id="settings-pane-git_identity", classes="settings-pane"):
                             yield self._select_field(
                                 "Git user mode",
@@ -273,46 +352,7 @@ class SettingsModal(ModalScreen[None]):
                                 "Git email (custom mode)",
                                 "settings-git-user-email",
                             )
-                        with Vertical(id="settings-pane-prompts", classes="settings-pane"):
-                            yield self._textarea_field(
-                                "Custom orchestrator prompt (prepended to default)",
-                                "settings-custom-orchestrator-prompt",
-                            )
-                            yield self._textarea_field(
-                                "Custom task agent prompt (prepended to default)",
-                                "settings-custom-task-prompt",
-                            )
-                            yield self._textarea_field(
-                                "Custom review prompt (prepended to default)",
-                                "settings-custom-review-prompt",
-                            )
-                            yield self._textarea_field(
-                                "Persona definitions JSON (key -> name/description/prompt)",
-                                "settings-persona-definitions",
-                            )
-                            yield self._textarea_field(
-                                "Trusted persona repos whitelist JSON (owner/repo list)",
-                                "settings-persona-repo-whitelist",
-                            )
-                            yield self._text_field(
-                                "Persona repo (owner/repo)",
-                                "settings-persona-repo",
-                            )
-                            yield self._text_field(
-                                "Persona preset path",
-                                "settings-persona-path",
-                            )
-                            yield self._text_field(
-                                "Persona ref (optional)",
-                                "settings-persona-ref",
-                            )
-                            yield Static(
-                                "[bold]Ctrl+A[/] audit  "
-                                "[bold]Ctrl+I[/] import  "
-                                "[bold]Ctrl+E[/] export",
-                                classes="modal-action-hint settings-persona-hint",
-                            )
-                            yield Static("", id="settings-persona-status")
+                        # --- Models ---
                         with Vertical(id="settings-pane-models", classes="settings-pane"):
                             yield self._text_field(
                                 "Claude default model",
@@ -343,6 +383,30 @@ class SettingsModal(ModalScreen[None]):
         self._update_search_status("")
 
     def _set_values(self, settings: dict[str, str]) -> None:
+        # --- Orchestration ---
+        self.query_one("#settings-auto-confirm-single", Switch).value = _is_enabled(
+            settings.get("auto_confirm_single_tasks"),
+            default=False,
+        )
+        exec_mode = settings.get("default_execution_mode", "ask")
+        exec_select = self.query_one("#settings-execution-mode", Select)
+        exec_select.value = exec_mode if exec_mode in {"ask", "auto", "pair"} else "ask"
+
+        review_strictness = settings.get("review_strictness", "balanced")
+        review_select = self.query_one("#settings-review-strictness", Select)
+        review_select.value = (
+            review_strictness
+            if review_strictness in {"strict", "balanced", "relaxed"}
+            else "balanced"
+        )
+
+        planning = settings.get("planning_depth", "always")
+        planning_select = self.query_one("#settings-planning-depth", Select)
+        planning_select.value = (
+            planning if planning in {"always", "multi_task", "never"} else "always"
+        )
+
+        # --- General ---
         default_agent = (
             settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
         )
@@ -375,8 +439,9 @@ class SettingsModal(ModalScreen[None]):
         )
         theme = settings.get("theme", "")
         theme_select = self.query_one("#settings-theme", Select)
-        theme_select.value = theme if theme in {"", "kagan", "kagan-256"} else ""
+        theme_select.value = theme if theme in _valid_theme_names() else ""
 
+        # --- Automation ---
         self.query_one("#settings-auto-review", Switch).value = _is_enabled(
             settings.get("auto_review"),
             default=True,
@@ -406,6 +471,7 @@ class SettingsModal(ModalScreen[None]):
             default=False,
         )
 
+        # --- Git Identity ---
         git_mode = settings.get("git_user_mode", "kagan_agent")
         git_mode_select = self.query_one("#settings-git-user-mode", Select)
         git_mode_select.value = (
@@ -420,31 +486,22 @@ class SettingsModal(ModalScreen[None]):
             "default_model_openai", ""
         )
 
-        # Prompt customization fields
-        default_orchestrator_prompt = _ORCHESTRATOR_SYSTEM_PROMPT.strip()
-        default_task_prompt = self._default_task_prompt().strip()
-        default_review_prompt = self._default_review_prompt().strip()
-        self.query_one("#settings-custom-orchestrator-prompt", TextArea).text = settings.get(
-            "custom_orchestrator_prompt", default_orchestrator_prompt
+        # --- Additional Instructions ---
+        self.query_one("#settings-additional-instructions", TextArea).text = settings.get(
+            "additional_instructions", ""
         )
-        self.query_one("#settings-custom-task-prompt", TextArea).text = settings.get(
-            "custom_task_prompt", default_task_prompt
-        )
-        self.query_one("#settings-custom-review-prompt", TextArea).text = settings.get(
-            "custom_review_prompt", default_review_prompt
-        )
-        self.query_one("#settings-persona-definitions", TextArea).text = settings.get(
-            PERSONA_DEFINITIONS_KEY,
-            serialize_persona_definitions(load_persona_definitions(settings)),
-        )
-        self.query_one("#settings-persona-repo-whitelist", TextArea).text = settings.get(
-            PERSONA_USER_WHITELIST_KEY,
-            "[]",
-        )
-        self.query_one("#settings-persona-path", Input).value = ".kagan/personas.json"
-        self.query_one("#settings-persona-status", Static).update(
-            "Audit first. Import from trusted repos only."
-        )
+
+        # Dotfile status
+        overrides = detect_dotfile_overrides(Path.cwd())
+        if overrides:
+            names = ", ".join(f"{k}.md" for k in sorted(overrides))
+            self.query_one("#settings-dotfile-status", Static).update(
+                f"[green]Prompt overrides active:[/green] {names}"
+            )
+        else:
+            self.query_one("#settings-dotfile-status", Static).update(
+                "[dim]No prompt overrides active[/dim]"
+            )
 
     @on(Input.Changed, "#settings-search-input")
     async def _on_search_changed(self, event: Input.Changed) -> None:
@@ -524,26 +581,20 @@ class SettingsModal(ModalScreen[None]):
 
     def _show_pane(self, category_id: str | None) -> None:
         panes = {
+            "orchestration": self.query_one("#settings-pane-orchestration", Vertical),
             "general": self.query_one("#settings-pane-general", Vertical),
             "automation": self.query_one("#settings-pane-automation", Vertical),
             "merge": self.query_one("#settings-pane-merge", Vertical),
             "appearance": self.query_one("#settings-pane-appearance", Vertical),
             "worktree": self.query_one("#settings-pane-worktree", Vertical),
+            "instructions": self.query_one("#settings-pane-instructions", Vertical),
             "git_identity": self.query_one("#settings-pane-git_identity", Vertical),
-            "prompts": self.query_one("#settings-pane-prompts", Vertical),
             "models": self.query_one("#settings-pane-models", Vertical),
         }
         for pane_id, pane in panes.items():
             visible = pane_id == category_id
             pane.display = visible
             pane.set_class(visible, "active-pane")
-        if category_id == "prompts":
-            self.call_after_refresh(self._focus_primary_prompt_editor)
-
-    def _focus_primary_prompt_editor(self) -> None:
-        editor = self.query_one("#settings-custom-orchestrator-prompt", TextArea)
-        editor.focus()
-        editor.move_cursor(editor.document.end)
 
     def _text_field(self, label: str, field_id: str) -> Vertical:
         return Vertical(
@@ -621,6 +672,12 @@ class SettingsModal(ModalScreen[None]):
         strategy = strategy_value if isinstance(strategy_value, str) else "local_if_ahead"
         theme = theme_value if isinstance(theme_value, str) else ""
 
+        # Orchestration settings
+        auto_confirm = self.query_one("#settings-auto-confirm-single", Switch).value
+        exec_mode_value = self.query_one("#settings-execution-mode", Select).value
+        review_strictness_value = self.query_one("#settings-review-strictness", Select).value
+        planning_value = self.query_one("#settings-planning-depth", Select).value
+
         updates: dict[str, str] = {
             "default_agent_backend": default_agent_backend,
             "default_agent": default_agent_backend,
@@ -636,31 +693,20 @@ class SettingsModal(ModalScreen[None]):
             "serialize_merges": "true" if serialize_merges else "false",
             "skip_pair_instructions_popup": "true" if skip_pair_instructions else "false",
             "git_user_mode": git_mode,
+            "auto_confirm_single_tasks": "true" if auto_confirm else "false",
+            "default_execution_mode": (
+                exec_mode_value if isinstance(exec_mode_value, str) else "ask"
+            ),
+            "review_strictness": (
+                review_strictness_value if isinstance(review_strictness_value, str) else "balanced"
+            ),
+            "planning_depth": planning_value if isinstance(planning_value, str) else "always",
         }
 
-        # Prompt customization
-        orchestrator_prompt = self.query_one(
-            "#settings-custom-orchestrator-prompt", TextArea
-        ).text.strip()
-        task_prompt = self.query_one("#settings-custom-task-prompt", TextArea).text.strip()
-        review_prompt = self.query_one("#settings-custom-review-prompt", TextArea).text.strip()
-        persona_definitions = self.query_one("#settings-persona-definitions", TextArea).text.strip()
-        persona_repo_whitelist = self.query_one(
-            "#settings-persona-repo-whitelist", TextArea
-        ).text.strip()
-        updates["custom_orchestrator_prompt"] = (
-            ""
-            if orchestrator_prompt == _ORCHESTRATOR_SYSTEM_PROMPT.strip()
-            else orchestrator_prompt
-        )
-        updates["custom_task_prompt"] = (
-            "" if task_prompt == self._default_task_prompt().strip() else task_prompt
-        )
-        updates["custom_review_prompt"] = (
-            "" if review_prompt == self._default_review_prompt().strip() else review_prompt
-        )
-        updates[PERSONA_DEFINITIONS_KEY] = persona_definitions
-        updates[PERSONA_USER_WHITELIST_KEY] = persona_repo_whitelist or "[]"
+        # Additional instructions
+        additional = self.query_one("#settings-additional-instructions", TextArea).text.strip()
+        updates["additional_instructions"] = additional
+
         updates["default_model_claude"] = default_model_claude
         updates["default_model_openai"] = default_model_openai
         if git_user_name:
@@ -674,122 +720,8 @@ class SettingsModal(ModalScreen[None]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
-    def _persona_params(self) -> tuple[str, str, str | None]:
-        repo = self.query_one("#settings-persona-repo", Input).value.strip().lower()
-        path = (
-            self.query_one("#settings-persona-path", Input).value.strip() or ".kagan/personas.json"
-        )
-        ref_raw = self.query_one("#settings-persona-ref", Input).value.strip()
-        return repo, path, ref_raw or None
-
-    def _persona_status(self, message: str) -> None:
-        self.query_one("#settings-persona-status", Static).update(message)
-
-    async def action_persona_audit(self) -> None:
-        repo, path, ref = self._persona_params()
-        if not repo:
-            self._persona_status("Set Persona repo first (owner/repo).")
-            return
-        report = await self.kagan_app.core.persona_presets.audit_repo(repo=repo, path=path, ref=ref)
-        self._persona_status(
-            f"Audit {report['risk_level']}: {report['persona_count']} personas from {repo}"
-        )
-
-    async def action_persona_import(self) -> None:
-        repo, path, ref = self._persona_params()
-        if not repo:
-            self._persona_status("Set Persona repo first (owner/repo).")
-            return
-        result = await self.kagan_app.core.persona_presets.import_from_github(
-            repo=repo,
-            path=path,
-            ref=ref,
-            allow_untrusted=False,
-            acknowledge_risk=False,
-            merge_mode="merge",
-        )
-        settings = await self.kagan_app.core.settings.get()
-        self.query_one("#settings-persona-definitions", TextArea).text = settings.get(
-            PERSONA_DEFINITIONS_KEY,
-            serialize_persona_definitions(load_persona_definitions(settings)),
-        )
-        self._persona_status(
-            f"Imported {len(result['imported'])} personas from {repo} ({result['trusted']=})"
-        )
-
-    async def action_persona_export(self) -> None:
-        repo, path, _ = self._persona_params()
-        if not repo:
-            self._persona_status("Set Persona repo first (owner/repo).")
-            return
-        persona_definitions = self.query_one("#settings-persona-definitions", TextArea).text.strip()
-        persona_repo_whitelist = self.query_one(
-            "#settings-persona-repo-whitelist", TextArea
-        ).text.strip()
-        await self.kagan_app.core.settings.set(
-            {
-                PERSONA_DEFINITIONS_KEY: persona_definitions,
-                PERSONA_USER_WHITELIST_KEY: persona_repo_whitelist or "[]",
-            }
-        )
-        result = await self.kagan_app.core.persona_presets.export_to_github(repo=repo, path=path)
-        self._persona_status(
-            f"Exported {result['persona_count']} personas to {result['repo']}:{result['path']}"
-        )
-
     def action_focus_search(self) -> None:
         self.query_one("#settings-search-input", Input).focus()
 
     async def action_dismiss(self, result: None = None) -> None:
         self.dismiss(result)
-
-    @staticmethod
-    def _default_task_prompt() -> str:
-        return """Task: <task title>
-
-Description:
-<task description>
-
-Acceptance Criteria (EVERY item must pass):
-- <criterion 1>
-- <criterion 2>
-
-EXPECTED OUTCOME:
-All acceptance criteria above are satisfied. Tests pass. No regressions.
-
-MUST DO:
-- Commit ALL changes before signaling completion.
-- Run the project's test/lint commands if they exist.
-- Write a clear commit message explaining WHY, not just what.
-
-After changing files, run:
-git add -A
-git -c user.name=\"kagan-agent\" -c user.email=\"agent@kagan.local\" \\
-  -c commit.gpgsign=false commit -m \"feat: explain why this change was needed\"
-
-MUST NOT DO:
-- Do NOT modify files outside the scope of this task.
-- Do NOT delete or skip existing tests to make the build pass.
-- Do NOT suppress type errors or linter warnings.
-- Do NOT leave uncommitted changes.
-
-Only signal completion after committing.
-If blocked, explain the reason and signal blocked."""
-
-    @staticmethod
-    def _default_review_prompt() -> str:
-        return """Review task <task_id>.
-
-<review-protocol>
-1. Retrieve the task with task_get to read its acceptance criteria.
-2. If the task has NO acceptance criteria, STOP. Respond with:
-   'This task has no acceptance criteria — manual human review required.'
-   Do NOT approve or reject.
-3. If acceptance criteria exist, verify EACH criterion:
-   - Check the diff/code changes for evidence that the criterion is met.
-   - Mark each criterion as PASS or FAIL with a one-line justification.
-4. Review code quality: bugs, missing edge cases, style violations.
-5. Verdict:
-   - ALL criteria PASS and no blocking issues -> approve.
-   - ANY criterion FAIL or blocking issue -> reject with specific feedback.
-</review-protocol>"""

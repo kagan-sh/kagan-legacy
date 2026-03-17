@@ -1,3 +1,4 @@
+import contextlib
 from typing import TYPE_CHECKING, cast
 
 from textual.app import ComposeResult
@@ -10,6 +11,8 @@ from kagan.core.enums import WorkMode
 from kagan.core.models import Task
 
 if TYPE_CHECKING:
+    from textual.timer import Timer
+
     from kagan.tui.app import KaganApp
 from kagan.tui.keybindings import CONFIRM_BINDINGS, TASK_EDITOR_BINDINGS
 from kagan.tui.messages import TaskSubmitted
@@ -36,6 +39,7 @@ class TaskEditorModal(ModalScreen[None]):
         self._editing_task = task
         self._execution_mode = execution_mode
         self._focus_field = focus_field
+        self._auto_save_timer: Timer | None = None
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -43,6 +47,7 @@ class TaskEditorModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         editing_task = self._editing_task
+        is_editing = editing_task is not None
         agent_backends = list_registered_agent_backends()
         with Container(id="task-editor-container"):
             if editing_task is None:
@@ -63,11 +68,18 @@ class TaskEditorModal(ModalScreen[None]):
                     base_branch=editing_task.base_branch,
                     acceptance_criteria=list(editing_task.acceptance_criteria),
                     focus_field=self._focus_field,
+                    editing=True,
                 )
-            yield Static(
-                "[bold]Ctrl+S[/] save  [bold]Esc[/] cancel  [bold]Ctrl+.[/] advanced",
-                classes="modal-action-hint",
-            )
+            if is_editing:
+                yield Static(
+                    "Auto-saved  ·  [bold]Esc[/] close  [bold]Ctrl+.[/] advanced",
+                    classes="modal-action-hint",
+                )
+            else:
+                yield Static(
+                    "[bold]Ctrl+S[/] create  [bold]Esc[/] cancel  [bold]Ctrl+.[/] advanced",
+                    classes="modal-action-hint",
+                )
 
     async def on_task_submitted(self, message: TaskSubmitted) -> None:
         editor = self.query_one(TaskEditor)
@@ -105,11 +117,43 @@ class TaskEditorModal(ModalScreen[None]):
     def on_task_editor_cancelled(self, _: TaskEditor.Cancelled) -> None:
         self.dismiss(None)
 
+    def on_task_editor_field_changed(self, _: TaskEditor.FieldChanged) -> None:
+        if self._editing_task is None:
+            return
+        self._schedule_auto_save()
+
+    def _schedule_auto_save(self) -> None:
+        if self._auto_save_timer is not None:
+            self._auto_save_timer.stop()
+        self._auto_save_timer = self.set_timer(0.4, self._fire_auto_save)
+
+    def _fire_auto_save(self) -> None:
+        self._auto_save_timer = None
+        self.run_worker(self._auto_save_task(), exit_on_error=False)
+
+    async def _auto_save_task(self) -> None:
+        if self._editing_task is None:
+            return
+        editor = self.query_one(TaskEditor)
+        values = editor.collect_values()
+        if values is None:
+            return
+        acceptance_criteria = editor.acceptance_criteria()
+        with contextlib.suppress(Exception):  # quality-allow-broad-except
+            await self.kagan_app.core.tasks.update(
+                self._editing_task.id,
+                title=values.title,
+                description=values.description,
+                priority=values.priority,
+                execution_mode=values.execution_mode,
+                base_branch=values.base_branch,
+                agent_backend=values.agent_backend,
+                launcher=values.launcher,
+                acceptance_criteria=acceptance_criteria,
+            )
+
     def action_finish(self) -> None:
         self.query_one(TaskEditor).submit()
-
-    def action_save(self) -> None:
-        self.action_finish()
 
     def action_toggle_advanced(self) -> None:
         self.query_one(TaskEditor).action_toggle_advanced()

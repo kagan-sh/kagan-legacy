@@ -57,8 +57,8 @@ ______________________________________________________________________
 ```
                       ┌────────────────────────────────────────────────┐
                       │              CLI entry point                    │
-                      │   kagan mcp [--readonly] [--admin]            │
-                      │             [--session-id]                     │
+                       │   kagan mcp [--role WORKER|REVIEWER|ORCHESTRATOR] │
+                       │             [--session-id]                     │
                       │             [--enable-internal-...]            │
                       └──────────────────┬─────────────────────────────┘
                                          │
@@ -76,7 +76,7 @@ ______________________________________________________________________
                                          │
             ┌────────────────────────────┼──────────────────────────────┐
             │  register_all_toolsets()   │  walks toolset modules       │
-            │  applies access filter     │  based on access tier        │
+             │  applies access filter     │  based on agent role         │
             ▼                            ▼                              ▼
   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
   │  toolsets/        │  │  toolsets/        │  │  toolsets/        │
@@ -115,8 +115,9 @@ ______________________________________________________________________
             │ all tools use          ┌──────────────────────────────┐
             ├───────────────────────►│  _policy.py                  │
             │                        │                              │
-            │                        │  3-tier access (read/write/  │
-            │                        │  admin) + readonly exclusion │
+            │                        │  role-based access           │
+            │                        │  (WORKER/REVIEWER/           │
+            │                        │  ORCHESTRATOR)               │
             │                        │  is_tool_allowed() check     │
 
             │                        └──────────────────────────────┘
@@ -149,7 +150,7 @@ ______________________________________________________________________
 src/kagan/mcp/
 ├── __init__.py        # re-export create_server
 ├── server.py          # MCPServer factory, lifespan, STDIO entry point
-├── _policy.py         # 3-tier access control (readonly / standard / admin)
+├── _policy.py         # Role-based access control (WORKER / REVIEWER / ORCHESTRATOR)
 
 ├── resources.py       # @mcp.resource() definitions
 ├── prompts.py         # @mcp.prompt() definitions
@@ -175,20 +176,16 @@ ______________________________________________________________________
 - `create_server` builds an `MCPServer` with name, version, instructions, and a lifespan.
 - `serve` calls `create_server` then `mcp.run(transport="stdio")`.
 - The lifespan creates a `KaganCore`, yields it as app context, and closes it on shutdown.
-  | `readonly` | false | Exclude all mutating tools (read tier) |
-  | `admin` | false | Enable destructive tools (admin tier) |
-  | `session_id` | None | Bind to a task session |
 
 ### Server Options
 
-| Option                   | Default | Description                            |
-| ------------------------ | ------- | -------------------------------------- |
-| `readonly`               | false   | Exclude all mutating tools (read tier) |
-| `readonly`               | false   | Exclude all mutating tools (read tier) |
-| `admin`                  | false   | Enable destructive tools (admin tier)  |
-| `session_id`             | None    | Bind to a task session                 |
-| `session_id`             | None    | Bind to a task session                 |
-| `enable_instrumentation` | false   | Enable diagnostics tool                |
+| Option                   | Default        | Description                                              |
+| ------------------------ | -------------- | -------------------------------------------------------- |
+| `role`                   | ORCHESTRATOR   | Agent role: WORKER, REVIEWER, or ORCHESTRATOR            |
+| `session_id`             | None           | Bind to a task session                                   |
+| `enable_instrumentation` | false          | Enable diagnostics tool                                  |
+
+`--readonly` maps to WORKER and `--admin` maps to ORCHESTRATOR for backward compatibility.
 
 ______________________________________________________________________
 
@@ -226,99 +223,43 @@ ______________________________________________________________________
 ## Access Control
 
 Access control is a **static filter at registration time**, not runtime middleware.
-Three tiers, mapped to trust level (user presence).
+Three roles, cumulative — higher roles include all tools from lower roles.
 
-### Three Tiers
+### Three Roles
 
-| Tier         | Flag         | Trust model                    | Can do                                                                                            |
-| ------------ | ------------ | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| **Readonly** | `--readonly` | Observer — no mutations        | Read tasks, projects, settings, audit, logs                                                       |
-| **Standard** | *(none)*     | Autonomous agent — safe writes | + create/update/add-note tasks, batch-create tasks, manage runs, start/cancel runs, apply reviews |
-
-Each tier includes all lower tiers. Standard is the common case — task agents get it automatically. Admin is for orchestrators where the user is present and approving each action.
+| Role              | Flag                  | Can do                                                                                                                                                                                                                    |
+| ----------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WORKER**        | `--role WORKER`       | Board awareness + own-task annotation: task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait, run_update, run_summary, settings_get, review_conflicts, plugins_preflight                   |
+| **REVIEWER**      | `--role REVIEWER`     | WORKER tools + review_set_criterion_verdict, review_clear_verdicts                                                                                                                                                        |
+| **ORCHESTRATOR**  | `--role ORCHESTRATOR` | Everything: task_create, task_update, task_delete, run_start, run_cancel, review_decide, project_*, settings_set, plugins_sync, and all REVIEWER tools                                                                    |
 
 ### Who Gets What
 
-| Consumer               | Flags               | Tier     |
-| ---------------------- | ------------------- | -------- |
-| Task agent (AUTO/PAIR) | `--session-id {id}` | Standard |
+| Consumer                | CLI Flags                              | Effective Role |
+| ----------------------- | -------------------------------------- | -------------- |
+| Task agent (AUTO/PAIR)  | `--role WORKER --session-id {id}`      | WORKER         |
+| Reviewer agent          | `--role REVIEWER --session-id {id}`    | REVIEWER       |
+| Orchestrator (IDE host) | `--role ORCHESTRATOR`                  | ORCHESTRATOR   |
+| External / manual       | *(none)*                               | ORCHESTRATOR (default) |
 
-| Orchestrator (IDE host) | `--admin` | Admin |
-| Reviewer agent | `--readonly --session-id {id}` | Readonly |
-| IDE host (browse only) | `--readonly` | Readonly |
+Core wires `--role WORKER` into `.mcp.json` automatically for spawned agents.
 
-Core wires these flags into `.mcp.json` automatically when spawning agents.
+### Tool Role Requirements
 
-### Tool Tier Requirements
-
-| tool                                                       | minimum tier |
-| ---------------------------------------------------------- | ------------ |
-| task_get, task_list, task_events, tasks_wait               | Readonly     |
-| project_list, repo_list, settings_get, audit_log_list      | Readonly     |
-| plugins_preflight                                          | Readonly     |
-| task_create, task_batch_create, task_update, task_add_note | Standard     |
-| run_start, run_cancel, run_update, project_set_active      | Standard     |
-| review_decide                                              | Standard     |
-| task_delete, project_create, project_delete                | Admin        |
-| settings_set                                               | Admin        |
-| plugins_sync                                               | Admin        |
-
-### Readonly Mode
-
-`--readonly` excludes all mutating tools. Only read tools, resources, and prompts
-are available. `--readonly` and `--admin` are mutually exclusive.
+| tool                                                                                    | minimum role |
+| --------------------------------------------------------------------------------------- | ------------ |
+| task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait   | WORKER       |
+| run_update, run_summary, settings_get, review_conflicts, plugins_preflight              | WORKER       |
+| review_set_criterion_verdict, review_clear_verdicts                                     | REVIEWER     |
+| task_create, task_update, task_delete, run_start, run_cancel, review_decide             | ORCHESTRATOR |
+| project_list, project_create, project_delete, project_set_active                        | ORCHESTRATOR |
+| settings_set, plugins_sync, audit_log_list                                              | ORCHESTRATOR |
 
 ______________________________________________________________________
 
-## Tool Profiles
+## Role-Based Filtering
 
-Tool profiles provide **per-role tool filtering** on top of access tiers. While access tiers control _which tier_ of tools is available, profiles further restrict _which tools_ within that tier an agent can see.
-
-### ToolProfile StrEnum
-
-Defined in `kagan.core.enums`:
-
-| Profile | Intended consumer | Tool count |
-|---|---|---|
-| `TASK` | Autonomous task agent (AUTO mode) | ~8 |
-| `REVIEWER` | Reviewer agent checking acceptance criteria | ~13 |
-| `ORCHESTRATOR` | Orchestrator with full visibility | All tools in tier |
-
-### TOOL_PROFILES Dict
-
-`TOOL_PROFILES: dict[ToolProfile, frozenset[str]]` in `kagan.mcp._policy` maps each profile to an explicit allowlist of tool names:
-
-- **TASK**: `task_get`, `task_list`, `task_search`, `task_events`, `task_add_note`, `run_update`, `run_summary`, `settings_get`
-- **REVIEWER**: all TASK tools + `review_decide`, `review_set_criterion_verdict`, `review_clear_verdicts`, `review_conflicts`, `tasks_wait`, `task_counts`
-- **ORCHESTRATOR**: all tools in `TOOL_TIERS` (no additional restriction — effective tier still applies)
-
-### Composition with Access Tiers
-
-Profile filtering is **additive** — both the tier check AND the profile check must pass:
-
-```python
-# Both conditions must be true for a tool to be registered:
-effective_tier.value >= required_tier.value   # tier check
-AND
-(profile is None or tool_name in TOOL_PROFILES[profile])  # profile check
-```
-
-`profile=None` (the default) disables profile filtering entirely — all tools for the effective tier are visible. This preserves full backwards compatibility.
-
-### Who Gets What Profile
-
-| Consumer | Tier | Profile | Effect |
-|---|---|---|---|
-| Task agent (AUTO) | Standard | `TASK` | ~8 task-focused tools |
-| Reviewer agent | Standard | `REVIEWER` | ~13 tools including review ops |
-| Orchestrator | Admin | `ORCHESTRATOR` | All tools |
-| External / manual | Any | `None` (default) | All tools for tier |
-
-Profile is passed via `--profile <name>` CLI flag on `kagan mcp`. `build_mcp_manifest()` in `_agent.py` propagates the profile flag automatically when spawning agents.
-
-### Exhaustiveness Guarantee
-
-A test in `tests/unit/test_tool_profiles.py` (`test_profile_exhaustiveness`) asserts that the union of all `TOOL_PROFILES` values equals `set(TOOL_TIERS.keys())`. This ensures no tool is ever "orphaned" (unassigned to any profile).
+The old `AccessTier` + `ToolProfile` two-axis model has been replaced by a single `AgentRole` axis. `_policy.py` contains `ROLE_TOOLS: dict[AgentRole, frozenset[str]]` mapping each role to its allowed tool set. `build_mcp_manifest()` takes `role="WORKER"` (or `"REVIEWER"` / `"ORCHESTRATOR"`) instead of separate access tier and profile arguments. The role IS the profile — no separate filtering step.
 
 ______________________________________________________________________
 
@@ -436,7 +377,7 @@ ______________________________________________________________________
 | Omitted                        | Why                                                                    |
 | ------------------------------ | ---------------------------------------------------------------------- |
 | HTTP/SSE transport             | Kagan is local-only. STDIO is simplest. Hosts spawn the process.       |
-| Auth middleware                | Local process, local user. Access control via 3-tier flags.            |
+| Auth middleware                | Local process, local user. Access control via role flags.              |
 | Tool wrapper/base class        | `@mcp.tool()` is the abstraction. Adding a layer earns nothing.        |
-| Runtime tier switching         | Rebuild the server for different access tier. One process, one config. |
+| Runtime role switching         | Rebuild the server for a different role. One process, one config.      |
 | Custom serialization framework | Standard JSON serialization of model dicts.                            |

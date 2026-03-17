@@ -1,7 +1,7 @@
 """Access control behavioral tests for kagan.mcp.
 
-Tests verify the 3-tier access control system through MCP protocol behavior:
-observable tool visibility via list_tools() on servers with different ServerOptions.
+Tests verify role-based access control through MCP protocol behavior:
+observable tool visibility via list_tools() on servers with different AgentRole values.
 
 No private module imports — all assertions are on protocol-level outcomes.
 """
@@ -12,6 +12,7 @@ import contextlib
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
 
+from kagan.core.enums import AgentRole
 from kagan.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
 
@@ -26,7 +27,6 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
 async def _connected_session(
     opts: ServerOptions,
 ) -> tuple[ClientSession, asyncio.Task, asyncio.Event]:
-    """Return (session, lifecycle_task, ready_event) for a server built with opts."""
     mcp = create_server(opts)
     session_q: asyncio.Queue[ClientSession] = asyncio.Queue()
     ready = asyncio.Event()
@@ -58,7 +58,6 @@ async def _connected_session(
 
 
 async def _tool_names(opts: ServerOptions) -> set[str]:
-    """Return the set of tool names visible on a server built with opts."""
     session, task, ready = await _connected_session(opts)
     try:
         result = await session.list_tools()
@@ -69,82 +68,115 @@ async def _tool_names(opts: ServerOptions) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
-# Readonly tier — mutating tools must be hidden
+# Worker role — board awareness + own-task ops only
 # ---------------------------------------------------------------------------
 
 
-async def test_readonly_server_hides_mutating_tools() -> None:
-    """Readonly server must not expose task_create, task_delete, or project_create."""
-    names = await _tool_names(ServerOptions(readonly=True))
+async def test_worker_hides_mutating_tools() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
     assert "task_create" not in names
     assert "task_delete" not in names
     assert "project_create" not in names
+    assert "task_update" not in names
+    assert "run_start" not in names
+    assert "review_decide" not in names
 
 
-async def test_readonly_server_exposes_read_tools() -> None:
-    """Readonly server must expose task_get and task_list."""
-    names = await _tool_names(ServerOptions(readonly=True))
+async def test_worker_exposes_read_tools() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
     assert "task_get" in names
     assert "task_list" in names
+    assert "task_search" in names
+    assert "task_events" in names
+    assert "task_counts" in names
+    assert "tasks_wait" in names
+    assert "run_update" in names
+    assert "run_summary" in names
+    assert "settings_get" in names
+    assert "review_conflicts" in names
+
+
+async def test_worker_can_annotate_own_task() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
+    assert "task_add_note" in names
 
 
 # ---------------------------------------------------------------------------
-# Standard tier — read + write tools visible; admin-only hidden
+# Reviewer role — worker + verdict tools
 # ---------------------------------------------------------------------------
 
 
-async def test_default_server_shows_read_and_write_tools() -> None:
-    """Default server must expose task_get and task_create; task_delete must be hidden."""
-    names = await _tool_names(ServerOptions())
-    assert "task_get" in names
-    assert "task_create" in names
+async def test_reviewer_includes_worker_tools() -> None:
+    worker_names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
+    reviewer_names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
+    assert worker_names < reviewer_names
+
+
+async def test_reviewer_has_verdict_tools() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
+    assert "review_set_criterion_verdict" in names
+    assert "review_clear_verdicts" in names
+
+
+async def test_reviewer_cannot_decide_or_start() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
+    assert "review_decide" not in names
+    assert "run_start" not in names
+    assert "task_create" not in names
     assert "task_delete" not in names
 
 
-async def test_default_server_hides_admin_tools() -> None:
-    """Default server must not expose settings_set or project_create."""
-    names = await _tool_names(ServerOptions())
-    assert "settings_set" not in names
-    assert "project_create" not in names
-
-
 # ---------------------------------------------------------------------------
-# Admin tier — all tools visible
+# Orchestrator role — full access
 # ---------------------------------------------------------------------------
 
 
-async def test_admin_server_shows_all_tools() -> None:
-    """Admin server must expose task_delete, project_create, and settings_set."""
-    names = await _tool_names(ServerOptions(admin=True))
+async def test_orchestrator_gets_all_tools() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert "task_get" in names
+    assert "task_create" in names
     assert "task_delete" in names
+    assert "task_update" in names
+    assert "run_start" in names
+    assert "run_cancel" in names
+    assert "review_decide" in names
     assert "project_create" in names
+    assert "project_delete" in names
     assert "settings_set" in names
 
 
-async def test_admin_server_shows_read_tools_too() -> None:
-    """Admin server must also expose read-only tools like task_get."""
-    names = await _tool_names(ServerOptions(admin=True))
-    assert "task_get" in names
-    assert "task_list" in names
+async def test_orchestrator_includes_reviewer_tools() -> None:
+    reviewer_names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
+    orchestrator_names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert reviewer_names < orchestrator_names
 
 
 # ---------------------------------------------------------------------------
-# project_delete requires admin tier (security fix — checkpoint-1 finding)
+# Default (no role) — backward compat: orchestrator
 # ---------------------------------------------------------------------------
 
 
-async def test_project_delete_requires_admin_tier() -> None:
-    """project_delete must be hidden on default server and visible on admin server."""
+async def test_default_server_is_orchestrator() -> None:
     default_names = await _tool_names(ServerOptions())
+    orchestrator_names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert default_names == orchestrator_names
+
+
+# ---------------------------------------------------------------------------
+# Legacy flags: readonly → worker, admin → orchestrator
+# ---------------------------------------------------------------------------
+
+
+async def test_readonly_flag_maps_to_worker() -> None:
+    readonly_names = await _tool_names(ServerOptions(readonly=True))
+    worker_names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
+    assert readonly_names == worker_names
+
+
+async def test_admin_flag_maps_to_orchestrator() -> None:
     admin_names = await _tool_names(ServerOptions(admin=True))
-    assert "project_delete" not in default_names
-    assert "project_delete" in admin_names
-
-
-async def test_project_delete_hidden_on_readonly_server() -> None:
-    """project_delete must be hidden on readonly server."""
-    names = await _tool_names(ServerOptions(readonly=True))
-    assert "project_delete" not in names
+    orchestrator_names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert admin_names == orchestrator_names
 
 
 # ---------------------------------------------------------------------------
@@ -153,193 +185,116 @@ async def test_project_delete_hidden_on_readonly_server() -> None:
 
 
 async def test_readonly_and_admin_mutually_exclusive() -> None:
-    """ServerOptions with both readonly=True and admin=True must raise ValueError."""
     with pytest.raises(ValueError, match="mutually exclusive"):
         ServerOptions(readonly=True, admin=True)
 
 
 # ---------------------------------------------------------------------------
-# Parametrized: all READONLY-tier tools visible in all tiers
+# Parametrized: worker tools visible in all roles
 # ---------------------------------------------------------------------------
 
-_READONLY_TOOLS = [
+_WORKER_TOOLS = [
     "task_get",
     "task_list",
     "task_search",
     "task_events",
     "tasks_wait",
     "task_counts",
+    "task_add_note",
+    "run_update",
     "run_summary",
-    "project_list",
-    "repo_list",
     "settings_get",
-    "audit_list",
-    "persona_preset_audit",
-    "persona_preset_whitelist_list",
     "review_conflicts",
+    "plugins_preflight",
 ]
 
 
-@pytest.mark.parametrize("tool_name", _READONLY_TOOLS)
-async def test_readonly_tool_visible_in_readonly_tier(tool_name: str) -> None:
-    """Every READONLY-tier tool must be visible on a readonly server."""
-    names = await _tool_names(ServerOptions(readonly=True))
-    assert tool_name in names, f"{tool_name!r} must be visible in readonly tier"
+@pytest.mark.parametrize("tool_name", _WORKER_TOOLS)
+async def test_worker_tool_visible_in_worker_role(tool_name: str) -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
+    assert tool_name in names, f"{tool_name!r} must be visible for WORKER"
 
 
-@pytest.mark.parametrize("tool_name", _READONLY_TOOLS)
-async def test_readonly_tool_visible_in_default_tier(tool_name: str) -> None:
-    """Every READONLY-tier tool must be visible on a default server."""
-    names = await _tool_names(ServerOptions())
-    assert tool_name in names, f"{tool_name!r} must be visible in default tier"
+@pytest.mark.parametrize("tool_name", _WORKER_TOOLS)
+async def test_worker_tool_visible_in_reviewer_role(tool_name: str) -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
+    assert tool_name in names, f"{tool_name!r} must be visible for REVIEWER"
 
 
-@pytest.mark.parametrize("tool_name", _READONLY_TOOLS)
-async def test_readonly_tool_visible_in_admin_tier(tool_name: str) -> None:
-    """Every READONLY-tier tool must be visible on an admin server."""
-    names = await _tool_names(ServerOptions(admin=True))
-    assert tool_name in names, f"{tool_name!r} must be visible in admin tier"
+@pytest.mark.parametrize("tool_name", _WORKER_TOOLS)
+async def test_worker_tool_visible_in_orchestrator_role(tool_name: str) -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert tool_name in names, f"{tool_name!r} must be visible for ORCHESTRATOR"
 
 
 # ---------------------------------------------------------------------------
-# Parametrized: all STANDARD-tier tools hidden in readonly, visible in standard+admin
+# Parametrized: orchestrator-only tools hidden from worker/reviewer
 # ---------------------------------------------------------------------------
 
-_STANDARD_TOOLS = [
+_ORCHESTRATOR_ONLY_TOOLS = [
     "task_create",
     "task_update",
-    "task_add_note",
+    "task_batch_create",
+    "task_delete",
     "run_start",
     "run_cancel",
-    "run_update",
-    "project_set_active",
-    "project_add_repo",
-    "project_set_repo_default_branch",
     "review_decide",
     "review_continue_rebase",
     "review_abort_rebase",
-]
-
-
-@pytest.mark.parametrize("tool_name", _STANDARD_TOOLS)
-async def test_default_tool_hidden_in_readonly_tier(tool_name: str) -> None:
-    """Every STANDARD-tier tool must be hidden on a readonly server."""
-    names = await _tool_names(ServerOptions(readonly=True))
-    assert tool_name not in names, f"{tool_name!r} must be hidden in readonly tier"
-
-
-@pytest.mark.parametrize("tool_name", _STANDARD_TOOLS)
-async def test_default_tool_visible_in_default_tier(tool_name: str) -> None:
-    """Every STANDARD-tier tool must be visible on a default server."""
-    names = await _tool_names(ServerOptions())
-    assert tool_name in names, f"{tool_name!r} must be visible in default tier"
-
-
-@pytest.mark.parametrize("tool_name", _STANDARD_TOOLS)
-async def test_default_tool_visible_in_admin_tier(tool_name: str) -> None:
-    """Every STANDARD-tier tool must be visible on an admin server."""
-    names = await _tool_names(ServerOptions(admin=True))
-    assert tool_name in names, f"{tool_name!r} must be visible in admin tier"
-
-
-# ---------------------------------------------------------------------------
-# Parametrized: all ADMIN-tier tools hidden in readonly+default, visible in admin
-# ---------------------------------------------------------------------------
-
-_ADMIN_TOOLS = [
-    "task_delete",
     "project_create",
     "project_delete",
+    "project_set_active",
+    "project_add_repo",
+    "project_set_repo_default_branch",
+    "project_list",
+    "repo_list",
     "settings_set",
-    "persona_preset_import",
-    "persona_preset_export",
-    "persona_preset_whitelist_add",
-    "persona_preset_whitelist_remove",
+    "audit_list",
+    "plugins_sync",
 ]
 
 
-@pytest.mark.parametrize("tool_name", _ADMIN_TOOLS)
-async def test_admin_tool_hidden_in_readonly_tier(tool_name: str) -> None:
-    """Every ADMIN-tier tool must be hidden on a readonly server."""
-    names = await _tool_names(ServerOptions(readonly=True))
-    assert tool_name not in names, f"{tool_name!r} must be hidden in readonly tier"
+@pytest.mark.parametrize("tool_name", _ORCHESTRATOR_ONLY_TOOLS)
+async def test_orchestrator_tool_hidden_from_worker(tool_name: str) -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
+    assert tool_name not in names, f"{tool_name!r} must be hidden from WORKER"
 
 
-@pytest.mark.parametrize("tool_name", _ADMIN_TOOLS)
-async def test_admin_tool_hidden_in_default_tier(tool_name: str) -> None:
-    """Every ADMIN-tier tool must be hidden on a default server."""
-    names = await _tool_names(ServerOptions())
-    assert tool_name not in names, f"{tool_name!r} must be hidden in default tier"
-
-
-@pytest.mark.parametrize("tool_name", _ADMIN_TOOLS)
-async def test_admin_tool_visible_in_admin_tier(tool_name: str) -> None:
-    """Every ADMIN-tier tool must be visible on an admin server."""
-    names = await _tool_names(ServerOptions(admin=True))
-    assert tool_name in names, f"{tool_name!r} must be visible in admin tier"
+@pytest.mark.parametrize("tool_name", _ORCHESTRATOR_ONLY_TOOLS)
+async def test_orchestrator_tool_visible_for_orchestrator(tool_name: str) -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.ORCHESTRATOR))
+    assert tool_name in names, f"{tool_name!r} must be visible for ORCHESTRATOR"
 
 
 # ---------------------------------------------------------------------------
-# Call-level enforcement: readonly cannot invoke mutating tools
+# Call-level enforcement
 # ---------------------------------------------------------------------------
 
 
-async def test_readonly_cannot_call_task_create() -> None:
-    """Readonly server must not expose task_create — calling it raises an error."""
-    session, task, ready = await _connected_session(ServerOptions(readonly=True))
+async def test_worker_cannot_call_task_create() -> None:
+    session, task, ready = await _connected_session(ServerOptions(role=AgentRole.WORKER))
     try:
         result = await session.list_tools()
         tool_names = {t.name for t in result.tools}
-        assert "task_create" not in tool_names, "task_create must not be visible on readonly server"
+        assert "task_create" not in tool_names
     finally:
         ready.set()
         await task
 
 
-async def test_default_cannot_call_task_delete() -> None:
-    """Default server must not expose task_delete — calling it raises an error."""
-    session, task, ready = await _connected_session(ServerOptions())
-    try:
-        result = await session.list_tools()
-        tool_names = {t.name for t in result.tools}
-        assert "task_delete" not in tool_names, "task_delete must not be visible on default server"
-    finally:
-        ready.set()
-        await task
-
-
-async def test_admin_can_call_task_delete() -> None:
-    """Admin server exposes task_delete and calling it succeeds (returns deleted result)."""
-    session, task, ready = await _connected_session(ServerOptions(admin=True))
-    try:
-        result = await session.list_tools()
-        tool_names = {t.name for t in result.tools}
-        assert "task_delete" in tool_names, "task_delete must be visible on admin server"
-        # Call task_delete with a non-existent ID — expect a tool error (not a protocol error)
-        call_result = await session.call_tool("task_delete", {"task_id": "nonexistent-id"})
-        # The tool is reachable — it returns an error content (task not found), not a protocol error
-        assert call_result is not None
-    finally:
-        ready.set()
-        await task
-
-
-async def test_admin_can_call_task_create() -> None:
-    """Admin server exposes task_create and calling it succeeds."""
-    session, task, ready = await _connected_session(ServerOptions(admin=True))
+async def test_orchestrator_can_call_task_create() -> None:
+    session, task, ready = await _connected_session(ServerOptions(role=AgentRole.ORCHESTRATOR))
     try:
         call_result = await session.call_tool("task_create", {"title": "test-task"})
         assert call_result is not None
-        # Result should contain task data (id, title, status)
         assert not call_result.isError, f"task_create failed: {call_result.content}"
     finally:
         ready.set()
         await task
 
 
-async def test_readonly_can_call_task_list() -> None:
-    """Readonly server exposes task_list and calling it succeeds."""
-    session, task, ready = await _connected_session(ServerOptions(readonly=True))
+async def test_worker_can_call_task_list() -> None:
+    session, task, ready = await _connected_session(ServerOptions(role=AgentRole.WORKER))
     try:
         call_result = await session.call_tool("task_list", {})
         assert call_result is not None
@@ -355,24 +310,20 @@ async def test_readonly_can_call_task_list() -> None:
 
 
 async def test_diagnostics_tool_hidden_by_default() -> None:
-    """diagnostics_get_instrumentation must not appear unless enable_instrumentation=True."""
     names = await _tool_names(ServerOptions())
     assert "diagnostics_get_instrumentation" not in names
 
 
 async def test_diagnostics_tool_visible_when_instrumentation_enabled() -> None:
-    """diagnostics_get_instrumentation must appear when enable_instrumentation=True."""
     names = await _tool_names(ServerOptions(enable_instrumentation=True))
     assert "diagnostics_get_instrumentation" in names
 
 
-async def test_diagnostics_tool_hidden_in_readonly_without_instrumentation() -> None:
-    """diagnostics_get_instrumentation must not appear on readonly without instrumentation."""
-    names = await _tool_names(ServerOptions(readonly=True))
+async def test_diagnostics_tool_hidden_in_worker_without_instrumentation() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
     assert "diagnostics_get_instrumentation" not in names
 
 
-async def test_diagnostics_tool_visible_in_readonly_with_instrumentation() -> None:
-    """diagnostics_get_instrumentation must appear on readonly with instrumentation enabled."""
-    names = await _tool_names(ServerOptions(readonly=True, enable_instrumentation=True))
+async def test_diagnostics_tool_visible_in_worker_with_instrumentation() -> None:
+    names = await _tool_names(ServerOptions(role=AgentRole.WORKER, enable_instrumentation=True))
     assert "diagnostics_get_instrumentation" in names

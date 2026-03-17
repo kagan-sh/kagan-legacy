@@ -81,6 +81,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
             status={task.status}
             executionMode={task.execution_mode}
             startedAt={runningSince}
+            taskLauncher={task.launcher}
           />
           {task.active_session ? (
             <>

@@ -142,8 +142,7 @@ WELCOME_BINDINGS: list[BindingType] = [
 ]
 
 SETTINGS_BINDINGS: list[BindingType] = [
-    Binding("ctrl+s", "save", "Save"),
-    Binding("escape", "cancel", "Cancel"),
+    Binding("escape", "cancel", "Close"),
     Binding("slash", "search", "Search", key_display="/"),
     Binding("ctrl+period", "toggle_advanced", "Advanced", key_display="Ctrl+."),
 ]
@@ -193,7 +192,7 @@ DIFF_VIEW_BINDINGS: list[BindingType] = [
 ]
 
 EDITOR_BINDINGS: list[BindingType] = [
-    Binding("ctrl+s", "save", "Save"),
+    Binding("ctrl+s", "finish", "Create", key_display="Ctrl+S"),
     Binding("escape", "cancel", "Cancel"),
     Binding("ctrl+period", "toggle_advanced", "Toggle Advanced", key_display="Ctrl+."),
     Binding("pagedown", "page_down", "Page Down", show=False),
@@ -213,7 +212,7 @@ PERMISSION_BINDINGS: list[BindingType] = [
 
 REJECTION_BINDINGS: list[BindingType] = [
     Binding("enter", "send_back", "Confirm", priority=True),
-    Binding("ctrl+s", "send_back", "Save", key_display="Ctrl+S"),
+    Binding("ctrl+s", "send_back", "Submit", key_display="Ctrl+S"),
     Binding("escape", "cancel", "Cancel"),
 ]
 
@@ -356,7 +355,7 @@ class FooterBuilder:
 
     @staticmethod
     def settings() -> list[tuple[str, str]]:
-        return [("Ctrl+S", "save"), ("/", "search"), ("Esc", "cancel")]
+        return [("/", "search"), ("Esc", "close")]
 
     @staticmethod
     def confirm() -> list[tuple[str, str]]:

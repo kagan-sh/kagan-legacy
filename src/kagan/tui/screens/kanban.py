@@ -1143,7 +1143,11 @@ class KanbanScreen(Screen[None]):
             with self.app.suspend():
                 yield
         except SuspendNotSupported:
-            yield
+            self.app.notify(
+                "Terminal suspend not supported in this environment. "
+                "Run PAIR from a standard terminal (not textual dev).",
+                severity="warning",
+            )
 
     @staticmethod
     async def _attach_tmux_session(session_name: str) -> bool:

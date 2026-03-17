@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from enum import Enum, auto
 from typing import Any
 
 from starlette.responses import JSONResponse
 
-from kagan.mcp._policy import AccessTier
 from kagan.wire.envelopes import WireEnvelope
+
+
+class AccessTier(Enum):
+    READONLY = auto()
+    STANDARD = auto()
+    ADMIN = auto()
 
 
 def _effective_tier(ctx: Any | None) -> AccessTier:

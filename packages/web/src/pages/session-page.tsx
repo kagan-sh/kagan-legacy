@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { apiClient } from '@/lib/api/client';
-import type { TaskCommitsResponse, TaskStatus, TaskWorktreeResponse } from '@/lib/api/types';
+import type { TaskCommitsResponse, TaskStatus, TaskWorktreeResponse, WireTaskSession } from '@/lib/api/types';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { Panel } from '@/components/shared/workspace';
 import { rightRailChatSessionIdAtom, rightRailModeAtom, rightRailTaskIdAtom } from '@/lib/atoms/ui';
@@ -31,51 +31,44 @@ export function Component() {
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
   const [pairLauncher, setPairLauncher] = useState<string | null>(null);
 
-  // Derive lane from URL or task status
   const requestedLane = searchParams.get('lane');
+
+  // Pre-fetch sessions so we can scope the event fetch to the correct lane
+  const [sessionsPreload, setSessionsPreload] = useState<WireTaskSession[]>([]);
+  useEffect(() => {
+    if (!taskId) return;
+    void apiClient.getTaskSessions(taskId).then(setSessionsPreload).catch(() => undefined);
+  }, [taskId]);
+
+  const workerSession = useMemo(
+    () => sessionsPreload.find((s) => s.mode === 'AUTO' || s.mode === 'PAIR'),
+    [sessionsPreload],
+  );
+  const reviewerSession = useMemo(
+    () => (sessionsPreload.length >= 2 ? sessionsPreload[sessionsPreload.length - 1] : undefined),
+    [sessionsPreload],
+  );
+  const hasReviewerSession = reviewerSession !== undefined;
+
+  const streamLane =
+    requestedLane === 'reviewer' || requestedLane === 'worker'
+      ? requestedLane
+      : reviewerSession
+        ? 'reviewer'
+        : 'worker';
+
+  const laneSessionId = streamLane === 'reviewer' ? reviewerSession?.id : workerSession?.id;
 
   const {
     task, events, loading, runningSince, isRunning, sessions,
     sentFollowUps, queue, sendingFollowUp,
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
-  } = useTaskEvents(taskId);
+  } = useTaskEvents(taskId, { sessionId: laneSessionId });
 
-  const streamLane =
-    requestedLane === 'reviewer' || requestedLane === 'worker'
-      ? requestedLane
-      : task?.status === 'REVIEW'
-        ? 'reviewer'
-        : 'worker';
-
-  const inferredSessionOrder = useMemo(() => {
-    const firstSeen = new Set<string>();
-    const ordered: string[] = [];
-    for (const event of events) {
-      if (!event.session_id || firstSeen.has(event.session_id)) continue;
-      firstSeen.add(event.session_id);
-      ordered.push(event.session_id);
-      if (ordered.length >= 2) break;
-    }
-    return ordered;
-  }, [events]);
-
-  const workerSession = useMemo(
-    () => sessions?.find((session) => session.mode === 'AUTO' || session.mode === 'PAIR'),
-    [sessions],
-  );
-  const reviewerSession = useMemo(
-    () => (sessions && sessions.length >= 2 ? sessions[sessions.length - 1] : undefined),
-    [sessions],
-  );
-  const hasReviewerSession = sessions ? reviewerSession !== undefined : Boolean(inferredSessionOrder[1]);
-  const displayedEvents = useMemo(() => {
-    const workerSessionId = workerSession?.id ?? inferredSessionOrder[0];
-    const reviewerSessionId = reviewerSession?.id ?? inferredSessionOrder[1];
-    const laneSessionId = streamLane === 'reviewer' ? reviewerSessionId : workerSessionId;
-    if (!laneSessionId) return sessions ? events : [];
-    return events.filter((event) => event.session_id === laneSessionId);
-  }, [events, workerSession, reviewerSession, streamLane, sessions, inferredSessionOrder]);
+  useEffect(() => {
+    if (sessions && sessions.length > 0) setSessionsPreload(sessions);
+  }, [sessions]);
 
   // Keep rail task ID in sync so Cmd+L opens chat for this task
   const setRailMode = useSetAtom(rightRailModeAtom);
@@ -247,7 +240,7 @@ export function Component() {
                     </Tabs>
 
                     <div className="flex min-h-0 flex-1 flex-col">
-                      <EventStream events={displayedEvents} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                      <EventStream events={events} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                       <ChatInputBar
                         onSend={queuePrompt}
                         disableSend={false}
@@ -279,7 +272,7 @@ export function Component() {
                 </Tabs>
 
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <EventStream events={displayedEvents} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                  <EventStream events={events} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                   <ChatInputBar
                     onSend={queuePrompt}
                     disableSend={false}
@@ -298,6 +291,7 @@ export function Component() {
               startedAt={runningSince}
               worktreePath={worktreePath}
               pairLauncher={pairLauncher}
+              taskLauncher={displayTask.launcher}
             />
 
             <TaskMetadataPanel

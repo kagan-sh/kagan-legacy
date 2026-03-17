@@ -12,9 +12,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kagan.core import resolve_default_agent_backend
 from kagan.core._utils import utc_iso
-from kagan.mcp._policy import AccessTier
 from kagan.mcp.server import get_server_context
-from kagan.server._access import is_access_allowed, websocket_forbidden
+from kagan.server._access import AccessTier, is_access_allowed, websocket_forbidden
 from kagan.server._helpers import task_to_wire_dict
 
 if TYPE_CHECKING:

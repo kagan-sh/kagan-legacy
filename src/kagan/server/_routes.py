@@ -12,8 +12,8 @@ from kagan.core import (
     parse_priority,
     parse_work_mode,
 )
-from kagan.mcp._policy import AccessTier
 from kagan.runtime_env import build_sanitized_subprocess_environment
+from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,
     _ok,
@@ -299,11 +299,18 @@ def register_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         payload = await _body(request)
         agent_backend = cast("str", payload.get("agent_backend", ""))
-        if not agent_backend:
-            settings = await ctx.client.settings.get()
-            agent_backend = settings.get("default_agent_backend", "claude-code")
         settings = await ctx.client.settings.get()
-        pair_launcher = str(settings.get("pair_launcher", "tmux")).strip().lower()
+        if not agent_backend:
+            agent_backend = settings.get("default_agent_backend", "claude-code")
+        task = await ctx.client.tasks.get(task_id)
+        task_launcher_raw = getattr(task, "launcher", None)
+        task_launcher = (
+            task_launcher_raw.strip().lower()
+            if isinstance(task_launcher_raw, str) and task_launcher_raw.strip()
+            else ""
+        )
+        settings_launcher = str(settings.get("pair_launcher", "tmux")).strip().lower()
+        pair_launcher = task_launcher or settings_launcher
         from kagan.core._launchers import resolve_launcher
 
         launcher, ide = resolve_launcher(pair_launcher)

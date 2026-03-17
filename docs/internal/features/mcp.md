@@ -67,7 +67,7 @@ ______________________________________________________________________
 - `review_task` — structured code review with diff context
 - `plan_tasks_from_description` — natural-language to task breakdown (orchestrator drafts tickets, user reviews before batch-creating)
 - `diagnose_failure` — diagnose agent execution failure
-- Always available regardless of access tier
+- Always available regardless of agent role
 
 ______________________________________________________________________
 
@@ -80,10 +80,10 @@ ______________________________________________________________________
 
 ## 9. Plugin Tools
 
-- `plugins_sync` (Admin tier) — sync issues via MCP, returns created/skipped/errors
+- `plugins_sync` (ORCHESTRATOR role) — sync issues via MCP, returns created/skipped/errors
   - Accepts plugin name, repo (owner/repo format), optional state and label filters
   - Returns created/skipped/errors counts and community warnings
-- `plugins_preflight` (Readonly) — check if a plugin's external dependencies are satisfied
+- `plugins_preflight` (WORKER role) — check if a plugin's external dependencies are satisfied
   - Optional plugin name; checks all plugins if omitted
   - Returns pass/warn/fail checks and readiness status
 
@@ -102,9 +102,9 @@ ______________________________________________________________________
 
 ## 11. Access Control
 
-- Three tiers: readonly (read only), default (read + write), admin (+ destructive)
-- `--readonly` and `--admin` are mutually exclusive flags
+- Three roles: WORKER (board awareness + own-task annotation), REVIEWER (+ verdicts), ORCHESTRATOR (full control)
+- `--role` flag sets the agent role; defaults to ORCHESTRATOR
+- `--readonly` maps to WORKER, `--admin` maps to ORCHESTRATOR for backward compatibility
 - Unregistered tools are invisible — host never knows they exist
-- Destructive tools (delete, settings, create projects, plugin sync) require admin tier
 - Session binding (`--session-id`) auto-opens project and defaults task_id
-- Core wires MCP flags into `.mcp.json` automatically per consumer type
+- Core wires `--role WORKER` into `.mcp.json` automatically for spawned agents

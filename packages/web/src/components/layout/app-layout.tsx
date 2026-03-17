@@ -14,7 +14,7 @@ import { PluginImportDialog } from '@/components/board/plugin-import-dialog';
 import { useWebSocketSync } from '@/lib/hooks/use-websocket-sync';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { apiClient } from '@/lib/api/client';
-import { projectSwitchVersionAtom } from '@/lib/atoms/board';
+import { projectSwitchVersionAtom, tasksAtom } from '@/lib/atoms/board';
 import {
   commandPaletteOpenAtom,
   helpOverlayOpenAtom,
@@ -49,18 +49,24 @@ function AppLayout() {
   const railChatSessionId = useAtomValue(rightRailChatSessionIdAtom);
   const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
-  const [projectChecked, setProjectChecked] = useState(false);
-  const lastDockModeRef = useRef<DockedChatRailMode>('chat-right');
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
+  const tasks = useAtomValue(tasksAtom);
+  const [projectChecked, setProjectChecked] = useState(projectVersion > 0);
+  const lastDockModeRef = useRef<DockedChatRailMode>('chat-right');
   const [railWidth, setRailWidth] = useState(448); // 28rem default
   const [railHeight, setRailHeight] = useState(384); // 24rem default
+
+  const railTaskExecutionMode = useMemo(
+    () => (railTaskId ? tasks.find((t) => t.id === railTaskId)?.execution_mode : undefined),
+    [railTaskId, tasks],
+  );
 
   const MIN_RAIL = 280;
   const MAX_RAIL_W = 800;
   const MAX_RAIL_H = 600;
 
-  // On mount: redirect to welcome if no active project (like TUI boot flow)
   useEffect(() => {
+    if (projectChecked) return;
     let cancelled = false;
     apiClient
       .getProjects()
@@ -68,10 +74,8 @@ function AppLayout() {
         if (cancelled) return;
         const active = projects.find((p) => p.active);
         if (active) {
-          // Active project exists — proceed
           setProjectChecked(true);
         } else {
-          // No active project — always show welcome (like TUI)
           navigate('/welcome', { replace: true });
         }
       })
@@ -79,7 +83,7 @@ function AppLayout() {
         if (!cancelled) navigate('/welcome', { replace: true });
       });
     return () => { cancelled = true; };
-  }, [navigate]);
+  }, [navigate, projectChecked]);
 
   const currentTaskId = useMemo(() => {
     const taskMatch = /^\/task\/([^/?]+)/.exec(location.pathname);
@@ -388,6 +392,7 @@ function AppLayout() {
                       layout="chat-right"
                       onSetLayout={setChatRailLayout}
                       onClose={closeChatRail}
+                      executionMode={railTaskExecutionMode}
                     />
                   ) : railChatSessionId ? (
                     <OrchestratorChatPanel
@@ -410,6 +415,7 @@ function AppLayout() {
                     layout="chat-bottom"
                     onSetLayout={setChatRailLayout}
                     onClose={closeChatRail}
+                    executionMode={railTaskExecutionMode}
                   />
                 ) : railChatSessionId ? (
                   <OrchestratorChatPanel
@@ -435,6 +441,7 @@ function AppLayout() {
               layout="chat-fullscreen"
               onSetLayout={setChatRailLayout}
               onClose={closeChatRail}
+              executionMode={railTaskExecutionMode}
             />
           ) : railChatSessionId ? (
             <OrchestratorChatPanel
@@ -456,6 +463,7 @@ function AppLayout() {
                 layout="chat-fullscreen"
                 onSetLayout={setChatRailLayout}
                 onClose={closeChatRail}
+                executionMode={railTaskExecutionMode}
               />
             ) : railChatSessionId ? (
               <OrchestratorChatPanel

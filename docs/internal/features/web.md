@@ -85,3 +85,13 @@ ______________________________________________________________________
 - board, task (including ChatSidePanel overlay), and chat views react to WebSocket updates
 - visible keyboard focus, strong border contrast, skip link support, and reduced-motion respect
 - typography is split between UI and code surfaces for readability in long work sessions
+
+______________________________________________________________________
+
+## 9. PAIR Session Launch
+
+- when starting a PAIR task, a guidance dialog appears before the session launches
+- dialog content adapts by launcher backend: tmux (attach command), nvim (nvim launch command), IDE (editor deep link)
+- terminal backends (tmux, nvim) copy a runnable command to clipboard
+- "Do not show this guidance again" toggle persists the `skip_pair_instructions_popup` setting
+- task-level launcher override (`task.launcher`) takes priority over global `settings.pair_launcher`

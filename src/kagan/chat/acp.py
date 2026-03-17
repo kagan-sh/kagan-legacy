@@ -265,7 +265,7 @@ async def run_orchestrator_turn(
         mcp_content = build_mcp_manifest(
             session_id=session_id,
             db_path=db_path,
-            access_tier="admin",
+            role="ORCHESTRATOR",
             project_id=client.active_project_id,
         )
         await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")

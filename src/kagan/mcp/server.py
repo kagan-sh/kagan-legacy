@@ -12,7 +12,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 if TYPE_CHECKING:
     from kagan.core import KaganCore
-    from kagan.core.enums import ToolProfile
+    from kagan.core.enums import AgentRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,9 +21,9 @@ class ServerOptions:
     admin: bool = False
     session_id: str | None = None
     enable_instrumentation: bool = False
-    db_path: str | None = None  # optional path for KaganCore; None = default
-    project_id: str | None = None  # if set, activate this project at lifespan start
-    profile: ToolProfile | None = field(default=None)
+    db_path: str | None = None
+    project_id: str | None = None
+    role: AgentRole | None = field(default=None)
 
     def __post_init__(self) -> None:
         if self.readonly and self.admin:
@@ -166,8 +166,9 @@ def create_server(opts: ServerOptions) -> FastMCP:
         "Workflow: create tasks (task_batch_create) → start agents (run_start) → "
         "monitor (tasks_wait/run_summary) → review (review_decide) → merge.\n"
         "\n"
-        "Access tiers: admin (full control), standard (task-scoped), readonly (read only). "
-        "Tools are filtered by access tier at registration time."
+        "Agent roles: WORKER (own-task ops + board awareness), "
+        "REVIEWER (verdicts + read), ORCHESTRATOR (full control). "
+        "Tools are filtered by role at registration time."
     )
     mcp = FastMCP(name="kagan", instructions=instructions, lifespan=_lifespan)
     _SERVER_OPTS[id(mcp)] = opts

@@ -37,7 +37,8 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         app.screen.query_one("#settings-auto-init-repo", Switch).value = True
         app.screen.query_one("#settings-auto-init-commit", Switch).value = False
 
-        await pilot.press("ctrl+s")
+        await pilot.pause(delay=0.6)
+        await pilot.press("escape")
         await pilot.pause()
         assert app.screen.id == "kanban-screen"
 

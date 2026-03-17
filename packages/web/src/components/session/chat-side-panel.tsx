@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { apiClient } from '@/lib/api/client';
+import type { WireTaskSession } from '@/lib/api/types';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { sessionPickerOpenAtom, type RightRailMode } from '@/lib/atoms/ui';
@@ -18,13 +20,16 @@ interface ChatSidePanelProps {
   layout: Exclude<RightRailMode, 'none'>;
   onSetLayout: (layout: Exclude<RightRailMode, 'none'>) => void;
   onClose: () => void;
+  executionMode?: string;
 }
 
-export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSidePanelProps) {
+export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionMode }: ChatSidePanelProps) {
   const isMobile = useIsMobile();
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
   const [searchParams] = useSearchParams();
   const [lane, setLane] = useState<'worker' | 'reviewer'>('worker');
+
+  const isPairMode = executionMode === 'PAIR';
 
   // Read lane from URL params on mount
   useEffect(() => {
@@ -34,41 +39,37 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
     }
   }, [searchParams]);
 
+  // First fetch sessions to derive lane→sessionId mapping, then fetch
+  // events scoped to the active lane's session.  This avoids the tail-fetch
+  // problem where all recent events belong to the reviewer session but the
+  // worker tab is selected, resulting in an empty stream.
+  const [sessionsPreload, setSessionsPreload] = useState<WireTaskSession[]>([]);
+  useEffect(() => {
+    if (!taskId) return;
+    void apiClient.getTaskSessions(taskId).then(setSessionsPreload).catch(() => undefined);
+  }, [taskId]);
+
+  const workerSession = useMemo(
+    () => sessionsPreload.find((s) => s.mode === 'AUTO' || s.mode === 'PAIR'),
+    [sessionsPreload],
+  );
+  const reviewerSession = useMemo(
+    () => (sessionsPreload.length >= 2 ? sessionsPreload[sessionsPreload.length - 1] : undefined),
+    [sessionsPreload],
+  );
+  const hasReviewerSession = reviewerSession !== undefined;
+  const laneSessionId = lane === 'reviewer' ? reviewerSession?.id : workerSession?.id;
+
   const {
     task, events, isRunning, sessions,
     sentFollowUps, queue, sendingFollowUp,
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
-  } = useTaskEvents(taskId, { initialLimit: 200 });
+  } = useTaskEvents(taskId, { initialLimit: 200, sessionId: laneSessionId });
 
-  const inferredSessionOrder = useMemo(() => {
-    const firstSeen = new Set<string>();
-    const ordered: string[] = [];
-    for (const event of events) {
-      if (!event.session_id || firstSeen.has(event.session_id)) continue;
-      firstSeen.add(event.session_id);
-      ordered.push(event.session_id);
-      if (ordered.length >= 2) break;
-    }
-    return ordered;
-  }, [events]);
-
-  const workerSession = useMemo(
-    () => sessions?.find((session) => session.mode === 'AUTO' || session.mode === 'PAIR'),
-    [sessions],
-  );
-  const reviewerSession = useMemo(
-    () => (sessions && sessions.length >= 2 ? sessions[sessions.length - 1] : undefined),
-    [sessions],
-  );
-  const hasReviewerSession = sessions ? reviewerSession !== undefined : Boolean(inferredSessionOrder[1]);
-  const displayedEvents = useMemo(() => {
-    const workerSessionId = workerSession?.id ?? inferredSessionOrder[0];
-    const reviewerSessionId = reviewerSession?.id ?? inferredSessionOrder[1];
-    const laneSessionId = lane === 'reviewer' ? reviewerSessionId : workerSessionId;
-    if (!laneSessionId) return sessions ? events : [];
-    return events.filter((event) => event.session_id === laneSessionId);
-  }, [events, workerSession, reviewerSession, lane, sessions, inferredSessionOrder]);
+  useEffect(() => {
+    if (sessions && sessions.length > 0) setSessionsPreload(sessions);
+  }, [sessions]);
 
   return (
     <aside
@@ -138,7 +139,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
       </div>
 
       <EventStream
-        events={displayedEvents}
+        events={events}
         userFollowUps={sentFollowUps}
         isRunning={isRunning}
         className="min-h-0 flex-1"
@@ -147,7 +148,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
         onLoadEarlier={loadEarlier}
       />
 
-      {queue.length > 0 && (
+      {!isPairMode && queue.length > 0 && (
         <div className="border-t border-[color:var(--border-subtle)] px-3 py-2">
           <FollowUpQueue
             prompts={queue}
@@ -160,11 +161,17 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
         </div>
       )}
 
-      <ChatInputBar
-        onSend={queuePrompt}
-        disableSend={isRunning}
-        placeholder={`Queue a follow-up for the ${lane} agent...`}
-      />
+      {!isPairMode ? (
+        <ChatInputBar
+          onSend={queuePrompt}
+          disableSend={isRunning}
+          placeholder={`Queue a follow-up for the ${lane} agent...`}
+        />
+      ) : (
+        <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
+          Session running in external terminal
+        </div>
+      )}
 
       {!isMobile && (
         <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">

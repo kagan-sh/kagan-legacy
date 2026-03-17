@@ -59,6 +59,10 @@ class TaskEditor(Vertical):
     class Cancelled(Message):
         pass
 
+    @dataclass
+    class FieldChanged(Message):
+        pass
+
     def __init__(
         self,
         *,
@@ -72,6 +76,7 @@ class TaskEditor(Vertical):
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
         focus_field: str | None = None,
+        editing: bool = False,
     ) -> None:
         super().__init__()
         self._initial_title = title
@@ -80,6 +85,7 @@ class TaskEditor(Vertical):
         self._initial_execution_mode = execution_mode
         self._initial_agent_backend = agent_backend or ""
         self._initial_launcher = launcher or ""
+        self._editing = editing
         backend_set = set(available_agent_backends or [])
         if self._initial_agent_backend:
             backend_set.add(self._initial_agent_backend)
@@ -165,11 +171,18 @@ class TaskEditor(Vertical):
                     id="task-base-branch",
                     classes="task-input",
                 )
-        yield Static(
-            "[bold]Ctrl+S[/] save  [bold]Ctrl+.[/] advanced  "
-            "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
-            classes="modal-action-hint",
-        )
+        if self._editing:
+            yield Static(
+                "Auto-saved  ·  [bold]Ctrl+.[/] advanced  "
+                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] close",
+                classes="modal-action-hint",
+            )
+        else:
+            yield Static(
+                "[bold]Ctrl+S[/] create  [bold]Ctrl+.[/] advanced  "
+                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
+                classes="modal-action-hint",
+            )
 
     def on_mount(self) -> None:
         self._sync_advanced_visibility()
@@ -246,9 +259,18 @@ class TaskEditor(Vertical):
             self.call_after_refresh(self._reveal_advanced_fields)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "task-title":
-            return
-        self._set_title_error(self._validate_title())
+        if event.input.id == "task-title":
+            self._set_title_error(self._validate_title())
+        if self._editing:
+            self.post_message(self.FieldChanged())
+
+    def on_select_changed(self, _: Select.Changed) -> None:
+        if self._editing:
+            self.post_message(self.FieldChanged())
+
+    def on_text_area_changed(self, _: TextArea.Changed) -> None:
+        if self._editing:
+            self.post_message(self.FieldChanged())
 
     def scroll_form(self, delta_y: int) -> None:
         form = self.query_one(".task-form", VerticalScroll)
@@ -262,14 +284,10 @@ class TaskEditor(Vertical):
         self.scroll_form(-3)
         event.stop()
 
-    def submit(self) -> None:
+    def collect_values(self) -> TaskSubmitted | None:
         title = self.query_one("#task-title", Input).value.strip()
         if not title:
-            self._set_title_error("Title is required.")
-            self.app.notify("Task title is required.", severity="warning")
-            self.query_one("#task-title", Input).focus()
-            return
-        self._set_title_error(None)
+            return None
 
         description = self.query_one("#task-description", TextArea).text
         priority_select = cast("Select[int]", self.query_one("#task-priority", Select))
@@ -302,17 +320,25 @@ class TaskEditor(Vertical):
         else:
             launcher = launcher_value.strip() or None
 
-        self.post_message(
-            TaskSubmitted(
-                title=title,
-                description=description,
-                priority=priority,
-                execution_mode=execution_mode,
-                agent_backend=agent_backend,
-                launcher=launcher,
-                base_branch=base_branch,
-            )
+        return TaskSubmitted(
+            title=title,
+            description=description,
+            priority=priority,
+            execution_mode=execution_mode,
+            agent_backend=agent_backend,
+            launcher=launcher,
+            base_branch=base_branch,
         )
+
+    def submit(self) -> None:
+        values = self.collect_values()
+        if values is None:
+            self._set_title_error("Title is required.")
+            self.app.notify("Task title is required.", severity="warning")
+            self.query_one("#task-title", Input).focus()
+            return
+        self._set_title_error(None)
+        self.post_message(values)
 
     def cancel(self) -> None:
         self.post_message(self.Cancelled())

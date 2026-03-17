@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
 
-    from kagan.mcp._policy import AccessTier
+    from kagan.server._access import AccessTier
 
 
 def _ok(data: Any, status: int = 200) -> JSONResponse:

@@ -171,7 +171,7 @@ def build_neovim_command(*, worktree_path: str) -> list[str]:
 
 
 async def _write_mcp_json(worktree_path: Path, session_id: str, db_path: str) -> None:
-    content = build_mcp_manifest(session_id=session_id, db_path=db_path, access_tier="default")
+    content = build_mcp_manifest(session_id=session_id, db_path=db_path, role="WORKER")
     mcp_path = worktree_path / ".mcp.json"
     try:
         await asyncio.to_thread(mcp_path.write_text, content, "utf-8")

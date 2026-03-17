@@ -10,7 +10,7 @@ from kagan.chat.sessions import (
     get_chat_session,
     list_chat_sessions,
 )
-from kagan.mcp._policy import AccessTier
+from kagan.server._access import AccessTier
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
 
 if TYPE_CHECKING:

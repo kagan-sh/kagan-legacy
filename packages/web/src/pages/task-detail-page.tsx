@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router';
-import { ArrowLeft, CheckCircle, ChevronRight, LayoutDashboard, ListChecks, MessageSquare, MoveRight, Pencil, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, ChevronRight, LayoutDashboard, ListChecks, MessageSquare, MoveRight, Pencil, Terminal, XCircle } from 'lucide-react';
 import { useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
@@ -9,6 +9,7 @@ import { fetchTasksAtom } from '@/lib/atoms/board';
 import { rightRailChatSessionIdAtom, rightRailModeAtom, rightRailTaskIdAtom } from '@/lib/atoms/ui';
 import { STATUS_LABELS, getAllowedTaskTransitions } from '@/lib/utils/constants';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
+import { openInEditor, launcherDisplayName, type LauncherBackend } from '@/lib/utils/editor-links';
 import {
   ActionEmptyState,
   InspectorSection,
@@ -41,6 +42,32 @@ import { TaskSidebar } from '@/components/board/task-sidebar';
 import { isEditableTarget, hasOpenOverlay } from '@/lib/utils/dom';
 
 export type WorkspaceTab = 'overview' | 'changes' | 'review';
+
+const LAUNCHER_BACKENDS: readonly LauncherBackend[] = [
+  'tmux',
+  'nvim',
+  'vscode',
+  'cursor',
+  'windsurf',
+  'kiro',
+  'antigravity',
+];
+
+function normalizeLauncher(value: string | null | undefined): LauncherBackend {
+  if (!value) return 'vscode';
+  const normalized = value.trim().toLowerCase();
+  return LAUNCHER_BACKENDS.includes(normalized as LauncherBackend)
+    ? (normalized as LauncherBackend)
+    : 'vscode';
+}
+
+function quoteShell(value: string): string {
+  return `"${value.replace(/["\\$`]/g, '\\$&')}"`;
+}
+
+function tmuxSessionName(sessionId: string): string {
+  return `kagan-${sessionId.replaceAll(':', '-')}`;
+}
 
 export function defaultTabForTask(task: WireTask): WorkspaceTab {
   if (task.status === 'BACKLOG') return 'overview';
@@ -99,12 +126,13 @@ export function Component() {
 
   useEffect(() => {
     if (!id || !task) return;
+    if (task.execution_mode === 'PAIR') return;
     if (task.active_session || task.status === 'IN_PROGRESS') {
       setRailTaskId(id);
       setRailChatSessionId(null);
       setRailMode('chat-right');
     }
-  }, [id, task?.active_session?.id, task?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, task?.active_session?.id, task?.status, task?.execution_mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayTask = taskSnapshot ?? task;
 
@@ -165,6 +193,54 @@ export function Component() {
     setRailChatSessionId(null);
     setRailMode('chat-right');
   }, [setRailChatSessionId, setRailMode, setRailTaskId, taskSnapshot]);
+
+  const handleAttachPairSession = useCallback(async () => {
+    if (!displayTask) return;
+    const launcher = normalizeLauncher(displayTask.launcher ?? pairLauncher ?? 'vscode');
+    const activeSessionId = displayTask.active_session?.id ?? null;
+
+    if (launcher === 'tmux') {
+      if (!activeSessionId) {
+        toast.error('No active session to attach');
+        return;
+      }
+      const command = `tmux attach-session -t ${tmuxSessionName(activeSessionId)}`;
+      try {
+        await navigator.clipboard.writeText(command);
+        toast.success('tmux attach command copied to clipboard');
+      } catch {
+        toast.info(`Run: ${command}`);
+      }
+      return;
+    }
+
+    if (launcher === 'nvim') {
+      if (!worktreePath) {
+        toast.error('Worktree path not available');
+        return;
+      }
+      const command = `cd ${quoteShell(worktreePath)} && nvim .kagan/start_prompt.md`;
+      try {
+        await navigator.clipboard.writeText(command);
+        toast.success('Neovim command copied to clipboard');
+      } catch {
+        toast.info(`Run: ${command}`);
+      }
+      return;
+    }
+
+    if (!worktreePath) {
+      toast.error('Worktree path not available');
+      return;
+    }
+
+    const opened = openInEditor(launcher, worktreePath);
+    if (opened) {
+      toast.success(`Opening ${launcherDisplayName(launcher)}...`);
+    } else {
+      toast.info(`Open ${launcherDisplayName(launcher)} manually`);
+    }
+  }, [displayTask?.active_session?.id, displayTask?.launcher, pairLauncher, worktreePath]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -266,11 +342,27 @@ export function Component() {
             buttonSize="sm"
             worktreePath={worktreePath}
             pairLauncher={pairLauncher}
+            taskLauncher={displayTask.launcher}
           />
-          <Button variant="secondary" size="sm" onClick={handleOpenTaskChat}>
-            <MessageSquare className="size-4" />
-            Open chat
-          </Button>
+          {displayTask.execution_mode === 'PAIR' ? (
+            displayTask.status === 'IN_PROGRESS' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void handleAttachPairSession();
+                }}
+              >
+                <Terminal className="size-4" />
+                Attach session
+              </Button>
+            ) : null
+          ) : (
+            <Button variant="secondary" size="sm" onClick={handleOpenTaskChat}>
+              <MessageSquare className="size-4" />
+              Open chat
+            </Button>
+          )}
           <Select
             value=""
             onValueChange={(value) => handleTransition(value as TaskStatus)}

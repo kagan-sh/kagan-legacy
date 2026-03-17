@@ -210,8 +210,6 @@ _AGENT_BACKEND_ALIASES: dict[str, str] = {
     "kimi": KIMI_CLI_BACKEND,
 }
 
-_VALID_ACCESS_TIERS = frozenset({"default", "admin", "readonly"})
-
 
 def normalize_backend_name(name: str) -> str:
     """Normalize user-provided backend names to canonical registry keys."""
@@ -259,25 +257,14 @@ def build_mcp_manifest(
     *,
     session_id: str,
     db_path: str,
-    access_tier: str = "default",
+    role: str = "WORKER",
     project_id: str | None = None,
-    profile: str | None = None,
 ) -> str:
     """Build the .mcp.json content string for a given session."""
-    if access_tier not in _VALID_ACCESS_TIERS:
-        raise ValueError(
-            f"access_tier must be one of {sorted(_VALID_ACCESS_TIERS)!r}, got {access_tier!r}"
-        )
-
     mcp_args = ["kagan", "mcp", "--session-id", session_id, "--db", db_path]
-    if access_tier == "admin":
-        mcp_args.append("--admin")
-    elif access_tier == "readonly":
-        mcp_args.append("--readonly")
+    mcp_args += ["--role", role]
     if project_id is not None:
         mcp_args += ["--project-id", project_id]
-    if profile is not None:
-        mcp_args += ["--profile", profile]
 
     payload = {
         "mcpServers": {
@@ -303,7 +290,9 @@ async def _prepare_spawn(
 ) -> tuple[list[str], dict[str, str], dict[str, object], str]:
     entry = get_backend(backend_name)
 
-    mcp_content = build_mcp_manifest(session_id=session_id, db_path=db_path, project_id=project_id)
+    mcp_content = build_mcp_manifest(
+        session_id=session_id, db_path=db_path, role="WORKER", project_id=project_id
+    )
     if write_mcp_manifest:
         mcp_path = worktree_path / ".mcp.json"
         try:

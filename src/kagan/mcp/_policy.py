@@ -1,115 +1,90 @@
-"""kagan.mcp._policy — 3-tier access control for MCP tool registration."""
+"""kagan.mcp._policy — Role-based access control for MCP tool registration.
 
-from enum import Enum, auto
+Single axis: AgentRole (WORKER < REVIEWER < ORCHESTRATOR).
+Each role's toolset is cumulative — higher roles include all lower-role tools.
+"""
 
-from kagan.core.enums import ToolProfile
-from kagan.mcp.server import ServerOptions
+from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-class AccessTier(Enum):
-    """Minimum access tier required to register a tool."""
+from kagan.core.enums import AgentRole
 
-    READONLY = auto()
-    STANDARD = auto()
-    ADMIN = auto()
+if TYPE_CHECKING:
+    from kagan.mcp.server import ServerOptions
 
+_WORKER_TOOLS = frozenset(
+    {
+        "task_get",
+        "task_list",
+        "task_search",
+        "task_events",
+        "task_add_note",
+        "task_counts",
+        "tasks_wait",
+        "run_update",
+        "run_summary",
+        "settings_get",
+        "review_conflicts",
+        "plugins_preflight",
+    }
+)
 
-# Maps tool name → minimum AccessTier required to register it.
-TOOL_TIERS: dict[str, AccessTier] = {
-    # Read-only tools (always available)
-    "task_get": AccessTier.READONLY,
-    "task_list": AccessTier.READONLY,
-    "task_search": AccessTier.READONLY,
-    "task_events": AccessTier.READONLY,
-    "tasks_wait": AccessTier.READONLY,
-    "task_counts": AccessTier.READONLY,
-    "run_summary": AccessTier.READONLY,
-    "project_list": AccessTier.READONLY,
-    "repo_list": AccessTier.READONLY,
-    "settings_get": AccessTier.READONLY,
-    "audit_list": AccessTier.READONLY,
-    "persona_preset_audit": AccessTier.READONLY,
-    "persona_preset_whitelist_list": AccessTier.READONLY,
-    # Standard-tier tools (read + write)
-    "task_create": AccessTier.STANDARD,
-    "task_update": AccessTier.STANDARD,
-    "task_add_note": AccessTier.STANDARD,
-    "run_start": AccessTier.STANDARD,
-    "run_cancel": AccessTier.STANDARD,
-    "run_update": AccessTier.STANDARD,
-    "project_set_active": AccessTier.STANDARD,
-    "project_add_repo": AccessTier.STANDARD,
-    "project_set_repo_default_branch": AccessTier.STANDARD,
-    "review_decide": AccessTier.STANDARD,
-    "review_continue_rebase": AccessTier.STANDARD,
-    "review_abort_rebase": AccessTier.STANDARD,
-    "review_conflicts": AccessTier.READONLY,
-    "review_set_criterion_verdict": AccessTier.STANDARD,
-    "review_clear_verdicts": AccessTier.STANDARD,
-    "task_batch_create": AccessTier.STANDARD,
-    # Admin-only tools
-    "task_delete": AccessTier.ADMIN,
-    "project_create": AccessTier.ADMIN,
-    "project_delete": AccessTier.ADMIN,
-    "settings_set": AccessTier.ADMIN,
-    "persona_preset_import": AccessTier.ADMIN,
-    "persona_preset_export": AccessTier.ADMIN,
-    "persona_preset_whitelist_add": AccessTier.ADMIN,
-    "persona_preset_whitelist_remove": AccessTier.ADMIN,
-    # Plugin tools
-    "plugins_sync": AccessTier.ADMIN,
-    "plugins_preflight": AccessTier.READONLY,
+_REVIEWER_TOOLS = _WORKER_TOOLS | frozenset(
+    {
+        "review_set_criterion_verdict",
+        "review_clear_verdicts",
+    }
+)
+
+_ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
+    {
+        "task_create",
+        "task_update",
+        "task_batch_create",
+        "task_delete",
+        "run_start",
+        "run_cancel",
+        "review_decide",
+        "review_continue_rebase",
+        "review_abort_rebase",
+        "project_list",
+        "project_create",
+        "project_delete",
+        "project_set_active",
+        "project_add_repo",
+        "project_set_repo_default_branch",
+        "repo_list",
+        "settings_set",
+        "audit_list",
+        "plugins_sync",
+        "persona_preset_audit",
+        "persona_preset_import",
+        "persona_preset_export",
+        "persona_preset_whitelist_list",
+        "persona_preset_whitelist_add",
+        "persona_preset_whitelist_remove",
+    }
+)
+
+ROLE_TOOLS: dict[AgentRole, frozenset[str]] = {
+    AgentRole.WORKER: _WORKER_TOOLS,
+    AgentRole.REVIEWER: _REVIEWER_TOOLS,
+    AgentRole.ORCHESTRATOR: _ORCHESTRATOR_TOOLS,
 }
 
-# Maps ToolProfile → allowed tool names within that profile.
-TOOL_PROFILES: dict[ToolProfile, frozenset[str]] = {
-    ToolProfile.TASK: frozenset(
-        {
-            "task_get",
-            "task_list",
-            "task_search",
-            "task_events",
-            "task_add_note",
-            "run_update",
-            "run_summary",
-            "settings_get",
-        }
-    ),
-    ToolProfile.REVIEWER: frozenset(
-        {
-            "task_get",
-            "task_list",
-            "task_search",
-            "task_events",
-            "task_add_note",
-            "tasks_wait",
-            "task_counts",
-            "run_summary",
-            "settings_get",
-            "review_decide",
-            "review_set_criterion_verdict",
-            "review_clear_verdicts",
-            "review_conflicts",
-        }
-    ),
-    ToolProfile.ORCHESTRATOR: frozenset(TOOL_TIERS.keys()),
-}
+ALL_TOOL_NAMES: frozenset[str] = _ORCHESTRATOR_TOOLS
 
 
-def _effective_tier(opts: ServerOptions) -> AccessTier:
-    """Compute the effective access tier from ServerOptions."""
-    if opts.admin:
-        return AccessTier.ADMIN
+def effective_role(opts: ServerOptions) -> AgentRole:
+    """Determine the effective role from ServerOptions."""
+    if opts.role is not None:
+        return opts.role
     if opts.readonly:
-        return AccessTier.READONLY
-    return AccessTier.STANDARD
+        return AgentRole.WORKER
+    return AgentRole.ORCHESTRATOR
 
 
 def is_tool_allowed(tool_name: str, opts: ServerOptions) -> bool:
-    """Return True if tool_name should be registered given opts."""
-    required = TOOL_TIERS.get(tool_name, AccessTier.STANDARD)
-    effective = _effective_tier(opts)
-    # Order in enum definition determines access level
-    if effective.value < required.value:
-        return False
-    return not (opts.profile is not None and tool_name not in TOOL_PROFILES[opts.profile])
+    """Return True if tool_name should be registered for the effective role."""
+    return tool_name in ROLE_TOOLS[effective_role(opts)]

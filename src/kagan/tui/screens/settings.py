@@ -17,6 +17,8 @@ from kagan.core import (
 )
 
 if TYPE_CHECKING:
+    from textual.timer import Timer
+
     from kagan.tui.app import KaganApp
 from kagan.tui.keybindings import SETTINGS_BINDINGS, SETTINGS_COMMAND_BINDINGS
 
@@ -143,6 +145,7 @@ class SettingsModal(ModalScreen[None]):
 
     def __init__(self) -> None:
         super().__init__(id="settings-modal")
+        self._auto_save_timer: Timer | None = None
         self._categories = [
             SettingCategory(
                 id="orchestration",
@@ -362,11 +365,10 @@ class SettingsModal(ModalScreen[None]):
                                 yield from self._build_category_fields(category.id)
 
             with Horizontal(classes="modal-action-row"):
-                yield Button("Save", id="settings-save", variant="primary")
-                yield Button("Cancel", id="settings-cancel")
+                yield Button("Close", id="settings-close")
             with Horizontal(classes="modal-action-hint-row"):
                 yield Static(
-                    "Ctrl+S save  Ctrl+. advanced  / search  Esc close",
+                    "Auto-saved  ·  Ctrl+. advanced  / search  Esc close",
                     id="settings-footer-hint",
                     classes="modal-action-hint",
                 )
@@ -519,13 +521,39 @@ class SettingsModal(ModalScreen[None]):
     async def _on_advanced_toggle_pressed(self, _: Button.Pressed) -> None:
         self.action_toggle_advanced()
 
-    @on(Button.Pressed, "#settings-save")
-    async def _on_save_pressed(self, _: Button.Pressed) -> None:
-        await self.action_save()
-
-    @on(Button.Pressed, "#settings-cancel")
-    def _on_cancel_pressed(self, _: Button.Pressed) -> None:
+    @on(Button.Pressed, "#settings-close")
+    def _on_close_pressed(self, _: Button.Pressed) -> None:
         self.action_cancel()
+
+    # --- Auto-save handlers ---
+
+    @on(Switch.Changed)
+    def _on_switch_auto_save(self, _: Switch.Changed) -> None:
+        self._schedule_auto_save()
+
+    @on(Select.Changed)
+    def _on_select_auto_save(self, event: Select.Changed) -> None:
+        # Ignore navigation-only selects (the category list is an OptionList, not Select)
+        self._schedule_auto_save()
+
+    @on(Input.Changed)
+    def _on_input_auto_save(self, event: Input.Changed) -> None:
+        if event.input.id == "settings-search-input":
+            return
+        self._schedule_auto_save()
+
+    @on(TextArea.Changed)
+    def _on_textarea_auto_save(self, event: TextArea.Changed) -> None:
+        self._schedule_auto_save()
+
+    def _schedule_auto_save(self) -> None:
+        if self._auto_save_timer is not None:
+            self._auto_save_timer.stop()
+        self._auto_save_timer = self.set_timer(0.4, self._fire_auto_save)
+
+    def _fire_auto_save(self) -> None:
+        self._auto_save_timer = None
+        self.run_worker(self._save_all_settings(), exit_on_error=False)
 
     def action_toggle_advanced(self) -> None:
         self._show_advanced = not self._show_advanced
@@ -652,10 +680,7 @@ class SettingsModal(ModalScreen[None]):
             message = f"{total} sections • {mode}; search matches category names and settings"
         self.query_one("#settings-search-status", Static).update(message)
 
-    async def action_save(self) -> None:
-        await self._persist_settings()
-
-    async def _persist_settings(self) -> None:
+    async def _save_all_settings(self) -> None:
         agent_backend_value = self.query_one("#settings-default-agent", Select).value
         default_agent_backend = (
             agent_backend_value if isinstance(agent_backend_value, str) else "claude-code"
@@ -726,7 +751,6 @@ class SettingsModal(ModalScreen[None]):
             updates["git_user_email"] = git_user_email
 
         await self.kagan_app.core.settings.set(updates)
-        self.dismiss(None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

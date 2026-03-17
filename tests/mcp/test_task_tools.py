@@ -44,11 +44,11 @@ async def test_task_tools_visible_on_default_server(mcp_board: ClientSession) ->
     assert "task_counts" in names
 
 
-async def test_task_delete_hidden_on_default_server(mcp_board: ClientSession) -> None:
-    """task_delete must not be visible on default (non-admin) server."""
+async def test_task_delete_visible_on_default_server(mcp_board: ClientSession) -> None:
+    """task_delete is visible on default server (orchestrator role)."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "task_delete" not in names
+    assert "task_delete" in names
 
 
 # ---------------------------------------------------------------------------

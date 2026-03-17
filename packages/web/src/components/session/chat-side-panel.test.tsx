@@ -5,6 +5,7 @@ import { renderWithProviders } from '@/test/render';
 import { ChatSidePanel } from '@/components/session/chat-side-panel';
 import { mockEvent, mockTask } from '@/test/mocks';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
+import { apiClient } from '@/lib/api/client';
 
 const eventStreamRender = vi.fn();
 const chatInputBarRender = vi.fn();
@@ -42,19 +43,30 @@ describe('ChatSidePanel', () => {
     eventStreamRender.mockReset();
     chatInputBarRender.mockReset();
     useTaskEventsMock.mockReset();
+    vi.spyOn(apiClient, 'getTaskSessions').mockResolvedValue([
+      { id: 'worker-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
+      { id: 'reviewer-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
+    ]);
   });
 
-  const defaultEvents = [
+  const workerEvents = [
     mockEvent({ session_id: 'worker-session', created_at: '2026-01-01T00:00:00Z' }),
+  ];
+
+  const reviewerEvents = [
     mockEvent({ session_id: 'reviewer-session', created_at: '2026-01-01T01:00:00Z' }),
   ];
 
   const defaultHookReturn = {
     task: mockTask(),
-    events: defaultEvents,
+    events: workerEvents,
     loading: false,
     runningSince: null,
     isRunning: false,
+    sessions: [
+      { id: 'worker-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
+      { id: 'reviewer-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
+    ],
     sentFollowUps: [],
     queue: [],
     sendingFollowUp: false,
@@ -67,7 +79,7 @@ describe('ChatSidePanel', () => {
     loadEarlier: vi.fn(),
   };
 
-  it('filters the event stream by lane session when the user switches tabs', async () => {
+  it('passes sessionId to useTaskEvents based on active lane', async () => {
     useTaskEventsMock.mockReturnValue(defaultHookReturn);
 
     renderWithProviders(
@@ -75,17 +87,23 @@ describe('ChatSidePanel', () => {
       { initialEntries: ['/?lane=worker'] },
     );
 
-    expect(eventStreamRender).toHaveBeenCalled();
-    const workerEvents = eventStreamRender.mock.calls.at(-1)![0].events;
-    expect(workerEvents.filter((event: typeof defaultEvents[number]) => event.session_id !== 'worker-session')).toHaveLength(0);
+    // Wait for sessions preload to resolve
+    await vi.waitFor(() => {
+      const calls = useTaskEventsMock.mock.calls;
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall?.[1]?.sessionId).toBe('worker-session');
+    });
 
-    eventStreamRender.mockClear();
+    useTaskEventsMock.mockReturnValue({ ...defaultHookReturn, events: reviewerEvents });
     const reviewerTab = screen.getByRole('tab', { name: 'Reviewer' });
     const user = userEvent.setup();
     await user.click(reviewerTab);
 
-    const reviewerEvents = eventStreamRender.mock.calls.at(-1)![0].events;
-    expect(reviewerEvents.filter((event: typeof defaultEvents[number]) => event.session_id !== 'reviewer-session')).toHaveLength(0);
+    await vi.waitFor(() => {
+      const calls = useTaskEventsMock.mock.calls;
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall?.[1]?.sessionId).toBe('reviewer-session');
+    });
   });
 
   it('passes isRunning to the chat input disable flag', () => {

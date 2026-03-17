@@ -8,14 +8,14 @@ from kagan.cli._bootstrap import run_async
     name="mcp",
     help=(
         "Run MCP server on STDIO.\n\n"
-        "Access tiers:\n"
-        "  default: read + write tools (safe mutations)\n"
-        "  --readonly: read-only tools/resources/prompts\n"
-        "  --admin: includes destructive/admin tools\n\n"
+        "Agent roles:\n"
+        "  WORKER: own-task ops + board awareness (default for agents)\n"
+        "  REVIEWER: read + verdict tools\n"
+        "  ORCHESTRATOR: full project control (default when no role)\n\n"
         "Common usage:\n"
-        "  kagan mcp --readonly\n"
-        "  kagan mcp --session-id <id>\n"
-        "  kagan mcp --admin --enable-internal-instrumentation"
+        "  kagan mcp --role WORKER --session-id <id>\n"
+        "  kagan mcp --role ORCHESTRATOR\n"
+        "  kagan mcp --enable-internal-instrumentation"
     ),
 )
 @click.option("--readonly", is_flag=True, help="Read-only tier")
@@ -29,7 +29,10 @@ from kagan.cli._bootstrap import run_async
     help="Expose diagnostics instrumentation tool",
 )
 @click.option(
-    "--profile", type=str, default=None, help="Tool profile filter (TASK, REVIEWER, ORCHESTRATOR)"
+    "--role",
+    type=str,
+    default=None,
+    help="Agent role (WORKER, REVIEWER, ORCHESTRATOR). Controls which MCP tools are available.",
 )
 def mcp(
     readonly: bool,
@@ -38,24 +41,22 @@ def mcp(
     db_path: str | None,
     project_id: str | None,
     enable_internal_instrumentation: bool,
-    profile: str | None,
+    role: str | None,
 ) -> None:
     logger.debug("MCP server starting")
     if readonly and admin:
         raise click.UsageError("--readonly and --admin are mutually exclusive")
 
-    from kagan.core.enums import ToolProfile
+    from kagan.core.enums import AgentRole
     from kagan.mcp.server import ServerOptions, serve
 
-    resolved_profile: ToolProfile | None = None
-    if profile is not None:
+    resolved_role: AgentRole | None = None
+    if role is not None:
         try:
-            resolved_profile = ToolProfile(profile)
+            resolved_role = AgentRole(role)
         except ValueError:
-            valid = ", ".join(p.value for p in ToolProfile)
-            raise click.UsageError(
-                f"Invalid profile {profile!r}. Must be one of: {valid}"
-            ) from None
+            valid = ", ".join(r.value for r in AgentRole)
+            raise click.UsageError(f"Invalid role {role!r}. Must be one of: {valid}") from None
 
     opts = ServerOptions(
         readonly=readonly,
@@ -64,6 +65,6 @@ def mcp(
         enable_instrumentation=enable_internal_instrumentation,
         db_path=db_path,
         project_id=project_id,
-        profile=resolved_profile,
+        role=resolved_role,
     )
     run_async(serve(opts))

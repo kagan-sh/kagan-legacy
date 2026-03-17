@@ -20,11 +20,13 @@ kagan serve --host 0.0.0.0
 
 ### Access Tiers
 
-The server supports the same access tiers as the MCP server:
+REST API endpoints use access tiers for HTTP-level authorization:
 
 - **Standard** (default): Normal board management and run execution.
 - **Readonly** (`--readonly`): No mutations allowed; only read access to projects and tasks.
 - **Admin** (`--admin`): Enables destructive actions (delete task, create/delete project).
+
+MCP tools use AgentRole (WORKER/REVIEWER/ORCHESTRATOR) instead of these tiers. See `docs/internal/architecture/mcp.md` for the role-based model.
 
 ______________________________________________________________________
 

@@ -757,7 +757,7 @@ class ChatController:
         mcp_content = build_mcp_manifest(
             session_id=session_id,
             db_path=db_path,
-            access_tier="admin",
+            role="ORCHESTRATOR",
             project_id=self.client.active_project_id,
         )
         cwd = Path.cwd()

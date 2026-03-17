@@ -8,9 +8,9 @@ from kagan.integrations.github import (
     detect_github_repo_slug_from_origin,
     normalize_github_state,
 )
-from kagan.mcp._policy import AccessTier
 from kagan.plugins import PluginManager
 from kagan.plugins._github import GitHubImportConfig
+from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,
     _ok,

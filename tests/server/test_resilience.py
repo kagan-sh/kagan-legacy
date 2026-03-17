@@ -8,6 +8,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 
 import kagan.server._websocket as websocket_module
+from tests.helpers.async_utils import wait_for
 from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
@@ -67,7 +68,14 @@ async def test_websocket_heartbeat_sends_ping_and_accepts_pong(
 
     worker = asyncio.create_task(ws_handler(websocket))
     await asyncio.sleep(0)
-    await asyncio.wait_for(_wait_for_payload_type(websocket, payload_type="PING"), timeout=1.0)
+    await asyncio.wait_for(
+        wait_for(
+            lambda: any(p.get("t") == "PING" for p in websocket.sent_json),
+            tries=200,
+            pump_delay=0.01,
+        ),
+        timeout=1.0,
+    )
 
     await websocket.push({"t": "PONG"})
     await websocket.push(WebSocketDisconnect(code=1000))
@@ -87,10 +95,3 @@ def test_websocket_backpressure_drops_oldest_when_queue_full() -> None:
     assert queue.qsize() == 2
     assert queue.get_nowait() == {"seq": 2}
     assert queue.get_nowait() == {"seq": 3}
-
-
-async def _wait_for_payload_type(websocket: FakeWebSocket, *, payload_type: str) -> None:
-    while True:
-        if any(payload.get("t") == payload_type for payload in websocket.sent_json):
-            return
-        await asyncio.sleep(0)

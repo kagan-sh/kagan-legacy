@@ -100,13 +100,28 @@ export function OrchestratorChatPanel({
     const cleanups = [
       kaganWs.on('connected', () => {
         kaganWs.subscribeToChatSession(sessionId);
+        // Recover messages from REST after reconnect — stream entries survive in local state
+        apiClient
+          .getChatSession(sessionId)
+          .then((session) => {
+            setMessages((prev) => (session.messages.length >= prev.length ? session.messages : prev));
+          })
+          .catch(() => {});
       }),
       kaganWs.on('CHAT_SUBSCRIBED', (data: WsInboundMessage) => {
         if (data.session_id === sessionId && Array.isArray(data.messages)) {
           const incoming = data.messages as WireChatMessage[];
-          // Only accept if WS history is at least as complete as what REST already loaded;
-          // avoids a stale WS response clobbering a fresher REST fetch.
-          setMessages((prev) => (incoming.length >= prev.length ? incoming : prev));
+          // Accept WS history only if it has content REST didn't provide.
+          // Compare both length and last-message content to avoid stale overwrites.
+          setMessages((prev) => {
+            if (incoming.length > prev.length) return incoming;
+            if (incoming.length === prev.length && incoming.length > 0) {
+              const lastIncoming = incoming[incoming.length - 1];
+              const lastPrev = prev[prev.length - 1];
+              if (lastIncoming && lastPrev && lastIncoming.content !== lastPrev.content) return incoming;
+            }
+            return prev;
+          });
         }
         // Restore streaming state if a turn is still running on the server.
         if (data.session_id === sessionId && Boolean(data.busy)) {

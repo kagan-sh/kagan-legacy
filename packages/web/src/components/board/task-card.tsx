@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Bot, CheckCheck, ExternalLink, ListChecks, Pencil, Play, Trash2, Users } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
@@ -153,6 +153,15 @@ export function TaskCard({
   });
 
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+
+  // 2.6: Reset didDrag when dragging ends (including Escape-cancelled drags)
+  useEffect(() => {
+    if (!isDragging && didDrag.current) {
+      // Delay reset so the click handler can still read it for the current event cycle
+      const id = requestAnimationFrame(() => { didDrag.current = false; });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [isDragging]);
 
   if (isDragging) {
     didDrag.current = true;

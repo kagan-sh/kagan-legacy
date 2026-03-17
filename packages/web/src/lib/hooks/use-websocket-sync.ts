@@ -68,9 +68,12 @@ export function useWebSocketSync() {
   }, [setWsConnected, setReconnectAttempts, setTasks, fetchTasks]);
 
   // Adaptive polling fallback when WebSocket is disconnected
+  // 4.3: Skip polling when tab is hidden
   useEffect(() => {
     if (wsConnected || isAnyDialogOpen) return;
-    const interval = setInterval(() => fetchTasks(), 10_000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchTasks();
+    }, 10_000);
     return () => clearInterval(interval);
   }, [wsConnected, isAnyDialogOpen, fetchTasks]);
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { usePageVisible } from '@/lib/hooks/use-page-visible';
 
 /**
  * Kagan's signature wave animation — shared across TUI, kg chat, and web.
@@ -26,14 +27,16 @@ interface TypingIndicatorProps {
 
 export function TypingIndicator({ className }: TypingIndicatorProps) {
   const [frame, setFrame] = useState(0);
+  const isVisible = usePageVisible();
 
   useEffect(() => {
+    if (!isVisible) return;
     const id = setInterval(() => {
       setFrame((prev) => (prev + 1) % WAVE_FRAMES.length);
     }, FRAME_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, []);
+  }, [isVisible]);
 
   return (
     <div className={cn('flex items-center justify-start px-1 py-1.5', className)}>

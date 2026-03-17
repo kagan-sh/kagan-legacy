@@ -86,35 +86,25 @@ export function Component() {
   const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
-  const [tabInitialized, setTabInitialized] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [taskSnapshot, setTaskSnapshot] = useState<WireTask | null>(null);
+  const [userClosedRail, setUserClosedRail] = useState(false);
 
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
   const [pairLauncher, setPairLauncher] = useState<string | null>(null);
 
   const { task, loading, runningSince } = useTaskEvents(id, { initialLimit: 80 });
 
+  // 2.4: Always read tab from URL params — URL is the source of truth
   useEffect(() => {
-    if (task && !tabInitialized) {
-      const urlTab = searchParams.get('tab');
-
-      if (urlTab === 'overview' || urlTab === 'changes' || urlTab === 'review') {
-        setActiveTab(urlTab);
-      } else {
-        setActiveTab(defaultTabForTask(task));
-      }
-
-      setTabInitialized(true);
+    if (!task) return;
+    const urlTab = searchParams.get('tab');
+    if (urlTab === 'overview' || urlTab === 'changes' || urlTab === 'review') {
+      setActiveTab(urlTab);
+    } else {
+      setActiveTab(defaultTabForTask(task));
     }
-  }, [task, tabInitialized, searchParams]);
-
-  useEffect(() => {
-    if (task) {
-      setTaskSnapshot(task);
-    }
-  }, [task]);
+  }, [task, searchParams]);
 
   useEffect(() => {
     if (id) {
@@ -124,17 +114,19 @@ export function Component() {
     return () => setRailTaskId(null);
   }, [id, setRailChatSessionId, setRailTaskId]);
 
+  // 2.5: Auto-open chat rail only if user hasn't explicitly closed it
   useEffect(() => {
     if (!id || !task) return;
     if (task.execution_mode === 'PAIR') return;
+    if (userClosedRail) return;
     if (task.active_session || task.status === 'IN_PROGRESS') {
       setRailTaskId(id);
       setRailChatSessionId(null);
       setRailMode('chat-right');
     }
-  }, [id, task?.active_session?.id, task?.status, task?.execution_mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, task?.active_session?.id, task?.status, task?.execution_mode, userClosedRail]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const displayTask = taskSnapshot ?? task;
+  const displayTask = task;
 
   useEffect(() => {
     if (!id || displayTask?.execution_mode !== 'PAIR') {
@@ -188,11 +180,12 @@ export function Component() {
   };
 
   const handleOpenTaskChat = useCallback(() => {
-    if (!taskSnapshot) return;
-    setRailTaskId(taskSnapshot.id);
+    if (!task) return;
+    setUserClosedRail(false);
+    setRailTaskId(task.id);
     setRailChatSessionId(null);
     setRailMode('chat-right');
-  }, [setRailChatSessionId, setRailMode, setRailTaskId, taskSnapshot]);
+  }, [setRailChatSessionId, setRailMode, setRailTaskId, task]);
 
   const handleAttachPairSession = useCallback(async () => {
     if (!displayTask) return;
@@ -485,7 +478,6 @@ export function Component() {
         open={editOpen}
         onOpenChange={setEditOpen}
         task={displayTask}
-        onUpdated={setTaskSnapshot}
       />
       <TaskDeleteDialog
         task={displayTask}

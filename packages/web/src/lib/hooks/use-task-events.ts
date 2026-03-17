@@ -6,6 +6,7 @@ import { kaganWs, type WsInboundMessage } from "@/lib/api/websocket";
 import { mergeWireEvents } from "@/lib/utils/events";
 import { deriveTaskRunningSince } from "@/lib/utils/task-runtime";
 import { useFollowUpQueue } from "@/lib/hooks/use-follow-up-queue";
+import { usePageVisible } from "@/lib/hooks/use-page-visible";
 import type { UserFollowUp } from "@/components/session/event-stream";
 import type { QueuedPrompt } from "@/components/session/follow-up-queue";
 
@@ -164,10 +165,15 @@ export function useTaskEvents(
         });
     }, [taskId]);
 
-    // Polling refresh
+    // Polling refresh — with error counting and visibility awareness
+    const pollFailCountRef = useRef(0);
+    const isVisible = usePageVisible();
+
     useEffect(() => {
         if (!taskId) return;
         const refresh = () => {
+            if (!isVisible) return;
+
             const cursor = latestCursorRef.current;
             const eventsFetch = cursor
                 ? apiClient.getTaskEvents(taskId, {
@@ -184,16 +190,26 @@ export function useTaskEvents(
 
             void Promise.all([apiClient.getTask(taskId), eventsFetch])
                 .then(([nextTask, nextEvents]) => {
+                    pollFailCountRef.current = 0;
                     if (nextTask) setTask(nextTask as WireTask);
                     if (Array.isArray(nextEvents) && nextEvents.length > 0) {
                         setEvents((prev) => mergeWireEvents(prev, nextEvents));
                     }
                 })
-                .catch(() => undefined);
+                .catch((err) => {
+                    pollFailCountRef.current += 1;
+                    if (pollFailCountRef.current === 3) {
+                        toast.error(
+                            err instanceof Error
+                                ? `Event polling failed: ${err.message}`
+                                : "Event polling failed — server may be unreachable",
+                        );
+                    }
+                });
         };
         const interval = window.setInterval(refresh, pollInterval);
         return () => window.clearInterval(interval);
-    }, [taskId, pollInterval, sessionId]);
+    }, [taskId, pollInterval, sessionId, isVisible]);
 
     // Load earlier events (before the oldest currently loaded)
     const loadEarlier = useCallback(() => {

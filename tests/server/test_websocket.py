@@ -12,6 +12,7 @@ import kagan.server._websocket as websocket_module
 from kagan.core.enums import Priority, TaskStatus, WorkMode
 from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
+from tests.helpers.async_utils import wait_for
 from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
@@ -124,7 +125,8 @@ async def test_websocket_board_subscribe_returns_board_sync(
 
     worker = asyncio.create_task(ws_handler(websocket))
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="BOARD_SYNC"), timeout=1.0
+        wait_for(lambda: any(p.get("t") == "BOARD_SYNC" for p in websocket.sent_json)),
+        timeout=1.0,
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -157,7 +159,8 @@ async def test_websocket_run_start_starts_session_and_acks(monkeypatch: pytest.M
 
     worker = asyncio.create_task(ws_handler(websocket))
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="RUN_STARTED"), timeout=1.0
+        wait_for(lambda: any(p.get("t") == "RUN_STARTED" for p in websocket.sent_json)),
+        timeout=1.0,
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -186,7 +189,8 @@ async def test_websocket_run_cancel_cancels_session_and_acks(
 
     worker = asyncio.create_task(ws_handler(websocket))
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="RUN_CANCELLED"), timeout=1.0
+        wait_for(lambda: any(p.get("t") == "RUN_CANCELLED" for p in websocket.sent_json)),
+        timeout=1.0,
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -210,7 +214,10 @@ async def test_websocket_run_start_rejects_readonly_server(
     websocket = FakeWebSocket([{"t": "RUN_START", "task_id": "task-1", "mode": "AUTO"}])
 
     worker = asyncio.create_task(ws_handler(websocket))
-    await asyncio.wait_for(_wait_for_payload_type(websocket, payload_type="RUN_ERROR"), timeout=1.0)
+    await asyncio.wait_for(
+        wait_for(lambda: any(p.get("t") == "RUN_ERROR" for p in websocket.sent_json)),
+        timeout=1.0,
+    )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
 
@@ -313,11 +320,6 @@ async def test_handle_chat_send_uses_active_project_repo_as_cwd(
     assert any(payload.get("t") == "CHAT_DONE" for payload in websocket.sent_json)
 
 
-async def _wait_for_payload_type(websocket: FakeWebSocket, *, payload_type: str) -> None:
-    while True:
-        if any(payload.get("t") == payload_type for payload in websocket.sent_json):
-            return
-        await asyncio.sleep(0)
 
 
 def test_broadcast_drops_oldest_event_when_queue_is_full() -> None:

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from starlette.requests import Request
 from starlette.websockets import WebSocketDisconnect
 
 import kagan.server._helpers as server_helpers
@@ -17,13 +15,12 @@ from kagan.core import Priority, TaskStatus, WorkMode
 from kagan.core import git as git_module
 from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
+from tests.helpers.async_utils import wait_for
+from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
-
-    from mcp.server.fastmcp import FastMCP
-    from starlette.responses import JSONResponse
+    from collections.abc import Iterator
 
 
 class _FakeTasksClient:
@@ -95,54 +92,6 @@ class _FakeTasksClient:
         return {"has_workspace": False, "last_event_at": None, "active_session": None}
 
 
-def _get_http_endpoint(
-    mcp: FastMCP,
-    path: str,
-    method: str,
-) -> Callable[[Request], Awaitable[object]]:
-    route = next(
-        route
-        for route in mcp._custom_starlette_routes
-        if route.path == path and route.methods is not None and method in route.methods
-    )
-    return route.endpoint
-
-
-def _make_request(
-    method: str,
-    path: str,
-    *,
-    body: object | None = None,
-    headers: dict[str, str] | None = None,
-    path_params: dict[str, str] | None = None,
-) -> Request:
-    payload = json.dumps(body).encode() if body is not None else b""
-    raw_headers = [(key.lower().encode(), value.encode()) for key, value in (headers or {}).items()]
-    scope = {
-        "type": "http",
-        "http_version": "1.1",
-        "method": method,
-        "path": path,
-        "raw_path": path.encode(),
-        "headers": raw_headers,
-        "query_string": b"",
-        "scheme": "http",
-        "server": ("127.0.0.1", 8765),
-        "client": ("127.0.0.1", 12345),
-        "path_params": path_params or {},
-    }
-    sent = False
-
-    async def receive() -> dict[str, object]:
-        nonlocal sent
-        if sent:
-            return {"type": "http.request", "body": b"", "more_body": False}
-        sent = True
-        return {"type": "http.request", "body": payload, "more_body": False}
-
-    return Request(scope, receive)
-
-
 async def _no_repos(_project_id: str) -> list:
     return []
 
@@ -174,46 +123,6 @@ def _ctx(
     )
 
 
-def _as_json_response(response: object) -> JSONResponse:
-    return cast("JSONResponse", response)
-
-
-def _json_data(response: object) -> dict[str, Any]:
-    body = bytes(_as_json_response(response).body)
-    return cast("dict[str, Any]", json.loads(body))
-
-
-async def _wait_for_payload_type(websocket: FakeWebSocket, *, payload_type: str) -> None:
-    while True:
-        if any(payload.get("t") == payload_type for payload in websocket.sent_json):
-            return
-        await asyncio.sleep(0)
-
-
-async def _wait_for_board_sync_count(websocket: FakeWebSocket, *, count: int) -> None:
-    while True:
-        board_syncs = [
-            payload for payload in websocket.sent_json if payload.get("t") == "BOARD_SYNC"
-        ]
-        if len(board_syncs) >= count:
-            return
-        await asyncio.sleep(0)
-
-
-async def _wait_for_board_sync_task_title(websocket: FakeWebSocket, *, title: str) -> None:
-    while True:
-        board_syncs = [
-            cast("dict[str, object]", payload)
-            for payload in websocket.sent_json
-            if payload.get("t") == "BOARD_SYNC"
-        ]
-        if board_syncs:
-            tasks_payload = cast("list[dict[str, Any]]", board_syncs[-1]["tasks"])
-            if any(task.get("title") == title for task in tasks_payload):
-                return
-        await asyncio.sleep(0)
-
-
 @pytest.fixture(autouse=True)
 def _reset_server_state() -> Iterator[None]:
     websocket_module._ws_connections.clear()
@@ -232,10 +141,10 @@ async def test_rest_lifecycle_create_update_transition_delete(
         "get_server_context",
         lambda _mcp: _ctx(tasks, opts=ServerOptions(admin=True)),
     )
-    create = _get_http_endpoint(mcp, "/api/tasks", "POST")
-    created = _json_data(
+    create = get_http_endpoint(mcp, "/api/tasks", "POST")
+    created = json_body(
         await create(
-            _make_request(
+            make_request(
                 "POST",
                 "/api/tasks",
                 body={"title": "Ship"},
@@ -243,13 +152,13 @@ async def test_rest_lifecycle_create_update_transition_delete(
         )
     )["data"]
     task_id = created["id"]
-    update = _get_http_endpoint(mcp, "/api/tasks/{task_id}", "PATCH")
-    status = _get_http_endpoint(mcp, "/api/tasks/{task_id}/status", "POST")
-    delete = _get_http_endpoint(mcp, "/api/tasks/{task_id}", "DELETE")
+    update = get_http_endpoint(mcp, "/api/tasks/{task_id}", "PATCH")
+    status = get_http_endpoint(mcp, "/api/tasks/{task_id}/status", "POST")
+    delete = get_http_endpoint(mcp, "/api/tasks/{task_id}", "DELETE")
     assert (
-        _json_data(
+        json_body(
             await update(
-                _make_request(
+                make_request(
                     "PATCH",
                     f"/api/tasks/{task_id}",
                     path_params={"task_id": task_id},
@@ -260,9 +169,9 @@ async def test_rest_lifecycle_create_update_transition_delete(
         == "Ship v2"
     )
     assert (
-        _json_data(
+        json_body(
             await status(
-                _make_request(
+                make_request(
                     "POST",
                     f"/api/tasks/{task_id}/status",
                     path_params={"task_id": task_id},
@@ -273,9 +182,9 @@ async def test_rest_lifecycle_create_update_transition_delete(
         == "IN_PROGRESS"
     )
     assert (
-        _json_data(
+        json_body(
             await delete(
-                _make_request("DELETE", f"/api/tasks/{task_id}", path_params={"task_id": task_id})
+                make_request("DELETE", f"/api/tasks/{task_id}", path_params={"task_id": task_id})
             )
         )["data"]["deleted"]
         is True
@@ -322,10 +231,10 @@ async def test_task_commits_route_returns_task_branch_history(
         routes_module.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec
     )
 
-    commits = _get_http_endpoint(mcp, "/api/tasks/{task_id}/commits", "GET")
-    payload = _json_data(
+    commits = get_http_endpoint(mcp, "/api/tasks/{task_id}/commits", "GET")
+    payload = json_body(
         await commits(
-            _make_request(
+            make_request(
                 "GET",
                 f"/api/tasks/{task.id}/commits",
                 path_params={"task_id": task.id},
@@ -370,7 +279,8 @@ async def test_websocket_board_subscribe_returns_board_sync(
     websocket = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
     worker = asyncio.create_task(get_ws_endpoint(mcp)(websocket))
     await asyncio.wait_for(
-        _wait_for_payload_type(websocket, payload_type="BOARD_SYNC"), timeout=1.0
+        wait_for(lambda: any(p.get("t") == "BOARD_SYNC" for p in websocket.sent_json)),
+        timeout=1.0,
     )
     await websocket.push(WebSocketDisconnect(code=1000))
     await asyncio.wait_for(worker, timeout=1.0)
@@ -395,12 +305,30 @@ async def test_two_clients_see_board_sync_after_rest_create(
     ws_b = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
     worker_a = asyncio.create_task(ws_handler(ws_a))
     worker_b = asyncio.create_task(ws_handler(ws_b))
-    await asyncio.wait_for(_wait_for_board_sync_count(ws_b, count=1), timeout=1.0)
-    create = _get_http_endpoint(mcp, "/api/tasks", "POST")
-    await create(_make_request("POST", "/api/tasks", body={"title": "Shared task"}))
+
+    def _board_sync_count(ws: FakeWebSocket) -> int:
+        return sum(1 for p in ws.sent_json if p.get("t") == "BOARD_SYNC")
+
+    await asyncio.wait_for(
+        wait_for(lambda: _board_sync_count(ws_b) >= 1), timeout=1.0
+    )
+    create = get_http_endpoint(mcp, "/api/tasks", "POST")
+    await create(make_request("POST", "/api/tasks", body={"title": "Shared task"}))
     await ws_b.push({"t": "BOARD_SUBSCRIBE"})
-    await asyncio.wait_for(_wait_for_board_sync_count(ws_b, count=2), timeout=1.0)
-    await asyncio.wait_for(_wait_for_board_sync_task_title(ws_b, title="Shared task"), timeout=1.0)
+    await asyncio.wait_for(
+        wait_for(lambda: _board_sync_count(ws_b) >= 2), timeout=1.0
+    )
+
+    def _has_task_title(ws: FakeWebSocket, title: str) -> bool:
+        syncs = [p for p in ws.sent_json if p.get("t") == "BOARD_SYNC"]
+        if not syncs:
+            return False
+        tasks_payload = cast("list[dict[str, Any]]", syncs[-1]["tasks"])
+        return any(task.get("title") == title for task in tasks_payload)
+
+    await asyncio.wait_for(
+        wait_for(lambda: _has_task_title(ws_b, "Shared task")), timeout=1.0
+    )
     board_sync = cast(
         "dict[str, object]",
         [payload for payload in ws_b.sent_json if payload.get("t") == "BOARD_SYNC"][-1],
@@ -418,12 +346,10 @@ async def test_missing_fields_return_error_envelopes(monkeypatch: pytest.MonkeyP
     mcp = make_api_server()
     tasks = _FakeTasksClient()
     monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
-    create = _get_http_endpoint(mcp, "/api/tasks", "POST")
-    create_missing = _as_json_response(
-        await create(_make_request("POST", "/api/tasks", body={"description": "x"}))
-    )
-    create_payload = _json_data(create_missing)
-    assert create_missing.status_code == 400
+    create = get_http_endpoint(mcp, "/api/tasks", "POST")
+    create_resp = await create(make_request("POST", "/api/tasks", body={"description": "x"}))
+    create_payload = json_body(create_resp)
+    assert cast("Any", create_resp).status_code == 400
     assert create_payload["ok"] is False
     assert create_payload["error"] == "Missing field: title"
 
@@ -433,12 +359,12 @@ async def test_malformed_create_request_body_returns_400(monkeypatch: pytest.Mon
     mcp = make_api_server()
     tasks = _FakeTasksClient()
     monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
-    create = _get_http_endpoint(mcp, "/api/tasks", "POST")
-    response = _as_json_response(
-        await create(_make_request("POST", "/api/tasks", body=["not", "an", "object"]))
-    )
-    payload = json.loads(bytes(response.body))
-    assert response.status_code == 400
+    create = get_http_endpoint(mcp, "/api/tasks", "POST")
+    response = await create(make_request("POST", "/api/tasks", body=["not", "an", "object"]))
+    import json
+
+    payload = json.loads(bytes(cast("Any", response).body))
+    assert cast("Any", response).status_code == 400
     assert payload["ok"] is False
     assert payload["error"] == "Request body must be a JSON object"
 
@@ -463,8 +389,8 @@ async def test_resolved_settings_includes_workflow_wip_limits(
 
     monkeypatch.setattr(git_module, "get_git_user_identity", _fake_git_identity)
 
-    resolved = _get_http_endpoint(mcp, "/api/settings/resolved", "GET")
-    payload = _json_data(await resolved(_make_request("GET", "/api/settings/resolved")))
+    resolved = get_http_endpoint(mcp, "/api/settings/resolved", "GET")
+    payload = json_body(await resolved(make_request("GET", "/api/settings/resolved")))
 
     assert payload["data"]["git_user_name"] == "Kagan Agent"
     assert payload["data"]["workflow"]["wip_limits"] == {

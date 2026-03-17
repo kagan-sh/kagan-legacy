@@ -17,6 +17,7 @@ import { apiClient } from '@/lib/api/client';
 import type { TaskCommitsResponse, TaskStatus, TaskWorktreeResponse, WireTaskSession } from '@/lib/api/types';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { Panel } from '@/components/shared/workspace';
+import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { rightRailChatSessionIdAtom, rightRailModeAtom, rightRailTaskIdAtom } from '@/lib/atoms/ui';
 import { STATUS_LABELS } from '@/lib/utils/constants';
 
@@ -197,6 +198,7 @@ export function Component() {
   }
 
   return (
+    <ErrorBoundary level="feature">
     <div className="mx-auto flex h-full w-full max-w-[1680px] min-h-0 flex-col px-4 py-3 sm:px-6">
       <div className="flex items-center gap-2 border-b border-[color:var(--border-subtle)] pb-3">
         <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)} aria-label="Go back">
@@ -349,5 +351,6 @@ export function Component() {
         </div>
       </Panel>
     </div>
+    </ErrorBoundary>
   );
 }

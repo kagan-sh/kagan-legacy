@@ -65,6 +65,9 @@ export function useBoardDnd({ tasks, grouped, fetchTasks }: UseBoardDndOptions):
       const toStatus = targetStatus as TaskStatus;
       if (fromStatus === toStatus) return;
 
+      // 2.9: Validate transition before optimistic update
+      if (!isAllowedTaskTransition(fromStatus, toStatus)) return;
+
       const updatedFrom = source[fromStatus].filter((item) => item.id !== taskId);
       const updatedTo = [...source[toStatus].filter((item) => item.id !== taskId), { ...task, status: toStatus }];
 

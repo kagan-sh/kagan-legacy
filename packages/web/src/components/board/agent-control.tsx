@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Play, Square, Clock, Users, ExternalLink, Terminal } from 'lucide-react';
 import { useAtomValue } from 'jotai';
 import { toast } from 'sonner';
@@ -94,6 +94,7 @@ export function AgentControl({
   const wsConnected = useAtomValue(wsConnectedAtom);
   const isRunning = status === 'IN_PROGRESS';
   const [pending, setPending] = useState<'starting' | 'stopping' | null>(null);
+  const lastActionTimeRef = useRef(0);
   const [elapsed, setElapsed] = useState(0);
   const [fallbackStartedAtMs, setFallbackStartedAtMs] = useState<number | null>(null);
   const [pairInstructionsOpen, setPairInstructionsOpen] = useState(false);
@@ -153,8 +154,20 @@ export function AgentControl({
       return;
     }
     setElapsed(computeElapsed());
-    const interval = setInterval(() => setElapsed(computeElapsed()), 1000);
-    return () => clearInterval(interval);
+    // 4.3: Pause elapsed timer when tab is hidden
+    const tick = () => {
+      if (document.visibilityState === 'visible') setElapsed(computeElapsed());
+    };
+    const interval = setInterval(tick, 1000);
+    // Recalculate immediately when tab becomes visible again
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setElapsed(computeElapsed());
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [isRunning, effectiveStartedAtMs, computeElapsed]);
 
   const formatTime = (secs: number) => {
@@ -219,6 +232,11 @@ export function AgentControl({
   );
 
   const handleStart = useCallback(async () => {
+    // 2.1: Debounce rapid start/stop clicks (500ms)
+    const now = Date.now();
+    if (now - lastActionTimeRef.current < 500) return;
+    lastActionTimeRef.current = now;
+
     if (isPair) {
       try {
         const settings = await apiClient.getSettings();
@@ -245,6 +263,11 @@ export function AgentControl({
   }, [isPair, pairLauncher, startPairSession, taskId]);
 
   const handleStop = useCallback(async () => {
+    // 2.1: Debounce rapid start/stop clicks (500ms)
+    const now = Date.now();
+    if (now - lastActionTimeRef.current < 500) return;
+    lastActionTimeRef.current = now;
+
     setPending('stopping');
     if (isPair) {
       try {

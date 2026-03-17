@@ -81,6 +81,10 @@ class KaganDriver:
         """Configure a custom agent response (for advanced signal testing)."""
         self._agents.set_next_response(response)
 
+    def agent_will_stream(self, chunks: list[str]) -> None:
+        """Configure the next agent run to yield chunks in sequence."""
+        self._agents.set_next_stream(chunks)
+
     # ======================================================================
     # Project operations
     # ======================================================================

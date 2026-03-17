@@ -58,7 +58,8 @@ export type WsEventName =
   | 'FOLLOW_UP_QUEUED'
   | 'FOLLOW_UP_SENT'
   | 'TASK_FOLLOW_UP_ACK'
-  | 'TASK_FOLLOW_UP_ERROR';
+  | 'TASK_FOLLOW_UP_ERROR'
+  | 'CONNECTION_ERROR';
 
 export type WsEventHandler = (data: WsInboundMessage) => void;
 
@@ -159,12 +160,17 @@ export class KaganWebSocket {
    * If the connection is down, the message is queued and a reconnect is
    * triggered.  Queued messages are flushed on the next successful connect.
    */
+  private static readonly MAX_PENDING = 500;
+
   send(message: WsOutboundMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
+      if (this.pendingMessages.length >= KaganWebSocket.MAX_PENDING) {
+        this.pendingMessages.shift();
+      }
       this.pendingMessages.push(message);
-      this.connect(); // trigger reconnect if not already in progress
+      this.connect();
     }
   }
 
@@ -268,20 +274,38 @@ export class KaganWebSocket {
     }
   }
 
+  private static readonly FLUSH_BATCH_SIZE = 50;
+  private static readonly FLUSH_BATCH_DELAY_MS = 50;
+
   private flushPendingMessages(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     const messages = this.pendingMessages.splice(0);
-    for (const msg of messages) {
-      this.ws.send(JSON.stringify(msg));
-    }
+    if (messages.length === 0) return;
+
+    const sendBatch = (start: number) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const end = Math.min(start + KaganWebSocket.FLUSH_BATCH_SIZE, messages.length);
+      for (let i = start; i < end; i++) {
+        this.ws.send(JSON.stringify(messages[i]));
+      }
+      if (end < messages.length) {
+        setTimeout(() => sendBatch(end), KaganWebSocket.FLUSH_BATCH_DELAY_MS);
+      }
+    };
+    sendBatch(0);
   }
 
   private handleMessage(event: MessageEvent): void {
     let msg: WsInboundMessage;
     try {
       msg = JSON.parse(String(event.data)) as WsInboundMessage;
-    } catch {
-      return; // Ignore malformed messages
+    } catch (err) {
+      console.warn('[KaganWS] Malformed JSON from server:', err);
+      this.emit('CONNECTION_ERROR', {
+        t: 'CONNECTION_ERROR',
+        error: 'Received malformed message from server',
+      });
+      return;
     }
 
     const type = msg.t;

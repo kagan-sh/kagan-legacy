@@ -11,6 +11,7 @@ import { ChatSidePanel } from '@/components/session/chat-side-panel';
 import { OrchestratorChatPanel } from '@/components/session/orchestrator-chat-panel';
 import { SessionPicker } from '@/components/session/session-picker';
 import { PluginImportDialog } from '@/components/board/plugin-import-dialog';
+import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { useWebSocketSync } from '@/lib/hooks/use-websocket-sync';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { apiClient } from '@/lib/api/client';
@@ -395,6 +396,7 @@ function AppLayout() {
                 <div className="relative hidden shrink-0 lg:block" style={{ width: railWidth }}>
                   <ResizeHandle edge="left" onResize={(d) => setRailWidth((w) => Math.min(MAX_RAIL_W, Math.max(MIN_RAIL, w + d)))} />
                   {railTaskId ? (
+                    <ErrorBoundary level="widget">
                     <ChatSidePanel
                       taskId={railTaskId}
                       layout="chat-right"
@@ -402,13 +404,16 @@ function AppLayout() {
                       onClose={closeChatRail}
                       executionMode={railTaskExecutionMode}
                     />
+                    </ErrorBoundary>
                   ) : railChatSessionId ? (
+                    <ErrorBoundary level="widget">
                     <OrchestratorChatPanel
                       sessionId={railChatSessionId}
                       layout="chat-right"
                       onSetLayout={setChatRailLayout}
                       onClose={closeChatRail}
                     />
+                    </ErrorBoundary>
                   ) : null}
                 </div>
               ) : null}
@@ -418,6 +423,7 @@ function AppLayout() {
               <div className="relative hidden shrink-0 lg:block" style={{ height: railHeight }}>
                   <ResizeHandle edge="top" onResize={(d) => setRailHeight((h) => Math.min(MAX_RAIL_H, Math.max(MIN_RAIL, h + d)))} />
                 {railTaskId ? (
+                  <ErrorBoundary level="widget">
                   <ChatSidePanel
                     taskId={railTaskId}
                     layout="chat-bottom"
@@ -425,13 +431,16 @@ function AppLayout() {
                     onClose={closeChatRail}
                     executionMode={railTaskExecutionMode}
                   />
+                  </ErrorBoundary>
                 ) : railChatSessionId ? (
+                  <ErrorBoundary level="widget">
                   <OrchestratorChatPanel
                     sessionId={railChatSessionId}
                     layout="chat-bottom"
                     onSetLayout={setChatRailLayout}
                     onClose={closeChatRail}
                   />
+                  </ErrorBoundary>
                 ) : null}
               </div>
             ) : null}
@@ -444,6 +453,7 @@ function AppLayout() {
       {isMobile && railMode !== 'none' && (railTaskId || railChatSessionId) ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--surface-0)]">
           {railTaskId ? (
+            <ErrorBoundary level="widget">
             <ChatSidePanel
               taskId={railTaskId}
               layout="chat-fullscreen"
@@ -451,13 +461,16 @@ function AppLayout() {
               onClose={closeChatRail}
               executionMode={railTaskExecutionMode}
             />
+            </ErrorBoundary>
           ) : railChatSessionId ? (
+            <ErrorBoundary level="widget">
             <OrchestratorChatPanel
               sessionId={railChatSessionId}
               layout="chat-fullscreen"
               onSetLayout={setChatRailLayout}
               onClose={closeChatRail}
             />
+            </ErrorBoundary>
           ) : null}
         </div>
       ) : null}
@@ -466,6 +479,7 @@ function AppLayout() {
         <div className="glass-surface pointer-events-none fixed inset-0 z-40 hidden p-4 lg:block">
           <div className="pointer-events-auto flex h-full w-full overflow-hidden">
             {railTaskId ? (
+              <ErrorBoundary level="widget">
               <ChatSidePanel
                 taskId={railTaskId}
                 layout="chat-fullscreen"
@@ -473,13 +487,16 @@ function AppLayout() {
                 onClose={closeChatRail}
                 executionMode={railTaskExecutionMode}
               />
+              </ErrorBoundary>
             ) : railChatSessionId ? (
+              <ErrorBoundary level="widget">
               <OrchestratorChatPanel
                 sessionId={railChatSessionId}
                 layout="chat-fullscreen"
                 onSetLayout={setChatRailLayout}
                 onClose={closeChatRail}
               />
+              </ErrorBoundary>
             ) : null}
           </div>
         </div>

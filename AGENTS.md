@@ -20,12 +20,12 @@ kagan/
 │   ├── server/          # HTTP/WS server: REST API, WebSocket, auth, web UI
 │   ├── chat/            # CLI chat REPL: ACP streaming, commands, sessions
 │   ├── crypto/          # X25519 key exchange, TLS, tokens, QR
-│   ├── wire/            # Wire protocol: JSON schema for client-server sync
+│   ├── wire/            # (compat shim) Re-exports envelope types
 │   ├── integrations/    # GitHub integration
 │   └── plugins/         # Plugin system (entry-point based)
 ├── packages/
 │   ├── web/             # React 19 + jotai + Tailwind CSS 4 web dashboard (SPA)
-│   └── wire/            # TypeScript wire types (generated from schema)
+│   └── wire/            # (removed — TS types now generated from response models)
 ├── tests/               # pytest: core/, tui/, mcp/, server/, unit/, helpers/
 ├── scripts/             # Build/quality scripts (LOC budget, web build)
 ├── docs/                # MkDocs documentation site
@@ -44,7 +44,7 @@ kagan/
 | Modify task lifecycle | `src/kagan/core/_transitions.py`                          | State machine for task status                                                     |
 | Add agent backend     | `src/kagan/core/_agent.py`                                | AGENT_BACKENDS registry dict                                                      |
 | Add DB migration      | `alembic -c alembic.ini revision --autogenerate -m "msg"` | Via `poe db-migration-generate`                                                   |
-| Wire protocol change  | `src/kagan/wire/` + `packages/wire/`                      | Python schema → JSON → TypeScript                                                 |
+| Wire protocol change  | `src/kagan/server/responses.py`                            | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
 | Web UI feature        | `packages/web/src/`                                       | React 19 + jotai + Tailwind CSS 4                                                 |
 | API endpoint          | `src/kagan/server/_routes.py`                             | aiohttp routes                                                                    |
 | Modify prompt system  | `src/kagan/core/_prompts.py`                              | Three-layer resolution: dotfile → defaults + behavioral → additional instructions |

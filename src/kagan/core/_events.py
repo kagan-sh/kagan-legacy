@@ -5,10 +5,11 @@ import re
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from loguru import logger
-from sqlalchemy import Engine, desc
+from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _db_async
@@ -78,6 +79,10 @@ class _BoundedEventQueue[T]:
     def put_nowait(self, item: T) -> None:
         if len(self._pending) >= self._maxsize:
             raise asyncio.QueueFull
+        self._pending.append(item)
+        self._not_empty.set()
+
+    def force_put_nowait(self, item: T) -> None:
         self._pending.append(item)
         self._not_empty.set()
 
@@ -162,7 +167,18 @@ class Events:
     def _drop_oldest_non_critical_event(self, queue: _BoundedEventQueue[SessionEvent]) -> bool:
         pending = queue.pending
         for idx, existing in enumerate(pending):
-            if existing.event_type in _NON_CRITICAL_EVENT_TYPES:
+            if (
+                existing.event_type in _NON_CRITICAL_EVENT_TYPES
+                and not self._is_terminal_live_event(existing)
+            ):
+                del pending[idx]
+                return True
+        return False
+
+    def _drop_oldest_non_terminal_event(self, queue: _BoundedEventQueue[SessionEvent]) -> bool:
+        pending = queue.pending
+        for idx, existing in enumerate(pending):
+            if not self._is_terminal_live_event(existing):
                 del pending[idx]
                 return True
         return False
@@ -181,11 +197,25 @@ class Events:
                 return
 
         if not self._drop_oldest_non_critical_event(queue):
-            pending = queue.pending
-            if pending:
-                pending.popleft()
+            if self._drop_oldest_non_terminal_event(queue):
+                logger.warning(
+                    "Live event queue reached capacity; dropping oldest non-terminal event "
+                    "to preserve terminal delivery"
+                )
+            else:
+                logger.warning(
+                    "Live event queue contains only terminal events; temporarily exceeding "
+                    "capacity to avoid dropping terminal event"
+                )
+                queue.force_put_nowait(event)
+                return
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(event)
+
+    @staticmethod
+    def _parse_cursor_timestamp(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(UTC).replace(tzinfo=None)
 
     def _enqueue_board_event(
         self, queue: _BoundedEventQueue[BoardEvent], event: BoardEvent
@@ -295,17 +325,37 @@ class Events:
         task_id: str,
         *,
         limit: int = 50,
+        before: str | None = None,
+        before_id: str | None = None,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
         bounded = max(limit, 0)
         if bounded == 0:
             return []
 
+        cutoff = self._parse_cursor_timestamp(before) if before is not None else None
+
         def _query(s):
             stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
             if session_id is not None:
                 stmt = stmt.where(SessionEvent.session_id == session_id)
-            stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at))).limit(bounded)
+            if cutoff is not None:
+                if before_id:
+                    stmt = stmt.where(
+                        or_(
+                            cast("Any", SessionEvent.created_at) < cutoff,
+                            and_(
+                                cast("Any", SessionEvent.created_at) == cutoff,
+                                cast("Any", SessionEvent.id) < before_id,
+                            ),
+                        )
+                    )
+                else:
+                    stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+            stmt = stmt.order_by(
+                desc(cast("Any", SessionEvent.created_at)),
+                desc(cast("Any", SessionEvent.id)),
+            ).limit(bounded)
             return list(s.exec(stmt).all())
 
         recent = await _db_async(self._engine, _query)
@@ -317,33 +367,77 @@ class Events:
         task_id: str,
         *,
         before: str,
+        before_id: str | None = None,
         limit: int = 50,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
-        from datetime import datetime
-
         bounded = max(limit, 0)
         if bounded == 0:
             return []
 
-        parsed = datetime.fromisoformat(before.replace("Z", "+00:00"))
-        from datetime import UTC
-
-        cutoff = parsed.astimezone(UTC).replace(tzinfo=None)
+        cutoff = self._parse_cursor_timestamp(before)
 
         def _query(s):
-            stmt = select(SessionEvent).where(
-                SessionEvent.task_id == task_id,
-                cast("Any", SessionEvent.created_at) < cutoff,
-            )
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if before_id:
+                stmt = stmt.where(
+                    or_(
+                        cast("Any", SessionEvent.created_at) < cutoff,
+                        and_(
+                            cast("Any", SessionEvent.created_at) == cutoff,
+                            cast("Any", SessionEvent.id) < before_id,
+                        ),
+                    )
+                )
+            else:
+                stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
             if session_id is not None:
                 stmt = stmt.where(SessionEvent.session_id == session_id)
-            stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at))).limit(bounded)
+            stmt = stmt.order_by(
+                desc(cast("Any", SessionEvent.created_at)),
+                desc(cast("Any", SessionEvent.id)),
+            ).limit(bounded)
             return list(s.exec(stmt).all())
 
         recent = await _db_async(self._engine, _query)
         recent.reverse()
         return recent
+
+    async def list_after(
+        self,
+        task_id: str,
+        *,
+        after_ts: str,
+        after_id: str,
+        limit: int = 50,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
+        bounded = max(limit, 0)
+        if bounded == 0:
+            return []
+
+        cutoff = self._parse_cursor_timestamp(after_ts)
+
+        def _query(s):
+            stmt = select(SessionEvent).where(
+                SessionEvent.task_id == task_id,
+                or_(
+                    cast("Any", SessionEvent.created_at) > cutoff,
+                    and_(
+                        cast("Any", SessionEvent.created_at) == cutoff,
+                        cast("Any", SessionEvent.id) > after_id,
+                    ),
+                ),
+            )
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(
+                cast("Any", SessionEvent.created_at),
+                cast("Any", SessionEvent.id),
+            ).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        return await _db_async(self._engine, _query)
 
     async def latest(
         self,

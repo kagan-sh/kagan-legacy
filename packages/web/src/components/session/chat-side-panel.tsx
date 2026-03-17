@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { sessionPickerOpenAtom, type RightRailMode } from '@/lib/atoms/ui';
-import { buildSessionOrder, filterEventsForLane } from '@/lib/utils/events';
 
 interface ChatSidePanelProps {
   taskId: string;
@@ -36,18 +35,40 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
   }, [searchParams]);
 
   const {
-    task, events, isRunning,
+    task, events, isRunning, sessions,
     sentFollowUps, queue, sendingFollowUp,
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
   } = useTaskEvents(taskId, { initialLimit: 200 });
 
-  const sessionOrder = useMemo(() => buildSessionOrder(events), [events]);
-  const hasReviewerSession = sessionOrder.length >= 2;
-  const displayedEvents = useMemo(
-    () => filterEventsForLane(events, sessionOrder, lane),
-    [events, sessionOrder, lane],
+  const inferredSessionOrder = useMemo(() => {
+    const firstSeen = new Set<string>();
+    const ordered: string[] = [];
+    for (const event of events) {
+      if (!event.session_id || firstSeen.has(event.session_id)) continue;
+      firstSeen.add(event.session_id);
+      ordered.push(event.session_id);
+      if (ordered.length >= 2) break;
+    }
+    return ordered;
+  }, [events]);
+
+  const workerSession = useMemo(
+    () => sessions?.find((session) => session.mode === 'AUTO' || session.mode === 'PAIR'),
+    [sessions],
   );
+  const reviewerSession = useMemo(
+    () => (sessions && sessions.length >= 2 ? sessions[sessions.length - 1] : undefined),
+    [sessions],
+  );
+  const hasReviewerSession = sessions ? reviewerSession !== undefined : Boolean(inferredSessionOrder[1]);
+  const displayedEvents = useMemo(() => {
+    const workerSessionId = workerSession?.id ?? inferredSessionOrder[0];
+    const reviewerSessionId = reviewerSession?.id ?? inferredSessionOrder[1];
+    const laneSessionId = lane === 'reviewer' ? reviewerSessionId : workerSessionId;
+    if (!laneSessionId) return sessions ? events : [];
+    return events.filter((event) => event.session_id === laneSessionId);
+  }, [events, workerSession, reviewerSession, lane, sessions, inferredSessionOrder]);
 
   return (
     <aside
@@ -153,5 +174,3 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
     </aside>
   );
 }
-
-

@@ -127,6 +127,18 @@ class ChatPanel(Vertical):
         self._overlay_split_key = "Ctrl+I"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
         self._overlay_close_key = "Esc"
+        self._state_only_updates = 0
+
+    @contextlib.contextmanager
+    def state_only_updates(self):
+        self._state_only_updates += 1
+        try:
+            yield
+        finally:
+            self._state_only_updates = max(0, self._state_only_updates - 1)
+
+    def stream_output(self) -> StreamingOutput:
+        return self.query_one("#chat-overlay-output", StreamingOutput)
 
     def compose(self) -> ComposeResult:
         yield Static("Orchestrator", id="chat-title")
@@ -383,7 +395,7 @@ class ChatPanel(Vertical):
                 )
             )
         self._trim_session_entries(state)
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return
@@ -407,7 +419,7 @@ class ChatPanel(Vertical):
             if result is not None:
                 payload["result"] = result
             state.entries[index] = ("tool", payload)
-            if self.is_mounted:
+            if self.is_mounted and self._state_only_updates == 0:
                 stream = self._stream_output()
                 if stream is None:
                     return
@@ -849,7 +861,7 @@ class ChatPanel(Vertical):
             state.entries.append((kind, {"text": cleaned}))
         self._trim_session_entries(state)
 
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return
@@ -888,7 +900,7 @@ class ChatPanel(Vertical):
             state.entries.append((kind, {"text": text}))
         self._trim_session_entries(state)
 
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return

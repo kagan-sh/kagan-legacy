@@ -806,6 +806,11 @@ async def _handle_chat_send(
             }
         )
 
+        # Orchestrator chat may have mutated tasks via MCP tools (start, cancel,
+        # update status, etc.).  Broadcast a generic TASK_UPDATED so every
+        # connected client — including the kanban board — refreshes.
+        broadcast({"t": "TASK_UPDATED"})
+
         if is_first_message:
             asyncio.create_task(
                 _generate_chat_session_title(

@@ -19,7 +19,6 @@ import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { Panel } from '@/components/shared/workspace';
 import { rightRailChatSessionIdAtom, rightRailModeAtom, rightRailTaskIdAtom } from '@/lib/atoms/ui';
 import { STATUS_LABELS } from '@/lib/utils/constants';
-import { buildSessionOrder, filterEventsForLane } from '@/lib/utils/events';
 
 export function Component() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -36,7 +35,7 @@ export function Component() {
   const requestedLane = searchParams.get('lane');
 
   const {
-    task, events, loading, runningSince, isRunning,
+    task, events, loading, runningSince, isRunning, sessions,
     sentFollowUps, queue, sendingFollowUp,
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
@@ -49,12 +48,34 @@ export function Component() {
         ? 'reviewer'
         : 'worker';
 
-  const sessionOrder = useMemo(() => buildSessionOrder(events), [events]);
-  const hasReviewerSession = sessionOrder.length >= 2;
-  const displayedEvents = useMemo(
-    () => filterEventsForLane(events, sessionOrder, streamLane),
-    [events, sessionOrder, streamLane],
+  const inferredSessionOrder = useMemo(() => {
+    const firstSeen = new Set<string>();
+    const ordered: string[] = [];
+    for (const event of events) {
+      if (!event.session_id || firstSeen.has(event.session_id)) continue;
+      firstSeen.add(event.session_id);
+      ordered.push(event.session_id);
+      if (ordered.length >= 2) break;
+    }
+    return ordered;
+  }, [events]);
+
+  const workerSession = useMemo(
+    () => sessions?.find((session) => session.mode === 'AUTO' || session.mode === 'PAIR'),
+    [sessions],
   );
+  const reviewerSession = useMemo(
+    () => (sessions && sessions.length >= 2 ? sessions[sessions.length - 1] : undefined),
+    [sessions],
+  );
+  const hasReviewerSession = sessions ? reviewerSession !== undefined : Boolean(inferredSessionOrder[1]);
+  const displayedEvents = useMemo(() => {
+    const workerSessionId = workerSession?.id ?? inferredSessionOrder[0];
+    const reviewerSessionId = reviewerSession?.id ?? inferredSessionOrder[1];
+    const laneSessionId = streamLane === 'reviewer' ? reviewerSessionId : workerSessionId;
+    if (!laneSessionId) return sessions ? events : [];
+    return events.filter((event) => event.session_id === laneSessionId);
+  }, [events, workerSession, reviewerSession, streamLane, sessions, inferredSessionOrder]);
 
   // Keep rail task ID in sync so Cmd+L opens chat for this task
   const setRailMode = useSetAtom(rightRailModeAtom);
@@ -226,7 +247,7 @@ export function Component() {
                     </Tabs>
 
                     <div className="flex min-h-0 flex-1 flex-col">
-                      <EventStream events={displayedEvents} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                      <EventStream events={displayedEvents} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                       <ChatInputBar
                         onSend={queuePrompt}
                         disableSend={false}
@@ -258,7 +279,7 @@ export function Component() {
                 </Tabs>
 
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <EventStream events={displayedEvents} userFollowUps={sentFollowUps} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
+                  <EventStream events={displayedEvents} userFollowUps={sentFollowUps} isRunning={isRunning} className="min-h-0 flex-1" hasMore={hasMore} loadingMore={loadingMore} onLoadEarlier={loadEarlier} />
                   <ChatInputBar
                     onSend={queuePrompt}
                     disableSend={false}

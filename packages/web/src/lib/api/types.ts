@@ -15,6 +15,14 @@ export interface WireTaskActiveSession {
   started_at: string;
 }
 
+export interface WireTaskSession {
+  id: string;
+  mode: string;
+  status: string;
+  agent_backend: string;
+  started_at: string;
+}
+
 export type ReviewVerdict = {
   criterion_index: number;
   verdict: 'PASS' | 'FAIL';

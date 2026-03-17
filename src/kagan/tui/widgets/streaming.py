@@ -577,6 +577,7 @@ class StreamingOutput(Vertical):
     @on(MouseScrollUp, "#streaming-body")
     def _on_stream_scroll_up(self) -> None:
         self.live_follow = False
+        self.call_after_refresh(self._maybe_auto_load_earlier)
 
     @on(MouseScrollDown, "#streaming-body")
     def _on_stream_scroll_down(self) -> None:
@@ -585,6 +586,21 @@ class StreamingOutput(Vertical):
     @on(MouseUp, "#streaming-body")
     def _on_stream_mouse_up(self) -> None:
         self.call_after_refresh(self._sync_live_follow_from_position)
+
+    def _maybe_auto_load_earlier(self) -> None:
+        try:
+            body = self.query_one("#streaming-body", ScrollableContainer)
+        except NoMatches:
+            return
+        if float(body.scroll_y) > 0:
+            return
+        try:
+            load_more = self.query_one("#load-more-bar", Static)
+        except NoMatches:
+            return
+        if not load_more.display:
+            return
+        self.post_message(self.LoadMore())
 
     def _push_line(self, content: str, *, key: str | None = None) -> None:
         if key is not None:

@@ -270,18 +270,6 @@ TaskScreen Footer {
     text-align: center;
 }
 
-.ts-stream {
-    width: 100%;
-    height: 1fr;
-    min-height: 10;
-    background: $surface;
-    border: round $border;
-}
-
-.ts-hidden-stream {
-    display: none;
-}
-
 TaskScreen.ts-chat-vertical #task-screen-root {
     width: 1fr;
     min-width: 0;

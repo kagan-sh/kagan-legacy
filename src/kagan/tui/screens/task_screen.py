@@ -20,7 +20,7 @@ from textual.widgets import (
 )
 
 from kagan.core import git
-from kagan.core.enums import SessionEventType, TaskStatus, WorkMode
+from kagan.core.enums import SessionEventType, TaskStatus
 from kagan.core.errors import (
     KaganError,
     MergeConflictError,
@@ -116,6 +116,9 @@ class TaskScreen(Screen[None]):
         self._last_merge_blocker: str | None = None
         self._oldest_event_ts: str | None = None
         self._replay_count: int = 0
+        self._worker_session_id: str | None = None
+        self._reviewer_session_id: str | None = None
+        self._pending_reviewer_session_id = False
 
     @property
     def kagan_app(self) -> KaganApp:
@@ -135,7 +138,6 @@ class TaskScreen(Screen[None]):
                 with TabPane("Diff", id="diff"):
                     yield TaskDiffPane(id="ts-diff-pane")
 
-            yield StreamingOutput(id="ts-stream", classes="ts-stream ts-hidden-stream")
             yield ChatPanel(id="ts-chat-overlay", classes="chat-overlay")
 
         yield TaskActionBar(id="ts-actions")
@@ -184,11 +186,7 @@ class TaskScreen(Screen[None]):
         self.query_one("#ts-overview-scroll", VerticalScroll).focus()
         self.call_after_refresh(self.refresh_bindings)
 
-        if (
-            self._task_model is not None
-            and self._task_model.status is TaskStatus.IN_PROGRESS
-            and self._task_model.execution_mode is WorkMode.AUTO
-        ):
+        if self._task_model is not None and self._task_model.status is TaskStatus.IN_PROGRESS:
             self._running = True
             self.call_after_refresh(
                 lambda: self.run_worker(self.action_open_task_overlay(), exit_on_error=False)
@@ -680,6 +678,9 @@ class TaskScreen(Screen[None]):
         panel.add_system_message(f"Unable to restart agent: {restart_error}")
 
     async def _start_or_attach_session(self, *, backend_hint: str | None = None) -> str | None:
+        if self._effective_stream_source() == "worker":
+            self._worker_session_id = None
+            self._pending_reviewer_session_id = False
         if self._task_id is None:
             self._simulated_session = True
             self._output_stream().post_note("No task selected; running simulated output")
@@ -769,6 +770,7 @@ class TaskScreen(Screen[None]):
             output=output,
             overlay_chat=overlay_chat,
             is_task_chat_mode=lambda: self._chat_mode == "task",
+            active_session_id=self._active_stream_session_id,
             payload_text=self._payload_text,
             queue_refresh=self._queue_stream_refresh,
             set_running=self._set_running,
@@ -788,10 +790,14 @@ class TaskScreen(Screen[None]):
                     self._oldest_event_ts = utc_iso(event.created_at)
                 if self._replay_count == TASK_SCREEN_REPLAY_EVENT_LIMIT:
                     output.show_load_more_bar()
+                self._track_session_event(event.event_type, event.session_id)
+                active_session_id = self._active_stream_session_id()
+                if event.session_id and active_session_id and event.session_id != active_session_id:
+                    continue
                 payload = event.payload or {}
                 handler = event_handler.event_handlers.get(event.event_type)
                 if handler is not None:
-                    handler(payload)
+                    handler(payload, event.session_id)
                 if self._should_refresh_after_event(event.event_type):
                     self._queue_stream_refresh(workspace=True, review=True)
         except asyncio.CancelledError:
@@ -818,7 +824,34 @@ class TaskScreen(Screen[None]):
         }
 
     def _output_stream(self) -> StreamingOutput:
-        return self.query_one("#ts-stream", StreamingOutput)
+        return self._overlay_panel().stream_output()
+
+    def _active_stream_session_id(self) -> str | None:
+        source = self._effective_stream_source()
+        if source == "reviewer":
+            return self._reviewer_session_id
+        return self._worker_session_id
+
+    def _track_session_event(
+        self, event_type: SessionEventType, event_session_id: str | None
+    ) -> None:
+        if event_type is SessionEventType.AUTO_REVIEW_STARTED:
+            self._pending_reviewer_session_id = True
+            return
+        if event_session_id is None:
+            return
+        if self._pending_reviewer_session_id:
+            self._reviewer_session_id = event_session_id
+            self._pending_reviewer_session_id = False
+            return
+        if self._effective_stream_source() == "reviewer" and self._reviewer_session_id is None:
+            self._reviewer_session_id = event_session_id
+            return
+        if self._worker_session_id is None:
+            self._worker_session_id = event_session_id
+            return
+        if self._worker_session_id != event_session_id and self._reviewer_session_id is None:
+            self._reviewer_session_id = event_session_id
 
     @on(StreamingOutput.LoadMore)
     async def _on_load_more(self) -> None:
@@ -840,8 +873,16 @@ class TaskScreen(Screen[None]):
 
             self._oldest_event_ts = utc_iso(older_events[0].created_at) or self._oldest_event_ts
 
+        active_session_id = self._active_stream_session_id()
         widgets: list[Widget] = []
-        for event in older_events:
+        filtered_events = [
+            event
+            for event in older_events
+            if not (
+                event.session_id and active_session_id and event.session_id != active_session_id
+            )
+        ]
+        for event in filtered_events:
             payload = event.payload or {}
             match event.event_type:
                 case SessionEventType.OUTPUT_CHUNK:
@@ -881,7 +922,7 @@ class TaskScreen(Screen[None]):
         if widgets:
             output.prepend_widgets(widgets)
 
-        if len(older_events) >= 200:
+        if len(filtered_events) >= 200:
             output.show_load_more_bar()
 
     def _payload_text(self, payload: Any) -> str:
@@ -1272,6 +1313,8 @@ class TaskScreen(Screen[None]):
         with contextlib.suppress(KaganError, OSError, RuntimeError):
             await self.kagan_app.core.reviews.clear_verdicts(self._task_id)
         backend = await self._resolve_backend(self._task_model)
+        self._reviewer_session_id = None
+        self._pending_reviewer_session_id = True
         await self.kagan_app.core.tasks.run(self._task_id, agent_backend=backend)
         self._running = True
         self._set_stream_source("reviewer")

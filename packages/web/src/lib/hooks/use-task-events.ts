@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import type { WireEvent, WireTask } from '@/lib/api/types';
+import type { WireEvent, WireTask, WireTaskSession } from '@/lib/api/types';
 import { kaganWs, type WsInboundMessage } from '@/lib/api/websocket';
 import { mergeWireEvents } from '@/lib/utils/events';
 import { deriveTaskRunningSince } from '@/lib/utils/task-runtime';
@@ -24,6 +24,7 @@ interface UseTaskEventsResult {
   loading: boolean;
   runningSince: string | null;
   isRunning: boolean;
+  sessions?: WireTaskSession[];
 
   // Follow-up queue
   sentFollowUps: UserFollowUp[];
@@ -59,10 +60,12 @@ export function useTaskEvents(
   const [task, setTask] = useState<WireTask | null>(null);
   const [events, setEvents] = useState<WireEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<WireTaskSession[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const eventsRef = useRef(events);
   eventsRef.current = events;
+  const latestCursorRef = useRef<{ ts: string; id: string } | null>(null);
 
   // Compose the follow-up queue hook
   const followUp = useFollowUpQueue(taskId);
@@ -78,29 +81,22 @@ export function useTaskEvents(
     }
   }, [sessionId]);
 
-  // Fetch events helper (reused by initial load and polling)
-  const fetchEvents = useCallback(
-    (limit: number) => {
-      if (!taskId) return Promise.resolve();
-      return apiClient
-        .getTaskEvents(taskId, { limit, tail: true, session_id: sessionId })
-        .then((nextEvents) => setEvents((prev) => mergeWireEvents(prev, nextEvents)))
-        .catch(() => undefined);
-    },
-    [taskId, sessionId],
-  );
-
   // Initial load
   useEffect(() => {
     if (!taskId) return;
     setLoading(true);
+    const sessionsFetch = typeof apiClient.getTaskSessions === 'function'
+      ? apiClient.getTaskSessions(taskId)
+      : Promise.resolve([]);
     void Promise.all([
       apiClient.getTask(taskId),
       apiClient.getTaskEvents(taskId, { limit: initialLimit, tail: true, session_id: sessionId }),
+      sessionsFetch,
     ])
-      .then(([nextTask, nextEvents]) => {
+      .then(([nextTask, nextEvents, nextSessions]) => {
         setTask(nextTask);
         setEvents((prev) => mergeWireEvents(prev, nextEvents));
+        setSessions(nextSessions);
         setHasMore(nextEvents.length >= initialLimit);
       })
       .catch((error) => {
@@ -108,6 +104,15 @@ export function useTaskEvents(
       })
       .finally(() => setLoading(false));
   }, [taskId, initialLimit, sessionId]);
+
+  useEffect(() => {
+    const last = events[events.length - 1];
+    if (last) {
+      latestCursorRef.current = { ts: last.created_at, id: last.id };
+      return;
+    }
+    latestCursorRef.current = null;
+  }, [events]);
 
   // Live WS event stream — only accept events matching our session filter
   useEffect(() => {
@@ -143,18 +148,31 @@ export function useTaskEvents(
   useEffect(() => {
     if (!taskId) return;
     const refresh = () => {
+      const cursor = latestCursorRef.current;
+      const eventsFetch = cursor
+        ? apiClient.getTaskEvents(taskId, {
+            after: cursor.ts,
+            after_id: cursor.id,
+            limit: 220,
+            session_id: sessionId,
+          })
+        : apiClient.getTaskEvents(taskId, { limit: 220, tail: true, session_id: sessionId });
+
       void Promise.all([
         apiClient.getTask(taskId),
-        fetchEvents(220),
+        eventsFetch,
       ])
-        .then(([nextTask]) => {
+        .then(([nextTask, nextEvents]) => {
           if (nextTask) setTask(nextTask as WireTask);
+          if (Array.isArray(nextEvents) && nextEvents.length > 0) {
+            setEvents((prev) => mergeWireEvents(prev, nextEvents));
+          }
         })
         .catch(() => undefined);
     };
     const interval = window.setInterval(refresh, pollInterval);
     return () => window.clearInterval(interval);
-  }, [taskId, pollInterval, fetchEvents]);
+  }, [taskId, pollInterval, sessionId]);
 
   // Load earlier events (before the oldest currently loaded)
   const loadEarlier = useCallback(() => {
@@ -192,6 +210,7 @@ export function useTaskEvents(
     loading,
     runningSince,
     isRunning,
+    sessions,
     hasMore,
     loadingMore,
     loadEarlier,

@@ -356,11 +356,23 @@ def register_routes(mcp: FastMCP) -> None:
         offset = int(request.query_params.get("offset", "0"))
         tail = request.query_params.get("tail", "0") in {"1", "true", "yes"}
         before = request.query_params.get("before") or None
+        before_id = request.query_params.get("before_id") or None
+        after = request.query_params.get("after") or None
+        after_id = request.query_params.get("after_id") or None
         session_id = request.query_params.get("session_id") or None
         if before:
             events = await ctx.client.tasks.events.list_before(
                 task_id,
                 before=before,
+                before_id=before_id,
+                limit=max(limit, 1),
+                session_id=session_id,
+            )
+        elif after:
+            events = await ctx.client.tasks.events.list_after(
+                task_id,
+                after_ts=after,
+                after_id=after_id or "",
                 limit=max(limit, 1),
                 session_id=session_id,
             )
@@ -378,6 +390,25 @@ def register_routes(mcp: FastMCP) -> None:
                 session_id=session_id,
             )
         return _ok([_event_to_wire(event).model_dump() for event in events])
+
+    @mcp.custom_route("/api/tasks/{task_id}/sessions", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def task_sessions(request: Request, *, ctx: Any) -> JSONResponse:
+        task_id = cast("str", request.path_params["task_id"])
+        sessions = await ctx.client.tasks.sessions.list_for_task(task_id)
+        return _ok(
+            [
+                {
+                    "id": session.id,
+                    "mode": session.mode.value,
+                    "status": session.status.value,
+                    "agent_backend": session.agent_backend,
+                    "started_at": utc_iso(session.started_at) or "",
+                }
+                for session in sessions
+            ]
+        )
 
     @mcp.custom_route("/api/projects", methods=["GET"])
     @require_context(mcp)

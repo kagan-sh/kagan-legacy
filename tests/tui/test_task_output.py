@@ -400,7 +400,7 @@ async def test_task_stream_uses_bounded_replay_and_merges_chunks(
         assert replay_limits
         assert replay_limits[0] == 400
 
-        output = app.screen.query_one("#ts-stream", StreamingOutput)
+        output = app.screen.query_one("#chat-overlay-output", StreamingOutput)
         content = output.query_one("#streaming-body-content", Vertical)
         chunks = [child for child in content.children if isinstance(child, OutputChunk)]
         assert len(chunks) == 1

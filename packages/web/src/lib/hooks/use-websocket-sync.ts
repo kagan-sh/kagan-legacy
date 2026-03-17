@@ -80,4 +80,25 @@ export function useWebSocketSync() {
       kaganWs.subscribeToBoardUpdates();
     }
   }, [projectVersion]);
+
+  // Recover from browser tab backgrounding: browsers throttle timers and
+  // may silently close WebSocket connections in inactive tabs.  When the
+  // tab becomes visible again, force a WS health check and full board
+  // refresh so the UI catches up with any missed mutations.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+
+      if (!kaganWs.isConnected()) {
+        kaganWs.connect();
+      } else {
+        kaganWs.subscribeToBoardUpdates();
+      }
+
+      fetchTasks();
+    };
+
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchTasks]);
 }

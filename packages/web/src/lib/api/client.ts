@@ -25,6 +25,7 @@ import type {
   WireProject,
   WireRepository,
   WireTask,
+  WireTaskSession,
 } from '@/lib/api/types';
 
 // ---------------------------------------------------------------------------
@@ -214,16 +215,32 @@ export class KaganApiClient {
 
   async getTaskEvents(
     taskId: string,
-    options?: { limit?: number; offset?: number; tail?: boolean; before?: string; session_id?: string },
+    options?: {
+      limit?: number;
+      offset?: number;
+      tail?: boolean;
+      before?: string;
+      before_id?: string;
+      after?: string;
+      after_id?: string;
+      session_id?: string;
+    },
   ): Promise<WireEvent[]> {
     const params = new URLSearchParams();
     if (options?.limit !== undefined) params.set('limit', String(options.limit));
     if (options?.offset !== undefined) params.set('offset', String(options.offset));
     if (options?.tail) params.set('tail', '1');
     if (options?.before) params.set('before', options.before);
+    if (options?.before_id) params.set('before_id', options.before_id);
+    if (options?.after) params.set('after', options.after);
+    if (options?.after_id) params.set('after_id', options.after_id);
     if (options?.session_id) params.set('session_id', options.session_id);
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<WireEvent[]>(`/api/tasks/${taskId}/events${query}`);
+  }
+
+  async getTaskSessions(taskId: string): Promise<WireTaskSession[]> {
+    return this.request<WireTaskSession[]>(`/api/tasks/${taskId}/sessions`);
   }
 
   async getDiffStats(taskId: string): Promise<DiffStats> {

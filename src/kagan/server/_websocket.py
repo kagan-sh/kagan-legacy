@@ -851,6 +851,7 @@ async def _handle_chat_send(
         await throttler.flush()
         return
     except Exception as exc:
+        await throttler.flush()
         logger.exception("Chat orchestrator turn failed for session {}", session_id)
         try:
             await _send_error(websocket, WsMessageType.CHAT_ERROR, exc, session_id=session_id)

@@ -96,27 +96,59 @@ def _build_pair_startup_prompt(task: Task) -> str:
     criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
 
     lines = [
-        f"PAIR Task: {task.id} — {task.title}",
+        f"# PAIR Task: {task.id} — {task.title}",
         "",
-        "You are in a Kagan task worktree.",
-        "Read `.kagan/start_prompt.md` and follow it as the execution contract.",
+        "Act as a Senior Developer collaborating on this implementation.",
         "",
-        "Execution Rules:",
-        "- Start with a brief plan (3-5 bullets), then implement.",
-        "- Use available MCP tools to inspect task/session state and record progress.",
-        "- Keep the user updated with concise progress and verification results.",
-        "- Commit changes with a clear WHY-focused message before claiming completion.",
-        "- Self-check against acceptance criteria, then report ready for REVIEW.",
+        "## Task Overview",
+        f"**Title:** {task.title}",
         "",
     ]
     if description:
-        lines.extend(["Description:", description, ""])
+        lines.extend([f"**Description:** {description}", ""])
     if criteria:
-        lines.append("Acceptance criteria:")
+        lines.append("## Acceptance Criteria")
         lines.extend(f"- {item}" for item in criteria)
         lines.append("")
-    lines.append(
-        "Start now: propose a brief plan, then implement, verify, commit, and report for review."
+    lines.extend(
+        [
+            "## Important Rules",
+            "- You are in a git worktree, NOT the main repository",
+            "- Only modify files within this worktree",
+            "- COMMIT all changes before finishing (semantic commits: feat:, fix:, docs:, etc.)",
+            "- When complete: commit your work, then call `run_update` with action `finish`",
+            "",
+            "## MCP Tools Available (Kagan WORKER role)",
+            "",
+            "**Read Board:**",
+            "- `task_get` — full task details (criteria, description, status)",
+            "- `task_list` — list tasks, discover parallel work",
+            "- `task_search` — find related tasks by keyword",
+            "- `task_events` — execution logs from prior sessions",
+            "- `task_counts` — board overview by status",
+            "- `tasks_wait` — wait for sibling task completion",
+            "",
+            "**Own Task:**",
+            "- `task_add_note` — record progress, decisions, blockers",
+            "- `run_update` — get session status; finish session when done",
+            "- `run_summary` — token usage and cost metrics",
+            "",
+            "**Settings:**",
+            "- `settings_get` — read project configuration",
+            "",
+            "## Coordination Workflow",
+            "",
+            "Before implementing:",
+            "1. Call `task_list` to check for parallel IN_PROGRESS tasks",
+            "2. Review concurrent tasks to avoid overlapping file modifications",
+            "3. Call `task_events` on related completed tasks to learn from prior work",
+            "",
+            "## Completion",
+            "",
+            "1. Implement and verify against acceptance criteria",
+            "2. Commit with clear WHY-focused message",
+            "3. Call `run_update` with action `finish` to signal completion",
+        ]
     )
     return "\n".join(lines).strip() + "\n"
 

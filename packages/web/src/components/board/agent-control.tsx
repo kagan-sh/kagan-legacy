@@ -355,23 +355,23 @@ export function AgentControl({
               </>
             ) : pairInstructionsLauncher === 'nvim' ? (
               <>
-                <p>PAIR will run with Neovim workflow.</p>
+                <p>PAIR will open Neovim with the startup prompt file.</p>
                 <ol className="list-decimal space-y-1 pl-5">
                   <li>Press Continue to prepare the PAIR session.</li>
-                  <li>A Neovim launch command is copied to your clipboard.</li>
-                  <li>Open your terminal and paste the command.</li>
-                  <li>Use <code>.kagan/start_prompt.md</code> to seed your AI chat plugin.</li>
+                  <li>Neovim opens with <code>.kagan/start_prompt.md</code> in the task worktree.</li>
+                  <li>Copy the prompt contents and paste into your AI chat plugin.</li>
                 </ol>
               </>
             ) : (
               <>
                 <p>
-                  PAIR will open {launcherDisplayName(pairInstructionsLauncher)}. Keep the startup prompt as your first message for the agent.
+                  PAIR will open {launcherDisplayName(pairInstructionsLauncher)} in the task worktree.
+                  The startup prompt file will be open in your editor.
                 </p>
                 <ol className="list-decimal space-y-1 pl-5">
                   <li>Press Continue to start the session.</li>
-                  <li>Kagan opens your editor in the task worktree.</li>
-                  <li>Open <code>.kagan/start_prompt.md</code> and paste it into chat first.</li>
+                  <li>Kagan opens your editor in the task worktree with the startup prompt visible.</li>
+                  <li>Copy the prompt contents and paste into your IDE's AI chat.</li>
                 </ol>
               </>
             )}

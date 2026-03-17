@@ -1170,27 +1170,11 @@ class KanbanScreen(Screen[None]):
     async def _attach_nvim_session(workspace_path: Path, prompt_path: Path) -> bool:
         import asyncio as _aio
 
-        target = str(prompt_path) if prompt_path.exists() else "."
-        chat_bootstrap = (
-            "if filereadable('.kagan/start_prompt.md') | "
-            "let g:kagan_start_prompt = join(readfile('.kagan/start_prompt.md'), '\\n') | "
-            "if has('clipboard') | let @+ = g:kagan_start_prompt | endif | "
-            "endif | "
-            "if exists(':CodeCompanionChat') | CodeCompanionChat | "
-            "elseif exists(':AvanteChat') | AvanteChat | "
-            "elseif exists(':CopilotChat') | "
-            "lua local p = vim.g.kagan_start_prompt or ''; local ok, chat = pcall(require, "
-            "'CopilotChat'); if ok and chat and chat.ask then chat.open(); chat.ask(p, {}) else "
-            "vim.cmd('CopilotChat') end | "
-            "elseif exists(':ClaudeCode') | ClaudeCode | "
-            "silent! execute 'ClaudeCodeAdd ' . fnameescape('.kagan/start_prompt.md') | endif"
-        )
+        target = str(prompt_path) if prompt_path.exists() else str(workspace_path)
         try:
             proc = await _aio.create_subprocess_exec(
                 "nvim",
                 target,
-                "-c",
-                chat_bootstrap,
                 cwd=str(workspace_path),
                 env=build_sanitized_subprocess_environment(),
             )

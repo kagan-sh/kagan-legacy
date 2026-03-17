@@ -161,6 +161,12 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
         </div>
       )}
 
+      {!isMobile && (
+        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
+          ⌘⇧K sessions · ⌘I toggle · esc stop
+        </div>
+      )}
+
       {!isPairMode ? (
         <ChatInputBar
           onSend={queuePrompt}
@@ -170,12 +176,6 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
       ) : (
         <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
           Session running in external terminal
-        </div>
-      )}
-
-      {!isMobile && (
-        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          ⌘⇧K sessions · ⌘I toggle · esc stop
         </div>
       )}
     </aside>

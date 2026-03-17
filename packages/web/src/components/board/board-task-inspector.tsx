@@ -32,6 +32,18 @@ interface BoardTaskPeekDialogProps extends BoardTaskActions {
 }
 
 
+/** Event types worth surfacing in the board-level activity summary. */
+const INSPECTOR_EVENT_TYPES = new Set([
+  'TASK_STATUS_CHANGED',
+  'PLAN_UPDATE',
+  'AGENT_COMPLETED',
+  'AGENT_FAILED',
+  'AUTO_REVIEW_STARTED',
+  'CRITERION_VERDICT',
+  'MERGE_COMPLETED',
+  'MERGE_FAILED',
+]);
+
 function formatEventSummary(event: WireEvent) {
   if (event.type === 'TASK_STATUS_CHANGED') {
     const from = typeof event.payload?.from === 'string' ? event.payload.from : '?';
@@ -42,10 +54,13 @@ function formatEventSummary(event: WireEvent) {
   if (event.type === 'AGENT_COMPLETED') return 'Agent completed the current run';
   if (event.type === 'AUTO_REVIEW_STARTED') return 'Auto-review started';
   if (event.type === 'AGENT_FAILED') return 'Agent reported a failure';
-  if (event.type === 'OUTPUT_CHUNK') {
-    const text = typeof event.payload?.text === 'string' ? event.payload.text.trim() : '';
-    return text ? text : 'Agent produced output';
+  if (event.type === 'CRITERION_VERDICT') {
+    const criterion = typeof event.payload?.criterion === 'string' ? event.payload.criterion : '';
+    const passed = event.payload?.passed;
+    return criterion ? `Criterion ${passed ? 'passed' : 'failed'}: ${criterion}` : 'Criterion verdict';
   }
+  if (event.type === 'MERGE_COMPLETED') return 'Merge completed';
+  if (event.type === 'MERGE_FAILED') return 'Merge failed';
   return event.type.replaceAll('_', ' ').toLowerCase();
 }
 
@@ -68,7 +83,7 @@ function TaskStatusBadge({ task }: { task: WireTask }) {
 function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDelete }: BoardTaskInspectorProps) {
   const { events, runningSince } = useTaskEvents(task.id, { initialLimit: 18, pollInterval: 5000 });
   const criteria = task.acceptance_criteria ?? [];
-  const recentEvents = events.slice(-6).reverse();
+  const recentEvents = events.filter((e) => INSPECTOR_EVENT_TYPES.has(e.type)).slice(-6).reverse();
 
   return (
     <div className="space-y-4">

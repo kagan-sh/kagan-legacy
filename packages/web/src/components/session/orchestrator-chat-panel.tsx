@@ -372,18 +372,18 @@ export function OrchestratorChatPanel({
         )}
       </div>
 
+      {!isMobile && (
+        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
+          ⌘⇧K sessions · ⌘I toggle · esc stop
+        </div>
+      )}
+
       <ChatInputBar
         onSend={handleSend}
         onSlashCommand={handleSlashCommand}
         onInterrupt={handleInterrupt}
         disableSend={isStreaming}
       />
-
-      {!isMobile && (
-        <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          ⌘⇧K sessions · ⌘I toggle · esc stop
-        </div>
-      )}
     </aside>
   );
 }

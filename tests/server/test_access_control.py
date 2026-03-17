@@ -8,7 +8,6 @@ import pytest
 from starlette.requests import Request
 
 import kagan.server._helpers as server_helpers
-import kagan.server._routes as routes_module
 from kagan.mcp.server import ServerOptions
 from kagan.server.server import ApiServerOptions, create_api_server
 

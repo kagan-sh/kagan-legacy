@@ -12,6 +12,7 @@ from kagan.chat.sessions import (
     save_chat_session,
     set_last_session_id,
 )
+from kagan.core.enums import SessionKind
 
 _TUI_ORCHESTRATOR_SOURCE = "tui-orchestrator"
 _TUI_ORCHESTRATOR_SCOPE = "tui-orchestrator"
@@ -19,7 +20,7 @@ _ORCHESTRATOR_KEY_PREFIX = "orchestrator:"
 
 
 def is_orchestrator_session_key(key: str) -> bool:
-    return key == "orchestrator" or key.startswith(_ORCHESTRATOR_KEY_PREFIX)
+    return key == SessionKind.ORCHESTRATOR or key.startswith(_ORCHESTRATOR_KEY_PREFIX)
 
 
 class TuiOrchestratorSessionStore:

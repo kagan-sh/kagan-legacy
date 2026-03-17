@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -11,6 +11,26 @@ from kagan.core.errors import KaganError, SessionError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
 from kagan.mcp.toolsets import mcp_error_boundary
+
+
+class SessionExistsResult(TypedDict):
+    exists: bool
+    task_id: str
+
+
+class SessionCreateResult(TypedDict):
+    session_id: str
+    task_id: str
+
+
+class SessionGetResult(TypedDict):
+    task_id: str
+    status: str
+
+
+class SessionKillResult(TypedDict):
+    task_id: str
+    killed: bool
 
 
 async def _get_latest_session(client: Any, task_id: str) -> Any:
@@ -43,7 +63,7 @@ def _parse_session_action(action: str) -> SessionAction:
         ) from exc
 
 
-async def _handle_exists(client: Any, task_id: str) -> dict:
+async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
     from kagan.core.errors import NotFoundError
 
     try:
@@ -53,7 +73,7 @@ async def _handle_exists(client: Any, task_id: str) -> dict:
         return {"exists": False, "task_id": task_id}
 
 
-async def _handle_create(client: Any, task_id: str) -> dict:
+async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
     ws = await client.worktrees.get(task_id)
     if ws is None:
         try:
@@ -77,12 +97,12 @@ async def _handle_create(client: Any, task_id: str) -> dict:
     return {"session_id": session.id, "task_id": task_id}
 
 
-async def _handle_get(client: Any, task_id: str) -> dict:
+async def _handle_get(client: Any, task_id: str) -> SessionGetResult:
     task = await client.tasks.get(task_id)
     return {"task_id": task_id, "status": str(task.status)}
 
 
-async def _handle_kill(client: Any, task_id: str) -> dict:
+async def _handle_kill(client: Any, task_id: str) -> SessionKillResult:
     await client.tasks.cancel(task_id)
     return {"task_id": task_id, "killed": True}
 

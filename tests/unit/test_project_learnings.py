@@ -83,11 +83,12 @@ def test_learnings_section_after_base_prompt() -> None:
 async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
     """list_project_learnings deduplicates and caps at 20."""
     from sqlalchemy import create_engine
-    from sqlmodel import SQLModel, Session as DBSession
+    from sqlmodel import Session as DBSession
+    from sqlmodel import SQLModel
 
-    from kagan.core.models import Project, Task, TaskNote
     from kagan.core._tasks import Tasks
     from kagan.core.enums import TaskStatus, WorkMode
+    from kagan.core.models import Project, Task, TaskNote
 
     db_path = tmp_path / "test.db"
     engine = create_engine(f"sqlite:///{db_path}")
@@ -141,11 +142,12 @@ async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
 async def test_list_project_learnings_project_isolation(tmp_path: Path) -> None:
     """Learnings from other projects are NOT included."""
     from sqlalchemy import create_engine
-    from sqlmodel import SQLModel, Session as DBSession
+    from sqlmodel import Session as DBSession
+    from sqlmodel import SQLModel
 
-    from kagan.core.models import Project, Task, TaskNote
     from kagan.core._tasks import Tasks
     from kagan.core.enums import TaskStatus, WorkMode
+    from kagan.core.models import Project, Task, TaskNote
 
     db_path = tmp_path / "test.db"
     engine = create_engine(f"sqlite:///{db_path}")

@@ -18,7 +18,7 @@ from kagan.core._db_helpers import (
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events
-from kagan.core._sessions import Sessions
+from kagan.core._sessions import FinishPairResult, Sessions
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
@@ -109,7 +109,7 @@ class Tasks:
     async def cancel(self, task_id: str) -> None:
         await self.sessions.cancel(task_id)
 
-    async def end_pairing(self, task_id: str) -> dict[str, Any]:
+    async def end_pairing(self, task_id: str) -> FinishPairResult:
         return await self.sessions.finish_pair(task_id)
 
     async def create(

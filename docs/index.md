@@ -1,6 +1,6 @@
 ---
-title: "Kagan Docs — AI Agent Orchestration"
-description: "Documentation for Kagan: orchestrate AI coding agents with a terminal Kanban board, MCP server, and CLI."
+title: Kagan Docs — AI Agent Orchestration
+description: 'Documentation for Kagan: orchestrate AI coding agents with a terminal Kanban board, MCP server, and CLI.'
 hide:
   - navigation
   - toc

@@ -10,7 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
 from kagan.core import git
-from kagan.core.enums import SessionEventType, SessionStatus
+from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -103,7 +103,7 @@ class SessionDashboardScreen(Screen[None]):
         self._task_id = task_id
         self._task_model: Task | None = None
         self._running = False
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         self._chat_orchestrator_history: list[tuple[str, str]] = []
         self._chat_message_task: asyncio.Task[None] | None = None
         self._stream_task: asyncio.Task[None] | None = None
@@ -138,7 +138,7 @@ class SessionDashboardScreen(Screen[None]):
         panel = self._chat_panel()
         panel.set_visible(False)
         panel.set_fullscreen(False)
-        self._set_chat_mode("task")
+        self._set_chat_mode(ChatMode.TASK)
 
         self.query_one("#dashboard-agent-status").border_title = "Agent Status"
         self.query_one("#dashboard-persona-pipeline").border_title = "Persona Pipeline"
@@ -217,10 +217,10 @@ class SessionDashboardScreen(Screen[None]):
         )
 
     async def action_open_orchestrator_chat(self) -> None:
-        self._show_chat_overlay(mode="orchestrator", fullscreen=False)
+        self._show_chat_overlay(mode=ChatMode.ORCHESTRATOR, fullscreen=False)
 
     async def action_open_task_overlay(self) -> None:
-        self._show_chat_overlay(mode="task", fullscreen=False)
+        self._show_chat_overlay(mode=ChatMode.TASK, fullscreen=False)
 
     async def action_fullscreen_chat(self) -> None:
         panel = self._chat_panel()
@@ -232,7 +232,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.query_one("#chat-overlay-input", Input).focus()
             self._sync_layout_state()
             return
-        self._show_chat_overlay(mode="orchestrator", fullscreen=True)
+        self._show_chat_overlay(mode=ChatMode.ORCHESTRATOR, fullscreen=True)
 
     async def action_toggle_chat(self) -> None:
         panel = self._chat_panel()
@@ -247,7 +247,7 @@ class SessionDashboardScreen(Screen[None]):
         await self.action_open_task_overlay()
 
     def action_cycle_session(self) -> None:
-        if self._chat_mode == "task":
+        if self._chat_mode == ChatMode.TASK:
             self.run_worker(self.action_open_orchestrator_chat(), exit_on_error=False)
             return
         self.run_worker(self.action_open_task_overlay(), exit_on_error=False)
@@ -263,7 +263,7 @@ class SessionDashboardScreen(Screen[None]):
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
 
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(
                 self._send_orchestrator_message(message.text),
                 name="session-dashboard-orchestrator-send",
@@ -277,14 +277,14 @@ class SessionDashboardScreen(Screen[None]):
 
     def on_chat_panel_session_changed(self, message: ChatPanel.SessionChanged) -> None:
         if is_orchestrator_session_key(message.key):
-            self._set_chat_mode("orchestrator")
+            self._set_chat_mode(ChatMode.ORCHESTRATOR)
             self.run_worker(
                 self._switch_orchestrator_session(self._chat_panel(), message.key),
                 exit_on_error=False,
             )
             self._sync_layout_state()
             return
-        self._set_chat_mode("task", active_task_key=message.key)
+        self._set_chat_mode(ChatMode.TASK, active_task_key=message.key)
         self._sync_layout_state()
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
@@ -373,9 +373,9 @@ class SessionDashboardScreen(Screen[None]):
     def _set_chat_mode(self, mode: str, *, active_task_key: str | None = None) -> None:
         panel = self._chat_panel()
         task_sessions = self._task_session_options()
-        if mode == "orchestrator":
+        if mode == ChatMode.ORCHESTRATOR:
             panel.set_mode_title("Orchestrator")
-            panel.set_session_kind("orchestrator")
+            panel.set_session_kind(SessionKind.ORCHESTRATOR)
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.active_history()
             active_key = self.kagan_app.orchestrator_sessions.active_key()
             panel.set_sessions(build_session_options(self.kagan_app, task_sessions), active_key)
@@ -386,7 +386,10 @@ class SessionDashboardScreen(Screen[None]):
         else:
             panel.set_mode_title(f"Task #{self._task_id[:8]}")
             selected_task_key = active_task_key or TASK_WORKER_SESSION_KEY
-            panel.set_session_kind("review" if "review" in selected_task_key.casefold() else "auto")
+            kind = (
+                SessionKind.REVIEW if "review" in selected_task_key.casefold() else SessionKind.AUTO
+            )
+            panel.set_session_kind(kind)
             panel.set_sessions(
                 build_session_options(self.kagan_app, task_sessions), selected_task_key
             )
@@ -412,7 +415,7 @@ class SessionDashboardScreen(Screen[None]):
             agent_backend=panel.preferred_agent_backend(),
         )
         self._chat_orchestrator_history = await self.kagan_app.orchestrator_sessions.switch(key)
-        self._set_chat_mode("orchestrator")
+        self._set_chat_mode(ChatMode.ORCHESTRATOR)
 
     async def _create_new_orchestrator_session(self, panel: ChatPanel) -> None:
         await self.kagan_app.orchestrator_sessions.persist_active(
@@ -426,7 +429,7 @@ class SessionDashboardScreen(Screen[None]):
         self._chat_orchestrator_history = await self.kagan_app.orchestrator_sessions.switch(
             next_key
         )
-        self._set_chat_mode("orchestrator")
+        self._set_chat_mode(ChatMode.ORCHESTRATOR)
         panel.add_system_message("New session started.")
 
     def _show_chat_overlay(self, *, mode: str, fullscreen: bool) -> None:

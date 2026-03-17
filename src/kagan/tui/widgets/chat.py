@@ -20,6 +20,7 @@ from kagan.chat import (
     normalize_chat_input,
     resolve_slash_input,
 )
+from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import CHAT_BINDINGS
 from kagan.tui.screens.session_picker import (
     SessionPickerGroup,
@@ -321,11 +322,11 @@ class ChatPanel(Vertical):
 
     def set_session_kind(self, kind: str) -> None:
         indicator = self.query_one("#chat-overlay-session-indicator", Static)
-        for css_kind in ("orchestrator", "auto", "review", "pair"):
+        for css_kind in SessionKind:
             indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
         with contextlib.suppress(NoMatches):
             badge = self.query_one("#chat-overlay-session-badge", Static)
-            for css_kind in ("orchestrator", "auto", "review", "pair"):
+            for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
 
     def set_overlay_shortcuts(self, *, split: str, fullscreen: str, close: str = "Esc") -> None:
@@ -1116,7 +1117,9 @@ class ChatPanel(Vertical):
             return
 
         # Determine if we're in an orchestrator session
-        is_orchestrator = self._infer_session_kind(self._selected_session_key) == "orchestrator"
+        is_orchestrator = (
+            self._infer_session_kind(self._selected_session_key) == SessionKind.ORCHESTRATOR
+        )
 
         seen: set[str] = set()
         matches: list[tuple[str, str]] = []
@@ -1316,9 +1319,9 @@ class ChatPanel(Vertical):
                 label=label,
                 search_text=f"{label} {key} {kind}",
             )
-            if kind == "orchestrator":
+            if kind == SessionKind.ORCHESTRATOR:
                 orchestrator.append(option)
-            elif kind in {"auto", "review", "pair"}:
+            elif kind in {SessionKind.AUTO, SessionKind.REVIEW, SessionKind.PAIR}:
                 ticket_label = self._ticket_group_label(option.label)
                 task_targets_by_ticket.setdefault(ticket_label, []).append(option)
             else:
@@ -1371,20 +1374,20 @@ class ChatPanel(Vertical):
     def _infer_session_kind(key: str) -> str:
         normalized = key.casefold()
         if "orchestrator" in normalized:
-            return "orchestrator"
+            return SessionKind.ORCHESTRATOR
         if "review" in normalized:
-            return "review"
+            return SessionKind.REVIEW
         if "pair" in normalized:
-            return "pair"
-        return "auto"
+            return SessionKind.PAIR
+        return SessionKind.AUTO
 
     @staticmethod
     def _session_icon(kind: str) -> str:
         return {
-            "orchestrator": "◎",
-            "auto": "◉",
-            "review": "◆",
-            "pair": "◌",
+            SessionKind.ORCHESTRATOR: "◎",
+            SessionKind.AUTO: "◉",
+            SessionKind.REVIEW: "◆",
+            SessionKind.PAIR: "◌",
         }.get(kind, "●")
 
     @staticmethod

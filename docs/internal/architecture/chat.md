@@ -77,10 +77,10 @@ src/kagan/chat/
 
 **Public API:**
 
-| Method                                          | Description                                    |
-| ----------------------------------------------- | ---------------------------------------------- |
-| `run(prompt=None)`                              | Main orchestrator lifecycle loop               |
-| `hydrate_persistent_session(explicit_session_id)` | Load or create session                       |
+| Method                                            | Description                      |
+| ------------------------------------------------- | -------------------------------- |
+| `run(prompt=None)`                                | Main orchestrator lifecycle loop |
+| `hydrate_persistent_session(explicit_session_id)` | Load or create session           |
 
 **Internal methods:** `_send(text)`, `_repl_loop()`, `_handle_slash(text)`, `_switch_agent(new_backend)`, `_open_sessions(query)`, `_create_new_session()`, `_persist_session()`
 
@@ -106,17 +106,17 @@ class SlashCommand:
 
 **Built-in commands:**
 
-| Command                               | Description                                  |
-| ------------------------------------- | -------------------------------------------- |
-| `/help`     | List available commands                                              |
-| `/agents`   | List and switch agent backends                                       |
-| `/sessions` | List, attach, or delete chat sessions                                |
-| `/tool`     | Inspect recent tool calls and full I/O by ID                         |
-| `/clear`    | Clear the current session (start fresh)                              |
-| `/new`      | Start a new chat session                                             |
-| `/session`  | Show current session details                                         |
-| `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator-only)    |
-| `/exit`     | Exit the REPL                                                        |
+| Command     | Description                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| `/help`     | List available commands                                           |
+| `/agents`   | List and switch agent backends                                    |
+| `/sessions` | List, attach, or delete chat sessions                             |
+| `/tool`     | Inspect recent tool calls and full I/O by ID                      |
+| `/clear`    | Clear the current session (start fresh)                           |
+| `/new`      | Start a new chat session                                          |
+| `/session`  | Show current session details                                      |
+| `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator-only) |
+| `/exit`     | Exit the REPL                                                     |
 
 ### Session Persistence
 
@@ -124,31 +124,31 @@ Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 
 **Key helpers (from `sessions.py`):**
 
-| Function                                                          | Description                                          |
-| ----------------------------------------------------------------- | ---------------------------------------------------- |
-| `create_chat_session(...)`                                        | Create a new session record                          |
-| `get_chat_session(key)`                                           | Retrieve a session by ID                             |
-| `list_chat_sessions()`                                            | List all sessions with metadata                      |
-| `save_chat_session(...)`                                          | Persist session with messages and title              |
-| `delete_chat_session(key)`                                        | Remove a session                                     |
-| `set_last_session_id(...)`                                        | Remember last active session per scope               |
-| `get_last_session_id(client, *, scope)`                           | Read last active session ID for a scope              |
-| `get_scope_state(client, *, scope)`                               | Load full scope state dict from settings             |
-| `save_scope_state(client, *, scope, state)`                       | Persist scope state dict to settings                 |
-| `resolve_task_session_binding(client, session_id)`                | Resolve task binding for a given session ID          |
-| `list_chat_session_items(client, *, source, current_session_id)`  | Build display list of sessions for a scope           |
-| `resolve_chat_session_selector(items, query)`                     | Match a query string to a session list item          |
-| `resolve_chat_session_id(items, query)`                           | Resolve query to a session ID                        |
-| `build_chat_session_list_items(sessions, *, current_session_id)`  | Convert raw session records to display items         |
+| Function                                                         | Description                                  |
+| ---------------------------------------------------------------- | -------------------------------------------- |
+| `create_chat_session(...)`                                       | Create a new session record                  |
+| `get_chat_session(key)`                                          | Retrieve a session by ID                     |
+| `list_chat_sessions()`                                           | List all sessions with metadata              |
+| `save_chat_session(...)`                                         | Persist session with messages and title      |
+| `delete_chat_session(key)`                                       | Remove a session                             |
+| `set_last_session_id(...)`                                       | Remember last active session per scope       |
+| `get_last_session_id(client, *, scope)`                          | Read last active session ID for a scope      |
+| `get_scope_state(client, *, scope)`                              | Load full scope state dict from settings     |
+| `save_scope_state(client, *, scope, state)`                      | Persist scope state dict to settings         |
+| `resolve_task_session_binding(client, session_id)`               | Resolve task binding for a given session ID  |
+| `list_chat_session_items(client, *, source, current_session_id)` | Build display list of sessions for a scope   |
+| `resolve_chat_session_selector(items, query)`                    | Match a query string to a session list item  |
+| `resolve_chat_session_id(items, query)`                          | Resolve query to a session ID                |
+| `build_chat_session_list_items(sessions, *, current_session_id)` | Convert raw session records to display items |
 
 **Constants:**
 
-| Name                        | Value / Purpose                                  |
-| --------------------------- | ------------------------------------------------ |
-| `CHAT_SESSIONS_SETTING_KEY` | Settings key for session storage                 |
-| `CHAT_SCOPE_PREFIX`         | Prefix for scope-keyed settings entries          |
-| `CHAT_LAST_SESSION_PREFIX`  | Prefix for last-session-id entries per scope     |
-| `_SESSION_TITLE_MAX_LENGTH` | `80` — max characters for a generated title      |
+| Name                        | Value / Purpose                              |
+| --------------------------- | -------------------------------------------- |
+| `CHAT_SESSIONS_SETTING_KEY` | Settings key for session storage             |
+| `CHAT_SCOPE_PREFIX`         | Prefix for scope-keyed settings entries      |
+| `CHAT_LAST_SESSION_PREFIX`  | Prefix for last-session-id entries per scope |
+| `_SESSION_TITLE_MAX_LENGTH` | `80` — max characters for a generated title  |
 
 **Normalization:**
 

@@ -71,39 +71,39 @@ ______________________________________________________________________
 
 All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: string }`.
 
-| Endpoint                              | Method | Description                           |
-| ------------------------------------- | ------ | ------------------------------------- |
-| `/health`                             | GET    | Service health check                  |
-| `/api/tasks`                          | GET    | List tasks (optional `status` filter) |
-| `/api/tasks`                          | POST   | Create a new task                     |
-| `/api/tasks/counts`                   | GET    | Get task counts grouped by status     |
-| `/api/tasks/{id}`                     | GET    | Get task details                      |
-| `/api/tasks/{id}`                     | PATCH  | Update task properties                |
-| `/api/tasks/{id}`                     | DELETE | Delete a task (Admin tier)            |
-| `/api/tasks/{id}/status`              | POST   | Transition task to new status         |
-| `/api/tasks/{id}/events`              | GET    | Get event history for a task          |
-| `/api/tasks/{id}/review`              | GET    | Get review status for a task          |
-| `/api/tasks/{id}/review/decide`       | POST   | Approve, Reject, or Merge a task      |
-| `/api/tasks/{id}/review/conflicts`    | GET    | Get merge conflicts for a task        |
-| `/api/tasks/{id}/diff`                | GET    | Get diff statistics                   |
-| `/api/tasks/{id}/diff/raw`            | GET    | Raw unified diff                      |
-| `/api/tasks/{id}/diff/files`          | GET    | Changed files list                    |
-| `/api/tasks/{id}/worktree`            | GET    | Worktree metadata                     |
-| `/api/tasks/{id}/commits`             | GET    | Commit history                        |
-| `/api/projects`                       | GET    | List all projects                     |
-| `/api/projects`                       | POST   | Create a new project (Admin tier)     |
-| `/api/projects/{id}/activate`         | POST   | Set project as active                 |
-| `/api/projects/{id}`                  | DELETE | Delete a project (Admin tier)         |
-| `/api/settings`                       | GET    | Get current server settings           |
-| `/api/preflight`                      | GET    | Run preflight checks                  |
-| `/api/chat/sessions`                  | POST   | Create a new chat session             |
-| `/api/chat/sessions`                  | GET    | List chat sessions                    |
-| `/api/chat/sessions/{id}`             | GET    | Get chat session details              |
-| `/api/chat/sessions/{id}`             | DELETE | Delete a chat session                 |
-| `/api/chat/sessions/{id}/send`        | POST   | Send a message to an agent            |
-| `/api/chat/sessions/{id}/interrupt`   | POST   | Interrupt the current agent turn      |
-| `/api/plugins/sync`                   | POST   | Sync installed plugins                |
-| `/api/plugins/preflight`              | GET    | Run plugin preflight checks           |
+| Endpoint                            | Method | Description                           |
+| ----------------------------------- | ------ | ------------------------------------- |
+| `/health`                           | GET    | Service health check                  |
+| `/api/tasks`                        | GET    | List tasks (optional `status` filter) |
+| `/api/tasks`                        | POST   | Create a new task                     |
+| `/api/tasks/counts`                 | GET    | Get task counts grouped by status     |
+| `/api/tasks/{id}`                   | GET    | Get task details                      |
+| `/api/tasks/{id}`                   | PATCH  | Update task properties                |
+| `/api/tasks/{id}`                   | DELETE | Delete a task (Admin tier)            |
+| `/api/tasks/{id}/status`            | POST   | Transition task to new status         |
+| `/api/tasks/{id}/events`            | GET    | Get event history for a task          |
+| `/api/tasks/{id}/review`            | GET    | Get review status for a task          |
+| `/api/tasks/{id}/review/decide`     | POST   | Approve, Reject, or Merge a task      |
+| `/api/tasks/{id}/review/conflicts`  | GET    | Get merge conflicts for a task        |
+| `/api/tasks/{id}/diff`              | GET    | Get diff statistics                   |
+| `/api/tasks/{id}/diff/raw`          | GET    | Raw unified diff                      |
+| `/api/tasks/{id}/diff/files`        | GET    | Changed files list                    |
+| `/api/tasks/{id}/worktree`          | GET    | Worktree metadata                     |
+| `/api/tasks/{id}/commits`           | GET    | Commit history                        |
+| `/api/projects`                     | GET    | List all projects                     |
+| `/api/projects`                     | POST   | Create a new project (Admin tier)     |
+| `/api/projects/{id}/activate`       | POST   | Set project as active                 |
+| `/api/projects/{id}`                | DELETE | Delete a project (Admin tier)         |
+| `/api/settings`                     | GET    | Get current server settings           |
+| `/api/preflight`                    | GET    | Run preflight checks                  |
+| `/api/chat/sessions`                | POST   | Create a new chat session             |
+| `/api/chat/sessions`                | GET    | List chat sessions                    |
+| `/api/chat/sessions/{id}`           | GET    | Get chat session details              |
+| `/api/chat/sessions/{id}`           | DELETE | Delete a chat session                 |
+| `/api/chat/sessions/{id}/send`      | POST   | Send a message to an agent            |
+| `/api/chat/sessions/{id}/interrupt` | POST   | Interrupt the current agent turn      |
+| `/api/plugins/sync`                 | POST   | Sync installed plugins                |
+| `/api/plugins/preflight`            | GET    | Run plugin preflight checks           |
 
 ______________________________________________________________________
 
@@ -122,29 +122,29 @@ Endpoint: `/ws`
 
 ### Server Messages
 
-| Type                    | Payload                 | Description                            |
-| ----------------------- | ----------------------- | -------------------------------------- |
-| `PONG`                  | {}                      | Keep-alive response                    |
-| `BOARD_SYNC`            | { tasks: [] }           | Initial board state                    |
-| `TASK_UPDATED`          | { task_id }             | Notification that a task has changed   |
-| `SESSION_EVENT`         | { task_id, event }      | Task session events broadcast          |
-| `RUN_STARTED`           | { session_id, task_id } | Confirmation of execution start        |
-| `RUN_CANCELLED`         | { task_id }             | Confirmation of execution cancellation |
-| `RUN_ERROR`             | { error }               | Error during run management            |
-| `CHAT_CHUNK`            | { session_id, text }    | Agent text streaming chunk             |
-| `CHAT_TOOL_START`       | { session_id, tool }    | Tool call initiated                    |
-| `CHAT_TOOL_PROGRESS`    | { session_id, tool }    | Tool call status update                |
-| `CHAT_DONE`             | { session_id }          | Agent turn completed                   |
-| `CHAT_ERROR`            | { session_id, error }   | Agent turn error                       |
-| `CHAT_INTERRUPTED`      | { session_id }          | Agent turn interrupted by user         |
-| `CHAT_SESSION_UPDATED`  | { session_id }          | Session title or metadata changed      |
-| `CHAT_SUBSCRIBED`       | { session_id }          | Client subscribed to chat session      |
-| `CHAT_BUSY`             | { session_id }          | Agent is currently busy on another turn |
-| `TOOL_PERMISSION_REQUEST` | { session_id, tool }  | Agent requests tool permission         |
-| `FOLLOW_UP_QUEUED`      | { task_id }             | Follow-up message queued               |
-| `FOLLOW_UP_SENT`        | { task_id }             | Follow-up message sent                 |
-| `TASK_FOLLOW_UP_ACK`    | { task_id }             | Task follow-up acknowledged            |
-| `TASK_FOLLOW_UP_ERROR`  | { task_id, error }      | Task follow-up failed                  |
+| Type                      | Payload                 | Description                             |
+| ------------------------- | ----------------------- | --------------------------------------- |
+| `PONG`                    | {}                      | Keep-alive response                     |
+| `BOARD_SYNC`              | { tasks: [] }           | Initial board state                     |
+| `TASK_UPDATED`            | { task_id }             | Notification that a task has changed    |
+| `SESSION_EVENT`           | { task_id, event }      | Task session events broadcast           |
+| `RUN_STARTED`             | { session_id, task_id } | Confirmation of execution start         |
+| `RUN_CANCELLED`           | { task_id }             | Confirmation of execution cancellation  |
+| `RUN_ERROR`               | { error }               | Error during run management             |
+| `CHAT_CHUNK`              | { session_id, text }    | Agent text streaming chunk              |
+| `CHAT_TOOL_START`         | { session_id, tool }    | Tool call initiated                     |
+| `CHAT_TOOL_PROGRESS`      | { session_id, tool }    | Tool call status update                 |
+| `CHAT_DONE`               | { session_id }          | Agent turn completed                    |
+| `CHAT_ERROR`              | { session_id, error }   | Agent turn error                        |
+| `CHAT_INTERRUPTED`        | { session_id }          | Agent turn interrupted by user          |
+| `CHAT_SESSION_UPDATED`    | { session_id }          | Session title or metadata changed       |
+| `CHAT_SUBSCRIBED`         | { session_id }          | Client subscribed to chat session       |
+| `CHAT_BUSY`               | { session_id }          | Agent is currently busy on another turn |
+| `TOOL_PERMISSION_REQUEST` | { session_id, tool }    | Agent requests tool permission          |
+| `FOLLOW_UP_QUEUED`        | { task_id }             | Follow-up message queued                |
+| `FOLLOW_UP_SENT`          | { task_id }             | Follow-up message sent                  |
+| `TASK_FOLLOW_UP_ACK`      | { task_id }             | Task follow-up acknowledged             |
+| `TASK_FOLLOW_UP_ERROR`    | { task_id, error }      | Task follow-up failed                   |
 
 ______________________________________________________________________
 

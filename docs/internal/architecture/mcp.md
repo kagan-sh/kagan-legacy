@@ -179,11 +179,11 @@ ______________________________________________________________________
 
 ### Server Options
 
-| Option                   | Default        | Description                                              |
-| ------------------------ | -------------- | -------------------------------------------------------- |
-| `role`                   | ORCHESTRATOR   | Agent role: WORKER, REVIEWER, or ORCHESTRATOR            |
-| `session_id`             | None           | Bind to a task session                                   |
-| `enable_instrumentation` | false          | Enable diagnostics tool                                  |
+| Option                   | Default      | Description                                   |
+| ------------------------ | ------------ | --------------------------------------------- |
+| `role`                   | ORCHESTRATOR | Agent role: WORKER, REVIEWER, or ORCHESTRATOR |
+| `session_id`             | None         | Bind to a task session                        |
+| `enable_instrumentation` | false        | Enable diagnostics tool                       |
 
 `--readonly` maps to WORKER and `--admin` maps to ORCHESTRATOR for backward compatibility.
 
@@ -227,33 +227,33 @@ Three roles, cumulative — higher roles include all tools from lower roles.
 
 ### Three Roles
 
-| Role              | Flag                  | Can do                                                                                                                                                                                                                    |
-| ----------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **WORKER**        | `--role WORKER`       | Board awareness + own-task annotation: task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait, run_update, run_summary, settings_get, review_conflicts, plugins_preflight                   |
-| **REVIEWER**      | `--role REVIEWER`     | WORKER tools + review_set_criterion_verdict, review_clear_verdicts                                                                                                                                                        |
-| **ORCHESTRATOR**  | `--role ORCHESTRATOR` | Everything: task_create, task_update, task_delete, run_start, run_cancel, review_decide, project_*, settings_set, plugins_sync, and all REVIEWER tools                                                                    |
+| Role             | Flag                  | Can do                                                                                                                                                                                                   |
+| ---------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WORKER**       | `--role WORKER`       | Board awareness + own-task annotation: task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait, run_update, run_summary, settings_get, review_conflicts, plugins_preflight |
+| **REVIEWER**     | `--role REVIEWER`     | WORKER tools + review_set_criterion_verdict, review_clear_verdicts                                                                                                                                       |
+| **ORCHESTRATOR** | `--role ORCHESTRATOR` | Everything: task_create, task_update, task_delete, run_start, run_cancel, review_decide, project\_\*, settings_set, plugins_sync, and all REVIEWER tools                                                 |
 
 ### Who Gets What
 
-| Consumer                | CLI Flags                              | Effective Role |
-| ----------------------- | -------------------------------------- | -------------- |
-| Task agent (AUTO/PAIR)  | `--role WORKER --session-id {id}`      | WORKER         |
-| Reviewer agent          | `--role REVIEWER --session-id {id}`    | REVIEWER       |
-| Orchestrator (IDE host) | `--role ORCHESTRATOR`                  | ORCHESTRATOR   |
-| External / manual       | *(none)*                               | ORCHESTRATOR (default) |
+| Consumer                | CLI Flags                           | Effective Role         |
+| ----------------------- | ----------------------------------- | ---------------------- |
+| Task agent (AUTO/PAIR)  | `--role WORKER --session-id {id}`   | WORKER                 |
+| Reviewer agent          | `--role REVIEWER --session-id {id}` | REVIEWER               |
+| Orchestrator (IDE host) | `--role ORCHESTRATOR`               | ORCHESTRATOR           |
+| External / manual       | *(none)*                            | ORCHESTRATOR (default) |
 
 Core wires `--role WORKER` into `.mcp.json` automatically for spawned agents.
 
 ### Tool Role Requirements
 
-| tool                                                                                    | minimum role |
-| --------------------------------------------------------------------------------------- | ------------ |
-| task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait   | WORKER       |
-| run_update, run_summary, settings_get, review_conflicts, plugins_preflight              | WORKER       |
-| review_set_criterion_verdict, review_clear_verdicts                                     | REVIEWER     |
-| task_create, task_update, task_delete, run_start, run_cancel, review_decide             | ORCHESTRATOR |
-| project_list, project_create, project_delete, project_set_active                        | ORCHESTRATOR |
-| settings_set, plugins_sync, audit_log_list                                              | ORCHESTRATOR |
+| tool                                                                                  | minimum role |
+| ------------------------------------------------------------------------------------- | ------------ |
+| task_get, task_list, task_search, task_events, task_add_note, task_counts, tasks_wait | WORKER       |
+| run_update, run_summary, settings_get, review_conflicts, plugins_preflight            | WORKER       |
+| review_set_criterion_verdict, review_clear_verdicts                                   | REVIEWER     |
+| task_create, task_update, task_delete, run_start, run_cancel, review_decide           | ORCHESTRATOR |
+| project_list, project_create, project_delete, project_set_active                      | ORCHESTRATOR |
+| settings_set, plugins_sync, audit_log_list                                            | ORCHESTRATOR |
 
 ______________________________________________________________________
 
@@ -374,10 +374,10 @@ ______________________________________________________________________
 
 ## What This Architecture Does NOT Have
 
-| Omitted                        | Why                                                                    |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| HTTP/SSE transport             | Kagan is local-only. STDIO is simplest. Hosts spawn the process.       |
-| Auth middleware                | Local process, local user. Access control via role flags.              |
-| Tool wrapper/base class        | `@mcp.tool()` is the abstraction. Adding a layer earns nothing.        |
-| Runtime role switching         | Rebuild the server for a different role. One process, one config.      |
-| Custom serialization framework | Standard JSON serialization of model dicts.                            |
+| Omitted                        | Why                                                               |
+| ------------------------------ | ----------------------------------------------------------------- |
+| HTTP/SSE transport             | Kagan is local-only. STDIO is simplest. Hosts spawn the process.  |
+| Auth middleware                | Local process, local user. Access control via role flags.         |
+| Tool wrapper/base class        | `@mcp.tool()` is the abstraction. Adding a layer earns nothing.   |
+| Runtime role switching         | Rebuild the server for a different role. One process, one config. |
+| Custom serialization framework | Standard JSON serialization of model dicts.                       |

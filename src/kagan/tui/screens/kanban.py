@@ -17,7 +17,7 @@ from kagan.chat import (
     warm_orchestrator_backend,
 )
 from kagan.core import resolve_launcher
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus, WorkMode
 from kagan.core.errors import KaganError
 from kagan.core.models import Task
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -154,7 +154,7 @@ class KanbanScreen(Screen[None]):
         self._search_priority_filter: str | None = None
         self._search_mode_filter: WorkMode | None = None
         self._search_sort_filter: str | None = None
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id: str | None = None
         self._chat_overlay_layout_mode = "vertical"
         self._chat_auto_opened = False
@@ -199,7 +199,7 @@ class KanbanScreen(Screen[None]):
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
         await self._load_orchestrator_panel_state(panel)
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         self._set_tutorial_visible(False)
         self._chat_auto_opened = False
         self._update_search_bar_state()
@@ -785,10 +785,10 @@ class KanbanScreen(Screen[None]):
         if not was_visible:
             self._chat_overlay_layout_mode = "vertical"
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         await self._load_orchestrator_panel_state(panel)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id = None
         self._sync_layout_state()
         self.run_worker(
@@ -806,7 +806,7 @@ class KanbanScreen(Screen[None]):
         if not was_visible:
             self._chat_overlay_layout_mode = "vertical"
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
 
         task = self._selected_task()
         if task is None:
@@ -817,7 +817,7 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("auto")
+        panel.set_session_kind(SessionKind.AUTO)
         panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
@@ -827,7 +827,7 @@ class KanbanScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(True)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
 
         task = self._selected_task()
         if task is None:
@@ -837,7 +837,7 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("auto")
+        panel.set_session_kind(SessionKind.AUTO)
         panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
@@ -919,10 +919,10 @@ class KanbanScreen(Screen[None]):
         panel.set_fullscreen(True)
         self._chat_auto_opened = False
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         await self._load_orchestrator_panel_state(panel)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id = None
         self._sync_layout_state()
         self.run_worker(
@@ -1497,7 +1497,7 @@ class KanbanScreen(Screen[None]):
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
 
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(
                 self._send_orchestrator_message(message.text),
                 name="kanban-chat-orchestrator-send",
@@ -1511,11 +1511,11 @@ class KanbanScreen(Screen[None]):
 
     def on_chat_panel_session_changed(self, message: ChatPanel.SessionChanged) -> None:
         if is_orchestrator_session_key(message.key):
-            self._chat_mode = "orchestrator"
+            self._chat_mode = ChatMode.ORCHESTRATOR
             self._chat_active_task_id = None
             panel = self.query_one(ChatPanel)
             panel.set_mode_title("Orchestrator")
-            panel.set_session_kind("orchestrator")
+            panel.set_session_kind(SessionKind.ORCHESTRATOR)
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.history_for_key(
                 message.key
             )
@@ -1527,17 +1527,18 @@ class KanbanScreen(Screen[None]):
                 exit_on_error=False,
             )
             return
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         task = self._selected_task()
         panel = self.query_one(ChatPanel)
         if task is None:
             panel.set_mode_title("Task Chat")
-            panel.set_session_kind("auto")
+            panel.set_session_kind(SessionKind.AUTO)
             panel.add_system_message("Select a task first")
             return
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("review" if "review" in message.key.casefold() else "auto")
+        kind = SessionKind.REVIEW if "review" in message.key.casefold() else SessionKind.AUTO
+        panel.set_session_kind(kind)
         panel.set_sessions(build_session_options(self.kagan_app, task), message.key)
         self._ensure_chat_stream_worker(task.id)
 
@@ -1744,7 +1745,7 @@ class KanbanScreen(Screen[None]):
         panel = self.query_one(ChatPanel)
         try:
             async for event in self.kagan_app.core.tasks.events.stream(task_id):
-                if self._chat_mode != "task" or self._chat_active_task_id != task_id:
+                if self._chat_mode != ChatMode.TASK or self._chat_active_task_id != task_id:
                     continue
 
                 payload = event.payload or {}

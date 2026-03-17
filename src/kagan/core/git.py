@@ -4,11 +4,25 @@ import asyncio
 import os
 import re
 from pathlib import Path
+from typing import TypedDict
 
 from loguru import logger
 
+from kagan.core.enums import BranchRefStrategy
 from kagan.core.errors import MergeConflictError, WorktreeError
 from kagan.runtime_env import build_sanitized_subprocess_environment
+
+
+class WorktreeEntry(TypedDict):
+    path: str
+    branch: str | None
+
+
+class DiffStats(TypedDict):
+    files: int
+    insertions: int
+    deletions: int
+
 
 # Default git identity for Kagan agent commits.
 KAGAN_AGENT_NAME = "Kagan Agent"
@@ -181,14 +195,14 @@ async def resolve_worktree_base(
     repo_path: str | Path,
     *,
     preferred_branch: str,
-    strategy: str,
+    strategy: BranchRefStrategy,
     refresh_remote: bool = False,
 ) -> str:
     repo = Path(repo_path)
 
     # Fetch from origin before resolving.
     # Skipped for "local" strategy which never consults the remote.
-    if refresh_remote and strategy != "local" and await _has_remote(repo, "origin"):
+    if refresh_remote and strategy != BranchRefStrategy.LOCAL and await _has_remote(repo, "origin"):
         await _run_git(
             "fetch", "origin", preferred_branch, cwd=repo, check=False, timeout=TIMEOUT_FETCH
         )
@@ -197,12 +211,12 @@ async def resolve_worktree_base(
     remote_exists = await _has_remote_branch(repo, preferred_branch)
     remote_ref = f"origin/{preferred_branch}"
 
-    if strategy == "remote":
+    if strategy == BranchRefStrategy.REMOTE:
         if remote_exists:
             return remote_ref
         if local_exists:
             return preferred_branch
-    elif strategy == "local":
+    elif strategy == BranchRefStrategy.LOCAL:
         if local_exists:
             return preferred_branch
         if remote_exists:
@@ -231,11 +245,11 @@ async def worktree_remove(repo_path: str | Path, worktree_path: str | Path) -> N
     await _run_git("worktree", "prune", cwd=repo, check=False)
 
 
-async def worktree_list(repo_path: str | Path) -> list[dict]:
+async def worktree_list(repo_path: str | Path) -> list[WorktreeEntry]:
     """List all worktrees; returns dicts with 'path' and 'branch' keys."""
     repo = Path(repo_path)
     stdout, _ = await _run_git("worktree", "list", "--porcelain", cwd=repo)
-    worktrees: list[dict] = []
+    worktrees: list[WorktreeEntry] = []
     current: dict = {}
     for line in stdout.splitlines():
         if line.startswith("worktree "):
@@ -258,7 +272,7 @@ async def diff(
     worktree_path: str | Path,
     *,
     base_branch: str,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> str:
     """Return the unified diff between worktree HEAD and base_branch."""
     wt = Path(worktree_path)
@@ -271,8 +285,8 @@ async def diff_stats(
     worktree_path: str | Path,
     *,
     base_branch: str,
-    strategy: str = "local_if_ahead",
-) -> dict:
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
+) -> DiffStats:
     """Return diff statistics: {'files', 'insertions', 'deletions'}."""
     wt = Path(worktree_path)
     base_ref = await _resolve_base_ref(wt, base_branch, strategy=strategy)
@@ -422,20 +436,20 @@ async def _resolve_base_ref(
     cwd: Path,
     base_branch: str,
     *,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> str:
     local_exists = await _has_local_branch(cwd, base_branch)
     remote_exists = await _has_remote_branch(cwd, base_branch)
     remote_ref = f"origin/{base_branch}"
 
-    if strategy == "local":
+    if strategy == BranchRefStrategy.LOCAL:
         if local_exists:
             return base_branch
         if remote_exists:
             return remote_ref
         return base_branch
 
-    if strategy == "remote":
+    if strategy == BranchRefStrategy.REMOTE:
         if remote_exists:
             return remote_ref
         return base_branch
@@ -666,7 +680,7 @@ async def has_commits_since(
     worktree_path: str | Path,
     base_branch: str,
     *,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> bool:
     """Return True if the worktree has commits ahead of *base_branch*."""
     wt = Path(worktree_path)
@@ -710,6 +724,8 @@ async def prune_kagan_branches(repo_path: str | Path) -> list[str]:
 __all__ = [
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
+    "DiffStats",
+    "WorktreeEntry",
     "abort_rebase",
     "commit_all",
     "continue_rebase",

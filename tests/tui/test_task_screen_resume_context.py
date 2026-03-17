@@ -1,8 +1,7 @@
-from textual.containers import Vertical
-from textual.widgets import Static
-
 import pytest
 from tests.helpers.driver import KaganDriver
+from textual.containers import Vertical
+from textual.widgets import Static
 
 from kagan.core import TaskStatus
 from kagan.tui import KaganApp

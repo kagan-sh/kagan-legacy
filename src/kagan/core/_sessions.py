@@ -4,7 +4,7 @@ import signal
 import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from loguru import logger
 from sqlalchemy import Engine
@@ -28,7 +28,13 @@ from kagan.core._prompts import (
     resolve_review_prompt,
     resolve_task_prompt,
 )
-from kagan.core.enums import SessionEventType, SessionStatus, TaskStatus, WorkMode
+from kagan.core.enums import (
+    BranchRefStrategy,
+    SessionEventType,
+    SessionStatus,
+    TaskStatus,
+    WorkMode,
+)
 from kagan.core.errors import (
     AgentError,
     ConfigurationError,
@@ -37,6 +43,14 @@ from kagan.core.errors import (
     WorktreeError,
 )
 from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, TaskNote, Worktree
+
+
+class FinishPairResult(TypedDict):
+    task_id: str
+    status: str
+    ready_for_review: bool
+    pending_changes: bool
+    base_branch: str
 
 
 def _terminate_process(pid: int) -> None:
@@ -180,15 +194,17 @@ class Sessions:
 
         return await _db_async(self._engine, op)
 
-    async def _ref_strategy(self) -> str:
+    async def _ref_strategy(self) -> BranchRefStrategy:
+        """Read the configured branch-ref resolution strategy from settings."""
         settings = await _db_async(
             self._engine,
             lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
         )
         value = settings.get("worktree_base_ref_strategy", "local_if_ahead")
-        if value in {"local", "remote", "local_if_ahead"}:
-            return value
-        return "local_if_ahead"
+        try:
+            return BranchRefStrategy(value)
+        except ValueError:
+            return BranchRefStrategy.LOCAL_IF_AHEAD
 
     async def list_for_task(self, task_id: str) -> list[Session]:
         return await _db_async(
@@ -408,7 +424,7 @@ class Sessions:
         logger.info("PAIR session launched for task={}", task_id)
         return session_obj
 
-    async def finish_pair(self, task_id: str) -> dict[str, Any]:
+    async def finish_pair(self, task_id: str) -> FinishPairResult:
         task = await self._get_task(task_id)
         if task.execution_mode is not WorkMode.PAIR:
             raise PreflightError("PAIR finish is only valid for tasks in PAIR execution mode.")
@@ -613,7 +629,7 @@ class Sessions:
         worktree: Path,
         base_branch: str,
         commit_message: str,
-        strategy: str = "local_if_ahead",
+        strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
     ) -> tuple[bool, bool, bool]:
         pending_before = False
         pending_after = False
@@ -816,8 +832,13 @@ class Sessions:
             self._engine,
             lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
         )
-        strategy = settings.get("worktree_base_ref_strategy", "local_if_ahead")
-        if strategy != "local_if_ahead":
+        # Check if auto-rebase is enabled (default: True for local_if_ahead policy)
+        raw_strategy = settings.get("worktree_base_ref_strategy", "local_if_ahead")
+        try:
+            strategy = BranchRefStrategy(raw_strategy)
+        except ValueError:
+            strategy = BranchRefStrategy.LOCAL_IF_AHEAD
+        if strategy != BranchRefStrategy.LOCAL_IF_AHEAD:
             return
 
         ws = await _db_async(
@@ -852,4 +873,4 @@ class Sessions:
             )
 
 
-__all__ = ["Sessions"]
+__all__ = ["FinishPairResult", "Sessions"]

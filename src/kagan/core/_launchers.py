@@ -54,49 +54,47 @@ _VSCODE_EXTENSION_DIRS: tuple[str, ...] = (
 )
 
 
+# Map IDE name → platform-specific directory name fragments.
+# "app_support" is used for macOS (~/Library/Application Support/{name}/...)
+# and Windows (%APPDATA%/{name}/...).
+# "dot_dir" is the cross-platform ~/.{name}/extensions directory.
+_IDE_DIR_NAMES: dict[str, dict[str, str]] = {
+    "vscode": {"app_support": "Code", "dot_dir": ".vscode"},
+    "cursor": {"app_support": "Cursor", "dot_dir": ".cursor"},
+    "windsurf": {"app_support": "Windsurf", "dot_dir": ".windsurf"},
+    "kiro": {"app_support": "Kiro", "dot_dir": ".kiro"},
+    "antigravity": {"app_support": "Antigravity", "dot_dir": ".antigravity"},
+}
+
+
 def _get_vscode_extensions_dirs(ide: str = "vscode") -> list[Path]:
+    """Return list of potential VSCode extension directories for the IDE.
+
+    Args:
+        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
+
+    Returns:
+        List of Path objects pointing to potential extension directories.
+    """
+    dir_names = _IDE_DIR_NAMES.get(ide)
+    if dir_names is None:
+        return []
+
     dirs: list[Path] = []
     home = Path.home()
+    app_support_name = dir_names["app_support"]
+    dot_dir_name = dir_names["dot_dir"]
 
     # Platform-specific paths
     if sys.platform == "darwin":
-        # macOS
-        if ide == "vscode":
-            dirs.append(home / "Library/Application Support/Code/User/globalStorage")
-        elif ide == "cursor":
-            dirs.append(home / "Library/Application Support/Cursor/User/globalStorage")
-        elif ide == "windsurf":
-            dirs.append(home / "Library/Application Support/Windsurf/User/globalStorage")
-        elif ide == "kiro":
-            dirs.append(home / "Library/Application Support/Kiro/User/globalStorage")
-        elif ide == "antigravity":
-            dirs.append(home / "Library/Application Support/Antigravity/User/globalStorage")
+        dirs.append(home / "Library/Application Support" / app_support_name / "User/globalStorage")
     elif sys.platform == "win32":
-        # Windows
         appdata = os.environ.get("APPDATA", "")
         if appdata:
-            if ide == "vscode":
-                dirs.append(Path(appdata) / "Code/User/globalStorage")
-            elif ide == "cursor":
-                dirs.append(Path(appdata) / "Cursor/User/globalStorage")
-            elif ide == "windsurf":
-                dirs.append(Path(appdata) / "Windsurf/User/globalStorage")
-            elif ide == "kiro":
-                dirs.append(Path(appdata) / "Kiro/User/globalStorage")
-            elif ide == "antigravity":
-                dirs.append(Path(appdata) / "Antigravity/User/globalStorage")
+            dirs.append(Path(appdata) / app_support_name / "User/globalStorage")
 
     # Common cross-platform paths
-    if ide == "vscode":
-        dirs.append(home / ".vscode/extensions")
-    elif ide == "cursor":
-        dirs.append(home / ".cursor/extensions")
-    elif ide == "windsurf":
-        dirs.append(home / ".windsurf/extensions")
-    elif ide == "kiro":
-        dirs.append(home / ".kiro/extensions")
-    elif ide == "antigravity":
-        dirs.append(home / ".antigravity/extensions")
+    dirs.append(home / dot_dir_name / "extensions")
 
     return dirs
 

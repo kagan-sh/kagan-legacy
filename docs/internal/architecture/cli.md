@@ -220,16 +220,16 @@ command are in `docs/internal/features/cli.md`.
 
 Notable exceptions to the standard pattern:
 
-| Command      | Why it's different                                              |
-| ------------ | --------------------------------------------------------------- |
-| `tui.py`     | No `make_client()` — TUI creates its own client in `on_mount`   |
-| `doctor.py`  | Sync only — preflight checks don't need the async boundary      |
-| `mcp.py`     | Calls `kagan.mcp.server.serve(opts)`, blocks on STDIO           |
-| `tools.py`   | No `KaganCore` — standalone LLM utility, not a domain operation |
-| `plugins.py` | Subgroup with 3 subcommands: `sync`, `list`, `check`            |
+| Command      | Why it's different                                                  |
+| ------------ | ------------------------------------------------------------------- |
+| `tui.py`     | No `make_client()` — TUI creates its own client in `on_mount`       |
+| `doctor.py`  | Sync only — preflight checks don't need the async boundary          |
+| `mcp.py`     | Calls `kagan.mcp.server.serve(opts)`, blocks on STDIO               |
+| `tools.py`   | No `KaganCore` — standalone LLM utility, not a domain operation     |
+| `plugins.py` | Subgroup with 3 subcommands: `sync`, `list`, `check`                |
 | `imports.py` | Subgroup for `kagan import github`; interactive GitHub issue import |
-| `serve.py`   | Starts HTTP API server; blocks until stopped                    |
-| `web.py`     | Convenience wrapper: starts server + opens browser              |
+| `serve.py`   | Starts HTTP API server; blocks until stopped                        |
+| `web.py`     | Convenience wrapper: starts server + opens browser                  |
 
 ______________________________________________________________________
 

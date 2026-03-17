@@ -164,9 +164,8 @@ def test_mcp_help_includes_access_tier_guidance(tmp_path: Path) -> None:
     result = runner.invoke(cli, ["mcp", "--help"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert "Access tiers:" in result.output
-    assert "--readonly" in result.output
-    assert "--admin" in result.output
+    assert "Agent roles:" in result.output
+    assert "--role" in result.output
 
 
 @pytest.mark.parametrize("source_mode", ["prompt", "file"])

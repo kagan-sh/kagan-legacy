@@ -20,7 +20,13 @@ from textual.widgets import (
 )
 
 from kagan.core import git
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import (
+    ChatMode,
+    SessionEventType,
+    SessionKind,
+    StreamSource,
+    TaskStatus,
+)
 from kagan.core.errors import (
     KaganError,
     MergeConflictError,
@@ -40,6 +46,7 @@ from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.kanban_chat import (
     acp_payload,
+    apply_task_chat_event,
     stream_chunk_kind,
     stream_chunk_text,
     tool_call_args,
@@ -105,7 +112,7 @@ class TaskScreen(Screen[None]):
         self._pending_workspace_refresh = False
         self._pending_review_refresh = False
         self._simulated_session = False
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         self._overlay_layout_mode = "vertical"
         self._chat_orchestrator_history: list[tuple[str, str]] = []
         self._chat_session_switch_token = 0
@@ -294,7 +301,7 @@ class TaskScreen(Screen[None]):
                 self._set_status("Running")
                 return
             self._running = True
-            self._set_stream_source("worker")
+            self._set_stream_source(StreamSource.WORKER)
             self._set_status("Running")
             self._output_stream().append_text("[started]")
             await self._start_or_attach_session()
@@ -311,7 +318,7 @@ class TaskScreen(Screen[None]):
             self._set_status("Running")
             return
         self._running = True
-        self._set_stream_source("worker")
+        self._set_stream_source(StreamSource.WORKER)
         self._set_status("Running")
         self._output_stream().append_text("[started]")
         await self._start_or_attach_session()
@@ -376,7 +383,7 @@ class TaskScreen(Screen[None]):
         self._configure_overlay_chat(
             visible=True,
             fullscreen=False,
-            mode="orchestrator",
+            mode=ChatMode.ORCHESTRATOR,
             layout_mode=layout_mode,
             focus=True,
         )
@@ -390,7 +397,7 @@ class TaskScreen(Screen[None]):
         self._configure_overlay_chat(
             visible=True,
             fullscreen=False,
-            mode="task",
+            mode=ChatMode.TASK,
             layout_mode=layout_mode,
             focus=True,
         )
@@ -403,7 +410,7 @@ class TaskScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(True)
         panel.set_mode_title("Task Chat")
-        panel.set_session_kind("auto")
+        panel.set_session_kind(SessionKind.AUTO)
         panel.set_sessions(
             build_session_options(self.kagan_app, self._task_session_options()),
             self._active_task_session_key(),
@@ -412,7 +419,7 @@ class TaskScreen(Screen[None]):
             panel.set_mode_title(f"Task #{self._task_id[:8]}")
             self._ensure_stream_worker()
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         self._sync_overlay_layout_class()
 
     async def action_fullscreen_chat(self) -> None:
@@ -461,7 +468,7 @@ class TaskScreen(Screen[None]):
         self._sync_overlay_layout_class()
 
     async def _open_chat_from_current_mode(self, *, fullscreen: bool) -> None:
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             await self.action_open_orchestrator_chat()
             if fullscreen:
                 panel = self._overlay_panel()
@@ -488,7 +495,7 @@ class TaskScreen(Screen[None]):
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
 
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(
                 self._send_orchestrator_message(message.text),
                 name="task-screen-orchestrator-send",
@@ -503,7 +510,7 @@ class TaskScreen(Screen[None]):
     def action_cycle_session(self) -> None:
         panel = self._overlay_panel()
         fullscreen = panel.has_class("visible") and panel.has_class("fullscreen")
-        next_mode = "orchestrator" if self._chat_mode == "task" else "task"
+        next_mode = ChatMode.ORCHESTRATOR if self._chat_mode == ChatMode.TASK else ChatMode.TASK
         self.run_worker(
             self._cycle_chat_session(next_mode=next_mode, fullscreen=fullscreen),
             exit_on_error=False,
@@ -513,7 +520,7 @@ class TaskScreen(Screen[None]):
         self.action_cycle_session()
 
     async def _cycle_chat_session(self, *, next_mode: str, fullscreen: bool) -> None:
-        if next_mode == "orchestrator":
+        if next_mode == ChatMode.ORCHESTRATOR:
             await self.action_open_orchestrator_chat()
         elif fullscreen:
             await self.action_open_task_chat()
@@ -530,7 +537,7 @@ class TaskScreen(Screen[None]):
         if sender_id and sender_id != "ts-chat-overlay":
             return
         if is_orchestrator_session_key(message.key):
-            self._chat_mode = "orchestrator"
+            self._chat_mode = ChatMode.ORCHESTRATOR
             self._overlay_panel().set_mode_title("Orchestrator")
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.history_for_key(
                 message.key
@@ -544,7 +551,7 @@ class TaskScreen(Screen[None]):
             )
             self._sync_overlay_layout_class()
             return
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         panel = self._overlay_panel()
         panel.set_mode_title(
             f"Task #{self._task_id[:8]}" if self._task_id is not None else "Task Chat"
@@ -667,7 +674,7 @@ class TaskScreen(Screen[None]):
 
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")
-        self._set_stream_source("worker")
+        self._set_stream_source(StreamSource.WORKER)
         restart_error = await self._start_or_attach_session(
             backend_hint=panel.preferred_agent_backend()
         )
@@ -763,6 +770,13 @@ class TaskScreen(Screen[None]):
             return
         self._stream_task = asyncio.create_task(self._stream_events(self._task_id))
 
+    def _maybe_apply_chat_event(
+        self, overlay_chat: ChatPanel, event_type: SessionEventType, payload: dict[str, Any]
+    ) -> None:
+        """Apply chat event if in task chat mode."""
+        if self._chat_mode == ChatMode.TASK:
+            apply_task_chat_event(overlay_chat, event_type, payload)
+
     async def _stream_events(self, task_id: str) -> None:
         output = self._output_stream()
         overlay_chat = self._overlay_panel()
@@ -770,7 +784,7 @@ class TaskScreen(Screen[None]):
         event_handler = TaskEventHandler(
             output=output,
             overlay_chat=overlay_chat,
-            is_task_chat_mode=lambda: self._chat_mode == "task",
+            is_task_chat_mode=lambda: self._chat_mode == ChatMode.TASK,
             active_session_id=self._active_stream_session_id,
             payload_text=self._payload_text,
             queue_refresh=self._queue_stream_refresh,
@@ -960,23 +974,23 @@ class TaskScreen(Screen[None]):
         self._sync_stream_source_indicator()
 
     def _set_stream_source(self, source: str | None) -> None:
-        if source in {"worker", "reviewer"}:
+        if source in {StreamSource.WORKER, StreamSource.REVIEWER}:
             self._stream_source = source
         else:
             self._stream_source = None
         self._sync_stream_source_indicator()
 
     def _effective_stream_source(self) -> str:
-        if self._stream_source in {"worker", "reviewer"}:
+        if self._stream_source in {StreamSource.WORKER, StreamSource.REVIEWER}:
             return self._stream_source
         if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
-            return "reviewer"
-        return "worker"
+            return StreamSource.REVIEWER
+        return StreamSource.WORKER
 
     def _sync_stream_source_indicator(self) -> None:
         source = self._effective_stream_source()
-        source_label = "AI REVIEWER" if source == "reviewer" else "WORKER"
-        advisory = " (Advisory)" if source == "reviewer" else ""
+        source_label = "AI REVIEWER" if source == StreamSource.REVIEWER else "WORKER"
+        advisory = " (Advisory)" if source == StreamSource.REVIEWER else ""
         backend = ""
         if self._task_model is not None:
             backend = getattr(self._task_model, "agent_backend", "") or ""
@@ -991,8 +1005,8 @@ class TaskScreen(Screen[None]):
         with contextlib.suppress(NoMatches):
             source_widget = self.query_one("#ts-detail-stream-source", Static)
             source_widget.update(text)
-            source_widget.set_class(source == "reviewer", "ts-source-reviewer")
-            source_widget.set_class(source == "worker", "ts-source-worker")
+            source_widget.set_class(source == StreamSource.REVIEWER, "ts-source-reviewer")
+            source_widget.set_class(source == StreamSource.WORKER, "ts-source-worker")
             source_widget.set_class(self._running, "ts-source-live")
 
         with contextlib.suppress(NoMatches):
@@ -1000,7 +1014,7 @@ class TaskScreen(Screen[None]):
             stream.border_title = stream_title
             show_hint = (
                 not self._running
-                and source == "worker"
+                and source == StreamSource.WORKER
                 and self._task_model is not None
                 and self._task_model.status is TaskStatus.REVIEW
             )
@@ -1323,7 +1337,7 @@ class TaskScreen(Screen[None]):
         self._pending_reviewer_session_id = True
         await self.kagan_app.core.tasks.run(self._task_id, agent_backend=backend)
         self._running = True
-        self._set_stream_source("reviewer")
+        self._set_stream_source(StreamSource.REVIEWER)
         self._set_status("AI Reviewing...")
         self.app.notify("AI review started", severity="information")
         self._ensure_stream_worker()
@@ -1623,7 +1637,7 @@ class TaskScreen(Screen[None]):
         *,
         visible: bool = False,
         fullscreen: bool = False,
-        mode: str = "task",
+        mode: str = ChatMode.TASK,
         layout_mode: str | None = None,
         focus: bool = False,
     ) -> None:
@@ -1635,12 +1649,12 @@ class TaskScreen(Screen[None]):
         if layout_mode is not None:
             self._overlay_layout_mode = layout_mode
 
-        if mode == "orchestrator":
+        if mode == ChatMode.ORCHESTRATOR:
             panel.set_mode_title("Orchestrator")
-            panel.set_session_kind("orchestrator")
+            panel.set_session_kind(SessionKind.ORCHESTRATOR)
         else:
             panel.set_mode_title("Task Chat")
-            panel.set_session_kind("auto")
+            panel.set_session_kind(SessionKind.AUTO)
             panel.set_sessions(
                 build_session_options(self.kagan_app, self._task_session_options()),
                 self._active_task_session_key(),
@@ -1715,7 +1729,7 @@ class TaskScreen(Screen[None]):
 
     def _active_task_session_key(self) -> str:
         source = self._effective_stream_source()
-        if source == "reviewer":
+        if source == StreamSource.REVIEWER:
             return TASK_REVIEWER_SESSION_KEY
         return TASK_WORKER_SESSION_KEY
 
@@ -1723,14 +1737,14 @@ class TaskScreen(Screen[None]):
     def _stream_source_for_session_key(key: str) -> str | None:
         normalized = key.casefold()
         if "review" in normalized:
-            return "reviewer"
+            return StreamSource.REVIEWER
         if "task" in normalized or "worker" in normalized:
-            return "worker"
+            return StreamSource.WORKER
         return None
 
     @staticmethod
     def _chat_session_kind(key: str) -> str:
-        return "review" if "review" in key.casefold() else "auto"
+        return SessionKind.REVIEW if "review" in key.casefold() else SessionKind.AUTO
 
     def _overlay_panel(self) -> ChatPanel:
         return self.query_one("#ts-chat-overlay", ChatPanel)

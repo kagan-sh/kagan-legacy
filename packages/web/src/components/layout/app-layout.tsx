@@ -14,7 +14,7 @@ import { PluginImportDialog } from '@/components/board/plugin-import-dialog';
 import { useWebSocketSync } from '@/lib/hooks/use-websocket-sync';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { apiClient } from '@/lib/api/client';
-import { projectSwitchVersionAtom, tasksAtom } from '@/lib/atoms/board';
+import { fetchTasksAtom, projectSwitchVersionAtom, tasksAtom } from '@/lib/atoms/board';
 import {
   commandPaletteOpenAtom,
   helpOverlayOpenAtom,
@@ -51,8 +51,11 @@ function AppLayout() {
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
   const tasks = useAtomValue(tasksAtom);
-  const [projectChecked, setProjectChecked] = useState(projectVersion > 0);
+  const fetchTasks = useSetAtom(fetchTasksAtom);
+  const [projectChecked, setProjectChecked] = useState(false);
   const lastDockModeRef = useRef<DockedChatRailMode>('chat-right');
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const [railWidth, setRailWidth] = useState(448); // 28rem default
   const [railHeight, setRailHeight] = useState(384); // 24rem default
 
@@ -65,25 +68,30 @@ function AppLayout() {
   const MAX_RAIL_W = 800;
   const MAX_RAIL_H = 600;
 
+  // Verify active project before rendering the board.  Eagerly fetch tasks
+  // so data is ready when the board mounts — avoids a blank-screen flash.
+  // navigate is accessed via ref to avoid effect re-runs from unstable
+  // useNavigate() references caused by WebSocket-driven re-renders.
   useEffect(() => {
     if (projectChecked) return;
     let cancelled = false;
     apiClient
       .getProjects()
-      .then((projects) => {
+      .then(async (projects) => {
         if (cancelled) return;
         const active = projects.find((p) => p.active);
         if (active) {
-          setProjectChecked(true);
+          await fetchTasks();
+          if (!cancelled) setProjectChecked(true);
         } else {
-          navigate('/welcome', { replace: true });
+          navigateRef.current('/welcome', { replace: true });
         }
       })
       .catch(() => {
-        if (!cancelled) navigate('/welcome', { replace: true });
+        if (!cancelled) navigateRef.current('/welcome', { replace: true });
       });
     return () => { cancelled = true; };
-  }, [navigate, projectChecked]);
+  }, [projectChecked, fetchTasks]);
 
   const currentTaskId = useMemo(() => {
     const taskMatch = /^\/task\/([^/?]+)/.exec(location.pathname);

@@ -607,6 +607,9 @@ async def _handle_chat_subscribe(
         if isinstance(item, list | tuple) and len(item) == 2:
             messages.append({"role": str(item[0]), "content": str(item[1])})
 
+    running_task = _chat_turn_tasks.get(session_id)
+    busy = running_task is not None and not running_task.done()
+
     await websocket.send_json(
         {
             "t": "CHAT_SUBSCRIBED",
@@ -614,6 +617,7 @@ async def _handle_chat_subscribe(
             "label": session.get("label", ""),
             "agent_backend": session.get("agent_backend"),
             "messages": messages,
+            "busy": busy,
         }
     )
 
@@ -791,6 +795,16 @@ async def _handle_chat_send(
             for item in (session.get("orchestrator_history") or [])
             if isinstance(item, list | tuple) and len(item) == 2
         ]
+
+        # Persist the user message BEFORE starting the turn so it survives
+        # component unmount/remount (the client fetches history via REST).
+        history = list(session.get("orchestrator_history") or [])
+        is_first_message = len(history) == 0
+        history.append(["user", text])
+        session["orchestrator_history"] = history
+        session["agent_backend"] = backend
+        await save_chat_session(ctx.client, session)
+
         prompt = build_orchestrator_prompt(prior_history, text)
         project_cwd = await _resolve_project_cwd(ctx.client)
         full_response = await run_orchestrator_turn(
@@ -803,14 +817,10 @@ async def _handle_chat_send(
         )
         await throttler.flush()
 
-        history = list(session.get("orchestrator_history") or [])
-        is_first_message = len(history) == 0
-        history.append(["user", text])
         if full_response:
             history.append(["assistant", full_response])
-        session["orchestrator_history"] = history
-        session["agent_backend"] = backend
-        await save_chat_session(ctx.client, session)
+            session["orchestrator_history"] = history
+            await save_chat_session(ctx.client, session)
 
         await websocket.send_json(
             {

@@ -108,6 +108,10 @@ export function OrchestratorChatPanel({
           // avoids a stale WS response clobbering a fresher REST fetch.
           setMessages((prev) => (incoming.length >= prev.length ? incoming : prev));
         }
+        // Restore streaming state if a turn is still running on the server.
+        if (data.session_id === sessionId && Boolean(data.busy)) {
+          setIsStreaming(true);
+        }
       }),
       kaganWs.on('CHAT_CHUNK', (data: WsInboundMessage) => {
         if (data.session_id !== sessionId) return;

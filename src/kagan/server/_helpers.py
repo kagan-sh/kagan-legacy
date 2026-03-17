@@ -12,6 +12,7 @@ from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.mcp.server import get_server_context
 from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.server._envelope import WireEnvelope
+from kagan.server.responses import ActiveSessionResponse, TaskResponse
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -57,17 +58,19 @@ def _error_response(exc: Exception) -> JSONResponse:
 
 def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
     """Serialize a Task ORM instance to a JSON-safe dict for the wire."""
-    data = task.model_dump(mode="json")
+    resp = TaskResponse.model_validate(task)
     runtime = runtime or {}
     active_session = runtime.get("active_session")
     is_review_task = (
         getattr(getattr(task, "status", None), "value", None) == TaskStatus.REVIEW.value
     )
-    data["last_event_at"] = runtime.get("last_event_at")
-    data["has_workspace"] = bool(runtime.get("has_workspace", False))
-    data["review_running"] = is_review_task and isinstance(active_session, dict)
-    data["active_session"] = active_session if isinstance(active_session, dict) else None
-    return data
+    resp.last_event_at = runtime.get("last_event_at")
+    resp.has_workspace = bool(runtime.get("has_workspace", False))
+    resp.review_running = is_review_task and isinstance(active_session, dict)
+    resp.active_session = (
+        ActiveSessionResponse(**active_session) if isinstance(active_session, dict) else None
+    )
+    return resp.model_dump(mode="json")
 
 
 def _require_access(

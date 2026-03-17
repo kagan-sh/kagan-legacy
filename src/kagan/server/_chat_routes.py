@@ -12,6 +12,11 @@ from kagan.chat.sessions import (
 )
 from kagan.server._access import AccessTier
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
+from kagan.server.responses import (
+    ChatMessageResponse,
+    ChatSessionResponse,
+    ChatSessionSummaryResponse,
+)
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -22,34 +27,34 @@ if TYPE_CHECKING:
 def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:
     """Convert a chat session record to a wire-safe dict."""
     history = session.get("orchestrator_history") or []
-    messages: list[dict[str, str]] = []
+    messages: list[ChatMessageResponse] = []
     for item in history:
         if isinstance(item, list | tuple) and len(item) == 2:
-            messages.append({"role": str(item[0]), "content": str(item[1])})
+            messages.append(ChatMessageResponse(role=str(item[0]), content=str(item[1])))
 
-    return {
-        "id": session.get("id", ""),
-        "label": session.get("label", ""),
-        "source": session.get("source", "repl"),
-        "agent_backend": session.get("agent_backend"),
-        "updated_at": session.get("updated_at", ""),
-        "message_count": len(messages),
-        "messages": messages,
-    }
+    return ChatSessionResponse(
+        id=session.get("id", ""),
+        label=session.get("label", ""),
+        source=session.get("source", "repl"),
+        agent_backend=session.get("agent_backend"),
+        updated_at=session.get("updated_at", ""),
+        message_count=len(messages),
+        messages=messages,
+    ).model_dump(mode="json")
 
 
 def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
     """Lightweight summary without full message history."""
     history = session.get("orchestrator_history") or []
     msg_count = sum(1 for item in history if isinstance(item, list | tuple) and len(item) == 2)
-    return {
-        "id": session.get("id", ""),
-        "label": session.get("label", ""),
-        "source": session.get("source", "repl"),
-        "agent_backend": session.get("agent_backend"),
-        "updated_at": session.get("updated_at", ""),
-        "message_count": msg_count,
-    }
+    return ChatSessionSummaryResponse(
+        id=session.get("id", ""),
+        label=session.get("label", ""),
+        source=session.get("source", "repl"),
+        agent_backend=session.get("agent_backend"),
+        updated_at=session.get("updated_at", ""),
+        message_count=msg_count,
+    ).model_dump(mode="json")
 
 
 def register_chat_routes(mcp: FastMCP) -> None:

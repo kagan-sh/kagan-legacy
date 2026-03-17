@@ -23,6 +23,7 @@ from kagan.server._helpers import (
     require_context,
     task_to_wire_dict,
 )
+from kagan.server.responses import EventResponse, ProjectResponse, RepositoryResponse
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -60,22 +61,19 @@ def _parse_wip_limits(raw: str | None) -> dict[str, int]:
 
 
 def _project_dict(project: Any, *, active: bool = True) -> dict[str, Any]:
-    data = project.model_dump(mode="json")
-    data["active"] = active
-    return data
+    resp = ProjectResponse.model_validate(project)
+    resp.active = active
+    return resp.model_dump(mode="json")
 
 
 def _repo_dict(repo: Any, *, selected: bool = False) -> dict[str, Any]:
-    data = repo.model_dump(mode="json")
-    data["selected"] = selected
-    return data
+    resp = RepositoryResponse.model_validate(repo)
+    resp.selected = selected
+    return resp.model_dump(mode="json")
 
 
 def _event_dict(event: Any) -> dict[str, Any]:
-    data = event.model_dump(mode="json")
-    # API contract uses "type" not "event_type"
-    data["type"] = data.pop("event_type")
-    return data
+    return EventResponse.model_validate(event).model_dump(mode="json")
 
 
 async def _body(request: Request) -> dict[str, Any]:

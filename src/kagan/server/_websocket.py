@@ -16,6 +16,7 @@ from kagan.core.errors import KaganError
 from kagan.mcp.server import get_server_context
 from kagan.server._access import AccessTier, is_access_allowed, websocket_forbidden
 from kagan.server._helpers import task_to_wire_dict
+from kagan.server.responses import EventResponse
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -299,10 +300,7 @@ async def _resolve_project_cwd(client: Any) -> Path | None:
 
 
 def _event_to_wire_dict(event: SessionEvent) -> dict[str, Any]:
-    data = event.model_dump(mode="json")
-    # API contract uses "type" not "event_type"
-    data["type"] = data.pop("event_type")
-    return data
+    return EventResponse.model_validate(event).model_dump(mode="json")
 
 
 async def _forward_live_session_events(

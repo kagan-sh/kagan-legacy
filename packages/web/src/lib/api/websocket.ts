@@ -75,6 +75,7 @@ export class KaganWebSocket {
   private maxReconnectDelay: number = 30_000;
   private shouldReconnect: boolean = true;
   private connected: boolean = false;
+  private pendingMessages: WsOutboundMessage[] = [];
 
   // -- Configuration --------------------------------------------------------
 
@@ -113,6 +114,7 @@ export class KaganWebSocket {
       this.connected = true;
       this.reconnectAttempts = 0;
       this.emit('connected', { t: 'connected' });
+      this.flushPendingMessages();
     };
 
     this.ws.onmessage = (event: MessageEvent) => {
@@ -152,9 +154,18 @@ export class KaganWebSocket {
     this.emit('disconnected', { t: 'disconnected' });
   }
 
-  /** Send a typed message to the server. */
+  /**
+   * Send a typed message to the server.
+   * If the connection is down, the message is queued and a reconnect is
+   * triggered.  Queued messages are flushed on the next successful connect.
+   */
   send(message: WsOutboundMessage): void {
-    this.sendRaw(message);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+    } else {
+      this.pendingMessages.push(message);
+      this.connect(); // trigger reconnect if not already in progress
+    }
   }
 
   /** Whether the connection is open. */
@@ -257,9 +268,11 @@ export class KaganWebSocket {
     }
   }
 
-  private sendRaw(message: WsOutboundMessage): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+  private flushPendingMessages(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const messages = this.pendingMessages.splice(0);
+    for (const msg of messages) {
+      this.ws.send(JSON.stringify(msg));
     }
   }
 

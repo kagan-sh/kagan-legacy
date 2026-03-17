@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, type KeyboardEvent, useMemo } from 'react';
 import { Send, Plus, Paperclip, X } from 'lucide-react';
 import { useAtomValue } from 'jotai';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
 import { isStreamingAtom } from '@/lib/atoms/chat';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -58,12 +57,11 @@ export function ChatInputBar({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const wsConnected = useAtomValue(wsConnectedAtom);
   const isStreaming = useAtomValue(isStreamingAtom);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isBusy = disableSend ?? isStreaming;
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && wsConnected && !isBusy;
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !isBusy;
 
   const filteredCommands = useMemo(() => {
     if (!text.startsWith('/')) return [];
@@ -267,7 +265,7 @@ export function ChatInputBar({
               variant="outline"
               size="icon"
               className="shrink-0 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-              disabled={!wsConnected || isBusy}
+              disabled={isBusy}
               aria-label="Add attachment"
             >
               <Plus className="size-4" />
@@ -293,8 +291,7 @@ export function ChatInputBar({
           value={text}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={!wsConnected ? 'Disconnected...' : placeholder ?? 'Type a message or / for commands...'}
-          disabled={!wsConnected}
+          placeholder={placeholder ?? 'Type a message or / for commands...'}
           readOnly={isBusy}
           rows={1}
           className={cn('min-h-9 flex-1 resize-none py-2', isBusy && 'cursor-not-allowed opacity-80')}

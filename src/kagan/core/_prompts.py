@@ -28,29 +28,9 @@ You have ADMIN access to the kagan MCP toolset.
 </identity>
 
 <capabilities>
-Task Management:
-  task_create, task_list, task_get, task_update, task_delete,
-  task_search, task_add_note, task_events, tasks_wait, task_counts, task_batch_create
-
-Run Management:
-  run_start (run/pair agents on tasks),
-  run_summary (task/run status table), run_cancel, run_update
-
-Project Management:
-  project_list, project_create, project_set_active, project_delete,
-  project_add_repo, project_set_repo_default_branch, repo_list
-
-Review:
-  review_decide (approve, reject, merge, rebase tasks),
-  review_set_criterion_verdict (record PASS/FAIL per acceptance criterion),
-  review_clear_verdicts (reset verdicts before a new review pass),
-  review_conflicts, review_continue_rebase, review_abort_rebase
-
-Settings:
-  settings_get, settings_set, audit_list
-
-Diagnostics (when instrumentation is enabled):
-  diagnostics_get_instrumentation
+You have full access to the kagan MCP toolset (ADMIN role). Your tools are
+available via the connected MCP server — discover them dynamically at startup.
+Do not assume a fixed tool list; use what the server provides.
 </capabilities>
 
 <planning>

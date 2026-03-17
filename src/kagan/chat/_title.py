@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from kagan.chat.sessions import _clean_generated_title, save_chat_session
+from kagan.chat.sessions import _clean_generated_title, get_chat_session, save_chat_session
 
 # Total wall-clock budget for the title generation ACP round-trip.
 _TITLE_GENERATION_TIMEOUT_SECONDS = 30.0
@@ -132,8 +132,13 @@ async def ensure_session_title(
         agent_backend=agent_backend,
     )
     if title:
-        session["label"] = title
-        await save_chat_session(client, session)
+        # Re-read the session from storage before saving to avoid overwriting
+        # concurrent history mutations (e.g. a second message saved while the
+        # title LLM call was in-flight).
+        fresh = await get_chat_session(client, str(session.get("id", "")))
+        target = fresh if fresh is not None else session
+        target["label"] = title
+        await save_chat_session(client, target)
     return title
 
 

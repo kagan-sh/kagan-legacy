@@ -4,6 +4,7 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   ArrowRightLeft,
   Download,
+  Github,
   HelpCircle,
   LayoutDashboard,
   MessageSquare,
@@ -147,6 +148,23 @@ export function CommandPalette() {
           <CommandItem onSelect={openPluginImport}>
             <Download className="size-4" />
             GitHub Import
+          </CommandItem>
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="About">
+          <CommandItem onSelect={() => { onOpenChange(false); window.open('https://github.com/kagan-sh/kagan', '_blank'); }}>
+            <Github className="size-4" />
+            GitHub Repository
+          </CommandItem>
+          <CommandItem onSelect={() => { onOpenChange(false); window.open('https://makerx.com.au', '_blank'); }}>
+            <span className="flex size-4 items-center justify-center font-code text-[10px]">M</span>
+            MakerX
+          </CommandItem>
+          <CommandItem onSelect={() => { onOpenChange(false); window.open('https://docs.kagan.sh', '_blank'); }}>
+            <span className="flex size-4 items-center justify-center font-code text-[10px]">D</span>
+            Documentation
           </CommandItem>
         </CommandGroup>
 

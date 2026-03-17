@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAtom } from 'jotai';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Github, ExternalLink } from 'lucide-react';
 import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
 import {
   Dialog,
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
+import { KAGAN_URLS, KAGAN_META } from '@/lib/constants';
 
 type ShortcutRow = { keys: string[]; description: string };
 type ShortcutSection = { title: string; rows: ShortcutRow[] };
@@ -152,6 +153,7 @@ export function HelpOverlay() {
             <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
             <TabsTrigger value="flows">Flows</TabsTrigger>
             <TabsTrigger value="concepts">Concepts</TabsTrigger>
+            <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
 
           <TabsContent value="shortcuts" className="mt-3">
@@ -223,6 +225,89 @@ export function HelpOverlay() {
                     </section>
                   ))
                 )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="about" className="mt-3">
+            <ScrollArea className="h-[min(65vh,34rem)] pr-3">
+              <div className="flex flex-col items-center gap-6 pb-2 pt-4 text-center">
+                {/* Logo */}
+                <div className="inline-flex items-center gap-2 bg-[color:var(--surface-1)] px-4 py-2 shadow-[var(--ambient-shadow)]">
+                  <span className="font-code text-lg tracking-[0.08em]">ᘚᘛ</span>
+                  <span className="font-code text-sm font-semibold uppercase tracking-[0.22em]">{KAGAN_META.name}</span>
+                </div>
+
+                {/* Tagline */}
+                <p className="text-sm text-[var(--muted-foreground)]">{KAGAN_META.tagline}</p>
+
+                {/* Attribution */}
+                <div className="flex flex-col items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                  <span>
+                    © {KAGAN_META.copyrightYear}{' '}
+                    <a
+                      href={KAGAN_URLS.makerx}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-[var(--foreground)]"
+                    >
+                      {KAGAN_META.makerxName}
+                    </a>
+                  </span>
+
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={KAGAN_URLS.github}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                    >
+                      <Github className="size-3" />
+                      GitHub
+                      <ExternalLink className="size-3" />
+                    </a>
+                    <span className="text-[var(--border-subtle)]">·</span>
+                    <a
+                      href={KAGAN_URLS.license}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-[var(--foreground)]"
+                    >
+                      {KAGAN_META.license} License
+                    </a>
+                  </div>
+                </div>
+
+                {/* Links */}
+                <div className="flex flex-wrap justify-center gap-3 text-xs">
+                  <a
+                    href={KAGAN_URLS.docs}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    Documentation
+                    <ExternalLink className="size-3" />
+                  </a>
+                  <a
+                    href={KAGAN_URLS.discord}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    Discord
+                    <ExternalLink className="size-3" />
+                  </a>
+                  <a
+                    href={KAGAN_URLS.pypi}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    PyPI
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
               </div>
             </ScrollArea>
           </TabsContent>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useAtomValue } from 'jotai';
-import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, ExternalLink } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import { kaganWs } from '@/lib/api/websocket';
 import { wsConnectedAtom } from '@/lib/atoms/connection';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { KAGAN_URLS } from '@/lib/constants';
 
 export function ConnectionCard() {
   const wsConnected = useAtomValue(wsConnectedAtom);
@@ -55,7 +56,18 @@ export function ConnectionCard() {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-[var(--muted-foreground)]">Version</span>
-          <span className="font-mono text-xs">{version ?? '…'}</span>
+          <a
+            href={KAGAN_URLS.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-mono text-xs hover:text-[var(--foreground)]"
+            title="View on GitHub"
+          >
+            {version ?? '…'}
+            <span className="text-[var(--muted-foreground)]">·</span>
+            <span>MIT</span>
+            <ExternalLink className="size-3 text-[var(--muted-foreground)]" />
+          </a>
         </div>
       </div>
     </Card>

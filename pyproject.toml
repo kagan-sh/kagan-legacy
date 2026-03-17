@@ -223,7 +223,7 @@ cmd = "uv tool install --editable --force --reinstall ."
 
 [tool.poe.tasks.dev-setup]
 help = "Install local CLI, reset DB, and stop core daemon"
-sequence = [{ ref = "install-local" }, { cmd = "kagan reset --force" }]
+sequence = [{ ref = "web-build" }, { ref = "install-local" }, { cmd = "kagan reset --force" }]
 
 [tool.poe.tasks.fix]
 help = "Fix linting issues and format code"

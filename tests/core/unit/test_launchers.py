@@ -1,6 +1,5 @@
 """Feature tests: PAIR Launchers — docs/internal/features/core.md §7."""
 
-
 import pytest
 
 from kagan.core import AgentError

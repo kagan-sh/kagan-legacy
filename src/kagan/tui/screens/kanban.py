@@ -19,7 +19,7 @@ from kagan.chat import (
 from kagan.core import resolve_launcher
 from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus, WorkMode
 from kagan.core.errors import KaganError
-from kagan.core.models import Task
+from kagan.core.models import Task, Worktree
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.tui._chat_helpers import (
     TitleGenerationSession,
@@ -102,6 +102,17 @@ _SEARCH_SORT_ALIASES: dict[str, str] = {
     "priority": "priority",
     "recent": "recent",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class SearchQuery:
+    """Parsed search query with optional filters."""
+
+    text: str
+    status: TaskStatus | None = None
+    priority: str | None = None
+    mode: WorkMode | None = None
+    sort: str | None = None
 
 
 def _is_enabled(value: str | None, *, default: bool) -> bool:
@@ -442,20 +453,18 @@ class KanbanScreen(Screen[None]):
             return
 
     def _apply_filter(self) -> None:
-        text_query, status_filter, priority_filter, mode_filter, sort_filter = (
-            self._parse_search_query(self._search_query)
-        )
-        self._search_status_filter = status_filter
-        self._search_priority_filter = priority_filter
-        self._search_mode_filter = mode_filter
-        self._search_sort_filter = sort_filter
+        q = self._parse_search_query(self._search_query)
+        self._search_status_filter = q.status
+        self._search_priority_filter = q.priority
+        self._search_mode_filter = q.mode
+        self._search_sort_filter = q.sort
 
         if (
-            not text_query
-            and status_filter is None
-            and priority_filter is None
-            and mode_filter is None
-            and sort_filter is None
+            not q.text
+            and q.status is None
+            and q.priority is None
+            and q.mode is None
+            and q.sort is None
         ):
             self._tasks = list(self._all_tasks)
         else:
@@ -464,14 +473,14 @@ class KanbanScreen(Screen[None]):
                 for task in self._all_tasks
                 if self._matches_search(
                     task,
-                    text_query=text_query,
-                    status_filter=status_filter,
-                    priority_filter=priority_filter,
-                    mode_filter=mode_filter,
+                    text_query=q.text,
+                    status_filter=q.status,
+                    priority_filter=q.priority,
+                    mode_filter=q.mode,
                 )
             ]
 
-        self._tasks = self._apply_sort(self._tasks, sort_filter)
+        self._tasks = self._apply_sort(self._tasks, q.sort)
 
         tasks = self._tasks
         if tasks and (self._selected_task_id is None or self._selected_task() is None):
@@ -486,21 +495,16 @@ class KanbanScreen(Screen[None]):
                 self._hide_inspector()
             else:
                 self._show_inspector_for_selected()
-        status_counts = {status.value: 0 for status in TaskStatus}
-        high_priority_count = 0
-        for task in self._all_tasks:
-            status_counts[task.status.value] += 1
-            if task.priority >= Priority.HIGH:
-                high_priority_count += 1
+        status_counts, high_priority_count = self._compute_task_stats()
         self.query_one(SearchBar).update_state(
             filtered_count=len(tasks),
             total_count=len(self._all_tasks),
             status_counts=status_counts,
             high_priority_count=high_priority_count,
-            status_filter=status_filter.value.lower() if status_filter is not None else "",
-            priority_filter=priority_filter or "",
-            mode_filter=mode_filter.value.lower() if mode_filter is not None else "",
-            sort_filter=sort_filter or "",
+            status_filter=q.status.value.lower() if q.status is not None else "",
+            priority_filter=q.priority or "",
+            mode_filter=q.mode.value.lower() if q.mode is not None else "",
+            sort_filter=q.sort or "",
             search_active=self.search_visible,
         )
         self._refresh_header()
@@ -509,13 +513,18 @@ class KanbanScreen(Screen[None]):
         self._sync_search_header_swap_state()
         self._sync_layout_state()
 
-    def _update_search_bar_state(self) -> None:
+    def _compute_task_stats(self) -> tuple[dict[str, int], int]:
+        """Count tasks per status and high-priority tasks."""
         status_counts = {status.value: 0 for status in TaskStatus}
         high_priority_count = 0
         for task in self._all_tasks:
             status_counts[task.status.value] += 1
             if task.priority >= Priority.HIGH:
                 high_priority_count += 1
+        return status_counts, high_priority_count
+
+    def _update_search_bar_state(self) -> None:
+        status_counts, high_priority_count = self._compute_task_stats()
         sf = self._search_status_filter
         pf = self._search_priority_filter
         mf = self._search_mode_filter
@@ -994,18 +1003,20 @@ class KanbanScreen(Screen[None]):
 
         self.app.push_screen(TaskScreen(task_id=task.id))
 
-    async def _open_pair_session_flow(self, task: Task) -> None:
-        import platform
-        from pathlib import Path
+    def _resolve_pair_backend(self, task: Task, settings: dict[str, Any]) -> str | None:
+        """Resolve the pair-mode terminal backend with fallback logic.
 
-        from kagan.tui.screens.gateway import PairInstructionsModal
+        Returns the resolved backend name, or ``None`` if no usable backend
+        is available (caller should abort the flow).
+        """
+        import platform
+
         from kagan.tui.terminals.installer import (
             check_terminal_installed,
             first_available_pair_backend,
             get_manual_install_fallback,
         )
 
-        settings = await self.kagan_app.core.settings.get()
         settings_launcher_raw = settings.get("pair_launcher", "tmux")
         settings_launcher = (
             settings_launcher_raw.strip().lower()
@@ -1017,25 +1028,109 @@ class KanbanScreen(Screen[None]):
         is_windows = platform.system() == "Windows"
         self._set_inline_action_message(f"Checking {backend} backend...")
 
-        if not check_terminal_installed(backend):
-            # Try to find a fallback
-            fallback = first_available_pair_backend(windows=is_windows)
-            if fallback is not None:
+        if check_terminal_installed(backend):
+            return backend
+
+        fallback = first_available_pair_backend(windows=is_windows)
+        if fallback is not None:
+            self.app.notify(
+                f"{backend} not found. Using fallback: {fallback}.",
+                severity="information",
+            )
+            self._set_inline_action_message(f"Using fallback backend: {fallback}.")
+            return fallback
+
+        hint = get_manual_install_fallback(backend)
+        self.app.notify(
+            f"PAIR cancelled: {backend} not installed. {hint}",
+            severity="warning",
+        )
+        return None
+
+    async def _ensure_pair_workspace(self, task: Task) -> Worktree | None:
+        """Provision a worktree for the task, creating one if needed.
+
+        Returns the ``Worktree`` instance, or ``None`` on failure.
+        """
+        workspace = await self.kagan_app.core.worktrees.get(task.id)
+        if workspace is not None:
+            return workspace
+
+        self._set_inline_action_message("Provisioning workspace...")
+        self.app.notify("Creating workspace...", severity="information")
+        try:
+            await self.kagan_app.core.worktrees.create(task.id)
+            workspace = await self.kagan_app.core.worktrees.get(task.id)
+        except (KaganError, OSError, RuntimeError, ValueError) as exc:
+            self.app.notify(f"Failed to create workspace: {exc}", severity="error")
+            return None
+
+        if workspace is None:
+            self.app.notify("Failed to provision workspace.", severity="error")
+        return workspace
+
+    async def _attach_pair_terminal(
+        self,
+        task: Task,
+        pair_session: Any,
+        *,
+        backend: str,
+        agent_backend: str,
+        launcher: str,
+        ide_name: str | None,
+        wt_path: Path,
+        prompt_path: Path,
+    ) -> bool:
+        """Attach the user's terminal to the PAIR session.
+
+        Returns ``True`` if the terminal session was attached successfully.
+        """
+        if backend == "tmux":
+            self._set_inline_action_message("Attaching tmux session...")
+            session_name = self._tmux_session_name(pair_session.id)
+            with self._suspend_app():
+                attached = await self._attach_tmux_session(session_name)
+            if not attached:
                 self.app.notify(
-                    f"{backend} not found. Using fallback: {fallback}.",
+                    "PAIR session missing; recreating session...",
                     severity="information",
                 )
-                backend = fallback
-                self._set_inline_action_message(f"Using fallback backend: {fallback}.")
-            else:
-                hint = get_manual_install_fallback(backend)
-                self.app.notify(
-                    f"PAIR cancelled: {backend} not installed. {hint}",
-                    severity="warning",
-                )
-                self._set_inline_action_message(None)
-                return
+                with contextlib.suppress(KaganError):
+                    retry_session = await self.kagan_app.core.tasks.pair(
+                        task.id,
+                        agent_backend=agent_backend,
+                        launcher=launcher,
+                        ide=ide_name,
+                    )
+                    session_name = self._tmux_session_name(retry_session.id)
+                with self._suspend_app():
+                    attached = await self._attach_tmux_session(session_name)
+            return attached
 
+        if backend == "nvim":
+            self._set_inline_action_message("Opening Neovim session...")
+            with self._suspend_app():
+                return await self._attach_nvim_session(wt_path, prompt_path)
+
+        # IDE backends (vscode/cursor/windsurf/kiro/antigravity) launch externally
+        self.app.notify(
+            f"Workspace opened in {backend}. Use startup prompt: {prompt_path}",
+            severity="information",
+        )
+        return False
+
+    async def _open_pair_session_flow(self, task: Task) -> None:
+        from kagan.tui.screens.gateway import PairInstructionsModal
+
+        settings = await self.kagan_app.core.settings.get()
+
+        # 1. Resolve backend
+        backend = self._resolve_pair_backend(task, settings)
+        if backend is None:
+            self._set_inline_action_message(None)
+            return
+
+        # 2. Show instructions modal (unless skipped)
         skip_instructions_raw = settings.get("skip_pair_instructions_popup", "")
         skip_instructions = str(skip_instructions_raw).strip().lower() in {
             "1",
@@ -1054,28 +1149,20 @@ class KanbanScreen(Screen[None]):
             )
             if result is None:
                 self._set_inline_action_message(None)
-                return  # User cancelled
+                return
             if result == "skip_future":
                 await self.kagan_app.core.settings.set({"skip_pair_instructions_popup": "true"})
 
+        # 3. Ensure workspace exists
+        workspace = await self._ensure_pair_workspace(task)
         if workspace is None:
-            self._set_inline_action_message("Provisioning workspace...")
-            self.app.notify("Creating workspace...", severity="information")
-            try:
-                await self.kagan_app.core.worktrees.create(task.id)
-                workspace = await self.kagan_app.core.worktrees.get(task.id)
-            except (KaganError, OSError, RuntimeError, ValueError) as exc:
-                self.app.notify(f"Failed to create workspace: {exc}", severity="error")
-                self._set_inline_action_message(None)
-                return
-        if workspace is None:
-            self.app.notify("Failed to provision workspace.", severity="error")
             self._set_inline_action_message(None)
             return
 
         wt_path = Path(workspace.worktree_path)
         prompt_path = wt_path / ".kagan" / "start_prompt.md"
 
+        # 4. Start PAIR session
         agent_backend = task.agent_backend or resolve_default_agent_backend(settings)
         launcher, ide_name = resolve_launcher(backend)
 
@@ -1092,40 +1179,17 @@ class KanbanScreen(Screen[None]):
             self._set_inline_action_message(None)
             return
 
-        attached = False
-        if backend == "tmux":
-            self._set_inline_action_message("Attaching tmux session...")
-            session_name = self._tmux_session_name(pair_session.id)
-            with self._suspend_app():
-                attached = await self._attach_tmux_session(session_name)
-            if not attached:
-                # Retry: session may have been killed — recreate and re-attach
-                self.app.notify(
-                    "PAIR session missing; recreating session...",
-                    severity="information",
-                )
-                with contextlib.suppress(KaganError):
-                    retry_session = await self.kagan_app.core.tasks.pair(
-                        task.id,
-                        agent_backend=agent_backend,
-                        launcher=launcher,
-                        ide=ide_name,
-                    )
-                    session_name = self._tmux_session_name(retry_session.id)
-                with self._suspend_app():
-                    attached = await self._attach_tmux_session(session_name)
-        elif backend == "nvim":
-            self._set_inline_action_message("Opening Neovim session...")
-            with self._suspend_app():
-                attached = await self._attach_nvim_session(wt_path, prompt_path)
-        else:
-            # IDE backends (vscode/cursor/windsurf/kiro/antigravity) launch externally
-            self.app.notify(
-                f"Workspace opened in {backend}. Use startup prompt: {prompt_path}",
-                severity="information",
-            )
-            self._set_inline_action_message(None)
-            return
+        # 5. Attach terminal
+        attached = await self._attach_pair_terminal(
+            task,
+            pair_session,
+            backend=backend,
+            agent_backend=agent_backend,
+            launcher=launcher,
+            ide_name=ide_name,
+            wt_path=wt_path,
+            prompt_path=prompt_path,
+        )
 
         if attached:
             with contextlib.suppress(KaganError):
@@ -1992,9 +2056,7 @@ class KanbanScreen(Screen[None]):
         return list(tasks)
 
     @staticmethod
-    def _parse_search_query(
-        query: str,
-    ) -> tuple[str, TaskStatus | None, str | None, WorkMode | None, str | None]:
+    def _parse_search_query(query: str) -> SearchQuery:
         tokens = [token for token in query.split() if token.strip()]
         text_parts: list[str] = []
         status_filter: TaskStatus | None = None
@@ -2024,12 +2086,12 @@ class KanbanScreen(Screen[None]):
                     continue
             text_parts.append(token)
 
-        return (
-            " ".join(text_parts).strip().lower(),
-            status_filter,
-            priority_filter,
-            mode_filter,
-            sort_filter,
+        return SearchQuery(
+            text=" ".join(text_parts).strip().lower(),
+            status=status_filter,
+            priority=priority_filter,
+            mode=mode_filter,
+            sort=sort_filter,
         )
 
     @staticmethod

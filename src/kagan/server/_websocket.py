@@ -12,6 +12,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kagan.core import resolve_default_agent_backend
 from kagan.core._utils import utc_iso
+from kagan.core.enums import WsMessageType
+from kagan.core.errors import KaganError
 from kagan.mcp.server import get_server_context
 from kagan.server._access import AccessTier, is_access_allowed, websocket_forbidden
 from kagan.server._helpers import task_to_wire_dict
@@ -21,6 +23,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from mcp.server.fastmcp import FastMCP
+
+    from kagan.core.models import SessionEvent
+
+
+async def _send_error(
+    ws: WebSocket, event_type: str | WsMessageType, exc: Exception, **extra: object
+) -> None:
+    """Send a typed error response over WebSocket."""
+    payload: dict[str, object] = {"t": str(event_type), "error": str(exc), **extra}
+    error_code = getattr(exc, "code", None)
+    if isinstance(error_code, str):
+        payload["error_code"] = error_code
+    await ws.send_json(payload)
 
 
 # Throttle CHAT_CHUNK messages to avoid flooding.
@@ -68,7 +83,7 @@ class ChatChunkThrottler:
                 payload["thought"] = True
             try:
                 await self._websocket.send_json(payload)
-            except Exception:
+            except (ConnectionError, RuntimeError, WebSocketDisconnect):
                 logger.debug("Failed to send chat chunk update", exc_info=True)
 
     async def on_update(self, update: Any) -> None:
@@ -111,7 +126,7 @@ class ChatChunkThrottler:
                         "tool": title,
                     }
                 )
-            except Exception:
+            except (ConnectionError, RuntimeError, WebSocketDisconnect):
                 logger.debug("Failed to send tool start update", exc_info=True)
         elif isinstance(update, ToolCallProgress):
             await self.flush()
@@ -126,7 +141,7 @@ class ChatChunkThrottler:
                         "status": str(status) if status else None,
                     }
                 )
-            except Exception:
+            except (ConnectionError, RuntimeError, WebSocketDisconnect):
                 logger.debug("Failed to send tool progress update", exc_info=True)
 
 
@@ -185,8 +200,11 @@ async def _board_event_bridge(mcp: FastMCP) -> None:
                 broadcast({"t": "TASK_UPDATED", "task_id": event.task_id})
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except (ConnectionError, RuntimeError, OSError, KaganError):
             logger.debug("Board event bridge stream failed; retrying", exc_info=True)
+            await asyncio.sleep(1.0)
+        except Exception:
+            logger.exception("Board event bridge unexpected error; retrying")
             await asyncio.sleep(1.0)
 
 
@@ -230,8 +248,11 @@ async def _cross_process_sync(mcp: FastMCP) -> None:
             for tid in old_ids - {k[0] for k in current}:
                 broadcast({"t": "TASK_UPDATED", "task_id": tid})
             snapshot = current
-        except Exception:
+        except (ConnectionError, RuntimeError, OSError, KaganError):
             logger.debug("Cross-process sync poll failed; continuing", exc_info=True)
+            continue
+        except Exception:
+            logger.exception("Cross-process sync unexpected error; continuing")
             continue
 
 
@@ -247,7 +268,7 @@ def _ensure_board_sync(mcp: FastMCP) -> None:
 async def _close_safely(websocket: WebSocket, code: int, reason: str) -> None:
     try:
         await websocket.close(code=code, reason=reason)
-    except Exception:
+    except (ConnectionError, RuntimeError, WebSocketDisconnect, OSError):
         logger.debug("WebSocket close failed", exc_info=True)
         return
 
@@ -278,15 +299,13 @@ async def _resolve_project_cwd(client: Any) -> Path | None:
     return await client.projects.resolve_repo_path(settings=settings)
 
 
-def _event_to_wire_dict(event: Any) -> dict[str, Any]:
-    created_at = getattr(event, "created_at", None)
-    raw_session_id = getattr(event, "session_id", None)
+def _event_to_wire_dict(event: SessionEvent) -> dict[str, Any]:
     return {
-        "id": str(getattr(event, "id", "")),
-        "session_id": str(raw_session_id) if raw_session_id else None,
-        "type": str(getattr(getattr(event, "event_type", None), "value", "")),
-        "payload": cast("dict[str, object]", getattr(event, "payload", {})),
-        "created_at": utc_iso(created_at) or "",
+        "id": str(event.id),
+        "session_id": str(event.session_id) if event.session_id else None,
+        "type": event.event_type.value,
+        "payload": cast("dict[str, object]", event.payload),
+        "created_at": utc_iso(event.created_at) or "",
     }
 
 
@@ -306,16 +325,19 @@ async def _forward_live_session_events(
                 await websocket.send_json(
                     {
                         "t": "SESSION_EVENT",
-                        "task_id": str(getattr(event, "task_id", "")),
+                        "task_id": str(event.task_id),
                         "event": _event_to_wire_dict(event),
                     }
                 )
-            except Exception:
+            except (ConnectionError, RuntimeError, WebSocketDisconnect):
                 logger.debug("Failed to forward live session event to websocket", exc_info=True)
     except asyncio.CancelledError:
         raise
-    except Exception:
+    except (ConnectionError, RuntimeError, OSError, KaganError):
         logger.debug("Live session event forward loop failed", exc_info=True)
+        return
+    except Exception:
+        logger.exception("Live session event forward loop unexpected error")
         return
 
 
@@ -428,12 +450,11 @@ async def _handle_run_start(
             }
         )
         broadcast({"t": "TASK_UPDATED", "task_id": task_id})
+    except KaganError as exc:
+        await _send_error(websocket, WsMessageType.RUN_ERROR, exc, task_id=task_id)
     except Exception as exc:
-        payload: dict[str, object] = {"t": "RUN_ERROR", "task_id": task_id, "error": str(exc)}
-        error_code = getattr(exc, "code", None)
-        if isinstance(error_code, str):
-            payload["error_code"] = error_code
-        await websocket.send_json(payload)
+        logger.exception("Unexpected error starting run for task {}", task_id)
+        await _send_error(websocket, WsMessageType.RUN_ERROR, exc, task_id=task_id)
 
 
 async def _handle_run_cancel(
@@ -464,12 +485,11 @@ async def _handle_run_cancel(
         await ctx.client.tasks.cancel(task_id)
         await websocket.send_json({"t": "RUN_CANCELLED", "task_id": task_id})
         broadcast({"t": "TASK_UPDATED", "task_id": task_id})
+    except KaganError as exc:
+        await _send_error(websocket, WsMessageType.RUN_ERROR, exc)
     except Exception as exc:
-        payload: dict[str, object] = {"t": "RUN_ERROR", "error": str(exc)}
-        error_code = getattr(exc, "code", None)
-        if isinstance(error_code, str):
-            payload["error_code"] = error_code
-        await websocket.send_json(payload)
+        logger.exception("Unexpected error cancelling run for task {}", task_id)
+        await _send_error(websocket, WsMessageType.RUN_ERROR, exc)
 
 
 async def _handle_task_follow_up(
@@ -507,7 +527,7 @@ async def _handle_task_follow_up(
     try:
         try:
             await ctx.client.tasks.cancel(task_id)
-        except Exception:
+        except (KaganError, ConnectionError, RuntimeError):
             logger.debug("Task follow-up cancel best-effort failed", exc_info=True)
 
         task = await ctx.client.tasks.get(task_id)
@@ -529,17 +549,12 @@ async def _handle_task_follow_up(
             }
         )
         broadcast({"t": "TASK_UPDATED", "task_id": task_id})
-    except Exception as exc:
+    except KaganError as exc:
         logger.exception("Task follow-up failed for task {}", task_id)
-        payload: dict[str, object] = {
-            "t": "TASK_FOLLOW_UP_ERROR",
-            "task_id": task_id,
-            "error": str(exc),
-        }
-        error_code = getattr(exc, "code", None)
-        if isinstance(error_code, str):
-            payload["error_code"] = error_code
-        await websocket.send_json(payload)
+        await _send_error(websocket, WsMessageType.TASK_FOLLOW_UP_ERROR, exc, task_id=task_id)
+    except Exception as exc:
+        logger.exception("Task follow-up unexpected error for task {}", task_id)
+        await _send_error(websocket, WsMessageType.TASK_FOLLOW_UP_ERROR, exc, task_id=task_id)
 
 
 async def _handle_chat_subscribe(
@@ -725,7 +740,7 @@ async def _handle_chat_interrupt(
         logger.debug("Chat interrupt wait cancelled", exc_info=True)
     except TimeoutError:
         logger.debug("Chat interrupt wait timed out", exc_info=True)
-    except Exception:
+    except (KaganError, RuntimeError, ConnectionError):
         logger.debug("Chat interrupt wait failed", exc_info=True)
 
     await websocket.send_json(
@@ -828,14 +843,8 @@ async def _handle_chat_send(
     except Exception as exc:
         logger.exception("Chat orchestrator turn failed for session {}", session_id)
         try:
-            await websocket.send_json(
-                {
-                    "t": "CHAT_ERROR",
-                    "session_id": session_id,
-                    "error": str(exc),
-                }
-            )
-        except Exception:
+            await _send_error(websocket, WsMessageType.CHAT_ERROR, exc, session_id=session_id)
+        except (ConnectionError, RuntimeError, WebSocketDisconnect):
             logger.debug("Failed to send chat error event", exc_info=True)
 
 
@@ -869,10 +878,12 @@ async def _generate_chat_session_title(
                         "label": title,
                     }
                 )
-            except Exception:
+            except (ConnectionError, RuntimeError, WebSocketDisconnect):
                 logger.debug("Failed to send generated chat session title", exc_info=True)
-    except Exception:
+    except (KaganError, ConnectionError, RuntimeError):
         logger.debug("Chat session title generation failed", exc_info=True)
+    except Exception:
+        logger.exception("Chat session title generation unexpected error")
 
 
 def register_websocket(mcp: FastMCP) -> None:

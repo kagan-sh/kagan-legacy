@@ -224,9 +224,9 @@ REVIEW_NO_CRITERIA_BINDINGS: list[BindingType] = [
 ]
 
 TMUX_GATEWAY_BINDINGS: list[BindingType] = [
-    Binding("enter", "continue", "Continue"),
+    Binding("enter", "proceed", "Continue"),
     Binding("escape", "cancel", "Cancel"),
-    Binding("s", "skip", "Skip"),
+    Binding("s", "skip_future", "Don't show again"),
 ]
 
 

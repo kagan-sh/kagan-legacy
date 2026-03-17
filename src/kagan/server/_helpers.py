@@ -11,8 +11,7 @@ from kagan.core import TaskStatus
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.mcp.server import get_server_context
 from kagan.server._access import http_forbidden, is_access_allowed
-from kagan.wire.envelopes import WireEnvelope
-from kagan.wire.models import WireTask, WireTaskActiveSession, utc_iso
+from kagan.server._envelope import WireEnvelope
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -56,37 +55,19 @@ def _error_response(exc: Exception) -> JSONResponse:
     return _err("Internal server error", status=500)
 
 
-def task_to_wire(task: Any, *, runtime: dict[str, Any] | None = None) -> WireTask:
+def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Serialize a Task ORM instance to a JSON-safe dict for the wire."""
+    data = task.model_dump(mode="json")
     runtime = runtime or {}
     active_session = runtime.get("active_session")
     is_review_task = (
         getattr(getattr(task, "status", None), "value", None) == TaskStatus.REVIEW.value
     )
-    return WireTask(
-        id=task.id,
-        title=task.title,
-        description=getattr(task, "description", ""),
-        status=task.status.value,
-        priority=task.priority.name,
-        execution_mode=task.execution_mode.value,
-        base_branch=getattr(task, "base_branch", None),
-        acceptance_criteria=getattr(task, "acceptance_criteria", []),
-        agent_backend=getattr(task, "agent_backend", None),
-        launcher=getattr(task, "launcher", None),
-        review_approved=getattr(task, "review_approved", False),
-        review_verdicts=getattr(task, "review_verdicts", []) or [],
-        updated_at=utc_iso(getattr(task, "updated_at", None)),
-        last_event_at=cast("str | None", runtime.get("last_event_at")),
-        has_workspace=bool(runtime.get("has_workspace", False)),
-        review_running=is_review_task and isinstance(active_session, dict),
-        active_session=(
-            WireTaskActiveSession(**active_session) if isinstance(active_session, dict) else None
-        ),
-    )
-
-
-def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
-    return task_to_wire(task, runtime=runtime).model_dump(mode="json")
+    data["last_event_at"] = runtime.get("last_event_at")
+    data["has_workspace"] = bool(runtime.get("has_workspace", False))
+    data["review_running"] = is_review_task and isinstance(active_session, dict)
+    data["active_session"] = active_session if isinstance(active_session, dict) else None
+    return data
 
 
 def _require_access(

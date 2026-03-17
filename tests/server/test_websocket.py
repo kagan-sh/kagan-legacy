@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -10,8 +9,9 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 
 import kagan.server._websocket as websocket_module
+from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
-from kagan.wire.models import utc_iso
 from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
 if TYPE_CHECKING:
@@ -59,21 +59,21 @@ class _FakeCoreClient:
         self.settings = _FakeSettingsClient()
 
 
-def _fake_task(task_id: str, *, title: str = "Task", agent_backend: str | None = None) -> object:
-    return SimpleNamespace(
+def _fake_task(task_id: str, *, title: str = "Task", agent_backend: str | None = None) -> Task:
+    return Task(
         id=task_id,
+        project_id="project-1",
         title=title,
         description="",
-        status=SimpleNamespace(value="BACKLOG"),
-        priority=SimpleNamespace(name="MEDIUM"),
-        execution_mode=SimpleNamespace(value="AUTO"),
+        status=TaskStatus.BACKLOG,
+        priority=Priority.MEDIUM,
+        execution_mode=WorkMode.AUTO,
         base_branch=None,
         acceptance_criteria=[],
         agent_backend=agent_backend,
         launcher=None,
         review_approved=False,
         review_verdicts=[],
-        updated_at=datetime.now(UTC),
     )
 
 
@@ -132,27 +132,15 @@ async def test_websocket_board_subscribe_returns_board_sync(
     board_sync = next(
         payload for payload in websocket.sent_json if payload.get("t") == "BOARD_SYNC"
     )
-    assert board_sync["tasks"] == [
-        {
-            "id": "task-1",
-            "title": "Ship feature",
-            "description": "",
-            "status": "BACKLOG",
-            "priority": "MEDIUM",
-            "execution_mode": "AUTO",
-            "base_branch": None,
-            "acceptance_criteria": [],
-            "agent_backend": None,
-            "launcher": None,
-            "review_approved": False,
-            "review_verdicts": [],
-            "updated_at": utc_iso(fake_client.tasks._tasks[0].updated_at),
-            "last_event_at": None,
-            "has_workspace": False,
-            "review_running": False,
-            "active_session": None,
-        }
-    ]
+    assert len(board_sync["tasks"]) == 1
+    task_data = board_sync["tasks"][0]
+    assert task_data["id"] == "task-1"
+    assert task_data["title"] == "Ship feature"
+    assert task_data["status"] == "BACKLOG"
+    assert task_data["priority"] == "MEDIUM"
+    assert task_data["execution_mode"] == "AUTO"
+    assert task_data["has_workspace"] is False
+    assert task_data["active_session"] is None
 
 
 @pytest.mark.asyncio

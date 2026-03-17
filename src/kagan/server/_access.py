@@ -5,7 +5,7 @@ from typing import Any
 
 from starlette.responses import JSONResponse
 
-from kagan.wire.envelopes import WireEnvelope
+from kagan.server._envelope import WireEnvelope
 
 
 class AccessTier(Enum):

@@ -8,6 +8,7 @@ import pytest
 from starlette.requests import Request
 
 import kagan.server._helpers as server_helpers
+from kagan.core.models import Project
 from kagan.mcp.server import ServerOptions
 from kagan.server.server import ApiServerOptions, create_api_server
 
@@ -39,7 +40,7 @@ class _FakeProjectsClient:
 
     async def create(self, name: str) -> Any:
         self.created.append(name)
-        return SimpleNamespace(id="project-1", name=name, description=None)
+        return Project(id="project-1", name=name)
 
 
 def _make_api_server(opts: ServerOptions | None = None) -> FastMCP:

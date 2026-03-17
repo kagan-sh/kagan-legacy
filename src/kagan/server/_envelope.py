@@ -14,8 +14,6 @@ class WireEnvelope[T](BaseModel):
 
 
 class WireRequest(BaseModel):
-    pass
-
     version: str = "1"
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
 

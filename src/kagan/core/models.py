@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 from uuid import uuid4
 
+from pydantic import field_serializer
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
@@ -57,6 +58,12 @@ class Task(SQLModel, table=True):
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, index=True)
     priority: Priority = Field(default=Priority.MEDIUM, index=True)
     execution_mode: WorkMode = Field(default=WorkMode.AUTO)
+
+    @field_serializer("priority")
+    @classmethod
+    def _serialize_priority(cls, v: Priority) -> str:
+        return v.name
+
     agent_backend: str | None = Field(default=None)
     launcher: str | None = Field(default=None)
     base_branch: str | None = Field(default=None)

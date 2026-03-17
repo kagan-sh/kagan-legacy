@@ -83,3 +83,10 @@ repos:
         language: system
         files: ^packages/web/.*\.(ts|tsx)$
         pass_filenames: false
+
+      - id: wire-drift
+        name: wire drift check
+        entry: python scripts/check_wire_drift.py
+        language: system
+        files: ^(src/kagan/core/models\.py|packages/web/src/lib/api/types\.ts)$
+        pass_filenames: false

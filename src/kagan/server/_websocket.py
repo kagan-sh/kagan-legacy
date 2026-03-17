@@ -11,7 +11,6 @@ from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kagan.core import resolve_default_agent_backend
-from kagan.core._utils import utc_iso
 from kagan.core.enums import WsMessageType
 from kagan.core.errors import KaganError
 from kagan.mcp.server import get_server_context
@@ -300,13 +299,10 @@ async def _resolve_project_cwd(client: Any) -> Path | None:
 
 
 def _event_to_wire_dict(event: SessionEvent) -> dict[str, Any]:
-    return {
-        "id": str(event.id),
-        "session_id": str(event.session_id) if event.session_id else None,
-        "type": event.event_type.value,
-        "payload": cast("dict[str, object]", event.payload),
-        "created_at": utc_iso(event.created_at) or "",
-    }
+    data = event.model_dump(mode="json")
+    # API contract uses "type" not "event_type"
+    data["type"] = data.pop("event_type")
+    return data
 
 
 async def _forward_live_session_events(

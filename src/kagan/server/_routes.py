@@ -12,6 +12,7 @@ from kagan.core import (
     parse_priority,
     parse_work_mode,
 )
+from kagan.core._utils import utc_iso
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
@@ -20,13 +21,7 @@ from kagan.server._helpers import (
     _require_access,
     handle_errors,
     require_context,
-    task_to_wire,
-)
-from kagan.wire.models import (
-    WireEvent,
-    WireProject,
-    WireRepository,
-    utc_iso,
+    task_to_wire_dict,
 )
 
 if TYPE_CHECKING:
@@ -64,29 +59,23 @@ def _parse_wip_limits(raw: str | None) -> dict[str, int]:
     return limits
 
 
-def _project_to_wire(project: Any, *, active: bool = True) -> WireProject:
-    return WireProject(id=project.id, name=project.name, active=active)
+def _project_dict(project: Any, *, active: bool = True) -> dict[str, Any]:
+    data = project.model_dump(mode="json")
+    data["active"] = active
+    return data
 
 
-def _repo_to_wire(repo: Any, *, selected: bool = False) -> WireRepository:
-    return WireRepository(
-        id=repo.id,
-        project_id=repo.project_id or "",
-        name=repo.name,
-        path=repo.path,
-        default_branch=repo.default_branch,
-        selected=selected,
-    )
+def _repo_dict(repo: Any, *, selected: bool = False) -> dict[str, Any]:
+    data = repo.model_dump(mode="json")
+    data["selected"] = selected
+    return data
 
 
-def _event_to_wire(event: Any) -> WireEvent:
-    return WireEvent(
-        id=event.id,
-        session_id=event.session_id,
-        type=event.event_type.value,
-        payload=cast("dict[str, object]", event.payload),
-        created_at=utc_iso(event.created_at) or "",
-    )
+def _event_dict(event: Any) -> dict[str, Any]:
+    data = event.model_dump(mode="json")
+    # API contract uses "type" not "event_type"
+    data["type"] = data.pop("event_type")
+    return data
 
 
 async def _body(request: Request) -> dict[str, Any]:
@@ -152,9 +141,7 @@ def register_routes(mcp: FastMCP) -> None:
         status_enum = TaskStatus(status_value) if status_value else None
         tasks = await ctx.client.tasks.list(status=status_enum)
         runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
-        return _ok(
-            [task_to_wire(task, runtime=runtime.get(task.id)).model_dump() for task in tasks]
-        )
+        return _ok([task_to_wire_dict(task, runtime=runtime.get(task.id)) for task in tasks])
 
     @mcp.custom_route("/api/tasks", methods=["POST"])
     @require_context(mcp)
@@ -181,7 +168,7 @@ def register_routes(mcp: FastMCP) -> None:
             launcher=cast("str | None", payload.get("launcher")),
         )
         runtime = await ctx.client.tasks.runtime_summary(task.id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/counts", methods=["GET"])
     @require_context(mcp)
@@ -198,7 +185,7 @@ def register_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["PATCH"])
     @require_context(mcp)
@@ -237,7 +224,7 @@ def register_routes(mcp: FastMCP) -> None:
 
         task = await ctx.client.tasks.update(task_id, **update_args)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["DELETE"])
     @require_context(mcp)
@@ -264,7 +251,7 @@ def register_routes(mcp: FastMCP) -> None:
         status_value = cast("str", payload["status"])
         task = await ctx.client.tasks.set_status(task_id, TaskStatus(status_value))
         runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}/run", methods=["POST"])
     @require_context(mcp)
@@ -285,7 +272,7 @@ def register_routes(mcp: FastMCP) -> None:
         await ctx.client.tasks.run(task_id, agent_backend=agent_backend, persona=persona)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}/pair", methods=["POST"])
     @require_context(mcp)
@@ -324,7 +311,7 @@ def register_routes(mcp: FastMCP) -> None:
         )
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}/cancel", methods=["POST"])
     @require_context(mcp)
@@ -339,7 +326,7 @@ def register_routes(mcp: FastMCP) -> None:
         await ctx.client.tasks.cancel(task_id)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire(task, runtime=runtime).model_dump())
+        return _ok(task_to_wire_dict(task, runtime=runtime))
 
     @mcp.custom_route("/api/tasks/{task_id}/end-pairing", methods=["POST"])
     @require_context(mcp)
@@ -396,7 +383,7 @@ def register_routes(mcp: FastMCP) -> None:
                 limit=max(limit, 1),
                 session_id=session_id,
             )
-        return _ok([_event_to_wire(event).model_dump() for event in events])
+        return _ok([_event_dict(event) for event in events])
 
     @mcp.custom_route("/api/tasks/{task_id}/sessions", methods=["GET"])
     @require_context(mcp)
@@ -424,10 +411,7 @@ def register_routes(mcp: FastMCP) -> None:
         projects = await ctx.client.projects.list()
         active_project_id = ctx.client.active_project_id
         return _ok(
-            [
-                _project_to_wire(project, active=project.id == active_project_id).model_dump()
-                for project in projects
-            ]
+            [_project_dict(project, active=project.id == active_project_id) for project in projects]
         )
 
     @mcp.custom_route("/api/projects", methods=["POST"])
@@ -441,11 +425,7 @@ def register_routes(mcp: FastMCP) -> None:
             return cast("JSONResponse", forbidden)
         payload = await _body(request)
         project = await ctx.client.projects.create(cast("str", payload["name"]))
-        return _ok(
-            _project_to_wire(
-                project, active=project.id == ctx.client.active_project_id
-            ).model_dump()
-        )
+        return _ok(_project_dict(project, active=project.id == ctx.client.active_project_id))
 
     @mcp.custom_route("/api/projects/{project_id}/activate", methods=["POST"])
     @require_context(mcp)
@@ -481,12 +461,7 @@ def register_routes(mcp: FastMCP) -> None:
         repos = await ctx.client.projects.repos(project_id)
         settings = await ctx.client.settings.get()
         selected_repo_id = settings.get(f"ui.selected_repo.{project_id}")
-        return _ok(
-            [
-                _repo_to_wire(repo, selected=repo.id == selected_repo_id).model_dump()
-                for repo in repos
-            ]
-        )
+        return _ok([_repo_dict(repo, selected=repo.id == selected_repo_id) for repo in repos])
 
     @mcp.custom_route("/api/projects/{project_id}/repos", methods=["POST"])
     @require_context(mcp)
@@ -501,7 +476,7 @@ def register_routes(mcp: FastMCP) -> None:
         payload = await _body(request)
         path = cast("str", payload["path"])
         repo = await ctx.client.projects.add_repo(project_id, path)
-        return _ok(_repo_to_wire(repo).model_dump())
+        return _ok(_repo_dict(repo))
 
     @mcp.custom_route("/api/projects/{project_id}/repos/{repo_id}/select", methods=["POST"])
     @require_context(mcp)
@@ -556,16 +531,16 @@ def register_routes(mcp: FastMCP) -> None:
 
         if action == "approve":
             task = await ctx.client.reviews.approve(task_id)
-            return _ok({"task": task_to_wire(task).model_dump(), "action": action})
+            return _ok({"task": task_to_wire_dict(task), "action": action})
         if action == "reject":
             feedback = cast("str | None", payload.get("feedback"))
             if not feedback:
                 raise ValueError("feedback is required for reject action")
             task = await ctx.client.reviews.reject(task_id, feedback=feedback)
-            return _ok({"task": task_to_wire(task).model_dump(), "action": action})
+            return _ok({"task": task_to_wire_dict(task), "action": action})
         if action == "merge":
             task = await ctx.client.reviews.merge(task_id)
-            return _ok({"task": task_to_wire(task).model_dump(), "action": action})
+            return _ok({"task": task_to_wire_dict(task), "action": action})
         if action == "rebase":
             await ctx.client.reviews.rebase(task_id)
             return _ok({"task_id": task_id, "action": action})

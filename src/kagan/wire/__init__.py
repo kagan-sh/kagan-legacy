@@ -1,22 +1,14 @@
-"""kagan.wire — Wire-format models for remote clients.
+"""kagan.wire — Backward-compatible re-exports.
 
-All public symbols are re-exported here for convenience::
-
-    from kagan.wire import WireTask, WireEnvelope, export_schema
+The wire model layer has been removed. SQLModel classes serialize directly
+via ``model_dump(mode="json")``. This module re-exports the envelope types
+from their canonical location for any remaining callers.
 """
 
-from kagan.wire.envelopes import WireEnvelope, WireRequest, WireResponse
-from kagan.wire.models import WireEvent, WireProject, WireSession, WireTask, WireTaskActiveSession
-from kagan.wire.schema import export_schema
+from kagan.server._envelope import WireEnvelope, WireRequest, WireResponse
 
 __all__ = [
     "WireEnvelope",
-    "WireEvent",
-    "WireProject",
     "WireRequest",
     "WireResponse",
-    "WireSession",
-    "WireTask",
-    "WireTaskActiveSession",
-    "export_schema",
 ]

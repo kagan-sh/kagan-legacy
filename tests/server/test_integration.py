@@ -15,6 +15,7 @@ import kagan.server._routes as routes_module
 import kagan.server._websocket as websocket_module
 from kagan.core import Priority, TaskStatus, WorkMode
 from kagan.core import git as git_module
+from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
 from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
 
@@ -49,8 +50,9 @@ class _FakeTasksClient:
         launcher: str | None = None,
     ) -> Any:
         self._seq += 1
-        task = SimpleNamespace(
+        task = Task(
             id=f"task-{self._seq}",
+            project_id="project-1",
             title=title,
             description=description,
             status=TaskStatus.BACKLOG,
@@ -61,7 +63,6 @@ class _FakeTasksClient:
             agent_backend=agent_backend,
             launcher=launcher,
             review_approved=False,
-            updated_at=datetime.now(UTC),
         )
         self._tasks[task.id] = task
         return task

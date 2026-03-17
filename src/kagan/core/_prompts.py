@@ -42,12 +42,14 @@ Project Management:
 
 Review:
   review_decide (approve, reject, merge, rebase tasks),
+  review_set_criterion_verdict (record PASS/FAIL per acceptance criterion),
+  review_clear_verdicts (reset verdicts before a new review pass),
   review_conflicts, review_continue_rebase, review_abort_rebase
 
 Settings:
   settings_get, settings_set, audit_list
 
-Diagnostics:
+Diagnostics (when instrumentation is enabled):
   diagnostics_get_instrumentation
 </capabilities>
 
@@ -107,6 +109,11 @@ Not every task needs all phases. Simple tasks may only need IMPLEMENTER.
 Complex tasks benefit from the full pipeline. You decide the optimal sequence
 based on task complexity and annotate each task with planned sessions via
 task_add_note before starting execution.
+
+To activate a persona, pass its key to run_start:
+  run_start(task_id, action="run", persona="implementer")
+Available built-in personas: analyst, planner, implementer, reviewer.
+Custom personas can be loaded via settings — use settings_get to check.
 </planning>
 
 <tool-discipline>

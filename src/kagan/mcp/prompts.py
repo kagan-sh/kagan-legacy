@@ -44,7 +44,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                 "- Execution mode: AUTO or PAIR\n"
                 "  \u2022 AUTO (default): agent works independently to completion. "
                 "Best for well-defined, self-contained tasks with clear acceptance criteria.\n"
-                "  \u2022 PAIR: agent works interactively as co-pilot in a tmux session. "
+                "  \u2022 PAIR: agent works interactively as co-pilot in a terminal session. "
                 "Best for exploratory work, complex debugging, or tasks needing user guidance.\n"
                 "Default to AUTO unless the task clearly benefits from interactive "
                 "collaboration.\n\n"

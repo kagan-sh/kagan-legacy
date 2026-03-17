@@ -13,6 +13,10 @@ export interface WireTaskActiveSession {
   mode: string;
   agent_backend: string;
   started_at: string;
+  context_window_used?: number | null;
+  context_window_size?: number | null;
+  cost_amount?: number | null;
+  cost_currency?: string | null;
 }
 
 export interface WireTaskSession {
@@ -21,6 +25,10 @@ export interface WireTaskSession {
   status: string;
   agent_backend: string;
   started_at: string;
+  context_window_used?: number | null;
+  context_window_size?: number | null;
+  cost_amount?: number | null;
+  cost_currency?: string | null;
 }
 
 export type ReviewVerdict = {

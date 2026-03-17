@@ -35,6 +35,8 @@ ______________________________________________________________________
 ## 4. Task Screen
 
 - Shows task context, diff, stream, and AI Panel
+- Agent status panel displays backend, status, elapsed time, run ID, PID, context window usage, and cumulative cost
+- AGENT_STATUS events update context window and cost metrics in real-time
 - `a` approve, `x` reject, `m` merge, `b` rebase
 - AI review is Quick Actions first on task screen (`Ctrl+Shift+P` -> `review.ai`)
 - `Esc` returns to board

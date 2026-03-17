@@ -19,6 +19,10 @@ class WireTaskActiveSession(BaseModel):
     mode: str
     agent_backend: str
     started_at: str
+    context_window_used: int | None = None
+    context_window_size: int | None = None
+    cost_amount: float | None = None
+    cost_currency: str | None = None
 
 
 class WireReviewVerdict(BaseModel):
@@ -73,8 +77,13 @@ class WireSession(BaseModel):
     task_id: str
     status: str
     mode: str
+    agent_backend: str | None = None
     started_at: str
     created_at: str | None = None
+    context_window_used: int | None = None
+    context_window_size: int | None = None
+    cost_amount: float | None = None
+    cost_currency: str | None = None
 
 
 class WireEvent(BaseModel):

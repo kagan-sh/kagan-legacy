@@ -386,6 +386,10 @@ class Tasks:
                     "mode": session.mode.value,
                     "agent_backend": session.agent_backend,
                     "started_at": utc_iso(session.started_at) or "",
+                    "context_window_used": session.context_window_used,
+                    "context_window_size": session.context_window_size,
+                    "cost_amount": session.cost_amount,
+                    "cost_currency": session.cost_currency,
                 }
 
             return {

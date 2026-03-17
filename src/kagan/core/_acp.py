@@ -345,6 +345,7 @@ def map_acp_update_to_event(
                 "size": update.size,
                 "used": update.used,
                 "cost": update.cost.amount if update.cost else None,
+                "cost_currency": update.cost.currency if update.cost else None,
             },
             "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True),
         }

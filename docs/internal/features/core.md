@@ -67,6 +67,9 @@ ______________________________________________________________________
 - Events stream reactively to any connected client (near-zero latency)
 - Client reconnects and picks up full event history from offset 0
 - Cancel kills the agent process and moves task to BACKLOG
+- ACP UsageUpdate events capture context window usage (size, used) and cumulative cost (amount, currency)
+- Usage metrics are persisted on the Session record at session completion (context_window_used, context_window_size, cost_amount, cost_currency)
+- Real-time usage updates are emitted as AGENT_STATUS events with a `usage` payload and streamed to all connected surfaces
 
 ______________________________________________________________________
 

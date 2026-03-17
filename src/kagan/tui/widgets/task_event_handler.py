@@ -35,6 +35,7 @@ class TaskEventHandler:
         queue_refresh: RefreshCallback,
         set_running: Callable[[bool], None],
         set_status: Callable[[str], None],
+        set_usage: Callable[[int | None, int | None, float | None, str | None], None],
     ) -> None:
         self._output = output
         self._overlay_chat = overlay_chat
@@ -44,6 +45,7 @@ class TaskEventHandler:
         self._queue_refresh = queue_refresh
         self._set_running = set_running
         self._set_status = set_status
+        self._set_usage = set_usage
         self.event_handlers: dict[
             SessionEventType, Callable[[dict[str, Any], str | None], None]
         ] = {
@@ -136,6 +138,14 @@ class TaskEventHandler:
             event_session_id=event_session_id,
         )
         self._output.post_note(self._payload_text(payload) or "Agent status update")
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            self._set_usage(
+                usage.get("used"),
+                usage.get("size"),
+                usage.get("cost"),
+                usage.get("cost_currency"),
+            )
 
     def _handle_criterion_verdict(
         self, payload: dict[str, Any], _event_session_id: str | None

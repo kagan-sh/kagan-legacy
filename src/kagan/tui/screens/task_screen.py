@@ -766,6 +766,7 @@ class TaskScreen(Screen[None]):
     async def _stream_events(self, task_id: str) -> None:
         output = self._output_stream()
         overlay_chat = self._overlay_panel()
+        detail_pane = self.query_one(TaskDetailPane)
         event_handler = TaskEventHandler(
             output=output,
             overlay_chat=overlay_chat,
@@ -775,6 +776,11 @@ class TaskScreen(Screen[None]):
             queue_refresh=self._queue_stream_refresh,
             set_running=self._set_running,
             set_status=self._set_status,
+            set_usage=lambda context_used, context_size, cost_amount, cost_currency: (
+                detail_pane.agent_status_panel.set_usage_info(
+                    context_used, context_size, cost_amount, cost_currency
+                )
+            ),
         )
         self._replay_count = 0
         self._oldest_event_ts = None

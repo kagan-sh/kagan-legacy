@@ -237,6 +237,7 @@ ______________________________________________________________________
 **Given** the agent sends `session/end` notification
 **When** the orchestrator turn completes
 **Then** the response is finalized, history is updated, and the session is saved.
+**Then** if ACP usage data is available, a compact metrics line is displayed: context window usage and cumulative cost (e.g., `ctx 45k/200k · $0.12`).
 
 ______________________________________________________________________
 

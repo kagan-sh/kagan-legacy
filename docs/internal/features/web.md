@@ -56,6 +56,7 @@ ______________________________________________________________________
 - `/session/:taskId` redirects to `/task/:taskId?lane=worker` which auto-opens the overlay
 - session picker navigates to `/task/:id?lane=...` instead of the old `/session/:taskId` route
 - live task event updates over WebSocket
+- AGENT_STATUS events with usage data render an inline metrics row: context window fill bar, percentage, and cost
 
 ______________________________________________________________________
 

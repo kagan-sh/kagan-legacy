@@ -23,6 +23,7 @@ from acp.schema import (
     McpServerStdio,
     ToolCallProgress,
     ToolCallStart,
+    UsageUpdate,
 )
 from loguru import logger
 from rich.live import Live
@@ -176,6 +177,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._flush_handle: asyncio.TimerHandle | None = None
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
+        self.last_usage: Any = None
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._cancel_flush_timer()
@@ -185,6 +187,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._tool_runs.start_turn()
         self._first_update_notified = False
         self._on_first_update = on_first_update
+        self.last_usage = None
 
     def _flush_pending_output(self, *, force: bool = False) -> None:
         self._cancel_flush_timer()
@@ -302,6 +305,9 @@ class _OrchestratorACPClient(ACPClientBase):
                 self._tool_runs.set_status(tool_key, status)
                 run.ended_at = run.ended_at or time.monotonic()
                 _console.print(f"[dim red]  ✗ {run.display_id} {title}[/dim red]", highlight=False)
+        elif isinstance(update, UsageUpdate):
+            self._notify_first_update()
+            self.last_usage = update
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):
         from acp.schema import AllowedOutcome, RequestPermissionResponse
@@ -1010,6 +1016,20 @@ class ChatController:
             message_count=self._turn_count,
         )
         _console.print(f"[dim]{status_line}[/dim]")
+        if self._acp_client is not None and self._acp_client.last_usage is not None:
+            usage = self._acp_client.last_usage
+            metrics_parts: list[str] = []
+            if usage.used is not None and usage.size is not None and usage.size > 0:
+                used_k = usage.used / 1000
+                size_k = usage.size / 1000
+                if size_k >= 1000:
+                    metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
+                else:
+                    metrics_parts.append(f"ctx {used_k:.1f}k/{size_k:.1f}k")
+            if usage.cost is not None:
+                metrics_parts.append(f"${usage.cost.amount:.2f}")
+            if metrics_parts:
+                _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
         await self._persist_session()
 
     async def _repl_loop(self) -> None:

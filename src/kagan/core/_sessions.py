@@ -573,6 +573,8 @@ class Sessions:
                     if isinstance(usage, dict):
                         obj.context_window_used = usage.get("used")
                         obj.context_window_size = usage.get("size")
+                        obj.cost_amount = usage.get("cost")
+                        obj.cost_currency = usage.get("cost_currency")
 
                 s.add(obj)
 

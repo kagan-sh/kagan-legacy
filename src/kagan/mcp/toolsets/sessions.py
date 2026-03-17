@@ -187,6 +187,8 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
                 "output_tokens": session.output_tokens,
                 "context_window_used": session.context_window_used,
                 "context_window_size": session.context_window_size,
+                "cost_amount": session.cost_amount,
+                "cost_currency": session.cost_currency,
             }
         else:
             row["token_usage"] = {
@@ -194,6 +196,8 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
                 "output_tokens": None,
                 "context_window_used": None,
                 "context_window_size": None,
+                "cost_amount": None,
+                "cost_currency": None,
             }
         rows.append(row)
     return {"rows": rows}

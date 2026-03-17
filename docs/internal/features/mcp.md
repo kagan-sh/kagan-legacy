@@ -24,6 +24,7 @@ ______________________________________________________________________
 - Start AUTO execution → provisions worktree, spawns agent, returns run
 - Wait for task lifecycle transitions with `tasks_wait` (event-driven, timeout-bounded)
 - Cancel a running run → kills agent, moves task to BACKLOG
+- `run_summary` returns token usage metrics per task: context_window_used, context_window_size, cost_amount, cost_currency
 
 ______________________________________________________________________
 

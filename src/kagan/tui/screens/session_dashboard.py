@@ -509,6 +509,18 @@ class SessionDashboardScreen(Screen[None]):
                         )
                     case SessionEventType.AGENT_STATUS:
                         output.post_note(self._payload_text(payload) or "Agent status update")
+                        usage = payload.get("usage")
+                        if isinstance(usage, dict):
+                            try:
+                                panel = self.query_one(AgentStatusPanel)
+                                panel.set_usage_info(
+                                    usage.get("used"),
+                                    usage.get("size"),
+                                    usage.get("cost"),
+                                    usage.get("cost_currency"),
+                                )
+                            except Exception:
+                                pass
                     case SessionEventType.AGENT_COMPLETED:
                         self._running = False
                         self._set_compact_status("Completed")

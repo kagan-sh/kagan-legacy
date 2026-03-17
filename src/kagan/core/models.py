@@ -96,6 +96,8 @@ class Session(SQLModel, table=True):
     output_tokens: int | None = Field(default=None)
     context_window_used: int | None = Field(default=None)
     context_window_size: int | None = Field(default=None)
+    cost_amount: float | None = Field(default=None)
+    cost_currency: str | None = Field(default=None)
 
 
 class SessionEvent(SQLModel, table=True):

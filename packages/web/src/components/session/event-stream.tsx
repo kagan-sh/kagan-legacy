@@ -97,6 +97,7 @@ function extractToolDetail(payload: Record<string, unknown>): Record<string, unk
 type StreamEntry =
   | { kind: 'message'; text: string; thought: boolean; time: string; ts: number }
   | { kind: 'tool'; id: string; title: string; status: string; payload: Record<string, unknown>; time: string; ts: number }
+  | { kind: 'usage'; used: number; size: number; cost: number | null; currency: string | null; time: string; ts: number }
   | { kind: 'note'; label: string; detail?: string; time: string; ts: number }
   | { kind: 'user_follow_up'; text: string; time: string; ts: number };
 
@@ -162,9 +163,28 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
     } else if (event.type === 'AUTO_REVIEW_STARTED') {
       entries.push({ kind: 'note', label: 'Auto-review started', time, ts });
     } else if (event.type === 'AGENT_STATUS') {
-      const text = (payload.text as string) ?? '';
-      if (text) {
-        entries.push({ kind: 'note', label: text, time, ts });
+      const usage = payload.usage as Record<string, unknown> | undefined;
+      if (usage && typeof usage.used === 'number' && typeof usage.size === 'number') {
+        const existingIdx = entries.findIndex(e => e.kind === 'usage');
+        const entry: StreamEntry = {
+          kind: 'usage',
+          used: usage.used as number,
+          size: usage.size as number,
+          cost: typeof usage.cost === 'number' ? usage.cost : null,
+          currency: typeof usage.cost_currency === 'string' ? usage.cost_currency : null,
+          time,
+          ts,
+        };
+        if (existingIdx >= 0) {
+          entries[existingIdx] = entry;
+        } else {
+          entries.push(entry);
+        }
+      } else {
+        const text = (payload.text as string) ?? '';
+        if (text) {
+          entries.push({ kind: 'note', label: text, time, ts });
+        }
       }
     }
   }
@@ -252,6 +272,7 @@ export function EventStream({ events, userFollowUps, isRunning, className, hasMo
           const key = `${i}-${entry.kind}`;
           if (entry.kind === 'message') return <AgentMessage key={key} text={entry.text} thought={entry.thought} time={entry.time} />;
           if (entry.kind === 'tool') return <ToolCallRow key={key} title={entry.title} status={entry.status} payload={entry.payload} time={entry.time} />;
+          if (entry.kind === 'usage') return <UsageRow key={key} used={entry.used} size={entry.size} cost={entry.cost} currency={entry.currency} time={entry.time} />;
           if (entry.kind === 'user_follow_up') return <UserFollowUpMessage key={key} text={entry.text} time={entry.time} />;
           return <NoteRow key={key} label={entry.label} detail={entry.detail} time={entry.time} />;
         })}
@@ -359,6 +380,36 @@ function NoteRow({ label, detail, time }: { label: string; detail?: string; time
         <span className="min-w-0 flex-1 truncate text-[var(--muted-foreground)]/70">{detail}</span>
       ) : null}
       <span className="ml-auto shrink-0 font-code text-[10px] text-[var(--muted-foreground)]">{time}</span>
+    </div>
+  );
+}
+
+function formatCost(cost: number, currency: string | null): string {
+  const amount = cost.toFixed(4);
+  if (!currency) return `$${amount}`;
+  const c = currency.toUpperCase();
+  if (currency === '$' || c === 'USD') return `$${amount}`;
+  if (currency === '€' || c === 'EUR') return `€${amount}`;
+  if (currency === '£' || c === 'GBP') return `£${amount}`;
+  return `${currency} ${amount}`;
+}
+
+function UsageRow({ used, size, cost, currency, time }: { used: number; size: number; cost: number | null; currency: string | null; time: string }) {
+  const pct = size > 0 ? (used / size) * 100 : 0;
+  const pctClamped = Math.min(100, Math.max(0, pct));
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1 text-[11px] font-code text-[var(--muted-foreground)] whitespace-nowrap">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+      <span className="tabular-nums">ctx {used.toLocaleString()} / {size.toLocaleString()}</span>
+      <span className="h-0.5 w-24 overflow-hidden rounded-full bg-[var(--muted)]">
+        <span className="block h-full bg-emerald-500" style={{ width: `${pctClamped}%` }} />
+      </span>
+      <span className="tabular-nums">{pct.toFixed(1)}%</span>
+      <span className="ml-auto flex items-center gap-3 tabular-nums">
+        {cost != null ? <span>{formatCost(cost, currency)}</span> : null}
+        <span className="shrink-0 text-[10px]">{time}</span>
+      </span>
     </div>
   );
 }

@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from starlette.responses import JSONResponse, Response
 
 # Track running chat turn tasks for interrupt support
-_chat_turn_tasks: dict[str, asyncio.Task[None]] = {}
+_chat_turn_tasks: dict[str, asyncio.Task[Any]] = {}
 
 
 def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:

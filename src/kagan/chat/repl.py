@@ -23,14 +23,6 @@ from kagan.chat._completion import fuzzy_match
 from kagan.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
-_SLASH_ALIASES: Final[dict[str, str]] = {
-    "q": "exit",
-    "?": "help",
-    "s": "sessions",
-    "a": "agents",
-    "f": "flow",
-}
-
 
 class _SlashCompleter(Completer):
     def get_completions(self, document, complete_event):
@@ -50,17 +42,17 @@ class _SlashCompleter(Completer):
                     display_meta=spec.description,
                 )
 
-        # 2. Exact-match aliases (e.g. "q" → "exit")
-        alias_target = _SLASH_ALIASES.get(partial)
-        if alias_target and alias_target not in seen:
-            spec_obj = SLASH_COMMAND_REGISTRY.get(alias_target)
-            if spec_obj is not None:
-                seen.add(alias_target)
-                yield Completion(
-                    alias_target,
-                    start_position=-len(partial),
-                    display_meta=f"(alias) {spec_obj.spec.description}",
-                )
+        # 2. Exact-match aliases from registry
+        for alias, target in SLASH_COMMAND_REGISTRY.aliases.items():
+            if alias == partial and target not in seen:
+                spec_obj = SLASH_COMMAND_REGISTRY.get(target)
+                if spec_obj is not None:
+                    seen.add(target)
+                    yield Completion(
+                        target,
+                        start_position=-len(partial),
+                        display_meta=f"(alias) {spec_obj.spec.description}",
+                    )
 
 
 @dataclass(slots=True)

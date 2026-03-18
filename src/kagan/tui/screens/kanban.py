@@ -1938,7 +1938,7 @@ class KanbanScreen(Screen[None]):
                 if panel.has_class("visible"):
                     event.prevent_default()
                     event.stop()
-                    panel.action_send_message()
+                    panel.call_later(panel.action_send_message)
                     return
             return
 

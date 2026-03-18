@@ -238,6 +238,7 @@ SESSION_PICKER_BINDINGS: list[BindingType] = [
     Binding("h,left", "focus_groups", "Groups", show=False, priority=True),
     Binding("l,right", "focus_sessions", "Sessions", show=False, priority=True),
     Binding("slash", "focus_filter", "Filter", show=False, priority=True, key_display="/"),
+    Binding("x", "delete_session", "Delete", show=False, priority=True),
 ]
 
 REPO_PICKER_BINDINGS: list[BindingType] = [

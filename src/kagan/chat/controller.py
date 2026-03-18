@@ -350,6 +350,7 @@ class ChatController:
         self._restored_messages_printed = False
         self._session_title: str | None = None
         self._title_task: asyncio.Task[None] | None = None
+        self._project_name: str | None = None
         self._watcher = DBWatcher(client)
 
     async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
@@ -360,6 +361,7 @@ class ChatController:
                 source="repl",
                 label="REPL session",
                 agent_backend=self.agent_backend,
+                project_id=self.client.active_project_id,
             )
         await self._attach_session(selected, switching=False)
 
@@ -464,17 +466,9 @@ class ChatController:
         self._restored_messages_printed = True
 
     async def _open_sessions(self, query: str | None) -> bool:
-        sessions = await list_chat_sessions(self.client)
-        if query is not None and query.lower() == "new":
-            created = await create_chat_session(
-                self.client,
-                source="repl",
-                label="REPL session",
-                agent_backend=self.agent_backend,
-            )
-            return await self._attach_session(created, switching=True)
+        sessions = await list_chat_sessions(self.client, project_id=self.client.active_project_id)
         if not sessions:
-            _console.print("[dim]No persisted sessions yet. Use /sessions new.[/dim]")
+            _console.print("[dim]No persisted sessions yet.[/dim]")
             return False
 
         items = build_chat_session_list_items(sessions, current_session_id=self._chat_session_id)
@@ -493,7 +487,7 @@ class ChatController:
                 _console.print(f"[red]Unknown session selector: {query}[/red]")
                 return False
         else:
-            _console.print("Sessions:")
+            _console.print(f"Sessions ({self._project_name or 'all'}):")
             for item in items:
                 current = " [bold cyan]● current[/bold cyan]" if item.is_current else ""
                 backend = f" [dim]{item.agent_backend}[/dim]" if item.agent_backend else ""
@@ -502,8 +496,8 @@ class ChatController:
             _console.print()
             _console.print(
                 "[dim]/sessions <number|id>[/dim] attach  "
-                "[dim]/sessions new[/dim] create  "
-                "[dim]/sessions delete <number|id>[/dim] remove"
+                "[dim]/new[/dim] create  "
+                "[dim]/delete <number|id>[/dim] remove"
             )
             return False
 
@@ -519,6 +513,7 @@ class ChatController:
             source="repl",
             label="REPL session",
             agent_backend=self.agent_backend,
+            project_id=self.client.active_project_id,
         )
         should_restart = await self._attach_session(created, switching=True)
         _console.print(f"[green]New session:[/green] {created['id']}")
@@ -565,6 +560,7 @@ class ChatController:
         project = await self.client.projects.find_by_repo(cwd_str)
         if project is not None:
             await self.client.projects.set_active(project.id)
+            self._project_name = project.name
             return True
 
         # 2. Try to match by git root.
@@ -577,10 +573,23 @@ class ChatController:
                 for repo in repos:
                     if Path(repo.path).expanduser().resolve() == resolved_git_root:
                         await self.client.projects.set_active(proj.id)
+                        await self._refresh_project_name()
                         return True
 
         # 3. No match — bootstrap a new project for this CWD.
-        return await self._bootstrap_project()
+        result = await self._bootstrap_project()
+        if result:
+            await self._refresh_project_name()
+        return result
+
+    async def _refresh_project_name(self) -> None:
+        projects = await self.client.projects.list()
+        active_id = self.client.active_project_id
+        for p in projects:
+            if p.id == active_id:
+                self._project_name = p.name
+                return
+        self._project_name = None
 
     async def _bootstrap_project(self) -> bool:
         cwd = Path.cwd()
@@ -1108,6 +1117,9 @@ class ChatController:
             runtime_session_id=self._acp_session_id,
             current_backend=self.agent_backend,
             available_backends=list_registered_agent_backends(),
+            project_name=self._project_name,
+            project_id=self.client.active_project_id,
+            turn_count=self._turn_count,
         )
         if not result.handled:
             return False
@@ -1145,6 +1157,18 @@ class ChatController:
             self._show_tool_report(result.tool_query)
             return False
 
+        if result.status_requested:
+            self._print_status_panel()
+            return False
+
+        if result.project_info_requested:
+            self._print_project_info()
+            return False
+
+        if result.project_switch_requested is not None:
+            await self._switch_project(result.project_switch_requested)
+            return False
+
         return bool(result.close_requested)
 
     def _print_help_documentation(self) -> None:
@@ -1179,9 +1203,58 @@ class ChatController:
 
         _console.print(usage_panel)
         _console.print(commands_panel)
+
+        aliases = SLASH_COMMAND_REGISTRY.aliases
+        if aliases:
+            alias_lines = [f"  /{alias} → /{target}" for alias, target in sorted(aliases.items())]
+            aliases_text = "\n".join(alias_lines)
+            aliases_panel = Panel.fit(
+                aliases_text,
+                title="Aliases",
+                border_style="yellow",
+                padding=(0, 1),
+            )
+            _console.print(aliases_panel)
+
         _console.print(quick_refs_panel)
         _console.print("Documentation: https://docs.kagan.sh/")
         _console.print("CLI reference: https://docs.kagan.sh/reference/cli/")
+
+    def _print_status_panel(self) -> None:
+        lines: list[str] = []
+        lines.append(f"[bold]Project:[/bold]  {self._project_name or 'none'}")
+        session_label = self._session_title or f"Session {self._chat_session_id or 'none'}"
+        lines.append(f"[bold]Session:[/bold]  {session_label} ({self._chat_session_id or '?'})")
+        lines.append(f"[bold]Agent:[/bold]    {self.agent_backend}")
+        lines.append(f"[bold]Turns:[/bold]    {self._turn_count}")
+        if self._acp_session_id:
+            lines.append(f"[bold]Runtime:[/bold]  {self._acp_session_id}")
+        panel = Panel("\n".join(lines), title="Status", border_style="cyan", expand=False)
+        _console.print(panel)
+
+    def _print_project_info(self) -> None:
+        if self._project_name:
+            _console.print(f"[bold]Project:[/bold] {self._project_name}")
+            _console.print(f"[dim]ID:[/dim] {self.client.active_project_id or 'unknown'}")
+        else:
+            _console.print("[dim]No active project.[/dim]")
+
+    async def _switch_project(self, name: str) -> None:
+        projects = await self.client.projects.list()
+        target = None
+        for p in projects:
+            if p.name.casefold() == name.casefold():
+                target = p
+                break
+        if target is None:
+            _console.print(f"[red]Project not found: {name}[/red]")
+            available = ", ".join(p.name for p in projects) if projects else "none"
+            _console.print(f"[dim]Available: {available}[/dim]")
+            return
+        await self.client.projects.set_active(target.id)
+        self._project_name = target.name
+        _TOOLBAR_STATE.project_name = target.name
+        _console.print(f"[green]Switched to project:[/green] {target.name}")
 
     def _show_tool_report(self, query: str | None) -> None:
         if self._acp_client is None:

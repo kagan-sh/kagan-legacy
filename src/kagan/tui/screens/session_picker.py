@@ -5,11 +5,14 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from kagan.tui.keybindings import SESSION_PICKER_BINDINGS
+
+_DELETABLE_SOURCES = {"repl", "web"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +21,7 @@ class SessionPickerOption:
     icon: str
     label: str
     search_text: str = ""
+    source: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,11 +106,8 @@ class SessionPickerModal(ModalScreen[str | None]):
 
     @on(Input.Changed, "#session-picker-filter")
     def _on_filter_changed(self, event: Input.Changed) -> None:
-        self._apply_filter(event.value)
-
-    @on(Input.Submitted, "#session-picker-filter")
-    def _on_filter_submitted(self, _event: Input.Submitted) -> None:
-        self.action_select()
+        if not getattr(self, "_confirming_delete", False):
+            self._apply_filter(event.value)
 
     @on(OptionList.OptionSelected, "#session-picker-groups")
     def _on_group_selected(self, event: OptionList.OptionSelected) -> None:
@@ -311,7 +312,93 @@ class SessionPickerModal(ModalScreen[str | None]):
             return
         self.dismiss(selected_key)
 
+    class SessionDeleted(Message):
+        """Posted when a session is deleted from the picker."""
+
+        def __init__(self, session_key: str) -> None:
+            super().__init__()
+            self.session_key = session_key
+
+    def action_delete_session(self) -> None:
+        """Delete the highlighted session (only orchestrator/repl/web sources)."""
+        options_list = self.query_one("#session-picker-options", OptionList)
+        idx = options_list.highlighted
+        current_options = self._options_for_active_group()
+        if idx is None or idx < 0 or idx >= len(current_options):
+            return
+
+        target = current_options[idx]
+        if target.key in {self.EMPTY_SESSION_OPTION_ID, self.EMPTY_GROUP_OPTION_ID}:
+            return
+
+        # Only allow deletion for repl/web sessions, not task sessions
+        if target.source and target.source not in _DELETABLE_SOURCES:
+            return
+
+        self._pending_delete = target
+        self._show_delete_confirmation(target)
+
+    def _show_delete_confirmation(self, target: SessionPickerOption) -> None:
+        """Replace the filter input with a delete confirmation prompt."""
+        filter_input = self.query_one("#session-picker-filter", Input)
+        self._saved_filter = filter_input.value
+        filter_input.placeholder = f"Delete '{target.label}'? Type 'yes' to confirm."
+        filter_input.value = ""
+        filter_input.focus()
+        self._confirming_delete = True
+
+    @on(Input.Submitted, "#session-picker-filter")
+    def _on_filter_submitted(self, _event: Input.Submitted) -> None:
+        if getattr(self, "_confirming_delete", False):
+            self._handle_delete_confirmation()
+            return
+        self.action_select()
+
+    def _handle_delete_confirmation(self) -> None:
+        filter_input = self.query_one("#session-picker-filter", Input)
+        answer = filter_input.value.strip().casefold()
+        self._confirming_delete = False
+        filter_input.placeholder = "Filter tasks, ids, or sessions..."
+
+        pending = getattr(self, "_pending_delete", None)
+        if answer == "yes" and pending is not None:
+            self._remove_session_from_groups(pending.key)
+            self.post_message(self.SessionDeleted(pending.key))
+            filter_input.value = getattr(self, "_saved_filter", "")
+            self._apply_filter(filter_input.value)
+        else:
+            filter_input.value = getattr(self, "_saved_filter", "")
+            self._apply_filter(filter_input.value)
+
+        self._pending_delete = None
+
+    def _remove_session_from_groups(self, key: str) -> None:
+        """Remove a session from all groups."""
+        updated: list[SessionPickerGroup] = []
+        for group in self._all_groups:
+            new_options = tuple(opt for opt in group.options if opt.key != key)
+            if new_options or group.options:
+                updated.append(
+                    SessionPickerGroup(
+                        group_id=group.group_id,
+                        icon=group.icon,
+                        label=group.label,
+                        subtitle=group.subtitle,
+                        search_text=group.search_text,
+                        options=new_options,
+                    )
+                )
+        self._all_groups = [g for g in updated if g.options]
+
     def action_cancel(self) -> None:
+        if getattr(self, "_confirming_delete", False):
+            filter_input = self.query_one("#session-picker-filter", Input)
+            self._confirming_delete = False
+            self._pending_delete = None
+            filter_input.placeholder = "Filter tasks, ids, or sessions..."
+            filter_input.value = getattr(self, "_saved_filter", "")
+            self._apply_filter(filter_input.value)
+            return
         filter_input = self.query_one("#session-picker-filter", Input)
         if filter_input.value.strip():
             filter_input.value = ""

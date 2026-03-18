@@ -85,12 +85,14 @@ def test_slash_command_registry_is_canonical() -> None:
     assert names == [
         "agents",
         "clear",
+        "delete",
         "exit",
         "flow",
         "help",
         "new",
-        "session",
+        "project",
         "sessions",
+        "status",
         "tool",
     ]
     assert SLASH_COMMAND_REGISTRY.get("help") is not None
@@ -203,6 +205,7 @@ class _FakeSettingsOps:
 class _FakeClient:
     def __init__(self) -> None:
         self.settings = _FakeSettingsOps()
+        self.active_project_id: str | None = None
 
 
 @pytest.mark.asyncio
@@ -453,9 +456,9 @@ def test_format_relative_time_handles_recent_and_old() -> None:
     assert _format_relative_time("invalid") == ""
 
 
-def test_resolve_slash_input_sessions_delete_parses_correctly() -> None:
+def test_resolve_slash_input_delete_parses_correctly() -> None:
     result = resolve_slash_input(
-        "/sessions delete abc123",
+        "/delete abc123",
         session_label="Orchestrator",
         session_key="orchestrator",
         runtime_session_id=None,
@@ -467,9 +470,9 @@ def test_resolve_slash_input_sessions_delete_parses_correctly() -> None:
     assert result.sessions_requested is False
 
 
-def test_resolve_slash_input_sessions_delete_without_arg_errors() -> None:
+def test_resolve_slash_input_delete_without_arg_errors() -> None:
     result = resolve_slash_input(
-        "/sessions delete",
+        "/delete",
         session_label="Orchestrator",
         session_key="orchestrator",
         runtime_session_id=None,

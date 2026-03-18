@@ -82,6 +82,7 @@ export interface ChatSessionSummaryResponse {
   label: string;
   source: string;
   agent_backend?: string | null;
+  project_id?: string | null;
   updated_at: string;
   message_count: number;
 }
@@ -91,6 +92,7 @@ export interface ChatSessionResponse {
   label: string;
   source: string;
   agent_backend?: string | null;
+  project_id?: string | null;
   updated_at: string;
   message_count: number;
   messages: ChatMessageResponse[];

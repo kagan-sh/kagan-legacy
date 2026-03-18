@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { Bot, ChevronRight, MessageSquare, Plus, ShieldCheck } from 'lucide-react';
+import { Bot, ChevronRight, MessageSquare, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
@@ -38,7 +38,9 @@ export function SessionPicker() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const sessionsData = await apiClient.getChatSessions();
+      const projects = await apiClient.getProjects();
+      const activeProject = projects.find((p) => p.active);
+      const sessionsData = await apiClient.getChatSessions(activeProject?.id);
       setChatSessions(sessionsData);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load sessions');
@@ -109,6 +111,20 @@ export function SessionPicker() {
     }
   }, [openOrchestratorSession]);
 
+  const deleteSession = useCallback(
+    async (e: React.MouseEvent, sessionId: string) => {
+      e.stopPropagation();
+      try {
+        await apiClient.deleteChatSession(sessionId);
+        toast.success('Session deleted');
+        await loadData();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to delete session');
+      }
+    },
+    [loadData],
+  );
+
   return (
     <CommandDialog
       open={open}
@@ -126,11 +142,19 @@ export function SessionPicker() {
               {sortedChatSessions.map((session) => (
                 <CommandItem
                   key={session.id}
+                  className="group"
                   value={`${session.label} ${session.id} ${session.source}`}
                   onSelect={() => openOrchestratorSession(session.id)}
                 >
                   <MessageSquare className="size-4" />
                   <span className="min-w-0 flex-1 truncate">{session.label || 'Untitled chat'}</span>
+                  <button
+                    type="button"
+                    className="ml-auto hidden shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive group-hover:block"
+                    onClick={(e) => deleteSession(e, session.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </CommandItem>
               ))}
             </CommandGroup>

@@ -568,8 +568,8 @@ class ChatPanel(Vertical):
         self._switch_session(value, emit=True)
 
     @on(Input.Submitted, "#chat-overlay-input")
-    def _on_input_submitted(self) -> None:
-        self._submit_current_input()
+    async def _on_input_submitted(self) -> None:
+        await self._submit_current_input()
 
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
@@ -613,7 +613,7 @@ class ChatPanel(Vertical):
                     exact_match = any(spec.name == cmd_name for spec in specs)
                     if exact_match:
                         self._hide_overlays()
-                        self.action_send_message()
+                        self.call_later(self.action_send_message)
                         return
                 event.prevent_default()
                 event.stop()
@@ -646,7 +646,7 @@ class ChatPanel(Vertical):
         if event.key == "enter":
             event.prevent_default()
             event.stop()
-            self.action_send_message()
+            self.call_later(self.action_send_message)
             return
 
         if overlay_visible:
@@ -664,8 +664,8 @@ class ChatPanel(Vertical):
                 event.stop()
             return
 
-    def action_send_message(self) -> None:
-        self._submit_current_input()
+    async def action_send_message(self) -> None:
+        await self._submit_current_input()
 
     def action_focus_output_latest(self) -> None:
         stream = self._stream_output()
@@ -728,7 +728,7 @@ class ChatPanel(Vertical):
             initial_query=initial_query,
         )
 
-    def _submit_current_input(self) -> None:
+    async def _submit_current_input(self) -> None:
         input_widget = self._input_widget()
         if input_widget.disabled:
             return
@@ -757,7 +757,7 @@ class ChatPanel(Vertical):
 
         self._append_prompt_history(text)
 
-        handled = self._handle_slash_command(text)
+        handled = await self._handle_slash_command(text)
         if not handled:
             self.post_message(self.SubmitRequested(text))
             self.add_user_message(text)
@@ -767,7 +767,7 @@ class ChatPanel(Vertical):
         input_widget.focus()
         self._hide_overlays()
 
-    def _handle_slash_command(self, text: str) -> bool:
+    async def _handle_slash_command(self, text: str) -> bool:
         by_key = {key: label for label, key in self._session_options}
         session_label = by_key.get(self._selected_session_key, "Orchestrator")
 
@@ -792,10 +792,7 @@ class ChatPanel(Vertical):
             self._request_session_picker(result.sessions_query or "")
 
         if result.delete_session_query is not None:
-            self.add_system_message(
-                "Session deletion is currently available in REPL only. "
-                "Use /sessions in REPL to delete sessions."
-            )
+            await self._delete_chat_session(result.delete_session_query)
 
         if result.new_session_requested:
             self.post_message(self.NewSessionRequested())
@@ -805,6 +802,23 @@ class ChatPanel(Vertical):
 
         if result.help_overlay_requested:
             self._show_help_overlay()
+
+        if result.status_requested:
+            self.add_system_message(
+                f"Session: {self._selected_session_key} | "
+                f"Agent: {self._agent_hint or 'default'}"
+            )
+
+        if result.project_info_requested:
+            core = getattr(self.app, "core", None)
+            pid = getattr(core, "active_project_id", None) if core else None
+            self.add_system_message(f"Active project: {pid or '(none)'}")
+
+        if result.project_switch_requested is not None:
+            self.add_system_message(
+                "Project switching is available via CLI or REPL. "
+                f"Requested: {result.project_switch_requested}"
+            )
 
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
@@ -828,6 +842,42 @@ class ChatPanel(Vertical):
         input_widget.value = "/"
         input_widget.focus()
         self._sync_slash_complete("/")
+
+    async def _delete_chat_session(self, query: str) -> None:
+        """Delete a chat session by number or id."""
+        from kagan.chat.sessions import (
+            build_chat_session_list_items,
+            delete_chat_session,
+            list_chat_sessions,
+            resolve_chat_session_selector,
+        )
+
+        core = getattr(self.app, "core", None)
+        if core is None:
+            self.add_system_message("No client available.")
+            return
+
+        sessions = await list_chat_sessions(core)
+        if not sessions:
+            self.add_system_message("No sessions to delete.")
+            return
+
+        items = build_chat_session_list_items(sessions)
+        target = resolve_chat_session_selector(items, query)
+        if target is None:
+            self.add_system_message(f"Unknown session: {query}")
+            return
+
+        # Don't allow deleting current session
+        if target.session_id == self._selected_session_key:
+            self.add_system_message("Cannot delete the current session.")
+            return
+
+        deleted = await delete_chat_session(core, target.session_id)
+        if deleted:
+            self.add_system_message(f"Deleted: {target.label} [{target.session_id}]")
+        else:
+            self.add_system_message(f"Failed to delete session {target.session_id}.")
 
     def _request_close(self) -> None:
         if self.has_class("chat-overlay"):
@@ -1311,7 +1361,25 @@ class ChatPanel(Vertical):
         orchestrator: list[SessionPickerOption] = []
         task_targets_by_ticket: dict[str, list[SessionPickerOption]] = {}
         other: list[SessionPickerOption] = []
-        for label, key in self._session_options:
+
+        # Filter by active project when available
+        core = getattr(self.app, "core", None)
+        active_project_id = getattr(core, "active_project_id", None) if core else None
+        filtered_options = self._session_options
+        if active_project_id is not None:
+            project_keys = self._project_session_keys(active_project_id)
+            if project_keys is not None:
+                # Keep all non-chat sessions (task sessions are DB-scoped),
+                # plus chat sessions matching the active project
+                filtered_options = [
+                    (label, key)
+                    for label, key in self._session_options
+                    if key == "orchestrator"
+                    or key in project_keys
+                    or self._infer_session_kind(key) != SessionKind.ORCHESTRATOR
+                ]
+
+        for label, key in filtered_options:
             kind = self._infer_session_kind(key)
             option = SessionPickerOption(
                 key=key,
@@ -1363,6 +1431,36 @@ class ChatPanel(Vertical):
                 )
             )
         return groups
+
+    def _project_session_keys(self, project_id: str) -> set[str] | None:
+        """Return session keys belonging to the given project, or None if unavailable."""
+        import json
+
+        from sqlmodel import select
+
+        from kagan.core._db_helpers import _db_sync
+        from kagan.core.models import Setting
+
+        core = getattr(self.app, "core", None)
+        engine = getattr(core, "_engine", None) if core else None
+        if engine is None:
+            return None
+        try:
+            settings = _db_sync(engine, lambda s: {
+                row.key: row.value for row in s.exec(select(Setting)).all()
+            })
+            blob = settings.get("chat_sessions_v1", "")
+            if not blob:
+                return None
+            parsed = json.loads(blob)
+            sessions = parsed.get("sessions", []) if isinstance(parsed, dict) else []
+            return {
+                s.get("id", "")
+                for s in sessions
+                if isinstance(s, dict) and s.get("project_id") == project_id and s.get("id")
+            }
+        except Exception:
+            return None
 
     @staticmethod
     def _ticket_group_label(option_label: str) -> str:

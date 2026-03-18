@@ -189,6 +189,7 @@ class ChatSessionSummaryResponse(BaseModel):
     label: str
     source: str
     agent_backend: str | None = None
+    project_id: str | None = None
     updated_at: str
     message_count: int
 

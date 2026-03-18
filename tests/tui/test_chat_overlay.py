@@ -526,7 +526,7 @@ async def test_slash_flow_adds_guided_messages(board: KaganDriver) -> None:
         assert "Goal: Build onboarding" in rendered
 
 
-async def test_slash_sessions_delete_shows_explicit_repl_only_message(board: KaganDriver) -> None:
+async def test_slash_delete_without_arg_shows_usage(board: KaganDriver) -> None:
     from textual.widgets import Input, Static
 
     from kagan.tui import KaganApp
@@ -540,12 +540,12 @@ async def test_slash_sessions_delete_shows_explicit_repl_only_message(board: Kag
         await pilot.pause()
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
         input_widget.focus()
-        input_widget.value = "/sessions delete abc123"
+        input_widget.value = "/delete"
         await pilot.press("enter")
         await pilot.pause()
 
         message_output = app.screen.query_one("#chat-messages", Static)
-        assert "Session deletion is currently available in REPL only" in str(message_output.content)
+        assert "Usage: /delete <number|id>" in str(message_output.content)
 
 
 async def test_slash_exit_closes_chat_panel_and_updates_layout(board: KaganDriver) -> None:

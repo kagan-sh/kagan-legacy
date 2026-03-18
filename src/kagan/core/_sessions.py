@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -685,6 +686,7 @@ class Sessions:
                     event_type,
                     payload,
                     session_id=session_id,
+                    persist=event_type is not SessionEventType.OUTPUT_CHUNK,
                 )
 
         return on_update
@@ -840,6 +842,7 @@ class Sessions:
             lambda s: s.exec(select(Worktree).where(Worktree.task_id == task.id)).first(),
         )
         cwd = Path(ws.worktree_path) if ws else None
+        proc: asyncio.subprocess.Process | None = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 task.success_command,
@@ -851,6 +854,10 @@ class Sessions:
             exit_code = proc.returncode
         except (TimeoutError, OSError) as exc:
             logger.warning("Success command failed for task={}: {}", task.id, exc)
+            if proc is not None:
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    proc.kill()
+                    await proc.wait()
             exit_code = 1
 
         if exit_code == 0:

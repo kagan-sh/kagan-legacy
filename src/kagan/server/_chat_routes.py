@@ -177,6 +177,10 @@ async def _run_chat_stream(
                 yield f"data: {json.dumps(item)}\n\n"
         finally:
             _chat_turn_tasks.pop(session_id, None)
+            if not turn_task.done():
+                turn_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await turn_task
 
         full_response = await turn_task
 

@@ -61,9 +61,10 @@ async def test_handle_acp_done_ignores_executor_shutdown_runtime_error(
     assert events.emitted == []
 
 
-async def test_make_acp_callback_emits_output_chunks_with_persistence(
+async def test_make_acp_callback_emits_output_chunks_without_persistence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """OUTPUT_CHUNK events must not be persisted to avoid DB bloat."""
     events = _FakeEvents()
     sessions = Sessions(
         cast("Any", object()),
@@ -82,7 +83,7 @@ async def test_make_acp_callback_emits_output_chunks_with_persistence(
     await callback("acp-session-1", object())
 
     assert events.emitted == [
-        ("task-1", SessionEventType.OUTPUT_CHUNK, {"text": "hello"}, "session-1", True)
+        ("task-1", SessionEventType.OUTPUT_CHUNK, {"text": "hello"}, "session-1", False)
     ]
 
 

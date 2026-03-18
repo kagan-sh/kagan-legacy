@@ -52,10 +52,10 @@ export function useEventStream() {
       abortRef.current = controller;
 
       (async () => {
+        let streamEstablished = false;
         try {
           setSseConnected(true);
           setReconnectAttempts(0);
-          attempts = 0;
 
           // Initial board fetch on connect
           fetchTasks();
@@ -63,6 +63,11 @@ export function useEventStream() {
           for await (const msg of streamSSE<SSEMessage>('/api/events/stream', {
             signal: controller.signal,
           })) {
+            // Reset backoff once stream delivers its first message
+            if (!streamEstablished) {
+              streamEstablished = true;
+              attempts = 0;
+            }
             if (msg.type === 'TASK_UPDATED') {
               if (msg.task_id) {
                 try {

@@ -60,7 +60,7 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 
 ### `/sessions` usage
 
-```
+```text
 /sessions              # list all sessions
 /sessions 2            # attach to session #2
 /sessions new          # create a new session
@@ -69,14 +69,14 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 
 ### `/agents` usage
 
-```
+```text
 /agents                # show agent picker
 /agents claude-code    # switch to claude-code
 ```
 
 ### `/tool` usage
 
-```
+```text
 /tool                  # list recent tool calls with IDs
 /tool t007             # show full input/output for tool call t007
 ```

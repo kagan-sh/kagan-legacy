@@ -173,7 +173,7 @@ Use `task_update()` for structured state transitions and status updates.
 
 ### Scratchpad format
 
-```
+```text
 ---
 [2026-02-20T14:31:00Z] Chose approach B over A — A required a schema migration.
 ---

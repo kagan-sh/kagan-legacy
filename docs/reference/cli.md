@@ -27,7 +27,7 @@ tags:
 | `update`  | Check/install updates                            |
 | `web`     | Start API server with bundled web UI             |
 
-### Global options
+## Global options
 
 | Option                | Description                                                          |
 | --------------------- | -------------------------------------------------------------------- |

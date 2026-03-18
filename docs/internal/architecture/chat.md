@@ -82,7 +82,7 @@ src/kagan/chat/
 | `run(prompt=None)`                                | Main orchestrator lifecycle loop |
 | `hydrate_persistent_session(explicit_session_id)` | Load or create session           |
 
-**Internal methods:** `_send(text)`, `_repl_loop()`, `_handle_slash(text)`, `_switch_agent(new_backend)`, `_open_sessions(query)`, `_create_new_session()`, `_persist_session()`
+**Internal methods:** `_send(text)`, `_repl_loop()`, `_event_watcher()`, `_handle_slash(text)`, `_switch_agent(new_backend)`, `_open_sessions(query)`, `_create_new_session()`, `_persist_session()`
 
 Note: `process_input()`, `run_orchestrator_turn()`, and `close()` do not exist as public methods.
 
@@ -273,6 +273,17 @@ The session ID determines which `client.settings` key is used:
 
 - Task-scoped: `chat_scope_state_{session_id}`
 - Global: `chat_sessions_v1`
+
+### Cross-Surface Session Visibility
+
+All surfaces (CLI chat, TUI, web) share a single session store. Sessions are
+tagged with a `source` field on creation (`"repl"`, `"tui-orchestrator"`,
+`"web"`) but listing is **unfiltered** — every surface sees every session.
+
+- `source` is **creation metadata**, not a partition key
+- A session created in web appears in CLI `/sessions` and TUI session picker
+- Resuming a session from a different surface preserves the original `source`
+- The `source` field is useful for display (badge/icon showing origin)
 
 **Session list command:** `/sessions` queries all sessions and shows:
 

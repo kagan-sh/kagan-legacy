@@ -39,7 +39,7 @@ class TuiOrchestratorSessionStore:
             if self._loaded:
                 return
 
-            sessions = await list_chat_sessions(self._client, source=_TUI_ORCHESTRATOR_SOURCE)
+            sessions = await list_chat_sessions(self._client)
             selected = await self._resolve_initial_session(sessions)
             if selected is None:
                 selected = await create_chat_session(

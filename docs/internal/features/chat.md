@@ -293,6 +293,42 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## Background Event Notifications
+
+### Task agent lifecycle events
+
+**Given** the REPL is running
+**When** a task agent completes or fails (in any surface)
+**Then** a one-line notification is printed to the console immediately.
+
+**Given** the REPL exits
+**When** the event watcher is running
+**Then** the watcher is cancelled cleanly without error output.
+
+**Given** the event stream encounters an unexpected error
+**When** the watcher stops
+**Then** the failure is logged at warning level. The REPL continues operating.
+
+______________________________________________________________________
+
+## Cross-Surface Session Visibility
+
+### All sessions visible everywhere
+
+**Given** a session was created in the web dashboard
+**When** the user types `/sessions` in CLI chat
+**Then** the web session appears in the list and can be resumed.
+
+**Given** a session was created in TUI
+**When** the user opens sessions in web or CLI
+**Then** the TUI session appears and can be resumed.
+
+**Given** a user resumes a session from a different surface
+**When** the session loads
+**Then** the original `source` tag is preserved (not overwritten).
+
+______________________________________________________________________
+
 ## Integration with TUI
 
 ### ChatPanel widget

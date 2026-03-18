@@ -1,8 +1,30 @@
 """Repetition guard — detects agents stuck in tool-call loops."""
 
 import hashlib
+import json
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
+
+
+def _normalize_for_hash(arguments: Any) -> str:
+    """Normalize tool arguments to a stable string for hashing.
+
+    Handles dict, JSON-encoded string, None, and arbitrary types.
+    """
+    if arguments is None:
+        return ""
+    if isinstance(arguments, dict):
+        return repr(sorted(arguments.items()))
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+            if isinstance(parsed, dict):
+                return repr(sorted(parsed.items()))
+            return repr(parsed)
+        except (json.JSONDecodeError, ValueError):
+            return arguments
+    return repr(arguments)
 
 
 @dataclass(slots=True)
@@ -22,20 +44,17 @@ class RepetitionGuard:
     _recent: deque[str] = field(default_factory=deque)
     """FIFO deque of recent tool call keys."""
 
-    def check(self, tool_name: str, arguments: dict | None) -> bool:
+    def check(self, tool_name: str, arguments: Any) -> bool:
         """Check if a tool call is repetitive.
 
         Args:
             tool_name: Name of the tool being called
-            arguments: Dictionary of arguments (will be hashed)
+            arguments: Tool arguments (dict, JSON string, None, or any type)
 
         Returns:
             True if the call appears repetitive (same call >= threshold times in window)
         """
-        # Hash the arguments to avoid storing large payloads
-        arg_hash = hashlib.md5(
-            repr(sorted(arguments.items()) if arguments else "").encode()
-        ).hexdigest()[:8]
+        arg_hash = hashlib.md5(_normalize_for_hash(arguments).encode()).hexdigest()[:8]
         key = f"{tool_name}:{arg_hash}"
 
         self._recent.append(key)

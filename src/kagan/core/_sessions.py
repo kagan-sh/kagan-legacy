@@ -651,14 +651,15 @@ class Sessions:
             # Check for repetitive tool calls before processing
             if isinstance(update, ToolCallStart):
                 tool_name = getattr(update, "name", None) or getattr(update, "title", "unknown")
-                arguments = getattr(update, "input", {})
+                arguments = getattr(update, "raw_input", None)
                 if guard.check(tool_name, arguments):
                     logger.warning(
                         "Repetitive tool calls detected for task={} session={}; cancelling",
                         task_id,
                         session_id,
                     )
-                    await self.cancel(task_id)
+                    # Emit AGENT_FAILED before cancel so subscribers see the
+                    # error event before the terminal TASK_STATUS_CHANGED.
                     await self._events.emit(
                         task_id,
                         SessionEventType.AGENT_FAILED,
@@ -668,6 +669,7 @@ class Sessions:
                         },
                         session_id=session_id,
                     )
+                    await self.cancel(task_id)
                     return
 
             result = map_acp_update_to_event(update)

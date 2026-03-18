@@ -86,6 +86,7 @@ from kagan.core import (
     get_system_git_identity,
     resolve_orchestrator_prompt,
 )
+from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError, KaganError
 
 _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
@@ -463,7 +464,7 @@ class ChatController:
         self._restored_messages_printed = True
 
     async def _open_sessions(self, query: str | None) -> bool:
-        sessions = await list_chat_sessions(self.client, source="repl")
+        sessions = await list_chat_sessions(self.client)
         if query is not None and query.lower() == "new":
             created = await create_chat_session(
                 self.client,
@@ -524,7 +525,7 @@ class ChatController:
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
-        sessions = await list_chat_sessions(self.client, source="repl")
+        sessions = await list_chat_sessions(self.client)
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
             return
@@ -1042,12 +1043,31 @@ class ChatController:
                     _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
         await self._persist_session()
 
+    async def _event_watcher(self) -> None:
+        """Background coroutine that prints one-line notifications for task events."""
+        try:
+            async for event in self.client.tasks.events.stream_all(replay=False):
+                if event.event_type == SessionEventType.AGENT_FAILED:
+                    error = (event.payload or {}).get("error", "Agent failed")
+                    _console.print(
+                        f"\n[bold red]  \u26a0 Task {event.task_id[:8]}: {error}[/bold red]"
+                    )
+                elif event.event_type == SessionEventType.AGENT_COMPLETED:
+                    _console.print(
+                        f"\n[green]  \u2713 Task {event.task_id[:8]}: Agent completed[/green]"
+                    )
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
+
     async def _repl_loop(self) -> None:
         _console.print(
             "[dim]Type [bold]/help[/bold] for commands, [bold]/flow[/bold] for guided mode, "
             "[bold]Ctrl-C[/bold] to interrupt, "
             "[bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
+        watcher_task = asyncio.create_task(self._event_watcher())
         try:
             while True:
                 try:
@@ -1074,6 +1094,9 @@ class ChatController:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
         finally:
+            watcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher_task
             if not self._restart_requested:
                 _console.print("\n[dim]Session ended.[/dim]")
 

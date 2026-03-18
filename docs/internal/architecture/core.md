@@ -399,6 +399,17 @@ starts the agent. Session updates (`session/update` notifications) flow through
 `KaganACPClient.session_update()` which maps them via `map_acp_update_to_event()` and calls
 `Events.emit()` to write `SessionEvent` rows to the DB.
 
+Before forwarding `ToolCallStart` updates, the ACP callback runs a **repetition guard**
+(`_repetition_guard.py`). It hashes `tool_name + normalized(arguments)` and tracks the last
+10 calls in a sliding window. If the same hash appears ≥4 times, the agent is stuck in a
+loop. The guard emits `AGENT_FAILED` first, then calls `cancel()` — this ordering guarantees
+subscribers see the error before the terminal `TASK_STATUS_CHANGED` closes their stream.
+
+Arguments are normalized via `_normalize_for_hash()`: dicts are sorted, JSON strings are
+parsed then sorted, `None` maps to empty string, everything else uses `repr()`. This prevents
+false positives when an agent reads different files via the same tool (each file path produces
+a distinct hash).
+
 Backends without ACP support fall back to the detached process path (Path B via MCP).
 
 ```

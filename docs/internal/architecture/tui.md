@@ -176,7 +176,7 @@ ______________________________________________________________________
 | KanbanScreen | `tasks`       | `reactive[list[Task]]`      | Tasks for the board        |
 | KanbanScreen | `selected`    | `var[str \| None]`          | Selected task ID           |
 | KanbanScreen | `filter_text` | `var[str]`                  | Search filter              |
-| 174:PJ       |               | KanbanScreen                | `chat_visible`             |
+| KanbanScreen | `chat_visible` | `var[bool]`                | Whether the AI Panel is open |
 | TaskScreen   | `run`         | `reactive[Session \| None]` | Active execution run       |
 | TaskScreen   | `running`     | `var[bool]`                 | Whether agent is executing |
 

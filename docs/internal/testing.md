@@ -76,7 +76,7 @@ ______________________________________________________________________
 
 Test files mirror sections in `docs/internal/features/*.md` (one file per feature section):
 
-````text
+```text
 tests/
 ├── core/                                # kagan.core (behavioral)
 │   ├── test_cli_surface.py              # CLI help text, exit codes (snapshot carve-out)
@@ -124,6 +124,7 @@ tests/
 │   ├── test_github_import.py            # GitHub sync: create, skip, re-import, labels
 │   └── test_github_integrations.py      # Slug canonicalization, state normalization, URL parsing
 └── helpers/                             # DSL: KaganDriver, FakeAgent, fixtures
+```
 
 Name tests as specs: `test_<behavior>_<expected_outcome>`. Each file has 2-6 tests,
 each test is 5-15 lines. The suite targets under 60 seconds.
@@ -132,11 +133,11 @@ ______________________________________________________________________
 
 ## Markers
 
-```
+```python
 @pytest.mark.unit           # Implementation details (tests/unit/ only)
 @pytest.mark.smoke          # Fast, core behaviors
 @pytest.mark.slow           # Workspace provisioning, merges
-````
+```
 
 ______________________________________________________________________
 
@@ -156,7 +157,7 @@ ______________________________________________________________________
 
 Test tools through the router driver, not by calling tool functions directly:
 
-```text
+```python
 async def test_task_create_via_mcp(board):
     result = await board.mcp_call("task_create", {"title": "New feature"})
     assert result["status"] == "BACKLOG"
@@ -164,7 +165,7 @@ async def test_task_create_via_mcp(board):
 
 Access tier enforcement:
 
-```text
+```python
 @pytest.mark.parametrize(
     "tier,tool,allowed",
     [
@@ -206,7 +207,7 @@ Vitest conventions:
 - Mock API singletons (`apiClient`) with `vi.mock()`
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 
-```text
+```bash
 cd packages/web
 npx vitest run
 ```
@@ -218,7 +219,7 @@ Playwright conventions:
 - Focus on high-value flows (board visibility, route transitions, creation actions)
 - Keep E2E suites small and resilient; avoid brittle selectors tied to styling
 
-```text
+```bash
 cd packages/web
 npx playwright test
 ```

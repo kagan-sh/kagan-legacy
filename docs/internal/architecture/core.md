@@ -85,6 +85,7 @@ kagan/core/
 ├── _tasks.py              # task repository
 ├── _transitions.py        # task lifecycle state machine
 └── _worktrees.py          # worktree management logic
+```
 
 ~27 files. No sub-packages. Flat.
 
@@ -410,14 +411,14 @@ a distinct hash).
 
 Backends without ACP support fall back to the detached process path (Path B via MCP).
 
-```
+```text
 
 Agent subprocess (stdout piped to kagan)
 │ ACP session/update {AgentMessageChunk, "Hello World"}
 ▼
 KaganACPClient.session_update() → map_acp_update_to_event() → emit() → signal.set()
 
-```text
+```
 
 **Path B — MCP (PAIR mode and external tools).** Used in two cases:
 
@@ -427,14 +428,14 @@ KaganACPClient.session_update() → map_acp_update_to_event() → emit() → sig
 1. **External/manual use** — a user connects their preferred tool to kagan's MCP
    server directly (e.g., an IDE host browsing tasks, or a custom script).
 
-```
+```text
 
 Agent in IDE/tmux (or external tool)
 MCP tool call: task_events("Hello World")
 ▼
 kagan mcp subprocess → INSERT run_event → signal.set()
 
-```text
+```
 
 **Both converge here:** `tasks.events.stream()` wakes on the signal, yields the row,
 and the TUI/CLI renders it. The consumer doesn't know which path wrote the event.
@@ -443,7 +444,7 @@ and the TUI/CLI renders it. The consumer doesn't know which path wrote the event
 | ------------- | ------------------------------------------------------ | ----------------------------------------- |
 | When          | All AUTO executions                                    | PAIR mode, IDE hosts, manual hookup       |
 | Transport     | Direct STDIO JSON-RPC, kagan owns subprocess           | Agent/tool spawns kagan MCP as subprocess |
-Accumulated text via `task_events`          |
+| Data shape    | Streamed ACP events                                    | Accumulated text via `task_events`        |
 | Bidirectional | Yes — kagan sends prompts, cancel, set_mode            | No — caller invokes tools, kagan reads DB |
 | Process model | Kagan owns (can terminate)                             | Agent runs in external environment        |
 
@@ -470,7 +471,7 @@ ______________________________________________________________________
 
 AUTO agents are subprocesses owned by Kagan. PAIR agents are detached.
 
-```
+```text
 
 AUTO (ACP):
 
@@ -662,7 +663,7 @@ ______________________________________________________________________
 
 ### AUTO: `client.task.run(task_id)`
 
-```
+```text
 
 Frontend KaganCore Agent CLI (detached)
 | | |
@@ -685,14 +686,14 @@ Frontend KaganCore Agent CLI (detached)
 | | |-- writes via MCP
 | | |-- updates Session
 
-```text
+```
 
 All agents use the same flow. The only variable is the executable and args template
 from the backend registry.
 
 ### PAIR: `client.task.pair(task_id)`
 
-```
+```text
 
 Frontend KaganCore Launcher (tmux/IDE/nvim)
 | | |
@@ -707,7 +708,7 @@ Frontend KaganCore Launcher (tmux/IDE/nvim)
 | | | to report
 | |◄-- events via MCP --------| progress
 
-```text
+```
 
 ______________________________________________________________________
 
@@ -759,14 +760,14 @@ They never launch agents, provision worktrees, or write `.mcp.json` directly.
 **Core does not own chat** — conversational abstractions (slash commands, message
 history) live in `kagan.chat`. Both TUI and CLI import it; core never does.
 
-```
+```text
 
 kagan.chat ──► kagan.core (agent spawning, event streaming, task ops)
 kagan.tui ──► kagan.chat (ChatSession, slash commands)
 kagan.cli ──► kagan.chat (run_chat for REPL)
 kagan.core ──✘► kagan.chat NEVER
 
-```text
+```
 
 ______________________________________________________________________
 
@@ -776,4 +777,3 @@ See `docs/internal/testing.md` for the full testing guide.
 
 Core-specific: internal helpers are unit-tested separately, not through the DSL.
 Agent prompt quality is evaluation, not testing.
-```

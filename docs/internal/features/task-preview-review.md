@@ -38,12 +38,13 @@ orchestrator prompt, plus structured task-preview rendering across all clients.
 After every `task_batch_create` call, the orchestrator MUST:
 
 1. **Present a structured overview** of all created tasks as a markdown table:
-```text
+
+   ```text
    | # | Title | Mode | Priority | AC | Status |
    |---|-------|------|----------|----|--------|
    | 1 | Fix login bug | AUTO | HIGH | 3 | BACKLOG |
    | 2 | Add dark mode | PAIR | MEDIUM | 4 | BACKLOG |
-```
+   ```
 1. **Explicitly invite edits** with a prompt like:
    > "Here are the tasks I created. Would you like to edit any titles,
    > priorities, acceptance criteria, or execution modes before I start

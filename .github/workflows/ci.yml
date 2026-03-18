@@ -225,8 +225,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: packages/web/pnpm-lock.yaml
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('packages/web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true

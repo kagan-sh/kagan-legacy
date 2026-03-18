@@ -95,6 +95,20 @@ export function useEventStream() {
                   detail: { task_id: msg.task_id, event: msg.event },
                 }),
               );
+              // Keep board card timestamps fresh during active sessions
+              const eventTs = msg.event.created_at;
+              const eventTaskId = msg.task_id;
+              if (eventTaskId && eventTs) {
+                setTasks((prev) => {
+                  const idx = prev.findIndex((t) => t.id === eventTaskId);
+                  if (idx < 0) return prev;
+                  const existing = prev[idx]!;
+                  if (existing.last_event_at && existing.last_event_at >= eventTs) return prev;
+                  const next = [...prev];
+                  next[idx] = { ...existing, last_event_at: eventTs };
+                  return next;
+                });
+              }
             }
           }
         } catch (err) {

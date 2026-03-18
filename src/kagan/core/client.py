@@ -236,6 +236,14 @@ class DBWatcher:
             self._record(f"Task '{title}' ({event.task_id}) deleted")
             return
 
+        if event.kind in ("session_started", "session_ended", "auto_review_started"):
+            # Session lifecycle events don't change task fields tracked in
+            # _TaskState, but the kanban board still needs a reload so that
+            # cards reflect the active-session / running indicator.
+            if event.task_id in self._snapshot or await self._resolve_if_relevant(event.task_id):
+                self._change_event.set()
+            return
+
         if event.kind != "status_changed":
             return
 

@@ -22,7 +22,7 @@ from kagan.core._agent import (
 )
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
-from kagan.core._events import Events
+from kagan.core._events import BoardEvent, Events
 from kagan.core._launchers import get_launcher
 from kagan.core._prompts import (
     build_persona_section,
@@ -357,6 +357,12 @@ class Sessions:
                 {"from": TaskStatus.BACKLOG.value, "to": TaskStatus.IN_PROGRESS.value},
                 session_id=session_obj.id,
             )
+        else:
+            # No status change, but board still needs to know about the new
+            # active session so cards reflect the running state immediately.
+            self._events.publish_board(
+                BoardEvent(task_id=task_id, kind="session_started")
+            )
 
         return task, ws, session_obj
 
@@ -589,6 +595,11 @@ class Sessions:
                 {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                 session_id=active.id if active is not None else None,
             )
+        else:
+            # No status transition, but board cards need to clear active_session.
+            self._events.publish_board(
+                BoardEvent(task_id=task_id, kind="session_ended")
+            )
         logger.info("Cancelled session for task={}", task_id)
 
     def _update_session_pid(self, session_id: str, pid: int) -> None:
@@ -784,6 +795,10 @@ class Sessions:
                     {"error": str(exc), "error_class": _classify_agent_error(exc)},
                     session_id=session_id,
                 )
+                # No status transition — notify board so cards clear active_session.
+                self._events.publish_board(
+                    BoardEvent(task_id=task_id, kind="session_ended")
+                )
             else:
                 await asyncio.to_thread(self._complete_session, session_id)
                 db_task = await self._get_task(task_id)
@@ -810,6 +825,12 @@ class Sessions:
                     {},
                     session_id=session_id,
                 )
+                if not transitioned_to_review:
+                    # Board cards need to clear active_session even without
+                    # a status transition (e.g. agent completed with no commits).
+                    self._events.publish_board(
+                        BoardEvent(task_id=task_id, kind="session_ended")
+                    )
                 if transitioned_to_review:
                     await self._maybe_auto_review(task_id)
         except RuntimeError as exc:
@@ -935,6 +956,10 @@ class Sessions:
                     {},
                     session_id=session_id,
                 )
+                if not transitioned_to_review:
+                    self._events.publish_board(
+                        BoardEvent(task_id=task_id, kind="session_ended")
+                    )
                 if transitioned_to_review:
                     await self._maybe_auto_review(task_id)
                 logger.info("Detached agent exited, session={} task={}", session_id, task_id)

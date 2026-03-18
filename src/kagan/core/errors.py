@@ -44,6 +44,18 @@ class AgentError(KaganError):
     pass
 
 
+class AgentTimeoutError(AgentError):
+    pass
+
+
+class AgentRepetitionError(AgentError):
+    pass
+
+
+class AgentRateLimitError(AgentError):
+    pass
+
+
 class PreflightError(KaganError):
     pass
 

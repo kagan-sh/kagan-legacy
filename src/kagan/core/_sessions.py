@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+from acp.schema import ToolCallStart
 from loguru import logger
 from sqlalchemy import Engine
 from sqlmodel import desc, select
@@ -28,6 +29,7 @@ from kagan.core._prompts import (
     resolve_review_prompt,
     resolve_task_prompt,
 )
+from kagan.core._repetition_guard import RepetitionGuard
 from kagan.core.enums import (
     BranchRefStrategy,
     SessionEventType,
@@ -624,7 +626,28 @@ class Sessions:
     def _make_acp_callback(self, task_id: str, session_id: str):
         from kagan.core._acp import map_acp_update_to_event
 
+        guard = RepetitionGuard()
+
         async def on_update(_acp_session_id: str, update: Any) -> None:
+            # Check for repetitive tool calls before processing
+            if isinstance(update, ToolCallStart):
+                tool_name = getattr(update, "name", None) or getattr(update, "title", "unknown")
+                arguments = getattr(update, "input", {})
+                if guard.check(tool_name, arguments):
+                    logger.warning(
+                        "Repetitive tool calls detected for task={} session={}; cancelling",
+                        task_id,
+                        session_id,
+                    )
+                    await self.cancel(task_id)
+                    await self._events.emit(
+                        task_id,
+                        SessionEventType.AGENT_FAILED,
+                        {"error": "Agent detected in tool-call loop; session cancelled"},
+                        session_id=session_id,
+                    )
+                    return
+
             result = map_acp_update_to_event(update)
             if result is not None:
                 event_type, payload = result

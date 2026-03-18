@@ -27,7 +27,7 @@ export async function ensureBoardReady(
   expect(activated.ok()).toBeTruthy();
 
   await page.goto('/board');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('load');
   const tutorial = page.getByRole('dialog', { name: /Guided Tutorial/i });
   if (await tutorial.isVisible().catch(() => false)) {
     await page.keyboard.press('Escape');

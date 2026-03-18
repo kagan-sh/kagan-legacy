@@ -13,7 +13,7 @@ Press `?` any time to open context-aware help for the current screen.
 | Key                   | Action                   |
 | --------------------- | ------------------------ |
 | ++question++ / ++f1++ | Open help                |
-| 16:PS                 | ++ctrl+i++               |
+| ++ctrl+i++            | Toggle AI Panel          |
 | ++ctrl+o++            | Open project selector    |
 | ++ctrl+r++            | Open repository selector |
 | ++ctrl+comma++        | Open settings            |
@@ -37,12 +37,12 @@ Press `?` any time to open context-aware help for the current screen.
 | ++slash++                        | Search               |
 | ++f++                            | Expand description   |
 | ++ctrl+f++                       | Fullscreen AI chat   |
-| 40:PQ                            | ++ctrl+i++           |
+| ++ctrl+i++                       | Toggle AI Panel      |
 | ++ctrl+k++                       | Session Switcher     |
 | ++esc++                          | Close AI Panel       |
 | ++b++                            | Set branch           |
 
-45:VN|Press `Ctrl+I` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
+Press `Ctrl+I` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
 
 Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
 
@@ -60,7 +60,7 @@ Rare actions like GitHub import, repo sync, and AI review are available via Quic
 | ++b++         | Rebase             |
 | ++space++     | Cycle AI split     |
 | ++ctrl+f++    | Fullscreen AI chat |
-| 63:PQ         | ++ctrl+i++         |
+| ++ctrl+i++    | Toggle AI Panel    |
 | ++ctrl+k++    | Session Switcher   |
 | ++esc++       | Back               |
 
@@ -74,7 +74,7 @@ AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 | ++s++            | Start agent        |
 | ++x++            | Stop agent         |
 | ++r++            | Restart agent      |
-| 77:PQ            | ++ctrl+i++         |
+| ++ctrl+i++       | Toggle AI Panel    |
 | ++ctrl+shift+t++ | Fullscreen AI chat |
 | ++ctrl+k++       | Session Switcher   |
 | ++esc++          | Back               |

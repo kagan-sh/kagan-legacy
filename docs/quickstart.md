@@ -54,13 +54,13 @@ kagan import github --repo owner/repo
 
 ## Shortcuts
 
-57:MW|`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split
+`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split
 
 Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in Quick Actions.
 
 ## AI Panel
 
-63:JV|`Ctrl+I` toggles the AI Panel. `Space` cycles split layout while open. Press `Esc` to close and `Ctrl+F` to fullscreen it. Or use the standalone REPL:
+`Ctrl+I` toggles the AI Panel. `Space` cycles split layout while open. Press `Esc` to close and `Ctrl+F` to fullscreen it. Or use the standalone REPL:
 
 ```bash
 kagan chat

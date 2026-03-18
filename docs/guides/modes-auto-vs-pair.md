@@ -93,7 +93,7 @@ ______________________________________________________________________
 
 During AUTO runs, agents can append structured reasoning notes mid-task via `task_add_note`:
 
-```
+```text
 task_add_note(task_id="abc123", note="Chose approach B over A — A required a schema migration.")
 ```
 

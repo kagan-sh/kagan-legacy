@@ -45,7 +45,9 @@ class _SPAStaticFiles:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
-            await self._static(scope, receive, send)
+            # WebSocket or other non-HTTP scopes — reject cleanly.
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 4004})
             return
 
         path: str = scope.get("path", "/")

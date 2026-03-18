@@ -5,7 +5,7 @@ User-facing docs live in `docs/` and are published via mkdocs.
 
 ## Structure
 
-```
+```text
 docs/internal/
   architecture/     # How things work (implementation guidance)
     core.md         # KaganCore SDK
@@ -23,7 +23,7 @@ docs/internal/
     web.md          # Web client behaviors
     cli.md          # CLI behaviors
     mcp.md          # MCP tool behaviors
-server.md       # Server features (REST, SSE)
+    server.md       # Server features (REST, SSE)
     plugins.md      # Plugin behaviors
     github_import_user_experience.md # Layman-first GitHub import rollout plan
   testing.md        # Acceptance test commandments

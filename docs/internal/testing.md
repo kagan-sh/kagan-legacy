@@ -21,7 +21,7 @@ ______________________________________________________________________
 All tests flow through `KaganDriver`. Test files never import from `kagan.core` internals,
 repositories, or adapters. They import from `tests.helpers` and `kagan.core` (public API).
 
-```
+```text
 Test Cases  →  KaganDriver (DSL)  →  CoreDriver / TuiDriver  →  Real system
 ```
 
@@ -76,7 +76,7 @@ ______________________________________________________________________
 
 Test files mirror sections in `docs/internal/features/*.md` (one file per feature section):
 
-````
+````text
 tests/
 ├── core/                                # kagan.core (behavioral)
 │   ├── test_cli_surface.py              # CLI help text, exit codes (snapshot carve-out)
@@ -132,7 +132,7 @@ ______________________________________________________________________
 
 ## Markers
 
-```python
+```
 @pytest.mark.unit           # Implementation details (tests/unit/ only)
 @pytest.mark.smoke          # Fast, core behaviors
 @pytest.mark.slow           # Workspace provisioning, merges
@@ -144,7 +144,7 @@ ______________________________________________________________________
 
 Configure `FakeAgent` per-test:
 
-```python
+```text
 board.configure_agent(responses=["<complete/>"])
 board.configure_agent(responses=["<blocked reason='needs API key'/>"])
 board.configure_review_agent(verdict="approve", summary="LGTM")
@@ -156,7 +156,7 @@ ______________________________________________________________________
 
 Test tools through the router driver, not by calling tool functions directly:
 
-```python
+```text
 async def test_task_create_via_mcp(board):
     result = await board.mcp_call("task_create", {"title": "New feature"})
     assert result["status"] == "BACKLOG"
@@ -164,7 +164,7 @@ async def test_task_create_via_mcp(board):
 
 Access tier enforcement:
 
-```python
+```text
 @pytest.mark.parametrize(
     "tier,tool,allowed",
     [
@@ -206,7 +206,7 @@ Vitest conventions:
 - Mock API singletons (`apiClient`) with `vi.mock()`
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 
-```bash
+```text
 cd packages/web
 npx vitest run
 ```
@@ -218,7 +218,7 @@ Playwright conventions:
 - Focus on high-value flows (board visibility, route transitions, creation actions)
 - Keep E2E suites small and resilient; avoid brittle selectors tied to styling
 
-```bash
+```text
 cd packages/web
 npx playwright test
 ```

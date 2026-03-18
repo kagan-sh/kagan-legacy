@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, MessageSquareText } from 'lucide-react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
@@ -44,6 +44,37 @@ export function Component() {
   const [label, setLabel] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Poll for turn completion after reconnect (e.g. page reload)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
+  const pollForTurnCompletion = useCallback(
+    (sid: string) => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient.getTurnStatus(sid);
+          if (!status.active) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            const session = await apiClient.getChatSession(sid);
+            setMessages(session.messages);
+            resetStream();
+          }
+        } catch {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setIsStreaming(false);
+        }
+      }, 2000);
+    },
+    [setMessages, resetStream, setIsStreaming],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
   // ── Load session ───────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -53,6 +84,14 @@ export function Component() {
         const session = await apiClient.getChatSession(id);
         setMessages(session.messages);
         setLabel(session.label || 'Chat');
+
+        // Check if a turn is still running (e.g. after page reload)
+        const turnStatus = await apiClient.getTurnStatus(id);
+        if (turnStatus.active) {
+          setIsStreaming(true);
+          addNote({ message: 'Agent is working\u2026 (reconnected)' });
+          pollForTurnCompletion(id);
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Session not found');
       } finally {
@@ -63,7 +102,7 @@ export function Component() {
       setMessages([]);
       resetStream();
     };
-  }, [id, setMessages, resetStream]);
+  }, [id, setMessages, resetStream, setIsStreaming, addNote, pollForTurnCompletion]);
 
   // ── SSE chat stream abort ref ──────────────────────────────────────────────
   const chatAbortRef = useRef<AbortController | null>(null);

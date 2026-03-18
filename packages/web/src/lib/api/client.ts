@@ -450,8 +450,9 @@ export class KaganApiClient {
   // -- Chat Sessions -------------------------------------------------------
 
   /** GET /api/chat/sessions */
-  async getChatSessions(): Promise<WireChatSessionSummary[]> {
-    return this.request<WireChatSessionSummary[]>('/api/chat/sessions');
+  async getChatSessions(projectId?: string): Promise<WireChatSessionSummary[]> {
+    const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return this.request<WireChatSessionSummary[]>(`/api/chat/sessions${query}`);
   }
 
   /** POST /api/chat/sessions */
@@ -473,6 +474,11 @@ export class KaganApiClient {
       `/api/chat/sessions/${sessionId}`,
       { method: 'DELETE' },
     );
+  }
+
+  /** GET /api/chat/:sessionId/turn-status — check if a turn is still running */
+  async getTurnStatus(sessionId: string): Promise<{ active: boolean }> {
+    return this.request<{ active: boolean }>(`/api/chat/${sessionId}/turn-status`);
   }
 
   /** GET /api/chat/agents */

@@ -51,6 +51,7 @@ def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:
         label=session.get("label", ""),
         source=session.get("source", "repl"),
         agent_backend=session.get("agent_backend"),
+        project_id=session.get("project_id"),
         updated_at=session.get("updated_at", ""),
         message_count=len(messages),
         messages=messages,
@@ -66,6 +67,7 @@ def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
         label=session.get("label", ""),
         source=session.get("source", "repl"),
         agent_backend=session.get("agent_backend"),
+        project_id=session.get("project_id"),
         updated_at=session.get("updated_at", ""),
         message_count=msg_count,
     ).model_dump(mode="json")
@@ -128,7 +130,12 @@ async def _run_chat_stream(
     backend: str,
     attachments: list[dict[str, str]] | None,
 ) -> AsyncIterator[str]:
-    """Core SSE generator for a single chat turn."""
+    """Core SSE generator for a single chat turn.
+
+    The turn task runs independently of the SSE delivery — if the client
+    disconnects mid-stream the agent keeps working, persists its response,
+    and the frontend can poll ``/turn-status`` to reconnect.
+    """
     from kagan.chat.acp import run_orchestrator_turn
     from kagan.chat.prompt import build_orchestrator_prompt
 
@@ -152,7 +159,13 @@ async def _run_chat_stream(
 
         chunk_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
-        async def _run_turn() -> str:
+        async def _run_turn_and_persist() -> str:
+            """Execute the orchestrator turn and persist the result.
+
+            Persistence happens here (not in the SSE generator) so that the
+            assistant response is saved even when the client disconnects.
+            """
+            full_response = ""
             try:
                 result = await run_orchestrator_turn(
                     ctx.client,
@@ -162,11 +175,30 @@ async def _run_chat_stream(
                     attachments=attachments,
                     cwd=project_cwd,
                 )
-                return result or ""
+                full_response = result or ""
+            except asyncio.CancelledError:
+                # Interrupted by user — don't persist partial response
+                raise
+            except Exception:
+                logger.exception("Chat turn failed for session {}", session_id)
+                raise
             finally:
-                await chunk_queue.put(None)
+                await chunk_queue.put(None)  # Signal stream end
+                _chat_turn_tasks.pop(session_id, None)
 
-        turn_task = asyncio.create_task(_run_turn())
+            # Persist assistant response regardless of client state
+            if full_response:
+                history.append(["assistant", full_response])
+                session["orchestrator_history"] = history
+                await save_chat_session(ctx.client, session)
+
+            # Generate title if first message
+            if is_first_message and full_response:
+                await _maybe_generate_title(ctx, session, session_id, text, full_response, backend)
+
+            return full_response
+
+        turn_task = asyncio.create_task(_run_turn_and_persist())
         _chat_turn_tasks[session_id] = turn_task
 
         try:
@@ -175,44 +207,45 @@ async def _run_chat_stream(
                 if item is None:
                     break
                 yield f"data: {json.dumps(item)}\n\n"
-        finally:
-            _chat_turn_tasks.pop(session_id, None)
-            if not turn_task.done():
-                turn_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await turn_task
 
-        full_response = await turn_task
+            # Stream completed normally — await result for CHAT_DONE
+            full_response = await turn_task
+            yield f"data: {json.dumps({'t': 'CHAT_DONE', 'full_response': full_response})}\n\n"
 
-        if full_response:
-            history.append(["assistant", full_response])
-            session["orchestrator_history"] = history
-            await save_chat_session(ctx.client, session)
-
-        yield f"data: {json.dumps({'t': 'CHAT_DONE', 'full_response': full_response})}\n\n"
-
-        if is_first_message and full_response:
-            from kagan.chat._title import ensure_session_title
-
-            try:
-                title = await ensure_session_title(
-                    ctx.client,
-                    session,
-                    user_message=text,
-                    assistant_reply=full_response,
-                    agent_backend=backend,
-                )
-                if title:
-                    evt = {"t": "CHAT_SESSION_UPDATED", "session_id": session_id, "label": title}
-                    yield f"data: {json.dumps(evt)}\n\n"
-            except Exception:
-                logger.debug("Chat title generation failed", exc_info=True)
+        except (asyncio.CancelledError, GeneratorExit, ConnectionError):
+            # Client disconnected — let the turn task keep running.
+            # It will persist its own result via _run_turn_and_persist.
+            logger.debug("Client disconnected during chat stream for session {}", session_id)
+            return
 
     except asyncio.CancelledError:
         return
     except Exception as exc:
         logger.exception("Chat stream failed for session {}", session_id)
         yield f"data: {json.dumps({'t': 'CHAT_ERROR', 'error': str(exc)})}\n\n"
+
+
+async def _maybe_generate_title(
+    ctx: Any,
+    session: dict[str, Any],
+    session_id: str,
+    text: str,
+    full_response: str,
+    backend: str,
+) -> None:
+    """Best-effort title generation for first-message sessions."""
+    from kagan.chat._title import ensure_session_title
+
+    try:
+        await ensure_session_title(
+            ctx.client,
+            session,
+            user_message=text,
+            assistant_reply=full_response,
+            agent_backend=backend,
+        )
+    except Exception:
+        logger.debug("Chat title generation failed for session {}", session_id)
 
 
 def _register_crud_routes(mcp: FastMCP) -> None:
@@ -223,7 +256,8 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def list_sessions(_request: Request, *, ctx: Any) -> JSONResponse:
         source = _request.query_params.get("source")
-        sessions = await list_chat_sessions(ctx.client, source=source)
+        project_id = _request.query_params.get("project_id")
+        sessions = await list_chat_sessions(ctx.client, source=source, project_id=project_id)
         return _ok([_session_summary(s) for s in sessions])
 
     @mcp.custom_route("/api/chat/sessions", methods=["POST"])
@@ -240,11 +274,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             body = {}
         agent_backend = cast("str | None", body.get("agent_backend"))
         label = cast("str | None", body.get("label"))
+        project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
         session = await create_chat_session(
             ctx.client,
             source="web",
             label=label,
             agent_backend=agent_backend,
+            project_id=project_id,
         )
         return _ok(_session_to_wire(session))
 
@@ -325,6 +361,15 @@ def _register_stream_routes(mcp: FastMCP) -> None:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @mcp.custom_route("/api/chat/{session_id}/turn-status", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def turn_status(request: Request, *, ctx: Any) -> JSONResponse:
+        """Check whether a chat turn is still running for the given session."""
+        session_id = cast("str", request.path_params["session_id"])
+        task = _chat_turn_tasks.get(session_id)
+        return _ok({"active": task is not None and not task.done()})
 
     @mcp.custom_route("/api/chat/{session_id}/interrupt", methods=["POST"])
     @require_context(mcp)

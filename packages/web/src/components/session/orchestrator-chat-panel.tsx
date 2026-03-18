@@ -66,6 +66,38 @@ export function OrchestratorChatPanel({
     const scrollRef = useRef<HTMLDivElement>(null);
     const [projectContext, setProjectContext] = useState<string | null>(null);
 
+    // Poll for turn completion after reconnect (e.g. page reload)
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollForTurnCompletion = useCallback(
+        (sid: string) => {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = setInterval(async () => {
+                try {
+                    const status = await apiClient.getTurnStatus(sid);
+                    if (!status.active) {
+                        if (pollRef.current) clearInterval(pollRef.current);
+                        pollRef.current = null;
+                        const session = await apiClient.getChatSession(sid);
+                        setMessages(session.messages);
+                        setStreamEntries([]);
+                        setIsStreaming(false);
+                    }
+                } catch {
+                    if (pollRef.current) clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    setIsStreaming(false);
+                }
+            }, 2000);
+        },
+        [],
+    );
+
+    useEffect(() => {
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
@@ -75,10 +107,24 @@ export function OrchestratorChatPanel({
 
         apiClient
             .getChatSession(sessionId)
-            .then((session) => {
+            .then(async (session) => {
                 if (cancelled) return;
                 setMessages(session.messages);
                 setLabel(session.label || "Orchestrator Chat");
+
+                // Check if a turn is still running (e.g. after page reload)
+                const turnStatus = await apiClient.getTurnStatus(sessionId);
+                if (!cancelled && turnStatus.active) {
+                    setIsStreaming(true);
+                    setStreamEntries([
+                        {
+                            kind: "note",
+                            message:
+                                "Agent is working\u2026 (reconnected)",
+                        },
+                    ]);
+                    pollForTurnCompletion(sessionId);
+                }
             })
             .catch((error) => {
                 if (!cancelled) {
@@ -98,7 +144,7 @@ export function OrchestratorChatPanel({
         return () => {
             cancelled = true;
         };
-    }, [sessionId]);
+    }, [sessionId, pollForTurnCompletion]);
 
     // Fetch active project/repo for context indicator
     useEffect(() => {

@@ -77,6 +77,15 @@ function AppLayout() {
     const MAX_RAIL_W = 800;
     const MAX_RAIL_H = 600;
 
+    // Reset project check when project switches (e.g. from welcome page)
+    const prevProjectVersionRef2 = useRef(projectVersion);
+    useEffect(() => {
+        if (projectVersion !== prevProjectVersionRef2.current) {
+            prevProjectVersionRef2.current = projectVersion;
+            setProjectChecked(false);
+        }
+    }, [projectVersion]);
+
     // Verify active project before rendering the board.  Eagerly fetch tasks
     // so data is ready when the board mounts — avoids a blank-screen flash.
     // navigate is accessed via ref to avoid effect re-runs from unstable

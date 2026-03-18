@@ -38,12 +38,12 @@ orchestrator prompt, plus structured task-preview rendering across all clients.
 After every `task_batch_create` call, the orchestrator MUST:
 
 1. **Present a structured overview** of all created tasks as a markdown table:
-   ```
+```text
    | # | Title | Mode | Priority | AC | Status |
    |---|-------|------|----------|----|--------|
    | 1 | Fix login bug | AUTO | HIGH | 3 | BACKLOG |
    | 2 | Add dark mode | PAIR | MEDIUM | 4 | BACKLOG |
-   ```
+```
 1. **Explicitly invite edits** with a prompt like:
    > "Here are the tasks I created. Would you like to edit any titles,
    > priorities, acceptance criteria, or execution modes before I start
@@ -124,13 +124,13 @@ Each client renders the task overview in its native idiom:
 
 The orchestrator prompt `<workflow>` section step 4 changes from:
 
-```
+```text
 4. On approval: call task_batch_create with all tasks.
 ```
 
 To:
 
-```
+```text
 4. On approval: call task_batch_create with all tasks.
 5. IMMEDIATELY after creation: present a review table showing every created task
    with its id, title, execution_mode, priority, and acceptance_criteria count.
@@ -142,14 +142,14 @@ To:
 
 The `<tool-discipline>` section adds:
 
-```
+```text
 - After task_batch_create: ALWAYS present a review table and ask for edits before
   starting execution. Never skip this step. Never auto-start without user confirmation.
 ```
 
 The `<constraints>` ALWAYS section adds:
 
-```
+```text
 - After creating tasks, present a structured review table and wait for user
   confirmation before starting any execution. This gives users a chance to
   edit titles, priorities, acceptance criteria, or execution modes.

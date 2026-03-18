@@ -46,7 +46,7 @@ ______________________________________________________________________
 ## 5. AI Panel
 
 - Two modes: orchestrator and task session
-  47:ZS|- `Ctrl+I` toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
+  - `Ctrl+I` toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
 - `Enter` send, `Shift+Enter` newline, `Tab` accept completion
 - `Ctrl+C` clears input text; `Esc` stops the active agent
 

@@ -134,7 +134,9 @@ ______________________________________________________________________
 
 ### `/session` — Show current session details
 
-## **Given** the user types `/session` **When** the command executes **Then** it prints the current session’s ID, title, agent backend, message count, and creation time.
+**Given** the user types `/session`
+**When** the command executes
+**Then** it prints the current session's ID, title, agent backend, message count, and creation time.
 
 ### `/exit` — Exit REPL
 

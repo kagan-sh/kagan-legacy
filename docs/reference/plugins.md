@@ -9,12 +9,10 @@ icon: material/puzzle
 !!! warning "Early stage"
 The plugin system exists but is not fully fleshed out yet. GitHub import is the only shipping integration — it works as a native feature, not something you configure as a plugin.
 
-```
 If you have ideas for plugins you'd like to see (Jira import, Linear sync, Slack notifications, custom CI hooks, etc.), tell us:
 
 - **[GitHub Discussions](https://github.com/kagan-sh/kagan/discussions)** — shape the roadmap
 - **[Feature requests](https://github.com/kagan-sh/kagan/issues/new?template=feature_request.md)** — propose a specific plugin
-```
 
 ## GitHub import
 

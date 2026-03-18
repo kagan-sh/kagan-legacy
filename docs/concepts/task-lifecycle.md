@@ -37,7 +37,7 @@ Moving between columns is constrained. You can drag tasks left or right within t
 
 When a task starts, Kagan creates a **git worktree** — an isolated branch copy of your repo. The agent works there. Your main branch stays untouched.
 
-```
+```text
 your-repo/
   .git/
   src/                     ← your working copy (unchanged)
@@ -67,13 +67,13 @@ Each task runs as **AUTO** or **PAIR**. Set the mode when creating or editing a 
 
 When work finishes — agent completes (AUTO) or you move the task (PAIR) — it enters REVIEW.
 
-**What you see:**
+### What you see
 
 - Diff summary (files changed, lines added/removed)
 - Acceptance criteria checklist (if defined)
 - Agent reasoning notes (from `task_add_note` scratchpad entries during the run)
 
-**What you can do:**
+### What you can do
 
 | Action  | Effect                                         |
 | ------- | ---------------------------------------------- |

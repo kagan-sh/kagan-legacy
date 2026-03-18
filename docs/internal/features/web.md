@@ -55,7 +55,7 @@ ______________________________________________________________________
 - the overlay filters events by the active session ID
 - `/session/:taskId` redirects to `/task/:taskId?lane=worker` which auto-opens the overlay
 - session picker navigates to `/task/:id?lane=...` instead of the old `/session/:taskId` route
-- live task event updates over WebSocket
+- live task event updates over SSE
 - AGENT_STATUS events with usage data render an inline metrics row: context window fill bar, percentage, and cost
 
 ______________________________________________________________________
@@ -66,7 +66,7 @@ ______________________________________________________________________
 - `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata
 - task-specific quick-jump entry points link the ChatSidePanel overlay and chat surfaces together
 - during streaming, a wave animation and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift
-- session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` WebSocket event
+- session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` SSE event
 
 ______________________________________________________________________
 
@@ -82,7 +82,7 @@ ______________________________________________________________________
 
 ## 8. Realtime & Accessibility
 
-- board, task (including ChatSidePanel overlay), and chat views react to WebSocket updates
+- board, task (including ChatSidePanel overlay), and chat views react to SSE updates
 - visible keyboard focus, strong border contrast, skip link support, and reduced-motion respect
 - typography is split between UI and code surfaces for readability in long work sessions
 

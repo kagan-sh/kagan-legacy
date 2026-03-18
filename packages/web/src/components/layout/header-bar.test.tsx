@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'jotai';
 import { screen } from '@testing-library/react';
 import { HeaderBar } from '@/components/layout/header-bar';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { renderWithProviders } from '@/test/render';
 
 vi.mock('@/lib/api/client', () => ({
@@ -13,9 +13,9 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('HeaderBar', () => {
-  it('shows disconnected status when websocket is offline', () => {
+  it('shows disconnected status when SSE is offline', () => {
     const store = createStore();
-    store.set(wsConnectedAtom, false);
+    store.set(sseConnectedAtom, false);
 
     renderWithProviders(<HeaderBar />, { store });
 

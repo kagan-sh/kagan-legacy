@@ -35,10 +35,9 @@ import { BoardTaskInspector } from '@/components/board/board-task-inspector';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { FirstBootTutorialDialog } from '@/components/board/first-boot-tutorial-dialog';
 import { apiClient } from '@/lib/api/client';
-import { kaganWs } from '@/lib/api/websocket';
 import type { TaskStatus, WorkMode, WireTask } from '@/lib/api/types';
 import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
@@ -69,7 +68,7 @@ export function KanbanBoard() {
   const fetchTasks = useSetAtom(fetchTasksAtom);
   const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
-  const wsConnected = useAtomValue(wsConnectedAtom);
+  const sseConnected = useAtomValue(sseConnectedAtom);
   const [query, setQuery] = useAtom(searchQueryAtom);
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
   const [modeFilter, setModeFilter] = useAtom(boardModeFilterAtom);
@@ -171,27 +170,31 @@ export function KanbanBoard() {
 
   const startSelectedTask = useCallback(() => {
     if (!selectedTask) return;
-    if (!wsConnected) {
-      toast.error('WebSocket is disconnected');
+    if (!sseConnected) {
+      toast.error('Not connected to server');
       return;
     }
     if (selectedTask.status === 'DONE') {
       toast.error('Done tasks cannot be started again');
       return;
     }
-    kaganWs.startRun(selectedTask.id, selectedTask.execution_mode);
+    apiClient.runTask(selectedTask.id).catch((err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to start task'),
+    );
     toast.success(`Starting ${selectedTask.title}`);
-  }, [selectedTask, wsConnected]);
+  }, [selectedTask, sseConnected]);
 
   const stopSelectedTask = useCallback(() => {
     if (!selectedTask) return;
-    if (!wsConnected) {
-      toast.error('WebSocket is disconnected');
+    if (!sseConnected) {
+      toast.error('Not connected to server');
       return;
     }
-    kaganWs.cancelRun(selectedTask.id);
+    apiClient.cancelTask(selectedTask.id).catch((err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to stop task'),
+    );
     toast.success(`Stopping ${selectedTask.title}`);
-  }, [selectedTask, wsConnected]);
+  }, [selectedTask, sseConnected]);
 
   const openCreateDialog = useCallback((mode: WorkMode = 'AUTO') => {
     setCreateExecutionMode(mode);

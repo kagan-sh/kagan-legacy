@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import {
     Maximize2,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import { kaganWs, type WsInboundMessage } from "@/lib/api/websocket";
+import { streamSSE } from "@/lib/api/sse";
 import type { WireChatMessage } from "@/lib/api/types";
 import {
     ChatInputBar,
@@ -123,57 +123,14 @@ export function OrchestratorChatPanel({
         };
     }, [sessionId]); // Re-fetch when session changes
 
-    useEffect(() => {
-        kaganWs.subscribeToChatSession(sessionId);
+    // Abort controller ref for SSE chat stream
+    const chatAbortRef = useRef<AbortController | null>(null);
 
-        const cleanups = [
-            kaganWs.on("connected", () => {
-                kaganWs.subscribeToChatSession(sessionId);
-                // Recover messages from REST after reconnect — stream entries survive in local state
-                apiClient
-                    .getChatSession(sessionId)
-                    .then((session) => {
-                        setMessages((prev) =>
-                            session.messages.length >= prev.length
-                                ? session.messages
-                                : prev,
-                        );
-                    })
-                    .catch(() => {});
-            }),
-            kaganWs.on("CHAT_SUBSCRIBED", (data: WsInboundMessage) => {
-                if (
-                    data.session_id === sessionId &&
-                    Array.isArray(data.messages)
-                ) {
-                    const incoming = data.messages as WireChatMessage[];
-                    // Accept WS history only if it has content REST didn't provide.
-                    // Compare both length and last-message content to avoid stale overwrites.
-                    setMessages((prev) => {
-                        if (incoming.length > prev.length) return incoming;
-                        if (
-                            incoming.length === prev.length &&
-                            incoming.length > 0
-                        ) {
-                            const lastIncoming = incoming[incoming.length - 1];
-                            const lastPrev = prev[prev.length - 1];
-                            if (
-                                lastIncoming &&
-                                lastPrev &&
-                                lastIncoming.content !== lastPrev.content
-                            )
-                                return incoming;
-                        }
-                        return prev;
-                    });
-                }
-                // Restore streaming state if a turn is still running on the server.
-                if (data.session_id === sessionId && Boolean(data.busy)) {
-                    setIsStreaming(true);
-                }
-            }),
-            kaganWs.on("CHAT_CHUNK", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
+    // Helper: process a single SSE chunk from the chat stream
+    const handleChatSSEMessage = useCallback(
+        (data: Record<string, unknown>) => {
+            const t = data.t as string;
+            if (t === "CHAT_CHUNK") {
                 setIsStreaming(true);
                 const content = (data.content as string) ?? "";
                 const thought = Boolean(data.thought);
@@ -191,9 +148,7 @@ export function OrchestratorChatPanel({
                     }
                     return [...prev, { kind, content }];
                 });
-            }),
-            kaganWs.on("CHAT_TOOL_START", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
+            } else if (t === "CHAT_TOOL_START") {
                 setIsStreaming(true);
                 const tool = (data.tool as string) ?? "tool";
                 setStreamEntries((prev) => [
@@ -205,9 +160,7 @@ export function OrchestratorChatPanel({
                         status: "running",
                     },
                 ]);
-            }),
-            kaganWs.on("CHAT_TOOL_PROGRESS", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
+            } else if (t === "CHAT_TOOL_PROGRESS") {
                 const tool = (data.tool as string) ?? "tool";
                 const status = (data.status as string) ?? undefined;
                 setStreamEntries((prev) => {
@@ -226,62 +179,31 @@ export function OrchestratorChatPanel({
                     }
                     return next;
                 });
-            }),
-            kaganWs.on("CHAT_ERROR", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
-                setStreamEntries((prev) => [
-                    ...prev,
-                    {
-                        kind: "error",
-                        message: (data.error as string) ?? "An error occurred",
-                    },
-                ]);
-                setIsStreaming(false);
-            }),
-            kaganWs.on("CHAT_BUSY", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
+            } else if (t === "CHAT_ERROR") {
                 setStreamEntries((prev) => [
                     ...prev,
                     {
                         kind: "error",
                         message:
-                            (data.error as string) ??
-                            "Chat turn already running",
+                            (data.error as string) ?? "An error occurred",
                     },
                 ]);
                 setIsStreaming(false);
-            }),
-            kaganWs.on("CHAT_INTERRUPTED", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
-                if (Boolean(data.interrupted)) {
-                    setStreamEntries((prev) => [
-                        ...prev,
-                        { kind: "note", message: "Interrupted by user." },
-                    ]);
-                }
-                setIsStreaming(false);
-            }),
-            kaganWs.on("CHAT_DONE", (data: WsInboundMessage) => {
-                if (data.session_id !== sessionId) return;
+            } else if (t === "CHAT_DONE") {
                 setStreamEntries([]);
                 setIsStreaming(false);
                 apiClient
                     .getChatSession(sessionId)
                     .then((session) => setMessages(session.messages))
                     .catch(() => {});
-            }),
-            kaganWs.on("CHAT_SESSION_UPDATED", (data: WsInboundMessage) => {
-                if (
-                    data.session_id === sessionId &&
-                    typeof data.label === "string"
-                ) {
+            } else if (t === "CHAT_SESSION_UPDATED") {
+                if (typeof data.label === "string") {
                     setLabel(data.label);
                 }
-            }),
-        ];
-
-        return () => cleanups.forEach((fn) => fn());
-    }, [sessionId]);
+            }
+        },
+        [sessionId],
+    );
 
     useEffect(() => {
         scrollRef.current?.scrollTo({
@@ -315,19 +237,62 @@ export function OrchestratorChatPanel({
                     data: attachment.content!,
                 }));
 
-            kaganWs.sendChatMessage(
-                sessionId,
-                text,
-                undefined,
-                wireAttachments,
-            );
+            // Stream the chat turn via SSE POST
+            chatAbortRef.current?.abort();
+            const controller = new AbortController();
+            chatAbortRef.current = controller;
+
+            (async () => {
+                try {
+                    for await (const chunk of streamSSE<Record<string, unknown>>(
+                        `/api/chat/${sessionId}/stream`,
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                text,
+                                ...(wireAttachments?.length
+                                    ? { attachments: wireAttachments }
+                                    : {}),
+                            }),
+                            signal: controller.signal,
+                        },
+                    )) {
+                        handleChatSSEMessage(chunk);
+                    }
+                } catch (err) {
+                    if (controller.signal.aborted) return;
+                    setStreamEntries((prev) => [
+                        ...prev,
+                        {
+                            kind: "error",
+                            message:
+                                err instanceof Error
+                                    ? err.message
+                                    : "Stream failed",
+                        },
+                    ]);
+                    setIsStreaming(false);
+                }
+            })();
         },
-        [sessionId],
+        [sessionId, handleChatSSEMessage],
     );
 
     const handleInterrupt = useCallback(() => {
         if (!isStreaming) return;
-        kaganWs.interruptChatSession(sessionId);
+        // Abort the SSE stream locally
+        chatAbortRef.current?.abort();
+        // Tell the server to cancel the turn
+        fetch(
+            `${apiClient.getBaseUrl()}/api/chat/${sessionId}/interrupt`,
+            { method: "POST" },
+        ).catch(() => {});
+        setStreamEntries((prev) => [
+            ...prev,
+            { kind: "note", message: "Interrupted by user." },
+        ]);
+        setIsStreaming(false);
     }, [isStreaming, sessionId]);
 
     const handleSlashCommand = useCallback(
@@ -392,6 +357,15 @@ export function OrchestratorChatPanel({
         },
         [handleSend, setSessionPickerOpen],
     );
+
+    // Progressive rendering: show only the last 30 messages initially
+    const INITIAL_VISIBLE = 30;
+    const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+    const visibleMessages = useMemo(
+        () => messages.slice(Math.max(0, messages.length - visibleCount)),
+        [messages, visibleCount],
+    );
+    const hasEarlierMessages = messages.length > visibleCount;
 
     const hasContent =
         messages.length > 0 || streamEntries.length > 0 || isStreaming;
@@ -489,9 +463,18 @@ export function OrchestratorChatPanel({
                     <ChatOverlayEmptyState />
                 ) : (
                     <div className="divide-y divide-[color:var(--border-subtle)]">
-                        {messages.map((message, index) => (
+                        {hasEarlierMessages && (
+                            <button
+                                type="button"
+                                onClick={() => setVisibleCount((c) => c + 30)}
+                                className="mb-3 flex w-full items-center justify-center gap-2 border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-3 py-2 font-code text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)] hover:text-[var(--foreground)]"
+                            >
+                                Load earlier messages
+                            </button>
+                        )}
+                        {visibleMessages.map((message, index) => (
                             <ChatMessage
-                                key={`rail-${sessionId}-${index}-${message.role}-${message.content.slice(0, 24)}`}
+                                key={`rail-${sessionId}-${messages.length - visibleMessages.length + index}-${message.role}-${message.content.slice(0, 24)}`}
                                 message={message}
                             />
                         ))}

@@ -12,7 +12,7 @@ import { OrchestratorChatPanel } from "@/components/session/orchestrator-chat-pa
 import { SessionPicker } from "@/components/session/session-picker";
 import { PluginImportDialog } from "@/components/board/plugin-import-dialog";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
-import { useWebSocketSync } from "@/lib/hooks/use-websocket-sync";
+import { useEventStream } from "@/lib/hooks/use-event-stream";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { apiClient } from "@/lib/api/client";
 import {
@@ -41,7 +41,7 @@ function cycleDockMode(mode: DockedChatRailMode): DockedChatRailMode | "none" {
 }
 
 function AppLayout() {
-    useWebSocketSync();
+    useEventStream();
     const isMobile = useIsMobile();
     const location = useLocation();
     const navigate = useNavigate();

@@ -1,6 +1,6 @@
 # Server Features — `kagan.server`
 
-*The Kagan API server provides the bundled dashboard surface plus local REST and WebSockets access.*
+*The Kagan API server provides the bundled dashboard surface plus local REST and SSE access.*
 
 ______________________________________________________________________
 
@@ -72,9 +72,9 @@ curl -X POST -H "Content-Type: application/json" \
 
 ______________________________________________________________________
 
-## WebSocket Connection
+## Real-time Event Stream
 
-The WebSocket stream provides real-time updates for the board and agent executions.
+The SSE event stream provides real-time updates for the board and agent executions.
 
 ### Subscribing to Board Updates
 
@@ -96,7 +96,7 @@ ______________________________________________________________________
 
 ## Chat Streaming
 
-Chat sessions are managed via REST and streamed in real time over the WebSocket connection.
+Chat sessions are managed via REST and streamed in real time over SSE.
 
 ### Creating a session
 
@@ -118,9 +118,9 @@ curl -X POST -H "Content-Type: application/json" \
 curl -X POST http://localhost:8765/api/chat/sessions/<SESSION_ID>/interrupt
 ```
 
-### WebSocket events
+### SSE events
 
-Once a session is active, the server pushes streaming events over `/ws`:
+Once a session is active, the server pushes streaming events over SSE:
 
 | Event                     | Description                        |
 | ------------------------- | ---------------------------------- |

@@ -1,6 +1,5 @@
 import { atom } from 'jotai';
 import { apiClient } from '@/lib/api/client';
-import { kaganWs } from '@/lib/api/websocket';
 
 export const isAuthenticatedAtom = atom(false);
 export const isAuthLoadingAtom = atom(true);
@@ -11,9 +10,6 @@ export const hydrateAuthAtom = atom(null, async (_get, set) => {
   try {
     await apiClient.getHealth();
     apiClient.configureBundledWeb();
-    if (typeof window !== 'undefined') {
-      kaganWs.configure(window.location.origin);
-    }
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
     return;
@@ -28,9 +24,6 @@ export const retryHealthCheckAtom = atom(null, async (_get, set) => {
   try {
     await apiClient.getHealth();
     apiClient.configureBundledWeb();
-    if (typeof window !== 'undefined') {
-      kaganWs.configure(window.location.origin);
-    }
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
     return true;
@@ -42,7 +35,6 @@ export const retryHealthCheckAtom = atom(null, async (_get, set) => {
 });
 
 export const logoutAtom = atom(null, (_get, set) => {
-  kaganWs.disconnect();
   set(isAuthenticatedAtom, false);
   set(isAuthLoadingAtom, false);
 });

@@ -203,7 +203,7 @@ Vitest conventions:
 
 - Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.test.tsx`
 - Prefer `.test.tsx` for component suites that render React trees
-- Mock API singletons (`apiClient`, `kaganWs`) with `vi.mock()`
+- Mock API singletons (`apiClient`) with `vi.mock()`
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 
 ```bash
@@ -225,7 +225,7 @@ npx playwright test
 
 Relationship to Python tests:
 
-- Python behavioral suites (`tests/server/`) validate the REST/WS contract directly
+- Python behavioral suites (`tests/server/`) validate the REST/SSE contract directly
 - Web tests validate browser behavior and UI integration with that contract
 - Both layers are complementary; neither replaces the other
 

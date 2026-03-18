@@ -4,7 +4,7 @@ import { ArrowLeft, MessageSquareText } from 'lucide-react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import { kaganWs, type WsInboundMessage } from '@/lib/api/websocket';
+import { streamSSE } from '@/lib/api/sse';
 import {
   chatMessagesAtom,
   isStreamingAtom,
@@ -16,7 +16,6 @@ import {
   addStreamNoteAtom,
   resetStreamAtom,
 } from '@/lib/atoms/chat';
-import type { WireChatMessage } from '@/lib/api/types';
 import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
 import { ChatInputBar } from '@/components/chat/chat-input-bar';
@@ -66,86 +65,43 @@ export function Component() {
     };
   }, [id, setMessages, resetStream]);
 
-  // ── WebSocket subscriptions ────────────────────────────────────────────────
+  // ── SSE chat stream abort ref ──────────────────────────────────────────────
+  const chatAbortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    kaganWs.subscribeToChatSession(id);
-
-    const cleanups = [
-      kaganWs.on('connected', () => {
-        kaganWs.subscribeToChatSession(id);
-      }),
-      kaganWs.on('CHAT_SUBSCRIBED', (data: WsInboundMessage) => {
-        if (data.session_id === id && Array.isArray(data.messages)) {
-          const incoming = data.messages as WireChatMessage[];
-          // Only accept if WS history is at least as complete as what REST already loaded
-          setMessages((prev) => (incoming.length >= prev.length ? incoming : prev));
-        }
-      }),
-      kaganWs.on('CHAT_CHUNK', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          setIsStreaming(true);
-          const content = (data.content as string) ?? '';
-          const thought = Boolean(data.thought);
-          if (content) {
-            appendChunk({ content, thought });
-          }
-        }
-      }),
-      kaganWs.on('CHAT_TOOL_START', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          setIsStreaming(true);
-          addToolStart({ tool: (data.tool as string) ?? 'tool' });
-        }
-      }),
-      kaganWs.on('CHAT_TOOL_PROGRESS', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          updateToolProgress({
-            tool: (data.tool as string) ?? 'tool',
-            status: (data.status as string) ?? undefined,
-          });
-        }
-      }),
-      kaganWs.on('CHAT_ERROR', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          addError({ message: (data.error as string) ?? 'An error occurred' });
-          setIsStreaming(false);
-        }
-      }),
-      kaganWs.on('CHAT_BUSY', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          addError({ message: (data.error as string) ?? 'Chat turn already running' });
-          setIsStreaming(false);
-        }
-      }),
-      kaganWs.on('CHAT_INTERRUPTED', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          if (Boolean(data.interrupted)) {
-            addNote({ message: 'Interrupted by user.' });
-          }
-          setIsStreaming(false);
-        }
-      }),
-      kaganWs.on('CHAT_DONE', (data: WsInboundMessage) => {
-        if (data.session_id === id) {
-          // Clear stream state first, then refresh persisted messages
-          resetStream();
+  // Helper to process SSE messages from the chat stream
+  const handleSSEMsg = useCallback(
+    (data: Record<string, unknown>) => {
+      const t = data.t as string;
+      if (t === 'CHAT_CHUNK') {
+        setIsStreaming(true);
+        const content = (data.content as string) ?? '';
+        const thought = Boolean(data.thought);
+        if (content) appendChunk({ content, thought });
+      } else if (t === 'CHAT_TOOL_START') {
+        setIsStreaming(true);
+        addToolStart({ tool: (data.tool as string) ?? 'tool' });
+      } else if (t === 'CHAT_TOOL_PROGRESS') {
+        updateToolProgress({
+          tool: (data.tool as string) ?? 'tool',
+          status: (data.status as string) ?? undefined,
+        });
+      } else if (t === 'CHAT_ERROR') {
+        addError({ message: (data.error as string) ?? 'An error occurred' });
+        setIsStreaming(false);
+      } else if (t === 'CHAT_DONE') {
+        resetStream();
+        if (id) {
           apiClient
             .getChatSession(id)
             .then((session) => setMessages(session.messages))
             .catch(() => {});
         }
-      }),
-      kaganWs.on('CHAT_SESSION_UPDATED', (data: WsInboundMessage) => {
-        if (data.session_id === id && typeof data.label === 'string') {
-          setLabel(data.label as string);
-        }
-      }),
-    ];
-
-    return () => cleanups.forEach((fn) => fn());
-  }, [id, setMessages, setIsStreaming, appendChunk, addToolStart, updateToolProgress, addError, addNote, resetStream]);
+      } else if (t === 'CHAT_SESSION_UPDATED') {
+        if (typeof data.label === 'string') setLabel(data.label);
+      }
+    },
+    [id, setIsStreaming, appendChunk, addToolStart, updateToolProgress, addError, resetStream, setMessages],
+  );
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
 
@@ -175,15 +131,44 @@ export function Component() {
           data: a.content!,
         }));
 
-      kaganWs.sendChatMessage(id, text, undefined, wireAttachments);
+      // Stream via SSE
+      chatAbortRef.current?.abort();
+      const controller = new AbortController();
+      chatAbortRef.current = controller;
+
+      (async () => {
+        try {
+          for await (const chunk of streamSSE<Record<string, unknown>>(
+            `/api/chat/${id}/stream`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text,
+                ...(wireAttachments?.length ? { attachments: wireAttachments } : {}),
+              }),
+              signal: controller.signal,
+            },
+          )) {
+            handleSSEMsg(chunk);
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          addError({ message: err instanceof Error ? err.message : 'Stream failed' });
+          setIsStreaming(false);
+        }
+      })();
     },
-    [id, setIsStreaming, setMessages],
+    [id, setIsStreaming, setMessages, handleSSEMsg, addError],
   );
 
   const handleInterrupt = useCallback(() => {
     if (!id || !isStreaming) return;
-    kaganWs.interruptChatSession(id);
-  }, [id, isStreaming]);
+    chatAbortRef.current?.abort();
+    fetch(`${apiClient.getBaseUrl()}/api/chat/${id}/interrupt`, { method: 'POST' }).catch(() => {});
+    addNote({ message: 'Interrupted by user.' });
+    setIsStreaming(false);
+  }, [id, isStreaming, addNote, setIsStreaming]);
 
   const handleSlashCommand = useCallback(
     (command: string) => {

@@ -16,13 +16,6 @@ vi.mock('@/lib/api/client', () => ({
   },
 }));
 
-vi.mock('@/lib/api/websocket', () => ({
-  kaganWs: {
-    configure: vi.fn(),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  },
-}));
 
 describe('auth atoms', () => {
   let store: ReturnType<typeof createStore>;

@@ -14,7 +14,7 @@ docs/internal/
     web.md          # React web client
     cli.md          # Click CLI
     mcp.md          # MCP server
-    server.md       # HTTP API server (REST + WebSocket)
+    server.md       # HTTP API server (REST + SSE)
     plugins.md      # Plugin system
   features/         # What the system does (behavioral catalogs)
     core.md         # Core domain behaviors
@@ -23,7 +23,7 @@ docs/internal/
     web.md          # Web client behaviors
     cli.md          # CLI behaviors
     mcp.md          # MCP tool behaviors
-server.md       # Server features (REST, WebSocket)
+server.md       # Server features (REST, SSE)
     plugins.md      # Plugin behaviors
     github_import_user_experience.md # Layman-first GitHub import rollout plan
   testing.md        # Acceptance test commandments

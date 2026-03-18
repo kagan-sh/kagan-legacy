@@ -70,6 +70,8 @@ class Task(SQLModel, table=True):
     acceptance_criteria: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     review_approved: bool = Field(default=False)
     review_verdicts: list[ReviewVerdict] = Field(default_factory=list, sa_column=Column(JSON))
+    max_retries: int = Field(default=0)
+    success_command: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 
@@ -99,6 +101,7 @@ class Session(SQLModel, table=True):
     started_at: datetime = Field(default_factory=_utc_now)
     ended_at: datetime | None = Field(default=None)
     persona: str | None = Field(default=None)
+    attempt: int = Field(default=1)
     input_tokens: int | None = Field(default=None)
     output_tokens: int | None = Field(default=None)
     context_window_used: int | None = Field(default=None)

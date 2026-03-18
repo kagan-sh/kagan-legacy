@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { ChatInputBar } from '@/components/chat/chat-input-bar';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { isStreamingAtom } from '@/lib/atoms/chat';
 
 function connectedStore(streaming: boolean = false) {
   const store = createStore();
-  store.set(wsConnectedAtom, true);
+  store.set(sseConnectedAtom, true);
   store.set(isStreamingAtom, streaming);
   return store;
 }

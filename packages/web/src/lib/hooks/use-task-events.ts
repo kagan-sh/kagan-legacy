@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import type { WireEvent, WireTask, WireTaskSession } from "@/lib/api/types";
-import { kaganWs, type WsInboundMessage } from "@/lib/api/websocket";
 import { mergeWireEvents } from "@/lib/utils/events";
 import { deriveTaskRunningSince } from "@/lib/utils/task-runtime";
 import { useFollowUpQueue } from "@/lib/hooks/use-follow-up-queue";
@@ -127,12 +126,16 @@ export function useTaskEvents(
         latestCursorRef.current = null;
     }, [events]);
 
-    // Live WS event stream — only accept events matching our session filter
+    // Live SSE event stream — only accept events matching our session filter
     useEffect(() => {
         if (!taskId) return;
-        return kaganWs.on("SESSION_EVENT", (data: WsInboundMessage) => {
-            if (data.task_id !== taskId || !data.event) return;
-            const nextEvent = data.event as WireEvent;
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as {
+                task_id: string;
+                event: WireEvent;
+            };
+            if (detail.task_id !== taskId || !detail.event) return;
+            const nextEvent = detail.event;
 
             // If filtering by session, only accept matching events
             if (
@@ -149,21 +152,10 @@ export function useTaskEvents(
                     setTask((prev) => (prev ? { ...prev, status: to } : prev));
                 }
             }
-        });
+        };
+        window.addEventListener("kagan:session-event", handler);
+        return () => window.removeEventListener("kagan:session-event", handler);
     }, [taskId, sessionId]);
-
-    // Refetch task on TASK_UPDATED broadcast
-    useEffect(() => {
-        if (!taskId) return;
-        return kaganWs.on("TASK_UPDATED", (data: WsInboundMessage) => {
-            if (data.task_id === taskId) {
-                void apiClient
-                    .getTask(taskId)
-                    .then(setTask)
-                    .catch(() => undefined);
-            }
-        });
-    }, [taskId]);
 
     // Polling refresh — with error counting and visibility awareness
     const pollFailCountRef = useRef(0);

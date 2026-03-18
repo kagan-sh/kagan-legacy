@@ -73,8 +73,7 @@ class FakeAgentFactory:
                 return
         prompts = [c.prompt[:80] for c in self._calls]
         raise AssertionError(
-            f"No call with prompt containing {prompt_contains!r}. "
-            f"Recorded prompts: {prompts}"
+            f"No call with prompt containing {prompt_contains!r}. Recorded prompts: {prompts}"
         )
 
     def reset(self) -> None:

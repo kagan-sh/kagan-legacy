@@ -104,42 +104,6 @@ class ExecutionModeChoice(StrEnum):
     PAIR = "pair"
 
 
-class WsMessageType(StrEnum):
-    """WebSocket protocol message types."""
-
-    # Client → Server
-    PING = "PING"
-    BOARD_SUBSCRIBE = "BOARD_SUBSCRIBE"
-    RUN_START = "RUN_START"
-    RUN_CANCEL = "RUN_CANCEL"
-    CHAT_SUBSCRIBE = "CHAT_SUBSCRIBE"
-    CHAT_SEND = "CHAT_SEND"
-    CHAT_INTERRUPT = "CHAT_INTERRUPT"
-    TASK_FOLLOW_UP = "TASK_FOLLOW_UP"
-    # Server → Client
-    PONG = "PONG"
-    BOARD_SYNC = "BOARD_SYNC"
-    TASK_UPDATED = "TASK_UPDATED"
-    SESSION_EVENT = "SESSION_EVENT"
-    RUN_STARTED = "RUN_STARTED"
-    RUN_CANCELLED = "RUN_CANCELLED"
-    RUN_ERROR = "RUN_ERROR"
-    CHAT_CHUNK = "CHAT_CHUNK"
-    CHAT_TOOL_START = "CHAT_TOOL_START"
-    CHAT_TOOL_PROGRESS = "CHAT_TOOL_PROGRESS"
-    CHAT_DONE = "CHAT_DONE"
-    CHAT_ERROR = "CHAT_ERROR"
-    CHAT_INTERRUPTED = "CHAT_INTERRUPTED"
-    CHAT_SESSION_UPDATED = "CHAT_SESSION_UPDATED"
-    CHAT_SUBSCRIBED = "CHAT_SUBSCRIBED"
-    CHAT_BUSY = "CHAT_BUSY"
-    TOOL_PERMISSION_REQUEST = "TOOL_PERMISSION_REQUEST"
-    FOLLOW_UP_QUEUED = "FOLLOW_UP_QUEUED"
-    FOLLOW_UP_SENT = "FOLLOW_UP_SENT"
-    TASK_FOLLOW_UP_ACK = "TASK_FOLLOW_UP_ACK"
-    TASK_FOLLOW_UP_ERROR = "TASK_FOLLOW_UP_ERROR"
-
-
 def parse_priority(value: str | int | None) -> Priority:
     """Parse a string, int, or None into a Priority enum value."""
     if value is None:

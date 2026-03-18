@@ -205,6 +205,14 @@ export class KaganApiClient {
     });
   }
 
+  /** POST /api/tasks/:taskId/follow-up — Cancel + restart with follow-up text */
+  async sendTaskFollowUp(taskId: string, text: string): Promise<WireTask> {
+    return this.request<WireTask>(`/api/tasks/${taskId}/follow-up`, {
+      method: 'POST',
+      body: { text },
+    });
+  }
+
   /** POST /api/tasks/:taskId/end-pairing — End a PAIR session */
   async endPairing(taskId: string): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>(`/api/tasks/${taskId}/end-pairing`, {

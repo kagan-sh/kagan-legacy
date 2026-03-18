@@ -9,7 +9,7 @@ import { axe } from 'vitest-axe';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { mockTask, mockTaskInReview, mockEvent } from '@/test/mocks';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 
 // ── Mocks (same as existing test files) ──────────────────────────────────────
 
@@ -19,20 +19,11 @@ vi.mock('@/lib/api/client', () => ({
     getProjectRepos: vi.fn().mockResolvedValue([]),
     reviewDecide: vi.fn().mockResolvedValue({}),
     runReview: vi.fn().mockResolvedValue({}),
+    runTask: vi.fn().mockResolvedValue({}),
+    cancelTask: vi.fn().mockResolvedValue({}),
     getTasks: vi.fn().mockResolvedValue([]),
     getHealth: vi.fn().mockResolvedValue({ version: '0.0.0' }),
     getBaseUrl: vi.fn().mockReturnValue('http://localhost:8765'),
-  },
-}));
-
-vi.mock('@/lib/api/websocket', () => ({
-  kaganWs: {
-    startRun: vi.fn(),
-    cancelRun: vi.fn(),
-    on: vi.fn(() => vi.fn()),
-    off: vi.fn(),
-    disconnect: vi.fn(),
-    connect: vi.fn(),
   },
 }));
 
@@ -55,7 +46,7 @@ const { ErrorBoundary } = await import('@/components/shared/error-boundary');
 
 function connectedStore() {
   const store = createStore();
-  store.set(wsConnectedAtom, true);
+  store.set(sseConnectedAtom, true);
   return store;
 }
 

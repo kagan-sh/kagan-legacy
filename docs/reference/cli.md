@@ -166,7 +166,7 @@ ______________________________________________________________________
 
 ## `kagan serve`
 
-Starts the HTTP API server for local integrations. REST + WebSocket endpoints are served from the same local process.
+Starts the HTTP API server for local integrations. REST + SSE endpoints are served from the same local process.
 
 | Option       | Description                            |
 | ------------ | -------------------------------------- |

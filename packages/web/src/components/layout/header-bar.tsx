@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { BotMessageSquare, Command, HelpCircle, Maximize2, Search, Wifi, WifiOff } from 'lucide-react';
 import { taskCountsAtom } from '@/lib/atoms/board';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { Button } from '@/components/ui/button';
 import { ContextBar } from '@/components/layout/context-bar';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ interface HeaderBarProps {
 
 export function HeaderBar({ onOpenCommandPalette, onOpenHelp, onToggleAIPanel, onToggleFullscreen, aiPanelOpen, aiPanelFullscreen }: HeaderBarProps) {
   const taskCounts = useAtomValue(taskCountsAtom);
-  const wsConnected = useAtomValue(wsConnectedAtom);
+  const sseConnected = useAtomValue(sseConnectedAtom);
 
   const totalTasks = useMemo(
     () => taskCounts.BACKLOG + taskCounts.IN_PROGRESS + taskCounts.REVIEW + taskCounts.DONE,
@@ -32,8 +32,8 @@ export function HeaderBar({ onOpenCommandPalette, onOpenHelp, onToggleAIPanel, o
 
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="h-8 gap-2 px-2.5 font-code text-[10px] tracking-[0.16em] text-[var(--muted-foreground)] uppercase">
-            {wsConnected ? <Wifi className="size-3 text-[var(--kagan-rail-running)]" /> : <WifiOff className="size-3 text-[var(--destructive)]" />}
-            {wsConnected ? 'Live' : 'Offline'}
+            {sseConnected ? <Wifi className="size-3 text-[var(--kagan-rail-running)]" /> : <WifiOff className="size-3 text-[var(--destructive)]" />}
+            {sseConnected ? 'Live' : 'Offline'}
           </Badge>
           <Badge variant="outline" className="h-8 px-2.5 font-code text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
             {totalTasks} Tasks

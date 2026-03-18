@@ -107,7 +107,20 @@ class AgentStatusPanel(Static):
         symbol, label = STATUS_META.get(self.status, ("[dim]○[/]", self.status.title() or "Idle"))
         pid_value = "-" if self.pid is None else str(self.pid)
         context_line = "Context: -"
-        if self.context_used is not None and self.context_size is not None:
+        has_context = self.context_used is not None and self.context_size is not None
+        if has_context and self.context_size > 0:
+            pct = self.context_used / self.context_size
+            if pct > 0.8:
+                ctx_color = "red"
+            elif pct > 0.6:
+                ctx_color = "yellow"
+            else:
+                ctx_color = "green"
+            context_line = (
+                f"Context: [{ctx_color}]{self.context_used:,} / {self.context_size:,} "
+                f"({pct:.0%})[/{ctx_color}]"
+            )
+        elif self.context_used is not None and self.context_size is not None:
             context_line = f"Context: {self.context_used:,} / {self.context_size:,}"
         cost_line = "Cost: -"
         if self.cost_amount is not None:

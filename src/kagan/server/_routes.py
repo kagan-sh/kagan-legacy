@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -23,12 +24,13 @@ from kagan.server._helpers import (
     require_context,
     task_to_wire_dict,
 )
+from kagan.server._sse import _sse_event_generator, sse_response
 from kagan.server.responses import EventResponse, ProjectResponse, RepositoryResponse
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
-    from starlette.responses import JSONResponse
+    from starlette.responses import JSONResponse, Response
 
 _DEFAULT_WIP_LIMITS = {
     TaskStatus.BACKLOG.value: 0,
@@ -756,3 +758,45 @@ def register_routes(mcp: FastMCP) -> None:
                 "commits": commits,
             }
         )
+
+    @mcp.custom_route("/api/events/stream", methods=["GET"])
+    @require_context(mcp)
+    async def event_stream(_request: Request, *, ctx: Any) -> Response:
+        """SSE endpoint — streams board + session events to the client."""
+        return sse_response(_sse_event_generator(mcp))
+
+    @mcp.custom_route("/api/tasks/{task_id}/follow-up", methods=["POST"])
+    @require_context(mcp)
+    @handle_errors
+    async def task_follow_up(request: Request, *, ctx: Any) -> JSONResponse:
+        """Cancel the current run and restart with follow-up text appended."""
+        forbidden = _require_access(
+            ctx, operation="Task follow-up messages", minimum_tier=AccessTier.STANDARD
+        )
+        if forbidden is not None:
+            return cast("JSONResponse", forbidden)
+        task_id = cast("str", request.path_params["task_id"])
+        payload = await _body(request)
+        text = cast("str", payload.get("text", "")).strip()
+        if not text:
+            raise ValueError("text is required")
+
+        from kagan.core import resolve_default_agent_backend
+
+        # Best-effort cancel current run
+        with contextlib.suppress(Exception):
+            await ctx.client.tasks.cancel(task_id)
+
+        task = await ctx.client.tasks.get(task_id)
+        current_desc = (getattr(task, "description", "") or "").strip()
+        follow_up = f"User follow-up:\n{text}"
+        updated_desc = f"{current_desc}\n\n{follow_up}" if current_desc else follow_up
+        task = await ctx.client.tasks.update(task_id, description=updated_desc)
+
+        settings = await ctx.client.settings.get()
+        backend = getattr(task, "agent_backend", None) or resolve_default_agent_backend(settings)
+        await ctx.client.tasks.run(task_id, agent_backend=backend)
+
+        runtime = await ctx.client.tasks.runtime_summary(task_id)
+        task = await ctx.client.tasks.get(task_id)
+        return _ok(task_to_wire_dict(task, runtime=runtime))

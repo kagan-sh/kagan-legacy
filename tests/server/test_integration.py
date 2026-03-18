@@ -3,24 +3,18 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pytest
-from starlette.websockets import WebSocketDisconnect
 
 import kagan.server._helpers as server_helpers
 import kagan.server._routes as routes_module
-import kagan.server._websocket as websocket_module
 from kagan.core import Priority, TaskStatus, WorkMode
 from kagan.core import git as git_module
 from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
-from tests.helpers.async_utils import wait_for
 from tests.helpers.server import get_http_endpoint, json_body, make_request
-from tests.helpers.server_ws import FakeWebSocket, get_ws_endpoint, make_api_server
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+from tests.helpers.server_ws import make_api_server
 
 
 class _FakeTasksClient:
@@ -121,13 +115,6 @@ def _ctx(
         ),
         opts=opts or ServerOptions(),
     )
-
-
-@pytest.fixture(autouse=True)
-def _reset_server_state() -> Iterator[None]:
-    websocket_module._ws_connections.clear()
-    yield
-    websocket_module._ws_connections.clear()
 
 
 @pytest.mark.asyncio
@@ -266,79 +253,6 @@ async def test_task_commits_route_returns_task_branch_history(
         "develop..HEAD",
     )
     assert captured["kwargs"]["stderr"] is asyncio.subprocess.DEVNULL
-
-
-@pytest.mark.asyncio
-async def test_websocket_board_subscribe_returns_board_sync(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mcp = make_api_server()
-    tasks = _FakeTasksClient()
-    await tasks.create("Task from API")
-    monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: _ctx(tasks))
-    websocket = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
-    worker = asyncio.create_task(get_ws_endpoint(mcp)(websocket))
-    await asyncio.wait_for(
-        wait_for(lambda: any(p.get("t") == "BOARD_SYNC" for p in websocket.sent_json)),
-        timeout=1.0,
-    )
-    await websocket.push(WebSocketDisconnect(code=1000))
-    await asyncio.wait_for(worker, timeout=1.0)
-    board_sync = cast(
-        "dict[str, object]",
-        next(payload for payload in websocket.sent_json if payload.get("t") == "BOARD_SYNC"),
-    )
-    tasks_payload = cast("list[dict[str, Any]]", board_sync["tasks"])
-    assert tasks_payload[0]["title"] == "Task from API"
-
-
-@pytest.mark.asyncio
-async def test_two_clients_see_board_sync_after_rest_create(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mcp = make_api_server()
-    tasks = _FakeTasksClient()
-    monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: _ctx(tasks))
-    monkeypatch.setattr(websocket_module, "get_server_context", lambda _mcp: _ctx(tasks))
-    ws_handler = get_ws_endpoint(mcp)
-    ws_a = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
-    ws_b = FakeWebSocket([{"t": "BOARD_SUBSCRIBE"}])
-    worker_a = asyncio.create_task(ws_handler(ws_a))
-    worker_b = asyncio.create_task(ws_handler(ws_b))
-
-    def _board_sync_count(ws: FakeWebSocket) -> int:
-        return sum(1 for p in ws.sent_json if p.get("t") == "BOARD_SYNC")
-
-    await asyncio.wait_for(
-        wait_for(lambda: _board_sync_count(ws_b) >= 1), timeout=1.0
-    )
-    create = get_http_endpoint(mcp, "/api/tasks", "POST")
-    await create(make_request("POST", "/api/tasks", body={"title": "Shared task"}))
-    await ws_b.push({"t": "BOARD_SUBSCRIBE"})
-    await asyncio.wait_for(
-        wait_for(lambda: _board_sync_count(ws_b) >= 2), timeout=1.0
-    )
-
-    def _has_task_title(ws: FakeWebSocket, title: str) -> bool:
-        syncs = [p for p in ws.sent_json if p.get("t") == "BOARD_SYNC"]
-        if not syncs:
-            return False
-        tasks_payload = cast("list[dict[str, Any]]", syncs[-1]["tasks"])
-        return any(task.get("title") == title for task in tasks_payload)
-
-    await asyncio.wait_for(
-        wait_for(lambda: _has_task_title(ws_b, "Shared task")), timeout=1.0
-    )
-    board_sync = cast(
-        "dict[str, object]",
-        [payload for payload in ws_b.sent_json if payload.get("t") == "BOARD_SYNC"][-1],
-    )
-    tasks_payload = cast("list[dict[str, Any]]", board_sync["tasks"])
-    assert any(task["title"] == "Shared task" for task in tasks_payload)
-    await ws_a.push(WebSocketDisconnect(code=1000))
-    await ws_b.push(WebSocketDisconnect(code=1000))
-    await asyncio.wait_for(worker_a, timeout=1.0)
-    await asyncio.wait_for(worker_b, timeout=1.0)
 
 
 @pytest.mark.asyncio

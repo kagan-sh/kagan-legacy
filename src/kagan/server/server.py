@@ -14,7 +14,6 @@ from kagan.server._chat_routes import register_chat_routes
 from kagan.server._plugin_routes import register_plugin_routes
 from kagan.server._routes import register_routes
 from kagan.server._web_ui import register_web_ui
-from kagan.server._websocket import register_websocket
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -84,8 +83,6 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
     register_routes(mcp)
     register_chat_routes(mcp)
     register_plugin_routes(mcp)
-
-    register_websocket(mcp)
 
     # Web UI must be last — it mounts a catch-all SPA fallback at /
     if opts.web_ui:

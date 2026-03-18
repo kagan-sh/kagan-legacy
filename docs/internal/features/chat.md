@@ -182,7 +182,7 @@ ______________________________________________________________________
 
 **Given** title generation succeeds
 **When** the session is saved
-**Then** the title is persisted and, on web, a `CHAT_SESSION_UPDATED` WebSocket event updates the UI.
+**Then** the title is persisted and, on web, a `CHAT_SESSION_UPDATED` SSE event updates the UI.
 
 **Given** title generation times out (30 s) or fails
 **When** the error is caught

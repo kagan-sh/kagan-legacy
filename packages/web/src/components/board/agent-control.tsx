@@ -11,8 +11,7 @@ import {
 import { useAtomValue } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import { kaganWs, type WsInboundMessage } from "@/lib/api/websocket";
-import { wsConnectedAtom } from "@/lib/atoms/connection";
+import { sseConnectedAtom } from "@/lib/atoms/connection";
 import { cn } from "@/lib/utils";
 import {
     openInEditor,
@@ -104,7 +103,7 @@ export function AgentControl({
     pairLauncher,
     taskLauncher,
 }: AgentControlProps) {
-    const wsConnected = useAtomValue(wsConnectedAtom);
+    const sseConnected = useAtomValue(sseConnectedAtom);
     const isRunning = status === "IN_PROGRESS";
     const [pending, setPending] = useState<"starting" | "stopping" | null>(
         null,
@@ -131,28 +130,7 @@ export function AgentControl({
         setPending(null);
     }, [status]);
 
-    // Listen for WS responses to give immediate feedback
-    useEffect(() => {
-        const cleanups = [
-            kaganWs.on("RUN_STARTED", (data: WsInboundMessage) => {
-                if (data.task_id === taskId) setPending(null);
-            }),
-            kaganWs.on("RUN_CANCELLED", (data: WsInboundMessage) => {
-                if (data.task_id === taskId) setPending(null);
-            }),
-            kaganWs.on("RUN_ERROR", (data: WsInboundMessage) => {
-                if (data.task_id === taskId) {
-                    setPending(null);
-                    toast.error(
-                        typeof data.error === "string"
-                            ? data.error
-                            : "Agent run failed",
-                    );
-                }
-            }),
-        ];
-        return () => cleanups.forEach((fn) => fn());
-    }, [taskId]);
+    // No WS listeners needed — start/stop are REST calls that resolve directly
 
     // Elapsed timer
     const computeElapsed = useCallback(() => {
@@ -309,7 +287,12 @@ export function AgentControl({
             }
         } else {
             setPending("starting");
-            kaganWs.startRun(taskId);
+            apiClient.runTask(taskId)
+                .then(() => setPending(null))
+                .catch((err) => {
+                    setPending(null);
+                    toast.error(err instanceof Error ? err.message : "Agent run failed");
+                });
         }
     }, [isPair, pairLauncher, startPairSession, taskId]);
 
@@ -332,7 +315,12 @@ export function AgentControl({
                 setPending(null);
             }
         } else {
-            kaganWs.cancelRun(taskId);
+            apiClient.cancelTask(taskId)
+                .then(() => setPending(null))
+                .catch((err) => {
+                    setPending(null);
+                    toast.error(err instanceof Error ? err.message : "Failed to stop agent");
+                });
         }
     }, [taskId, isPair]);
 
@@ -345,7 +333,7 @@ export function AgentControl({
                     <Button
                         size={buttonSize}
                         onClick={handleStop}
-                        disabled={!wsConnected || isBusy}
+                        disabled={!sseConnected || isBusy}
                     >
                         {pending === "stopping" ? (
                             <Loader2 className="size-3 animate-spin" />
@@ -425,7 +413,7 @@ export function AgentControl({
                     variant="secondary"
                     size={buttonSize}
                     onClick={handleStart}
-                    disabled={!wsConnected || status === "DONE" || isBusy}
+                    disabled={!sseConnected || status === "DONE" || isBusy}
                 >
                     {isPair ? (
                         <Users className="size-3" />

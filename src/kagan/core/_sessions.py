@@ -39,6 +39,9 @@ from kagan.core.enums import (
 )
 from kagan.core.errors import (
     AgentError,
+    AgentRateLimitError,
+    AgentRepetitionError,
+    AgentTimeoutError,
     ConfigurationError,
     PreflightError,
     SessionError,
@@ -136,6 +139,22 @@ def _build_pair_startup_prompt(task: Task) -> str:
         ]
     )
     return "\n".join(lines).strip() + "\n"
+
+
+def _classify_agent_error(exc: BaseException) -> str:
+    """Return a classification string for AGENT_FAILED payloads."""
+    if isinstance(exc, AgentRepetitionError):
+        return "repetition"
+    if isinstance(exc, AgentTimeoutError):
+        return "timeout"
+    if isinstance(exc, AgentRateLimitError):
+        return "rate_limit"
+    msg = str(exc).lower()
+    if "rate limit" in msg or "rate_limit" in msg or "429" in msg:
+        return "rate_limit"
+    if "timeout" in msg or "timed out" in msg:
+        return "timeout"
+    return "unknown"
 
 
 class Sessions:
@@ -643,7 +662,10 @@ class Sessions:
                     await self._events.emit(
                         task_id,
                         SessionEventType.AGENT_FAILED,
-                        {"error": "Agent detected in tool-call loop; session cancelled"},
+                        {
+                            "error": "Agent detected in tool-call loop; session cancelled",
+                            "error_class": "repetition",
+                        },
                         session_id=session_id,
                     )
                     return
@@ -750,12 +772,17 @@ class Sessions:
                 await self._events.emit(
                     task_id,
                     SessionEventType.AGENT_FAILED,
-                    {"error": str(exc)},
+                    {"error": str(exc), "error_class": _classify_agent_error(exc)},
                     session_id=session_id,
                 )
             else:
                 await asyncio.to_thread(self._complete_session, session_id)
                 db_task = await self._get_task(task_id)
+
+                # Retry with success check: if task has a success_command, verify it
+                if await self._should_retry(db_task, session_id):
+                    return
+
                 transitioned_to_review = False
                 if db_task.status == TaskStatus.IN_PROGRESS:
                     next_status = await self._resolve_post_agent_status(task_id)
@@ -786,6 +813,85 @@ class Sessions:
                 )
                 return
             raise
+
+    async def _should_retry(self, task: Task, session_id: str) -> bool:
+        """Run the task's success_command and retry if it fails. Returns True if retrying."""
+        if not task.success_command:
+            return False
+        if task.max_retries <= 0:
+            return False
+
+        # Get current attempt count
+        session = await _db_async(self._engine, lambda s: s.get(Session, session_id))
+        if session is None:
+            return False
+        current_attempt = session.attempt
+
+        # Run success_command in the task worktree
+        ws = await _db_async(
+            self._engine,
+            lambda s: s.exec(select(Worktree).where(Worktree.task_id == task.id)).first(),
+        )
+        cwd = Path(ws.worktree_path) if ws else None
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                task.success_command,
+                cwd=cwd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, _stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+            exit_code = proc.returncode
+        except (TimeoutError, OSError) as exc:
+            logger.warning("Success command failed for task={}: {}", task.id, exc)
+            exit_code = 1
+
+        if exit_code == 0:
+            return False
+
+        # Check if we can retry
+        if current_attempt >= task.max_retries:
+            logger.info(
+                "Success check failed for task={} (attempt {}/{}), no more retries",
+                task.id,
+                current_attempt,
+                task.max_retries,
+            )
+            return False
+
+        logger.info(
+            "Success check failed for task={} (attempt {}/{}), retrying",
+            task.id,
+            current_attempt,
+            task.max_retries,
+        )
+
+        # Move task back to BACKLOG for retry
+        await asyncio.to_thread(self._set_status, task.id, TaskStatus.BACKLOG)
+        await self._events.emit(
+            task.id,
+            SessionEventType.TASK_STATUS_CHANGED,
+            {"from": TaskStatus.IN_PROGRESS.value, "to": TaskStatus.BACKLOG.value},
+            session_id=session_id,
+        )
+
+        # Re-run with incremented attempt
+        settings_dict = await _db_async(
+            self._engine,
+            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
+        )
+        backend = task.agent_backend or resolve_default_agent_backend(settings_dict)
+        new_session = await self.run(task.id, agent_backend=backend, persona=session.persona)
+
+        # Update the attempt counter on the new session
+        def set_attempt(s):
+            obj = s.get(Session, new_session.id)
+            if obj:
+                obj.attempt = current_attempt + 1
+                s.add(obj)
+
+        await _db_async(self._engine, set_attempt, commit=True)
+        return True
 
     async def _monitor_detached(self, pid: int, task_id: str, session_id: str) -> None:
         while True:

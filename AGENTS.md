@@ -17,7 +17,7 @@ kagan/
 │   ├── tui/             # Textual TUI: screens/, widgets/, styles/
 │   ├── cli/             # Click CLI surface (entrypoint: `kagan`/`kg`)
 │   ├── mcp/             # MCP server: toolsets/, prompts, resources
-│   ├── server/          # HTTP/WS server: REST API, WebSocket, auth, web UI
+│   ├── server/          # HTTP server: REST API, SSE streaming, auth, web UI
 │   ├── chat/            # CLI chat REPL: ACP streaming, commands, sessions
 │   ├── crypto/          # X25519 key exchange, TLS, tokens, QR
 │   ├── wire/            # (compat shim) Re-exports envelope types
@@ -46,7 +46,7 @@ kagan/
 | Add DB migration      | `alembic -c alembic.ini revision --autogenerate -m "msg"` | Via `poe db-migration-generate`                                                   |
 | Wire protocol change  | `src/kagan/server/responses.py`                            | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
 | Web UI feature        | `packages/web/src/`                                       | React 19 + jotai + Tailwind CSS 4                                                 |
-| API endpoint          | `src/kagan/server/_routes.py`                             | aiohttp routes                                                                    |
+| API endpoint          | `src/kagan/server/_routes.py`                             | Starlette routes via FastMCP                                                      |
 | Modify prompt system  | `src/kagan/core/_prompts.py`                              | Three-layer resolution: dotfile → defaults + behavioral → additional instructions |
 
 ## CONVENTIONS

@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
 import { ConnectionCard } from '@/components/settings/connection-card';
-import { wsConnectedAtom } from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: {
@@ -12,22 +12,18 @@ vi.mock('@/lib/api/client', () => ({
   },
 }));
 
-vi.mock('@/lib/api/websocket', () => ({
-  kaganWs: { disconnect: vi.fn(), connect: vi.fn() },
-}));
-
 describe('ConnectionCard', () => {
-  it('shows Connected when ws is connected', () => {
+  it('shows Connected when SSE is connected', () => {
     const store = createStore();
-    store.set(wsConnectedAtom, true);
+    store.set(sseConnectedAtom, true);
     renderWithProviders(<ConnectionCard />, { store });
     expect(screen.getByText('Connected')).toBeVisible();
   });
 
-  it('shows Disconnected when ws is not connected', () => {
+  it('shows Reconnecting when SSE is not connected', () => {
     const store = createStore();
-    store.set(wsConnectedAtom, false);
+    store.set(sseConnectedAtom, false);
     renderWithProviders(<ConnectionCard />, { store });
-    expect(screen.getByText('Disconnected')).toBeVisible();
+    expect(screen.getByText('Reconnecting...')).toBeVisible();
   });
 });

@@ -320,7 +320,7 @@ ______________________________________________________________________
 | Omitted                    | Why                                                             |
 | -------------------------- | --------------------------------------------------------------- |
 | Separate chat database     | Sessions persist in core `settings` table — one source of truth |
-| WebSocket / HTTP transport | REPL is local only. STDIO + ACP is sufficient.                  |
+| SSE / HTTP transport | REPL is local only. STDIO + ACP is sufficient.                  |
 | ChatSession domain model   | Session is just a dict in settings, not an entity               |
 | Message class hierarchy    | Messages are dicts (role, content). No validation needed.       |
 | Multi-turn context window  | Orchestrator manages context via ACP session, not chat module   |

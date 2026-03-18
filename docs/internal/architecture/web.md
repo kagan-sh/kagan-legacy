@@ -1,6 +1,6 @@
 # Web Architecture -- `packages/web`
 
-*Design principles: React 19 SPA, Jotai state, shadcn/Radix primitives, thin client over Kagan REST and WebSocket APIs.*
+*Design principles: React 19 SPA, Jotai state, shadcn/Radix primitives, thin client over Kagan REST and SSE APIs.*
 
 ______________________________________________________________________
 
@@ -15,7 +15,7 @@ ______________________________________________________________________
 1. **Thin client** -- workflow logic stays in Python (`kagan.core`); the web app coordinates API calls and renders state.
 1. **Owned primitives** -- shadcn/Radix components live in-repo and are styled through Kagan tokens in `src/app.css`.
 1. **Dark-first IDE shell** -- the app uses a persistent activity bar, contextual header, Quick Actions, and workspace panels across routes.
-1. **Single integration boundary** -- all server communication flows through `apiClient` (REST) and `kaganWs` (WebSocket).
+1. **Single integration boundary** -- all server communication flows through `apiClient` (REST) and `streamSSE` (Server-Sent Events).
 1. **Route-level workspaces** -- board, task, chat, and settings share common panel/header primitives instead of bespoke page chrome.
 
 ______________________________________________________________________
@@ -88,8 +88,8 @@ ______________________________________________________________________
 
 Custom hooks in `src/lib/hooks/`:
 
-- `use-websocket-sync.ts` -- connects WebSocket events to the Jotai atom graph
-- `use-task-events.ts` -- subscribes to task-scoped WebSocket events
+- `use-event-stream.ts` -- connects SSE event stream to the Jotai atom graph
+- `use-task-events.ts` -- subscribes to task-scoped session events via CustomEvent dispatch
 - `use-board-dnd.ts` -- drag-and-drop state and handlers for the kanban board
 - `use-board-keyboard.ts` -- keyboard navigation and shortcuts for the board
 - `use-follow-up-queue.ts` -- manages the follow-up message queue for a task session
@@ -101,7 +101,7 @@ ______________________________________________________________________
 
 - **Jotai atoms** in `src/lib/atoms/` hold authentication, board, chat, connection, theme, and UI shell state.
 - **Route-local state** handles page-specific loading, tab selection, and transient form state.
-- **WebSocket sync** lives in `use-websocket-sync.ts` and feeds board/task/chat updates into the atom graph.
+- **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. Chat streaming uses per-turn SSE via `POST /api/chat/{id}/stream`.
 
 ______________________________________________________________________
 
@@ -150,14 +150,15 @@ ______________________________________________________________________
 - **`src/lib/api/client.ts`**
   - owns base URL, bundled-web mode, and REST helpers
   - unwraps `WireEnvelope<T>` responses and normalizes API errors
-- **`src/lib/api/websocket.ts`**
-  - manages connect/reconnect lifecycle
-  - emits board, run, session, and chat events into the UI
-  - chat events: `CHAT_CHUNK`, `CHAT_TOOL_START`, `CHAT_TOOL_PROGRESS`, `CHAT_DONE`, `CHAT_ERROR`, `CHAT_INTERRUPTED`, `CHAT_SESSION_UPDATED`, `CHAT_BUSY`
-  - run events: `RUN_STARTED`, `RUN_CANCELLED`, `RUN_ERROR`
-  - tool permission events: `TOOL_PERMISSION_REQUEST`
-  - follow-up events: `FOLLOW_UP_QUEUED`, `FOLLOW_UP_SENT`, `TASK_FOLLOW_UP_ACK`, `TASK_FOLLOW_UP_ERROR`
-  - `OrchestratorChatPanel` manages streaming state locally and passes `disableSend` to `ChatInputBar` for wave/interrupt indicator
+- **`src/lib/api/sse.ts`**
+  - `streamSSE<T>()` — async generator over `fetch` + `ReadableStream` for SSE parsing
+  - supports `POST` (unlike native `EventSource`), custom headers, `AbortController`
+- **`src/lib/hooks/use-event-stream.ts`**
+  - connects to `GET /api/events/stream` for board + session events
+  - auto-reconnects with exponential backoff (1s → 30s)
+  - dispatches `SESSION_EVENT` via `CustomEvent('kagan:session-event')` for component-level subscription
+- **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally and passes `disableSend` to `ChatInputBar`
+- **Commands** (run, cancel, follow-up, interrupt) use REST endpoints via `apiClient`
 
 Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.
 

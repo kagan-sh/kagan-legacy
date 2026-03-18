@@ -1,31 +1,31 @@
 # Server Architecture — `kagan.server`
 
-*Design principles: FastMCP native, REST + WebSocket, bundled dashboard first.*
+*Design principles: FastMCP native, REST + SSE, bundled dashboard first.*
 
 ______________________________________________________________________
 
 ## References
 
-| Package       | Use                                                              |
-| ------------- | ---------------------------------------------------------------- |
-| **FastMCP**   | MCP framework providing `custom_route()` for REST and WebSocket. |
-| **Starlette** | Underlying ASGI framework for middleware and WebSocket handling. |
-| **Pydantic**  | Response models in `kagan.server.responses`.                     |
+| Package       | Use                                                           |
+| ------------- | ------------------------------------------------------------- |
+| **FastMCP**   | MCP framework providing `custom_route()` for REST endpoints.  |
+| **Starlette** | Underlying ASGI framework; `StreamingResponse` powers SSE.    |
+| **Pydantic**  | Response models in `kagan.server.responses`.                  |
 
 ______________________________________________________________________
 
 ## Context
 
-`kagan.server` extends the core MCP functionality to serve the bundled web dashboard and expose an HTTP API for integrations. It provides a full REST API and a real-time WebSocket event stream, layered on top of the standard Kagan MCP server.
+`kagan.server` extends the core MCP functionality to serve the bundled web dashboard and expose an HTTP API for integrations. It provides a full REST API and real-time SSE event streams, layered on top of the standard Kagan MCP server.
 
 ______________________________________________________________________
 
 ## Design Principles
 
 1. **FastMCP as Foundation** — Wraps `create_server()` from `kagan.mcp` and adds custom routes.
-1. **Hybrid Transport** — Standard MCP (STDIO) + StreamableHTTP (REST/WS).
-1. **Stateless REST** — Standard HTTP verbs for resource management.
-1. **Reactive WebSocket** — Event-driven board synchronization and run management.
+1. **Hybrid Transport** — Standard MCP (STDIO) + StreamableHTTP (REST + SSE).
+1. **Stateless REST** — Standard HTTP verbs for commands and resource management.
+1. **SSE for Events** — Server-Sent Events for real-time board and session streaming.
 1. **Same-origin dashboard** — the bundled web app talks directly to the server that serves it.
 
 ______________________________________________________________________
@@ -36,10 +36,10 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point
-├── _routes.py           # Core REST API implementation (tasks, projects, settings)
-├── _chat_routes.py      # Chat-specific REST routes (orchestrator sessions, streaming)
+├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
+├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
 ├── _plugin_routes.py    # Plugin-specific REST routes (sync, preflight)
-├── _websocket.py        # WebSocket protocol and event broadcasting
+├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
 ├── _helpers.py          # Route helper functions (JSON response builders, error formatting)
 ├── _envelope.py         # WireEnvelope generic response wrapper
@@ -64,8 +64,8 @@ ______________________________________________________________________
 
 1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
-1. Calls `register_routes(mcp)` to add the REST API.
-1. Calls `register_websocket(mcp)` to add the real-time stream.
+1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
+1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
 
 ______________________________________________________________________
 
@@ -102,51 +102,50 @@ All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: st
 | `/api/chat/sessions`                | GET    | List chat sessions                    |
 | `/api/chat/sessions/{id}`           | GET    | Get chat session details              |
 | `/api/chat/sessions/{id}`           | DELETE | Delete a chat session                 |
-| `/api/chat/sessions/{id}/send`      | POST   | Send a message to an agent            |
-| `/api/chat/sessions/{id}/interrupt` | POST   | Interrupt the current agent turn      |
-| `/api/plugins/sync`                 | POST   | Sync installed plugins                |
-| `/api/plugins/preflight`            | GET    | Run plugin preflight checks           |
+| `/api/chat/sessions/{id}`           | DELETE | Delete a chat session                 |
+| `/api/chat/agents`                  | GET    | List available agent backends         |
+| `/api/plugins`                      | GET    | List installed plugins                |
+| `/api/plugins/{name}/preflight`     | GET    | Run plugin preflight checks           |
+| `/api/plugins/{name}/import`        | POST   | Import tasks from plugin              |
 
 ______________________________________________________________________
 
-## WebSocket Protocol
+## SSE Event Streams
 
-Endpoint: `/ws`
+Two SSE endpoints handle real-time server→client communication:
 
-### Client Messages
+### Board + Session Events: `GET /api/events/stream`
 
-| Type              | Payload           | Description                |
-| ----------------- | ----------------- | -------------------------- |
-| `PING`            | {}                | Keep-alive                 |
-| `BOARD_SUBSCRIBE` | {}                | Request initial board sync |
-| `RUN_START`       | { task_id, mode } | Start an agent execution   |
-| `RUN_CANCEL`      | { task_id }       | Cancel a running agent     |
+Persistent SSE connection. Streams two event types:
 
-### Server Messages
+| `type` field     | Payload              | Description                          |
+| ---------------- | -------------------- | ------------------------------------ |
+| `TASK_UPDATED`   | `{ task_id }`        | A task was created, updated, or deleted |
+| `SESSION_EVENT`  | `{ task_id, event }` | Agent session event (output, tool call, status change, etc.) |
 
-| Type                      | Payload                 | Description                             |
-| ------------------------- | ----------------------- | --------------------------------------- |
-| `PONG`                    | {}                      | Keep-alive response                     |
-| `BOARD_SYNC`              | { tasks: [] }           | Initial board state                     |
-| `TASK_UPDATED`            | { task_id }             | Notification that a task has changed    |
-| `SESSION_EVENT`           | { task_id, event }      | Task session events broadcast           |
-| `RUN_STARTED`             | { session_id, task_id } | Confirmation of execution start         |
-| `RUN_CANCELLED`           | { task_id }             | Confirmation of execution cancellation  |
-| `RUN_ERROR`               | { error }               | Error during run management             |
-| `CHAT_CHUNK`              | { session_id, text }    | Agent text streaming chunk              |
-| `CHAT_TOOL_START`         | { session_id, tool }    | Tool call initiated                     |
-| `CHAT_TOOL_PROGRESS`      | { session_id, tool }    | Tool call status update                 |
-| `CHAT_DONE`               | { session_id }          | Agent turn completed                    |
-| `CHAT_ERROR`              | { session_id, error }   | Agent turn error                        |
-| `CHAT_INTERRUPTED`        | { session_id }          | Agent turn interrupted by user          |
-| `CHAT_SESSION_UPDATED`    | { session_id }          | Session title or metadata changed       |
-| `CHAT_SUBSCRIBED`         | { session_id }          | Client subscribed to chat session       |
-| `CHAT_BUSY`               | { session_id }          | Agent is currently busy on another turn |
-| `TOOL_PERMISSION_REQUEST` | { session_id, tool }    | Agent requests tool permission          |
-| `FOLLOW_UP_QUEUED`        | { task_id }             | Follow-up message queued                |
-| `FOLLOW_UP_SENT`          | { task_id }             | Follow-up message sent                  |
-| `TASK_FOLLOW_UP_ACK`      | { task_id }             | Task follow-up acknowledged             |
-| `TASK_FOLLOW_UP_ERROR`    | { task_id, error }      | Task follow-up failed                   |
+Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
+
+### Chat Streaming: `POST /api/chat/{session_id}/stream`
+
+Per-turn SSE connection. Streams chunks for a single chat turn:
+
+| `t` field              | Payload                      | Description                |
+| ---------------------- | ---------------------------- | -------------------------- |
+| `CHAT_CHUNK`           | `{ content, thought? }`      | Agent text streaming chunk |
+| `CHAT_TOOL_START`      | `{ tool }`                   | Tool call initiated        |
+| `CHAT_TOOL_PROGRESS`   | `{ tool, status }`           | Tool call status update    |
+| `CHAT_DONE`            | `{ full_response }`          | Turn completed             |
+| `CHAT_ERROR`           | `{ error }`                  | Turn error                 |
+| `CHAT_SESSION_UPDATED` | `{ session_id, label }`      | Title generated            |
+
+### REST Commands (replace former WS messages)
+
+| Endpoint                                | Replaces         | Description                     |
+| --------------------------------------- | ---------------- | ------------------------------- |
+| `POST /api/tasks/{id}/run`              | WS `RUN_START`   | Start an agent execution        |
+| `POST /api/tasks/{id}/cancel`           | WS `RUN_CANCEL`  | Cancel a running agent          |
+| `POST /api/tasks/{id}/follow-up`        | WS `TASK_FOLLOW_UP` | Cancel + restart with new text |
+| `POST /api/chat/{id}/interrupt`         | WS `CHAT_INTERRUPT` | Interrupt a running chat turn  |
 
 ______________________________________________________________________
 
@@ -156,7 +155,7 @@ When `kagan web` is used, the API server starts in `web_ui=True` mode and mounts
 
 ### Mount strategy
 
-- `create_api_server()` registers REST/chat/websocket routes first.
+- `create_api_server()` registers REST/chat/SSE routes first.
 - `register_web_ui(mcp)` is called last so SPA fallback has the lowest route priority.
 - `_web_ui.py` mounts `_SPAStaticFiles` at `/`.
 
@@ -168,7 +167,6 @@ Reserved prefixes bypass fallback and stay server-owned:
 
 - `/api/`
 - `/health`
-- `/ws`
 - `/mcp`
 - `/sse`
 
@@ -185,7 +183,7 @@ This flows from `packages/web/build/` into `src/kagan/server/_web_static/` via `
 ### Bundled mode behavior
 
 - `kagan web` is the supported dashboard mode.
-- Browser and API share origin, so the bundled dashboard bootstraps from `/health` and connects to `/ws` directly.
+- Browser and API share origin, so the bundled dashboard bootstraps from `/health` and connects to `/api/events/stream` for live updates.
 - `--host 0.0.0.0` allows LAN access to that same local dashboard server; there is no separate remote pairing flow.
 
 For web-client internals (stores, routing, components), see `docs/internal/architecture/web.md`.

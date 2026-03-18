@@ -89,7 +89,7 @@ Never expose an unauthenticated `kagan web --host 0.0.0.0` to the public interne
 : Check that `--host 0.0.0.0` is set and your firewall allows the port.
 
 **Board out of sync?**
-: Refresh the board page and check the WebSocket indicator in settings.
+: Refresh the board page and check the connection indicator in settings.
 
 **Port already in use?**
 : `kagan web --port 9000` (or any free port).

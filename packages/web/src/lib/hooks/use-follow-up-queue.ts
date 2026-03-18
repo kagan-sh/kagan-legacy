@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { kaganWs, type WsInboundMessage } from '@/lib/api/websocket';
+import { apiClient } from '@/lib/api/client';
 import type { UserFollowUp } from '@/components/session/event-stream';
 import type { QueuedPrompt } from '@/components/session/follow-up-queue';
 
@@ -21,29 +21,12 @@ export interface UseFollowUpQueueResult {
 
 /**
  * Independent state machine for the follow-up prompt queue.
- * Manages queue/remove/edit/send and listens to WS ack/error.
+ * Manages queue/remove/edit/send via REST POST /api/tasks/:id/follow-up.
  */
 export function useFollowUpQueue(taskId: string | undefined): UseFollowUpQueueResult {
   const [sentFollowUps, setSentFollowUps] = useState<UserFollowUp[]>([]);
   const [queue, setQueue] = useState<QueuedPrompt[]>([]);
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
-
-  // Follow-up ack/error
-  useEffect(() => {
-    if (!taskId) return;
-    const cleanups = [
-      kaganWs.on('TASK_FOLLOW_UP_ACK', (data: WsInboundMessage) => {
-        if (data.task_id === taskId) setSendingFollowUp(false);
-      }),
-      kaganWs.on('TASK_FOLLOW_UP_ERROR', (data: WsInboundMessage) => {
-        if (data.task_id === taskId) {
-          setSendingFollowUp(false);
-          toast.error(typeof data.error === 'string' ? data.error : 'Follow-up failed');
-        }
-      }),
-    ];
-    return () => cleanups.forEach((fn) => fn());
-  }, [taskId]);
 
   const queuePrompt = useCallback((text: string, attachments?: { name: string; type: string }[]) => {
     const displayText = attachments?.length
@@ -68,7 +51,13 @@ export function useFollowUpQueue(taskId: string | undefined): UseFollowUpQueueRe
       setQueue((prev) => prev.filter((p) => p.id !== id));
       setSentFollowUps((prev) => [...prev, { text: prompt.text, timestamp: new Date().toISOString() }]);
       setSendingFollowUp(true);
-      kaganWs.sendTaskFollowUp(taskId, prompt.text);
+
+      apiClient.sendTaskFollowUp(taskId, prompt.text)
+        .then(() => setSendingFollowUp(false))
+        .catch((err) => {
+          setSendingFollowUp(false);
+          toast.error(err instanceof Error ? err.message : 'Follow-up failed');
+        });
     },
     [taskId, queue],
   );

@@ -10,8 +10,8 @@ import {
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
 
-vi.mock('@/lib/hooks/use-websocket-sync', () => ({
-  useWebSocketSync: () => undefined,
+vi.mock('@/lib/hooks/use-event-stream', () => ({
+  useEventStream: () => undefined,
 }));
 
 vi.mock('@/lib/hooks/use-mobile', () => ({

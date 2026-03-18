@@ -1030,6 +1030,16 @@ class ChatController:
                 metrics_parts.append(f"${usage.cost.amount:.2f}")
             if metrics_parts:
                 _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
+            # Context window warning
+            if usage.used is not None and usage.size is not None and usage.size > 0:
+                pct = usage.used / usage.size
+                if pct > 0.8:
+                    _console.print(
+                        f"[bold red]  ⚠ Context window {pct:.0%} full — "
+                        f"agent may degrade[/bold red]"
+                    )
+                elif pct > 0.6:
+                    _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
         await self._persist_session()
 
     async def _repl_loop(self) -> None:

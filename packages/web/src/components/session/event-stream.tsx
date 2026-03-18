@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, BrainCircuit, ChevronRight, User, Wrench } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import type { WireEvent } from '@/lib/api/types';
@@ -204,11 +204,33 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+const INITIAL_VISIBLE = 30;
+const LOAD_MORE_STEP = 30;
+
 export function EventStream({ events, userFollowUps, isRunning, className, hasMore, loadingMore, onLoadEarlier }: EventStreamProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const prevScrollHeight = useRef(0);
   const prevLoadingMore = useRef(loadingMore);
   const entries = useMemo(() => coalesceEvents(events, userFollowUps), [events, userFollowUps]);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+
+  // Auto-expand when new entries arrive (user is near bottom)
+  const prevEntryCount = useRef(entries.length);
+  useEffect(() => {
+    if (entries.length > prevEntryCount.current) {
+      const container = containerRef.current;
+      const isNearBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 100 : true;
+      if (isNearBottom) {
+        setVisibleCount(entries.length);
+      }
+    }
+    prevEntryCount.current = entries.length;
+  }, [entries.length]);
+
+  const visibleEntries = entries.length <= visibleCount
+    ? entries
+    : entries.slice(Math.max(0, entries.length - visibleCount));
+  const hasHiddenEntries = entries.length > visibleCount;
 
   // Auto-scroll to bottom only when user is already near the bottom
   useEffect(() => {
@@ -268,7 +290,16 @@ export function EventStream({ events, userFollowUps, isRunning, className, hasMo
             {loadingMore ? 'Loading...' : 'Load earlier events'}
           </button>
         ) : null}
-        {entries.map((entry, i) => {
+        {hasHiddenEntries ? (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + LOAD_MORE_STEP)}
+            className="mb-3 flex w-full items-center justify-center gap-2 border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-3 py-2 font-code text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)] hover:text-[var(--foreground)]"
+          >
+            Show {Math.min(LOAD_MORE_STEP, entries.length - visibleCount)} earlier messages
+          </button>
+        ) : null}
+        {visibleEntries.map((entry, i) => {
           const key = `${i}-${entry.kind}`;
           if (entry.kind === 'message') return <AgentMessage key={key} text={entry.text} thought={entry.thought} time={entry.time} />;
           if (entry.kind === 'tool') return <ToolCallRow key={key} title={entry.title} status={entry.status} payload={entry.payload} time={entry.time} />;
@@ -397,13 +428,16 @@ function formatCost(cost: number, currency: string | null): string {
 function UsageRow({ used, size, cost, currency, time }: { used: number; size: number; cost: number | null; currency: string | null; time: string }) {
   const pct = size > 0 ? (used / size) * 100 : 0;
   const pctClamped = Math.min(100, Math.max(0, pct));
+  const barColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
+  const dotColor = pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
+  const textColor = pct > 80 ? 'text-red-400' : pct > 60 ? 'text-amber-400' : 'text-[var(--muted-foreground)]';
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[11px] font-code text-[var(--muted-foreground)] whitespace-nowrap">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+    <div className={cn("flex items-center gap-2 px-3 py-1 text-[11px] font-code whitespace-nowrap", textColor)}>
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColor)} />
       <span className="tabular-nums">ctx {used.toLocaleString()} / {size.toLocaleString()}</span>
       <span className="h-0.5 w-24 overflow-hidden rounded-full bg-[var(--muted)]">
-        <span className="block h-full bg-emerald-500" style={{ width: `${pctClamped}%` }} />
+        <span className={cn("block h-full", barColor)} style={{ width: `${pctClamped}%` }} />
       </span>
       <span className="tabular-nums">{pct.toFixed(1)}%</span>
       <span className="ml-auto flex items-center gap-3 tabular-nums">

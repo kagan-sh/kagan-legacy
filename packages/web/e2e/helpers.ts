@@ -26,6 +26,12 @@ export async function ensureBoardReady(
   const activated = await request.post(`/api/projects/${projectId}/activate`);
   expect(activated.ok()).toBeTruthy();
 
+  // Seed one task so the Kanban columns render (board shows empty state otherwise)
+  const taskCreated = await request.post('/api/tasks', {
+    data: { title: 'E2E seed task' },
+  });
+  expect(taskCreated.ok()).toBeTruthy();
+
   await page.goto('/board');
   await page.waitForLoadState('load');
   const tutorial = page.getByRole('dialog', { name: /Guided Tutorial/i });

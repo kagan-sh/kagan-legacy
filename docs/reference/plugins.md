@@ -25,11 +25,11 @@ GitHub issue import is built into Kagan. No plugin configuration needed.
 
 ## For contributors
 
-The internal plugin system uses Python entry points (`kagan.plugins` group). If you're building a third-party integration, add it to the `[plugins]` discovery list in `config.toml`:
+The internal plugin system uses Python entry points (`kagan.plugins` group). If you're building a third-party integration, register it in your package metadata so `importlib.metadata` can discover it:
 
 ```toml
-[plugins]
-discovery = [..., "my_package.my_plugin:MyPlugin"]
+[project.entry-points."kagan.plugins"]
+my-plugin = "my_package.my_plugin:MyPlugin"
 ```
 
 Plugin CLI commands (`kagan plugins sync/list/check`) are gated behind `KAGAN_ENABLE_PLUGIN_CLI=1`. This is intentional — the surface is experimental.

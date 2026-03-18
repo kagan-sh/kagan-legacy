@@ -240,7 +240,8 @@ jobs:
         working-directory: ${{ github.workspace }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      - run: pnpm build
+      - run: uv run poe web-build
+        working-directory: ${{ github.workspace }}
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4

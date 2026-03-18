@@ -17,7 +17,7 @@ ______________________________________________________________________
 
 ## Design Principles
 
-```
+```text
 Simple is better than complex.
 Flat is better than nested.
 There should be one obvious way to do it.
@@ -56,7 +56,7 @@ ______________________________________________________________________
 
 ## Module Layout
 
-```
+```text
 kagan/core/
 ├── __init__.py            # re-exports KaganCore, models, enums, errors, PreflightCheckResult, CheckStatus
 ├── client.py              # KaganCore + domain namespace classes
@@ -127,9 +127,7 @@ ______________________________________________________________________
 
 ### Why Unified Session
 
-A "Session" in AUTO mode and a "Session" in PAIR mode are the same thing:
-**an agent working on a task.**
-The difference is just the `mode` field. One model, one table, one concept.
+A "Session" in AUTO mode and a "Session" in PAIR mode are the same thing: an agent working on a task. The difference is just the `mode` field. One model, one table, one concept.
 
 ### Done Tasks
 
@@ -419,7 +417,7 @@ Agent subprocess (stdout piped to kagan)
 ▼
 KaganACPClient.session_update() → map_acp_update_to_event() → emit() → signal.set()
 
-```
+```text
 
 **Path B — MCP (PAIR mode and external tools).** Used in two cases:
 
@@ -436,7 +434,7 @@ MCP tool call: task_events("Hello World")
 ▼
 kagan mcp subprocess → INSERT run_event → signal.set()
 
-```
+```text
 
 **Both converge here:** `tasks.events.stream()` wakes on the signal, yields the row,
 and the TUI/CLI renders it. The consumer doesn't know which path wrote the event.
@@ -470,7 +468,7 @@ ______________________________________________________________________
 
 ## Agent Persistence
 
-**AUTO agents are subprocesses owned by kagan. PAIR agents are detached.**
+AUTO agents are subprocesses owned by Kagan. PAIR agents are detached.
 
 ```
 
@@ -506,7 +504,7 @@ kagan (client) Agent in IDE/tmux kagan reconnects
 │ task.events.stream()─┤
 │ ◄── all events │
 
-```
+```text
 
 1. **ACP subprocess** — in AUTO mode, kagan owns the agent process (piped stdin/stdout).
    If kagan exits, it can terminate the agent. Reconnection resumes from DB offset.
@@ -552,7 +550,7 @@ REVIEW ──────► IN_PROGRESS
 REVIEW ──────► BACKLOG
 DONE ───────► BACKLOG (via task.set_status; fresh worktree on next run/pair)
 
-```
+```text
 
 Direct DONE from `task.set_status()` is blocked; only `review.merge()` can transition to DONE.
 `task.set_status(task_id, BACKLOG)` moves DONE → BACKLOG for iteration.
@@ -568,7 +566,7 @@ Direct DONE from `task.set_status()` is blocked; only `review.merge()` can trans
 
 Kagan supports any CLI-based coding agent through a backend registry.
 
-**Supported agent backends:**
+### Supported agent backends
 
 | Backend          | CLI Executable   | Notes           |
 | ---------------- | ---------------- | --------------- |
@@ -594,7 +592,7 @@ to the launcher.
 
 **Backend aliases:** `claude` resolves to `claude-code`; `gemini` resolves to `gemini-cli`; `kimi` resolves to `kimi-cli`. Aliases are accepted anywhere a backend name is accepted.
 
-**Launch sequence (agent-agnostic):**
+### Launch sequence
 
 1. Look up backend in registry → get executable + args template
 1. Write `.mcp.json` into worktree with appropriate MCP flags (see below)
@@ -602,7 +600,7 @@ to the launcher.
 1. Spawn as **detached OS process** (new process session)
 1. Return Session
 
-**MCP flag wiring per consumer:**
+### MCP flag wiring per consumer
 
 | Consumer               | `.mcp.json` args                   | Access tier            |
 | ---------------------- | ---------------------------------- | ---------------------- |
@@ -612,7 +610,7 @@ to the launcher.
 
 Core wires these flags automatically — frontends never construct MCP args.
 
-**Communication (see § Event Streaming above):**
+### Communication
 
 All backends speak ACP. In AUTO mode, step 4 spawns with piped stdin/stdout. Kagan
 performs the ACP handshake (`initialize` → `session/new`) and starts a reader loop
@@ -687,7 +685,7 @@ Frontend KaganCore Agent CLI (detached)
 | | |-- writes via MCP
 | | |-- updates Session
 
-```
+```text
 
 All agents use the same flow. The only variable is the executable and args template
 from the backend registry.
@@ -701,7 +699,7 @@ Frontend KaganCore Launcher (tmux/IDE/nvim)
 |-- task.pair(id) ----------->| |
 | |-- worktrees.create() --->|
 | |-- write .mcp.json ------->|
-| |-- LAUNCHERS[launcher](<>) ->|
+| |-- LAUNCHERS[launcher] ------>|
 |\<-- Session --------------------| start agent + env |-- user works
 | | | with agent
 | (TUI/CLI displays: | |-- agent uses
@@ -709,7 +707,7 @@ Frontend KaganCore Launcher (tmux/IDE/nvim)
 | | | to report
 | |◄-- events via MCP --------| progress
 
-```
+```text
 
 ______________________________________________________________________
 
@@ -768,7 +766,7 @@ kagan.tui ──► kagan.chat (ChatSession, slash commands)
 kagan.cli ──► kagan.chat (run_chat for REPL)
 kagan.core ──✘► kagan.chat NEVER
 
-```
+```text
 
 ______________________________________________________________________
 

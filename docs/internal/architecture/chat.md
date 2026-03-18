@@ -26,7 +26,7 @@ ______________________________________________________________________
 
 **Core does not know about chat.** The dependency direction is strictly one-way:
 
-```
+```text
 kagan.chat ──► kagan.core   (agent spawning, event streaming, task ops)
 kagan.tui  ──► kagan.chat   (ChatController, slash commands)
 kagan.cli  ──► kagan.chat   (run_chat for REPL)
@@ -47,7 +47,7 @@ ______________________________________________________________________
 
 ## Package Layout
 
-```
+```text
 src/kagan/chat/
 ├── __init__.py        # re-exports public API
 ├── _completion.py     # fuzzy_match helper for slash command completion
@@ -75,7 +75,7 @@ src/kagan/chat/
 - Streams agent output to Rich console
 - Maintains conversation state for the current session
 
-**Public API:**
+#### Public API
 
 | Method                                            | Description                      |
 | ------------------------------------------------- | -------------------------------- |
@@ -104,7 +104,7 @@ class SlashCommand:
     handler: Callable[[SlashCommandInvocation, _SlashCommandContext], SlashCommandOutcome]
 ```
 
-**Built-in commands:**
+#### Built-in commands
 
 | Command     | Description                                                       |
 | ----------- | ----------------------------------------------------------------- |
@@ -122,7 +122,7 @@ class SlashCommand:
 
 Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 
-**Key helpers (from `sessions.py`):**
+#### Key helpers from `sessions.py`
 
 | Function                                                         | Description                                  |
 | ---------------------------------------------------------------- | -------------------------------------------- |
@@ -141,7 +141,7 @@ Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 | `resolve_chat_session_id(items, query)`                          | Resolve query to a session ID                |
 | `build_chat_session_list_items(sessions, *, current_session_id)` | Convert raw session records to display items |
 
-**Constants:**
+#### Constants
 
 | Name                        | Value / Purpose                              |
 | --------------------------- | -------------------------------------------- |
@@ -150,7 +150,7 @@ Chat sessions are stored in `client.settings` under the key `chat_sessions_v1`.
 | `CHAT_LAST_SESSION_PREFIX`  | Prefix for last-session-id entries per scope |
 | `_SESSION_TITLE_MAX_LENGTH` | `80` — max characters for a generated title  |
 
-**Normalization:**
+#### Normalization
 
 - `MAX_STORED_SESSIONS = 30` — oldest sessions pruned on save
 - `MAX_STORED_MESSAGES = 300` — messages truncated to recent N
@@ -174,14 +174,14 @@ The REPL provides the interactive terminal interface:
 - **Output:** `Rich.Console` with markdown rendering, syntax highlighting
 - **Loop:** reads line → `ChatController.process_input()` → render response
 
-**Entry points:**
+#### Entry points
 
 | Function           | Description                                           |
 | ------------------ | ----------------------------------------------------- |
 | `run_chat()`       | One-shot REPL call (used by `kagan chat --prompt`)    |
 | `run_chat_async()` | Stateful REPL loop (used by interactive `kagan chat`) |
 
-**Scope modes:**
+#### Scope modes
 
 - **Project-scoped** — `--session-id` binds to a specific task session
 - **Global orchestrator** — no session binding, uses project-level settings
@@ -201,7 +201,7 @@ ______________________________________________________________________
 
 ## Orchestrator Turn Flow
 
-```
+```text
 User types "implement auth"
    │
    ▼
@@ -228,7 +228,7 @@ ChatController.process_input()
            └─ on session/end ────────► finalize response
 ```
 
-**ACP integration:**
+### ACP integration
 
 - Uses `agent-client-protocol` SDK for bidirectional streaming
 - `_OrchestratorACPClient` (in `controller.py`) implements `ACPClientBase`
@@ -287,7 +287,7 @@ tagged with a `source` field on creation (`"repl"`, `"tui-orchestrator"`,
 
 **Session list command:** `/sessions` queries all sessions and shows:
 
-```
+```text
  1. "Fix login bug" (claude-code, 2h ago) ◀ current
  2. "Refactor API" (gemini-cli, yesterday)
  3. "Add tests" (claude-code, 3d ago)

@@ -50,8 +50,8 @@ workers that iterate over `core.tasks.events.stream(task_id)`. The stream uses r
 with near-zero latency and zero idle cost.
 
 Each worker posts Textual messages for every event it receives. No `CoreHooks`,
-no `call_from_thread`, no callback bridging. One pattern:
-**worker pulls `tasks.events.stream()`, posts Textual messages.**
+no `call_from_thread`, no callback bridging. One pattern: the worker pulls
+`tasks.events.stream()` and posts Textual messages.
 
 ### Testing
 
@@ -61,7 +61,7 @@ directly. See the Testing Philosophy section below for full details.
 
 ### Dependency Direction
 
-```
+```text
 kagan.tui ──► kagan.core    (KaganCore: task ops, project ops, event streaming)
 kagan.tui ──► kagan.chat    (ChatSession: slash commands, conversation state)
 
@@ -75,7 +75,7 @@ ______________________________________________________________________
 
 ## App & Screen Hierarchy
 
-```
+```text
 KaganApp (Textual App)
 │
 ├── WelcomeScreen            # Logo, CWD banner (conditional), project OptionList
@@ -130,7 +130,7 @@ KaganApp (Textual App)
 
 ### Screen Transitions
 
-```
+```text
 WelcomeScreen ──select project──→ KanbanScreen (switch)
 KanbanScreen  ──Enter──────────────────→ Open/refresh TaskInspector (in-place)
 KanbanScreen  ──Enter on selected task──→ TaskScreen or PAIR attach flow (push/attach)
@@ -147,7 +147,7 @@ ______________________________________________________________________
 
 Key composition (the primary screen):
 
-```
+```text
 
 KanbanScreen
 ├── KaganHeader # project name, connection status
@@ -255,7 +255,7 @@ Three TCSS layers, ascending specificity:
 1. **`app.tcss`** — global variables, base layout, theme.
 1. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed.
 
-```
+```text
 
 styles/
 ├── app.tcss # theme vars ($primary, $surface, etc.), global layout
@@ -272,7 +272,7 @@ ______________________________________________________________________
 
 ## File Layout
 
-```
+```text
 
 src/kagan/tui/
 ├── __init__.py # re-exports KaganApp
@@ -379,7 +379,7 @@ Supports AI Panel for streaming agent output and user interjection.
 Two-column, six-panel layout. Left column: agent status, persona pipeline,
 live output. Right column: worktree changes, commits, diff preview.
 
-```
+```text
 
 SessionDashboardScreen
 ├── KaganHeader
@@ -413,7 +413,7 @@ SessionDashboardScreen
 
 Session Dashboard keeps its dedicated chat shortcuts:
 
-398:XH|- `Ctrl+I` toggles AI Panel pre-connected to the running agent stream
+- `Ctrl+I` toggles AI Panel pre-connected to the running agent stream
 
 - `Ctrl+Shift+T` toggles fullscreen chat
 - `Tab` cycles between task agent and orchestrator sessions
@@ -436,7 +436,7 @@ compact status bar, giving maximum vertical space to the chat.
 The `PersonaPipelineMap` widget renders the persona execution plan as a
 horizontal chain of steps:
 
-```
+```text
 
 ✓ ANALYST ─→ ✓ PLANNER ─→ ● IMPLEMENTER ─→ ○ REVIEWER
 (3/4)
@@ -453,7 +453,7 @@ animated), `○` pending (dim). The pipeline is derived from:
 
 ### File Layout
 
-```
+```text
 
 src/kagan/tui/
 screens/
@@ -470,7 +470,7 @@ session_dashboard.tcss # Dashboard-specific styles
 
 ### Navigation
 
-```
+```text
 
 KanbanScreen
 │
@@ -480,7 +480,7 @@ KanbanScreen
 
 SessionDashboardScreen
 ├─ Escape ──────────────────→ pop back to KanbanScreen
-464:XX|├─ Ctrl+I ────────────────────→ toggle docked AI Panel
+├─ Ctrl+I ────────────────────→ toggle docked AI Panel
 ├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
 └─ Shift+S ─────────────────→ cancel running agent
 

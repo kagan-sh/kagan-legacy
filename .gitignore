@@ -243,7 +243,6 @@ pnpm-debug.log*
 *.tsbuildinfo
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
 
 # ── Bundled web UI (build artifact, included in wheel via force-include) ──
 src/kagan/server/_web_static/*

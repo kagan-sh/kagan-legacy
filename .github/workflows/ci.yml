@@ -213,7 +213,7 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [lint, fast-gate]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: packages/web

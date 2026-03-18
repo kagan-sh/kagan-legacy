@@ -146,6 +146,12 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
     if app.bound_session_id is not None:
         result["session_id"] = app.bound_session_id
 
+    # Include worktree path so agents know where task files live
+    with contextlib.suppress(Exception):
+        ws = await app.client.worktrees.get(resolved_task_id)
+        if ws is not None:
+            result["worktree_path"] = ws.worktree_path
+
     try:
         all_tasks = await app.client.tasks.list()
         siblings = [t for t in all_tasks if t.id != resolved_task_id]

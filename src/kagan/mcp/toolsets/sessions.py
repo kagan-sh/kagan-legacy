@@ -1,5 +1,6 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
+import contextlib
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Any, TypedDict
@@ -193,11 +194,15 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     rows: list[dict[str, Any]] = []
     for task in tasks:
         session = await _get_latest_session(app.client, task.id)
+        ws = None
+        with contextlib.suppress(Exception):
+            ws = await app.client.worktrees.get(task.id)
         row: dict[str, Any] = {
             "task_id": task.id,
             "status": task.status.value,
             "execution_mode": task.execution_mode.value,
             "agent_backend": task.agent_backend,
+            "worktree_path": ws.worktree_path if ws is not None else None,
             "session_id": session.id if session is not None else None,
             "session_backend": session.agent_backend if session is not None else None,
         }

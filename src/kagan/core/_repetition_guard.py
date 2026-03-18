@@ -35,10 +35,10 @@ class RepetitionGuard:
     within the sliding window, the guard returns True, signaling a loop condition.
     """
 
-    window: int = 10
+    window: int = 20
     """Size of the sliding window for tracking calls."""
 
-    threshold: int = 4
+    threshold: int = 8
     """Number of repetitions before signaling a loop."""
 
     _recent: deque[str] = field(default_factory=deque)

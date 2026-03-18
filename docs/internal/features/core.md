@@ -67,7 +67,7 @@ ______________________________________________________________________
 - Events stream reactively to any connected client (near-zero latency)
 - Client reconnects and picks up full event history from offset 0
 - Cancel kills the agent process and moves task to BACKLOG
-- Repetition guard detects agents stuck in tool-call loops: if the same tool+arguments hash appears ≥4 times within a 10-call window, the agent is cancelled
+- Repetition guard detects agents stuck in tool-call loops: if the same tool+arguments hash appears ≥8 times within a 20-call window, the agent is cancelled
 - Repetition guard normalizes arguments (dict, JSON string, None) before hashing — different files read via the same tool produce distinct hashes
 - On repetition-triggered cancellation, AGENT_FAILED is emitted **before** cancel to guarantee subscribers receive the error before the terminal TASK_STATUS_CHANGED
 - ACP UsageUpdate events capture context window usage (size, used) and cumulative cost (amount, currency)

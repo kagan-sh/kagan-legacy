@@ -576,11 +576,16 @@ class Sessions:
 
         task = await self._get_task(task_id)
         if task.status == TaskStatus.IN_PROGRESS:
-            await asyncio.to_thread(self._set_status, task_id, TaskStatus.BACKLOG)
+            # Check if the agent made useful progress before being cancelled;
+            # if the worktree has commits, move to REVIEW instead of BACKLOG.
+            next_status = await self._resolve_post_agent_status(task_id)
+            if next_status == task.status:
+                next_status = TaskStatus.BACKLOG
+            await asyncio.to_thread(self._set_status, task_id, next_status)
             await self._events.emit(
                 task_id,
                 SessionEventType.TASK_STATUS_CHANGED,
-                {"from": TaskStatus.IN_PROGRESS.value, "to": TaskStatus.BACKLOG.value},
+                {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                 session_id=active.id if active is not None else None,
             )
         logger.info("Cancelled session for task={}", task_id)

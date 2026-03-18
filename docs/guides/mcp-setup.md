@@ -31,7 +31,7 @@ Switch to default (read+write) or admin tier only when needed.
 
 ## 3. Verify
 
-```
+```text
 task_list → tasks returned
 task_get(task_id, include_logs=true) → task detail
 task_logs(task_id, offset, limit)   → if truncated
@@ -64,206 +64,162 @@ ______________________________________________________________________
 
 === "Claude Code"
 
-`````
-````
-Path: `~/.claude.json` (global) or `.mcp.json` (project)
+    Path: `~/.claude.json` (global) or `.mcp.json` (project)
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "VS Code"
 
-`````
-````
-Path: `.vscode/mcp.json`
+    Path: `.vscode/mcp.json`
 
-```json
-{
-  "servers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "servers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "Cursor"
 
-`````
-````
-Path: `.cursor/mcp.json`
+    Path: `.cursor/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "OpenCode"
 
-`````
-````
-Path: `~/.config/opencode/opencode.json`
+    Path: `~/.config/opencode/opencode.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "Codex"
 
-`````
-````
-Path: `~/.codex/config.toml`
+    Path: `~/.codex/config.toml`
 
-```toml
-[mcp_servers.kagan]
-command = "kagan"
-args = ["mcp"]
-```
-````
-`````
+    ```toml
+    [mcp_servers.kagan]
+    command = "kagan"
+    args = ["mcp"]
+    ```
 
 === "Gemini CLI"
 
-`````
-````
-Path: `~/.gemini/settings.json`
+    Path: `~/.gemini/settings.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "Kimi CLI"
 
-`````
-````
-Path: `~/.kimi/mcp.json`
+    Path: `~/.kimi/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "GitHub Copilot"
 
-`````
-````
-Path: `.github/copilot/mcp.json`
+    Path: `.github/copilot/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "Goose"
 
-`````
-````
-Path: `~/.config/goose/config.yaml`
+    Path: `~/.config/goose/config.yaml`
 
-```yaml
-extensions:
-  kagan:
-    type: stdio
-    name: kagan
-    cmd: kagan
-    args:
-      - mcp
-```
-````
-`````
+    ```yaml
+    extensions:
+      kagan:
+        type: stdio
+        name: kagan
+        cmd: kagan
+        args:
+          - mcp
+    ```
 
 === "Amp"
 
-`````
-````
-Path: `~/.config/amp/settings.json`
+    Path: `~/.config/amp/settings.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 === "Auggie"
 
-`````
-````
-Path: `~/.augment/mcp.json`
+    Path: `~/.augment/mcp.json`
 
-```json
-{
-  "mcpServers": {
-    "kagan": {
-      "command": "kagan",
-      "args": ["mcp"]
+    ```json
+    {
+      "mcpServers": {
+        "kagan": {
+          "command": "kagan",
+          "args": ["mcp"]
+        }
+      }
     }
-  }
-}
-```
-````
-`````
+    ```
 
 !!! tip "Read-only or admin access"
 Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.

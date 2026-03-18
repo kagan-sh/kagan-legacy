@@ -32,7 +32,7 @@ ______________________________________________________________________
 
 ## Internal Structure
 
-```
+```text
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point

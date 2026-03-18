@@ -32,7 +32,7 @@ ______________________________________________________________________
 
 ## Design Principles
 
-```
+```text
 Simple is better than complex.
 There should be one obvious way to do it.
 Namespaces are one honking great idea.
@@ -54,7 +54,7 @@ ______________________________________________________________________
 
 ## Internal Structure
 
-```
+```text
                       ┌────────────────────────────────────────────────┐
                       │              CLI entry point                    │
                        │   kagan mcp [--role WORKER|REVIEWER|ORCHESTRATOR] │
@@ -146,7 +146,7 @@ ______________________________________________________________________
 
 ## Package Layout
 
-```
+```text
 src/kagan/mcp/
 ├── __init__.py        # re-export create_server
 ├── server.py          # MCPServer factory, lifespan, STDIO entry point
@@ -292,7 +292,7 @@ MCP is used in two cases:
 1. **External tools** — IDE hosts browse tasks, orchestrators manage projects, or users
    connect custom tools to kagan via `kagan mcp [flags]`.
 
-```
+```text
 Agent in IDE/tmux (or external tool)   kagan MCP server               Core DB
    │                                       │                             │
    │── discovers .mcp.json ───────────────►│                             │

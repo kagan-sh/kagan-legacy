@@ -28,7 +28,7 @@ ______________________________________________________________________
 
 ## Design Principles
 
-```
+```text
 Simple is better than complex.
 There should be one obvious way to do it.
 Explicit is better than implicit.
@@ -60,7 +60,7 @@ ______________________________________________________________________
 
 ## Module Layout
 
-```
+```text
 kagan/plugins/
 ├── __init__.py       # re-exports public API
 ├── _base.py          # Plugin ABCs, PluginManager, discovery, errors, result types
@@ -75,7 +75,7 @@ ______________________________________________________________________
 
 ## Class Hierarchy
 
-```
+```text
 Plugin (ABC)
 ├── name: str (abstract property)
 ├── setup(client)           — called once on register
@@ -138,7 +138,7 @@ ______________________________________________________________________
 
 ## Discovery Flow
 
-```
+```text
 pyproject.toml
   [project.entry-points."kagan.plugins"]
   github = "kagan.plugins._github:GitHubImporter"
@@ -186,7 +186,7 @@ ______________________________________________________________________
 
 ## Error Hierarchy
 
-```
+```text
 KaganError
 ├── PluginError        — base for all plugin errors
 │   └── PluginSyncError — sync operation failure (gh CLI error, JSON parse, etc.)
@@ -259,7 +259,7 @@ ______________________________________________________________________
 
 ## Dependency Direction
 
-```
+```text
 kagan.plugins ──► kagan.core       (KaganCore, PreflightCheckResult, CheckStatus, errors, enums)
 
 kagan.cli     ──► kagan.plugins    (lazy import inside function bodies)

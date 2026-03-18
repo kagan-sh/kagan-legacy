@@ -15,7 +15,7 @@ ______________________________________________________________________
 
 ## Internal Structure
 
-```
+```text
                          ┌─────────────────────────────────────────────┐
                          │              pyproject.toml                 │
                          │     kagan = "kagan.cli:cli"                │
@@ -133,7 +133,7 @@ ______________________________________________________________________
 
 ## Package Layout
 
-```
+```text
 src/kagan/cli/
 ├── __init__.py        # re-export `cli` for entry_points
 ├── main.py            # root group, version flag, default-to-tui, error boundary
@@ -235,7 +235,7 @@ ______________________________________________________________________
 
 ## How State Flows
 
-```
+```text
  shell
   │
   ▼

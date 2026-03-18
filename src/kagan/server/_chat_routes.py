@@ -28,6 +28,8 @@ from kagan.server.responses import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
     from starlette.responses import JSONResponse, Response
@@ -69,8 +71,148 @@ def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-def register_chat_routes(mcp: FastMCP) -> None:
-    """Register chat session CRUD endpoints."""
+def _parse_attachments(body: dict[str, Any]) -> list[dict[str, str]] | None:
+    """Extract and validate attachments from request body."""
+    raw = body.get("attachments")
+    if not isinstance(raw, list):
+        return None
+    parsed = [
+        {
+            "type": str(a.get("type", "")),
+            "name": str(a.get("name", "")),
+            "mime_type": str(a.get("mime_type", "")),
+            "data": str(a.get("data", "")),
+        }
+        for a in raw
+        if isinstance(a, dict) and a.get("data")
+    ]
+    return parsed or None
+
+
+async def _bridge_acp_update(
+    update: Any, chunk_queue: asyncio.Queue[dict[str, Any] | None]
+) -> None:
+    """Bridge a single ACP session_update callback into the SSE queue."""
+    from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
+
+    if isinstance(update, AgentMessageChunk):
+        content = getattr(update, "content", None)
+        if content and getattr(content, "type", None) == "text":
+            chunk_text = getattr(content, "text", "") or ""
+            if chunk_text:
+                await chunk_queue.put({"t": "CHAT_CHUNK", "content": chunk_text})
+    elif isinstance(update, AgentThoughtChunk):
+        content = getattr(update, "content", None)
+        if content and getattr(content, "type", None) == "text":
+            chunk_text = getattr(content, "text", "") or ""
+            if chunk_text:
+                await chunk_queue.put(
+                    {"t": "CHAT_CHUNK", "content": chunk_text, "thought": True}
+                )
+    elif isinstance(update, ToolCallStart):
+        title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
+        await chunk_queue.put({"t": "CHAT_TOOL_START", "tool": title})
+    elif isinstance(update, ToolCallProgress):
+        status = getattr(update, "status", None)
+        title = getattr(update, "title", None) or "tool"
+        await chunk_queue.put(
+            {"t": "CHAT_TOOL_PROGRESS", "tool": title, "status": str(status) if status else None}
+        )
+
+
+async def _run_chat_stream(
+    ctx: Any,
+    session_id: str,
+    session: dict[str, Any],
+    text: str,
+    backend: str,
+    attachments: list[dict[str, str]] | None,
+) -> AsyncIterator[str]:
+    """Core SSE generator for a single chat turn."""
+    from kagan.chat.acp import run_orchestrator_turn
+    from kagan.chat.prompt import build_orchestrator_prompt
+
+    try:
+        prior_history: list[tuple[str, str]] = [
+            (str(item[0]), str(item[1]))
+            for item in (session.get("orchestrator_history") or [])
+            if isinstance(item, list | tuple) and len(item) == 2
+        ]
+
+        history = list(session.get("orchestrator_history") or [])
+        is_first_message = len(history) == 0
+        history.append(["user", text])
+        session["orchestrator_history"] = history
+        session["agent_backend"] = backend
+        await save_chat_session(ctx.client, session)
+
+        prompt = build_orchestrator_prompt(prior_history, text)
+        current_settings = await ctx.client.settings.get()
+        project_cwd = await ctx.client.projects.resolve_repo_path(settings=current_settings)
+
+        chunk_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+        async def _run_turn() -> str:
+            try:
+                result = await run_orchestrator_turn(
+                    ctx.client,
+                    prompt=prompt,
+                    agent_backend=backend,
+                    on_update=lambda u: _bridge_acp_update(u, chunk_queue),
+                    attachments=attachments,
+                    cwd=project_cwd,
+                )
+                return result or ""
+            finally:
+                await chunk_queue.put(None)
+
+        turn_task = asyncio.create_task(_run_turn())
+        _chat_turn_tasks[session_id] = turn_task
+
+        try:
+            while True:
+                item = await chunk_queue.get()
+                if item is None:
+                    break
+                yield f"data: {json.dumps(item)}\n\n"
+        finally:
+            _chat_turn_tasks.pop(session_id, None)
+
+        full_response = await turn_task
+
+        if full_response:
+            history.append(["assistant", full_response])
+            session["orchestrator_history"] = history
+            await save_chat_session(ctx.client, session)
+
+        yield f"data: {json.dumps({'t': 'CHAT_DONE', 'full_response': full_response})}\n\n"
+
+        if is_first_message and full_response:
+            from kagan.chat._title import ensure_session_title
+
+            try:
+                title = await ensure_session_title(
+                    ctx.client,
+                    session,
+                    user_message=text,
+                    assistant_reply=full_response,
+                    agent_backend=backend,
+                )
+                if title:
+                    evt = {"t": "CHAT_SESSION_UPDATED", "session_id": session_id, "label": title}
+                    yield f"data: {json.dumps(evt)}\n\n"
+            except Exception:
+                logger.debug("Chat title generation failed", exc_info=True)
+
+    except asyncio.CancelledError:
+        return
+    except Exception as exc:
+        logger.exception("Chat stream failed for session {}", session_id)
+        yield f"data: {json.dumps({'t': 'CHAT_ERROR', 'error': str(exc)})}\n\n"
+
+
+def _register_crud_routes(mcp: FastMCP) -> None:
+    """Register chat session CRUD endpoints (list, create, get, delete, agents)."""
 
     @mcp.custom_route("/api/chat/sessions", methods=["GET"])
     @require_context(mcp)
@@ -137,12 +279,11 @@ def register_chat_routes(mcp: FastMCP) -> None:
         backends = list_registered_agent_backends()
         settings = await ctx.client.settings.get()
         default = settings.get("default_agent_backend") or "claude-code"
-        return _ok(
-            {
-                "backends": backends,
-                "default": default,
-            }
-        )
+        return _ok({"backends": backends, "default": default})
+
+
+def _register_stream_routes(mcp: FastMCP) -> None:
+    """Register chat streaming and interrupt endpoints."""
 
     @mcp.custom_route("/api/chat/{session_id}/stream", methods=["POST"])
     @require_context(mcp)
@@ -160,22 +301,7 @@ def register_chat_routes(mcp: FastMCP) -> None:
         if not text:
             return _err("text is required", status=400)
         agent_backend = cast("str | None", body.get("agent_backend"))
-
-        raw_attachments = body.get("attachments")
-        attachments: list[dict[str, str]] | None = None
-        if isinstance(raw_attachments, list):
-            attachments = [
-                {
-                    "type": str(a.get("type", "")),
-                    "name": str(a.get("name", "")),
-                    "mime_type": str(a.get("mime_type", "")),
-                    "data": str(a.get("data", "")),
-                }
-                for a in raw_attachments
-                if isinstance(a, dict) and a.get("data")
-            ]
-            if not attachments:
-                attachments = None
+        attachments = _parse_attachments(body)
 
         session = await get_chat_session(ctx.client, session_id)
         if session is None:
@@ -186,140 +312,8 @@ def register_chat_routes(mcp: FastMCP) -> None:
             agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
         )
 
-        async def _stream() -> Any:
-            from kagan.chat.acp import run_orchestrator_turn
-            from kagan.chat.prompt import build_orchestrator_prompt
-
-            try:
-                prior_history: list[tuple[str, str]] = [
-                    (str(item[0]), str(item[1]))
-                    for item in (session.get("orchestrator_history") or [])
-                    if isinstance(item, list | tuple) and len(item) == 2
-                ]
-
-                # Persist user message before starting
-                history = list(session.get("orchestrator_history") or [])
-                is_first_message = len(history) == 0
-                history.append(["user", text])
-                session["orchestrator_history"] = history
-                session["agent_backend"] = backend
-                await save_chat_session(ctx.client, session)
-
-                prompt = build_orchestrator_prompt(prior_history, text)
-                project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-
-                from acp.schema import (
-                    AgentMessageChunk,
-                    AgentThoughtChunk,
-                    ToolCallProgress,
-                    ToolCallStart,
-                )
-
-                chunk_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-
-                async def _on_chunk(update: Any) -> None:
-                    """Bridge ACP session_update callback → SSE queue."""
-                    if isinstance(update, AgentMessageChunk):
-                        content = getattr(update, "content", None)
-                        if content and getattr(content, "type", None) == "text":
-                            chunk_text = getattr(content, "text", "") or ""
-                            if chunk_text:
-                                await chunk_queue.put({"t": "CHAT_CHUNK", "content": chunk_text})
-                    elif isinstance(update, AgentThoughtChunk):
-                        content = getattr(update, "content", None)
-                        if content and getattr(content, "type", None) == "text":
-                            chunk_text = getattr(content, "text", "") or ""
-                            if chunk_text:
-                                await chunk_queue.put(
-                                    {
-                                        "t": "CHAT_CHUNK",
-                                        "content": chunk_text,
-                                        "thought": True,
-                                    }
-                                )
-                    elif isinstance(update, ToolCallStart):
-                        title = (
-                            getattr(update, "title", None)
-                            or getattr(update, "name", None)
-                            or "tool"
-                        )
-                        await chunk_queue.put({"t": "CHAT_TOOL_START", "tool": title})
-                    elif isinstance(update, ToolCallProgress):
-                        status = getattr(update, "status", None)
-                        title = getattr(update, "title", None) or "tool"
-                        await chunk_queue.put(
-                            {
-                                "t": "CHAT_TOOL_PROGRESS",
-                                "tool": title,
-                                "status": str(status) if status else None,
-                            }
-                        )
-
-                async def _run_turn() -> str:
-                    try:
-                        result = await run_orchestrator_turn(
-                            ctx.client,
-                            prompt=prompt,
-                            agent_backend=backend,
-                            on_update=_on_chunk,
-                            attachments=attachments,
-                            cwd=project_cwd,
-                        )
-                        return result or ""
-                    finally:
-                        await chunk_queue.put(None)  # Signal completion
-
-                turn_task = asyncio.create_task(_run_turn())
-                _chat_turn_tasks[session_id] = turn_task
-
-                try:
-                    while True:
-                        item = await chunk_queue.get()
-                        if item is None:
-                            break
-                        yield f"data: {json.dumps(item)}\n\n"
-                finally:
-                    _chat_turn_tasks.pop(session_id, None)
-
-                full_response = await turn_task
-
-                if full_response:
-                    history.append(["assistant", full_response])
-                    session["orchestrator_history"] = history
-                    await save_chat_session(ctx.client, session)
-
-                yield f"data: {json.dumps({'t': 'CHAT_DONE', 'full_response': full_response})}\n\n"
-
-                # Title generation for first message
-                if is_first_message and full_response:
-                    from kagan.chat._title import ensure_session_title
-
-                    try:
-                        title = await ensure_session_title(
-                            ctx.client,
-                            session,
-                            user_message=text,
-                            assistant_reply=full_response,
-                            agent_backend=backend,
-                        )
-                        if title:
-                            evt = {
-                                "t": "CHAT_SESSION_UPDATED",
-                                "session_id": session_id,
-                                "label": title,
-                            }
-                            yield f"data: {json.dumps(evt)}\n\n"
-                    except Exception:
-                        logger.debug("Chat title generation failed", exc_info=True)
-
-            except asyncio.CancelledError:
-                return
-            except Exception as exc:
-                logger.exception("Chat stream failed for session {}", session_id)
-                yield f"data: {json.dumps({'t': 'CHAT_ERROR', 'error': str(exc)})}\n\n"
-
         return StreamingResponse(
-            _stream(),
+            _run_chat_stream(ctx, session_id, session, text, backend, attachments),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -350,3 +344,9 @@ def register_chat_routes(mcp: FastMCP) -> None:
             await asyncio.wait_for(running_task, timeout=5.0)
 
         return _ok({"session_id": session_id, "interrupted": True})
+
+
+def register_chat_routes(mcp: FastMCP) -> None:
+    """Register all chat session endpoints."""
+    _register_crud_routes(mcp)
+    _register_stream_routes(mcp)

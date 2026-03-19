@@ -71,9 +71,6 @@ function TaskStatusBadge({ task }: { task: WireTask }) {
         {STATUS_LABELS[task.status as TaskStatus] ?? task.status}
       </Badge>
       <Badge variant="outline" className=" px-2.5 py-1 font-code text-[10px] uppercase tracking-[0.16em]">
-        {task.execution_mode === 'PAIR' ? 'PAIR' : 'AUTO'}
-      </Badge>
-      <Badge variant="outline" className=" px-2.5 py-1 font-code text-[10px] uppercase tracking-[0.16em]">
         {task.active_session ? 'Live session' : 'Idle'}
       </Badge>
     </div>
@@ -94,9 +91,10 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
           <AgentControl
             taskId={task.id}
             status={task.status}
-            executionMode={task.execution_mode}
             startedAt={runningSince}
             taskLauncher={task.launcher}
+            activeSessionId={task.active_session?.id ?? null}
+            activeSessionLauncher={task.active_session?.launcher ?? null}
           />
           {task.active_session ? (
             <>

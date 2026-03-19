@@ -738,7 +738,7 @@ ChatPanel #chat-overlay-session-badge.session-kind-orchestrator {
     color: $primary;
 }
 
-ChatPanel #chat-overlay-session-badge.session-kind-auto {
+ChatPanel #chat-overlay-session-badge.session-kind-detached {
     color: $success;
 }
 
@@ -746,7 +746,7 @@ ChatPanel #chat-overlay-session-badge.session-kind-review {
     color: $warning;
 }
 
-ChatPanel #chat-overlay-session-badge.session-kind-pair {
+ChatPanel #chat-overlay-session-badge.session-kind-attached {
     color: $text;
 }
 
@@ -808,7 +808,7 @@ ChatPanel #chat-overlay-session-indicator.session-kind-orchestrator {
     color: $primary;
 }
 
-ChatPanel #chat-overlay-session-indicator.session-kind-auto {
+ChatPanel #chat-overlay-session-indicator.session-kind-detached {
     color: $success;
 }
 
@@ -816,7 +816,7 @@ ChatPanel #chat-overlay-session-indicator.session-kind-review {
     color: $warning;
 }
 
-ChatPanel #chat-overlay-session-indicator.session-kind-pair {
+ChatPanel #chat-overlay-session-indicator.session-kind-attached {
     color: $text;
 }
 

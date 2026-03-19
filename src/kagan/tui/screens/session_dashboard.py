@@ -387,7 +387,9 @@ class SessionDashboardScreen(Screen[None]):
             panel.set_mode_title(f"Task #{self._task_id[:8]}")
             selected_task_key = active_task_key or TASK_WORKER_SESSION_KEY
             kind = (
-                SessionKind.REVIEW if "review" in selected_task_key.casefold() else SessionKind.AUTO
+                SessionKind.REVIEW
+                if "review" in selected_task_key.casefold()
+                else SessionKind.DETACHED
             )
             panel.set_session_kind(kind)
             panel.set_sessions(

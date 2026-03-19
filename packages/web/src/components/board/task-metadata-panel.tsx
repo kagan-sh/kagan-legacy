@@ -71,8 +71,8 @@ export function TaskMetadataPanel({
         labelClassName: 'inline-flex items-center gap-2 text-[var(--muted-foreground)]',
       },
       {
-        label: 'Mode',
-        value: task.execution_mode,
+        label: 'Launcher',
+        value: task.launcher || 'Default',
       },
       {
         label: 'Agent backend',

@@ -12,13 +12,13 @@ from kagan.tui.widgets.hint_bar import format_hint
 
 __all__ = [
     "TMUX_DOCS_URL",
-    "PairInstructionsModal",
+    "AttachedInstructionsModal",
 ]
 
 TMUX_DOCS_URL = "https://github.com/tmux/tmux/wiki"
 
 
-class PairInstructionsModal(ModalScreen[str | None]):
+class AttachedInstructionsModal(ModalScreen[str | None]):
     BINDINGS = TMUX_GATEWAY_BINDINGS
 
     def __init__(
@@ -36,14 +36,14 @@ class PairInstructionsModal(ModalScreen[str | None]):
         self._prompt_path = prompt_path
 
     def compose(self) -> ComposeResult:
-        with Container(id="pair-instructions-container"):
-            yield Label("PAIR Session Instructions", classes="modal-title")
+        with Container(id="attached-instructions-container"):
+            yield Label("Interactive Session Instructions", classes="modal-title")
             yield Rule()
 
             if self._backend == "tmux":
                 yield Static(
                     "You are about to enter a [bold]tmux[/bold] session.\n"
-                    "Kagan keybindings are paused until you detach.",
+                    "Kagan keybindings are paused until you detach back to Kagan.",
                     classes="tmux-intro",
                 )
                 yield Rule(line_style="heavy")
@@ -131,7 +131,7 @@ class PairInstructionsModal(ModalScreen[str | None]):
 
     def on_click(self, event: Click) -> None:
         try:
-            container = self.query_one("#pair-instructions-container")
+            container = self.query_one("#attached-instructions-container")
             if not container.region.contains(event.screen_x, event.screen_y):
                 self.dismiss(None)
         except (NoMatches, AttributeError):

@@ -18,7 +18,6 @@ import { apiClient } from "@/lib/api/client";
 import {
     fetchTasksAtom,
     projectSwitchVersionAtom,
-    tasksAtom,
 } from "@/lib/atoms/board";
 import {
     commandPaletteOpenAtom,
@@ -56,7 +55,6 @@ function AppLayout() {
     const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
     const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
     const projectVersion = useAtomValue(projectSwitchVersionAtom);
-    const tasks = useAtomValue(tasksAtom);
     const fetchTasks = useSetAtom(fetchTasksAtom);
     const [projectChecked, setProjectChecked] = useState(false);
     const lastDockModeRef = useRef<DockedChatRailMode>("chat-right");
@@ -64,14 +62,6 @@ function AppLayout() {
     navigateRef.current = navigate;
     const [railWidth, setRailWidth] = useState(448); // 28rem default
     const [railHeight, setRailHeight] = useState(384); // 24rem default
-
-    const railTaskExecutionMode = useMemo(
-        () =>
-            railTaskId
-                ? tasks.find((t) => t.id === railTaskId)?.execution_mode
-                : undefined,
-        [railTaskId, tasks],
-    );
 
     const MIN_RAIL = 280;
     const MAX_RAIL_W = 800;
@@ -512,9 +502,6 @@ function AppLayout() {
                                                 layout="chat-right"
                                                 onSetLayout={setChatRailLayout}
                                                 onClose={closeChatRail}
-                                                executionMode={
-                                                    railTaskExecutionMode
-                                                }
                                             />
                                         </ErrorBoundary>
                                     ) : railChatSessionId ? (
@@ -556,9 +543,6 @@ function AppLayout() {
                                             layout="chat-bottom"
                                             onSetLayout={setChatRailLayout}
                                             onClose={closeChatRail}
-                                            executionMode={
-                                                railTaskExecutionMode
-                                            }
                                         />
                                     </ErrorBoundary>
                                 ) : railChatSessionId ? (
@@ -590,7 +574,6 @@ function AppLayout() {
                                 layout="chat-fullscreen"
                                 onSetLayout={setChatRailLayout}
                                 onClose={closeChatRail}
-                                executionMode={railTaskExecutionMode}
                             />
                         </ErrorBoundary>
                     ) : railChatSessionId ? (
@@ -618,7 +601,6 @@ function AppLayout() {
                                     layout="chat-fullscreen"
                                     onSetLayout={setChatRailLayout}
                                     onClose={closeChatRail}
-                                    executionMode={railTaskExecutionMode}
                                 />
                             </ErrorBoundary>
                         ) : railChatSessionId ? (

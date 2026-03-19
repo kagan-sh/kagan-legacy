@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
-    Bot,
     CheckCheck,
     ExternalLink,
     ListChecks,
     Pencil,
     Play,
     Trash2,
-    Users,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -91,14 +89,6 @@ function TaskCardBody({ task }: { task: WireTask }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
-                    <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        {task.execution_mode === "PAIR" ? (
-                            <Users className="size-2.5" />
-                        ) : (
-                            <Bot className="size-2.5" />
-                        )}
-                        {task.execution_mode === "PAIR" ? "Pair" : "Auto"}
-                    </span>
                     <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                         <ListChecks className="size-2.5" />
                         {criteriaCount} AC

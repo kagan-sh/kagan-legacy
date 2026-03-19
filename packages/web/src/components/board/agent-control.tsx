@@ -5,7 +5,6 @@ import {
     Square,
     Clock,
     Users,
-    ExternalLink,
     Terminal,
 } from "lucide-react";
 import { useAtomValue } from "jotai";
@@ -15,7 +14,6 @@ import { sseConnectedAtom } from "@/lib/atoms/connection";
 import { cn } from "@/lib/utils";
 import {
     openInEditor,
-    buildEditorLink,
     launcherDisplayName,
     type LauncherBackend,
 } from "@/lib/utils/editor-links";
@@ -82,25 +80,27 @@ function terminalAttachCommand(
 interface AgentControlProps {
     taskId: string;
     status: string;
-    executionMode?: string;
+    activeSessionId?: string | null;
+    activeSessionLauncher?: string | null;
     startedAt?: string | null;
     buttonSize?: "xs" | "sm";
     className?: string;
     worktreePath?: string | null;
-    pairLauncher?: string | null;
-    /** Per-task launcher override (task.launcher). Takes priority over pairLauncher (settings). */
+    attachedLauncher?: string | null;
+    /** Per-task launcher override (task.launcher). Takes priority over attachedLauncher (settings). */
     taskLauncher?: string | null;
 }
 
 export function AgentControl({
     taskId,
     status,
-    executionMode,
+    activeSessionId,
+    activeSessionLauncher,
     startedAt,
     buttonSize = "xs",
     className,
     worktreePath,
-    pairLauncher,
+    attachedLauncher,
     taskLauncher,
 }: AgentControlProps) {
     const sseConnected = useAtomValue(sseConnectedAtom);
@@ -113,8 +113,8 @@ export function AgentControl({
     const [fallbackStartedAtMs, setFallbackStartedAtMs] = useState<
         number | null
     >(null);
-    const [pairInstructionsOpen, setPairInstructionsOpen] = useState(false);
-    const [pairInstructionsLauncher, setPairInstructionsLauncher] =
+    const [attachedInstructionsOpen, setAttachedInstructionsOpen] = useState(false);
+    const [attachedInstructionsLauncher, setAttachedInstructionsLauncher] =
         useState<LauncherBackend>("vscode");
     const [skipGuidanceForFuture, setSkipGuidanceForFuture] = useState(false);
 
@@ -185,19 +185,21 @@ export function AgentControl({
         return `${m}:${String(s).padStart(2, "0")}`;
     };
 
-    const isPair = executionMode === "PAIR";
+    const hasInteractiveSession = Boolean(activeSessionLauncher);
 
-    const startPairSession = useCallback(
+    const startAttachedSession = useCallback(
         async (launcher: LauncherBackend, persistSkipInstructions: boolean) => {
             setPending("starting");
             try {
                 if (persistSkipInstructions) {
                     await apiClient.setSettings({
-                        skip_pair_instructions_popup: "true",
+                        skip_attached_instructions_popup: "true",
                     });
                 }
 
-                const pairTask = await apiClient.pairTask(taskId);
+                const startedTask = await apiClient.runTask(taskId, {
+                    launcher,
+                });
                 let effectiveWorktreePath = worktreePath ?? null;
                 if (!effectiveWorktreePath) {
                     try {
@@ -212,17 +214,17 @@ export function AgentControl({
                 const attachCommand = terminalAttachCommand(
                     launcher,
                     effectiveWorktreePath,
-                    pairTask.active_session?.id ?? null,
+                    startedTask.active_session?.id ?? null,
                 );
 
                 if (attachCommand) {
                     try {
                         await navigator.clipboard.writeText(attachCommand);
                         toast.success(
-                            "PAIR started. Terminal command copied to clipboard.",
+                            "Interactive session started. Terminal command copied to clipboard.",
                         );
                     } catch {
-                        toast.info(`PAIR started. Run: ${attachCommand}`);
+                        toast.info(`Interactive session started. Run: ${attachCommand}`);
                     }
                     return;
                 }
@@ -242,7 +244,7 @@ export function AgentControl({
                 toast.error(
                     err instanceof Error
                         ? err.message
-                        : "Failed to start pair session",
+                        : "Failed to start interactive session",
                 );
                 setPending(null);
             }
@@ -256,45 +258,83 @@ export function AgentControl({
         if (now - lastActionTimeRef.current < 500) return;
         lastActionTimeRef.current = now;
 
-        if (isPair) {
-            try {
-                const settings = await apiClient.getSettings();
-                const taskLauncherNorm = taskLauncher?.trim().toLowerCase();
-                const launcher = normalizeLauncher(
-                    taskLauncherNorm ||
-                        settings.pair_launcher ||
-                        pairLauncher ||
-                        "vscode",
+        setPending("starting");
+        apiClient
+            .runTask(taskId)
+            .then(() => setPending(null))
+            .catch((err) => {
+                setPending(null);
+                toast.error(err instanceof Error ? err.message : "Agent run failed");
+            });
+    }, [taskId]);
+
+    const handleAttach = useCallback(async () => {
+        const now = Date.now();
+        if (now - lastActionTimeRef.current < 500) return;
+        lastActionTimeRef.current = now;
+
+        try {
+            const settings = await apiClient.getSettings();
+            const taskLauncherNorm = taskLauncher?.trim().toLowerCase();
+            const launcher = normalizeLauncher(
+                taskLauncherNorm ||
+                    settings.attached_launcher ||
+                    attachedLauncher ||
+                    "vscode",
+            );
+
+            if (isRunning && hasInteractiveSession) {
+                const attachCommand = terminalAttachCommand(
+                    launcher,
+                    worktreePath ?? null,
+                    activeSessionId ?? null,
                 );
-                const skipInstructions = asBool(
-                    settings.skip_pair_instructions_popup,
-                    false,
-                );
-                if (skipInstructions) {
-                    await startPairSession(launcher, false);
+                if (attachCommand) {
+                    try {
+                        await navigator.clipboard.writeText(attachCommand);
+                        toast.success("Attach command copied to clipboard");
+                    } catch {
+                        toast.info(attachCommand);
+                    }
                     return;
                 }
-                setPairInstructionsLauncher(launcher);
-                setSkipGuidanceForFuture(false);
-                setPairInstructionsOpen(true);
-            } catch (err) {
-                toast.error(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to start pair session",
-                );
-                setPending(null);
+                if (worktreePath) {
+                    const opened = openInEditor(launcher, worktreePath);
+                    if (opened) {
+                        toast.success(`Opening ${launcherDisplayName(launcher)}...`);
+                    }
+                }
+                return;
             }
-        } else {
-            setPending("starting");
-            apiClient.runTask(taskId)
-                .then(() => setPending(null))
-                .catch((err) => {
-                    setPending(null);
-                    toast.error(err instanceof Error ? err.message : "Agent run failed");
-                });
+
+            if (isRunning && !hasInteractiveSession) {
+                toast.info("A managed run is already active.");
+                return;
+            }
+
+            const skipInstructions = asBool(settings.skip_attached_instructions_popup, false);
+            if (skipInstructions) {
+                await startAttachedSession(launcher, false);
+                return;
+            }
+            setAttachedInstructionsLauncher(launcher);
+            setSkipGuidanceForFuture(false);
+            setAttachedInstructionsOpen(true);
+        } catch (err) {
+            toast.error(
+                err instanceof Error ? err.message : "Failed to attach interactive session",
+            );
+            setPending(null);
         }
-    }, [isPair, pairLauncher, startPairSession, taskId]);
+    }, [
+        activeSessionId,
+        attachedLauncher,
+        hasInteractiveSession,
+        isRunning,
+        startAttachedSession,
+        taskLauncher,
+        worktreePath,
+    ]);
 
     const handleStop = useCallback(async () => {
         // 2.1: Debounce rapid start/stop clicks (500ms)
@@ -303,14 +343,14 @@ export function AgentControl({
         lastActionTimeRef.current = now;
 
         setPending("stopping");
-        if (isPair) {
+        if (hasInteractiveSession) {
             try {
-                await apiClient.endPairing(taskId);
+                await apiClient.detachTask(taskId);
             } catch (err) {
                 toast.error(
                     err instanceof Error
                         ? err.message
-                        : "Failed to end pair session",
+                        : "Failed to detach interactive session",
                 );
                 setPending(null);
             }
@@ -322,7 +362,7 @@ export function AgentControl({
                     toast.error(err instanceof Error ? err.message : "Failed to stop agent");
                 });
         }
-    }, [taskId, isPair]);
+    }, [taskId, hasInteractiveSession]);
 
     const isBusy = pending !== null;
 
@@ -340,61 +380,23 @@ export function AgentControl({
                         ) : (
                             <Square className="size-3" />
                         )}
-                        {pending === "stopping" ? "Stopping..." : "Stop"}
+                        {pending === "stopping"
+                            ? "Stopping..."
+                            : hasInteractiveSession
+                              ? "Detach"
+                              : "Stop"}
                     </Button>
-                    {isPair &&
-                        isRunning &&
-                        worktreePath &&
-                        (() => {
-                            const launcher = (pairLauncher ||
-                                "vscode") as LauncherBackend;
-                            const link = buildEditorLink(
-                                launcher,
-                                worktreePath,
-                            );
-
-                            if (link.supportsDeepLink) {
-                                return (
-                                    <Button
-                                        variant="secondary"
-                                        size={buttonSize}
-                                        onClick={() =>
-                                            openInEditor(launcher, worktreePath)
-                                        }
-                                    >
-                                        <ExternalLink className="size-3" />
-                                        {link.label}
-                                    </Button>
-                                );
-                            }
-
-                            return (
-                                <Button
-                                    variant="secondary"
-                                    size={buttonSize}
-                                    onClick={() => {
-                                        if (link.fallbackMessage) {
-                                            navigator.clipboard
-                                                .writeText(link.fallbackMessage)
-                                                .then(
-                                                    () =>
-                                                        toast.info(
-                                                            "Terminal command copied to clipboard",
-                                                        ),
-                                                    () =>
-                                                        toast.info(
-                                                            link.fallbackMessage!,
-                                                        ),
-                                                );
-                                        }
-                                    }}
-                                    title={link.fallbackMessage ?? undefined}
-                                >
-                                    <Terminal className="size-3" />
-                                    {link.label}
-                                </Button>
-                            );
-                        })()}
+                    {hasInteractiveSession ? (
+                        <Button
+                            variant="secondary"
+                            size={buttonSize}
+                            onClick={handleAttach}
+                            disabled={!sseConnected || isBusy}
+                        >
+                            <Terminal className="size-3" />
+                            Attach
+                        </Button>
+                    ) : null}
                     {isRunning && (
                         <span className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
                             <Clock className="size-3" />
@@ -409,41 +411,46 @@ export function AgentControl({
                     )}
                 </>
             ) : (
-                <Button
-                    variant="secondary"
-                    size={buttonSize}
-                    onClick={handleStart}
-                    disabled={!sseConnected || status === "DONE" || isBusy}
-                >
-                    {isPair ? (
-                        <Users className="size-3" />
-                    ) : (
+                <>
+                    <Button
+                        variant="secondary"
+                        size={buttonSize}
+                        onClick={handleStart}
+                        disabled={!sseConnected || status === "DONE" || isBusy}
+                    >
                         <Play className="size-3" />
-                    )}
-                    {isPair ? "Pair" : "Start"}
-                </Button>
+                        Start
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        size={buttonSize}
+                        onClick={handleAttach}
+                        disabled={!sseConnected || status === "DONE" || isBusy}
+                    >
+                        <Users className="size-3" />
+                        Attach
+                    </Button>
+                </>
             )}
 
             <Dialog
-                open={pairInstructionsOpen}
-                onOpenChange={setPairInstructionsOpen}
+                open={attachedInstructionsOpen}
+                onOpenChange={setAttachedInstructionsOpen}
             >
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>PAIR Session Instructions</DialogTitle>
+                        <DialogTitle>Interactive Session Instructions</DialogTitle>
                         <DialogDescription>
-                            We will start a PAIR session, then you continue in
-                            your own terminal/editor using the task startup
-                            prompt.
+                            We will start an interactive session, then you continue in
+                            your own terminal/editor using the task startup prompt.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-3 text-sm text-[var(--muted-foreground)]">
-                        {pairInstructionsLauncher === "tmux" ? (
+                        {attachedInstructionsLauncher === "tmux" ? (
                             <>
                                 <p>
-                                    You are about to enter a tmux-backed PAIR
-                                    session.
+                                    You are about to enter a tmux-backed interactive session.
                                 </p>
                                 <ol className="list-decimal space-y-1 pl-5">
                                     <li>
@@ -464,16 +471,14 @@ export function AgentControl({
                                     </li>
                                 </ol>
                             </>
-                        ) : pairInstructionsLauncher === "nvim" ? (
+                        ) : attachedInstructionsLauncher === "nvim" ? (
                             <>
                                 <p>
-                                    PAIR will open Neovim with the startup
-                                    prompt file.
+                                    Interactive attach will open Neovim with the startup prompt file.
                                 </p>
                                 <ol className="list-decimal space-y-1 pl-5">
                                     <li>
-                                        Press Continue to prepare the PAIR
-                                        session.
+                                        Press Continue to prepare the interactive session.
                                     </li>
                                     <li>
                                         Neovim opens with{" "}
@@ -489,9 +494,9 @@ export function AgentControl({
                         ) : (
                             <>
                                 <p>
-                                    PAIR will open{" "}
+                                    Interactive attach will open{" "}
                                     {launcherDisplayName(
-                                        pairInstructionsLauncher,
+                                        attachedInstructionsLauncher,
                                     )}{" "}
                                     in the task worktree. The startup prompt
                                     file will be open in your editor.
@@ -522,7 +527,7 @@ export function AgentControl({
                                 onCheckedChange={(value) =>
                                     setSkipGuidanceForFuture(Boolean(value))
                                 }
-                                aria-label="Do not show pair guidance again"
+                                aria-label="Do not show attached guidance again"
                             />
                         </label>
                     </div>
@@ -531,16 +536,16 @@ export function AgentControl({
                         <Button
                             variant="outline"
                             onClick={() => {
-                                setPairInstructionsOpen(false);
+                                setAttachedInstructionsOpen(false);
                             }}
                         >
                             Cancel
                         </Button>
                         <Button
                             onClick={() => {
-                                setPairInstructionsOpen(false);
-                                void startPairSession(
-                                    pairInstructionsLauncher,
+                                setAttachedInstructionsOpen(false);
+                                void startAttachedSession(
+                                    attachedInstructionsLauncher,
                                     skipGuidanceForFuture,
                                 );
                             }}

@@ -106,7 +106,6 @@ class TaskDetailPane(Widget):
             [
                 f"#{task.id[:8]}",
                 status_label,
-                task.execution_mode.value,
                 task.priority.name.title(),
             ]
         )

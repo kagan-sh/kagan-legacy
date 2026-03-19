@@ -7,7 +7,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Select, Static, TextArea
 
-from kagan.core.enums import Priority, WorkMode
+from kagan.core.enums import Priority
 from kagan.tui.messages import TaskSubmitted
 
 _PRIORITY_OPTIONS: list[tuple[str, int]] = [
@@ -15,11 +15,6 @@ _PRIORITY_OPTIONS: list[tuple[str, int]] = [
     ("Medium", int(Priority.MEDIUM)),
     ("High", int(Priority.HIGH)),
     ("Critical", int(Priority.CRITICAL)),
-]
-
-_MODE_OPTIONS: list[tuple[str, str]] = [
-    ("Auto", WorkMode.AUTO.value),
-    ("Pair", WorkMode.PAIR.value),
 ]
 
 _LAUNCHER_OPTIONS: list[tuple[str, str]] = [
@@ -69,7 +64,6 @@ class TaskEditor(Vertical):
         title: str = "",
         description: str = "",
         priority: Priority = Priority.MEDIUM,
-        execution_mode: WorkMode = WorkMode.AUTO,
         agent_backend: str | None = None,
         launcher: str | None = None,
         available_agent_backends: list[str] | None = None,
@@ -82,7 +76,6 @@ class TaskEditor(Vertical):
         self._initial_title = title
         self._initial_description = description
         self._initial_priority = priority
-        self._initial_execution_mode = execution_mode
         self._initial_agent_backend = agent_backend or ""
         self._initial_launcher = launcher or ""
         self._editing = editing
@@ -130,14 +123,6 @@ class TaskEditor(Vertical):
                 allow_blank=False,
                 classes="task-select",
             )
-            yield Label("Execution mode", classes="task-label")
-            yield Select[str](
-                options=_MODE_OPTIONS,
-                value=self._initial_execution_mode.value,
-                id="task-execution-mode",
-                allow_blank=False,
-                classes="task-select",
-            )
             with Vertical(id="task-advanced-fields", classes="task-advanced-fields"):
                 yield Label("Acceptance Criteria", classes="task-label")
                 yield TextArea(
@@ -156,7 +141,7 @@ class TaskEditor(Vertical):
                     allow_blank=False,
                     classes="task-select",
                 )
-                yield Label("PAIR launcher", classes="task-label")
+                yield Label("Interactive launcher", classes="task-label")
                 yield Select[str](
                     options=self._launcher_options,
                     value=self._initial_launcher,
@@ -291,7 +276,6 @@ class TaskEditor(Vertical):
 
         description = self.query_one("#task-description", TextArea).text
         priority_select = cast("Select[int]", self.query_one("#task-priority", Select))
-        mode_select = cast("Select[str]", self.query_one("#task-execution-mode", Select))
         backend_select = cast("Select[str]", self.query_one("#task-agent-backend", Select))
         launcher_select = cast("Select[str]", self.query_one("#task-launcher", Select))
         base_branch = self.query_one("#task-base-branch", Input).value.strip() or None
@@ -301,12 +285,6 @@ class TaskEditor(Vertical):
             priority = self._initial_priority
         else:
             priority = Priority(priority_value)
-
-        mode_value = mode_select.value
-        if mode_value is Select.BLANK or not isinstance(mode_value, str):
-            execution_mode = self._initial_execution_mode
-        else:
-            execution_mode = WorkMode(mode_value)
 
         backend_value = backend_select.value
         if backend_value is Select.BLANK or not isinstance(backend_value, str):
@@ -324,7 +302,6 @@ class TaskEditor(Vertical):
             title=title,
             description=description,
             priority=priority,
-            execution_mode=execution_mode,
             agent_backend=agent_backend,
             launcher=launcher,
             base_branch=base_branch,

@@ -25,7 +25,6 @@ vi.mock('@/lib/api/client', () => ({
       description: '',
       status: 'BACKLOG',
       priority: 'MEDIUM',
-      execution_mode: 'AUTO',
     })),
     getTaskEvents: vi.fn().mockResolvedValue([]),
     transitionTaskStatus: vi.fn().mockResolvedValue({}),
@@ -61,7 +60,6 @@ describe('KanbanBoard', () => {
       description: 'desc',
       status: 'BACKLOG',
       priority: 'MEDIUM',
-      execution_mode: 'AUTO',
     };
 
     vi.mocked(apiClient.getTasks).mockResolvedValue([task]);
@@ -96,7 +94,6 @@ describe('KanbanBoard', () => {
         description: 'desc',
         status: 'BACKLOG',
         priority: 'MEDIUM',
-        execution_mode: 'AUTO',
       },
       {
         id: 'task-ip',
@@ -104,7 +101,6 @@ describe('KanbanBoard', () => {
         description: 'desc',
         status: 'IN_PROGRESS',
         priority: 'MEDIUM',
-        execution_mode: 'AUTO',
       },
       {
         id: 'task-r',
@@ -112,7 +108,6 @@ describe('KanbanBoard', () => {
         description: 'desc',
         status: 'REVIEW',
         priority: 'MEDIUM',
-        execution_mode: 'AUTO',
       },
       {
         id: 'task-d',
@@ -120,7 +115,6 @@ describe('KanbanBoard', () => {
         description: 'desc',
         status: 'DONE',
         priority: 'MEDIUM',
-        execution_mode: 'AUTO',
       },
     ];
     vi.mocked(apiClient.getTasks).mockResolvedValue(tasks);
@@ -180,7 +174,6 @@ describe('KanbanBoard', () => {
       description: 'desc',
       status: 'BACKLOG',
       priority: 'MEDIUM',
-      execution_mode: 'AUTO',
     };
 
     vi.mocked(apiClient.getTasks).mockResolvedValue([task]);
@@ -214,7 +207,6 @@ describe('KanbanBoard', () => {
       description: 'desc',
       status: 'BACKLOG',
       priority: 'MEDIUM',
-      execution_mode: 'AUTO',
     };
 
     vi.mocked(apiClient.getTasks).mockResolvedValue([task]);

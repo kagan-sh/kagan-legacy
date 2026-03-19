@@ -11,14 +11,40 @@ describe('TaskCard', () => {
     expect(screen.getByText('Fix login bug')).toBeVisible();
   });
 
-  it('shows Auto mode for AUTO execution_mode', () => {
-    renderWithProviders(<TaskCard task={mockTask({ execution_mode: 'AUTO' })} />);
-    expect(screen.getByText('Auto')).toBeVisible();
+  it('shows a live indicator when a managed run is active', () => {
+    renderWithProviders(
+      <TaskCard
+        task={mockTask({
+          status: 'IN_PROGRESS',
+          active_session: {
+            id: 's1',
+            status: 'running',
+            launcher: null,
+            agent_backend: 'claude-code',
+            started_at: new Date().toISOString(),
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Live')).toBeVisible();
   });
 
-  it('shows Pair mode for PAIR execution_mode', () => {
-    renderWithProviders(<TaskCard task={mockTask({ execution_mode: 'PAIR' })} />);
-    expect(screen.getByText('Pair')).toBeVisible();
+  it('shows a live indicator when an interactive run is active', () => {
+    renderWithProviders(
+      <TaskCard
+        task={mockTask({
+          status: 'IN_PROGRESS',
+          active_session: {
+            id: 's1',
+            status: 'running',
+            launcher: 'tmux',
+            agent_backend: 'claude-code',
+            started_at: new Date().toISOString(),
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Live')).toBeVisible();
   });
 
   it('calls inspector callback when provided', async () => {

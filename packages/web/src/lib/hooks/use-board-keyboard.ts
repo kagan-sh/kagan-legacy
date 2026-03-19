@@ -11,7 +11,7 @@ interface UseBoardKeyboardOptions {
   view: 'kanban' | 'backlog';
   query: string;
   setSelectedTaskId: (id: string | null) => void;
-  openCreateDialog: (mode: 'AUTO' | 'PAIR') => void;
+  openCreateDialog: () => void;
   setPeekOpen: (open: boolean) => void;
   setEditingTask: (task: WireTask | null) => void;
   setDeleteTask: (task: WireTask | null) => void;
@@ -60,7 +60,7 @@ export function useBoardKeyboard({
 
       if (!isEditable && !event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'n') {
         event.preventDefault();
-        openCreateDialog(event.shiftKey ? 'AUTO' : 'PAIR');
+        openCreateDialog();
         return;
       }
 

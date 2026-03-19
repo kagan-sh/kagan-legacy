@@ -35,7 +35,7 @@ class AgentPickerModal(ModalScreen[str | None]):
         with Container(id="agent-picker-container"):
             yield Static("Switch Global Agent", classes="modal-title")
             yield Static(
-                "Select the default agent for new orchestrator and AUTO runs.",
+                "Select the default agent for orchestrator chat and managed task runs.",
                 id="agent-picker-description",
             )
             with Vertical(id="agent-picker-body"):

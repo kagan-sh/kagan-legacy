@@ -6,7 +6,7 @@
 export interface ActiveSessionResponse {
   id: string;
   status: string;
-  mode: string;
+  launcher?: string | null;
   agent_backend: string;
   started_at: string;
   context_window_used?: number | null;
@@ -27,7 +27,6 @@ export interface TaskResponse {
   description?: string;
   status: string;
   priority: string;
-  execution_mode: string;
   base_branch?: string | null;
   acceptance_criteria?: string[];
   agent_backend?: string | null;
@@ -43,7 +42,7 @@ export interface TaskResponse {
 
 export interface TaskSessionResponse {
   id: string;
-  mode: string;
+  launcher?: string | null;
   status: string;
   agent_backend: string;
   started_at: string;

@@ -2,13 +2,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
-  Bot,
   LayoutGrid,
   ListTodo,
   Plus,
   Radar,
   Search,
-  Users,
 } from 'lucide-react';
 import {
   DndContext,
@@ -17,7 +15,6 @@ import {
 import {
   boardErrorAtom,
   boardLoadingAtom,
-  boardModeFilterAtom,
   boardSortAtom,
   boardStatusFilterAtom,
   fetchTasksAtom,
@@ -35,7 +32,7 @@ import { BoardTaskInspector } from '@/components/board/board-task-inspector';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { FirstBootTutorialDialog } from '@/components/board/first-boot-tutorial-dialog';
 import { apiClient } from '@/lib/api/client';
-import type { TaskStatus, WorkMode, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@/lib/api/types';
 import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { toast } from 'sonner';
@@ -71,10 +68,8 @@ export function KanbanBoard() {
   const sseConnected = useAtomValue(sseConnectedAtom);
   const [query, setQuery] = useAtom(searchQueryAtom);
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
-  const [modeFilter, setModeFilter] = useAtom(boardModeFilterAtom);
   const [sort, setSort] = useAtom(boardSortAtom);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createExecutionMode, setCreateExecutionMode] = useState<WorkMode>('AUTO');
   const [view, setView] = useState<'kanban' | 'backlog'>('kanban');
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -196,8 +191,7 @@ export function KanbanBoard() {
     toast.success(`Stopping ${selectedTask.title}`);
   }, [selectedTask, sseConnected]);
 
-  const openCreateDialog = useCallback((mode: WorkMode = 'AUTO') => {
-    setCreateExecutionMode(mode);
+  const openCreateDialog = useCallback(() => {
     setCreateOpen(true);
   }, []);
 
@@ -215,16 +209,16 @@ export function KanbanBoard() {
     }
   }, []);
 
-  const startPairFlowFromTutorial = useCallback(() => {
+  const startAttachedFlowFromTutorial = useCallback(() => {
     saveWebOnboardingTutorialSeen(true);
     setTutorialOpen(false);
-    openCreateDialog('PAIR');
+    openCreateDialog();
   }, [openCreateDialog]);
 
-  const startAutoFlowFromTutorial = useCallback(() => {
+  const startDetachedFlowFromTutorial = useCallback(() => {
     saveWebOnboardingTutorialSeen(true);
     setTutorialOpen(false);
-    openCreateDialog('AUTO');
+    openCreateDialog();
   }, [openCreateDialog]);
 
   const openHelpFromTutorial = useCallback(() => {
@@ -337,23 +331,6 @@ export function KanbanBoard() {
           </>
         ) : null}
 
-        {(['ALL', 'AUTO', 'PAIR'] as const).map((value) => (
-          <Button
-            key={value}
-            type="button"
-            variant="ghost"
-            size="xs"
-            className={modeFilter === value ? 'bg-[color:var(--foreground)] text-[color:var(--background)] hover:bg-[color:var(--foreground)]/90 hover:text-[color:var(--background)]' : 'text-[var(--muted-foreground)]'}
-            onClick={() => setModeFilter(value as WorkMode | 'ALL')}
-          >
-            {value === 'PAIR' ? <Users className="size-3" /> : null}
-            {value === 'AUTO' ? <Bot className="size-3" /> : null}
-            {value === 'ALL' ? 'All modes' : value === 'AUTO' ? 'Auto' : 'Pair'}
-          </Button>
-        ))}
-
-        <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-
         <NativeSelect
           value={sort}
           onChange={(e) => setSort(e.target.value as SortOption)}
@@ -386,7 +363,7 @@ export function KanbanBoard() {
             />
           </div>
 
-          <Button size="sm" onClick={() => openCreateDialog('AUTO')}>
+          <Button size="sm" onClick={openCreateDialog}>
             <Plus className="size-3.5" />
             New
           </Button>
@@ -404,11 +381,11 @@ export function KanbanBoard() {
         <div className="min-w-0 flex-1">
           {showBoardEmpty ? (
             <ActionEmptyState
-              title="Start the first autonomous task"
-              description="Create an initial task and Kagan will begin filling this workspace with execution telemetry, review state, and session history."
+              title="Start your first task"
+              description="Create a task, then Start or Attach when you're ready."
               icon={<Plus className="size-6" />}
               action={(
-                <Button onClick={() => openCreateDialog('AUTO')} className="cta-glow">
+                <Button onClick={openCreateDialog} className="cta-glow">
                   <Plus className="size-4" />
                   Create first task
                 </Button>
@@ -417,7 +394,7 @@ export function KanbanBoard() {
           ) : showFilteredEmpty ? (
             <ActionEmptyState
               title="No tasks match the active filters"
-              description="Broaden your mode/status filters to bring more of the workspace back into view."
+              description="Broaden your filters to bring more of the workspace back into view."
               icon={<Search className="size-6" />}
               action={(
                 <Button
@@ -425,7 +402,8 @@ export function KanbanBoard() {
                   className=""
                   onClick={() => {
                     setStatusFilter('ALL');
-                    setModeFilter('ALL');
+                    setQuery('');
+                    setSort('default');
                   }}
                 >
                   Reset filters
@@ -495,7 +473,6 @@ export function KanbanBoard() {
 
       <BoardDialogs
         createOpen={createOpen}
-        createExecutionMode={createExecutionMode}
         setCreateOpen={setCreateOpen}
         editingTask={editingTask}
         setEditingTask={setEditingTask}
@@ -512,8 +489,8 @@ export function KanbanBoard() {
       <FirstBootTutorialDialog
         open={tutorialOpen}
         onOpenChange={handleTutorialOpenChange}
-        onStartPairFlow={startPairFlowFromTutorial}
-        onStartAutoFlow={startAutoFlowFromTutorial}
+        onStartAttachedFlow={startAttachedFlowFromTutorial}
+        onStartDetachedFlow={startDetachedFlowFromTutorial}
         onOpenHelp={openHelpFromTutorial}
       />
     </div>

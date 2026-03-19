@@ -17,7 +17,7 @@ from kagan.chat import (
     warm_orchestrator_backend,
 )
 from kagan.core import resolve_launcher
-from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus, WorkMode
+from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.core.models import Task, Worktree
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -92,10 +92,6 @@ _SEARCH_PRIORITY_ALIASES: dict[str, str] = {
     "critical": "high",
     "urgent": "high",
 }
-_SEARCH_MODE_ALIASES: dict[str, WorkMode] = {
-    "auto": WorkMode.AUTO,
-    "pair": WorkMode.PAIR,
-}
 _SEARCH_SORT_ALIASES: dict[str, str] = {
     "default": "default",
     "created": "created",
@@ -111,7 +107,6 @@ class SearchQuery:
     text: str
     status: TaskStatus | None = None
     priority: str | None = None
-    mode: WorkMode | None = None
     sort: str | None = None
 
 
@@ -125,8 +120,8 @@ def _is_enabled(value: str | None, *, default: bool) -> bool:
 class _TaskSessionSummary:
     has_history: bool = False
     has_active: bool = False
-    active_mode: WorkMode | None = None
-    latest_mode: WorkMode | None = None
+    active_launcher: str | None = None
+    latest_launcher: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +130,6 @@ class _BoardTaskView:
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
@@ -147,7 +141,8 @@ class _BoardTaskView:
     task_type: object | None = None
     has_active_session: bool = False
     has_session_history: bool = False
-    latest_session_mode: WorkMode | None = None
+    active_launcher: str | None = None
+    latest_launcher: str | None = None
 
 
 class KanbanScreen(Screen[None]):
@@ -163,7 +158,6 @@ class KanbanScreen(Screen[None]):
         self._search_query = ""
         self._search_status_filter: TaskStatus | None = None
         self._search_priority_filter: str | None = None
-        self._search_mode_filter: WorkMode | None = None
         self._search_sort_filter: str | None = None
         self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id: str | None = None
@@ -407,8 +401,8 @@ class KanbanScreen(Screen[None]):
             summaries[task_id] = _TaskSessionSummary(
                 has_history=bool(summary_data.get("has_history")),
                 has_active=bool(summary_data.get("has_active")),
-                active_mode=summary_data.get("active_mode"),
-                latest_mode=summary_data.get("latest_mode"),
+                active_launcher=summary_data.get("active_launcher"),
+                latest_launcher=summary_data.get("latest_launcher"),
             )
 
         return summaries
@@ -423,7 +417,6 @@ class KanbanScreen(Screen[None]):
                     title=task.title,
                     description=task.description,
                     priority=task.priority,
-                    execution_mode=task.execution_mode,
                     status=task.status,
                     review_approved=task.review_approved,
                     acceptance_criteria=list(task.acceptance_criteria),
@@ -435,7 +428,8 @@ class KanbanScreen(Screen[None]):
                     task_type=getattr(task, "task_type", None),
                     has_active_session=summary.has_active,
                     has_session_history=summary.has_history,
-                    latest_session_mode=summary.latest_mode,
+                    active_launcher=summary.active_launcher,
+                    latest_launcher=summary.latest_launcher,
                 )
             )
         return views
@@ -456,16 +450,9 @@ class KanbanScreen(Screen[None]):
         q = self._parse_search_query(self._search_query)
         self._search_status_filter = q.status
         self._search_priority_filter = q.priority
-        self._search_mode_filter = q.mode
         self._search_sort_filter = q.sort
 
-        if (
-            not q.text
-            and q.status is None
-            and q.priority is None
-            and q.mode is None
-            and q.sort is None
-        ):
+        if not q.text and q.status is None and q.priority is None and q.sort is None:
             self._tasks = list(self._all_tasks)
         else:
             self._tasks = [
@@ -476,7 +463,6 @@ class KanbanScreen(Screen[None]):
                     text_query=q.text,
                     status_filter=q.status,
                     priority_filter=q.priority,
-                    mode_filter=q.mode,
                 )
             ]
 
@@ -503,7 +489,6 @@ class KanbanScreen(Screen[None]):
             high_priority_count=high_priority_count,
             status_filter=q.status.value.lower() if q.status is not None else "",
             priority_filter=q.priority or "",
-            mode_filter=q.mode.value.lower() if q.mode is not None else "",
             sort_filter=q.sort or "",
             search_active=self.search_visible,
         )
@@ -527,7 +512,6 @@ class KanbanScreen(Screen[None]):
         status_counts, high_priority_count = self._compute_task_stats()
         sf = self._search_status_filter
         pf = self._search_priority_filter
-        mf = self._search_mode_filter
         sf2 = self._search_sort_filter
         self.query_one(SearchBar).update_state(
             filtered_count=len(self._tasks),
@@ -536,7 +520,6 @@ class KanbanScreen(Screen[None]):
             high_priority_count=high_priority_count,
             status_filter=sf.value.lower() if sf is not None else "",
             priority_filter=pf or "",
-            mode_filter=mf.value.lower() if mf is not None else "",
             sort_filter=sf2 or "",
             search_active=self.search_visible,
         )
@@ -689,6 +672,7 @@ class KanbanScreen(Screen[None]):
         left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
         session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
+        attach_key = get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a")
         start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
         panel = self.query_one(ChatPanel)
         overlay_open = panel.has_class("visible")
@@ -721,17 +705,20 @@ class KanbanScreen(Screen[None]):
                 (new_key, "new"),
                 (right_key, "start"),
                 (start_agent_key, "agent"),
+                (attach_key, "attach"),
                 *overlay_hints,
             ]
 
         if task.status is TaskStatus.IN_PROGRESS:
+            summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
             actions = [
                 (open_key, "inspect"),
                 (session_key, "open"),
                 (right_key, "review"),
             ]
-            if task.execution_mode is WorkMode.AUTO:
+            if summary.has_active:
                 actions.append((stop_key, "stop"))
+            actions.append((attach_key, "attach"))
             actions.extend(overlay_hints)
             return actions
 
@@ -826,7 +813,7 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind(SessionKind.AUTO)
+        panel.set_session_kind(SessionKind.DETACHED)
         panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
@@ -846,7 +833,7 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind(SessionKind.AUTO)
+        panel.set_session_kind(SessionKind.DETACHED)
         panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
@@ -995,16 +982,12 @@ class KanbanScreen(Screen[None]):
 
     def _open_task(self, task: Task) -> None:
         self.kagan_app._active_task_id = task.id
-        if task.execution_mode == WorkMode.PAIR:
-            self.run_worker(self._open_pair_session_flow(task), exclusive=False)
-            return
-
         from kagan.tui.screens.task_screen import TaskScreen
 
         self.app.push_screen(TaskScreen(task_id=task.id))
 
-    def _resolve_pair_backend(self, task: Task, settings: dict[str, Any]) -> str | None:
-        """Resolve the pair-mode terminal backend with fallback logic.
+    def _resolve_interactive_backend(self, task: Task, settings: dict[str, Any]) -> str | None:
+        """Resolve the interactive launcher backend with fallback logic.
 
         Returns the resolved backend name, or ``None`` if no usable backend
         is available (caller should abort the flow).
@@ -1013,11 +996,11 @@ class KanbanScreen(Screen[None]):
 
         from kagan.tui.terminals.installer import (
             check_terminal_installed,
-            first_available_pair_backend,
+            first_available_attached_backend,
             get_manual_install_fallback,
         )
 
-        settings_launcher_raw = settings.get("pair_launcher", "tmux")
+        settings_launcher_raw = settings.get("attached_launcher", "tmux")
         settings_launcher = (
             settings_launcher_raw.strip().lower()
             if isinstance(settings_launcher_raw, str)
@@ -1026,28 +1009,28 @@ class KanbanScreen(Screen[None]):
         task_launcher = task.launcher.strip().lower() if isinstance(task.launcher, str) else ""
         backend = task_launcher or settings_launcher
         is_windows = platform.system() == "Windows"
-        self._set_inline_action_message(f"Checking {backend} backend...")
+        self._set_inline_action_message(f"Checking {backend} launcher...")
 
         if check_terminal_installed(backend):
             return backend
 
-        fallback = first_available_pair_backend(windows=is_windows)
+        fallback = first_available_attached_backend(windows=is_windows)
         if fallback is not None:
             self.app.notify(
                 f"{backend} not found. Using fallback: {fallback}.",
                 severity="information",
             )
-            self._set_inline_action_message(f"Using fallback backend: {fallback}.")
+            self._set_inline_action_message(f"Using fallback launcher: {fallback}.")
             return fallback
 
         hint = get_manual_install_fallback(backend)
         self.app.notify(
-            f"PAIR cancelled: {backend} not installed. {hint}",
+            f"Attach cancelled: {backend} not installed. {hint}",
             severity="warning",
         )
         return None
 
-    async def _ensure_pair_workspace(self, task: Task) -> Worktree | None:
+    async def _ensure_interactive_workspace(self, task: Task) -> Worktree | None:
         """Provision a worktree for the task, creating one if needed.
 
         Returns the ``Worktree`` instance, or ``None`` on failure.
@@ -1069,10 +1052,10 @@ class KanbanScreen(Screen[None]):
             self.app.notify("Failed to provision workspace.", severity="error")
         return workspace
 
-    async def _attach_pair_terminal(
+    async def _attach_interactive_terminal(
         self,
         task: Task,
-        pair_session: Any,
+        interactive_session: Any,
         *,
         backend: str,
         agent_backend: str,
@@ -1081,22 +1064,22 @@ class KanbanScreen(Screen[None]):
         wt_path: Path,
         prompt_path: Path,
     ) -> bool:
-        """Attach the user's terminal to the PAIR session.
+        """Attach the user's terminal to the interactive session.
 
         Returns ``True`` if the terminal session was attached successfully.
         """
         if backend == "tmux":
             self._set_inline_action_message("Attaching tmux session...")
-            session_name = self._tmux_session_name(pair_session.id)
+            session_name = self._tmux_session_name(interactive_session.id)
             with self._suspend_app():
                 attached = await self._attach_tmux_session(session_name)
             if not attached:
                 self.app.notify(
-                    "PAIR session missing; recreating session...",
+                    "Interactive session missing; recreating session...",
                     severity="information",
                 )
                 with contextlib.suppress(KaganError):
-                    retry_session = await self.kagan_app.core.tasks.pair(
+                    retry_session = await self.kagan_app.core.tasks.run(
                         task.id,
                         agent_backend=agent_backend,
                         launcher=launcher,
@@ -1119,19 +1102,19 @@ class KanbanScreen(Screen[None]):
         )
         return False
 
-    async def _open_pair_session_flow(self, task: Task) -> None:
-        from kagan.tui.screens.gateway import PairInstructionsModal
+    async def _open_interactive_session_flow(self, task: Task) -> None:
+        from kagan.tui.screens.gateway import AttachedInstructionsModal
 
         settings = await self.kagan_app.core.settings.get()
 
         # 1. Resolve backend
-        backend = self._resolve_pair_backend(task, settings)
+        backend = self._resolve_interactive_backend(task, settings)
         if backend is None:
             self._set_inline_action_message(None)
             return
 
         # 2. Show instructions modal (unless skipped)
-        skip_instructions_raw = settings.get("skip_pair_instructions_popup", "")
+        skip_instructions_raw = settings.get("skip_attached_instructions_popup", "")
         skip_instructions = str(skip_instructions_raw).strip().lower() in {
             "1",
             "true",
@@ -1145,16 +1128,16 @@ class KanbanScreen(Screen[None]):
 
         if not skip_instructions:
             result = await self.app.push_screen_wait(
-                PairInstructionsModal(task.id, task.title, backend, prompt_path)
+                AttachedInstructionsModal(task.id, task.title, backend, prompt_path)
             )
             if result is None:
                 self._set_inline_action_message(None)
                 return
             if result == "skip_future":
-                await self.kagan_app.core.settings.set({"skip_pair_instructions_popup": "true"})
+                await self.kagan_app.core.settings.set({"skip_attached_instructions_popup": "true"})
 
         # 3. Ensure workspace exists
-        workspace = await self._ensure_pair_workspace(task)
+        workspace = await self._ensure_interactive_workspace(task)
         if workspace is None:
             self._set_inline_action_message(None)
             return
@@ -1162,27 +1145,27 @@ class KanbanScreen(Screen[None]):
         wt_path = Path(workspace.worktree_path)
         prompt_path = wt_path / ".kagan" / "start_prompt.md"
 
-        # 4. Start PAIR session
+        # 4. Start interactive session
         agent_backend = task.agent_backend or resolve_default_agent_backend(settings)
         launcher, ide_name = resolve_launcher(backend)
 
         try:
-            self._set_inline_action_message("Starting PAIR session...")
-            pair_session = await self.kagan_app.core.tasks.pair(
+            self._set_inline_action_message("Starting interactive session...")
+            interactive_session = await self.kagan_app.core.tasks.run(
                 task.id,
                 agent_backend=agent_backend,
                 launcher=launcher,
                 ide=ide_name,
             )
         except (KaganError, OSError, RuntimeError, ValueError) as exc:
-            self.app.notify(f"Failed to start PAIR session: {exc}", severity="error")
+            self.app.notify(f"Failed to start interactive session: {exc}", severity="error")
             self._set_inline_action_message(None)
             return
 
         # 5. Attach terminal
-        attached = await self._attach_pair_terminal(
+        attached = await self._attach_interactive_terminal(
             task,
-            pair_session,
+            interactive_session,
             backend=backend,
             agent_backend=agent_backend,
             launcher=launcher,
@@ -1193,7 +1176,7 @@ class KanbanScreen(Screen[None]):
 
         if attached:
             with contextlib.suppress(KaganError):
-                await self.kagan_app.core.tasks.end_pairing(task.id)
+                await self.kagan_app.core.tasks.detach(task.id)
             await self._reload_tasks()
         self._set_inline_action_message(None)
 
@@ -1209,7 +1192,7 @@ class KanbanScreen(Screen[None]):
         except SuspendNotSupported:
             self.app.notify(
                 "Terminal suspend not supported in this environment. "
-                "Run PAIR from a standard terminal (not textual dev).",
+                "Use attach from a standard terminal (not textual dev).",
                 severity="warning",
             )
 
@@ -1294,7 +1277,6 @@ class KanbanScreen(Screen[None]):
             f"{task.title} (copy)",
             description=task.description,
             priority=task.priority,
-            execution_mode=task.execution_mode,
             base_branch=task.base_branch,
             agent_backend=task.agent_backend,
             acceptance_criteria=list(task.acceptance_criteria),
@@ -1307,6 +1289,7 @@ class KanbanScreen(Screen[None]):
         task = self._selected_task()
         if task is None:
             return
+
         settings = await self.kagan_app.core.settings.get()
         backend = task.agent_backend or resolve_default_agent_backend(settings)
         workspace = await self.kagan_app.core.worktrees.get(task.id)
@@ -1314,6 +1297,14 @@ class KanbanScreen(Screen[None]):
             await self.kagan_app.core.worktrees.create(task.id)
         await self.kagan_app.core.tasks.run(task.id, agent_backend=backend)
         await self._reload_tasks()
+
+    async def action_attach_agent(self) -> None:
+        if not self._require_inspector(action_label="Attach"):
+            return
+        task = self._selected_task()
+        if task is None:
+            return
+        self.run_worker(self._open_interactive_session_flow(task), exclusive=False)
 
     async def action_stop_agent(self) -> None:
         if not self._require_inspector(action_label="Stop agent"):
@@ -1323,9 +1314,6 @@ class KanbanScreen(Screen[None]):
             return
         await self.kagan_app.core.tasks.cancel(task.id)
         await self._reload_tasks()
-
-    def action_new_auto_task(self) -> None:
-        self.app.push_screen(TaskEditorModal(execution_mode=WorkMode.AUTO))
 
     def action_edit_task(self) -> None:
         if not self._require_inspector(action_label="Edit"):
@@ -1580,12 +1568,12 @@ class KanbanScreen(Screen[None]):
         panel = self.query_one(ChatPanel)
         if task is None:
             panel.set_mode_title("Task Chat")
-            panel.set_session_kind(SessionKind.AUTO)
+            panel.set_session_kind(SessionKind.DETACHED)
             panel.add_system_message("Select a task first")
             return
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        kind = SessionKind.REVIEW if "review" in message.key.casefold() else SessionKind.AUTO
+        kind = SessionKind.REVIEW if "review" in message.key.casefold() else SessionKind.DETACHED
         panel.set_session_kind(kind)
         panel.set_sessions(build_session_options(self.kagan_app, task), message.key)
         self._ensure_chat_stream_worker(task.id)
@@ -2061,7 +2049,6 @@ class KanbanScreen(Screen[None]):
         text_parts: list[str] = []
         status_filter: TaskStatus | None = None
         priority_filter: str | None = None
-        mode_filter: WorkMode | None = None
         sort_filter: str | None = None
 
         for token in tokens:
@@ -2076,10 +2063,6 @@ class KanbanScreen(Screen[None]):
                 )
                 if priority_filter is not None:
                     continue
-            if normalized.startswith("@mode:"):
-                mode_filter = _SEARCH_MODE_ALIASES.get(normalized.removeprefix("@mode:"))
-                if mode_filter is not None:
-                    continue
             if normalized.startswith("@sort:"):
                 sort_filter = _SEARCH_SORT_ALIASES.get(normalized.removeprefix("@sort:"))
                 if sort_filter is not None:
@@ -2090,7 +2073,6 @@ class KanbanScreen(Screen[None]):
             text=" ".join(text_parts).strip().lower(),
             status=status_filter,
             priority=priority_filter,
-            mode=mode_filter,
             sort=sort_filter,
         )
 
@@ -2101,7 +2083,6 @@ class KanbanScreen(Screen[None]):
         text_query: str,
         status_filter: TaskStatus | None,
         priority_filter: str | None,
-        mode_filter: WorkMode | None,
     ) -> bool:
         if status_filter is not None and task.status != status_filter:
             return False
@@ -2110,8 +2091,6 @@ class KanbanScreen(Screen[None]):
         if priority_filter == "medium" and task.priority != Priority.MEDIUM:
             return False
         if priority_filter == "low" and task.priority != Priority.LOW:
-            return False
-        if mode_filter is not None and task.execution_mode != mode_filter:
             return False
         if not text_query:
             return True

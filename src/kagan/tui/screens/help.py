@@ -146,8 +146,8 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("Creating Tasks", classes="help-section-title"),
             Static(
-                "Press 'n' for a PAIR task (interactive, you'll work alongside the agent) "
-                "or 'Shift+N' for an AUTO task (agent works autonomously).",
+                "Press 'n' to create a task. Start a managed run with 's'. "
+                "Use 'a' to attach an interactive run using your launcher preference.",
                 classes="help-paragraph",
             ),
             Static("Kanban Workflow", classes="help-section-title"),
@@ -202,15 +202,15 @@ class HelpModal(ModalScreen[None]):
                 "The preferred repo (set via Ctrl+R) is used for new worktrees and patches.",
                 classes="help-paragraph",
             ),
-            Static("AUTO vs PAIR Mode", classes="help-section-title"),
+            Static("Runs: Managed vs Interactive", classes="help-section-title"),
             Static(
-                "AUTO: Agent works autonomously to completion. Best for well-defined tasks. "
-                "Runs in background without user interaction.",
+                "Managed run: Agent works in background. Use this for most tasks.",
                 classes="help-paragraph",
             ),
             Static(
-                "PAIR: Agent works interactively with you in a terminal (tmux, Cursor, etc.). "
-                "Best for exploration and complex debugging.",
+                "Interactive run (attach): Launches via a launcher "
+                "(tmux, nvim, VS Code, Cursor, etc.) "
+                "so you can work alongside the agent.",
                 classes="help-paragraph",
             ),
             Static("Chat Sessions", classes="help-section-title"),
@@ -228,7 +228,7 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("Settings Layers", classes="help-section-title"),
             Static(
-                "Settings has typed controls (execution mode, review strictness, planning depth). "
+                "Settings has typed controls (review strictness, planning depth). "
                 "Additional Instructions lets you add free-text rules to every agent prompt. "
                 "For full prompt replacement, place .kagan/prompts/ files in your repo.",
                 classes="help-paragraph",

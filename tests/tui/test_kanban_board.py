@@ -5,7 +5,7 @@ import pytest
 from sqlmodel import Session as DBSession
 from tests.helpers.driver import KaganDriver
 
-from kagan.core import Session, SessionStatus, TaskStatus, WorkMode
+from kagan.core import Session, SessionStatus, TaskStatus
 
 if TYPE_CHECKING:
     from kagan.tui.screens.kanban import KanbanScreen
@@ -54,26 +54,25 @@ async def test_card_run_state_shows_mode_specific_running_and_not_started(
     from kagan.tui import KaganApp
     from kagan.tui.widgets.card import TaskCard
 
-    pair_not_started = await board.create_task("PAIR not started", task_type=WorkMode.PAIR)
-    auto_running = await board.create_task("AUTO running", task_type=WorkMode.AUTO)
-    pair_running = await board.create_task("PAIR running", task_type=WorkMode.PAIR)
+    interactive_not_started = await board.create_task("Interactive not started", launcher="tmux")
+    managed_running = await board.create_task("Managed running")
+    interactive_running = await board.create_task("Interactive running", launcher="tmux")
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     with DBSession(app.core._engine) as db:
         db.add(
             Session(
-                task_id=auto_running.id,
-                mode=WorkMode.AUTO,
+                task_id=managed_running.id,
                 agent_backend="claude-code",
                 status=SessionStatus.RUNNING,
             )
         )
         db.add(
             Session(
-                task_id=pair_running.id,
-                mode=WorkMode.PAIR,
+                task_id=interactive_running.id,
                 agent_backend="claude-code",
                 status=SessionStatus.RUNNING,
+                launcher="tmux",
             )
         )
         db.commit()
@@ -93,9 +92,9 @@ async def test_card_run_state_shows_mode_specific_running_and_not_started(
             assert card._status_label is not None
             return str(card._status_label.render())
 
-        assert status_text(cards[auto_running.id]) == "AUTO agent running"
-        assert status_text(cards[pair_running.id]) == "PAIR session active"
-        assert status_text(cards[pair_not_started.id]) == "PAIR not started"
+        assert status_text(cards[managed_running.id]) == "Agent running"
+        assert status_text(cards[interactive_running.id]) == "Interactive session active (tmux)"
+        assert status_text(cards[interactive_not_started.id]) == "Not started"
 
 
 async def test_kanban_mount_remains_interactive_while_bootstrap_runs(
@@ -266,7 +265,9 @@ async def test_search_query_replaces_header_with_input(board: KaganDriver) -> No
         assert header.display
 
 
-async def test_ctrl_o_on_selected_auto_task_opens_docked_task_overlay(board: KaganDriver) -> None:
+async def test_ctrl_o_on_selected_detached_task_opens_docked_task_overlay(
+    board: KaganDriver,
+) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp

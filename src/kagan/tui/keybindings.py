@@ -54,12 +54,12 @@ APP_BINDINGS: list[BindingType] = [
 
 KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
-    Binding("shift+n", "new_auto_task", "New Auto", key_display="Shift+N"),
     Binding("enter", "open_task", "Open"),
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
     Binding("y", "copy_task_id", "Copy ID"),
     Binding("s", "start_agent", "Start"),
+    Binding("a", "attach_agent", "Attach"),
     Binding("shift+s", "stop_agent", "Stop", key_display="Shift+S"),
     Binding("shift+left", "move_left", "Move Left", key_display="Shift+←"),
     Binding("shift+right", "move_right", "Move Right", key_display="Shift+→"),

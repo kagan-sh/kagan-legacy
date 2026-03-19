@@ -30,10 +30,10 @@ export function AppearanceSettings({ form, saveField, themeMode, setThemeMode }:
         </NativeSelect>
       </Field>
       <ToggleRow
-        title="Show PAIR session guidance"
-        description="Keep onboarding instructions visible when opening interactive PAIR task flows."
-        checked={!form.skip_pair_instructions_popup}
-        onCheckedChange={(value) => saveField('skip_pair_instructions_popup', !value)}
+        title="Show attach guidance"
+        description="Keep onboarding instructions visible when attaching an interactive run."
+        checked={!form.skip_attached_instructions_popup}
+        onCheckedChange={(value) => saveField('skip_attached_instructions_popup', !value)}
       />
       <ToggleRow
         title="Restore last workspace on startup"

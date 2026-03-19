@@ -14,31 +14,31 @@ import { Kbd, KbdGroup } from '@/components/ui/kbd';
 interface FirstBootTutorialDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onStartAutoFlow: () => void;
-  onStartPairFlow: () => void;
+  onStartDetachedFlow: () => void;
+  onStartAttachedFlow: () => void;
   onOpenHelp: () => void;
 }
 
 const STEPS = [
   {
     title: 'Welcome to the board',
-    description: 'You can run agents in autonomous or collaborative mode from the same task workflow.',
+    description: 'Start a managed run in the background, or attach an interactive run using your launcher preference.',
   },
   {
-    title: 'PAIR flow',
-    description: 'PAIR mode is best when you want to guide strategy, clarify intent, and iterate quickly.',
+    title: 'Interactive attach',
+    description: 'Interactive runs are best when you want to guide strategy, clarify intent, and iterate quickly.',
   },
   {
-    title: 'AUTO flow',
-    description: 'AUTO mode is best when scope is clear and you want fast execution throughput.',
+    title: 'Managed runs',
+    description: 'Managed runs are best when scope is clear and you want fast execution throughput.',
   },
 ] as const;
 
 export function FirstBootTutorialDialog({
   open,
   onOpenChange,
-  onStartAutoFlow,
-  onStartPairFlow,
+  onStartDetachedFlow,
+  onStartAttachedFlow,
   onOpenHelp,
 }: FirstBootTutorialDialogProps) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -85,7 +85,7 @@ export function FirstBootTutorialDialog({
             <CardContent className="space-y-3">
               {stepIndex === 0 ? (
                 <div className="space-y-2 text-sm text-[var(--muted-foreground)]">
-                  <p>Start with PAIR when requirements are fluid. Use AUTO when acceptance criteria are stable.</p>
+                  <p>Start with Attach when requirements are fluid. Use Start for managed runs when acceptance criteria are stable.</p>
                   <p>Everything remains reviewable in task detail and diff views before merge.</p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <KbdGroup>
@@ -106,11 +106,11 @@ export function FirstBootTutorialDialog({
               {stepIndex === 1 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Create a PAIR task now. This opens the create dialog preconfigured for collaborative execution.
+                    Create a task now. After creation, use Attach to launch an interactive run.
                   </p>
-                  <Button onClick={onStartPairFlow} className="w-full sm:w-auto">
+                  <Button onClick={onStartAttachedFlow} className="w-full sm:w-auto">
                     <Users className="size-4" />
-                    Start PAIR flow
+                    Create task for interactive run
                   </Button>
                 </div>
               ) : null}
@@ -118,11 +118,11 @@ export function FirstBootTutorialDialog({
               {stepIndex === 2 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Create an AUTO task now. This opens the create dialog preconfigured for autonomous execution.
+                    Create a task now. After creation, use Start to begin a managed run.
                   </p>
-                  <Button onClick={onStartAutoFlow} className="w-full sm:w-auto">
+                  <Button onClick={onStartDetachedFlow} className="w-full sm:w-auto">
                     <Bot className="size-4" />
-                    Start AUTO flow
+                    Create task for managed run
                   </Button>
                 </div>
               ) : null}

@@ -12,14 +12,14 @@ interface SectionProps {
 
 export function WorkspaceSettings({ form, setField, saveField }: SectionProps) {
   return (
-    <FieldSet>
-      <FieldLegend variant="label">Workspace Defaults</FieldLegend>
+      <FieldSet>
+        <FieldLegend variant="label">Workspace Defaults</FieldLegend>
       <Field>
-        <FieldLabel>PAIR launcher</FieldLabel>
-        <FieldDescription>Primary tool used when opening paired work sessions.</FieldDescription>
+        <FieldLabel>Interactive launcher</FieldLabel>
+        <FieldDescription>Primary tool used when you attach an interactive run.</FieldDescription>
         <NativeSelect
-          value={form.pair_launcher}
-          onChange={(event) => saveField('pair_launcher', event.target.value)}
+          value={form.attached_launcher}
+          onChange={(event) => saveField('attached_launcher', event.target.value)}
         >
           <NativeSelectOption value="tmux">tmux</NativeSelectOption>
           <NativeSelectOption value="nvim">nvim</NativeSelectOption>

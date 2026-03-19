@@ -9,7 +9,6 @@ function makeTask(overrides: Partial<WireTask>): WireTask {
     description: '',
     status: 'BACKLOG',
     priority: 'MEDIUM',
-    execution_mode: 'AUTO',
     acceptance_criteria: [],
     review_approved: false,
     has_workspace: false,
@@ -31,7 +30,7 @@ describe('defaultTabForTask', () => {
       defaultTabForTask(
         makeTask({
           status: 'BACKLOG',
-          active_session: { id: 's1', status: 'RUNNING', mode: 'AUTO', agent_backend: 'claude', started_at: '2026-01-01' },
+          active_session: { id: 's1', status: 'RUNNING', launcher: null, agent_backend: 'claude', started_at: '2026-01-01' },
         }),
       ),
     ).toBe('overview');

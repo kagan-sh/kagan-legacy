@@ -8,7 +8,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 from kagan.tui.widgets.card import TaskCard
 
 
@@ -17,13 +17,13 @@ class _TaskData(Protocol):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
     has_active_session: bool
     has_session_history: bool
-    latest_session_mode: WorkMode | None
+    active_launcher: str | None
+    latest_launcher: str | None
 
 
 _COLUMN_ORDER: tuple[TaskStatus, ...] = (

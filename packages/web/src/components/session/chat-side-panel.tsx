@@ -20,16 +20,13 @@ interface ChatSidePanelProps {
   layout: Exclude<RightRailMode, 'none'>;
   onSetLayout: (layout: Exclude<RightRailMode, 'none'>) => void;
   onClose: () => void;
-  executionMode?: string;
 }
 
-export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionMode }: ChatSidePanelProps) {
+export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSidePanelProps) {
   const isMobile = useIsMobile();
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
   const [searchParams] = useSearchParams();
   const [lane, setLane] = useState<'worker' | 'reviewer'>('worker');
-
-  const isPairMode = executionMode === 'PAIR';
 
   // Read lane from URL params on mount
   useEffect(() => {
@@ -49,10 +46,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
     void apiClient.getTaskSessions(taskId).then(setSessionsPreload).catch(() => undefined);
   }, [taskId]);
 
-  const workerSession = useMemo(
-    () => sessionsPreload.find((s) => s.mode === 'AUTO' || s.mode === 'PAIR'),
-    [sessionsPreload],
-  );
+  const workerSession = useMemo(() => sessionsPreload[0], [sessionsPreload]);
   const reviewerSession = useMemo(
     () => (sessionsPreload.length >= 2 ? sessionsPreload[sessionsPreload.length - 1] : undefined),
     [sessionsPreload],
@@ -66,6 +60,8 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
     queuePrompt, removePrompt, editPrompt, interruptAndSend,
     hasMore, loadingMore, loadEarlier,
   } = useTaskEvents(taskId, { initialLimit: 200, sessionId: laneSessionId });
+
+  const isInteractiveActive = Boolean(task?.active_session?.launcher);
 
   useEffect(() => {
     if (sessions && sessions.length > 0) setSessionsPreload(sessions);
@@ -148,7 +144,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
         onLoadEarlier={loadEarlier}
       />
 
-      {!isPairMode && queue.length > 0 && (
+      {!isInteractiveActive && queue.length > 0 && (
         <div className="border-t border-[color:var(--border-subtle)] px-3 py-2">
           <FollowUpQueue
             prompts={queue}
@@ -167,7 +163,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
         </div>
       )}
 
-      {!isPairMode ? (
+      {!isInteractiveActive ? (
         <ChatInputBar
           onSend={queuePrompt}
           disableSend={isRunning}
@@ -175,7 +171,7 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose, executionM
         />
       ) : (
         <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
-          Session running in external terminal
+          Session running in external terminal/editor
         </div>
       )}
     </aside>

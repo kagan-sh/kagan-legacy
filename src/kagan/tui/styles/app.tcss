@@ -373,7 +373,7 @@ ModalScreen Footer {
 .modal-keyboard-hint,
 .modal-action-hint,
 ConfirmModal .confirm-hint,
-PairInstructionsModal .tmux-hint,
+AttachedInstructionsModal .tmux-hint,
 RejectionInputModal .hint-label {
     width: 100%;
     text-align: center;
@@ -604,13 +604,13 @@ BaseBranchModal #branch-custom-input.hidden {
     display: none;
 }
 
-/* === PAIR INSTRUCTIONS MODAL (tmux gateway) === */
+/* === INTERACTIVE INSTRUCTIONS MODAL (tmux gateway) === */
 
-PairInstructionsModal {
+AttachedInstructionsModal {
     align: center middle;
 }
 
-#pair-instructions-container {
+#attached-instructions-container {
     width: 70;
     height: auto;
     max-height: 32;
@@ -619,7 +619,7 @@ PairInstructionsModal {
     padding: 1 2;
 }
 
-PairInstructionsModal .modal-title {
+AttachedInstructionsModal .modal-title {
     text-align: center;
     text-style: bold;
     width: 100%;
@@ -627,7 +627,7 @@ PairInstructionsModal .modal-title {
     padding-bottom: 1;
 }
 
-PairInstructionsModal .section-title {
+AttachedInstructionsModal .section-title {
     text-style: bold;
     color: $text-muted;
     width: 100%;
@@ -2211,7 +2211,7 @@ OnboardingFlow {
 
 /* --- Side-by-side fields --- */
 
-.setup-field-pair {
+.setup-field-attached {
     width: 100%;
     height: auto;
 }

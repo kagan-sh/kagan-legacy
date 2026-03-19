@@ -13,7 +13,6 @@ export function mockTask(overrides: Partial<WireTask> = {}): WireTask {
     description: 'A test task description',
     status: 'BACKLOG',
     priority: 'MEDIUM',
-    execution_mode: 'AUTO',
     review_running: false,
     ...overrides,
   };
@@ -25,7 +24,7 @@ export function mockTaskInProgress(overrides: Partial<WireTask> = {}): WireTask 
     active_session: {
       id: nextId(),
       status: 'running',
-      mode: 'AUTO',
+      launcher: null,
       agent_backend: 'claude-code',
       started_at: new Date().toISOString(),
     },

@@ -109,7 +109,6 @@ class SearchBar(Widget):
     total_count: reactive[int] = reactive(0, init=False)
     status_filter: reactive[str] = reactive("", init=False)
     priority_filter: reactive[str] = reactive("", init=False)
-    mode_filter: reactive[str] = reactive("", init=False)
     sort_filter: reactive[str] = reactive("", init=False)
 
     @dataclass
@@ -205,10 +204,6 @@ class SearchBar(Widget):
         del value
         self._render_state()
 
-    def watch_mode_filter(self, value: str) -> None:
-        del value
-        self._render_state()
-
     def watch_sort_filter(self, value: str) -> None:
         del value
         self._render_state()
@@ -244,7 +239,6 @@ class SearchBar(Widget):
         total_count: int,
         status_filter: str = "",
         priority_filter: str = "",
-        mode_filter: str = "",
         sort_filter: str = "",
         search_active: bool,
         status_counts: dict[str, int] | None = None,
@@ -254,7 +248,6 @@ class SearchBar(Widget):
         self.total_count = max(0, int(total_count))
         self.status_filter = status_filter
         self.priority_filter = priority_filter
-        self.mode_filter = mode_filter
         self.sort_filter = sort_filter
         self.is_visible = bool(search_active)
         if status_counts is not None:
@@ -334,8 +327,6 @@ class SearchBar(Widget):
             filters.append(f"@status:{self.status_filter}")
         if self.priority_filter:
             filters.append(f"@priority:{self.priority_filter}")
-        if self.mode_filter:
-            filters.append(f"@mode:{self.mode_filter}")
         if self.sort_filter:
             filters.append(f"@sort:{self.sort_filter}")
 
@@ -353,7 +344,6 @@ class SearchBar(Widget):
             self.search_query.strip()
             or self.status_filter
             or self.priority_filter
-            or self.mode_filter
             or self.sort_filter
         )
         if has_filter:

@@ -8,7 +8,7 @@ const SHORTCUTS = [
   { keys: 'Cmd/Ctrl+I', action: 'Toggle AI Panel' },
   { keys: 'Cmd/Ctrl+Shift+F', action: 'Fullscreen AI Panel' },
   { keys: 'Esc', action: 'Stop / dismiss' },
-  { keys: 'N / Shift+N', action: 'Create task (PAIR / AUTO)' },
+  { keys: 'N', action: 'Create task' },
   { keys: '/', action: 'Focus board search' },
   { keys: 'Enter', action: 'Open selected item' },
   { keys: 'S / Shift+S', action: 'Start / Stop task' },

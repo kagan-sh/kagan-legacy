@@ -6,7 +6,6 @@ import type { WireTask } from '@/lib/api/types';
 
 interface BoardDialogsProps {
   createOpen: boolean;
-  createExecutionMode: 'AUTO' | 'PAIR';
   setCreateOpen: (open: boolean) => void;
   editingTask: WireTask | null;
   setEditingTask: (task: WireTask | null) => void;
@@ -23,7 +22,6 @@ interface BoardDialogsProps {
 
 export function BoardDialogs({
   createOpen,
-  createExecutionMode,
   setCreateOpen,
   editingTask,
   setEditingTask,
@@ -42,7 +40,6 @@ export function BoardDialogs({
       <CreateTaskDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        initialExecutionMode={createExecutionMode}
       />
       <EditTaskDialog
         open={Boolean(editingTask)}

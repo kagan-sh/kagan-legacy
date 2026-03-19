@@ -150,7 +150,7 @@ class SettingsModal(ModalScreen[None]):
             SettingCategory(
                 id="orchestration",
                 name="Orchestration",
-                search_terms=("execution", "mode", "review", "strict", "planning", "confirm"),
+                search_terms=("review", "strict", "planning", "confirm"),
             ),
             SettingCategory(
                 id="general",
@@ -170,7 +170,7 @@ class SettingsModal(ModalScreen[None]):
             SettingCategory(
                 id="appearance",
                 name="Appearance",
-                search_terms=("theme", "appearance", "color", "pair", "instructions"),
+                search_terms=("theme", "appearance", "color", "attached", "instructions"),
             ),
             SettingCategory(
                 id="worktree",
@@ -203,16 +203,6 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "Default execution mode",
-                    "settings-execution-mode",
-                    options=(
-                        ("Ask each time", "ask"),
-                        ("Auto (autonomous)", "auto"),
-                        ("Pair (co-pilot)", "pair"),
-                    ),
-                ),
-                SettingFieldSpec(
-                    "select",
                     "Review strictness",
                     "settings-review-strictness",
                     options=(
@@ -241,8 +231,8 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "PAIR launcher",
-                    "settings-pair-launcher",
+                    "Interactive launcher",
+                    "settings-attached-launcher",
                     options=(
                         ("tmux", "tmux"),
                         ("nvim", "nvim"),
@@ -291,7 +281,9 @@ class SettingsModal(ModalScreen[None]):
                     options_factory=_build_theme_options,
                 ),
                 SettingFieldSpec(
-                    "switch", "Skip PAIR instructions popup", "settings-skip-pair-instructions"
+                    "switch",
+                    "Skip attach instructions popup",
+                    "settings-skip-attached-instructions",
                 ),
             ),
             "instructions": (
@@ -388,9 +380,6 @@ class SettingsModal(ModalScreen[None]):
             settings.get("auto_confirm_single_tasks"),
             default=False,
         )
-        exec_mode = settings.get("default_execution_mode", "ask")
-        exec_select = self.query_one("#settings-execution-mode", Select)
-        exec_select.value = exec_mode if exec_mode in {"ask", "auto", "pair"} else "ask"
 
         review_strictness = settings.get("review_strictness", "balanced")
         review_select = self.query_one("#settings-review-strictness", Select)
@@ -417,11 +406,11 @@ class SettingsModal(ModalScreen[None]):
         else:
             agent_select.value = "claude-code"
 
-        pair_launcher = settings.get("pair_launcher", "tmux")
-        pair_select = self.query_one("#settings-pair-launcher", Select)
-        pair_select.value = (
-            pair_launcher
-            if pair_launcher
+        attached_launcher = settings.get("attached_launcher", "tmux")
+        attached_select = self.query_one("#settings-attached-launcher", Select)
+        attached_select.value = (
+            attached_launcher
+            if attached_launcher
             in {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}
             else "tmux"
         )
@@ -464,8 +453,8 @@ class SettingsModal(ModalScreen[None]):
             settings.get("serialize_merges"),
             default=False,
         )
-        self.query_one("#settings-skip-pair-instructions", Switch).value = _is_enabled(
-            settings.get("skip_pair_instructions_popup"),
+        self.query_one("#settings-skip-attached-instructions", Switch).value = _is_enabled(
+            settings.get("skip_attached_instructions_popup"),
             default=False,
         )
 
@@ -686,7 +675,7 @@ class SettingsModal(ModalScreen[None]):
             agent_backend_value if isinstance(agent_backend_value, str) else "claude-code"
         )
 
-        pair_launcher_value = self.query_one("#settings-pair-launcher", Select).value
+        attached_launcher_value = self.query_one("#settings-attached-launcher", Select).value
         strategy_value = self.query_one("#settings-base-ref-strategy", Select).value
         base_branch = self.query_one("#settings-default-base-branch", Input).value.strip() or "main"
         theme_value = self.query_one("#settings-theme", Select).value
@@ -696,7 +685,9 @@ class SettingsModal(ModalScreen[None]):
         auto_init_commit = self.query_one("#settings-auto-init-commit", Switch).value
         require_review_approval = self.query_one("#settings-require-review-approval", Switch).value
         serialize_merges = self.query_one("#settings-serialize-merges", Switch).value
-        skip_pair_instructions = self.query_one("#settings-skip-pair-instructions", Switch).value
+        skip_attached_instructions = self.query_one(
+            "#settings-skip-attached-instructions", Switch
+        ).value
 
         git_mode_value = self.query_one("#settings-git-user-mode", Select).value
         git_mode = git_mode_value if isinstance(git_mode_value, str) else "kagan_agent"
@@ -705,19 +696,20 @@ class SettingsModal(ModalScreen[None]):
         default_model_claude = self.query_one("#settings-default-model-claude", Input).value.strip()
         default_model_openai = self.query_one("#settings-default-model-openai", Input).value.strip()
 
-        pair_launcher = pair_launcher_value if isinstance(pair_launcher_value, str) else "tmux"
+        attached_launcher = (
+            attached_launcher_value if isinstance(attached_launcher_value, str) else "tmux"
+        )
         strategy = strategy_value if isinstance(strategy_value, str) else "local_if_ahead"
         theme = theme_value if isinstance(theme_value, str) else ""
 
         # Orchestration settings
         auto_confirm = self.query_one("#settings-auto-confirm-single", Switch).value
-        exec_mode_value = self.query_one("#settings-execution-mode", Select).value
         review_strictness_value = self.query_one("#settings-review-strictness", Select).value
         planning_value = self.query_one("#settings-planning-depth", Select).value
 
         updates: dict[str, str] = {
             "default_agent_backend": default_agent_backend,
-            "pair_launcher": pair_launcher,
+            "attached_launcher": attached_launcher,
             "default_base_branch": base_branch,
             "worktree_base_ref_strategy": strategy,
             "theme": theme,
@@ -727,12 +719,9 @@ class SettingsModal(ModalScreen[None]):
             "auto_init_git_initial_commit": "true" if auto_init_commit else "false",
             "require_review_approval": "true" if require_review_approval else "false",
             "serialize_merges": "true" if serialize_merges else "false",
-            "skip_pair_instructions_popup": "true" if skip_pair_instructions else "false",
+            "skip_attached_instructions_popup": ("true" if skip_attached_instructions else "false"),
             "git_user_mode": git_mode,
             "auto_confirm_single_tasks": "true" if auto_confirm else "false",
-            "default_execution_mode": (
-                exec_mode_value if isinstance(exec_mode_value, str) else "ask"
-            ),
             "review_strictness": (
                 review_strictness_value if isinstance(review_strictness_value, str) else "balanced"
             ),

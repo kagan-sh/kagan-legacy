@@ -7,7 +7,6 @@ import {
   boardFiltersAtom,
   searchQueryAtom,
   boardStatusFilterAtom,
-  boardModeFilterAtom,
   boardSortAtom,
   resetBoardFiltersAtom,
   taskCountsAtom,
@@ -74,13 +73,11 @@ describe('board atoms', () => {
   it('updates consolidated filters through legacy derived atoms', () => {
     store.set(searchQueryAtom, 'query');
     store.set(boardStatusFilterAtom, 'DONE');
-    store.set(boardModeFilterAtom, 'AUTO');
     store.set(boardSortAtom, 'recent');
 
     expect(store.get(boardFiltersAtom)).toEqual({
       query: 'query',
       status: 'DONE',
-      mode: 'AUTO',
       sort: 'recent',
     });
   });
@@ -89,7 +86,6 @@ describe('board atoms', () => {
     store.set(boardFiltersAtom, {
       query: 'login',
       status: 'IN_PROGRESS',
-      mode: 'PAIR',
       sort: 'priority',
     });
 
@@ -98,7 +94,6 @@ describe('board atoms', () => {
     expect(store.get(boardFiltersAtom)).toEqual({
       query: '',
       status: 'ALL',
-      mode: 'ALL',
       sort: 'default',
     });
   });

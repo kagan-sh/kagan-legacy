@@ -44,8 +44,7 @@ export function Component() {
     const [commits, setCommits] = useState<TaskCommitsResponse | null>(null);
     const [commitsLoading, setCommitsLoading] = useState(false);
     const [commitsError, setCommitsError] = useState<string | null>(null);
-    const [worktreePath, setWorktreePath] = useState<string | null>(null);
-    const [pairLauncher, setPairLauncher] = useState<string | null>(null);
+    const [attachedLauncher, setAttachedLauncher] = useState<string | null>(null);
 
     const requestedLane = searchParams.get("lane");
 
@@ -61,11 +60,7 @@ export function Component() {
             .catch(() => undefined);
     }, [taskId]);
 
-    const workerSession = useMemo(
-        () =>
-            sessionsPreload.find((s) => s.mode === "AUTO" || s.mode === "PAIR"),
-        [sessionsPreload],
-    );
+    const workerSession = useMemo(() => sessionsPreload[0], [sessionsPreload]);
     const reviewerSession = useMemo(
         () =>
             sessionsPreload.length >= 2
@@ -139,37 +134,25 @@ export function Component() {
             Boolean(worktree?.path) ||
             Boolean(commits?.branch));
 
+    const isInteractiveActive = Boolean(displayTask?.active_session?.launcher);
+
     useEffect(() => {
-        if (!taskId || displayTask?.execution_mode !== "PAIR") {
-            setWorktreePath(null);
-            setPairLauncher(null);
+        if (!taskId) {
+            setAttachedLauncher(null);
             return;
         }
 
         let cancelled = false;
 
-        void apiClient.getTaskWorktree(taskId).then(
-            (res) => {
-                if (!cancelled) {
-                    setWorktreePath(res.worktree?.path ?? null);
-                }
-            },
-            () => {
-                if (!cancelled) {
-                    setWorktreePath(null);
-                }
-            },
-        );
-
         void apiClient.getSettings().then(
             (settings) => {
                 if (!cancelled) {
-                    setPairLauncher(settings.pair_launcher ?? null);
+                    setAttachedLauncher(settings.attached_launcher ?? null);
                 }
             },
             () => {
                 if (!cancelled) {
-                    setPairLauncher(null);
+                    setAttachedLauncher(null);
                 }
             },
         );
@@ -177,7 +160,7 @@ export function Component() {
         return () => {
             cancelled = true;
         };
-    }, [taskId, displayTask?.execution_mode]);
+    }, [taskId]);
 
     useEffect(() => {
         if (!taskId || !hasWorkspace) {
@@ -331,11 +314,17 @@ export function Component() {
                                                     loadingMore={loadingMore}
                                                     onLoadEarlier={loadEarlier}
                                                 />
-                                                <ChatInputBar
-                                                    onSend={queuePrompt}
-                                                    disableSend={false}
-                                                    placeholder={`Queue a follow-up for the ${streamLane} agent...`}
-                                                />
+                                                {!isInteractiveActive ? (
+                                                    <ChatInputBar
+                                                        onSend={queuePrompt}
+                                                        disableSend={isRunning}
+                                                        placeholder={`Queue a follow-up for the ${streamLane} agent...`}
+                                                    />
+                                                ) : (
+                                                    <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
+                                                        Session running in external terminal/editor
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </ResizablePanel>
@@ -399,11 +388,17 @@ export function Component() {
                                             loadingMore={loadingMore}
                                             onLoadEarlier={loadEarlier}
                                         />
-                                        <ChatInputBar
-                                            onSend={queuePrompt}
-                                            disableSend={false}
-                                            placeholder={`Queue a follow-up for the ${streamLane} agent...`}
-                                        />
+                                        {!isInteractiveActive ? (
+                                            <ChatInputBar
+                                                onSend={queuePrompt}
+                                                disableSend={isRunning}
+                                                placeholder={`Queue a follow-up for the ${streamLane} agent...`}
+                                            />
+                                        ) : (
+                                            <div className="border-t border-[color:var(--border-subtle)] px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
+                                                Session running in external terminal/editor
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -413,11 +408,14 @@ export function Component() {
                             <AgentControl
                                 taskId={displayTask.id}
                                 status={displayTask.status}
-                                executionMode={displayTask.execution_mode}
                                 startedAt={runningSince}
-                                worktreePath={worktreePath}
-                                pairLauncher={pairLauncher}
+                                worktreePath={worktree?.path ?? null}
+                                attachedLauncher={attachedLauncher}
                                 taskLauncher={displayTask.launcher}
+                                activeSessionId={displayTask.active_session?.id ?? null}
+                                activeSessionLauncher={
+                                    displayTask.active_session?.launcher ?? null
+                                }
                             />
 
                             <TaskMetadataPanel
@@ -480,14 +478,16 @@ export function Component() {
                                 error={commitsError}
                             />
 
-                            <FollowUpQueue
-                                prompts={queue}
-                                sending={sendingFollowUp}
-                                agentRunning={isRunning}
-                                onRemove={removePrompt}
-                                onEdit={editPrompt}
-                                onInterruptAndSend={interruptAndSend}
-                            />
+                            {!isInteractiveActive ? (
+                                <FollowUpQueue
+                                    prompts={queue}
+                                    sending={sendingFollowUp}
+                                    agentRunning={isRunning}
+                                    onRemove={removePrompt}
+                                    onEdit={editPrompt}
+                                    onInterruptAndSend={interruptAndSend}
+                                />
+                            ) : null}
 
                             {displayTask.status === "REVIEW" ? (
                                 <ReviewPanel taskId={displayTask.id} />

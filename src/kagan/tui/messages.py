@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from textual.message import Message
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 from kagan.core.models import Project, Task
 
 __all__ = [
@@ -99,7 +99,6 @@ class TaskSubmitted(Message):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     agent_backend: str | None
     launcher: str | None
     base_branch: str | None

@@ -19,18 +19,6 @@ export function OrchestrationSettings({ form, saveField }: SectionProps) {
         onCheckedChange={(value) => saveField('auto_confirm_single_tasks', value)}
       />
       <Field>
-        <FieldLabel>Default execution mode</FieldLabel>
-        <FieldDescription>How tasks run by default unless overridden per-task.</FieldDescription>
-        <NativeSelect
-          value={form.default_execution_mode}
-          onChange={(event) => saveField('default_execution_mode', event.target.value)}
-        >
-          <NativeSelectOption value="ask">Ask each time</NativeSelectOption>
-          <NativeSelectOption value="auto">Auto (autonomous)</NativeSelectOption>
-          <NativeSelectOption value="pair">Pair (co-pilot)</NativeSelectOption>
-        </NativeSelect>
-      </Field>
-      <Field>
         <FieldLabel>Review strictness</FieldLabel>
         <FieldDescription>Controls how thoroughly task outputs are reviewed before approval.</FieldDescription>
         <NativeSelect

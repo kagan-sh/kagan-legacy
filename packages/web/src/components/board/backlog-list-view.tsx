@@ -24,7 +24,7 @@ export function BacklogListView({ tasks, grouped, onInspectTask, onSelectTask, s
       <div className="grid grid-cols-[minmax(0,1fr)_140px_140px_200px] gap-2 border-b border-[color:var(--border-subtle)] px-5 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
         <span>Task</span>
         <span>Status</span>
-        <span>Mode</span>
+        <span>Launcher</span>
         <span>Activity</span>
       </div>
       <div className="min-h-0 flex-1 divide-y divide-[color:var(--border-subtle)] overflow-y-auto">
@@ -57,7 +57,7 @@ export function BacklogListView({ tasks, grouped, onInspectTask, onSelectTask, s
                 {STATUS_LABELS[task.status as TaskStatus] ?? task.status}
               </div>
               <div className="self-center text-sm text-[var(--muted-foreground)]">
-                {task.execution_mode === 'PAIR' ? 'Pair' : 'Auto'}
+                {task.launcher || 'Default'}
               </div>
               <div className="self-center text-xs text-[var(--muted-foreground)]">
                 {task.active_session

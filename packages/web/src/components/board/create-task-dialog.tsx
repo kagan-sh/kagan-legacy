@@ -25,7 +25,6 @@ const createTaskSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
-  execution_mode: z.enum(['AUTO', 'PAIR']),
   agent_backend: z.string().optional(),
   launcher: z.string().optional(),
   base_branch: z.string().optional(),
@@ -36,13 +35,11 @@ type CreateTaskForm = z.infer<typeof createTaskSchema>;
 interface CreateTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialExecutionMode?: 'AUTO' | 'PAIR';
 }
 
 export function CreateTaskDialog({
   open,
   onOpenChange,
-  initialExecutionMode = 'AUTO',
 }: CreateTaskDialogProps) {
   const fetchTasks = useSetAtom(fetchTasksAtom);
   const [submitting, setSubmitting] = useState(false);
@@ -57,7 +54,7 @@ export function CreateTaskDialog({
     formState: { errors },
   } = useForm<CreateTaskForm>({
     resolver: zodResolver(createTaskSchema),
-    defaultValues: { priority: 'MEDIUM', execution_mode: 'AUTO' },
+    defaultValues: { priority: 'MEDIUM' },
   });
 
   useEffect(() => {
@@ -71,14 +68,13 @@ export function CreateTaskDialog({
       title: '',
       description: '',
       priority: 'MEDIUM',
-      execution_mode: initialExecutionMode,
       agent_backend: '',
       launcher: '',
       base_branch: '',
     });
     setCriteria([]);
     setCriterionInput('');
-  }, [initialExecutionMode, open, reset]);
+  }, [open, reset]);
 
   const addCriterion = () => {
     const trimmed = criterionInput.trim();
@@ -120,7 +116,7 @@ export function CreateTaskDialog({
         <DialogHeader>
           <DialogTitle>Create Task</DialogTitle>
           <DialogDescription>
-            Define task details, priority, execution mode, and acceptance criteria.
+            Define task details, priority, and acceptance criteria.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -157,13 +153,6 @@ export function CreateTaskDialog({
                 <NativeSelectOption value="MEDIUM">Medium</NativeSelectOption>
                 <NativeSelectOption value="HIGH">High</NativeSelectOption>
                 <NativeSelectOption value="CRITICAL">Critical</NativeSelectOption>
-              </NativeSelect>
-            </div>
-            <div className="flex-1">
-              <Label htmlFor="execution_mode" className="mb-1">Mode</Label>
-              <NativeSelect id="execution_mode" {...register('execution_mode')} className="w-full">
-                <NativeSelectOption value="AUTO">Auto</NativeSelectOption>
-                <NativeSelectOption value="PAIR">Pair</NativeSelectOption>
               </NativeSelect>
             </div>
           </div>

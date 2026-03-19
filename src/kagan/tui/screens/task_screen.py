@@ -410,7 +410,7 @@ class TaskScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(True)
         panel.set_mode_title("Task Chat")
-        panel.set_session_kind(SessionKind.AUTO)
+        panel.set_session_kind(SessionKind.DETACHED)
         panel.set_sessions(
             build_session_options(self.kagan_app, self._task_session_options()),
             self._active_task_session_key(),
@@ -1654,7 +1654,7 @@ class TaskScreen(Screen[None]):
             panel.set_session_kind(SessionKind.ORCHESTRATOR)
         else:
             panel.set_mode_title("Task Chat")
-            panel.set_session_kind(SessionKind.AUTO)
+            panel.set_session_kind(SessionKind.DETACHED)
             panel.set_sessions(
                 build_session_options(self.kagan_app, self._task_session_options()),
                 self._active_task_session_key(),
@@ -1744,7 +1744,7 @@ class TaskScreen(Screen[None]):
 
     @staticmethod
     def _chat_session_kind(key: str) -> str:
-        return SessionKind.REVIEW if "review" in key.casefold() else SessionKind.AUTO
+        return SessionKind.REVIEW if "review" in key.casefold() else SessionKind.DETACHED
 
     def _overlay_panel(self) -> ChatPanel:
         return self.query_one("#ts-chat-overlay", ChatPanel)

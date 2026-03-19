@@ -15,7 +15,7 @@ from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
 from kagan.tui.screens.agent_picker import AgentPickerModal
 from kagan.tui.screens.confirm import ConfirmModal
-from kagan.tui.screens.gateway import PairInstructionsModal  # noqa: F401
+from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
 from kagan.tui.screens.repo_picker import RepoPickerModal

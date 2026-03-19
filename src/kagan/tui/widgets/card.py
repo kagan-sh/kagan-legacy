@@ -10,7 +10,7 @@ from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 
 
 class _TaskData(Protocol):
@@ -18,13 +18,13 @@ class _TaskData(Protocol):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
     has_active_session: bool
     has_session_history: bool
-    latest_session_mode: WorkMode | None
+    active_launcher: str | None
+    latest_launcher: str | None
 
 
 _TITLE_MAX = 56
@@ -35,8 +35,8 @@ _INDICATOR_CLASSES = frozenset(
     {
         "indicator-passed",
         "indicator-reviewing",
-        "indicator-running-auto",
-        "indicator-running-pair",
+        "indicator-running-managed",
+        "indicator-running-interactive",
         "indicator-not-started",
         "indicator-idle",
     }
@@ -47,8 +47,8 @@ _PRIORITY_CLASSES = frozenset({"priority-low", "priority-medium", "priority-high
 _STATUS_CLASSES = frozenset(
     {
         "card-run-state",
-        "run-state-auto-running",
-        "run-state-pair-running",
+        "run-state-managed-running",
+        "run-state-interactive-running",
         "run-state-not-started",
         "run-state-idle",
         "run-state-review",
@@ -224,9 +224,9 @@ class TaskCard(Widget):
         if status == TaskStatus.REVIEW:
             return ("◉", "indicator-reviewing")
         if task.has_active_session:
-            if task.execution_mode == WorkMode.PAIR:
-                return ("◉", "indicator-running-pair")
-            return ("◉", "indicator-running-auto")
+            if task.active_launcher:
+                return ("◉", "indicator-running-interactive")
+            return ("◉", "indicator-running-managed")
         if not task.has_session_history:
             return ("○", "indicator-not-started")
         if status == TaskStatus.IN_PROGRESS:
@@ -235,20 +235,22 @@ class TaskCard(Widget):
 
     @staticmethod
     def _status_line(task: _TaskData) -> tuple[str, str]:
-        mode_label = "PAIR" if task.execution_mode == WorkMode.PAIR else "AUTO"
         status = task.status
 
         if status == TaskStatus.DONE:
-            return (f"{mode_label} done", "card-run-state run-state-done")
+            return ("Done", "card-run-state run-state-done")
         if status == TaskStatus.REVIEW:
-            return (f"{mode_label} in review", "card-run-state run-state-review")
+            return ("In review", "card-run-state run-state-review")
         if task.has_active_session:
-            if task.execution_mode == WorkMode.PAIR:
-                return ("PAIR session active", "card-run-state run-state-pair-running")
-            return ("AUTO agent running", "card-run-state run-state-auto-running")
+            if task.active_launcher:
+                return (
+                    f"Interactive session active ({task.active_launcher})",
+                    "card-run-state run-state-interactive-running",
+                )
+            return ("Agent running", "card-run-state run-state-managed-running")
         if not task.has_session_history:
-            return (f"{mode_label} not started", "card-run-state run-state-not-started")
-        return (f"{mode_label} ready", "card-run-state run-state-idle")
+            return ("Not started", "card-run-state run-state-not-started")
+        return ("Ready", "card-run-state run-state-idle")
 
     # ------------------------------------------------------------------
     # Compose — skeleton only, no data computation
@@ -409,8 +411,12 @@ class TaskCard(Widget):
 
         # Type
         task_type = str(getattr(getattr(task, "task_type", None), "value", "")).strip()
-        task_type = task_type or ("AUTO" if task.execution_mode == WorkMode.AUTO else "PAIR")
-        self._type_label.update(task_type)
+        if task_type:
+            self._type_label.update(task_type)
+            self._type_label.display = True
+        else:
+            self._type_label.update("")
+            self._type_label.display = False
 
         # Priority
         priority = _priority_label(task.priority)

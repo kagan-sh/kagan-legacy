@@ -805,8 +805,7 @@ class ChatPanel(Vertical):
 
         if result.status_requested:
             self.add_system_message(
-                f"Session: {self._selected_session_key} | "
-                f"Agent: {self._agent_hint or 'default'}"
+                f"Session: {self._selected_session_key} | Agent: {self._agent_hint or 'default'}"
             )
 
         if result.project_info_requested:
@@ -1389,7 +1388,7 @@ class ChatPanel(Vertical):
             )
             if kind == SessionKind.ORCHESTRATOR:
                 orchestrator.append(option)
-            elif kind in {SessionKind.AUTO, SessionKind.REVIEW, SessionKind.PAIR}:
+            elif kind in {SessionKind.DETACHED, SessionKind.REVIEW, SessionKind.ATTACHED}:
                 ticket_label = self._ticket_group_label(option.label)
                 task_targets_by_ticket.setdefault(ticket_label, []).append(option)
             else:
@@ -1415,7 +1414,7 @@ class ChatPanel(Vertical):
                     icon="◉",
                     label=ticket_label,
                     subtitle=f"{len(options)} agent(s)",
-                    search_text=f"ticket task auto review pair worktree {ticket_label}",
+                    search_text=f"ticket task managed review interactive worktree {ticket_label}",
                     options=tuple(options),
                 )
             )
@@ -1446,9 +1445,9 @@ class ChatPanel(Vertical):
         if engine is None:
             return None
         try:
-            settings = _db_sync(engine, lambda s: {
-                row.key: row.value for row in s.exec(select(Setting)).all()
-            })
+            settings = _db_sync(
+                engine, lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()}
+            )
             blob = settings.get("chat_sessions_v1", "")
             if not blob:
                 return None
@@ -1475,18 +1474,23 @@ class ChatPanel(Vertical):
             return SessionKind.ORCHESTRATOR
         if "review" in normalized:
             return SessionKind.REVIEW
-        if "pair" in normalized:
-            return SessionKind.PAIR
-        return SessionKind.AUTO
+        if "interactive" in normalized or "attached" in normalized:
+            return SessionKind.ATTACHED
+        if "managed" in normalized:
+            return SessionKind.DETACHED
+        return SessionKind.DETACHED
 
     @staticmethod
     def _session_icon(kind: str) -> str:
-        return {
-            SessionKind.ORCHESTRATOR: "◎",
-            SessionKind.AUTO: "◉",
-            SessionKind.REVIEW: "◆",
-            SessionKind.PAIR: "◌",
-        }.get(kind, "●")
+        if kind == SessionKind.ORCHESTRATOR:
+            return "◎"
+        if kind == SessionKind.REVIEW:
+            return "◆"
+        if kind == SessionKind.ATTACHED:
+            return "◌"
+        if kind == SessionKind.DETACHED:
+            return "◉"
+        return "●"
 
     @staticmethod
     def _mention_span(value: str) -> tuple[int, int, str] | None:

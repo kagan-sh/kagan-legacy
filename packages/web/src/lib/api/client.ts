@@ -177,8 +177,14 @@ export class KaganApiClient {
     });
   }
 
-  /** POST /api/tasks/:taskId/run — Start an AUTO agent session */
-  async runTask(taskId: string, options?: { agent_backend?: string; persona?: string }): Promise<WireTask> {
+  async runTask(
+    taskId: string,
+    options?: {
+      agent_backend?: string;
+      persona?: string;
+      launcher?: string;
+    },
+  ): Promise<WireTask> {
     return this.request<WireTask>(`/api/tasks/${taskId}/run`, {
       method: 'POST',
       body: options ?? {},
@@ -187,14 +193,6 @@ export class KaganApiClient {
 
   async runReview(taskId: string, options?: { agent_backend?: string }): Promise<WireTask> {
     return this.runTask(taskId, options);
-  }
-
-  /** POST /api/tasks/:taskId/pair — Start a PAIR agent session */
-  async pairTask(taskId: string, options?: { agent_backend?: string; persona?: string }): Promise<WireTask> {
-    return this.request<WireTask>(`/api/tasks/${taskId}/pair`, {
-      method: 'POST',
-      body: options ?? {},
-    });
   }
 
   /** POST /api/tasks/:taskId/cancel — Cancel/stop a running session */
@@ -213,9 +211,8 @@ export class KaganApiClient {
     });
   }
 
-  /** POST /api/tasks/:taskId/end-pairing — End a PAIR session */
-  async endPairing(taskId: string): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>(`/api/tasks/${taskId}/end-pairing`, {
+  async detachTask(taskId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(`/api/tasks/${taskId}/detach`, {
       method: 'POST',
       body: {},
     });

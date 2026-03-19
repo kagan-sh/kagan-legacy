@@ -44,8 +44,8 @@ describe('ChatSidePanel', () => {
     chatInputBarRender.mockReset();
     useTaskEventsMock.mockReset();
     vi.spyOn(apiClient, 'getTaskSessions').mockResolvedValue([
-      { id: 'worker-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
-      { id: 'reviewer-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
+      { id: 'worker-session', launcher: null, status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
+      { id: 'reviewer-session', launcher: null, status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
     ]);
   });
 
@@ -64,8 +64,8 @@ describe('ChatSidePanel', () => {
     runningSince: null,
     isRunning: false,
     sessions: [
-      { id: 'worker-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
-      { id: 'reviewer-session', mode: 'AUTO', status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
+      { id: 'worker-session', launcher: null, status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T00:00:00Z' },
+      { id: 'reviewer-session', launcher: null, status: 'COMPLETED', agent_backend: 'test', started_at: '2026-01-01T01:00:00Z' },
     ],
     sentFollowUps: [],
     queue: [],

@@ -64,7 +64,6 @@ export interface WireEnvelope<T = unknown> {
 
 export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type WorkMode = "AUTO" | "PAIR";
 
 // ---------------------------------------------------------------------------
 // Request bodies
@@ -75,7 +74,6 @@ export interface CreateTaskInput {
     description?: string;
     status?: TaskStatus;
     priority?: Priority;
-    execution_mode?: WorkMode;
     base_branch?: string;
     acceptance_criteria?: string[];
     agent_backend?: string;
@@ -96,7 +94,6 @@ export interface UpdateTaskInput {
     title?: string;
     description?: string;
     priority?: Priority;
-    execution_mode?: WorkMode;
     base_branch?: string;
     acceptance_criteria?: string[];
     agent_backend?: string;

@@ -9,8 +9,7 @@ vi.mock('@/lib/api/client', () => ({
   apiClient: {
     runTask: vi.fn().mockResolvedValue({}),
     cancelTask: vi.fn().mockResolvedValue({}),
-    pairTask: vi.fn().mockResolvedValue({}),
-    endPairing: vi.fn().mockResolvedValue({}),
+    detachTask: vi.fn().mockResolvedValue({}),
     getTaskWorktree: vi.fn().mockResolvedValue({ worktree: null }),
     getSettings: vi.fn().mockResolvedValue({}),
     setSettings: vi.fn().mockResolvedValue({}),

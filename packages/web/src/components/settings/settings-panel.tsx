@@ -26,7 +26,7 @@ import { AdditionalInstructionsSettings } from './sections/additional-instructio
 type ThemeMode = 'system' | 'dark' | 'light';
 
 export type SettingsFormState = {
-  pair_launcher: string;
+  attached_launcher: string;
   default_base_branch: string;
   worktree_base_ref_strategy: string;
   auto_review: boolean;
@@ -35,7 +35,7 @@ export type SettingsFormState = {
   auto_init_git_initial_commit: boolean;
   require_review_approval: boolean;
   serialize_merges: boolean;
-  skip_pair_instructions_popup: boolean;
+  skip_attached_instructions_popup: boolean;
   git_user_mode: string;
   git_user_name: string;
   git_user_email: string;
@@ -43,14 +43,13 @@ export type SettingsFormState = {
   default_model_claude: string;
   default_model_openai: string;
   additional_instructions: string;
-  default_execution_mode: string;
   review_strictness: string;
   planning_depth: string;
   auto_confirm_single_tasks: boolean;
 };
 
 export const DEFAULT_FORM: SettingsFormState = {
-  pair_launcher: 'tmux',
+  attached_launcher: 'tmux',
   default_base_branch: 'main',
   worktree_base_ref_strategy: 'local_if_ahead',
   auto_review: true,
@@ -59,7 +58,7 @@ export const DEFAULT_FORM: SettingsFormState = {
   auto_init_git_initial_commit: true,
   require_review_approval: false,
   serialize_merges: false,
-  skip_pair_instructions_popup: false,
+  skip_attached_instructions_popup: false,
   git_user_mode: 'kagan_agent',
   git_user_name: '',
   git_user_email: '',
@@ -67,7 +66,6 @@ export const DEFAULT_FORM: SettingsFormState = {
   default_model_claude: '',
   default_model_openai: '',
   additional_instructions: '',
-  default_execution_mode: 'ask',
   review_strictness: 'balanced',
   planning_depth: 'always',
   auto_confirm_single_tasks: false,
@@ -103,21 +101,31 @@ export function SettingsPanel() {
 
   const [form, setForm] = useState<SettingsFormState>(DEFAULT_FORM);
   const savedRef = useRef<SettingsFormState>(DEFAULT_FORM);
-  const [resolvedGit, setResolvedGit] = useState<{ name: string; email: string }>({ name: '', email: '' });
+  const [resolvedGit, setResolvedGit] = useState<{ name: string; email: string }>({
+    name: '',
+    email: '',
+  });
   const [dotfileOverrides, setDotfileOverrides] = useState<Record<string, string | null>>({});
 
   const [loading, setLoading] = useState(true);
   const [availableBackends, setAvailableBackends] = useState<string[]>([]);
 
-  const setField = <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
+  const setField = <K extends keyof SettingsFormState>(
+    key: K,
+    value: SettingsFormState[K],
+  ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   /** Save a single field atomically to the API. */
-  const saveField = async <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
+  const saveField = async <K extends keyof SettingsFormState>(
+    key: K,
+    value: SettingsFormState[K],
+  ) => {
     setField(key, value);
     try {
-      const apiValue = typeof value === 'boolean' ? String(value) : (value as string);
+      const apiValue =
+        typeof value === 'boolean' ? String(value) : (value as string);
       const payload: Record<string, string> = { [key]: apiValue };
       await apiClient.setSettings(payload);
       savedRef.current = { ...savedRef.current, [key]: value };
@@ -146,27 +154,41 @@ export function SettingsPanel() {
         setDotfileOverrides(resolved.dotfile_overrides || {});
 
         const loaded: SettingsFormState = {
-          pair_launcher: settings.pair_launcher || DEFAULT_FORM.pair_launcher,
+          attached_launcher: settings.attached_launcher || DEFAULT_FORM.attached_launcher,
           default_base_branch: settings.default_base_branch || DEFAULT_FORM.default_base_branch,
           worktree_base_ref_strategy: settings.worktree_base_ref_strategy || DEFAULT_FORM.worktree_base_ref_strategy,
           auto_review: asBool(settings.auto_review, DEFAULT_FORM.auto_review),
-          open_last_project_on_startup: asBool(settings.open_last_project_on_startup, DEFAULT_FORM.open_last_project_on_startup),
+          open_last_project_on_startup: asBool(
+            settings.open_last_project_on_startup,
+            DEFAULT_FORM.open_last_project_on_startup,
+          ),
           auto_init_git_repo: asBool(settings.auto_init_git_repo, DEFAULT_FORM.auto_init_git_repo),
-          auto_init_git_initial_commit: asBool(settings.auto_init_git_initial_commit, DEFAULT_FORM.auto_init_git_initial_commit),
+          auto_init_git_initial_commit: asBool(
+            settings.auto_init_git_initial_commit,
+            DEFAULT_FORM.auto_init_git_initial_commit,
+          ),
           require_review_approval: asBool(settings.require_review_approval, DEFAULT_FORM.require_review_approval),
           serialize_merges: asBool(settings.serialize_merges, DEFAULT_FORM.serialize_merges),
-          skip_pair_instructions_popup: asBool(settings.skip_pair_instructions_popup, DEFAULT_FORM.skip_pair_instructions_popup),
+          skip_attached_instructions_popup: asBool(
+            settings.skip_attached_instructions_popup,
+            DEFAULT_FORM.skip_attached_instructions_popup,
+          ),
           git_user_mode: settings.git_user_mode || DEFAULT_FORM.git_user_mode,
           git_user_name: settings.git_user_name || resolved.git_user_name || '',
           git_user_email: settings.git_user_email || resolved.git_user_email || '',
-          default_agent_backend: settings.default_agent_backend || agents.default || DEFAULT_FORM.default_agent_backend,
+          default_agent_backend:
+            settings.default_agent_backend ||
+            agents.default ||
+            DEFAULT_FORM.default_agent_backend,
           default_model_claude: settings.default_model_claude || '',
           default_model_openai: settings.default_model_openai || '',
           additional_instructions: settings.additional_instructions || '',
-          default_execution_mode: settings.default_execution_mode || DEFAULT_FORM.default_execution_mode,
           review_strictness: settings.review_strictness || DEFAULT_FORM.review_strictness,
           planning_depth: settings.planning_depth || DEFAULT_FORM.planning_depth,
-          auto_confirm_single_tasks: asBool(settings.auto_confirm_single_tasks, DEFAULT_FORM.auto_confirm_single_tasks),
+          auto_confirm_single_tasks: asBool(
+            settings.auto_confirm_single_tasks,
+            DEFAULT_FORM.auto_confirm_single_tasks,
+          ),
         };
         setForm(loaded);
         savedRef.current = loaded;

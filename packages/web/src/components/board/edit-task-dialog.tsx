@@ -26,7 +26,6 @@ const editTaskSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
-  execution_mode: z.enum(['AUTO', 'PAIR']),
   agent_backend: z.string().optional(),
   launcher: z.string().optional(),
   base_branch: z.string().optional(),
@@ -59,7 +58,6 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
       title: '',
       description: '',
       priority: 'MEDIUM',
-      execution_mode: 'AUTO',
       agent_backend: '',
       launcher: '',
       base_branch: '',
@@ -77,7 +75,6 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         title: '',
         description: '',
         priority: 'MEDIUM',
-        execution_mode: 'AUTO',
         agent_backend: '',
         launcher: '',
         base_branch: '',
@@ -90,7 +87,6 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
       title: task.title,
       description: task.description ?? '',
       priority: task.priority as EditTaskForm['priority'],
-      execution_mode: task.execution_mode as EditTaskForm['execution_mode'],
       agent_backend: task.agent_backend ?? '',
       launcher: task.launcher ?? '',
       base_branch: task.base_branch ?? '',
@@ -118,7 +114,6 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         title: data.title.trim(),
         description: data.description?.trim() || undefined,
         priority: data.priority,
-        execution_mode: data.execution_mode,
         agent_backend: data.agent_backend?.trim() || undefined,
         launcher: data.launcher || undefined,
         base_branch: data.base_branch?.trim() || undefined,
@@ -142,7 +137,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         <DialogHeader>
           <DialogTitle>Edit Task</DialogTitle>
           <DialogDescription>
-            Update task details, execution config, and acceptance criteria.
+            Update task details, agent config, and acceptance criteria.
           </DialogDescription>
         </DialogHeader>
 
@@ -180,14 +175,6 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
                 <NativeSelectOption value="MEDIUM">Medium</NativeSelectOption>
                 <NativeSelectOption value="HIGH">High</NativeSelectOption>
                 <NativeSelectOption value="CRITICAL">Critical</NativeSelectOption>
-              </NativeSelect>
-            </div>
-
-            <div className="flex-1">
-              <Label htmlFor="edit-execution_mode" className="mb-1">Mode</Label>
-              <NativeSelect id="edit-execution_mode" {...register('execution_mode')} className="w-full">
-                <NativeSelectOption value="AUTO">Auto</NativeSelectOption>
-                <NativeSelectOption value="PAIR">Pair</NativeSelectOption>
               </NativeSelect>
             </div>
           </div>

@@ -33,8 +33,7 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Board',
     rows: [
-      { keys: ['N'], description: 'Create PAIR task' },
-      { keys: ['Shift', 'N'], description: 'Create AUTO task' },
+      { keys: ['N'], description: 'Create task' },
       { keys: ['/'], description: 'Focus task search' },
       { keys: ['Enter'], description: 'Open selected task' },
       { keys: ['S'], description: 'Start selected task' },
@@ -58,12 +57,12 @@ const FLOWS = [
     body: 'Create or open a project from Welcome, then go to Board to start orchestration.',
   },
   {
-    title: 'AUTO Task Flow',
-    body: 'Create a task in AUTO mode and let the agent execute autonomously, then review changes in the task workspace.',
+    title: 'Managed Run Flow',
+    body: 'Create a task and start a managed run in the background, then review changes in the task workspace.',
   },
   {
-    title: 'PAIR Task Flow',
-    body: 'Create a task in PAIR mode to collaborate interactively while preserving task context and review history.',
+    title: 'Interactive Attach Flow',
+    body: 'Create a task and attach an interactive run to collaborate while preserving task context and review history.',
   },
   {
     title: 'Orchestrator Control Flow',
@@ -81,8 +80,8 @@ const CONCEPTS = [
     body: 'Task sessions are execution-lane streams, while orchestrator sessions are high-level planning chats.',
   },
   {
-    title: 'Execution Modes',
-    body: 'AUTO optimizes throughput; PAIR optimizes interactive control. Choose mode based on uncertainty and risk.',
+    title: 'Runs',
+    body: 'Managed runs optimize throughput; interactive attach optimizes control. Choose based on uncertainty and risk.',
   },
   {
     title: 'Review Discipline',

@@ -114,7 +114,7 @@ export function Component() {
     const [userClosedRail, setUserClosedRail] = useState(false);
 
     const [worktreePath, setWorktreePath] = useState<string | null>(null);
-    const [pairLauncher, setPairLauncher] = useState<string | null>(null);
+    const [attachedLauncher, setAttachedLauncher] = useState<string | null>(null);
 
     const { task, loading, runningSince } = useTaskEvents(id, {
         initialLimit: 80,
@@ -146,7 +146,7 @@ export function Component() {
     // 2.5: Auto-open chat rail only if user hasn't explicitly closed it
     useEffect(() => {
         if (!id || !task) return;
-        if (task.execution_mode === "PAIR") return;
+        if (task.active_session?.launcher) return;
         if (userClosedRail) return;
         if (task.active_session || task.status === "IN_PROGRESS") {
             setRailTaskId(id);
@@ -157,16 +157,15 @@ export function Component() {
         id,
         task?.active_session?.id,
         task?.status,
-        task?.execution_mode,
         userClosedRail,
     ]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const displayTask = task;
 
     useEffect(() => {
-        if (!id || displayTask?.execution_mode !== "PAIR") {
+        if (!id || !displayTask?.active_session?.launcher) {
             setWorktreePath(null);
-            setPairLauncher(null);
+            setAttachedLauncher(null);
             return;
         }
 
@@ -188,12 +187,12 @@ export function Component() {
         void apiClient.getSettings().then(
             (settings) => {
                 if (!cancelled) {
-                    setPairLauncher(settings.pair_launcher ?? null);
+                    setAttachedLauncher(settings.attached_launcher ?? null);
                 }
             },
             () => {
                 if (!cancelled) {
-                    setPairLauncher(null);
+                    setAttachedLauncher(null);
                 }
             },
         );
@@ -201,7 +200,7 @@ export function Component() {
         return () => {
             cancelled = true;
         };
-    }, [id, displayTask?.execution_mode]);
+    }, [id, displayTask?.active_session?.launcher]);
 
     const handleTransition = async (status: TaskStatus) => {
         if (!id) return;
@@ -224,10 +223,17 @@ export function Component() {
         setRailMode("chat-right");
     }, [setRailChatSessionId, setRailMode, setRailTaskId, task]);
 
-    const handleAttachPairSession = useCallback(async () => {
+    const handleAttachAttachedSession = useCallback(async () => {
         if (!displayTask) return;
+        if (!displayTask.active_session?.launcher) {
+            toast.error("No interactive session to attach");
+            return;
+        }
         const launcher = normalizeLauncher(
-            displayTask.launcher ?? pairLauncher ?? "vscode",
+            displayTask.active_session.launcher ??
+                displayTask.launcher ??
+                attachedLauncher ??
+                "vscode",
         );
         const activeSessionId = displayTask.active_session?.id ?? null;
 
@@ -275,7 +281,7 @@ export function Component() {
     }, [
         displayTask?.active_session?.id,
         displayTask?.launcher,
-        pairLauncher,
+        attachedLauncher,
         worktreePath,
     ]);
 
@@ -392,36 +398,37 @@ export function Component() {
                     <AgentControl
                         taskId={displayTask.id}
                         status={displayTask.status}
-                        executionMode={displayTask.execution_mode}
                         startedAt={runningSince}
                         buttonSize="sm"
                         worktreePath={worktreePath}
-                        pairLauncher={pairLauncher}
+                        attachedLauncher={attachedLauncher}
                         taskLauncher={displayTask.launcher}
+                        activeSessionId={displayTask.active_session?.id ?? null}
+                        activeSessionLauncher={
+                            displayTask.active_session?.launcher ?? null
+                        }
                     />
-                    {displayTask.execution_mode === "PAIR" ? (
-                        displayTask.status === "IN_PROGRESS" ? (
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                    void handleAttachPairSession();
-                                }}
-                            >
-                                <Terminal className="size-4" />
-                                Attach session
-                            </Button>
-                        ) : null
-                    ) : (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleOpenTaskChat}
+                    >
+                        <MessageSquare className="size-4" />
+                        Open chat
+                    </Button>
+                    {displayTask.active_session?.launcher &&
+                    displayTask.status === "IN_PROGRESS" ? (
                         <Button
                             variant="secondary"
                             size="sm"
-                            onClick={handleOpenTaskChat}
+                            onClick={() => {
+                                void handleAttachAttachedSession();
+                            }}
                         >
-                            <MessageSquare className="size-4" />
-                            Open chat
+                            <Terminal className="size-4" />
+                            Attach session
                         </Button>
-                    )}
+                    ) : null}
                     <Select
                         value=""
                         onValueChange={(value) =>

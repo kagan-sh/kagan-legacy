@@ -118,8 +118,7 @@ class AgentStatusPanel(Static):
             else:
                 ctx_color = "green"
             context_line = (
-                f"Context: [{ctx_color}]{ctx_used:,} / {ctx_total:,} "
-                f"({pct:.0%})[/{ctx_color}]"
+                f"Context: [{ctx_color}]{ctx_used:,} / {ctx_total:,} ({pct:.0%})[/{ctx_color}]"
             )
         elif ctx_used is not None and ctx_total is not None:
             context_line = f"Context: {ctx_used:,} / {ctx_total:,}"

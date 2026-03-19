@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 
 __all__ = [
     "ChatTargetKind",
@@ -41,7 +41,6 @@ class TaskView(Protocol):
     description: str
     status: TaskStatus
     priority: Priority
-    execution_mode: WorkMode
     agent_backend: str | None
     base_branch: str | None
     acceptance_criteria: list[str]
@@ -51,7 +50,6 @@ class TaskUpdateResult(Protocol):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     task_type: str | None
     agent_backend: str | None
     terminal_backend: str | None

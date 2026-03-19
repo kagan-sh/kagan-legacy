@@ -3,8 +3,6 @@
 import pytest
 from tests.helpers.driver import KaganDriver
 
-from kagan.core import WorkMode
-
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
@@ -15,7 +13,7 @@ async def board(tmp_path):
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
     await driver.add_repo(repo_path)
-    await driver.create_task("Pair task", task_type=WorkMode.PAIR)
+    await driver.create_task("Attached task", launcher="tmux")
     yield driver
     await driver.teardown()
 
@@ -49,7 +47,7 @@ async def test_repo_picker_lists_project_repositories(board: KaganDriver) -> Non
         assert repo_list.option_count >= 1
 
 
-def test_tmux_session_name_uses_pair_session_id() -> None:
+def test_tmux_session_name_uses_attached_session_id() -> None:
     from kagan.tui.screens.kanban import KanbanScreen
 
     assert KanbanScreen._tmux_session_name("session:abc123") == "kagan-session-abc123"

@@ -15,7 +15,6 @@ describe('ReviewPanel', () => {
     title: 'Task',
     status: 'REVIEW',
     priority: 'MEDIUM',
-    execution_mode: 'AUTO',
     acceptance_criteria: ['One'],
     review_running: false,
   };

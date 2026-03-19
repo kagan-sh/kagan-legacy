@@ -371,12 +371,12 @@ TaskCard .card-run-state {
     color: $text-muted;
 }
 
-TaskCard .card-run-state.run-state-auto-running {
+TaskCard .card-run-state.run-state-managed-running {
     color: $secondary;
     text-style: bold;
 }
 
-TaskCard .card-run-state.run-state-pair-running {
+TaskCard .card-run-state.run-state-interactive-running {
     color: $warning;
     text-style: bold;
 }
@@ -404,8 +404,8 @@ TaskCard .card-indicator {
     text-style: bold;
 }
 
-TaskCard .indicator-running-auto { color: $status-running; }
-TaskCard .indicator-running-pair { color: $warning; }
+TaskCard .indicator-running-managed { color: $status-running; }
+TaskCard .indicator-running-interactive { color: $warning; }
 TaskCard .indicator-idle { color: $status-idle; }
 TaskCard .indicator-reviewing { color: $accent; }
 TaskCard .indicator-not-started { color: $text-disabled; }

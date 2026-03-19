@@ -7,7 +7,6 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
 from kagan.chat import list_registered_agent_backends
-from kagan.core.enums import WorkMode
 from kagan.core.models import Task
 
 if TYPE_CHECKING:
@@ -32,12 +31,10 @@ class TaskEditorModal(ModalScreen[None]):
         self,
         *,
         task: Task | None = None,
-        execution_mode: WorkMode | None = None,
         focus_field: str | None = None,
     ) -> None:
         super().__init__(id="task-editor-modal")
         self._editing_task = task
-        self._execution_mode = execution_mode
         self._focus_field = focus_field
         self._auto_save_timer: Timer | None = None
 
@@ -52,7 +49,6 @@ class TaskEditorModal(ModalScreen[None]):
         with Container(id="task-editor-container"):
             if editing_task is None:
                 yield TaskEditor(
-                    execution_mode=self._execution_mode or WorkMode.AUTO,
                     available_agent_backends=agent_backends,
                     focus_field=self._focus_field,
                 )
@@ -61,7 +57,6 @@ class TaskEditorModal(ModalScreen[None]):
                     title=editing_task.title,
                     description=editing_task.description,
                     priority=editing_task.priority,
-                    execution_mode=editing_task.execution_mode,
                     agent_backend=editing_task.agent_backend,
                     launcher=editing_task.launcher,
                     available_agent_backends=agent_backends,
@@ -90,7 +85,6 @@ class TaskEditorModal(ModalScreen[None]):
                     message.title,
                     description=message.description,
                     priority=message.priority,
-                    execution_mode=message.execution_mode,
                     base_branch=message.base_branch,
                     agent_backend=message.agent_backend,
                     launcher=message.launcher,
@@ -102,7 +96,6 @@ class TaskEditorModal(ModalScreen[None]):
                     title=message.title,
                     description=message.description,
                     priority=message.priority,
-                    execution_mode=message.execution_mode,
                     base_branch=message.base_branch,
                     agent_backend=message.agent_backend,
                     launcher=message.launcher,
@@ -145,7 +138,6 @@ class TaskEditorModal(ModalScreen[None]):
                 title=values.title,
                 description=values.description,
                 priority=values.priority,
-                execution_mode=values.execution_mode,
                 base_branch=values.base_branch,
                 agent_backend=values.agent_backend,
                 launcher=values.launcher,

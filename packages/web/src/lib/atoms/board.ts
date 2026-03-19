@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { TaskStatus, WireTask, WorkMode } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@/lib/api/types';
 import { apiClient } from '@/lib/api/client';
 import { COLUMN_ORDER, type SortOption } from '@/lib/utils/constants';
 
@@ -9,7 +9,6 @@ type TaskCounts = Record<TaskStatus, number>;
 export interface BoardFilters {
   query: string;
   status: TaskStatus | 'ALL';
-  mode: WorkMode | 'ALL';
   sort: SortOption;
 }
 
@@ -27,7 +26,6 @@ export const boardErrorAtom = atom<string | null>(null);
 export const boardFiltersAtom = atom<BoardFilters>({
   query: '',
   status: 'ALL',
-  mode: 'ALL',
   sort: 'default',
 });
 export const searchQueryAtom = atom(
@@ -38,10 +36,6 @@ export const boardStatusFilterAtom = atom(
   (get) => get(boardFiltersAtom).status,
   (_get, set, value: TaskStatus | 'ALL') => set(boardFiltersAtom, (prev) => ({ ...prev, status: value })),
 );
-export const boardModeFilterAtom = atom(
-  (get) => get(boardFiltersAtom).mode,
-  (_get, set, value: WorkMode | 'ALL') => set(boardFiltersAtom, (prev) => ({ ...prev, mode: value })),
-);
 export const boardSortAtom = atom(
   (get) => get(boardFiltersAtom).sort,
   (_get, set, value: SortOption) => set(boardFiltersAtom, (prev) => ({ ...prev, sort: value })),
@@ -50,7 +44,6 @@ export const resetBoardFiltersAtom = atom(null, (_get, set) => {
   set(boardFiltersAtom, {
     query: '',
     status: 'ALL',
-    mode: 'ALL',
     sort: 'default',
   });
 });
@@ -103,7 +96,7 @@ function sortTasks(tasks: WireTask[], sort: SortOption): WireTask[] {
 
 export const filteredGroupedTasksAtom = atom((get) => {
   const grouped = get(groupedTasksAtom);
-  const { query, status: statusFilter, mode: modeFilter, sort } = get(boardFiltersAtom);
+  const { query, status: statusFilter, sort } = get(boardFiltersAtom);
   const normalizedQuery = query.toLowerCase().trim();
 
   const result = createEmptyGroups();
@@ -114,12 +107,9 @@ export const filteredGroupedTasksAtom = atom((get) => {
     }
     const filtered = grouped[status].filter(
       (task) =>
-        (modeFilter === 'ALL' || task.execution_mode === modeFilter) &&
-        (
-          !normalizedQuery ||
-          task.title.toLowerCase().includes(normalizedQuery) ||
-          (task.description?.toLowerCase().includes(normalizedQuery) ?? false)
-        ),
+        !normalizedQuery ||
+        task.title.toLowerCase().includes(normalizedQuery) ||
+        task.description?.toLowerCase().includes(normalizedQuery),
     );
     result[status] = sortTasks(filtered, sort);
   }

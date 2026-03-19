@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kagan.core import TaskStatus, WorkMode
+from kagan.core import TaskStatus
 from kagan.core.enums import Priority
 
 if TYPE_CHECKING:
@@ -22,22 +22,22 @@ async def make_task(
     title: str = "Test task",
     *,
     status: TaskStatus = TaskStatus.BACKLOG,
-    execution_mode: WorkMode = WorkMode.AUTO,
     description: str = "",
     priority: Priority = Priority.MEDIUM,
     acceptance_criteria: list[str] | None = None,
     base_branch: str | None = None,
     agent_backend: str | None = None,
+    launcher: str | None = None,
 ) -> TaskView:
     """Create a task and optionally advance it to the given status."""
     task = await board.create_task(
         title,
         description=description,
-        task_type=execution_mode,
         priority=priority,
         acceptance_criteria=acceptance_criteria,
         base_branch=base_branch,
         agent_backend=agent_backend,
+        launcher=launcher,
     )
     if status != TaskStatus.BACKLOG:
         task = await board.move_task(task.id, status)

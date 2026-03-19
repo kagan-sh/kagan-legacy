@@ -36,7 +36,6 @@ from kagan.core.enums import (
     SessionEventType,
     SessionStatus,
     TaskStatus,
-    WorkMode,
 )
 from kagan.core.errors import (
     AgentError,
@@ -44,14 +43,13 @@ from kagan.core.errors import (
     AgentRepetitionError,
     AgentTimeoutError,
     ConfigurationError,
-    PreflightError,
     SessionError,
     WorktreeError,
 )
 from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, TaskNote, Worktree
 
 
-class FinishPairResult(TypedDict):
+class DetachResult(TypedDict):
     task_id: str
     status: str
     ready_for_review: bool
@@ -97,12 +95,12 @@ def _is_shutdown_runtime_error(exc: RuntimeError) -> bool:
     return "Executor shutdown has been called" in message or "Event loop is closed" in message
 
 
-def _build_pair_startup_prompt(task: Task) -> str:
+def _build_attached_startup_prompt(task: Task) -> str:
     description = (task.description or "").strip()
     criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
 
     lines = [
-        f"# PAIR Task: {task.id} — {task.title}",
+        f"# Interactive Task: {task.id} — {task.title}",
         "",
         "Act as a Senior Developer collaborating on this implementation.",
         "",
@@ -122,7 +120,7 @@ def _build_pair_startup_prompt(task: Task) -> str:
             "- You are in a git worktree, NOT the main repository",
             "- Only modify files within this worktree",
             "- COMMIT all changes before finishing (semantic commits: feat:, fix:, docs:, etc.)",
-            "- When complete: commit your work, then call `run_update` with action `finish`",
+            "- When complete: commit your work, then call `run_update` with action `detach`",
             "- Your tools are available via the connected MCP server (WORKER role)",
             "",
             "## Coordination Workflow",
@@ -136,7 +134,7 @@ def _build_pair_startup_prompt(task: Task) -> str:
             "",
             "1. Implement and verify against acceptance criteria",
             "2. Commit with clear WHY-focused message",
-            "3. Call `run_update` with action `finish` to signal completion",
+            "3. Call `run_update` with action `detach` to signal completion",
         ]
     )
     return "\n".join(lines).strip() + "\n"
@@ -180,8 +178,11 @@ class Sessions:
         """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
         stmt = (
             select(TaskNote)
-            .join(Task, TaskNote.task_id == Task.id)
-            .where(Task.project_id == project_id)
+            .where(
+                cast("Any", TaskNote.task_id).in_(
+                    select(Task.id).where(Task.project_id == project_id)
+                )
+            )
             .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
             .order_by(desc(cast("Any", TaskNote.created_at)))
             .limit(30)
@@ -302,20 +303,20 @@ class Sessions:
                 summaries[session.task_id] = {
                     "has_history": True,
                     "has_active": is_active,
-                    "active_mode": session.mode if is_active else None,
-                    "latest_mode": session.mode,
+                    "active_launcher": session.launcher if is_active else None,
+                    "latest_launcher": session.launcher,
                 }
                 continue
 
-            active_mode = existing.get("active_mode")
-            if active_mode is None and is_active:
-                active_mode = session.mode
+            active_launcher = existing.get("active_launcher")
+            if active_launcher is None and is_active:
+                active_launcher = session.launcher
 
             summaries[session.task_id] = {
                 "has_history": True,
                 "has_active": bool(existing.get("has_active")) or is_active,
-                "active_mode": active_mode,
-                "latest_mode": existing.get("latest_mode"),
+                "active_launcher": active_launcher,
+                "latest_launcher": existing.get("latest_launcher"),
             }
 
         return summaries
@@ -324,7 +325,6 @@ class Sessions:
         self,
         task_id: str,
         *,
-        mode: WorkMode,
         agent_backend: str,
         persona: str | None = None,
         launcher: str | None = None,
@@ -342,7 +342,6 @@ class Sessions:
 
         session_obj = Session(
             task_id=task_id,
-            mode=mode,
             agent_backend=agent_backend,
             launcher=launcher,
             persona=persona,
@@ -360,97 +359,87 @@ class Sessions:
         else:
             # No status change, but board still needs to know about the new
             # active session so cards reflect the running state immediately.
-            self._events.publish_board(
-                BoardEvent(task_id=task_id, kind="session_started")
-            )
+            self._events.publish_board(BoardEvent(task_id=task_id, kind="session_started"))
 
         return task, ws, session_obj
 
-    async def run(self, task_id: str, *, agent_backend: str, persona: str | None = None):
-        task, ws, session_obj = await self._prepare_session(
-            task_id,
-            mode=WorkMode.AUTO,
-            agent_backend=agent_backend,
-            persona=persona,
-        )
-
-        settings_dict = await _db_async(
-            self._engine,
-            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
-        )
-
-        project_path = Path(ws.worktree_path)
-        if task.status is TaskStatus.REVIEW:
-            prompt = resolve_review_prompt(task_id, settings_dict, project_path)
-        else:
-            learnings = await self._fetch_project_learnings(task.project_id)
-            prompt = resolve_task_prompt(task, settings_dict, project_path, learnings=learnings)
-
-        persona_prompt: str | None = None
-        if persona:
-            persona_prompt = get_persona_prompt(persona, settings_dict)
-            if persona_prompt and persona_prompt.strip():
-                prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
-        db_path_str = str(self._db_path or default_db_path())
-        entry = get_backend(agent_backend)
-
-        if entry.get("supports_acp"):
-            pid, reader_task = await spawn_agent_via_acp(
-                agent_backend,
-                Path(ws.worktree_path),
-                prompt,
-                session_id=session_obj.id,
-                task_id=task_id,
-                db_path=db_path_str,
-                project_id=task.project_id,
-                on_session_update=self._make_acp_callback(task_id, session_obj.id),
-            )
-            await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
-            reader_task.add_done_callback(
-                lambda t: asyncio.create_task(self._handle_acp_done(t, task_id, session_obj.id))
-            )
-        else:
-            pid = await spawn_agent(
-                agent_backend,
-                Path(ws.worktree_path),
-                prompt,
-                session_id=session_obj.id,
-                task_id=task_id,
-                db_path=db_path_str,
-                project_id=task.project_id,
-            )
-            await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
-            asyncio.create_task(
-                self._monitor_detached(pid, task_id, session_obj.id),
-                name=f"agent-monitor:{task_id}",
-            )
-        logger.info("Agent session started for task={}", task_id)
-        return session_obj
-
-    async def pair(
+    async def run(
         self,
         task_id: str,
         *,
         agent_backend: str,
-        launcher: str,
+        launcher: str | None = None,
         ide: str | None = None,
         persona: str | None = None,
     ):
         task, ws, session_obj = await self._prepare_session(
             task_id,
-            mode=WorkMode.PAIR,
             agent_backend=agent_backend,
             persona=persona,
             launcher=launcher,
         )
 
-        launch_fn = get_launcher(launcher)
+        if launcher is None:
+            settings_dict = await _db_async(
+                self._engine,
+                lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
+            )
+
+            project_path = Path(ws.worktree_path)
+            if task.status is TaskStatus.REVIEW:
+                prompt = resolve_review_prompt(task_id, settings_dict, project_path)
+            else:
+                learnings = await self._fetch_project_learnings(task.project_id)
+                prompt = resolve_task_prompt(task, settings_dict, project_path, learnings=learnings)
+
+            persona_prompt: str | None = None
+            if persona:
+                persona_prompt = get_persona_prompt(persona, settings_dict)
+                if persona_prompt and persona_prompt.strip():
+                    prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
+            db_path_str = str(self._db_path or default_db_path())
+            entry = get_backend(agent_backend)
+
+            if entry.get("supports_acp"):
+                pid, reader_task = await spawn_agent_via_acp(
+                    agent_backend,
+                    Path(ws.worktree_path),
+                    prompt,
+                    session_id=session_obj.id,
+                    task_id=task_id,
+                    db_path=db_path_str,
+                    project_id=task.project_id,
+                    on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                )
+                await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
+                reader_task.add_done_callback(
+                    lambda t: asyncio.create_task(self._handle_acp_done(t, task_id, session_obj.id))
+                )
+            else:
+                pid = await spawn_agent(
+                    agent_backend,
+                    Path(ws.worktree_path),
+                    prompt,
+                    session_id=session_obj.id,
+                    task_id=task_id,
+                    db_path=db_path_str,
+                    project_id=task.project_id,
+                )
+                await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
+                asyncio.create_task(
+                    self._monitor_detached(pid, task_id, session_obj.id),
+                    name=f"agent-monitor:{task_id}",
+                )
+            logger.info("Detached session started for task={}", task_id)
+            return session_obj
+
+        launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
         backend_entry = get_backend(agent_backend)
         backend_executable = backend_entry.get("executable")
         if not backend_executable:
             raise AgentError(f"agent backend {agent_backend!r} has no executable configured")
-        startup_prompt = _build_pair_startup_prompt(task)
+        startup_prompt = _build_attached_startup_prompt(task)
         agent_cmd = str(backend_executable)
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
@@ -464,13 +453,11 @@ class Sessions:
             launch_kwargs["ide"] = ide
         await launch_fn(**launch_kwargs)
         await asyncio.to_thread(self._mark_session_running, session_obj.id)
-        logger.info("PAIR session launched for task={}", task_id)
+        logger.info("Interactive session launched for task={}", task_id)
         return session_obj
 
-    async def finish_pair(self, task_id: str) -> FinishPairResult:
+    async def detach(self, task_id: str) -> DetachResult:
         task = await self._get_task(task_id)
-        if task.execution_mode is not WorkMode.PAIR:
-            raise PreflightError("PAIR finish is only valid for tasks in PAIR execution mode.")
 
         ws = await _db_async(
             self._engine,
@@ -481,11 +468,11 @@ class Sessions:
                 None, f"Task {task_id!r} has no workspace. Call workspace.provision() first."
             )
 
-        latest_pair_session = await _db_async(
+        latest_attached_session = await _db_async(
             self._engine,
             lambda s: s.exec(
                 select(Session)
-                .where(Session.task_id == task_id, Session.mode == WorkMode.PAIR)
+                .where(Session.task_id == task_id, cast("Any", Session.launcher).is_not(None))
                 .order_by(desc(cast("Any", Session.started_at)))
             ).first(),
         )
@@ -503,7 +490,7 @@ class Sessions:
         )
         base_branch = task.base_branch or (repo.default_branch if repo else "main")
         short_id = task_id[:8]
-        commit_message = f"chore: finalize pair session changes ({short_id})"
+        commit_message = f"chore: finalize attached session changes ({short_id})"
 
         strategy = await self._ref_strategy()
         ready_for_review, pending_before, pending_after = await self._evaluate_review_readiness(
@@ -521,10 +508,12 @@ class Sessions:
                     task_id,
                     SessionEventType.TASK_STATUS_CHANGED,
                     {"from": task.status.value, "to": TaskStatus.REVIEW.value},
-                    session_id=latest_pair_session.id if latest_pair_session is not None else None,
+                    session_id=(
+                        latest_attached_session.id if latest_attached_session is not None else None
+                    ),
                 )
-            if latest_pair_session is not None:
-                await asyncio.to_thread(self._complete_session, latest_pair_session.id)
+            if latest_attached_session is not None:
+                await asyncio.to_thread(self._complete_session, latest_attached_session.id)
             return {
                 "task_id": task_id,
                 "status": TaskStatus.REVIEW.value,
@@ -533,11 +522,11 @@ class Sessions:
                 "base_branch": base_branch,
             }
 
-        if latest_pair_session is not None:
+        if latest_attached_session is not None:
             if pending_before or pending_after:
-                await asyncio.to_thread(self._fail_session, latest_pair_session.id)
+                await asyncio.to_thread(self._fail_session, latest_attached_session.id)
             else:
-                await asyncio.to_thread(self._complete_session, latest_pair_session.id)
+                await asyncio.to_thread(self._complete_session, latest_attached_session.id)
 
         current = await self._get_task(task_id)
         return {
@@ -597,9 +586,7 @@ class Sessions:
             )
         else:
             # No status transition, but board cards need to clear active_session.
-            self._events.publish_board(
-                BoardEvent(task_id=task_id, kind="session_ended")
-            )
+            self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
         logger.info("Cancelled session for task={}", task_id)
 
     def _update_session_pid(self, session_id: str, pid: int) -> None:
@@ -770,7 +757,7 @@ class Sessions:
             task_id=task_id,
             worktree=worktree,
             base_branch=base_branch,
-            commit_message=f"chore: finalize auto run changes ({short_id})",
+            commit_message=f"chore: finalize detached run changes ({short_id})",
             strategy=strategy,
         )
         if ready_for_review:
@@ -796,9 +783,7 @@ class Sessions:
                     session_id=session_id,
                 )
                 # No status transition — notify board so cards clear active_session.
-                self._events.publish_board(
-                    BoardEvent(task_id=task_id, kind="session_ended")
-                )
+                self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
             else:
                 await asyncio.to_thread(self._complete_session, session_id)
                 db_task = await self._get_task(task_id)
@@ -828,9 +813,7 @@ class Sessions:
                 if not transitioned_to_review:
                     # Board cards need to clear active_session even without
                     # a status transition (e.g. agent completed with no commits).
-                    self._events.publish_board(
-                        BoardEvent(task_id=task_id, kind="session_ended")
-                    )
+                    self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
                 if transitioned_to_review:
                     await self._maybe_auto_review(task_id)
         except RuntimeError as exc:
@@ -957,9 +940,7 @@ class Sessions:
                     session_id=session_id,
                 )
                 if not transitioned_to_review:
-                    self._events.publish_board(
-                        BoardEvent(task_id=task_id, kind="session_ended")
-                    )
+                    self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
                 if transitioned_to_review:
                     await self._maybe_auto_review(task_id)
                 logger.info("Detached agent exited, session={} task={}", session_id, task_id)
@@ -1056,4 +1037,4 @@ class Sessions:
             )
 
 
-__all__ = ["FinishPairResult", "Sessions"]
+__all__ = ["DetachResult", "Sessions"]

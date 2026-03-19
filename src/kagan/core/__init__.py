@@ -31,7 +31,6 @@ from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._prompts import (
     ADDITIONAL_INSTRUCTIONS_KEY,
     AUTO_CONFIRM_SINGLE_KEY,
-    DEFAULT_EXECUTION_MODE_KEY,
     DEFAULT_ORCHESTRATOR_PROMPT,
     PERSONA_DEFINITIONS_KEY,
     PERSONA_USER_WHITELIST_KEY,
@@ -53,9 +52,7 @@ from kagan.core.enums import (
     SessionEventType,
     SessionStatus,
     TaskStatus,
-    WorkMode,
     parse_priority,
-    parse_work_mode,
 )
 from kagan.core.errors import (
     AgentError,
@@ -88,7 +85,6 @@ __all__ = [
     "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
     "CODEX_BACKEND",
-    "DEFAULT_EXECUTION_MODE_KEY",
     "DEFAULT_ORCHESTRATOR_PROMPT",
     "GEMINI_CLI_BACKEND",
     "KAGAN_AGENT_EMAIL",
@@ -128,7 +124,6 @@ __all__ = [
     "TaskNote",
     "TaskStatus",
     "ValidationError",
-    "WorkMode",
     "Worktree",
     "WorktreeError",
     "build_agent_environment",
@@ -142,7 +137,6 @@ __all__ = [
     "list_backends",
     "load_persona_definitions",
     "parse_priority",
-    "parse_work_mode",
     "prepend_custom_prompt",
     "resolve_default_agent_backend",
     "resolve_launcher",

@@ -201,10 +201,10 @@ def test_v060_schema_is_upgraded_without_runtime_breakage(tmp_path: Path) -> Non
         conn = sqlite3.connect(db_path)
         try:
             task_row = conn.execute(
-                "SELECT execution_mode, launcher, review_approved FROM tasks WHERE id = ?",
+                "SELECT launcher, review_approved FROM tasks WHERE id = ?",
                 ("task0001",),
             ).fetchone()
-            assert task_row == ("AUTO", "cursor", 0)
+            assert task_row == ("cursor", 0)
 
             task_columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
             assert "scratchpad" not in task_columns
@@ -221,10 +221,10 @@ def test_v060_schema_is_upgraded_without_runtime_breakage(tmp_path: Path) -> Non
             assert worktree_row == ("repo0001", "/tmp/legacy-worktree")
 
             session_row = conn.execute(
-                "SELECT task_id, mode, status, agent_backend FROM sessions WHERE id = ?",
+                "SELECT task_id, launcher, status, agent_backend FROM sessions WHERE id = ?",
                 ("sess0001",),
             ).fetchone()
-            assert session_row == ("task0001", "AUTO", "RUNNING", "codex")
+            assert session_row == ("task0001", "cursor", "RUNNING", "codex")
         finally:
             conn.close()
 

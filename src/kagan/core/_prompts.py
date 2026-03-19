@@ -10,7 +10,6 @@ from typing import Any
 from loguru import logger
 
 ADDITIONAL_INSTRUCTIONS_KEY = "additional_instructions"
-DEFAULT_EXECUTION_MODE_KEY = "default_execution_mode"
 REVIEW_STRICTNESS_KEY = "review_strictness"
 PLANNING_DEPTH_KEY = "planning_depth"
 AUTO_CONFIRM_SINGLE_KEY = "auto_confirm_single_tasks"
@@ -40,16 +39,16 @@ work, you ALWAYS structure it before executing.
 Interactive Planning Flow:
 1. ANALYZE — Understand the request. Ask clarifying questions if scope is
    ambiguous or effort varies 2x+ between interpretations.
-2. DECOMPOSE — Break work into concrete, atomic tasks. Each task must have:
+   2. DECOMPOSE — Break work into concrete, atomic tasks. Each task must have:
    - Clear title and description
    - Acceptance criteria (testable conditions for "done")
    - Dependency and overlap notes (what can run in parallel vs must wait)
-   - Execution mode recommendation (AUTO or PAIR)
+   - Run preference recommendation (managed or attached)
 3. ASK EXECUTION PREFERENCES — For each task, ask the user:
-   a. "Should this run autonomously (AUTO) or would you like to co-pilot (PAIR)?"
+   a. "Should this run in managed mode or attached mode?"
    b. "Do you want a specific agent backend, or should I pick the best one?"
    Present this as a concise table, not verbose prose.
-4. OFFER AUTO-SELECTION — If the user doesn't want to pick per-task, offer:
+4. OFFER BACKEND AUTOMATIC SELECTION — If the user doesn't want to pick per-task, offer:
    "I can auto-select the optimal agent backend for each task based on its type.
    Shall I proceed?"
 5. CONFIRM — Present the final plan as a numbered table. WAIT for user approval
@@ -91,7 +90,7 @@ based on task complexity and annotate each task with planned sessions via
 task_add_note before starting execution.
 
 To activate a persona, pass its key to run_start:
-  run_start(task_id, action="run", persona="implementer")
+  run_start(task_id, persona="implementer")
 Available built-in personas: analyst, planner, implementer, reviewer.
 Custom personas can be loaded via settings — use settings_get to check.
 </planning>
@@ -110,8 +109,8 @@ Custom personas can be loaded via settings — use settings_get to check.
   starting execution. Never skip this step. Never auto-start without user confirmation.
 - If a claimed field is missing from a tool payload, call task_get before
   presenting a final state summary.
-- Autonomous execution: set execution_mode="AUTO" and start each task with
-  run_start action="run".
+- Autonomous execution: use managed runs and start each task with
+  run_start.
 - For execution waves, launch every non-overlapping task in that wave before
   calling tasks_wait on any single task.
 - Review decisions: when a task reaches REVIEW, follow the structured review flow:
@@ -146,9 +145,9 @@ ALWAYS:
 - When blocked, explain the blocker and propose the next actionable step.
 - After creating tasks, present a structured review table and wait for user
   confirmation before starting any execution. This gives users a chance to
-  edit titles, priorities, acceptance criteria, or execution modes.
+  edit titles, priorities, acceptance criteria, or run preferences.
 - When tasks reach REVIEW, verify agent commits exist before approving.
-- Guide the user through planning interactively — ask about execution mode and
+- Guide the user through planning interactively — ask about run preference and
   agent preferences per task.
 - Present plans as tables for quick scanning, not walls of text.
 </constraints>
@@ -157,14 +156,15 @@ ALWAYS:
 Standard autonomous workflow:
 1. Analyze the user request — clarify if ambiguous.
 2. Decompose into tasks with acceptance criteria.
-3. Present plan table — ask AUTO vs PAIR + agent backend per task.
+3. Present plan table — ask managed vs attached + agent backend per task.
 4. On approval: call task_batch_create with all tasks.
 5. IMMEDIATELY after creation: present a review table showing every created task
-   with columns: #, ID, Title, Mode, Priority, AC count, Status.
+   with columns: #, ID, Title, Run Preference, Priority, AC count, Status.
    Ask: "Review the tasks above. Want to edit anything before I start execution?"
    Wait for user confirmation. Apply any edits via task_update/task_delete.
 6. Only after user confirms: build execution waves (group non-overlapping tasks).
-7. For each wave: start all tasks with run_start action="run" (or "pair"),
+7. For each wave: start all managed tasks with run_start, or pass a launcher
+   when an interactive launch is required,
    then monitor with tasks_wait and summarize with run_summary.
 8. When tasks reach REVIEW:
    a. If acceptance criteria exist → verify each criterion is met → approve/reject.
@@ -184,7 +184,7 @@ When review_decide action="merge" returns status="conflict":
    abort and skip this task, or inspect conflicts (review_conflicts).
 5. NEVER auto-resolve without asking the user first.
 6. NEVER retry more than twice per task — after 2 conflict rejections for the
-   same task, recommend manual intervention via PAIR mode or human rebase.
+   same task, recommend manual intervention via attached run or human rebase.
 
 Multi-task merge order:
 When merging multiple tasks that touch overlapping files, merge them ONE AT A
@@ -247,12 +247,6 @@ def _append_layer_sections(base: str, settings: dict[str, str]) -> str:
 def _compile_behavioral_clauses(settings: dict[str, str]) -> str:
     clauses: list[str] = []
 
-    execution_mode = settings.get(DEFAULT_EXECUTION_MODE_KEY, "ask").strip().lower()
-    if execution_mode == "auto":
-        clauses.append("- Default to AUTO mode for all tasks unless user explicitly requests PAIR.")
-    elif execution_mode == "pair":
-        clauses.append("- Default to PAIR mode for all tasks unless user explicitly requests AUTO.")
-
     review_strictness = settings.get(REVIEW_STRICTNESS_KEY, "balanced").strip().lower()
     if review_strictness == "strict":
         clauses.append(
@@ -309,7 +303,7 @@ def resolve_orchestrator_prompt(settings: dict[str, str], project_path: Path | N
     return _append_layer_sections(DEFAULT_ORCHESTRATOR_PROMPT, settings)
 
 
-def _build_auto_run_prompt(task: Any) -> str:
+def _build_detached_run_prompt(task: Any) -> str:
     from kagan.core import git
 
     description = (getattr(task, "description", "") or "").strip()
@@ -420,7 +414,7 @@ def resolve_task_prompt(
                     exc,
                 )
 
-    base = _build_auto_run_prompt(task)
+    base = _build_detached_run_prompt(task)
     if learnings:
         parts = [base, "", "PROJECT CONTEXT (from prior tasks):"]
         parts.extend(f"- {item}" for item in learnings)

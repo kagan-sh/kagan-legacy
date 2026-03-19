@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import Priority, TaskStatus, WorkMode, parse_priority, parse_work_mode
+from kagan.core import Priority, TaskStatus, parse_priority
 from kagan.core.errors import KaganError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -17,7 +17,6 @@ from kagan.mcp.toolsets import mcp_error_boundary
 class _BatchTaskEntry(TypedDict, total=False):
     title: str
     description: str
-    execution_mode: str
     priority: str | int
     base_branch: str | None
     acceptance_criteria: list[str] | None
@@ -50,7 +49,6 @@ def _task_to_dict(task: Any) -> dict[str, Any]:
         "description": getattr(task, "description", ""),
         "status": task.status.value,
         "priority": task.priority.name,
-        "execution_mode": task.execution_mode.value,
         "base_branch": getattr(task, "base_branch", None),
         "acceptance_criteria": getattr(task, "acceptance_criteria", []),
         "agent_backend": getattr(task, "agent_backend", None),
@@ -95,10 +93,10 @@ def _build_update_verification(
     title: str | None,
     description: str | None,
     priority: Priority | None,
-    execution_mode: WorkMode | None,
     base_branch: str | None,
     acceptance_criteria: list[str] | None,
     agent_backend: str | None,
+    launcher: str | None,
     status: TaskStatus | None,
 ) -> dict[str, Any]:
     requested: dict[str, Any] = {}
@@ -108,14 +106,14 @@ def _build_update_verification(
         requested["description"] = description
     if priority is not None:
         requested["priority"] = priority.name
-    if execution_mode is not None:
-        requested["execution_mode"] = execution_mode.value
     if base_branch is not None:
         requested["base_branch"] = base_branch
     if acceptance_criteria is not None:
         requested["acceptance_criteria"] = acceptance_criteria
     if agent_backend is not None:
         requested["agent_backend"] = agent_backend
+    if launcher is not None:
+        requested["launcher"] = launcher
     if status is not None:
         requested["status"] = status.value
 
@@ -191,7 +189,6 @@ async def _task_create(
     ctx: Context,
     title: str,
     description: str = "",
-    execution_mode: str | None = None,
     priority: str | int | None = None,
     base_branch: str | None = None,
     acceptance_criteria: list[str] | None = None,
@@ -200,11 +197,9 @@ async def _task_create(
 ) -> dict:
     app = get_context(ctx)
     priority_enum = parse_priority(priority)
-    mode_enum = parse_work_mode(execution_mode)
     task = await app.client.tasks.create(
         title,
         description=description,
-        execution_mode=mode_enum,
         priority=priority_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
@@ -224,7 +219,6 @@ async def _task_update(
     title: str | None = None,
     description: str | None = None,
     priority: str | int | None = None,
-    execution_mode: str | None = None,
     base_branch: str | None = None,
     acceptance_criteria: list[str] | None = None,
     agent_backend: str | None = None,
@@ -234,14 +228,12 @@ async def _task_update(
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     priority_enum = parse_priority(priority) if priority is not None else None
-    mode_enum = parse_work_mode(execution_mode) if execution_mode is not None else None
     status_enum = TaskStatus(status) if status is not None else None
     task = await app.client.tasks.update(
         resolved_task_id,
         title=title,
         description=description,
         priority=priority_enum,
-        execution_mode=mode_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
@@ -255,10 +247,10 @@ async def _task_update(
         title=title,
         description=description,
         priority=priority_enum,
-        execution_mode=mode_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
+        launcher=launcher,
         status=status_enum,
     )
     return result
@@ -459,7 +451,7 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
     """Create multiple tasks at once.
 
     Each entry must have a ``title`` key and may include ``description``,
-    ``execution_mode`` (AUTO or PAIR), ``priority``, ``base_branch``,
+    ``priority``, ``base_branch``,
     ``acceptance_criteria``, and ``agent_backend``.
     Returns the list of created tasks.
     """
@@ -472,14 +464,12 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
             errors.append({"index": str(idx), "error": "title is required"})
             continue
         try:
-            mode = parse_work_mode(entry.get("execution_mode"))
             pri = parse_priority(entry.get("priority"))
             criteria_raw = entry.get("acceptance_criteria")
             criteria = criteria_raw if isinstance(criteria_raw, list) else None
             task = await app.client.tasks.create(
                 title,
                 description=entry.get("description", ""),
-                execution_mode=mode,
                 priority=pri,
                 base_branch=entry.get("base_branch"),
                 acceptance_criteria=criteria,

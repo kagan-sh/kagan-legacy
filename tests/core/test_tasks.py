@@ -2,7 +2,7 @@
 
 import pytest
 
-from kagan.core import Priority, TaskStatus, WorkMode
+from kagan.core import Priority, TaskStatus
 from tests.helpers.driver import KaganDriver
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
@@ -24,7 +24,6 @@ async def test_create_task_with_optional_fields(board: KaganDriver) -> None:
         "Feature X",
         description="Implement feature X end-to-end",
         priority=Priority.HIGH,
-        task_type=WorkMode.PAIR,
         base_branch="main",
         agent_backend="claude-code",
         launcher="vscode",
@@ -34,7 +33,6 @@ async def test_create_task_with_optional_fields(board: KaganDriver) -> None:
     fetched = await board.get_task(task.id)
     assert fetched.description == "Implement feature X end-to-end"
     assert fetched.priority == Priority.HIGH
-    assert fetched.execution_mode == WorkMode.PAIR
     assert fetched.base_branch == "main"
     assert fetched.agent_backend == "claude-code"
     assert fetched.launcher == "vscode"

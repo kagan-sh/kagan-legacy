@@ -8,7 +8,7 @@ from pydantic import field_serializer
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
-from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
+from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 
 
 def _new_id() -> str:
@@ -57,7 +57,6 @@ class Task(SQLModel, table=True):
     description: str = Field(default="")
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, index=True)
     priority: Priority = Field(default=Priority.MEDIUM, index=True)
-    execution_mode: WorkMode = Field(default=WorkMode.AUTO)
 
     @field_serializer("priority")
     @classmethod
@@ -93,7 +92,6 @@ class Session(SQLModel, table=True):
 
     id: str = Field(default_factory=_new_id, primary_key=True)
     task_id: str = Field(foreign_key="tasks.id", index=True)
-    mode: WorkMode = Field(index=True)
     agent_backend: str
     status: SessionStatus = Field(default=SessionStatus.PENDING, index=True)
     launcher: str | None = Field(default=None)

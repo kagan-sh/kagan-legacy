@@ -1,4 +1,4 @@
-"""Feature tests: PAIR Launchers — docs/internal/features/core.md §7."""
+"""Feature tests: ATTACHED Launchers — docs/internal/features/core.md §7."""
 
 import pytest
 

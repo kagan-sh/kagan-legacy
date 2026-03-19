@@ -65,7 +65,7 @@ async def test_cancel_in_progress_task_moves_to_backlog(board: KaganDriver) -> N
     task = await board.create_task("Cancellable Task")
     await board.move_task(task.id, TaskStatus.IN_PROGRESS)
 
-    await board.stop_auto(task.id)
+    await board.cancel_task(task.id)
 
     fetched = await board.get_task(task.id)
     assert fetched.status == TaskStatus.BACKLOG

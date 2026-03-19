@@ -18,10 +18,10 @@ from kagan.core._db_helpers import (
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events
-from kagan.core._sessions import FinishPairResult, Sessions
+from kagan.core._sessions import DetachResult, Sessions
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
-from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
+from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError
 from kagan.core.models import AuditEntry, Project, Session, SessionEvent, Task, TaskNote, Worktree
 
@@ -86,19 +86,16 @@ class Tasks:
             raise SessionError(None, "Workspace provisioning requires a KaganCore client.")
         return await self._client.worktrees.create(task_id)
 
-    async def run(self, task_id: str, *, agent_backend: str, persona: str | None = None):
-        return await self.sessions.run(task_id, agent_backend=agent_backend, persona=persona)
-
-    async def pair(
+    async def run(
         self,
         task_id: str,
         *,
         agent_backend: str,
-        launcher: str,
+        launcher: str | None = None,
         ide: str | None = None,
         persona: str | None = None,
     ):
-        return await self.sessions.pair(
+        return await self.sessions.run(
             task_id,
             agent_backend=agent_backend,
             launcher=launcher,
@@ -109,8 +106,8 @@ class Tasks:
     async def cancel(self, task_id: str) -> None:
         await self.sessions.cancel(task_id)
 
-    async def end_pairing(self, task_id: str) -> FinishPairResult:
-        return await self.sessions.finish_pair(task_id)
+    async def detach(self, task_id: str) -> DetachResult:
+        return await self.sessions.detach(task_id)
 
     async def create(
         self,
@@ -118,7 +115,6 @@ class Tasks:
         *,
         description: str = "",
         priority: Priority = Priority.MEDIUM,
-        execution_mode: WorkMode = WorkMode.AUTO,
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
         agent_backend: str | None = None,
@@ -139,7 +135,6 @@ class Tasks:
             title=title,
             description=description,
             priority=priority,
-            execution_mode=execution_mode,
             base_branch=base_branch,
             acceptance_criteria=acceptance_criteria or [],
             agent_backend=agent_backend,
@@ -190,14 +185,11 @@ class Tasks:
         self,
         *,
         status: TaskStatus | None = None,
-        execution_mode: WorkMode | None = None,
     ) -> list[Task]:
         project_id = self._require_project()
         stmt = select(Task).where(Task.project_id == project_id)
         if status is not None:
             stmt = stmt.where(Task.status == status)
-        if execution_mode is not None:
-            stmt = stmt.where(Task.execution_mode == execution_mode)
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 
     async def update(
@@ -207,7 +199,6 @@ class Tasks:
         title: str | None = None,
         description: str | None = None,
         priority: Priority | None = None,
-        execution_mode: WorkMode | None = None,
         base_branch: str | None = None,
         acceptance_criteria: builtins.list[str] | None = None,
         agent_backend: str | None = None,
@@ -218,7 +209,6 @@ class Tasks:
             "title": title,
             "description": description,
             "priority": priority,
-            "execution_mode": execution_mode,
             "base_branch": base_branch,
             "acceptance_criteria": acceptance_criteria,
             "agent_backend": agent_backend,
@@ -372,7 +362,7 @@ class Tasks:
             ).all():
                 latest_events.setdefault(event.task_id, utc_iso(event.created_at) or "")
 
-            active_sessions: dict[str, dict[str, str]] = {}
+            active_sessions: dict[str, dict[str, Any]] = {}
             for session in s.exec(
                 select(Session)
                 .where(cast("Any", Session.task_id).in_(task_ids))
@@ -383,7 +373,7 @@ class Tasks:
                 active_sessions[session.task_id] = {
                     "id": session.id,
                     "status": session.status.value,
-                    "mode": session.mode.value,
+                    "launcher": session.launcher,
                     "agent_backend": session.agent_backend,
                     "started_at": utc_iso(session.started_at) or "",
                     "context_window_used": session.context_window_used,
@@ -495,8 +485,11 @@ class Tasks:
         """
         stmt = (
             select(TaskNote)
-            .join(Task, TaskNote.task_id == Task.id)
-            .where(Task.project_id == project_id)
+            .where(
+                cast("Any", TaskNote.task_id).in_(
+                    select(Task.id).where(Task.project_id == project_id)
+                )
+            )
             .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
             .order_by(desc(cast("Any", TaskNote.created_at)))
             .limit(30)

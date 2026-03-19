@@ -87,7 +87,7 @@ async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
     from sqlmodel import SQLModel
 
     from kagan.core._tasks import Tasks
-    from kagan.core.enums import TaskStatus, WorkMode
+    from kagan.core.enums import TaskStatus
     from kagan.core.models import Project, Task, TaskNote
 
     db_path = tmp_path / "test.db"
@@ -108,7 +108,6 @@ async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
             title="Test Task",
             project_id=project_id_val,
             status=TaskStatus.BACKLOG,
-            execution_mode=WorkMode.AUTO,
         )
         s.add(task)
         s.commit()
@@ -146,7 +145,7 @@ async def test_list_project_learnings_project_isolation(tmp_path: Path) -> None:
     from sqlmodel import SQLModel
 
     from kagan.core._tasks import Tasks
-    from kagan.core.enums import TaskStatus, WorkMode
+    from kagan.core.enums import TaskStatus
     from kagan.core.models import Project, Task, TaskNote
 
     db_path = tmp_path / "test.db"
@@ -172,13 +171,11 @@ async def test_list_project_learnings_project_isolation(tmp_path: Path) -> None:
             title="Task A",
             project_id=proj_a_id,
             status=TaskStatus.BACKLOG,
-            execution_mode=WorkMode.AUTO,
         )
         task_b = Task(
             title="Task B",
             project_id=proj_b_id,
             status=TaskStatus.BACKLOG,
-            execution_mode=WorkMode.AUTO,
         )
         s.add(task_a)
         s.add(task_b)

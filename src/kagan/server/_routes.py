@@ -11,7 +11,7 @@ from kagan.core import (
     TaskStatus,
     detect_dotfile_overrides,
     parse_priority,
-    parse_work_mode,
+    resolve_launcher,
 )
 from kagan.core._utils import utc_iso
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -160,7 +160,6 @@ def register_routes(mcp: FastMCP) -> None:
         task = await ctx.client.tasks.create(
             cast("str", payload["title"]),
             description=cast("str", payload.get("description", "")),
-            execution_mode=parse_work_mode(cast("str | None", payload.get("execution_mode"))),
             priority=parse_priority(cast("str | int | None", payload.get("priority"))),
             base_branch=cast("str | None", payload.get("base_branch")),
             acceptance_criteria=cast("list[str] | None", acceptance_criteria),
@@ -205,10 +204,6 @@ def register_routes(mcp: FastMCP) -> None:
         if "priority" in payload:
             update_args["priority"] = parse_priority(
                 cast("str | int | None", payload.get("priority"))
-            )
-        if "execution_mode" in payload:
-            update_args["execution_mode"] = parse_work_mode(
-                cast("str | None", payload.get("execution_mode"))
             )
         if "base_branch" in payload:
             update_args["base_branch"] = payload["base_branch"]
@@ -265,44 +260,17 @@ def register_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         payload = await _body(request)
         agent_backend = cast("str", payload.get("agent_backend", ""))
-        if not agent_backend:
-            settings = await ctx.client.settings.get()
-            agent_backend = settings.get("default_agent_backend", "claude-code")
-        persona = cast("str | None", payload.get("persona"))
-        await ctx.client.tasks.run(task_id, agent_backend=agent_backend, persona=persona)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
-
-    @mcp.custom_route("/api/tasks/{task_id}/pair", methods=["POST"])
-    @require_context(mcp)
-    @handle_errors
-    async def pair_task(request: Request, *, ctx: Any) -> JSONResponse:
-        forbidden = _require_access(
-            ctx, operation="PAIR sessions", minimum_tier=AccessTier.STANDARD
-        )
-        if forbidden is not None:
-            return cast("JSONResponse", forbidden)
-        task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-        agent_backend = cast("str", payload.get("agent_backend", ""))
         settings = await ctx.client.settings.get()
         if not agent_backend:
             agent_backend = settings.get("default_agent_backend", "claude-code")
-        task = await ctx.client.tasks.get(task_id)
-        task_launcher_raw = getattr(task, "launcher", None)
-        task_launcher = (
-            task_launcher_raw.strip().lower()
-            if isinstance(task_launcher_raw, str) and task_launcher_raw.strip()
-            else ""
-        )
-        settings_launcher = str(settings.get("pair_launcher", "tmux")).strip().lower()
-        pair_launcher = task_launcher or settings_launcher
-        from kagan.core._launchers import resolve_launcher
-
-        launcher, ide = resolve_launcher(pair_launcher)
         persona = cast("str | None", payload.get("persona"))
-        await ctx.client.tasks.pair(
+        launcher = None
+        ide = None
+        payload_launcher = cast("str | None", payload.get("launcher"))
+        if isinstance(payload_launcher, str) and payload_launcher.strip():
+            launcher_input = payload_launcher.strip().lower()
+            launcher, ide = resolve_launcher(launcher_input)
+        await ctx.client.tasks.run(
             task_id,
             agent_backend=agent_backend,
             launcher=launcher,
@@ -328,17 +296,17 @@ def register_routes(mcp: FastMCP) -> None:
         task = await ctx.client.tasks.get(task_id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
 
-    @mcp.custom_route("/api/tasks/{task_id}/end-pairing", methods=["POST"])
+    @mcp.custom_route("/api/tasks/{task_id}/detach", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def end_pairing(request: Request, *, ctx: Any) -> JSONResponse:
+    async def detach_task(request: Request, *, ctx: Any) -> JSONResponse:
         forbidden = _require_access(
-            ctx, operation="PAIR session shutdown", minimum_tier=AccessTier.STANDARD
+            ctx, operation="Attached session detach", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        result = await ctx.client.tasks.end_pairing(task_id)
+        result = await ctx.client.tasks.detach(task_id)
         return _ok(result)
 
     @mcp.custom_route("/api/tasks/{task_id}/events", methods=["GET"])
@@ -395,7 +363,7 @@ def register_routes(mcp: FastMCP) -> None:
             [
                 {
                     "id": session.id,
-                    "mode": session.mode.value,
+                    "launcher": session.launcher,
                     "status": session.status.value,
                     "agent_backend": session.agent_backend,
                     "started_at": utc_iso(session.started_at) or "",

@@ -1,13 +1,12 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
 import contextlib
-from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import resolve_default_agent_backend
+from kagan.core import resolve_default_agent_backend, resolve_launcher
 from kagan.core.errors import KaganError, SessionError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -43,15 +42,10 @@ class SessionAction(StrEnum):
     CREATE = "create"
     GET = "get"
     KILL = "kill"
-    FINISH = "finish"
+    DETACH = "detach"
 
 
 _SESSION_ACTIONS = frozenset(item.value for item in SessionAction)
-
-
-class SessionStartAction(StrEnum):
-    RUN = "run"
-    PAIR = "pair"
 
 
 def _parse_session_action(action: str) -> SessionAction:
@@ -85,11 +79,9 @@ async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
             ) from prov_exc
     settings = await client.settings.get()
     backend = resolve_default_agent_backend(settings)
-    launcher = settings.get("pair_launcher", "tmux")
-    from kagan.core import resolve_launcher as _resolve_launcher
-
-    launcher_key, ide_name = _resolve_launcher(launcher)
-    session = await client.tasks.pair(
+    launcher = settings.get("attached_launcher", "tmux")
+    launcher_key, ide_name = resolve_launcher(launcher)
+    session = await client.tasks.run(
         task_id,
         agent_backend=backend,
         launcher=launcher_key,
@@ -112,19 +104,11 @@ async def _handle_kill(client: Any, task_id: str) -> SessionKillResult:
 async def _run_start(
     task_id: str,
     ctx: Context,
-    action: str = "run",
     agent_backend: str | None = None,
     launcher: str | None = None,
     persona: str | None = None,
 ) -> dict:
     app = get_context(ctx)
-    try:
-        parsed_action = SessionStartAction(action)
-    except ValueError as exc:
-        raise ValidationError(
-            "Unknown run_start action",
-            f"{action!r}. Must be one of {[a.value for a in SessionStartAction]}",
-        ) from exc
 
     ws = await app.client.worktrees.get(task_id)
     if ws is None:
@@ -137,7 +121,7 @@ async def _run_start(
     settings = await app.client.settings.get()
     resolved_backend = agent_backend or resolve_default_agent_backend(settings)
 
-    if parsed_action is SessionStartAction.RUN:
+    if launcher is None:
         session = await app.client.tasks.run(
             task_id,
             agent_backend=resolved_backend,
@@ -147,17 +131,12 @@ async def _run_start(
             "session_id": session.id,
             "task_id": task_id,
             "status": "STARTED",
-            "action": parsed_action.value,
-            "mode": "AUTO",
             "agent_backend": resolved_backend,
             "persona": session.persona,
         }
 
-    resolved_launcher = launcher or settings.get("pair_launcher", "tmux")
-    from kagan.core import resolve_launcher
-
-    launcher_key, ide_name = resolve_launcher(resolved_launcher)
-    session = await app.client.tasks.pair(
+    launcher_key, ide_name = resolve_launcher(launcher)
+    session = await app.client.tasks.run(
         task_id,
         agent_backend=resolved_backend,
         launcher=launcher_key,
@@ -168,10 +147,8 @@ async def _run_start(
         "session_id": session.id,
         "task_id": task_id,
         "status": "STARTED",
-        "action": parsed_action.value,
-        "mode": "PAIR",
         "agent_backend": resolved_backend,
-        "launcher": resolved_launcher,
+        "launcher": launcher,
         "persona": session.persona,
     }
 
@@ -200,7 +177,6 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
         row: dict[str, Any] = {
             "task_id": task.id,
             "status": task.status.value,
-            "execution_mode": task.execution_mode.value,
             "agent_backend": task.agent_backend,
             "worktree_path": ws.worktree_path if ws is not None else None,
             "session_id": session.id if session is not None else None,
@@ -228,28 +204,25 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     return {"rows": rows}
 
 
-async def _run_update(action: str, task_id: str, ctx: Context) -> dict:
+async def _run_update(action: str, task_id: str, ctx: Context) -> dict[str, Any]:
     app = get_context(ctx)
     return await _run_update_core(action, task_id, app.client)
 
 
 @mcp_error_boundary
-async def _run_update_core(action: str, task_id: str, client: Any) -> dict:
+async def _run_update_core(action: str, task_id: str, client: Any) -> dict[str, Any]:
     parsed = _parse_session_action(action)
-
-    handlers: dict[SessionAction, Callable[[], Awaitable[dict]]] = {
-        SessionAction.EXISTS: lambda: _handle_exists(client, task_id),
-        SessionAction.CREATE: lambda: _handle_create(client, task_id),
-        SessionAction.GET: lambda: _handle_get(client, task_id),
-        SessionAction.KILL: lambda: _handle_kill(client, task_id),
-        SessionAction.FINISH: lambda: client.tasks.end_pairing(task_id),
-    }
-
-    handler = handlers.get(parsed)
-    if handler is None:
-        raise ValidationError("Unknown run_update action", repr(parsed.value))
-
-    return await handler()
+    if parsed is SessionAction.EXISTS:
+        return cast("dict[str, Any]", await _handle_exists(client, task_id))
+    if parsed is SessionAction.CREATE:
+        return cast("dict[str, Any]", await _handle_create(client, task_id))
+    if parsed is SessionAction.GET:
+        return cast("dict[str, Any]", await _handle_get(client, task_id))
+    if parsed is SessionAction.KILL:
+        return cast("dict[str, Any]", await _handle_kill(client, task_id))
+    if parsed is SessionAction.DETACH:
+        return cast("dict[str, Any]", await client.tasks.detach(task_id))
+    raise ValidationError("Unknown run_update action", repr(parsed.value))
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:

@@ -1,6 +1,6 @@
 """Prompt snapshot tests — CI-breaking regression detection.
 
-Any change to _build_auto_run_prompt template text causes these tests to FAIL.
+Any change to _build_detached_run_prompt template text causes these tests to FAIL.
 Developers must consciously update the expected strings when changing prompts.
 """
 
@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from kagan.core._prompts import _build_auto_run_prompt, resolve_task_prompt
+from kagan.core._prompts import _build_detached_run_prompt, resolve_task_prompt
 from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME
 
 
@@ -70,14 +70,14 @@ _SHARED_TAIL = "\n".join(
 
 
 @pytest.mark.unit
-def test_auto_run_prompt_with_acceptance_criteria() -> None:
+def test_detached_run_prompt_with_acceptance_criteria() -> None:
     """Exact snapshot: task with description + acceptance criteria."""
     task = _make_task(
         title="Fix the login bug",
         description="Users cannot log in with + in emails.",
         acceptance_criteria=["Login with user+test@example.com works", "Existing tests pass"],
     )
-    result = _build_auto_run_prompt(task)
+    result = _build_detached_run_prompt(task)
 
     expected = "\n".join(
         [
@@ -100,10 +100,10 @@ def test_auto_run_prompt_with_acceptance_criteria() -> None:
 
 
 @pytest.mark.unit
-def test_auto_run_prompt_without_acceptance_criteria() -> None:
+def test_detached_run_prompt_without_acceptance_criteria() -> None:
     """Exact snapshot: task with no description and no acceptance criteria."""
     task = _make_task(title="Refactor settings module")
-    result = _build_auto_run_prompt(task)
+    result = _build_detached_run_prompt(task)
 
     expected = "\n".join(
         [
@@ -120,13 +120,13 @@ def test_auto_run_prompt_without_acceptance_criteria() -> None:
 
 
 @pytest.mark.unit
-def test_auto_run_prompt_description_only() -> None:
+def test_detached_run_prompt_description_only() -> None:
     """Exact snapshot: task with description but no acceptance criteria."""
     task = _make_task(
         title="Update config",
         description="Move settings to environment variables.",
     )
-    result = _build_auto_run_prompt(task)
+    result = _build_detached_run_prompt(task)
 
     expected = "\n".join(
         [
@@ -146,13 +146,13 @@ def test_auto_run_prompt_description_only() -> None:
 
 
 @pytest.mark.unit
-def test_auto_run_prompt_key_phrases_present() -> None:
+def test_detached_run_prompt_key_phrases_present() -> None:
     """Structural regression guard: key phrases must all be present."""
     task = _make_task(
         title="Add unit test",
         acceptance_criteria=["Test passes"],
     )
-    result = _build_auto_run_prompt(task)
+    result = _build_detached_run_prompt(task)
 
     required_phrases = [
         "COORDINATION (check before starting):",

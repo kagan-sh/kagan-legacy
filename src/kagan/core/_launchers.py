@@ -1,4 +1,4 @@
-"""PAIR environment launchers for kagan.core.
+"""ATTACHED environment launchers for kagan.core.
 
 LAUNCHERS maps launcher name → async launch function.
 Three strategies: tmux (detached session), ide (vscode/cursor/windsurf/kiro/antigravity),

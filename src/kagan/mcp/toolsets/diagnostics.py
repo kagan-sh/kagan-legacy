@@ -22,7 +22,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             {
                 "id": s.id,
                 "task_id": s.task_id,
-                "mode": s.mode.value,
+                "launcher": s.launcher,
                 "status": s.status.value,
                 "pid": s.pid,
             }

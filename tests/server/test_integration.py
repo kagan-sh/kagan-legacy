@@ -9,7 +9,7 @@ import pytest
 
 import kagan.server._helpers as server_helpers
 import kagan.server._routes as routes_module
-from kagan.core import Priority, TaskStatus, WorkMode
+from kagan.core import Priority, TaskStatus
 from kagan.core import git as git_module
 from kagan.core.models import Task
 from kagan.mcp.server import ServerOptions
@@ -33,7 +33,6 @@ class _FakeTasksClient:
         title: str,
         *,
         description: str = "",
-        execution_mode: WorkMode = WorkMode.AUTO,
         priority: Priority = Priority.MEDIUM,
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
@@ -48,7 +47,6 @@ class _FakeTasksClient:
             description=description,
             status=TaskStatus.BACKLOG,
             priority=priority,
-            execution_mode=execution_mode,
             base_branch=base_branch,
             acceptance_criteria=acceptance_criteria or [],
             agent_backend=agent_backend,

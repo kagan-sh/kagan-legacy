@@ -1,4 +1,4 @@
-"""Core enums for kagan.core — task lifecycle, execution modes, and event types."""
+"""Core enums for kagan.core — task lifecycle and event types."""
 
 from enum import IntEnum, StrEnum
 
@@ -8,11 +8,6 @@ class TaskStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     REVIEW = "REVIEW"
     DONE = "DONE"
-
-
-class WorkMode(StrEnum):
-    AUTO = "AUTO"
-    PAIR = "PAIR"
 
 
 class SessionStatus(StrEnum):
@@ -61,9 +56,9 @@ class SessionKind(StrEnum):
     """Kind of chat session in the TUI."""
 
     ORCHESTRATOR = "orchestrator"
-    AUTO = "auto"
+    DETACHED = "detached"
     REVIEW = "review"
-    PAIR = "pair"
+    ATTACHED = "attached"
 
 
 class ChatMode(StrEnum):
@@ -96,14 +91,6 @@ class PlanningDepth(StrEnum):
     NEVER = "never"
 
 
-class ExecutionModeChoice(StrEnum):
-    """Default execution mode choice (includes 'ask' UI option)."""
-
-    ASK = "ask"
-    AUTO = "auto"
-    PAIR = "pair"
-
-
 def parse_priority(value: str | int | None) -> Priority:
     """Parse a string, int, or None into a Priority enum value."""
     if value is None:
@@ -113,8 +100,3 @@ def parse_priority(value: str | int | None) -> Priority:
     if value.isdigit():
         return Priority(int(value))
     return Priority[value]
-
-
-def parse_work_mode(value: str | None) -> WorkMode:
-    """Parse a string or None into a WorkMode enum value."""
-    return WorkMode(value) if value else WorkMode.AUTO

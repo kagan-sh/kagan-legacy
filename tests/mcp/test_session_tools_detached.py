@@ -1,4 +1,4 @@
-"""Behavioral tests for AUTO session MCP tools."""
+"""Behavioral tests for managed-run MCP tools."""
 
 import json
 
@@ -48,7 +48,7 @@ async def test_session_start_rejects_unknown_action(mcp_board: ClientSession) ->
     task_id = await _create_task(mcp_board, "session start bad action")
     result = await mcp_board.call_tool(
         "run_start",
-        {"task_id": task_id, "action": "launch"},
+        {"task_id": task_id, "launcher": 123},
     )
     assert result.isError
 
@@ -74,7 +74,6 @@ async def test_session_report_returns_expected_columns(mcp_board: ClientSession)
     row = rows[0]
     assert row["task_id"] == task_id
     assert "status" in row
-    assert "execution_mode" in row
     assert "agent_backend" in row
     assert "session_id" in row
     assert "session_backend" in row

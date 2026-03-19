@@ -49,7 +49,7 @@ class _OrmBase(BaseModel):
 class ActiveSessionResponse(_OrmBase):
     id: str
     status: str
-    mode: str
+    launcher: str | None = None
     agent_backend: str
     started_at: str
     context_window_used: int | None = None
@@ -57,7 +57,7 @@ class ActiveSessionResponse(_OrmBase):
     cost_amount: float | None = None
     cost_currency: str | None = None
 
-    @field_validator("status", "mode", mode="before")
+    @field_validator("status", mode="before")
     @classmethod
     def _coerce_enum(cls, v: Any) -> str:
         return _enum_name(v)
@@ -84,7 +84,6 @@ class TaskResponse(_OrmBase):
     description: str = ""
     status: str
     priority: str
-    execution_mode: str
     base_branch: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
     agent_backend: str | None = None
@@ -99,7 +98,7 @@ class TaskResponse(_OrmBase):
     review_running: bool = False
     active_session: ActiveSessionResponse | None = None
 
-    @field_validator("status", "priority", "execution_mode", mode="before")
+    @field_validator("status", "priority", mode="before")
     @classmethod
     def _coerce_enum(cls, v: Any) -> str:
         return _enum_name(v)
@@ -115,12 +114,12 @@ class TaskResponse(_OrmBase):
 
 class TaskSessionResponse(_OrmBase):
     id: str
-    mode: str
+    launcher: str | None = None
     status: str
     agent_backend: str
     started_at: str
 
-    @field_validator("mode", "status", mode="before")
+    @field_validator("status", mode="before")
     @classmethod
     def _coerce_enum(cls, v: Any) -> str:
         return _enum_name(v)

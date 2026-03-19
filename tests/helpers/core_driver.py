@@ -22,7 +22,6 @@ from kagan.core import (
     NotFoundError,
     Priority,
     TaskStatus,
-    WorkMode,
 )
 from kagan.core.models import Repository, Worktree
 
@@ -39,7 +38,6 @@ class TaskView:
     title: str
     description: str
     status: TaskStatus
-    execution_mode: WorkMode
     priority: Priority
     agent_backend: str | None
     base_branch: str | None
@@ -166,7 +164,6 @@ class CoreDriver:
         description: str = "",
         *,
         project_id: str | None = None,
-        task_type: WorkMode = WorkMode.AUTO,
         priority: Priority = Priority.MEDIUM,
         acceptance_criteria: list[str] | None = None,
         base_branch: str | None = None,
@@ -183,7 +180,6 @@ class CoreDriver:
             title,
             description=description,
             priority=priority,
-            execution_mode=task_type,
             base_branch=base_branch,
             acceptance_criteria=acceptance_criteria,
             agent_backend=agent_backend,
@@ -225,7 +221,6 @@ class CoreDriver:
         title: str | None = None,
         description: str | None = None,
         priority: Priority | None = None,
-        task_type: WorkMode | None = None,
         acceptance_criteria: list[str] | None = None,
         base_branch: str | None = None,
         agent_backend: str | None = None,
@@ -238,7 +233,6 @@ class CoreDriver:
             title=title,
             description=description,
             priority=priority,
-            execution_mode=task_type,
             acceptance_criteria=acceptance_criteria,
             base_branch=base_branch,
             agent_backend=agent_backend,
@@ -310,26 +304,32 @@ class CoreDriver:
 
     # -- Automation (agent lifecycle) ---------------------------------------
 
-    async def start_auto(self, task_id: str) -> bool:
-        """Spawn an AUTO agent for a task. Returns True if started."""
+    async def run_task(
+        self,
+        task_id: str,
+        *,
+        agent_backend: str | None = None,
+        launcher: str | None = None,
+    ) -> Any | None:
         task = await self._ctx.tasks.get(task_id)
-        backend = task.agent_backend or "fake"
+        backend = agent_backend or task.agent_backend or "fake"
+        kwargs: dict[str, Any] = {"agent_backend": backend}
+        if launcher is not None or task.launcher is not None:
+            kwargs["launcher"] = launcher or task.launcher or "tmux"
+            return await self._ctx.tasks.run(task_id, **kwargs)
         try:
-            await self._ctx.tasks.run(task_id, agent_backend=backend)
-            return True
+            return await self._ctx.tasks.run(task_id, **kwargs)
         except Exception:
-            return False
+            return None
 
-    async def stop_auto(self, task_id: str) -> bool:
-        """Stop a running AUTO agent."""
+    async def cancel_task(self, task_id: str) -> bool:
         try:
             await self._ctx.tasks.cancel(task_id)
             return True
         except Exception:
             return False
 
-    async def wait_for_auto_complete(self, task_id: str, *, timeout: float = 15.0) -> TaskView:
-        """Wait for an AUTO task to finish its agent run."""
+    async def wait_for_detached_complete(self, task_id: str, *, timeout: float = 15.0) -> TaskView:
         task, _ = await self._ctx.tasks.wait_for_completion(
             task_id,
             timeout=timeout,
@@ -450,25 +450,8 @@ class CoreDriver:
         task = await self._ctx.reviews.merge(task_id)
         return {"task": task, "status": task.status}
 
-    # -- Pair Sessions ------------------------------------------------------
-
-    async def pair_task(
-        self,
-        task_id: str,
-        *,
-        agent_backend: str = "claude-code",
-        launcher: str = "tmux",
-    ) -> Any:
-        """Start a PAIR session for a task. Returns session or raises."""
-        return await self._ctx.tasks.pair(task_id, agent_backend=agent_backend, launcher=launcher)
-
-    async def cancel_task(self, task_id: str) -> None:
-        """Cancel a task's active session."""
-        await self._ctx.tasks.cancel(task_id)
-
-    async def end_pairing(self, task_id: str) -> dict[str, Any]:
-        """End a PAIR session for a task. Returns result with status."""
-        result = await self._ctx.tasks.end_pairing(task_id)
+    async def detach_task(self, task_id: str) -> dict[str, Any]:
+        result = await self._ctx.tasks.detach(task_id)
         return {
             "ready_for_review": result.get("ready_for_review", False),
             "status": result.get("status", ""),
@@ -517,9 +500,6 @@ class CoreDriver:
             title=task.title,
             description=task.description or "",
             status=task.status if isinstance(task.status, TaskStatus) else TaskStatus(task.status),
-            execution_mode=task.execution_mode
-            if isinstance(task.execution_mode, WorkMode)
-            else WorkMode(task.execution_mode),
             priority=task.priority
             if isinstance(task.priority, Priority)
             else Priority(task.priority),

@@ -1,4 +1,4 @@
-"""Behavioral tests for run_update MCP tool (PAIR session lifecycle).
+"""Behavioral tests for run_update MCP tool (interactive session lifecycle).
 
 Tests exercise tool behavior through MCP protocol (ClientSession.call_tool),
 not by importing production internals. All assertions are on observable
@@ -25,7 +25,7 @@ def _text(result: CallToolResult) -> dict:
     return json.loads(block.text)
 
 
-async def _create_pair_task_with_workspace(
+async def _create_attached_task_with_workspace(
     mcp_board: ClientSession,
     core_client: Any,
     tmp_path: Path,
@@ -45,7 +45,7 @@ async def _create_pair_task_with_workspace(
 
     create_result = await mcp_board.call_tool(
         "task_create",
-        {"title": title, "execution_mode": "PAIR"},
+        {"title": title, "launcher": "tmux"},
     )
     assert not create_result.isError
     task_id = _text(create_result)["id"]
@@ -79,7 +79,9 @@ async def test_session_manage_visible_on_default_server(mcp_board: ClientSession
 
 async def test_session_manage_exists_returns_bool(mcp_board: ClientSession) -> None:
     """run_update with action=exists must return a dict with an 'exists' bool."""
-    result = await mcp_board.call_tool("run_update", {"action": "exists", "task_id": "task-pair-1"})
+    result = await mcp_board.call_tool(
+        "run_update", {"action": "exists", "task_id": "task-attached-1"}
+    )
     assert not result.isError
     payload = _text(result)
     assert "exists" in payload
@@ -101,14 +103,16 @@ async def test_session_manage_exists_false_for_unknown_task(mcp_board: ClientSes
 
 
 async def test_session_manage_create_returns_session_id(mcp_board: ClientSession) -> None:
-    """run_update create must fail when pair prerequisites are missing."""
-    result = await mcp_board.call_tool("run_update", {"action": "create", "task_id": "task-pair-2"})
+    """run_update create must fail when attached prerequisites are missing."""
+    result = await mcp_board.call_tool(
+        "run_update", {"action": "create", "task_id": "task-attached-2"}
+    )
     assert result.isError
 
 
 async def test_session_manage_create_returns_task_id(mcp_board: ClientSession) -> None:
     """run_update create error contains the requested task id."""
-    task_id = "task-pair-3"
+    task_id = "task-attached-3"
     result = await mcp_board.call_tool("run_update", {"action": "create", "task_id": task_id})
     assert result.isError
     block = result.content[0]
@@ -123,7 +127,7 @@ async def test_session_manage_create_returns_task_id(mcp_board: ClientSession) -
 
 async def test_session_manage_get_after_create(mcp_board: ClientSession) -> None:
     """run_update get after failed create must return an error."""
-    task_id = "task-pair-get"
+    task_id = "task-attached-get"
     create_result = await mcp_board.call_tool(
         "run_update", {"action": "create", "task_id": task_id}
     )
@@ -146,7 +150,7 @@ async def test_session_manage_get_unknown_returns_error(mcp_board: ClientSession
 
 async def test_session_manage_kill_after_create(mcp_board: ClientSession) -> None:
     """run_update kill after failed create must return an error."""
-    task_id = "task-pair-kill"
+    task_id = "task-attached-kill"
     create_result = await mcp_board.call_tool(
         "run_update", {"action": "create", "task_id": task_id}
     )
@@ -169,7 +173,9 @@ async def test_session_manage_kill_unknown_returns_error(mcp_board: ClientSessio
 
 async def test_session_manage_invalid_action_returns_error(mcp_board: ClientSession) -> None:
     """run_update with an unknown action must return an error."""
-    result = await mcp_board.call_tool("run_update", {"action": "bogus", "task_id": "task-pair-1"})
+    result = await mcp_board.call_tool(
+        "run_update", {"action": "bogus", "task_id": "task-attached-1"}
+    )
     assert result.isError
 
 
@@ -179,8 +185,8 @@ async def test_session_manage_invalid_action_returns_error(mcp_board: ClientSess
 
 
 async def test_session_manage_exists_true_after_create(mcp_board: ClientSession) -> None:
-    """run_update create fails without pair prerequisites; exists remains False."""
-    task_id = "task-pair-exists-check"
+    """run_update create fails without attached prerequisites; exists remains False."""
+    task_id = "task-attached-exists-check"
     create_result = await mcp_board.call_tool(
         "run_update", {"action": "create", "task_id": task_id}
     )
@@ -193,7 +199,7 @@ async def test_session_manage_exists_true_after_create(mcp_board: ClientSession)
 
 async def test_session_manage_exists_false_after_kill(mcp_board: ClientSession) -> None:
     """run_update exists must return False after a session is killed."""
-    task_id = "task-pair-kill-check"
+    task_id = "task-attached-kill-check"
     create_result = await mcp_board.call_tool(
         "run_update", {"action": "create", "task_id": task_id}
     )
@@ -219,7 +225,9 @@ async def test_core_session_start_returns_session_id(mcp_board_with_core: Client
     )
     task_id = _text(create_result)["id"]
 
-    result = await mcp_board_with_core.call_tool("run_start", {"task_id": task_id})
+    result = await mcp_board_with_core.call_tool(
+        "run_start", {"task_id": task_id, "launcher": "tmux"}
+    )
     assert result is not None
 
 
@@ -304,22 +312,22 @@ async def test_core_session_manage_kill_unknown_task_returns_error(
     assert result.isError
 
 
-async def test_core_session_manage_finish_moves_pair_task_to_review(
+async def test_core_session_manage_detach_moves_attached_task_to_review(
     mcp_board_with_core_client: tuple[ClientSession, Any],
     tmp_path: Path,
 ) -> None:
     mcp_board, core_client = mcp_board_with_core_client
-    task_id, worktree_path = await _create_pair_task_with_workspace(
+    task_id, worktree_path = await _create_attached_task_with_workspace(
         mcp_board,
         core_client,
         tmp_path,
-        title="Pair finish review",
+        title="Attached detach review",
     )
-    (worktree_path / "pair_result.py").write_text("value = 1\n", encoding="utf-8")
+    (worktree_path / "attached_result.py").write_text("value = 1\n", encoding="utf-8")
 
     result = await mcp_board.call_tool(
         "run_update",
-        {"action": "finish", "task_id": task_id},
+        {"action": "detach", "task_id": task_id},
     )
     assert not result.isError
     payload = _text(result)
@@ -328,21 +336,21 @@ async def test_core_session_manage_finish_moves_pair_task_to_review(
     assert payload["status"] == "REVIEW"
 
 
-async def test_core_session_manage_finish_keeps_in_progress_without_changes(
+async def test_core_session_manage_detach_keeps_in_progress_without_changes(
     mcp_board_with_core_client: tuple[ClientSession, Any],
     tmp_path: Path,
 ) -> None:
     mcp_board, core_client = mcp_board_with_core_client
-    task_id, _ = await _create_pair_task_with_workspace(
+    task_id, _ = await _create_attached_task_with_workspace(
         mcp_board,
         core_client,
         tmp_path,
-        title="Pair finish no changes",
+        title="Attached detach no changes",
     )
 
     result = await mcp_board.call_tool(
         "run_update",
-        {"action": "finish", "task_id": task_id},
+        {"action": "detach", "task_id": task_id},
     )
     assert not result.isError
     payload = _text(result)

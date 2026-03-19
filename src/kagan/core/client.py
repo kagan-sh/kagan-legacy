@@ -41,7 +41,6 @@ from kagan.core.models import Task
 class _TaskState:
     title: str
     status: str
-    execution_mode: str
 
 
 class DBWatcher:
@@ -118,7 +117,7 @@ class DBWatcher:
 
     async def _take_snapshot(self) -> dict[str, _TaskState]:
         tasks = await self._core.tasks.list()
-        return {t.id: _TaskState(t.title, t.status.value, t.execution_mode.value) for t in tasks}
+        return {t.id: _TaskState(t.title, t.status.value) for t in tasks}
 
     async def _consume_events(self) -> None:
         async for event in self._core.tasks.events.stream_board():
@@ -176,13 +175,6 @@ class DBWatcher:
                     f"Task '{new.title}' ({task_id}) moved {old.status} \u2192 {new.status}"
                 )
                 changed = True
-            elif old.execution_mode != new.execution_mode:
-                self._snapshot[task_id] = new
-                self._record(
-                    f"Task '{new.title}' ({task_id}) mode changed "
-                    f"{old.execution_mode} \u2192 {new.execution_mode}"
-                )
-                changed = True
             elif old.title != new.title:
                 self._snapshot[task_id] = new
                 self._record(f"Task '{new.title}' ({task_id}) updated")
@@ -209,7 +201,6 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
-                task.execution_mode.value,
             )
             self._record(f"Task '{title}' ({event.task_id}) created [{status}]")
             return
@@ -223,7 +214,6 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
-                task.execution_mode.value,
             )
             self._record(f"Task '{title}' ({event.task_id}) updated")
             return
@@ -257,7 +247,6 @@ class DBWatcher:
         self._snapshot[event.task_id] = _TaskState(
             title,
             new_status,
-            task.execution_mode.value,
         )
         self._record(f"Task '{title}' ({event.task_id}) moved {prev_status} → {new_status}")
 

@@ -58,7 +58,7 @@ def check_tmux() -> PreflightCheckResult:
         return PreflightCheckResult(
             name="tmux",
             status=CheckStatus.WARN,
-            message="tmux not found on PATH — PAIR tmux sessions unavailable",
+            message="tmux not found on PATH — ATTACHED tmux sessions unavailable",
             fix_hint="Install tmux: brew install tmux (macOS) or apt install tmux (Linux)",
         )
     return PreflightCheckResult(

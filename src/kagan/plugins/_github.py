@@ -8,8 +8,8 @@ needed. Label conventions on the GitHub side auto-map to kagan task properties:
     priority:high      →  Priority.HIGH
     priority:medium    →  Priority.MEDIUM
     priority:low       →  Priority.LOW
-    kagan:auto         →  WorkMode.AUTO
-    kagan:pair         →  WorkMode.PAIR
+    kagan:detached     →  ignored (legacy label)
+    kagan:attached     →  ignored (legacy label)
 
 Sync is idempotent: a mapping of issue numbers → task IDs is persisted in
 the kagan settings table. Re-running sync skips already-imported issues.
@@ -25,7 +25,7 @@ from typing import Any, Final, TypedDict
 from loguru import logger
 
 from kagan.core import CheckStatus, KaganCore, PreflightCheckResult
-from kagan.core.enums import Priority, WorkMode
+from kagan.core.enums import Priority
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.plugins import ImporterPlugin, ImportResult, PluginError, PluginSyncError
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -48,10 +48,7 @@ _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:low": Priority.LOW,
 }
 
-_MODE_LABELS: dict[str, WorkMode] = {
-    "kagan:auto": WorkMode.AUTO,
-    "kagan:pair": WorkMode.PAIR,
-}
+_MODE_LABELS: Final[set[str]] = {"kagan:detached", "kagan:attached"}
 
 _GH_JSON_FIELDS = "number,title,body,labels,state,url"
 
@@ -138,9 +135,8 @@ def _extract_label_names(issue: GitHubIssue) -> list[str]:
     return [lbl["name"] for lbl in raw if isinstance(lbl, dict) and "name" in lbl]
 
 
-def _map_labels(label_names: list[str]) -> tuple[Priority, WorkMode, list[str]]:
+def _map_labels(label_names: list[str]) -> tuple[Priority, list[str]]:
     priority = Priority.MEDIUM
-    mode = WorkMode.AUTO
     remaining: list[str] = []
 
     for name in label_names:
@@ -148,11 +144,11 @@ def _map_labels(label_names: list[str]) -> tuple[Priority, WorkMode, list[str]]:
         if lower in _PRIORITY_LABELS:
             priority = _PRIORITY_LABELS[lower]
         elif lower in _MODE_LABELS:
-            mode = _MODE_LABELS[lower]
+            continue
         else:
             remaining.append(name)
 
-    return priority, mode, remaining
+    return priority, remaining
 
 
 def _build_description(issue: GitHubIssue, extra_labels: list[str]) -> str:
@@ -351,14 +347,13 @@ class GitHubImporter(ImporterPlugin):
                 logger.debug("Task {} for issue #{} was deleted, re-importing", task_id, number)
 
         label_names = _extract_label_names(issue)
-        priority, mode, extra_labels = _map_labels(label_names)
+        priority, extra_labels = _map_labels(label_names)
         description = _build_description(issue, extra_labels)
 
         task = await client.tasks.create(
             title,
             description=description,
             priority=priority,
-            execution_mode=mode,
         )
         sync_map[number] = task.id
         return ImportResult(

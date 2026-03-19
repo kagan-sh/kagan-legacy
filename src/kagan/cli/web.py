@@ -76,6 +76,8 @@ def web(
 ) -> None:
     from kagan.server._web_ui import has_web_bundle
 
+    browser_timer = None
+
     if not dev_mode and not has_web_bundle():
         raise click.ClickException(
             "Web UI bundle not found. Please reinstall kagan to get the bundled web assets."
@@ -109,9 +111,9 @@ def web(
     if not no_open:
         import threading
 
-        timer = threading.Timer(1.5, _open_browser, args=[url])
-        timer.daemon = True
-        timer.start()
+        browser_timer = threading.Timer(1.5, _open_browser, args=[url])
+        browser_timer.daemon = True
+        browser_timer.start()
 
     logger.debug("Web UI server starting")
 
@@ -131,4 +133,10 @@ def web(
         web_ui=not dev_mode,  # Serve bundled UI unless in dev mode
         dev_mode=dev_mode,  # Skip auth in dev mode
     )
-    run_async(serve_http(opts))
+    try:
+        run_async(serve_http(opts))
+    except KeyboardInterrupt:
+        click.echo("\nStopping Kagan web dashboard...", err=True)
+    finally:
+        if browser_timer is not None:
+            browser_timer.cancel()

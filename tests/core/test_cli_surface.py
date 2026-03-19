@@ -256,6 +256,23 @@ def test_chat_ctrl_c_exits_one(monkeypatch, tmp_path: Path) -> None:
     assert result.exit_code == 1
 
 
+def test_web_ctrl_c_exits_cleanly(monkeypatch, tmp_path: Path) -> None:
+    def _raise_keyboard_interrupt(coro):
+        coro.close()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("kagan.server._web_ui.has_web_bundle", lambda: True)
+    monkeypatch.setattr("kagan.cli.web._is_server_running", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("kagan.cli.web.run_async", _raise_keyboard_interrupt)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["web", "--no-open", "--port", "9999"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Stopping Kagan web dashboard" in result.output
+    assert "Aborted!" not in result.output
+
+
 def test_chat_help_uses_structured_options_panel(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["chat", "--help"], env=_runner_env(tmp_path))

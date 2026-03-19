@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 _WEB_STATIC_DIR: Path = Path(__file__).parent / "_web_static"
 
 _RESERVED_PREFIXES = ("/api/", "/health", "/ws", "/mcp", "/sse")
+_HTML_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+_MISSING_ASSET_HEADERS = {"Cache-Control": "no-store"}
 
 
 def web_static_dir() -> Path:
@@ -43,6 +45,12 @@ class _SPAStaticFiles:
         self._static = StaticFiles(directory=str(directory), html=True)
         self._index = directory / "index.html"
 
+    @staticmethod
+    def _is_asset_request(path: str) -> bool:
+        if path in {"", "/"}:
+            return False
+        return bool(Path(path).suffix)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             # WebSocket or other non-HTTP scopes — reject cleanly.
@@ -51,6 +59,7 @@ class _SPAStaticFiles:
             return
 
         path: str = scope.get("path", "/")
+        method = scope.get("method", "GET").upper()
 
         # Never intercept reserved API/ws paths.
         if any(path.startswith(prefix) for prefix in _RESERVED_PREFIXES):
@@ -60,17 +69,32 @@ class _SPAStaticFiles:
             await response(scope, receive, send)
             return
 
-        # Try to serve the file directly via StaticFiles.
-        try:
-            await self._static(scope, receive, send)
-        except Exception:
-            # File not found → SPA fallback: serve index.html.
-            if self._index.is_file():
-                response = FileResponse(str(self._index), media_type="text/html")
+        if self._is_asset_request(path):
+            from starlette.responses import Response
+
+            try:
+                await self._static(scope, receive, send)
+            except Exception:
+                response = Response("Not Found", status_code=404, headers=_MISSING_ASSET_HEADERS)
                 await response(scope, receive, send)
-            else:
-                response = HTMLResponse("<h1>Web UI not found</h1>", status_code=404)
-                await response(scope, receive, send)
+            return
+
+        if method not in {"GET", "HEAD"}:
+            from starlette.responses import Response
+
+            response = Response("Not Found", status_code=404)
+            await response(scope, receive, send)
+            return
+
+        if self._index.is_file():
+            response = FileResponse(
+                str(self._index), media_type="text/html", headers=_HTML_CACHE_HEADERS
+            )
+            await response(scope, receive, send)
+            return
+
+        response = HTMLResponse("<h1>Web UI not found</h1>", status_code=404)
+        await response(scope, receive, send)
 
 
 def register_web_ui(mcp: FastMCP) -> None:

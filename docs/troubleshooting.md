@@ -29,14 +29,14 @@ Match symptom text below.
 | `START_PENDING`                | Wait a few seconds and check `kagan core status` again                                                 |
 | Logs cut off mid-output        | Use `task_logs` with `offset` and `limit` to page through; follow `next_offset`                        |
 
-## PAIR / terminal
+## Interactive launch / terminal
 
 | Symptom                        | Fix                                                                                                                                       |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | tmux not found                 | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                   |
 | nvim not found                 | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                             |
-| VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then reopen PAIR session; fallback is `.kagan/start_prompt.md`      |
-| Unsupported PAIR launcher      | `default_pair_terminal_backend = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"` in config |
+| VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then relaunch the interactive session; fallback is `.kagan/start_prompt.md` |
+| Unsupported interactive launcher | Set `attached_launcher = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"` |
 
 ## Git
 

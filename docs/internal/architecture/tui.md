@@ -90,9 +90,9 @@ KaganApp (Textual App)
 │
 ├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
 │
-├── TaskScreen              # Pushed from kanban for AUTO tasks (idle / past runs) and REVIEW surveys
+├── TaskScreen              # Pushed from kanban for idle / past tasks and REVIEW surveys
 │
-├── SessionDashboardScreen   # Pushed from kanban for running AUTO tasks
+├── SessionDashboardScreen   # Pushed from kanban for running managed tasks
 │   ├── AgentStatusPanel     # Backend, status, elapsed, run ID, PID
 │   ├── PersonaPipelineMap   # Horizontal persona sequence with current step
 │   ├── LiveOutputPanel      # Latest agent output + tool calls (auto-scroll)
@@ -133,7 +133,7 @@ KaganApp (Textual App)
 ```text
 WelcomeScreen ──select project──→ KanbanScreen (switch)
 KanbanScreen  ──Enter──────────────────→ Open/refresh TaskInspector (in-place)
-KanbanScreen  ──Enter on selected task──→ TaskScreen or PAIR attach flow (push/attach)
+KanbanScreen  ──Enter on selected task──→ TaskScreen or interactive attach flow (push/attach)
 KanbanScreen  ──Ctrl+R────────→ RepoPickerModal (push)
 Any screen    ──Escape─────────→ close active overlay first, then pop (back to previous)
 ```
@@ -291,8 +291,8 @@ src/kagan/tui/
 │ ├── setup.py # OnboardingFlow (modal)
 │ ├── kanban.py # KanbanScreen
 │ ├── kanban_chat.py # KanbanChatScreen (orchestrator/task chat modes)
-│ ├── task_screen.py # TaskScreen (AUTO/REVIEW detail view)
-│ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
+│ ├── task_screen.py # TaskScreen (managed-run / review detail view)
+│ ├── session_dashboard.py # SessionDashboardScreen (running managed task monitor)
 │ ├── review_no_criteria.py # ReviewNoCriteriaModal (no criteria gate)
 │ ├── repo_picker.py # RepoPickerModal
  │ ├── gateway.py # PairInstructionsModal
@@ -369,7 +369,7 @@ ______________________________________________________________________
 
 ### Purpose
 
-A dedicated monitoring screen for running AUTO tasks. Shows all relevant
+A dedicated monitoring screen for running managed tasks. Shows all relevant
 information about the active agent session: worktree changes, commits,
 agent status, persona pipeline progress, live output, and unified diffs.
 Supports AI Panel for streaming agent output and user interjection.
@@ -475,8 +475,8 @@ session_dashboard.tcss # Dashboard-specific styles
 KanbanScreen
 │
 ├─ Enter ──────────────────────→ show TaskInspector (in place)
-├─ O/P on AUTO task ───────────→ TaskScreen (push)
-└─ O/P on PAIR task ───────────→ Attach/launch session
+├─ O/P on managed task ────────→ TaskScreen (push)
+└─ O/P on interactive task ────→ Attach/launch session
 
 SessionDashboardScreen
 ├─ Escape ──────────────────→ pop back to KanbanScreen

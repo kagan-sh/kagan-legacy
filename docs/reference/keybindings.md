@@ -24,15 +24,15 @@ Press `?` any time to open context-aware help for the current screen.
 | Key                              | Action               |
 | -------------------------------- | -------------------- |
 | ++n++                            | New task             |
-| ++shift+n++                      | New AUTO task        |
 | ++enter++                        | Open task            |
+| ++a++                            | Attach interactive run |
 | ++space++                        | Cycle AI split       |
 | ++p++                            | Peek task            |
 | ++e++                            | Edit task            |
 | ++x++                            | Delete task          |
 | ++y++                            | Copy task ID         |
 | ++s++                            | Start agent          |
-| ++shift+s++                      | Stop agent           |
+| ++shift+s++                      | Stop or detach active run |
 | ++shift+left++ / ++shift+right++ | Move task left/right |
 | ++slash++                        | Search               |
 | ++f++                            | Expand description   |

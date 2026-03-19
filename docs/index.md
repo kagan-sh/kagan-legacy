@@ -20,7 +20,7 @@ uvx kagan
 
 - [:material-lightning-bolt: **60-second start**](quickstart.md)
 
-- [:material-robot: **AUTO vs PAIR**](guides/modes-auto-vs-pair.md)
+- [:material-robot: **Managed runs and interactive attach**](guides/managed-vs-interactive.md)
 
 - [:material-server-network: **Run from your editor**](guides/mcp-setup.md)
 
@@ -50,11 +50,11 @@ Set `default_worker_agent` in config or pick per task. Kagan detects what's inst
 
 ______________________________________________________________________
 
-## PAIR backends
+## Interactive launchers
 
 Interactive sessions open in the tool you already live in: **tmux** · **Neovim** · **VS Code** · **Cursor** · **Windsurf** · **Kiro** · **Antigravity**
 
-[:octicons-arrow-right-24: Backend details](concepts/architecture-overview.md#pair-backends)
+[:octicons-arrow-right-24: Backend details](concepts/architecture-overview.md#interactive-launchers)
 
 ______________________________________________________________________
 
@@ -74,7 +74,7 @@ ______________________________________________________________________
 | -------------------------------- | -------------------------------------------------------- |
 | First run in under 5 minutes     | [Quickstart](quickstart.md)                              |
 | Understand the task flow         | [Task lifecycle](concepts/task-lifecycle.md)             |
-| Understand AUTO vs PAIR          | [AUTO vs PAIR](guides/modes-auto-vs-pair.md)             |
+| Understand start vs attach      | [Managed vs interactive](guides/managed-vs-interactive.md) |
 | Use chat REPL or TUI overlay     | [Chat guide](guides/chat.md)                             |
 | Understand ACP chat sessions     | [ACP session lifecycle](guides/acp-session-lifecycle.md) |
 | Connect an AI client via MCP     | [MCP setup](guides/mcp-setup.md)                         |

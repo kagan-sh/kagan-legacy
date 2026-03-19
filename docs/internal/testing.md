@@ -27,8 +27,8 @@ Test Cases  →  KaganDriver (DSL)  →  CoreDriver / TuiDriver  →  Real syste
 
 ```python
 async def test_auto_task_runs_to_completion_and_moves_to_review(board):
-    task = await board.create_task("Fix login bug", execution_mode=AUTO)
-    await board.start_auto(task)
+    task = await board.create_task("Fix login bug")
+    await board.run_task(task.id)
     await board.wait_for_status(task, REVIEW)
     assert await board.get_status(task) == REVIEW
 ```
@@ -238,7 +238,7 @@ ______________________________________________________________________
 
 What to test first:
 
-1. **Core lifecycle** — task CRUD, status transitions, AUTO execution, PAIR sessions, reviews, workspaces
+1. **Core lifecycle** — task CRUD, status transitions, managed runs, interactive launches, reviews, workspaces
 1. **Integration** — project/repo management, MCP tool dispatch, settings
 1. **Edge cases** — concurrent starts, merge conflicts, agent crashes, orphan cleanup
 

@@ -76,13 +76,14 @@ ______________________________________________________________________
 
 | Key                | Action               |
 | ------------------ | -------------------- |
-| `n` / `Shift+N`    | New PAIR / AUTO task |
+| `n`                | New task |
 | `Enter`            | Open task flow       |
+| `a`                | Attach interactive run |
 | `Space`            | Cycle AI split       |
 | `p`                | Peek                 |
 | `e`                | Edit                 |
 | `x`                | Delete (confirm)     |
-| `s` / `Shift+S`    | Start / stop agent   |
+| `s` / `Shift+S`    | Start managed run / stop active run |
 | `Shift+Left/Right` | Move task            |
 | `/`                | Search               |
 

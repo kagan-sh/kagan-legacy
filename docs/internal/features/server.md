@@ -89,7 +89,7 @@ To receive initial state and subsequent updates:
 Start an agent run:
 
 ```json
-{ "t": "RUN_START", "task_id": "<TASK_ID>", "mode": "AUTO" }
+{ "t": "RUN_START", "task_id": "<TASK_ID>" }
 ```
 
 ______________________________________________________________________

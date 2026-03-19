@@ -128,4 +128,4 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-[:octicons-arrow-right-24: CLI reference](../reference/cli.md) · [:octicons-arrow-right-24: AUTO vs PAIR](modes-auto-vs-pair.md) · [:octicons-arrow-right-24: Configuration](../reference/configuration.md)
+[:octicons-arrow-right-24: CLI reference](../reference/cli.md) · [:octicons-arrow-right-24: Managed vs interactive](managed-vs-interactive.md) · [:octicons-arrow-right-24: Configuration](../reference/configuration.md)

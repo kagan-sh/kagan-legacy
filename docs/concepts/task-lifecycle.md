@@ -27,7 +27,7 @@ stateDiagram-v2
 | Status          | Meaning                                     |
 | --------------- | ------------------------------------------- |
 | **BACKLOG**     | Planned but not started                     |
-| **IN_PROGRESS** | Agent running (AUTO) or session open (PAIR) |
+| **IN_PROGRESS** | Managed run active or interactive session open |
 | **REVIEW**      | Work complete, awaiting human review        |
 | **DONE**        | Reviewed and merged                         |
 
@@ -52,20 +52,20 @@ your-repo/
 - Worktrees are cleaned up after merge.
 - State lives outside your repo — no `.kagan/` directory in your codebase.
 
-## Execution modes
+## Launch styles
 
-Each task runs as **AUTO** or **PAIR**. Set the mode when creating or editing a task.
+Each task is just a task. When you launch it, choose between a managed run or an interactive launcher handoff.
 
-| Mode | Who drives  | Where it happens                                       |
-| ---- | ----------- | ------------------------------------------------------ |
-| AUTO | Agent       | Background process; follow progress in the TUI overlay |
-| PAIR | You + agent | Interactive session in tmux, Neovim, VS Code, etc.     |
+| Style | Who drives  | Where it happens                                       |
+| ----- | ----------- | ------------------------------------------------------ |
+| Managed run | Agent | Background process; follow progress in the task or session views |
+| Interactive launch | You + agent | tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, etc. |
 
-[:octicons-arrow-right-24: AUTO vs PAIR guide](../guides/modes-auto-vs-pair.md)
+[:octicons-arrow-right-24: Managed vs interactive guide](../guides/managed-vs-interactive.md)
 
 ## Review
 
-When work finishes — agent completes (AUTO) or you move the task (PAIR) — it enters REVIEW.
+When work finishes — the managed run completes or you detach/finish the interactive session — it enters REVIEW.
 
 ### What you see
 

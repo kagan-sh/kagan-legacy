@@ -208,8 +208,8 @@ management. Label conventions auto-map to task properties:
 | `priority:high`     | `Priority.HIGH`     |
 | `priority:medium`   | `Priority.MEDIUM`   |
 | `priority:low`      | `Priority.LOW`      |
-| `kagan:auto`        | `WorkMode.AUTO`     |
-| `kagan:pair`        | `WorkMode.PAIR`     |
+| `kagan:auto`        | ignored legacy label |
+| `kagan:pair`        | ignored legacy label |
 
 ### Sync Map Persistence
 

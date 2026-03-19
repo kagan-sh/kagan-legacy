@@ -45,8 +45,8 @@ ______________________________________________________________________
 
 | Tool               | Annotation  | Purpose                                                                   |
 | ------------------ | ----------- | ------------------------------------------------------------------------- |
-| `run_start(...)`   | `mutating`  | Start AUTO or PAIR execution (provisions worktree, launches agent stream) |
-| `run_update(...)`  | `mixed`     | Manage PAIR session lifecycle (exists/create/get/kill/finish)             |
+| `run_start(...)`   | `mutating`  | Start a managed run or launch an interactive session for a task           |
+| `run_update(...)`  | `mixed`     | Manage session lifecycle (exists/create/get/kill/detach)                  |
 | `run_cancel(...)`  | `mutating`  | Cancel an active session                                                  |
 | `run_summary(...)` | `read-only` | List running sessions + statuses for active tasks                         |
 
@@ -145,11 +145,10 @@ ______________________________________________________________________
 | `title`               | `string \| null`       | New title                                           |
 | `description`         | `string \| null`       | New description                                     |
 | `priority`            | `string \| int`        | `LOW`, `MEDIUM`, `HIGH`, or priority index          |
-| `execution_mode`      | `string \| null`       | `AUTO` or `PAIR`                                    |
 | `base_branch`         | `string \| null`       | Base branch override                                |
 | `acceptance_criteria` | `list[string] \| null` | New acceptance criteria list                        |
 | `agent_backend`       | `string \| null`       | Preferred agent backend                             |
-| `launcher`            | `string \| null`       | Preferred pair launcher                             |
+| `launcher`            | `string \| null`       | Preferred interactive launcher                      |
 | `status`              | `string \| null`       | Force status transition (set_status under the hood) |
 
 ______________________________________________________________________
@@ -216,45 +215,44 @@ ______________________________________________________________________
 
 ## `run_start` API
 
-`run_start` provisions a workspace and launches an AUTO or PAIR session for the task.
+`run_start` provisions a workspace and launches a task run. Omit `launcher` for a managed background run; provide a launcher for an interactive launch.
 
 ### Parameters
 
 | Parameter       | Type             | Description                                             |
 | --------------- | ---------------- | ------------------------------------------------------- |
 | `task_id`       | `string`         | Target task                                             |
-| `action`        | `string`         | `run` (AUTO) or `pair` session mode                     |
 | `agent_backend` | `string \| null` | Override default agent backend                          |
-| `launcher`      | `string \| null` | Override pair launcher (applies only for `action=pair`) |
+| `launcher`      | `string \| null` | Optional launcher for interactive runs                  |
 | `persona`       | `string \| null` | Optional persona name to seed agent conversation        |
 
 ### Response
 
-- `session_id` — identifier of the AUTO/PAIR session
-- `task_id`, `status`, `action`, `mode`, `agent_backend`, and `persona`
+- `session_id` — identifier of the run
+- `task_id`, `status`, `agent_backend`, `persona`, and optional `launcher`
 
-Use `run_start(action="run")` to trigger an AUTO execution loop and `run_start(action="pair")` to attach a PAIR session (creates a `tasks.pair` session).
+Use `run_start()` for managed execution or `run_start(launcher="tmux")` (or another launcher) for an interactive launch.
 
 ______________________________________________________________________
 
 ## `run_update` API
 
-`run_update` controls PAIR session lifecycle via discrete actions.
+`run_update` controls session lifecycle via discrete actions.
 
 ### Parameters
 
 | Parameter | Type     | Description                                        |
 | --------- | -------- | -------------------------------------------------- |
-| `action`  | `string` | One of `exists`, `create`, `get`, `kill`, `finish` |
-| `task_id` | `string` | Target task (pair session is scoped to the task)   |
+| `action`  | `string` | One of `exists`, `create`, `get`, `kill`, `detach` |
+| `task_id` | `string` | Target task                                         |
 
 ### Actions
 
 - `exists`: Returns `{"exists": bool, "task_id": ...}` without mutating state.
-- `create`: Provisions a workspace and starts a PAIR session, mirroring the `run_start(action="pair")` flow.
-- `get`: Reads the current PAIR session status (`"STARTED"`, `"ENDED"`, etc.)
+- `create`: Provisions a workspace and starts an interactive session using the configured launcher.
+- `get`: Reads the current interactive session status (`"STARTED"`, `"ENDED"`, etc.)
 - `kill`: Cancels the task run via `client.tasks.cancel`.
-- `finish`: Signals the server to end pairing via `client.tasks.end_pairing`.
+- `detach`: Signals the server to finalize an interactive session via `client.tasks.detach`.
 
 ______________________________________________________________________
 
@@ -278,7 +276,7 @@ ______________________________________________________________________
 
 ## `run_summary` API
 
-`run_summary` lists tasks with active AUTO or PAIR sessions, useful for dashboards.
+`run_summary` lists tasks with active runs, useful for dashboards.
 
 ### Parameters
 
@@ -288,15 +286,15 @@ ______________________________________________________________________
 
 ### Response
 
-- `rows`: list of `{task_id, status, execution_mode, agent_backend, session_id, session_backend}`
+- `rows`: list of `{task_id, status, agent_backend, session_id, session_backend}`
 
 ______________________________________________________________________
 
 ## Scope and isolation
 
 - Task mutations are enforced against task-scoped sessions (`task:<task_id>`).
-- PAIR workers use task-scoped MCP sessions.
-- AUTO workers use task-scoped MCP sessions resolved from runtime permission policy.
+- Interactive workers use task-scoped MCP sessions.
+- Managed workers use task-scoped MCP sessions resolved from runtime permission policy.
 - Scoped task sessions cannot mutate other task IDs.
 - Global MCP access does not override task-scoped worker isolation.
 
@@ -326,10 +324,9 @@ ______________________________________________________________________
 ## Task field semantics
 
 - `status` is Kanban state: `BACKLOG`, `IN_PROGRESS`, `REVIEW`, `DONE`.
-- `status=AUTO` and `status=PAIR` are rejected with `TASK_TYPE_VALUE_IN_STATUS`.
+- `status` only accepts Kanban states such as `BACKLOG`, `IN_PROGRESS`, `REVIEW`, and `DONE`.
 - Do not set `status=DONE` via generic task patch/move workflows.
   Use review completion flows to reach `DONE`.
-- `task_type` is execution mode: `AUTO`, `PAIR`.
 - `acceptance_criteria` accepts either a single string or a list of strings.
 
 ______________________________________________________________________

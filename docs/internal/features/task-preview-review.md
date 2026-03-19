@@ -40,14 +40,14 @@ After every `task_batch_create` call, the orchestrator MUST:
 1. **Present a structured overview** of all created tasks as a markdown table:
 
    ```text
-   | # | Title | Mode | Priority | AC | Status |
-   |---|-------|------|----------|----|--------|
-   | 1 | Fix login bug | AUTO | HIGH | 3 | BACKLOG |
-   | 2 | Add dark mode | PAIR | MEDIUM | 4 | BACKLOG |
+   | # | Title | Launcher | Priority | AC | Status |
+   |---|-------|----------|----------|----|--------|
+   | 1 | Fix login bug | Default | HIGH | 3 | BACKLOG |
+   | 2 | Add dark mode | tmux | MEDIUM | 4 | BACKLOG |
    ```
 1. **Explicitly invite edits** with a prompt like:
    > "Here are the tasks I created. Would you like to edit any titles,
-   > priorities, acceptance criteria, or execution modes before I start
+   > priorities, acceptance criteria, or launcher preferences before I start
    > execution? You can also delete tasks that don't belong."
 1. **Wait for user response** before calling `run_start` on any task.
 1. **Apply edits** via `task_update` or `task_delete` based on user feedback.
@@ -134,7 +134,7 @@ To:
 ```text
 4. On approval: call task_batch_create with all tasks.
 5. IMMEDIATELY after creation: present a review table showing every created task
-   with its id, title, execution_mode, priority, and acceptance_criteria count.
+   with its id, title, launcher, priority, and acceptance_criteria count.
    Ask: "Review the tasks above. Want to edit anything before I start execution?"
 6. Wait for user response. Apply any requested edits via task_update/task_delete.
 7. Only after user confirms (or says "looks good" / "go" / "start"): proceed to

@@ -61,7 +61,7 @@ kagan/
 - **Type annotations**: All public functions typed; pyrefly for typechecking (not mypy)
 - **MCP annotations**: TC001/TC002/TC003 suppressed in `src/kagan/mcp/` — MCP evaluates annotations at runtime
 - **Prompt resolution**: Three-layer pipeline in `core/_prompts.py` — dotfile override → code defaults + behavioral settings → additional instructions
-- **Settings keys**: Behavioral controls (`default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
+- **Settings keys**: Behavioral controls (`review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
 
 ## ANTI-PATTERNS (THIS PROJECT)
 

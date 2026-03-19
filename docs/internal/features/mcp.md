@@ -19,18 +19,18 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 2. AUTO Session Tools
+## 2. Managed Run Tools
 
-- Start AUTO execution → provisions worktree, spawns agent, returns run
+- Start managed execution → provisions worktree, spawns agent, returns run
 - Wait for task lifecycle transitions with `tasks_wait` (event-driven, timeout-bounded)
 - Cancel a running run → kills agent, moves task to BACKLOG
 - `run_summary` returns token usage metrics per task: context_window_used, context_window_size, cost_amount, cost_currency
 
 ______________________________________________________________________
 
-## 3. PAIR Session Tools
+## 3. Interactive Session Tools
 
-- Open a PAIR run → provisions worktree, launches environment, returns run
+- Open an interactive run → provisions worktree, launches environment, returns run
 - Read current run status
 - Close a run and clean up
 

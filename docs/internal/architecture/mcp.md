@@ -19,11 +19,11 @@ ______________________________________________________________________
 
 1. **IDE hosts** (Cursor, VS Code, Windsurf, Kiro, Claude Code) — connect to kagan's MCP server
    to manage tasks, review diffs, and read project state.
-1. **PAIR-mode agents** — running inside an IDE, tmux, or neovim, agents discover kagan via
+1. **Interactive-run agents** — running inside an IDE, tmux, or neovim, agents discover kagan via
    `.mcp.json` in the worktree and call MCP tools to report progress back to the board.
 
-AUTO executions use ACP (direct STDIO JSON-RPC), not MCP — see `docs/internal/architecture/core.md`
-§ Event Streaming. MCP is for PAIR mode and external tool integrations.
+Managed executions use ACP (direct STDIO JSON-RPC), not MCP — see `docs/internal/architecture/core.md`
+§ Event Streaming. MCP is for interactive launches and external tool integrations.
 
 Both consumers use the same server code. The `--session-id` flag scopes which tools are
 visible and which task context is active.
@@ -237,7 +237,7 @@ Three roles, cumulative — higher roles include all tools from lower roles.
 
 | Consumer                | CLI Flags                           | Effective Role         |
 | ----------------------- | ----------------------------------- | ---------------------- |
-| Task agent (AUTO/PAIR)  | `--role WORKER --session-id {id}`   | WORKER                 |
+| Task agent (managed / interactive) | `--role WORKER --session-id {id}` | WORKER |
 | Reviewer agent          | `--role REVIEWER --session-id {id}` | REVIEWER               |
 | Orchestrator (IDE host) | `--role ORCHESTRATOR`               | ORCHESTRATOR           |
 | External / manual       | *(none)*                            | ORCHESTRATOR (default) |
@@ -282,12 +282,12 @@ ______________________________________________________________________
 
 ## When MCP Is Used
 
-**ACP is the primary streaming channel for AUTO executions** — kagan spawns the agent
+**ACP is the primary streaming channel for managed executions** — kagan spawns the agent
 and speaks ACP over STDIO (see `docs/internal/architecture/core.md` § Event Streaming).
 
 MCP is used in two cases:
 
-1. **PAIR mode** — the agent runs inside an IDE, tmux, or neovim. It discovers
+1. **Interactive launch** — the agent runs inside an IDE, tmux, or neovim. It discovers
    `.mcp.json` in the worktree and calls MCP tools to report progress back to the board.
 1. **External tools** — IDE hosts browse tasks, orchestrators manage projects, or users
    connect custom tools to kagan via `kagan mcp [flags]`.

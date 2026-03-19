@@ -60,8 +60,8 @@ ______________________________________________________________________
 - `kanban-column.tsx` -- single lane with task card list
 - `task-card.tsx` -- card with telemetry, review state, and session indicators
 - `board-task-inspector.tsx` -- right-rail inspector panel
-- `board-filter-bar.tsx` -- search and status/mode filters
-- `agent-control.tsx` -- run/stop/interrupt controls; shows pair instruction dialog before launching PAIR sessions
+- `board-filter-bar.tsx` -- search and status filters
+- `agent-control.tsx` -- start/stop/attach controls; shows guidance before launching interactive sessions
 - `create-task-dialog.tsx`, `edit-task-dialog.tsx`, `task-delete-dialog.tsx` -- task CRUD dialogs
 - `diff-viewer.tsx` -- workspace diff renderer
 - `review-panel.tsx` -- review approval surface

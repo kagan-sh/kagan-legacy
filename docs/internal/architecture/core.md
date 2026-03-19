@@ -7,8 +7,8 @@ board and run AI coding agents. `KaganCore` owns the DB, enforces the task lifec
 provisions git worktrees, spawns agents, and streams progress back to callers.
 
 **The fundamental abstraction is a Task.** A Task is a kanban ticket. When started, it gets an
-isolated worktree and an agent session. AUTO sessions run autonomously as detached processes that
-survive client exit. PAIR sessions open an editor/terminal for collaborative work. Kagan is
+isolated worktree and an agent session. Managed runs execute autonomously as detached processes that
+survive client exit. Interactive launches open an editor/terminal for collaborative work. Kagan is
 **agent-agnostic** — it supports any CLI-based coding agent (Claude Code, Codex, Gemini CLI,
 Goose, etc.) through a backend registry. Agents report progress back via kagan's MCP server.
 The core client is the bridge between frontends and this machinery.
@@ -27,12 +27,12 @@ If the implementation is hard to explain, it's a bad idea.
 1. **One class, one import** — `from kagan.core import KaganCore`
 1. **Fluent API by domain** — `client.tasks.create()`, `client.projects.list()`, `client.reviews.merge()`
 1. **SQLModel for models + DB** — one class is both validation model and table definition
-1. **Unified Session** — no separate AUTO/PAIR models; one `Session` model with a `mode` field
+1. **Unified Session** — one `Session` model; interactive launches are identified by launcher metadata when present
 1. **Core owns execution** — backend launch, agent spawning, worktree provisioning all live in core;
    frontends are thin display layers
 1. **Agent-agnostic** — any CLI coding agent works. A registry maps names to launch configs.
    Backends with `supports_acp: True` get piped stdio + ACP event streaming; others run
-   detached and report via MCP. MCP also serves PAIR mode and external tools.
+   detached and report via MCP. MCP also serves interactive launches and external tools.
 1. **DB is the durable buffer** — both ACP and MCP paths write to the same table;
    any client reconnects and picks up where it left off
 1. **Async public API** — Textual is async, MCP is async, agent spawning is async
@@ -61,7 +61,7 @@ kagan/core/
 ├── __init__.py            # re-exports KaganCore, models, enums, errors, PreflightCheckResult, CheckStatus
 ├── client.py              # KaganCore + domain namespace classes
 ├── models.py              # SQLModel table classes (uses # type: ignore[assignment] for __tablename__)
-├── enums.py               # TaskStatus, WorkMode, SessionStatus, Priority, SessionEventType
+├── enums.py               # TaskStatus, SessionStatus, Priority, SessionEventType
 ├── errors.py              # KaganError hierarchy
 ├── git.py                 # git operations wrapper
 │
@@ -72,9 +72,9 @@ kagan/core/
 ├── _db.py                 # engine factory and session management
 ├── _db_helpers.py         # sqlite-specific pragmas and helpers
 ├── _events.py             # session event repository
-├── _launchers.py          # PAIR environment launchers (tmux, IDE, neovim)
+├── _launchers.py          # interactive environment launchers (tmux, IDE, neovim)
 ├── _logging.py            # loguru configure_logging() — single sink setup
-├── _pair_backends.py      # PAIR-specific agent backend logic
+├── _attached_backends.py  # interactive backend availability helpers
 ├── _persona.py            # persona pipeline definitions
 ├── _preflight.py          # system health checks
 ├── _projects.py           # project repository
@@ -118,9 +118,9 @@ ______________________________________________________________________
 | -------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | **Project**    | id, name, created_at                                                                               | Top-level grouping                       |
 | **Repository** | id, project_id, path, default_branch                                                               | Git repo linked to project               |
-| **Task**       | id, project_id, title, description, status, execution_mode, priority, base_branch, review_approved, acceptance_criteria, agent_backend | The core abstraction — a kanban ticket   |
+| **Task**       | id, project_id, title, description, status, priority, base_branch, review_approved, acceptance_criteria, agent_backend, launcher | The core abstraction — a kanban ticket   |
 | **Worktree**   | id, task_id, repo_id, worktree_path, branch_name | Git worktree for a task. Stored at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (override: `KAGAN_WORKTREE_BASE` env). Removed on merge, task delete, or orphan scan. |
-| **Session**    | id, task_id, mode (AUTO\|PAIR), agent_backend, status, launcher, pid, input_tokens, output_tokens, context_window_used, context_window_size, cost_amount, cost_currency | Agent execution — unified for both modes. Token/usage fields populated from ACP `UsageUpdate` on session completion; nullable until available. Cost fields track cumulative session cost and ISO 4217 currency code. |
+| **Session**    | id, task_id, agent_backend, status, launcher, pid, input_tokens, output_tokens, context_window_used, context_window_size, cost_amount, cost_currency | Agent execution record. `launcher` is null for managed runs and set for interactive launches. Token/usage fields populate from ACP `UsageUpdate` on session completion; nullable until available. |
 | **SessionEvent**   | id, task_id, run_id, event_type, payload (JSON), created_at                                    | Agent progress stream                    |
 | **TaskNote**   | id, task_id, content, created_at                                                                   | Timestamped notes on a task              |
 | **Setting**    | key (PK), value                                                                                    | Key-value settings                       |
@@ -128,13 +128,13 @@ ______________________________________________________________________
 
 ### Why Unified Session
 
-A "Session" in AUTO mode and a "Session" in PAIR mode are the same thing: an agent working on a task. The difference is just the `mode` field. One model, one table, one concept.
+A session is always the same core concept: an agent working on a task. Managed runs and interactive launches share one table, one lifecycle, and one event stream.
 
 ### Done Tasks
 
 When a task reaches DONE (via `review.merge()`), the worktree is merged into the base branch
 and the Worktree row is removed. Task, Session, and SessionEvent rows remain for history.
-Reopening (DONE → BACKLOG) leaves the task without a worktree until the next `run()` or `pair()`.
+Reopening (DONE → BACKLOG) leaves the task without a worktree until the next `run()`.
 
 ______________________________________________________________________
 
@@ -143,7 +143,6 @@ ______________________________________________________________________
 | Enum              | Values                                                                                                                                                        |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **TaskStatus**    | BACKLOG, IN_PROGRESS, REVIEW, DONE                                                                                                                            |
-| **WorkMode**      | AUTO, PAIR                                                                                                                                              |
 | **SessionStatus**     | PENDING, RUNNING, COMPLETED, FAILED, CANCELLED                                                                                                                |
 | **Priority**      | LOW, MEDIUM, HIGH, CRITICAL                                                                                                                                   |
 | **SessionEventType**  | OUTPUT_CHUNK, AGENT_STATUS, TOOL_CALL_START, TOOL_CALL_UPDATE, AGENT_COMPLETED, AGENT_FAILED, PLAN_UPDATE, TASK_STATUS_CHANGED, MERGE_COMPLETED, MERGE_FAILED, CRITERION_VERDICT |
@@ -200,11 +199,11 @@ Supports async context manager (`async with KaganCore() as client`).
 
 | Method                                                                                                   | Description                                                                                                                 |
 | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `create(title, *, description=None, priority=None, execution_mode=None, base_branch=None, acceptance_criteria=None, agent_backend=None)` | Create task                                                                                                                 |
+| `create(title, *, description=None, priority=None, base_branch=None, acceptance_criteria=None, agent_backend=None, launcher=None)` | Create task |
 | `get(task_id)`                                                                                           | Get task by ID                                                                                                              |
-| `list(*, status=None, execution_mode=None)`                                                              | List tasks with optional filters                                                                                            |
-| `update(task_id, *, title=None, description=None, priority=None, execution_mode=None, base_branch=None, acceptance_criteria=None, agent_backend=None)` | Update task fields (explicit params)                                                                                        |
-`set_status(task_id, status)`                                                                          | Transition task status (validated by state machine). Use for DONE→BACKLOG too; fresh worktree provisioned on next run/pair. |
+| `list(*, status=None)`                                                                                   | List tasks with optional filters                                                                                            |
+| `update(task_id, *, title=None, description=None, priority=None, base_branch=None, acceptance_criteria=None, agent_backend=None, launcher=None)` | Update task fields (explicit params) |
+`set_status(task_id, status)`                                                                          | Transition task status (validated by state machine). Use for DONE→BACKLOG too; fresh worktree provisioned on next run. |
 
 | `delete(task_id)`                                                                                        | Delete task and associated data                                                                                             |
 | `search(query)`                                                                                          | Full-text search                                                                                                            |
@@ -216,10 +215,9 @@ Supports async context manager (`async with KaganCore() as client`).
 `add_note(task_id, content)`                                                                             | Add note to task                                                                                                            |
 | `list_notes(task_id)`                                                                                         | List notes                                                                                                                  |
 | `list_notes(task_id)`                                                                                         | List notes                                                                                                                  |
-| `run(task_id, *, agent_backend)`                                                                         | Start AUTO: provision worktree, spawn detached agent, return Session                                                      |
-| `pair(task_id, *, agent_backend, launcher)`                                                              | Start PAIR: provision worktree, launch environment, return Session                                                               |
+| `run(task_id, *, agent_backend, launcher=None)`                                                          | Start a run: omit `launcher` for managed execution, provide `launcher` for interactive launch |
 | `cancel(task_id)`                                                                                        | Cancel active run, kill process, move to BACKLOG                                                        |
-| `end_pairing(task_id)`                                                                                   | End an active PAIR session                                                                              |
+| `detach(task_id)`                                                                                        | Finalize an active interactive session                                                                              |
 | `runtime_summary(task_id)`                                                                               | Execution time summary for a single task                                                                |
 | `runtime_summaries(task_ids)`                                                                            | Execution time summaries for multiple tasks                                                             |
 
@@ -257,7 +255,7 @@ Supports async context manager (`async with KaganCore() as client`).
 ### Worktrees — `client.worktrees`
 
 Done tasks have no worktree (worktree removed on merge). After reopen (DONE → BACKLOG),
-a fresh worktree is provisioned when the user next calls `tasks.run()` or `tasks.pair()`.
+a fresh worktree is provisioned when the user next calls `tasks.run()`.
 
 | Method                | Description                                          |
 | --------------------- | ---------------------------------------------------- |
@@ -303,7 +301,7 @@ Prompt resolution follows a three-layer hierarchy:
 
 | Layer | Mechanism | Effect |
 |-------|-----------|--------|
-| **Layer 0** | Code defaults + behavioral settings | Invisible; compiles `default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks` into prompt clauses |
+| **Layer 0** | Code defaults + behavioral settings | Invisible; compiles `review_strictness`, `planning_depth`, `auto_confirm_single_tasks` into prompt clauses |
 | **Layer 1** | `additional_instructions` setting | Single text field appended to all prompts; additive, never replaces |
 | **Layer 2** | `.kagan/prompts/*.md` dotfiles | Full replacement; bypasses Layer 0 and Layer 1 |
 
@@ -313,11 +311,11 @@ Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_p
 
 #### Project Learnings Injection
 
-`resolve_task_prompt()` accepts an optional `learnings: list[str] | None` keyword argument. When provided and non-empty, a `PROJECT CONTEXT (from prior tasks):` section is appended to the base prompt (after `_build_auto_run_prompt`, before behavioral settings layers).
+`resolve_task_prompt()` accepts an optional `learnings: list[str] | None` keyword argument. When provided and non-empty, a `PROJECT CONTEXT (from prior tasks):` section is appended to the base prompt (after `_build_managed_run_prompt`, before behavioral settings layers).
 
 Learnings are sourced from `TaskNote` rows whose `content` starts with `[LEARNING]`. The query JOINs `TaskNote` with `Task` on `task_id` and filters by `Task.project_id`, ensuring **strict project isolation** — no learning from a different project is ever injected. Results are ordered newest-first, deduplicated by content (after stripping the `[LEARNING]` prefix), and capped at 20 items.
 
-The call site is `Sessions._fetch_project_learnings()` in `_sessions.py`, invoked just before `resolve_task_prompt()` in the AUTO run path. To save a learning for future tasks, an agent simply calls `task_add_note` with content starting with `[LEARNING] `.
+The call site is `Sessions._fetch_project_learnings()` in `_sessions.py`, invoked just before `resolve_task_prompt()` in the managed run path. To save a learning for future tasks, an agent simply calls `task_add_note` with content starting with `[LEARNING] `.
 ______________________________________________________________________
 
 ## Persona Pipeline
@@ -390,7 +388,7 @@ It uses **`asyncio.Event` signaling**, not polling.
 
 Events reach the DB via two distinct paths:
 
-**Path A — ACP (primary, ACP-capable AUTO agents).** Backends that set `supports_acp: True`
+**Path A — ACP (primary, ACP-capable managed agents).** Backends that set `supports_acp: True`
 in the agent registry (currently only `claude-code`) use the `agent-client-protocol` PyPI
 package. Kagan spawns the agent with piped stdin/stdout and uses `acp.connect_to_agent()`
 to establish a `ClientSideConnection`. The handshake (`initialize` → `new_session` → `prompt`)
@@ -420,9 +418,9 @@ KaganACPClient.session_update() → map_acp_update_to_event() → emit() → sig
 
 ```
 
-**Path B — MCP (PAIR mode and external tools).** Used in two cases:
+**Path B — MCP (interactive launches and external tools).** Used in two cases:
 
-1. **PAIR mode** — the agent runs inside an IDE, tmux, or neovim. It discovers
+1. **Interactive launch** — the agent runs inside an IDE, tmux, or neovim. It discovers
    `.mcp.json` in the worktree, spawns `kagan mcp --session-id {id}`, and calls
    MCP tools to report progress back to the board.
 1. **External/manual use** — a user connects their preferred tool to kagan's MCP
@@ -440,9 +438,9 @@ kagan mcp subprocess → INSERT run_event → signal.set()
 **Both converge here:** `tasks.events.stream()` wakes on the signal, yields the row,
 and the TUI/CLI renders it. The consumer doesn't know which path wrote the event.
 
-|               | ACP (AUTO)                                             | MCP (PAIR / external)                     |
+|               | ACP (managed)                                          | MCP (interactive / external)             |
 | ------------- | ------------------------------------------------------ | ----------------------------------------- |
-| When          | All AUTO executions                                    | PAIR mode, IDE hosts, manual hookup       |
+| When          | All managed executions                                 | Interactive launches, IDE hosts, manual hookup |
 | Transport     | Direct STDIO JSON-RPC, kagan owns subprocess           | Agent/tool spawns kagan MCP as subprocess |
 | Data shape    | Streamed ACP events                                    | Accumulated text via `task_events`        |
 | Bidirectional | Yes — kagan sends prompts, cancel, set_mode            | No — caller invokes tools, kagan reads DB |
@@ -469,11 +467,11 @@ ______________________________________________________________________
 
 ## Agent Persistence
 
-AUTO agents are subprocesses owned by Kagan. PAIR agents are detached.
+Managed agents are subprocesses owned by Kagan. Interactive agents are detached.
 
 ```text
 
-AUTO (ACP):
+Managed (ACP):
 
 kagan (client) Agent subprocess
 │ │
@@ -486,11 +484,11 @@ kagan (client) Agent subprocess
 │ ... │
 ╳ (kagan exits → agent terminates)
 
-PAIR (MCP):
+Interactive (MCP):
 
 kagan (client) Agent in IDE/tmux kagan reconnects
 │ │ │
-├── task.pair(id) │ │
+├── task.run(id, launcher="tmux") │ │
 │ └─ launch env ──────────────►│ │
 │ │── discovers .mcp.json │
 ├── task.events.stream(id) │ │
@@ -507,9 +505,9 @@ kagan (client) Agent in IDE/tmux kagan reconnects
 
 ```text
 
-1. **ACP subprocess** — in AUTO mode, kagan owns the agent process (piped stdin/stdout).
+1. **ACP subprocess** — in managed mode, kagan owns the agent process (piped stdin/stdout).
    If kagan exits, it can terminate the agent. Reconnection resumes from DB offset.
-1. **PAIR is detached** — agent runs inside an external environment (IDE, tmux, neovim).
+1. **Interactive launch is detached** — agent runs inside an external environment (IDE, tmux, neovim).
    It survives client exit and reports via MCP.
 1. **DB is the durable buffer** — both ACP and MCP paths write to the same `run_events` table.
    `tasks.events.stream()` reads with offset. Any client, any time, gets the full history.
@@ -549,7 +547,7 @@ IN_PROGRESS ─► BACKLOG
 REVIEW ──────► DONE (only via review.merge)
 REVIEW ──────► IN_PROGRESS
 REVIEW ──────► BACKLOG
-DONE ───────► BACKLOG (via task.set_status; fresh worktree on next run/pair)
+DONE ───────► BACKLOG (via task.set_status; fresh worktree on next run)
 
 ```text
 
@@ -605,7 +603,7 @@ to the launcher.
 
 | Consumer               | `.mcp.json` args                   | Access tier            |
 | ---------------------- | ---------------------------------- | ---------------------- |
-| Task agent (AUTO/PAIR) | `mcp --session-id {id}`            | Standard (read + write) |
+| Task agent (managed / interactive) | `mcp --session-id {id}` | Standard (read + write) |
 | Orchestrator           | `mcp --admin`                      | Admin (+ destructive)  |
 | Reviewer agent         | `mcp --readonly --session-id {id}` | Readonly               |
 
@@ -613,17 +611,17 @@ Core wires these flags automatically — frontends never construct MCP args.
 
 ### Communication
 
-All backends speak ACP. In AUTO mode, step 4 spawns with piped stdin/stdout. Kagan
+All backends speak ACP. In managed mode, step 4 spawns with piped stdin/stdout. Kagan
 performs the ACP handshake (`initialize` → `session/new`) and starts a reader loop
 that receives `session/update` notifications and writes them to DB. Kagan can send
 prompts, cancel, and set_mode back to the agent.
 
 `.mcp.json` is always written to the worktree — it's the communication channel for
-PAIR mode (agent in IDE/tmux/neovim reports back via MCP) and for external tools.
+interactive launches (agent in IDE/tmux/neovim reports back via MCP) and for external tools.
 
-### `_launchers.py` — PAIR Environment Launchers
+### `_launchers.py` — Interactive Environment Launchers
 
-PAIR mode has two orthogonal choices: **agent backend** (which AI agent) and **launcher**
+Interactive launches have two orthogonal choices: **agent backend** (which AI agent) and **launcher**
 (which interactive environment). The agent backend comes from `_agent.py`'s registry.
 The launcher sets up the environment where the user and agent collaborate.
 
@@ -638,15 +636,15 @@ Three launch strategies, one dict:
 The `.mcp.json` file written into the worktree tells the environment to discover kagan's
 MCP server scoped to this session (`kagan mcp --session-id {id}`).
 
-The `LAUNCHERS` dict maps launcher name → launch function. `task.pair()` does a dict lookup.
-Default launcher comes from settings (`pair_launcher` key). Default agent backend comes from
+The `LAUNCHERS` dict maps launcher name → launch function. `task.run(..., launcher=...)` does a dict lookup.
+Default launcher comes from settings (`attached_launcher` key). Default agent backend comes from
 settings (`default_agent_backend` key).
 
 ### `_config.py` — Bootstrap Config
 
 - Reads/writes TOML config from `~/.config/kagan/config.toml`.
 - **Bootstrap-only** — settings needed before the DB exists: `db_path` override, `log_level`.
-- Runtime preferences (`default_agent_backend`, `pair_launcher`) live in the DB `Setting` table
+- Runtime preferences (`default_agent_backend`, `attached_launcher`) live in the DB `Setting` table
   and are managed via `client.settings`. One obvious place for each kind of setting.
 
 ### `_preflight.py` — System Health Checks
@@ -661,7 +659,7 @@ ______________________________________________________________________
 
 ## Agent Integration Flow
 
-### AUTO: `client.task.run(task_id)`
+### Managed run: `client.task.run(task_id)`
 
 ```text
 
@@ -691,13 +689,13 @@ Frontend KaganCore Agent CLI (detached)
 All agents use the same flow. The only variable is the executable and args template
 from the backend registry.
 
-### PAIR: `client.task.pair(task_id)`
+### Interactive launch: `client.task.run(task_id, launcher="tmux")`
 
 ```text
 
 Frontend KaganCore Launcher (tmux/IDE/nvim)
 | | |
-|-- task.pair(id) ----------->| |
+|-- task.run(id, launcher="tmux") --->| |
 | |-- worktrees.create() --->|
 | |-- write .mcp.json ------->|
 | |-- LAUNCHERS[launcher] ------>|
@@ -754,7 +752,7 @@ ______________________________________________________________________
 
 ## Ownership Boundaries
 
-**Core owns execution** — frontends call `tasks.run()` or `tasks.pair()` and get back a Session.
+**Core owns execution** — frontends call `tasks.run()` and optionally supply a launcher for interactive launches.
 They never launch agents, provision worktrees, or write `.mcp.json` directly.
 
 **Core does not own chat** — conversational abstractions (slash commands, message

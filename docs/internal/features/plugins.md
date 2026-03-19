@@ -46,7 +46,7 @@ ______________________________________________________________________
 - Create kagan tasks from issues: title, description (body + URL + unmapped labels)
 - Map GitHub labels to task properties:
   - `priority:critical` / `priority:high` / `priority:medium` / `priority:low` → Priority
-  - `kagan:auto` / `kagan:pair` → WorkMode
+- `kagan:auto` / `kagan:pair` are ignored as legacy labels
 - Unmapped labels appear as `[label]` tags in description
 - Sync is idempotent: issue→task mapping persisted in settings table
 - Previously-synced issues are skipped

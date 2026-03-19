@@ -134,7 +134,8 @@ plugins:
               # Old URL structure fixes
               reference/architecture.md: concepts/architecture-overview.md
               keybindings.md: reference/keybindings.md
-              task-modes.md: guides/modes-auto-vs-pair.md
+              task-modes.md: guides/managed-vs-interactive.md
+              guides/modes-auto-vs-pair.md: guides/managed-vs-interactive.md
               multi-repo-guide.md: guides/github.md
               # Root redirects for old section index pages
               how-to.md: guides/mcp-setup.md
@@ -162,7 +163,7 @@ nav:
           - Architecture: concepts/architecture-overview.md
           - Task lifecycle: concepts/task-lifecycle.md
     - Guides:
-          - AUTO vs PAIR: guides/modes-auto-vs-pair.md
+          - Managed runs & interactive attach: guides/managed-vs-interactive.md
           - Chat & REPL: guides/chat.md
           - ACP session lifecycle: guides/acp-session-lifecycle.md
           - MCP setup: guides/mcp-setup.md

@@ -31,14 +31,14 @@ Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -
 
 ## 3. Create a task
 
-`n` -> title + description -> AUTO or PAIR -> `Ctrl+S` save. Task appears in BACKLOG.
+`n` -> title + description -> `Ctrl+S` save. Task appears in BACKLOG.
 
 ## 4. Run it
 
-- **AUTO:** Select task -> `s` (or `Enter` when focused) to start. Use `Shift+S` to stop.
-- **PAIR:** Select task -> `Enter` -> continue in your configured PAIR backend.
+- **Managed run:** Select task -> `s` to start. Use `Shift+S` to stop.
+- **Interactive launch:** Select task -> `a` to launch in your configured backend.
 
-[AUTO vs PAIR](guides/modes-auto-vs-pair.md)
+[Managed runs and interactive attach](guides/managed-vs-interactive.md)
 
 ## 5. Review and merge
 

@@ -49,7 +49,7 @@ ______________________________________________________________________
 
 ## 5. Worktrees
 
-- Starting a task (AUTO or PAIR) provisions an isolated git worktree at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (outside the repo, preventing untracked-file collisions)
+- Starting a task provisions an isolated git worktree at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (outside the repo, preventing untracked-file collisions)
 - Worktree branches from the repo's default branch (or task's base branch) under `kagan/{task_id}`
 - Diff shows all changes in the worktree as unified diff
 - Diff stats show files changed, insertions, deletions
@@ -59,7 +59,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 6. AUTO Execution
+## 6. Managed Runs
 
 - Run a task → provisions worktree, spawns agent subprocess (ACP over STDIO), returns run
 - Agent streams progress via ACP session updates (text chunks, tool calls, plans, permissions)
@@ -76,9 +76,9 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 7. PAIR Sessions
+## 7. Interactive Launches
 
-- Pair on a task → provisions worktree, launches interactive environment
+- Launch interactive run on a task → provisions worktree, launches interactive environment
 - Environment options: tmux session, IDE (vscode/cursor/windsurf/kiro), neovim
 - Agent backend and launcher are orthogonal choices
 - `.mcp.json` in worktree lets agent and IDE discover kagan's MCP server
@@ -104,10 +104,10 @@ ______________________________________________________________________
 ## 9. Settings & Audit
 
 - Read and update key-value settings persisted in DB
-- Behavioral settings: execution mode, review strictness, planning depth, auto-confirm
+- Behavioral settings: review strictness, planning depth, auto-confirm
 - Additional instructions: single free-text field appended to all agent prompts
 - Dotfile overrides: `.kagan/prompts/` files fully replace built-in prompts when present
-- Known keys: default agent backend, default launcher, auto-review, require approval, additional instructions, execution mode, review strictness, planning depth
+- Known keys: default agent backend, attached launcher, auto-review, require approval, additional instructions, review strictness, planning depth
 - Task mutations are audit-logged automatically (`task.create`, `task.update`, `task.status_change`, `task.delete`).
 - Audit trail is queryable with limit
 
@@ -136,7 +136,7 @@ ______________________________________________________________________
 ## 12. Project Learnings
 
 - Agents save project-wide learnings by calling `task_add_note` with content starting with `[LEARNING] `
-- Before each AUTO task run, kagan queries all `[LEARNING]`-prefixed notes across every task in the current project
+- Before each managed task run, kagan queries all `[LEARNING]`-prefixed notes across every task in the current project
 - Up to 20 unique learnings (newest-first, deduplicated) are injected into the task prompt as a `PROJECT CONTEXT (from prior tasks):` section
 - Learnings are strictly scoped to the project — notes from other projects are never included
 - No new data model required: `TaskNote` with the `[LEARNING]` prefix convention is the storage mechanism

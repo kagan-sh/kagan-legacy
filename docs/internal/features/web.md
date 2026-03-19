@@ -88,10 +88,10 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 9. PAIR Session Launch
+## 9. Interactive Session Launch
 
-- when starting a PAIR task, a guidance dialog appears before the session launches
+- when launching an interactive session, a guidance dialog appears before the session launches
 - dialog content adapts by launcher backend: tmux (attach command), nvim (nvim launch command), IDE (editor deep link)
 - terminal backends (tmux, nvim) copy a runnable command to clipboard
-- "Do not show this guidance again" toggle persists the `skip_pair_instructions_popup` setting
-- task-level launcher override (`task.launcher`) takes priority over global `settings.pair_launcher`
+- "Do not show this guidance again" toggle persists the `skip_attached_instructions_popup` setting
+- task-level launcher override (`task.launcher`) takes priority over global `settings.attached_launcher`

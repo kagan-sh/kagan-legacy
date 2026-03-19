@@ -108,9 +108,7 @@ async def _bridge_acp_update(
         if content and getattr(content, "type", None) == "text":
             chunk_text = getattr(content, "text", "") or ""
             if chunk_text:
-                await chunk_queue.put(
-                    {"t": "CHAT_CHUNK", "content": chunk_text, "thought": True}
-                )
+                await chunk_queue.put({"t": "CHAT_CHUNK", "content": chunk_text, "thought": True})
     elif isinstance(update, ToolCallStart):
         title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
         await chunk_queue.put({"t": "CHAT_TOOL_START", "tool": title})

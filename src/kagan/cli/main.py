@@ -100,14 +100,14 @@ class _CLIGroup(_CLIGroupBase):
 def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
     if not value or ctx.resilient_parsing:
         return
-    click.echo(version("kagan"))
+    click.echo(f"ᘚᘛ kagan {version('kagan')}")
     ctx.exit()
 
 
 @click.group(
     cls=_CLIGroup,
     invoke_without_command=True,
-    help="Kagan, your next CLI agent.",
+    help="ᘚᘛ Kagan — one orchestration layer to rule them all.",
 )
 @click.option(
     "--version",

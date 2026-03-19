@@ -23,10 +23,12 @@ def test_history_cycle_target_from_draft_goes_to_edge_for_direction() -> None:
     assert _history_cycle_target(current_index=3, working_line_count=4, direction="down") == 0
 
 
-def test_bottom_toolbar_mentions_history_and_clear_shortcuts() -> None:
+def test_bottom_toolbar_mentions_clear_and_exit_shortcuts() -> None:
     toolbar = _bottom_toolbar()
-    assert "Up/Down: history" in toolbar
-    assert "Ctrl-C: clear" in toolbar
+    # FormattedText — extract text content
+    text = "".join(fragment[1] for fragment in toolbar)
+    assert "Ctrl-C" in text
+    assert "Ctrl-D" in text
 
 
 def test_prompt_style_rules_truecolor_use_kagan_night_palette(

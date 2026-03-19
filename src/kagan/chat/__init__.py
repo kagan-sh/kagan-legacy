@@ -17,6 +17,7 @@ from kagan.chat.agents import (
 )
 from kagan.chat.commands import (
     SLASH_COMMAND_REGISTRY,
+    SlashAction,
     SlashCommandInvocation,
     SlashCommandOutcome,
     SlashCommandRegistry,
@@ -69,6 +70,7 @@ __all__ = [
     "MAX_STORED_SESSIONS",
     "SLASH_COMMAND_REGISTRY",
     "ChatController",
+    "SlashAction",
     "SlashCommandInvocation",
     "SlashCommandOutcome",
     "SlashCommandRegistry",

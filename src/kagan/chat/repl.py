@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -14,9 +15,7 @@ from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
-from rich.align import Align
-from rich.console import Console, Group
-from rich.panel import Panel
+from rich.console import Console
 from rich.text import Text
 
 from kagan.chat._completion import fuzzy_match
@@ -61,6 +60,7 @@ class ToolbarState:
     project_name: str = ""
     turn_count: int = 0
     session_label: str = "orchestrator"
+    context_pct: float | None = None
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -151,20 +151,20 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
     buffer.go_to_history(target)
 
 
-def _bottom_toolbar() -> str:
-    parts: list[str] = []
+def _bottom_toolbar() -> FormattedText:
+    left_parts: list[str] = []
     if _TOOLBAR_STATE.session_label:
-        parts.append(f"session: {_TOOLBAR_STATE.session_label}")
+        left_parts.append(f"session: {_TOOLBAR_STATE.session_label}")
     if _TOOLBAR_STATE.agent_backend:
-        parts.append(f"agent: {_TOOLBAR_STATE.agent_backend}")
-    if _TOOLBAR_STATE.project_name:
-        parts.append(f"project: {_TOOLBAR_STATE.project_name}")
-    parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
-    parts.append("Up/Down: history")
-    parts.append("Ctrl-C: clear")
-    parts.append("Esc: interrupt")
-    parts.append("Alt-Enter: newline")
-    return " · ".join(parts)
+        left_parts.append(f"agent: {_TOOLBAR_STATE.agent_backend}")
+    left_parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
+    if _TOOLBAR_STATE.context_pct is not None:
+        left_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
+    left = " · ".join(left_parts)
+    right = "Ctrl-C clear · Ctrl-D exit"
+    cols = shutil.get_terminal_size().columns
+    padding = max(cols - len(left) - len(right), 2)
+    return FormattedText([("", left + " " * padding + right)])
 
 
 def _build_prompt_message() -> FormattedText:
@@ -253,9 +253,6 @@ def _get_prompt_session() -> PromptSession[str]:
     return _prompt_session
 
 
-LOGO = r"""█▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
-█▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
-
 WAVE_FRAMES = (
     "ᘚᘚᘚᘚ",
     "ᘛᘚᘚᘚ",
@@ -268,48 +265,31 @@ WAVE_FRAMES = (
 )
 
 
+_BRAND_SIGIL: Final[str] = "ᘚᘛ"  # mirrored wave pair — matches docs/TUI logo
+
+
 def _write_boot_banner(
     project_root: Path | None = None, *, agent_backend: str | None = None
 ) -> None:
     ver = version("kagan")
-    banner_lines = Text.assemble(
-        (LOGO, "bold green"),
+    line1 = Text.assemble(
+        (_BRAND_SIGIL, "bold green"),
+        (" kagan", "bold green"),
+        (f" v{ver}", "dim"),
+        (" · ", "dim"),
+        (agent_backend or "chat", "dim"),
     )
-    details = Text.assemble(
-        ("chat", "bold white"),
-        ("  ·  ", "dim"),
-        ("orchestrator", "dim cyan"),
-        ("  ·  ", "dim"),
-        ("admin mode", "dim cyan"),
-        ("  ·  ", "dim"),
-        (f"v{ver}", "dim"),
+    project = project_root.name if project_root else None
+    pad = " " * (len(_BRAND_SIGIL) + 1)
+    line2 = Text.assemble(
+        (pad, ""),
+        (f"project: {project}", "dim") if project else ("", ""),
+        (" · ", "dim") if project else ("", ""),
+        ("/help for commands", "dim"),
     )
-    extra: list[str] = []
-    if project_root is not None:
-        extra.append(f"[dim]Project: {project_root}[/dim]")
-    if agent_backend is not None:
-        extra.append(f"[dim]Agent: {agent_backend}[/dim]")
-    extra.append(
-        "[dim]Type naturally; /flow for guided Plan -> Execute -> Orchestrate; "
-        "Ctrl-D exit; Alt-Enter newline.[/dim]"
-    )
-    inner = Group(
-        Align.center(banner_lines),
-        details,
-    )
-
     _console.print()
-    banner_panel = Panel(
-        inner,
-        border_style="dim green",
-        title="kagan chat",
-        subtitle=f"v{ver}",
-        padding=(0, 2),
-        expand=False,
-    )
-    _console.print(Align.left(banner_panel))
-    for line in extra:
-        _console.print(Text.from_markup(line))
+    _console.print(line1)
+    _console.print(line2)
     _console.print()
 
 

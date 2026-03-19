@@ -82,7 +82,7 @@ async def test_orchestrator_client_flushes_buffer_before_tool_lines(
     printed = [str(args[0]) for args, _kwargs in fake_console.calls]
     assert printed[0] == "a"
     assert printed[1] == "b"
-    assert "dim cyan" in printed[2]
+    assert "● Read file" in printed[2]
 
 
 async def test_deferred_flush_fires_after_cadence_interval(

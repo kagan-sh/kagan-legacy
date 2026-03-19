@@ -29,7 +29,6 @@ from loguru import logger
 from rich.live import Live
 from rich.markup import escape as _rich_escape
 from rich.measure import Measurement
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -44,6 +43,7 @@ from kagan.chat.acp import (
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.chat.commands import (
     SLASH_COMMAND_REGISTRY,
+    SlashAction,
     build_slash_presentation_lines,
     resolve_slash_input,
 )
@@ -269,12 +269,8 @@ class _OrchestratorACPClient(ACPClientBase):
                 run.args = self._tool_runs.serialize_payload(
                     self._tool_runs.extract_tool_args(update)
                 )
-                label = (
-                    f"▶ {run.display_id} {title} ({key_arg})"
-                    if key_arg
-                    else f"▶ {run.display_id} {title}"
-                )
-                _console.print(f"\n[dim cyan]{label}[/dim cyan]", highlight=False)
+                arg_suffix = f"({key_arg})" if key_arg else ""
+                _console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
         elif isinstance(update, ToolCallProgress):
             self._notify_first_update()
             self._flush_pending_output(force=True)
@@ -293,19 +289,19 @@ class _OrchestratorACPClient(ACPClientBase):
             result = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_result(update))
             if result:
                 run.result = result
+            arg_suffix = f"({key_arg})" if key_arg else ""
             if status == "completed":
                 self._tool_runs.set_status(tool_key, status)
                 run.ended_at = run.ended_at or time.monotonic()
-                label = (
-                    f"  ✓ {run.display_id} {title} ({key_arg})"
-                    if key_arg
-                    else f"  ✓ {run.display_id} {title}"
-                )
-                _console.print(f"[dim green]{label}[/dim green]", highlight=False)
+                duration = ""
+                if run.started_at and run.ended_at:
+                    elapsed = run.ended_at - run.started_at
+                    duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
+                _console.print(f"  [green]● {title}{arg_suffix}[/green]{duration}", highlight=False)
             elif status == "failed":
                 self._tool_runs.set_status(tool_key, status)
                 run.ended_at = run.ended_at or time.monotonic()
-                _console.print(f"[dim red]  ✗ {run.display_id} {title}[/dim red]", highlight=False)
+                _console.print(f"  [red]● {title}{arg_suffix} failed[/red]", highlight=False)
         elif isinstance(update, UsageUpdate):
             self._notify_first_update()
             self.last_usage = update
@@ -487,18 +483,24 @@ class ChatController:
                 _console.print(f"[red]Unknown session selector: {query}[/red]")
                 return False
         else:
-            _console.print(f"Sessions ({self._project_name or 'all'}):")
+            table = Table(box=None, show_header=False, pad_edge=False)
+            table.add_column(justify="right", style="dim", no_wrap=True)
+            table.add_column(no_wrap=True)
+            table.add_column(style="dim", no_wrap=True)
+            table.add_column(style="dim", no_wrap=True)
+            table.add_column(no_wrap=True)
             for item in items:
-                current = " [bold cyan]● current[/bold cyan]" if item.is_current else ""
-                backend = f" [dim]{item.agent_backend}[/dim]" if item.agent_backend else ""
-                time_str = f"  [dim]{item.updated_relative}[/dim]" if item.updated_relative else ""
-                _console.print(f"  {item.index:>2}  {item.label}{backend}{current}{time_str}")
+                marker = "[bold cyan]● current[/bold cyan]" if item.is_current else ""
+                table.add_row(
+                    str(item.index),
+                    item.label,
+                    item.agent_backend or "",
+                    item.updated_relative or "",
+                    marker,
+                )
+            _console.print(table)
             _console.print()
-            _console.print(
-                "[dim]/sessions <number|id>[/dim] attach  "
-                "[dim]/new[/dim] create  "
-                "[dim]/delete <number|id>[/dim] remove"
-            )
+            _console.print("[dim]/sessions <n> attach · /new create · /delete <n> remove[/dim]")
             return False
 
         should_restart = await self._attach_session(selected, switching=True)
@@ -1124,113 +1126,81 @@ class ChatController:
         if not result.handled:
             return False
 
-        if result.clear_requested:
-            click.clear()
-
-        if result.help_overlay_requested:
-            self._print_help_documentation()
-
-        if result.agent_picker_requested:
-            backends = list_registered_agent_backends()
-            for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
-                _console.print(line)
-
+        # Print any info/error presentation lines
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
                 _console.print(f"[red]{line.text}[/red]")
             else:
                 _console.print(line.text)
-        if result.selected_agent is not None:
-            return await self._switch_agent(result.selected_agent)
 
-        if result.sessions_requested:
-            return await self._open_sessions(result.sessions_query)
+        match result.action:
+            case SlashAction.CLEAR:
+                click.clear()
+            case SlashAction.SHOW_HELP:
+                self._print_help_documentation()
+            case SlashAction.SHOW_AGENTS:
+                backends = list_registered_agent_backends()
+                for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
+                    _console.print(line)
+            case SlashAction.SWITCH_AGENT:
+                return await self._switch_agent(result.data or result.selected_agent or "")
+            case SlashAction.LIST_SESSIONS:
+                return await self._open_sessions(result.data or result.sessions_query)
+            case SlashAction.DELETE_SESSION:
+                await self._delete_session(result.data or result.delete_session_query or "")
+            case SlashAction.NEW_SESSION:
+                return await self._create_new_session()
+            case SlashAction.SHOW_TOOL:
+                self._show_tool_report(result.data or result.tool_query)
+            case SlashAction.SHOW_STATUS:
+                self._print_status_panel()
+            case SlashAction.SHOW_PROJECT:
+                self._print_project_info()
+            case SlashAction.SWITCH_PROJECT:
+                await self._switch_project(result.data or result.project_switch_requested or "")
+            case SlashAction.CLOSE:
+                return True
+            case _:
+                pass
 
-        if result.delete_session_query is not None:
-            await self._delete_session(result.delete_session_query)
-            return False
-
-        if result.new_session_requested:
-            return await self._create_new_session()
-
-        if result.tool_requested:
-            self._show_tool_report(result.tool_query)
-            return False
-
-        if result.status_requested:
-            self._print_status_panel()
-            return False
-
-        if result.project_info_requested:
-            self._print_project_info()
-            return False
-
-        if result.project_switch_requested is not None:
-            await self._switch_project(result.project_switch_requested)
-            return False
-
-        return bool(result.close_requested)
+        return False
 
     def _print_help_documentation(self) -> None:
-        usage_panel = Panel.fit(
-            "[bold]Usage:[/bold] /<command> [args]\n[dim]Kagan chat slash-command reference.[/dim]",
-            title="kagan chat",
-            border_style="cyan",
-            padding=(0, 1),
-        )
-
-        command_table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-        command_table.add_column("Command", style="bold cyan", no_wrap=True)
-        command_table.add_column("Description", style="default")
-        for spec in SLASH_COMMAND_REGISTRY.specs():
-            command_table.add_row(f"/{spec.name}", spec.description)
-
-        commands_panel = Panel(
-            command_table,
-            title="Commands",
-            border_style="green",
-            padding=(0, 1),
-            expand=False,
-        )
-
-        quick_refs = " ".join(f"/{spec.name}" for spec in SLASH_COMMAND_REGISTRY.specs())
-        quick_refs_panel = Panel.fit(
-            f"[dim]{quick_refs}[/dim]",
-            title="Quick refs",
-            border_style="magenta",
-            padding=(0, 1),
-        )
-
-        _console.print(usage_panel)
-        _console.print(commands_panel)
-
+        # Build reverse alias map: {target: [aliases]}
         aliases = SLASH_COMMAND_REGISTRY.aliases
-        if aliases:
-            alias_lines = [f"  /{alias} → /{target}" for alias, target in sorted(aliases.items())]
-            aliases_text = "\n".join(alias_lines)
-            aliases_panel = Panel.fit(
-                aliases_text,
-                title="Aliases",
-                border_style="yellow",
-                padding=(0, 1),
-            )
-            _console.print(aliases_panel)
+        reverse_aliases: dict[str, list[str]] = {}
+        for alias, target in aliases.items():
+            reverse_aliases.setdefault(target, []).append(alias)
 
-        _console.print(quick_refs_panel)
-        _console.print("Documentation: https://docs.kagan.sh/")
-        _console.print("CLI reference: https://docs.kagan.sh/reference/cli/")
+        _console.print("[bold]Commands:[/bold]")
+        table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1, 0, 0))
+        table.add_column(style="bold cyan", no_wrap=True)
+        table.add_column(style="default")
+        for spec in SLASH_COMMAND_REGISTRY.specs():
+            cmd_aliases = reverse_aliases.get(spec.name, [])
+            alias_str = f" ({', '.join(cmd_aliases)})" if cmd_aliases else ""
+            table.add_row(f"  /{spec.name}{alias_str}", spec.description)
+        _console.print(table)
+        _console.print()
+        _console.print("[dim]Keyboard: Alt-Enter newline · Ctrl-C clear · Ctrl-D exit[/dim]")
+        _console.print("[dim]Docs: https://docs.kagan.sh/[/dim]")
 
     def _print_status_panel(self) -> None:
-        lines: list[str] = []
-        lines.append(f"[bold]Project:[/bold]  {self._project_name or 'none'}")
-        session_label = self._session_title or f"Session {self._chat_session_id or 'none'}"
-        lines.append(f"[bold]Session:[/bold]  {session_label} ({self._chat_session_id or '?'})")
-        lines.append(f"[bold]Agent:[/bold]    {self.agent_backend}")
-        lines.append(f"[bold]Turns:[/bold]    {self._turn_count}")
-        if self._acp_session_id:
-            lines.append(f"[bold]Runtime:[/bold]  {self._acp_session_id}")
-        panel = Panel("\n".join(lines), title="Status", border_style="cyan", expand=False)
-        _console.print(panel)
+        session_label = self._session_title or self._chat_session_id or "none"
+        session_id_short = (self._chat_session_id or "?")[:8]
+        parts = [
+            f"project: {self._project_name or 'none'}",
+            f"session: {session_label} ({session_id_short})",
+            f"agent: {self.agent_backend}",
+            f"turns: {self._turn_count}",
+        ]
+        line = " · ".join(parts)
+        cols = shutil.get_terminal_size().columns
+        if len(line) <= cols:
+            _console.print(f"[dim]{line}[/dim]")
+        else:
+            for part in parts:
+                _console.print(f"  [dim]{part}[/dim]")
 
     def _print_project_info(self) -> None:
         if self._project_name:

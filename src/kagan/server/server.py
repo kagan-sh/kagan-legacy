@@ -159,25 +159,20 @@ async def serve_http(
     )
 
     try:
-        if ssl_certfile and ssl_keyfile:
-            # FastMCP.run_streamable_http_async doesn't accept ssl kwargs,
-            # so we replicate its logic with uvicorn.Config + SSL params.
-            import uvicorn
+        import uvicorn
 
-            starlette_app = mcp.streamable_http_app()
-            config = uvicorn.Config(
-                starlette_app,
-                host=mcp.settings.host,
-                port=mcp.settings.port,
-                log_level="error",
-                ssl_certfile=ssl_certfile,
-                ssl_keyfile=ssl_keyfile,
-            )
-            server = uvicorn.Server(config)
-            await server.serve()
-        else:
-            mcp.settings.log_level = "ERROR"
-            await mcp.run_streamable_http_async()
+        starlette_app = mcp.streamable_http_app()
+        config = uvicorn.Config(
+            starlette_app,
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level="error",
+            timeout_graceful_shutdown=5,
+            ssl_certfile=ssl_certfile,
+            ssl_keyfile=ssl_keyfile,
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
     except OSError as exc:
         is_addr_in_use = exc.errno in (48, 98) or "address already in use" in str(exc).lower()
         if is_addr_in_use:

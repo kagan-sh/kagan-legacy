@@ -72,6 +72,27 @@ ______________________________________________________________________
 - Optional `--agent NAME` selects the refinement backend explicitly (chat-style backend naming)
 - Optional `-t, --tool` legacy shorthand for `claude`/`opencode`; cannot be combined with `--agent`
 
+### `kagan import github`
+
+- Interactive GitHub issue import into the active project
+- `--repo owner/repo`: target repository (prompted if omitted)
+- `--state open|closed|all`: filter by issue state (default: open)
+- `--label <label>`: only import issues with this label
+- `--yes`: skip confirmation prompt
+- Reports created/skipped/errors counts
+
+### `kagan serve`
+
+- Starts the HTTP API server (blocks until stopped)
+- `--port PORT`: listen port (default: 8765)
+- `--host HOST`: bind address (default: 127.0.0.1)
+- `--readonly`, `--admin`: mutually exclusive access tiers
+
+### `kagan web`
+
+- Launches the web dashboard (starts server + opens browser)
+- Accepts same `--host` and `--port` flags as `kagan serve`
+
 ### `kagan plugins`
 
 Plugin management subgroup.

@@ -16,7 +16,6 @@ class KanbanCommandSpec:
 
 KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
     KanbanCommandSpec("task.new", "Create a new task", "new_task"),
-    KanbanCommandSpec("task.new-auto", "Create a new AUTO task", "new_auto_task"),
     KanbanCommandSpec(
         "task.open", "Open selected task session", "open_session", requires_task=True
     ),
@@ -30,8 +29,14 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
     KanbanCommandSpec(
         "task.duplicate", "Duplicate selected task", "duplicate_task", requires_task=True
     ),
-    KanbanCommandSpec("agent.start", "Start AUTO agent", "start_agent", requires_task=True),
-    KanbanCommandSpec("agent.stop", "Stop AUTO agent", "stop_agent", requires_task=True),
+    KanbanCommandSpec("agent.start", "Start task run", "start_agent", requires_task=True),
+    KanbanCommandSpec(
+        "agent.attach",
+        "Attach an interactive run for the selected task",
+        "attach_agent",
+        requires_task=True,
+    ),
+    KanbanCommandSpec("agent.stop", "Stop task run", "stop_agent", requires_task=True),
     KanbanCommandSpec("task.import-github", "Import issues from GitHub", "import_github"),
     KanbanCommandSpec("task.move-left", "Move selected task left", "move_left", requires_task=True),
     KanbanCommandSpec(
@@ -41,7 +46,7 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
         "task.set-branch", "Set selected task base branch", "set_branch", requires_task=True
     ),
     KanbanCommandSpec("view.search", "Toggle board search", "search"),
-    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant view", "toggle_chat"),
+    KanbanCommandSpec("view.assistant-cycle", "Cycle assistant split", "toggle_chat"),
     KanbanCommandSpec(
         "view.assistant-fullscreen",
         "Toggle fullscreen AI Assistant",

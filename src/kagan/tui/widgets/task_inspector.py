@@ -6,7 +6,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 
 
 class _TaskData(Protocol):
@@ -15,9 +15,9 @@ class _TaskData(Protocol):
     description: str
     status: TaskStatus
     priority: Priority
-    execution_mode: WorkMode
     agent_backend: str | None
     base_branch: str | None
+    launcher: str | None
     acceptance_criteria: list[str]
     review_approved: bool
 
@@ -120,14 +120,14 @@ class TaskInspector(Widget):
             return
 
         head.update(f"#{task.id[:8]} · {task.title}")
-        mode = "Auto" if task.execution_mode is WorkMode.AUTO else "Pair"
         status = _status_label(task.status)
         priority = _priority_label(task.priority)
         branch = (task.base_branch or "-").strip() or "-"
         backend = (task.agent_backend or "project default").strip() or "project default"
+        launcher = (task.launcher or "project default").strip() or "project default"
         meta.update(
             f"Status: {status}   Priority: {priority}\n"
-            f"Mode: {mode}   Branch: {branch}\n"
+            f"Branch: {branch}   Launcher: {launcher}\n"
             f"Backend: {backend}"
         )
 
@@ -156,7 +156,8 @@ class TaskInspector(Widget):
 
         actions.update(
             "[bold]Enter[/] open  [bold]e[/] edit  [bold]x[/] delete\n"
-            "[bold]s[/] start  [bold]Shift+S[/] stop  [bold]Shift+←/→[/] move  [bold]Esc[/] close"
+            "[bold]s[/] start  [bold]a[/] attach  [bold]Shift+S[/] stop  "
+            "[bold]Shift+←/→[/] move  [bold]Esc[/] close"
         )
         self._render_message()
 

@@ -4,16 +4,16 @@ import asyncio
 import platform
 import shutil
 
-from kagan.core._pair_backends import (
-    pair_terminal_backend_executable,
-    pair_terminal_backend_fallback_order,
+from kagan.core._attached_backends import (
+    attached_terminal_backend_executable,
+    attached_terminal_backend_fallback_order,
 )
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 __all__ = [
     "INSTALL_TIMEOUT_SECONDS",
     "check_terminal_installed",
-    "first_available_pair_backend",
+    "first_available_attached_backend",
     "get_manual_install_fallback",
     "install_terminal",
 ]
@@ -29,9 +29,9 @@ def _which(command: str) -> str | None:
     return shutil.which(command)
 
 
-def first_available_pair_backend(*, windows: bool) -> str | None:
+def first_available_attached_backend(*, windows: bool) -> str | None:
     """Return the first available fallback backend in priority order."""
-    order = pair_terminal_backend_fallback_order(windows=windows)
+    order = attached_terminal_backend_fallback_order(windows=windows)
     for backend in order:
         if check_terminal_installed(backend):
             return backend
@@ -40,7 +40,7 @@ def first_available_pair_backend(*, windows: bool) -> str | None:
 
 def check_terminal_installed(backend: str) -> bool:
     """Return whether the requested terminal backend executable exists in PATH."""
-    executable = pair_terminal_backend_executable(backend)
+    executable = attached_terminal_backend_executable(backend)
     if executable is None:
         return False
     return _which(executable) is not None

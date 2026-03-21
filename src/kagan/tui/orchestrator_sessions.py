@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
+from kagan.chat._title import ensure_session_title, is_default_title
 from kagan.chat.sessions import (
     build_chat_session_list_items,
     create_chat_session,
@@ -11,6 +12,7 @@ from kagan.chat.sessions import (
     save_chat_session,
     set_last_session_id,
 )
+from kagan.core.enums import SessionKind
 
 _TUI_ORCHESTRATOR_SOURCE = "tui-orchestrator"
 _TUI_ORCHESTRATOR_SCOPE = "tui-orchestrator"
@@ -18,7 +20,7 @@ _ORCHESTRATOR_KEY_PREFIX = "orchestrator:"
 
 
 def is_orchestrator_session_key(key: str) -> bool:
-    return key == "orchestrator" or key.startswith(_ORCHESTRATOR_KEY_PREFIX)
+    return key == SessionKind.ORCHESTRATOR or key.startswith(_ORCHESTRATOR_KEY_PREFIX)
 
 
 class TuiOrchestratorSessionStore:
@@ -37,7 +39,7 @@ class TuiOrchestratorSessionStore:
             if self._loaded:
                 return
 
-            sessions = await list_chat_sessions(self._client, source=_TUI_ORCHESTRATOR_SOURCE)
+            sessions = await list_chat_sessions(self._client)
             selected = await self._resolve_initial_session(sessions)
             if selected is None:
                 selected = await create_chat_session(
@@ -135,7 +137,8 @@ class TuiOrchestratorSessionStore:
         items = build_chat_session_list_items(sessions, current_session_id=current_id)
         options: list[tuple[str, str]] = []
         for item in items:
-            label = f"{item.label} [{item.session_id}]"
+            backend_tag = f" · {item.agent_backend}" if getattr(item, "agent_backend", None) else ""
+            label = f"{item.label} [{item.session_id}]{backend_tag}"
             options.append((label, self._session_key(item.session_id)))
         return options
 
@@ -151,6 +154,36 @@ class TuiOrchestratorSessionStore:
         if session is None:
             return []
         return self._normalize_history(session.get("orchestrator_history") or [])
+
+    def should_generate_title(self, key: str | None = None) -> bool:
+        target = key or self.active_key()
+        session = self._sessions_by_key.get(target)
+        if session is None:
+            return False
+        return is_default_title(str(session.get("label") or ""))
+
+    async def generate_title(
+        self,
+        *,
+        user_message: str,
+        assistant_reply: str,
+        agent_backend: str,
+        key: str | None = None,
+    ) -> str | None:
+        target = key or self.active_key()
+        session = self._sessions_by_key.get(target)
+        if session is None:
+            return None
+        title = await ensure_session_title(
+            self._client,
+            session,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            agent_backend=agent_backend,
+        )
+        if title:
+            self._sessions_by_key[target] = session
+        return title
 
     def agent_backend_for_key(self, key: str) -> str | None:
         session = self._sessions_by_key.get(key)

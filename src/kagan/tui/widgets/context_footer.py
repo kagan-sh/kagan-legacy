@@ -1,11 +1,3 @@
-"""Context-aware footer that shows relevant controls for the current screen.
-
-The footer adapts its display based on:
-- Current screen type
-- Current state (e.g., whether a card is focused)
-- Available terminal width
-"""
-
 from textual.binding import BindingType
 from textual.containers import Horizontal
 from textual.reactive import reactive
@@ -17,14 +9,6 @@ from kagan.tui.keybindings import (
 
 
 class ContextFooter(Horizontal):
-    """A footer that shows contextually relevant shortcuts.
-
-    The footer is divided into sections:
-    - Left: Primary actions for current context
-    - Center: Navigation hints
-    - Right: Global shortcuts (help, palette, quit)
-    """
-
     DEFAULT_CSS = """
     ContextFooter {
         height: 1;
@@ -61,7 +45,6 @@ class ContextFooter(Horizontal):
     }
     """
 
-    # Reactive state
     context: reactive[str] = reactive("kanban")
     has_focused_item: reactive[bool] = reactive(False)
     sub_context: reactive[str] = reactive("")
@@ -86,27 +69,16 @@ class ContextFooter(Horizontal):
         has_focused_item: bool = False,
         sub_context: str = "",
     ) -> None:
-        """Set the footer context.
-
-        Args:
-            context: The screen context (kanban, task, session, welcome, etc.)
-            has_focused_item: Whether an item is currently focused
-            sub_context: Additional context (e.g., which tab is active)
-        """
         self.context = context
         self.has_focused_item = has_focused_item
         self.sub_context = sub_context
 
     def _update_display(self) -> None:
-        """Update the footer content based on current context."""
         left = self.query_one(".footer-left", Static)
         center = self.query_one(".footer-center", Static)
         right = self.query_one(".footer-right", Static)
 
-        # Get terminal width for responsive layout
         width = self.app.size.width if self.app else 80
-
-        # Build content based on context
         left_content = self._build_primary_actions(width)
         center_content = self._build_navigation_hints(width)
         right_content = self._build_global_hints(width)
@@ -116,7 +88,6 @@ class ContextFooter(Horizontal):
         right.update(right_content)
 
     def _build_primary_actions(self, width: int) -> str:
-        """Build the primary actions section."""
         if self.context == "kanban":
             return self._format_hints(FooterBuilder.kanban_core())
         elif self.context == "kanban_with_card":
@@ -138,7 +109,6 @@ class ContextFooter(Horizontal):
         return ""
 
     def _build_navigation_hints(self, width: int) -> str:
-        """Build the navigation hints section."""
         if width < 100:
             return ""  # Hide navigation hints on narrow screens
 
@@ -147,14 +117,13 @@ class ContextFooter(Horizontal):
         elif self.context == "task":
             return "[dim]1/2 tabs · Esc back[/]"
         elif self.context == "session":
-            return "[dim]Ctrl+K switch · Ctrl+T chat[/]"
+            return "[dim]Ctrl+K sessions · Ctrl+I AI panel[/]"
         return ""
 
     def _build_global_hints(self, width: int) -> str:
-        """Build the global shortcuts section."""
         if width < 80:
             return "[bold]?[/]"
-        return "[bold]?[/] help  [bold]Ctrl+P[/] palette"
+        return "[bold]?[/] help  [bold]Ctrl+Shift+P[/] quick actions"
 
     def _format_hints(
         self,
@@ -162,7 +131,6 @@ class ContextFooter(Horizontal):
         *,
         compact: bool = False,
     ) -> str:
-        """Format hint tuples into display string."""
         parts = []
         for key, desc in hints:
             if compact:
@@ -177,8 +145,6 @@ class ContextFooter(Horizontal):
 
 
 class SimpleFooter(Label):
-    """A simple footer for modals with a static message."""
-
     DEFAULT_CSS = """
     SimpleFooter {
         height: 1;
@@ -199,16 +165,6 @@ def build_footer_for_bindings(
     show_all: bool = False,
     max_items: int = 6,
 ) -> str:
-    """Build a footer string from bindings.
-
-    Args:
-        bindings: List of bindings to display
-        show_all: If True, show all visible bindings
-        max_items: Maximum number of items to show
-
-    Returns:
-        Formatted footer string
-    """
     from textual.binding import Binding
 
     parts = []

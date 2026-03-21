@@ -18,6 +18,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!packages/web/src/lib/
 lib64/
 parts/
 sdist/
@@ -220,3 +221,33 @@ kagan.db
 .initiatives/
 
 .sisyphus/
+
+# ── Node / TypeScript / SvelteKit web packages (packages/*) ────────
+node_modules/
+packages/*/dist/
+packages/*/coverage/
+packages/*/playwright-report/
+packages/*/test-results/
+packages/*/package/
+packages/*/.svelte-kit/
+packages/*/.vite/
+packages/*/.vercel/
+packages/*/.netlify/
+packages/*/.output/
+packages/*/vite.config.js.timestamp-*
+packages/*/vite.config.ts.timestamp-*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+package-lock.json
+yarn.lock
+
+# ── Bundled web UI (build artifact, included in wheel via force-include) ──
+src/kagan/server/_web_static/*
+!src/kagan/server/_web_static/.gitkeep
+
+packages/web/.svelte-kit/
+
+.results/

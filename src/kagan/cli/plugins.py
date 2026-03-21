@@ -1,4 +1,4 @@
-"""kagan.cli.plugins — Plugin management CLI commands."""
+"""Plugin management CLI commands."""
 
 import click
 
@@ -16,10 +16,7 @@ def plugins() -> None:
 @click.option("--state", default="open", show_default=True, help="Issue state: open, closed, all")
 @click.option("--label", "import_label", default=None, help="Only sync issues with this label")
 def sync(plugin_name: str, repo: str, state: str, import_label: str | None) -> None:
-    """Sync external items from a plugin source into the active project.
-
-    Example: kagan plugins sync github --repo octocat/hello-world
-    """
+    """Sync external items from a plugin source into the active project."""
     if "/" not in repo:
         raise click.BadParameter("Must be in owner/repo format", param_hint="--repo")
 
@@ -31,7 +28,6 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
 
     client = make_client()
     try:
-        # Ensure active project
         projects = await client.projects.list()
         if not projects:
             click.echo("No projects found. Create a project first: kagan tui")
@@ -42,7 +38,6 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
         manager = PluginManager(client)
         await manager.load()
 
-        # Show community warnings
         for warning in manager.community_warnings:
             click.echo(warning)
 
@@ -50,7 +45,6 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
             available = ", ".join(manager.available) or "(none)"
             raise click.ClickException(f"Unknown plugin: {plugin_name!r}. Installed: {available}")
 
-        # Configure via typed config object
         owner, repo_name = repo.split("/", 1)
         from kagan.plugins._github import GitHubImportConfig
 
@@ -76,7 +70,6 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
 
 @plugins.command(name="list")
 def list_plugins() -> None:
-    """List installed plugins."""
     run_async(_list_plugins())
 
 
@@ -110,7 +103,6 @@ async def _list_plugins() -> None:
 @plugins.command()
 @click.argument("plugin_name", required=False)
 def check(plugin_name: str | None) -> None:
-    """Check plugin prerequisites (gh CLI, authentication, etc.)."""
     run_async(_check_plugins(plugin_name))
 
 

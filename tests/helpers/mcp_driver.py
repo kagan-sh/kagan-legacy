@@ -12,7 +12,7 @@ import json
 
 from mcp.types import CallToolResult, TextContent
 
-from kagan.core import Priority, TaskStatus, WorkMode
+from kagan.core import Priority, TaskStatus
 from mcp import ClientSession
 from tests.helpers.core_driver import ProjectView, TaskView
 
@@ -44,18 +44,11 @@ def _to_task_view(data: dict) -> TaskView:
     except KeyError:
         priority = Priority.MEDIUM
 
-    exec_raw = data.get("execution_mode", "AUTO")
-    try:
-        execution_mode = WorkMode(exec_raw)
-    except ValueError:
-        execution_mode = WorkMode.AUTO
-
     return TaskView(
         id=data["id"],
         title=data.get("title", ""),
         description=data.get("description", ""),
         status=status,
-        execution_mode=execution_mode,
         priority=priority,
         agent_backend=data.get("agent_backend"),
         base_branch=data.get("base_branch"),

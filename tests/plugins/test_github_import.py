@@ -1,15 +1,16 @@
 """Tests: GitHub import plugin — label mapping, idempotent sync, description building."""
 
 import json
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from kagan.core import KaganCore, Priority
-from kagan.core.enums import WorkMode
 from kagan.plugins._github import (
     GitHubImportConfig,
     GitHubImporter,
+    GitHubIssue,
     _build_description,
     _extract_label_names,
     _map_labels,
@@ -51,7 +52,7 @@ async def plugin(config, client):
 
 def test_extract_label_names_from_gh_format() -> None:
     """Labels are extracted from nested gh JSON format."""
-    issue = {"labels": [{"name": "bug"}, {"name": "priority:high"}]}
+    issue: GitHubIssue = {"labels": [{"name": "bug"}, {"name": "priority:high"}]}
     assert _extract_label_names(issue) == ["bug", "priority:high"]
 
 
@@ -59,43 +60,37 @@ def test_extract_label_names_handles_empty() -> None:
     """Empty or missing labels return empty list."""
     assert _extract_label_names({}) == []
     assert _extract_label_names({"labels": []}) == []
-    assert _extract_label_names({"labels": None}) == []
+    assert _extract_label_names(cast("GitHubIssue", {"labels": None})) == []
 
 
 def test_map_labels_priority() -> None:
     """Priority labels map to Priority enum values."""
-    priority, mode, remaining = _map_labels(["priority:high", "bug"])
+    priority, remaining = _map_labels(["priority:high", "bug"])
     assert priority == Priority.HIGH
-    assert mode == WorkMode.AUTO  # default
     assert remaining == ["bug"]
 
 
-def test_map_labels_execution_mode() -> None:
-    """Execution mode labels map to WorkMode enum values."""
-    priority, mode, remaining = _map_labels(["kagan:auto", "enhancement"])
-    assert mode == WorkMode.AUTO
+def test_map_labels_ignores_legacy_mode_labels() -> None:
+    priority, remaining = _map_labels(["kagan:detached", "enhancement"])
     assert priority == Priority.MEDIUM  # default
     assert remaining == ["enhancement"]
 
 
 def test_map_labels_combined() -> None:
-    """Priority + mode labels can appear together."""
-    priority, mode, remaining = _map_labels(["priority:critical", "kagan:pair", "frontend", "bug"])
+    priority, remaining = _map_labels(["priority:critical", "kagan:attached", "frontend", "bug"])
     assert priority == Priority.CRITICAL
-    assert mode == WorkMode.PAIR
     assert remaining == ["frontend", "bug"]
 
 
 def test_map_labels_case_insensitive() -> None:
     """Label matching is case-insensitive."""
-    priority, _, _ = _map_labels(["Priority:HIGH"])
+    priority, _ = _map_labels(["Priority:HIGH"])
     assert priority == Priority.HIGH
 
 
 def test_map_labels_defaults_when_no_mapped_labels() -> None:
-    priority, mode, remaining = _map_labels(["bug", "documentation"])
+    priority, remaining = _map_labels(["bug", "documentation"])
     assert priority == Priority.MEDIUM
-    assert mode == WorkMode.AUTO
     assert remaining == ["bug", "documentation"]
 
 
@@ -106,7 +101,7 @@ def test_map_labels_defaults_when_no_mapped_labels() -> None:
 
 def test_build_description_with_url_body_and_labels() -> None:
     """Description includes URL, extra labels as tags, and body."""
-    issue = {
+    issue: GitHubIssue = {
         "url": "https://github.com/octocat/hello-world/issues/42",
         "body": "Fix the login bug",
     }
@@ -119,7 +114,7 @@ def test_build_description_with_url_body_and_labels() -> None:
 
 def test_build_description_no_labels_no_body() -> None:
     """Description with only URL when body and labels are empty."""
-    issue = {"url": "https://github.com/x/y/issues/1", "body": ""}
+    issue: GitHubIssue = {"url": "https://github.com/x/y/issues/1", "body": ""}
     desc = _build_description(issue, [])
     assert desc == "https://github.com/x/y/issues/1"
 
@@ -170,7 +165,7 @@ async def test_sync_creates_tasks_from_issues(
     """First sync creates tasks for each GitHub issue."""
     mock_fetch.return_value = _make_gh_issues(
         (1, "Bug report", ["bug", "priority:high"]),
-        (2, "Feature request", ["enhancement", "kagan:auto"]),
+        (2, "Feature request", ["enhancement", "kagan:detached"]),
     )
 
     result = await plugin.sync(client.active_project_id)
@@ -187,7 +182,7 @@ async def test_sync_creates_tasks_from_issues(
     assert bug_task.priority == Priority.HIGH
 
     feature_task = next(t for t in tasks if t.title == "Feature request")
-    assert feature_task.execution_mode == WorkMode.AUTO
+    assert feature_task.launcher is None
 
 
 @patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)

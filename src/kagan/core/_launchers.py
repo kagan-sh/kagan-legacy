@@ -1,4 +1,4 @@
-"""PAIR environment launchers for kagan.core.
+"""ATTACHED environment launchers for kagan.core.
 
 LAUNCHERS maps launcher name → async launch function.
 Three strategies: tmux (detached session), ide (vscode/cursor/windsurf/kiro/antigravity),
@@ -10,7 +10,7 @@ discover kagan's MCP server scoped to the session.
 
 import asyncio
 import errno
-import os
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Coroutine
@@ -19,18 +19,9 @@ from typing import Any
 
 from loguru import logger
 
-from kagan.core._agent import (
-    KIMI_CLI_BACKEND,
-    OPENCODE_BACKEND,
-    build_mcp_manifest,
-    normalize_backend_name,
-)
+from kagan.core._agent import build_mcp_manifest, get_backend
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
-
-# ---------------------------------------------------------------------------
-# IDE binary map
-# ---------------------------------------------------------------------------
 
 _IDE_BINARIES: dict[str, str] = {
     "vscode": "code",
@@ -40,235 +31,58 @@ _IDE_BINARIES: dict[str, str] = {
     "antigravity": "agy",
 }
 
+
 # ---------------------------------------------------------------------------
-# VSCode/Cursor chat autostart support
+# Command builders
 # ---------------------------------------------------------------------------
 
-# Extension ID for GitHub Copilot Chat (required for IDE chat functionality)
-COPILOT_CHAT_EXTENSION_ID: str = "github.copilot-chat"
 
-# IDEs that support chat via GitHub Copilot extension (uses `code chat` command)
-_CHAT_CAPABLE_IDES: frozenset[str] = frozenset(
-    {"vscode", "cursor", "windsurf", "kiro", "antigravity"}
-)
-
-# VSCode extension directories to check for copilot-chat installation
-_VSCODE_EXTENSION_DIRS: tuple[str, ...] = (
-    "~/.vscode/extensions",
-    "~/.cursor/extensions",
-    "~/.windsurf/extensions",
-    "~/.kiro/extensions",
-    "~/.antigravity/extensions",
-    "~/Library/Application Support/Code/User/globalStorage",  # macOS VSCode
-    "~/Library/Application Support/Cursor/User/globalStorage",  # macOS Cursor
-)
-
-
-def _get_vscode_extensions_dirs(ide: str = "vscode") -> list[Path]:
-    """Return list of potential VSCode extension directories for the IDE.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-
-    Returns:
-        List of Path objects pointing to potential extension directories.
-    """
-    dirs: list[Path] = []
-    home = Path.home()
-
-    # Platform-specific paths
-    if sys.platform == "darwin":
-        # macOS
-        if ide == "vscode":
-            dirs.append(home / "Library/Application Support/Code/User/globalStorage")
-        elif ide == "cursor":
-            dirs.append(home / "Library/Application Support/Cursor/User/globalStorage")
-        elif ide == "windsurf":
-            dirs.append(home / "Library/Application Support/Windsurf/User/globalStorage")
-        elif ide == "kiro":
-            dirs.append(home / "Library/Application Support/Kiro/User/globalStorage")
-        elif ide == "antigravity":
-            dirs.append(home / "Library/Application Support/Antigravity/User/globalStorage")
-    elif sys.platform == "win32":
-        # Windows
-        appdata = os.environ.get("APPDATA", "")
-        if appdata:
-            if ide == "vscode":
-                dirs.append(Path(appdata) / "Code/User/globalStorage")
-            elif ide == "cursor":
-                dirs.append(Path(appdata) / "Cursor/User/globalStorage")
-            elif ide == "windsurf":
-                dirs.append(Path(appdata) / "Windsurf/User/globalStorage")
-            elif ide == "kiro":
-                dirs.append(Path(appdata) / "Kiro/User/globalStorage")
-            elif ide == "antigravity":
-                dirs.append(Path(appdata) / "Antigravity/User/globalStorage")
-
-    # Common cross-platform paths
-    if ide == "vscode":
-        dirs.append(home / ".vscode/extensions")
-    elif ide == "cursor":
-        dirs.append(home / ".cursor/extensions")
-    elif ide == "windsurf":
-        dirs.append(home / ".windsurf/extensions")
-    elif ide == "kiro":
-        dirs.append(home / ".kiro/extensions")
-    elif ide == "antigravity":
-        dirs.append(home / ".antigravity/extensions")
-
-    return dirs
-
-
-def detect_vscode_chat_autostart(ide: str = "vscode") -> bool:
-    """Detect if the IDE has chat capability via github.copilot-chat extension.
-
-    Checks for the presence of the GitHub Copilot Chat extension in the
-    IDE's extension directories.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-
-    Returns:
-        True if the IDE has the copilot-chat extension installed, False otherwise.
-    """
-    if ide not in _CHAT_CAPABLE_IDES:
-        return False
-
-    extension_dirs = _get_vscode_extensions_dirs(ide)
-
-    for ext_dir in extension_dirs:
-        try:
-            if not ext_dir.exists():
-                continue
-            # Check for copilot-chat extension directory (e.g., github.copilot-chat-0.37.6)
-            for entry in ext_dir.iterdir():
-                if entry.is_dir() and entry.name.startswith(COPILOT_CHAT_EXTENSION_ID):
-                    return True
-        except OSError:
-            continue
-
-    return False
-
-
-def build_vscode_chat_launcher_command(
-    *,
-    ide: str = "vscode",
-    worktree_path: str,
-    prompt_file: str,
-    seed_prompt: str | None = None,
-) -> list[str]:
-    """Build the VSCode/Cursor chat launcher command for PAIR mode.
-
-    Constructs a command like:
-    ``code chat --mode agent --add-file {prompt_file} --new-window {seed_prompt}``
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        worktree_path: Absolute path to the git worktree.
-        prompt_file: Path to the prompt file to include in the chat context.
-        seed_prompt: Optional initial prompt text to seed the chat conversation.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-
-    Raises:
-        AgentError: If *ide* is not a recognised IDE name.
-    """
+def build_ide_command(*, ide: str, worktree_path: str, prompt_file: str | None = None) -> list[str]:
     binary = _IDE_BINARIES.get(ide)
     if binary is None:
         known = ", ".join(sorted(_IDE_BINARIES))
         raise AgentError(f"unknown ide {ide!r}. Known: {known}")
-
-    cmd = [binary, "chat", "--mode", "agent", "--add-file", prompt_file]
-
-    # Add new-window flag to open in separate window
-    cmd.append("--new-window")
-
-    # Add seed prompt if provided
-    if seed_prompt and seed_prompt.strip():
-        cmd.append(seed_prompt.strip())
-
+    cmd = [binary, "--new-window", worktree_path]
+    if prompt_file:
+        cmd.append(prompt_file)
     return cmd
 
 
-# ---------------------------------------------------------------------------
-# Command builders (pure functions — no I/O, testable without execution)
-# ---------------------------------------------------------------------------
-
-
-def build_tmux_command(
-    *,
-    session_name: str,
-    worktree_path: str,
-    agent_cmd: str,
-) -> list[str]:
-    """Build the tmux new-session command for a PAIR session.
-
-    Args:
-        session_name: Unique tmux session name (e.g. ``"kagan-abc123"``).
-        worktree_path: Absolute path to the git worktree.
-        agent_cmd: Full agent CLI command string to run inside the session.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-    """
-    return [
-        "tmux",
-        "new-session",
-        "-d",
-        "-s",
-        session_name,
-        "-c",
-        worktree_path,
-        agent_cmd,
-    ]
-
-
-def build_ide_command(*, ide: str, worktree_path: str) -> list[str]:
-    """Build the IDE open command for a PAIR session.
-
-    Args:
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        worktree_path: Absolute path to the git worktree to open.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-
-    Raises:
-        AgentError: If *ide* is not a recognised IDE name.
-    """
-    binary = _IDE_BINARIES.get(ide)
-    if binary is None:
-        known = ", ".join(sorted(_IDE_BINARIES))
-        raise AgentError(f"unknown ide {ide!r}. Known: {known}")
-    return [binary, "--new-window", worktree_path]
-
-
 def build_neovim_command(*, worktree_path: str) -> list[str]:
-    """Build the Neovim launch command for a PAIR session.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-
-    Returns:
-        List of strings suitable for ``asyncio.create_subprocess_exec``.
-    """
     return ["nvim", worktree_path]
 
 
+def _build_launch_command(agent_backend: str, startup_prompt: str) -> str | None:
+    """Build agent CLI command with startup prompt as argument.
+
+    Uses the AGENT_BACKENDS registry to resolve executable and prompt_flag.
+    Returns the full command string, or None if the backend has no prompt_flag.
+    """
+    entry = get_backend(agent_backend)
+    executable = entry.get("executable")
+    if not executable:
+        return None
+
+    prompt_flag = entry.get("prompt_flag")
+    escaped = shlex.quote(startup_prompt)
+
+    if prompt_flag:
+        return f"{executable} {prompt_flag} {escaped}"
+    return executable
+
+
 # ---------------------------------------------------------------------------
-# Async launcher functions
+# File writers
 # ---------------------------------------------------------------------------
 
 
 async def _write_mcp_json(worktree_path: Path, session_id: str, db_path: str) -> None:
-    """Write .mcp.json into the worktree for agent/IDE discovery."""
-    content = build_mcp_manifest(session_id=session_id, db_path=db_path, access_tier="default")
+    content = build_mcp_manifest(session_id=session_id, db_path=db_path, role="WORKER")
     mcp_path = worktree_path / ".mcp.json"
     try:
         await asyncio.to_thread(mcp_path.write_text, content, "utf-8")
     except OSError as exc:
-        if exc.errno == errno.ENOSPC:  # No space left on device
+        if exc.errno == errno.ENOSPC:
             raise AgentError(
                 f"Cannot write MCP manifest to {mcp_path}: Disk is full. "
                 f"Free up disk space and try again."
@@ -284,233 +98,9 @@ async def _write_startup_prompt(worktree_path: Path, startup_prompt: str) -> Pat
     return prompt_path
 
 
-def _single_line_prompt(prompt: str) -> str:
-    return " ".join(line.strip() for line in prompt.splitlines() if line.strip())
-
-
-async def _run_tmux_command(*args: str, capture_stdout: bool = False) -> tuple[int, str]:
-    proc = await asyncio.create_subprocess_exec(
-        "tmux",
-        *args,
-        env=build_sanitized_subprocess_environment(),
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE if capture_stdout else asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    stdout, _ = await proc.communicate()
-    text = ""
-    if capture_stdout and stdout is not None:
-        text = stdout.decode("utf-8", errors="replace")
-    returncode = proc.returncode if proc.returncode is not None else 1
-    return returncode, text
-
-
-async def _tmux_pane_current_command(session_name: str) -> str | None:
-    pane_target = _tmux_pane_target(session_name)
-    code, output = await _run_tmux_command(
-        "display-message",
-        "-p",
-        "-t",
-        pane_target,
-        "#{pane_current_command}",
-        capture_stdout=True,
-    )
-    if code != 0:
-        return None
-    command = output.strip().lower()
-    return command or None
-
-
-def _tmux_pane_target(session_name: str) -> str:
-    return f"{session_name}:0.0"
-
-
-async def _tmux_pane_contains(session_name: str, needle: str) -> bool:
-    pane_target = _tmux_pane_target(session_name)
-    code, output = await _run_tmux_command(
-        "capture-pane",
-        "-p",
-        "-t",
-        pane_target,
-        "-S",
-        "-40",
-        capture_stdout=True,
-    )
-    if code != 0:
-        return False
-    return needle in output
-
-
-async def _wait_for_tmux_pane_command(
-    session_name: str,
-    expected_commands: tuple[str, ...],
-    *,
-    max_attempts: int = 20,
-    sleep_seconds: float = 0.2,
-) -> bool:
-    expected = tuple(command.strip().lower() for command in expected_commands if command.strip())
-    if not expected:
-        return True
-    for _ in range(max_attempts):
-        current = await _tmux_pane_current_command(session_name)
-        if current in expected:
-            return True
-        await asyncio.sleep(sleep_seconds)
-    return False
-
-
-async def _send_tmux_startup_prompt(
-    session_name: str,
-    prompt_path: Path,
-    *,
-    wait_for_commands: tuple[str, ...] | None = None,
-    max_attempts: int = 12,
-    use_literal_send_keys: bool = False,
-    ready_text: str | None = None,
-    settle_seconds: float = 0.0,
-) -> bool:
-    prompt_text = _single_line_prompt(prompt_path.read_text(encoding="utf-8"))
-    if not prompt_text:
-        return False
-    pane_target = _tmux_pane_target(session_name)
-    buffer_name = f"kagan-startup-{session_name[-12:]}"
-    initial_settle_seconds = max(0.0, settle_seconds)
-    for _ in range(max_attempts):
-        has_session, _ = await _run_tmux_command("has-session", "-t", session_name)
-        if has_session != 0:
-            await asyncio.sleep(0.2)
-            continue
-        if wait_for_commands is not None:
-            ready = await _wait_for_tmux_pane_command(
-                session_name,
-                wait_for_commands,
-                max_attempts=1,
-            )
-            if not ready:
-                await asyncio.sleep(0.2)
-                continue
-        if ready_text is not None:
-            pane_ready = await _tmux_pane_contains(session_name, ready_text)
-            if not pane_ready:
-                await asyncio.sleep(0.2)
-                continue
-        if initial_settle_seconds > 0.0:
-            await asyncio.sleep(initial_settle_seconds)
-            initial_settle_seconds = 0.0
-        if use_literal_send_keys:
-            sent, _ = await _run_tmux_command(
-                "send-keys",
-                "-t",
-                pane_target,
-                "-l",
-                prompt_text,
-            )
-            if sent != 0:
-                await asyncio.sleep(0.2)
-                continue
-            return True
-        loaded, _ = await _run_tmux_command(
-            "load-buffer",
-            "-b",
-            buffer_name,
-            str(prompt_path),
-        )
-        if loaded != 0:
-            await asyncio.sleep(0.2)
-            continue
-        pasted, _ = await _run_tmux_command(
-            "paste-buffer",
-            "-b",
-            buffer_name,
-            "-t",
-            pane_target,
-        )
-        if pasted != 0:
-            await _run_tmux_command("delete-buffer", "-b", buffer_name)
-            await asyncio.sleep(0.2)
-            continue
-        await _run_tmux_command("delete-buffer", "-b", buffer_name)
-        return True
-    return False
-
-
-async def _submit_tmux_startup_prompt(session_name: str) -> bool:
-    pane_target = _tmux_pane_target(session_name)
-    sent, _ = await _run_tmux_command("send-keys", "-t", pane_target, "Enter")
-    return sent == 0
-
-
-def _prompt_injection_wait_commands(
-    *,
-    agent_cmd: str,
-    agent_backend: str | None,
-) -> tuple[str, ...] | None:
-    executable = agent_cmd.strip().split(maxsplit=1)[0].lower()
-    if executable == OPENCODE_BACKEND:
-        return ("node", OPENCODE_BACKEND)
-    normalized_backend = normalize_backend_name(agent_backend) if agent_backend else ""
-    if normalized_backend == OPENCODE_BACKEND:
-        return ("node", OPENCODE_BACKEND)
-    return (executable,) if executable else None
-
-
-def _tmux_prompt_injection_options(*, agent_backend: str | None) -> dict[str, Any]:
-    normalized_backend = normalize_backend_name(agent_backend) if agent_backend else ""
-    if normalized_backend == OPENCODE_BACKEND:
-        return {
-            "use_literal_send_keys": True,
-            "ready_text": "Ask anything...",
-            "settle_seconds": 0.35,
-        }
-    if normalized_backend == KIMI_CLI_BACKEND:
-        return {
-            "use_literal_send_keys": True,
-            "ready_text": None,
-            "settle_seconds": 0.35,
-        }
-    return {
-        "use_literal_send_keys": False,
-        "ready_text": None,
-        "settle_seconds": 0.0,
-    }
-
-
-async def _inject_tmux_startup_prompt(
-    *,
-    session_name: str,
-    prompt_path: Path,
-    wait_commands: tuple[str, ...] | None,
-    max_attempts: int,
-    use_literal_send_keys: bool = False,
-    ready_text: str | None = None,
-    settle_seconds: float = 0.0,
-) -> None:
-    injected = await _send_tmux_startup_prompt(
-        session_name,
-        prompt_path,
-        wait_for_commands=wait_commands,
-        max_attempts=max_attempts,
-        use_literal_send_keys=use_literal_send_keys,
-        ready_text=ready_text,
-        settle_seconds=settle_seconds,
-    )
-    if not injected:
-        logger.warning("Unable to inject startup prompt into tmux session={}", session_name)
-        return
-    submitted = await _submit_tmux_startup_prompt(session_name)
-    if not submitted:
-        logger.warning("Unable to submit startup prompt in tmux session={}", session_name)
-
-
-def _log_injection_task_failure(task: asyncio.Task[None]) -> None:
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        logger.opt(exception=exc).error(
-            "Background tmux startup prompt injection failed task={}",
-            task.get_name(),
-        )
+# ---------------------------------------------------------------------------
+# Subprocess helpers
+# ---------------------------------------------------------------------------
 
 
 async def _run_detached(
@@ -526,12 +116,34 @@ async def _run_detached(
     if use_start_new_session and sys.platform != "win32":
         kwargs["start_new_session"] = True
     elif use_start_new_session and sys.platform == "win32":
-        # Windows: create detached process
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     kwargs["env"] = build_sanitized_subprocess_environment()
 
     proc = await asyncio.create_subprocess_exec(*cmd, **kwargs)
     await proc.wait()
+
+
+async def _tmux_send_keys(session_name: str, text: str) -> None:
+    """Send keys to a tmux session."""
+    env = build_sanitized_subprocess_environment()
+    proc = await asyncio.create_subprocess_exec(
+        "tmux",
+        "send-keys",
+        "-t",
+        session_name,
+        text,
+        "Enter",
+        env=env,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    await proc.wait()
+
+
+# ---------------------------------------------------------------------------
+# Launchers
+# ---------------------------------------------------------------------------
 
 
 async def launch_tmux(
@@ -543,66 +155,38 @@ async def launch_tmux(
     db_path: str = "",
     startup_prompt: str | None = None,
 ) -> None:
-    """Launch a detached tmux session for PAIR mode.
-
-    Writes ``.mcp.json`` into the worktree, then starts a detached tmux
-    session running *agent_cmd* in the worktree directory.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        agent_cmd: Full agent CLI command string to run inside the session.
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-
-    Raises:
-        AgentError: If called on Windows (tmux is not available).
-    """
     if sys.platform == "win32":
         raise AgentError(
             "tmux is not available on Windows. "
-            "Use 'vscode', 'cursor', 'windsurf', or another IDE launcher instead. "
-            "Install Windows Terminal for a better command-line experience."
+            "Use 'vscode', 'cursor', 'windsurf', or another IDE launcher instead."
         )
     logger.info("Launching tmux session")
     if db_path:
         await _write_mcp_json(worktree_path, session_id, db_path)
-    prompt_path: Path | None = None
     if startup_prompt and startup_prompt.strip():
-        prompt_path = await _write_startup_prompt(worktree_path, startup_prompt)
+        await _write_startup_prompt(worktree_path, startup_prompt)
 
     session_name = f"kagan-{session_id.replace(':', '-')}"
-    cmd = build_tmux_command(
-        session_name=session_name,
-        worktree_path=str(worktree_path),
-        agent_cmd=agent_cmd,
+
+    # Create empty tmux session in the worktree (v0.5.0 approach)
+    await _run_detached(
+        "tmux",
+        "new-session",
+        "-d",
+        "-s",
+        session_name,
+        "-c",
+        str(worktree_path),
     )
 
-    await _run_detached(*cmd)
-    if prompt_path is not None:
-        wait_commands = _prompt_injection_wait_commands(
-            agent_cmd=agent_cmd,
-            agent_backend=agent_backend,
-        )
-        injection_options = _tmux_prompt_injection_options(agent_backend=agent_backend)
-        inject_kwargs: dict[str, Any] = {
-            "session_name": session_name,
-            "prompt_path": prompt_path,
-            "wait_commands": wait_commands,
-            "max_attempts": 60,
-        }
-        if injection_options["use_literal_send_keys"]:
-            inject_kwargs["use_literal_send_keys"] = True
-        ready_text = injection_options["ready_text"]
-        if ready_text is not None:
-            inject_kwargs["ready_text"] = ready_text
-        settle_seconds = injection_options["settle_seconds"]
-        if settle_seconds > 0.0:
-            inject_kwargs["settle_seconds"] = settle_seconds
-        injection_task = asyncio.create_task(
-            _inject_tmux_startup_prompt(**inject_kwargs),
-            name=f"tmux-startup-prompt:{session_name}",
-        )
-        injection_task.add_done_callback(_log_injection_task_failure)
+    # Build agent launch command with prompt as CLI arg
+    launch_cmd: str | None = None
+    if startup_prompt and agent_backend:
+        launch_cmd = _build_launch_command(agent_backend, startup_prompt)
+    if launch_cmd is None:
+        launch_cmd = agent_cmd
+
+    await _tmux_send_keys(session_name, launch_cmd)
     logger.debug("Launch complete")
 
 
@@ -615,22 +199,7 @@ async def launch_ide(
     startup_prompt: str | None = None,
     **_kwargs: Any,
 ) -> None:
-    """Launch an IDE for PAIR mode.
-
-    Writes ``.mcp.json`` into the worktree so the IDE can discover kagan's
-    MCP server, then opens the worktree folder in the specified IDE.
-
-    If the IDE has chat capability (via github.copilot-chat extension),
-    auto-starts the chat interface with the startup prompt.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        ide: IDE name — one of ``vscode``, ``cursor``, ``windsurf``, ``kiro``, ``antigravity``.
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-        startup_prompt: Optional startup prompt to inject into the chat session.
-    """
-    logger.info("Launching ide session")
+    logger.info("Launching IDE session ide={}", ide)
     if db_path:
         await _write_mcp_json(worktree_path, session_id, db_path)
 
@@ -638,18 +207,11 @@ async def launch_ide(
     if startup_prompt and startup_prompt.strip():
         prompt_path = await _write_startup_prompt(worktree_path, startup_prompt)
 
-    # Check if IDE has chat capability and auto-start chat if available
-    if prompt_path is not None and detect_vscode_chat_autostart(ide):
-        logger.info(f"IDE {ide} has chat capability, launching chat interface")
-        cmd = build_vscode_chat_launcher_command(
-            ide=ide,
-            worktree_path=str(worktree_path),
-            prompt_file=str(prompt_path),
-            seed_prompt=startup_prompt,
-        )
-    else:
-        cmd = build_ide_command(ide=ide, worktree_path=str(worktree_path))
-
+    cmd = build_ide_command(
+        ide=ide,
+        worktree_path=str(worktree_path),
+        prompt_file=str(prompt_path) if prompt_path else None,
+    )
     await _run_detached(*cmd)
     logger.debug("Launch complete")
 
@@ -662,18 +224,6 @@ async def launch_neovim(
     startup_prompt: str | None = None,
     **_kwargs: Any,
 ) -> None:
-    """Prepare the worktree for a Neovim PAIR session.
-
-    Writes ``.mcp.json`` into the worktree so Neovim plugins can discover
-    kagan's MCP server.  Unlike tmux/IDE launchers, Neovim is an interactive
-    terminal application that must be spawned by the TUI within
-    ``app.suspend()`` — the core launcher only performs file-system setup.
-
-    Args:
-        worktree_path: Absolute path to the git worktree.
-        session_id: Kagan session identifier (written into .mcp.json).
-        db_path: Path to the kagan SQLite database (for .mcp.json).
-    """
     logger.info("Preparing neovim session (TUI will attach interactively)")
     if db_path:
         await _write_mcp_json(worktree_path, session_id, db_path)
@@ -696,17 +246,6 @@ LAUNCHERS: dict[str, LaunchFn] = {
 
 
 def get_launcher(name: str) -> LaunchFn:
-    """Return the launch function for *name*, raising AgentError if unknown.
-
-    Args:
-        name: Launcher name — one of ``tmux``, ``ide``, ``neovim``.
-
-    Returns:
-        Async callable for the launcher.
-
-    Raises:
-        AgentError: If *name* is not registered in :data:`LAUNCHERS`.
-    """
     try:
         return LAUNCHERS[name]
     except KeyError:
@@ -715,7 +254,6 @@ def get_launcher(name: str) -> LaunchFn:
 
 
 def list_launchers() -> list[str]:
-    """Return all registered launcher names."""
     return list(str(k) for k in LAUNCHERS)
 
 
@@ -723,39 +261,19 @@ _IDE_BACKENDS: frozenset[str] = frozenset({"vscode", "cursor", "windsurf", "kiro
 
 
 def resolve_launcher(backend: str) -> tuple[str, str | None]:
-    """Map a user-facing backend name to (launcher_key, ide_name | None).
-
-    Args:
-        backend: Raw backend name from settings — e.g. ``"tmux"``, ``"nvim"``,
-            ``"vscode"``, ``"cursor"``, ``"windsurf"``, ``"kiro"``, ``"antigravity"``.
-
-    Returns:
-        A tuple of (launcher_key, ide) where *launcher_key* is one of
-        ``"tmux"``, ``"neovim"``, ``"ide"`` and *ide* is the specific IDE name
-        (only set when launcher_key == ``"ide"``).
-    """
     if backend == "tmux":
         return ("tmux", None)
     if backend in {"nvim", "neovim"}:
         return ("neovim", None)
     if backend in _IDE_BACKENDS:
         return ("ide", backend)
-    # Fall through — treat unknown as ide with the raw name
     return ("ide", backend)
 
 
-# ---------------------------------------------------------------------------
-# Public exports
-# ---------------------------------------------------------------------------
-
 __all__ = [
-    "COPILOT_CHAT_EXTENSION_ID",
     "LAUNCHERS",
     "build_ide_command",
     "build_neovim_command",
-    "build_tmux_command",
-    "build_vscode_chat_launcher_command",
-    "detect_vscode_chat_autostart",
     "get_launcher",
     "launch_ide",
     "launch_neovim",

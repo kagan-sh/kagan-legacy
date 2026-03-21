@@ -27,10 +27,6 @@ def _is_known_asyncio_subprocess_invalid_state(context: dict[str, Any]) -> bool:
 def install_asyncio_subprocess_exception_filter(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> None:
-    """Install a loop exception handler that silences known subprocess shutdown races.
-
-    Safe to call multiple times — subsequent calls are no-ops.
-    """
     target = loop or asyncio.get_running_loop()
     if getattr(target, _PATCH_FLAG, False):
         return

@@ -1,8 +1,4 @@
-"""Feature tests: Reviews — docs/internal/features/core.md §8.
-
-Behavioral specs using KaganDriver DSL. No private imports.
-Each test is isolated with its own tmp_path and fresh DB.
-"""
+"""Feature tests: Reviews — docs/internal/features/core.md §8."""
 
 from pathlib import Path
 
@@ -14,14 +10,9 @@ from tests.helpers.helpers import make_git_repo
 
 pytestmark = [pytest.mark.core, pytest.mark.slow]
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture
 async def git_board(tmp_path):
-    """Fresh KaganDriver with an active project linked to a real git repo."""
     repo_path = tmp_path / "repo"
     await make_git_repo(repo_path, base_branch="main")
 
@@ -31,15 +22,9 @@ async def git_board(tmp_path):
     await driver.teardown()
 
 
-# ---------------------------------------------------------------------------
-# §8.3 — Merge merges worktree into base branch, moves to DONE, cleans up
-# ---------------------------------------------------------------------------
-
-
 async def test_merge_moves_task_to_done_and_removes_workspace(
     git_board: KaganDriver, tmp_path
 ) -> None:
-    """Merging a task in REVIEW merges the worktree and moves the task to DONE."""
     task = await git_board.create_task("Mergeable Task")
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
     await git_board.provision_workspace(task.id)
@@ -56,7 +41,6 @@ async def test_merge_moves_task_to_done_and_removes_workspace(
 
     assert result["status"] == TaskStatus.DONE
 
-    # Workspace is cleaned up after merge
     workspaces = await git_board.list_workspaces(task_id=task.id)
     assert len(workspaces) == 0
 
@@ -157,7 +141,6 @@ async def test_merge_conflict_emits_event_with_suggested_feedback(
     )
     assert committed is True
 
-    # Create a conflicting change on the base branch
     repo_path = tmp_path / "repo"
     from tests.helpers.helpers import commit_file
 
@@ -173,7 +156,6 @@ async def test_merge_conflict_emits_event_with_suggested_feedback(
     with pytest.raises(MergeConflictError):
         await git_board.merge_task(task.id)
 
-    # Verify MERGE_FAILED event was emitted with conflict details
     logs = await git_board.task_get_logs(task.id, limit=20)
     items = logs.get("items", [])
     assert isinstance(items, list)

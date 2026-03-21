@@ -35,7 +35,7 @@ class AgentPickerModal(ModalScreen[str | None]):
         with Container(id="agent-picker-container"):
             yield Static("Switch Global Agent", classes="modal-title")
             yield Static(
-                "Select the default agent for new orchestrator and AUTO runs.",
+                "Select the default agent for orchestrator chat and managed task runs.",
                 id="agent-picker-description",
             )
             with Vertical(id="agent-picker-body"):
@@ -44,7 +44,7 @@ class AgentPickerModal(ModalScreen[str | None]):
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()
-        configured = settings.get("default_agent_backend") or settings.get("default_agent")
+        configured = settings.get("default_agent_backend")
         normalized_configured = self._BACKEND_ALIASES.get(configured or "", configured)
         self._current_agent = normalized_configured or "claude-code"
 
@@ -82,7 +82,6 @@ class AgentPickerModal(ModalScreen[str | None]):
         await self.kagan_app.core.settings.set(
             {
                 "default_agent_backend": selected,
-                "default_agent": selected,
             }
         )
         self.app.notify(f"Default agent set to {selected}", severity="information")

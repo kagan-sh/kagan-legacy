@@ -10,13 +10,14 @@ One core process. Multiple frontends. Every interface sees the same state in rea
 
 ## Components
 
-| Component     | Purpose                          |
-| ------------- | -------------------------------- |
-| TUI           | Keyboard-first Kanban board      |
-| MCP server    | AI tools that read/mutate state  |
-| Core process  | Coordinates operations and state |
-| SQLite        | Projects, tasks, reviews         |
-| Git worktrees | Isolated task workspaces         |
+| Component     | Purpose                                                    |
+| ------------- | ---------------------------------------------------------- |
+| TUI           | Keyboard-first Kanban board                                |
+| MCP server    | AI tools that read/mutate state                            |
+| API server    | REST + SSE for the bundled dashboard and API clients |
+| Core process  | Coordinates operations and state                           |
+| SQLite        | Projects, tasks, reviews                                   |
+| Git worktrees | Isolated task workspaces                                   |
 
 ## Flow
 
@@ -25,15 +26,19 @@ flowchart LR
   TUI[TUI client] --> CORE[Core process]
   MCP[MCP client] --> CORE
   CLI[CLI commands] --> CORE
+  WEB["Bundled web dashboard"] --> API[API server] --> CORE
+  REMOTE["Optional API client"] --> API
   CORE --> DB[(SQLite)]
   CORE --> WT[Git worktrees]
 ```
 
 All interfaces share the same state. A task created via MCP appears on the TUI board. A review completed in the TUI is visible to every MCP client.
 
+The bundled dashboard is served by `kagan web` and talks to the same same-origin API server instance. `kagan serve` remains available for integrations and non-dashboard API clients. See [Remote access](../guides/remote-access.md).
+
 ## Supported agents
 
-Kagan orchestrates 14 coding agents. Each can run in **AUTO** (background) or **PAIR** (interactive) mode. Install one or install them all -- they share the board and compete on merit.
+Kagan orchestrates 14 coding agents. Every task uses one run model: start a managed background run or launch an interactive session in your preferred tool. Install one agent or install them all -- they share the board and compete on merit.
 
 | Agent              | Author       | Install                                                                                      |
 | ------------------ | ------------ | -------------------------------------------------------------------------------------------- |
@@ -54,9 +59,9 @@ Kagan orchestrates 14 coding agents. Each can run in **AUTO** (background) or **
 
 `kagan doctor` reports which agents are installed and available.
 
-## PAIR backends
+## Interactive launchers
 
-PAIR sessions open in your preferred editor or terminal multiplexer:
+Interactive runs open in your preferred editor or terminal multiplexer:
 
 | Backend       | Tool                                         |
 | ------------- | -------------------------------------------- |
@@ -68,7 +73,7 @@ PAIR sessions open in your preferred editor or terminal multiplexer:
 | `kiro`        | Kiro                                         |
 | `antigravity` | Antigravity                                  |
 
-Set globally via `default_pair_terminal_backend` in config, or override per task.
+Set globally via `attached_launcher`, or override per task.
 
 ## Plugins
 

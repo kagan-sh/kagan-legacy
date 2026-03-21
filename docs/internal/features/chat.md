@@ -1,7 +1,7 @@
 # Chat Behaviors — `kagan.chat`
 
 *Observable behaviors for REPL, slash commands, and orchestrator turns.*
-*Each section maps to test coverage in `tests/chat/`.*
+*Each section maps to test coverage in `tests/unit/test_chat_*` and `tests/tui/test_chat_*`.*
 
 ______________________________________________________________________
 
@@ -23,7 +23,11 @@ ______________________________________________________________________
 
 **Given** a project context is active
 **When** `run_chat_async()` starts
-**Then** it loads the last session for this scope, restores history, and waits for input.
+**Then** it starts a fresh session by default and waits for input.
+
+**Given** the user wants to continue an earlier conversation
+**When** they use `/sessions` or pass `--session-id`
+**Then** Kagan restores that explicit session and continues from its saved history.
 
 **Given** the user types a message and presses Enter
 **When** the message is processed
@@ -100,6 +104,18 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+### `/flow` — Guided Plan → Execute → Orchestrate flow
+
+**Given** the user types `/flow`
+**When** the command executes
+**Then** it displays a guided walkthrough of the Plan → Execute → Orchestrate workflow steps.
+
+**Given** `/flow` is invoked outside an orchestrator context
+**When** the command is parsed
+**Then** it is rejected with a message indicating it is only available in orchestrator mode.
+
+______________________________________________________________________
+
 ### `/clear` — Clear current session
 
 **Given** the user types `/clear`
@@ -118,7 +134,9 @@ ______________________________________________________________________
 
 ### `/session` — Show current session details
 
-## **Given** the user types `/session` **When** the command executes **Then** it prints the current session’s ID, title, agent backend, message count, and creation time.
+**Given** the user types `/session`
+**When** the command executes
+**Then** it prints the current session's ID, title, agent backend, message count, and creation time.
 
 ### `/exit` — Exit REPL
 
@@ -160,13 +178,25 @@ ______________________________________________________________________
 
 ### Title generation
 
+**Given** the first agent response completes in any surface (REPL, web, TUI)
+**When** the session still has a default title
+**Then** a background task calls `generate_session_title()` which runs a lightweight ACP turn — no MCP tools, no orchestrator system prompt — so the agent focuses purely on producing a title.
+
+**Given** title generation succeeds
+**When** the session is saved
+**Then** the title is persisted and, on web, a `CHAT_SESSION_UPDATED` SSE event updates the UI.
+
+**Given** title generation times out (30 s) or fails
+**When** the error is caught
+**Then** the default title is kept and the failure is logged at debug level. Title generation never blocks the chat flow.
+
 **Given** an LLM generates a title with reasoning tags (e.g., `<think>...</think>`)
 **When** `_clean_generated_title()` processes it
-**Then** reasoning tags, quotes, and newlines are stripped, returning a clean one-line title.
+**Then** reasoning tags, quotes, and newlines are stripped, returning a clean one-line title (max 80 characters).
 
 **Given** the generated title is empty after cleaning
 **When** the session is saved
-**Then** a fallback title "New conversation" is used.
+**Then** the default placeholder title is kept.
 
 ______________________________________________________________________
 
@@ -177,6 +207,10 @@ ______________________________________________________________________
 **Given** an orchestrator turn starts
 **When** `run_orchestrator_turn()` is called
 **Then** it spawns the agent process, performs ACP handshake (`initialize` → `session/new`), and sends the user prompt.
+
+**Given** `run_orchestrator_turn(lightweight=True)` is called (e.g. for title generation)
+**When** the ACP session is created
+**Then** no MCP servers are attached and the prompt is sent without the orchestrator system prompt or "User request:" wrapper.
 
 ______________________________________________________________________
 
@@ -205,6 +239,7 @@ ______________________________________________________________________
 **Given** the agent sends `session/end` notification
 **When** the orchestrator turn completes
 **Then** the response is finalized, history is updated, and the session is saved.
+**Then** if ACP usage data is available, a compact metrics line is displayed: context window usage and cumulative cost (e.g., `ctx 45k/200k · $0.12`).
 
 ______________________________________________________________________
 
@@ -260,6 +295,42 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## Background Event Notifications
+
+### Task agent lifecycle events
+
+**Given** the REPL is running
+**When** a task agent completes or fails (in any surface)
+**Then** a one-line notification is printed to the console immediately.
+
+**Given** the REPL exits
+**When** the event watcher is running
+**Then** the watcher is cancelled cleanly without error output.
+
+**Given** the event stream encounters an unexpected error
+**When** the watcher stops
+**Then** the failure is logged at warning level. The REPL continues operating.
+
+______________________________________________________________________
+
+## Cross-Surface Session Visibility
+
+### All sessions visible everywhere
+
+**Given** a session was created in the web dashboard
+**When** the user types `/sessions` in CLI chat
+**Then** the web session appears in the list and can be resumed.
+
+**Given** a session was created in TUI
+**When** the user opens sessions in web or CLI
+**Then** the TUI session appears and can be resumed.
+
+**Given** a user resumes a session from a different surface
+**When** the session loads
+**Then** the original `source` tag is preserved (not overwritten).
+
+______________________________________________________________________
+
 ## Integration with TUI
 
 ### ChatPanel widget
@@ -280,11 +351,15 @@ ______________________________________________________________________
 
 ## Test Coverage
 
-| File                              | Tests                               |
-| --------------------------------- | ----------------------------------- |
-| `tests/chat/test_repl.py`         | REPL entry points, loop behavior    |
-| `tests/chat/test_commands.py`     | Slash command parsing and execution |
-| `tests/chat/test_sessions.py`     | Session CRUD, persistence limits    |
-| `tests/chat/test_orchestrator.py` | ACP handshake, streaming, errors    |
+| File                                             | Tests                                           |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `tests/unit/test_chat_repl.py`                   | REPL entry points, loop behavior, scope binding |
+| `tests/unit/test_chat_commands.py`               | Slash command parsing and execution             |
+| `tests/unit/test_chat_policy.py`                 | Authorization checks and session gating         |
+| `tests/unit/test_chat_controller_streaming.py`   | ACP streaming, chunk handling, error paths      |
+| `tests/unit/test_chat_acp_warmup.py`             | Warmup handshake + prompt initialization        |
+| `tests/tui/test_chat_modes.py`                   | Mode switching in Textual chat widgets          |
+| `tests/tui/test_chat_overlay.py`                 | Fullscreen chat overlays and panel visibility   |
+| `tests/tui/test_task_screen_chat_persistence.py` | Task chat state across screen navigation        |
 
 **All tests use mocked ACP connections.** Real agent spawn is integration-level.

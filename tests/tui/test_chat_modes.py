@@ -23,7 +23,7 @@ async def test_ctrl_o_opens_chat_overlay_docked(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         await pilot.pause()
 
@@ -44,7 +44,7 @@ async def test_ctrl_p_opens_command_palette(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+p")
+        await pilot.press("ctrl+shift+p")
         await pilot.pause()
 
         assert isinstance(app.screen, CommandPalette)
@@ -71,7 +71,6 @@ async def test_ctrl_p_opens_chat_fullscreen(board: KaganDriver) -> None:
 
 
 async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
-    """Switching from docked overlay to fullscreen must not clear the stream."""
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
@@ -81,8 +80,7 @@ async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        # Open docked overlay (orchestrator mode)
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel")
@@ -91,7 +89,6 @@ async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
         assert not panel.has_class("fullscreen")
         mode_before = str(title.content)
 
-        # Switch to fullscreen — session/mode must be preserved
         await pilot.press("ctrl+shift+t")
         await pilot.pause()
 

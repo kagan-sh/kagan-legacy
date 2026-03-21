@@ -1,5 +1,5 @@
 ---
-title: MCP setup
+title: MCP Setup — Connect Editors to Kagan
 description: Connect external AI clients to Kagan over MCP
 icon: material/server-network
 tags:
@@ -31,7 +31,7 @@ Switch to default (read+write) or admin tier only when needed.
 
 ## 3. Verify
 
-```
+```text
 task_list → tasks returned
 task_get(task_id, include_logs=true) → task detail
 task_logs(task_id, offset, limit)   → if truncated
@@ -43,10 +43,10 @@ ______________________________________________________________________
 
 Kagan uses three access tiers, controlled by CLI flags:
 
-| Tier       | Flag         | Scope                                                 |
-| ---------- | ------------ | ----------------------------------------------------- |
-| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.   |
-| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs. |
+| Tier       | Flag         | Scope                                                              |
+| ---------- | ------------ | ------------------------------------------------------------------ |
+| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.                |
+| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs.            |
 | `admin`    | `--admin`    | Default + destructive. Delete tasks, modify settings, plugin sync. |
 
 `--readonly` and `--admin` are mutually exclusive.
@@ -64,7 +64,6 @@ ______________________________________________________________________
 
 === "Claude Code"
 
-    ````
     Path: `~/.claude.json` (global) or `.mcp.json` (project)
 
     ```json
@@ -77,11 +76,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "VS Code"
 
-    ````
     Path: `.vscode/mcp.json`
 
     ```json
@@ -94,11 +91,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "Cursor"
 
-    ````
     Path: `.cursor/mcp.json`
 
     ```json
@@ -111,11 +106,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "OpenCode"
 
-    ````
     Path: `~/.config/opencode/opencode.json`
 
     ```json
@@ -128,11 +121,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "Codex"
 
-    ````
     Path: `~/.codex/config.toml`
 
     ```toml
@@ -140,11 +131,9 @@ ______________________________________________________________________
     command = "kagan"
     args = ["mcp"]
     ```
-    ````
 
 === "Gemini CLI"
 
-    ````
     Path: `~/.gemini/settings.json`
 
     ```json
@@ -157,11 +146,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "Kimi CLI"
 
-    ````
     Path: `~/.kimi/mcp.json`
 
     ```json
@@ -174,11 +161,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "GitHub Copilot"
 
-    ````
     Path: `.github/copilot/mcp.json`
 
     ```json
@@ -191,11 +176,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "Goose"
 
-    ````
     Path: `~/.config/goose/config.yaml`
 
     ```yaml
@@ -207,11 +190,9 @@ ______________________________________________________________________
         args:
           - mcp
     ```
-    ````
 
 === "Amp"
 
-    ````
     Path: `~/.config/amp/settings.json`
 
     ```json
@@ -224,11 +205,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 === "Auggie"
 
-    ````
     Path: `~/.augment/mcp.json`
 
     ```json
@@ -241,10 +220,9 @@ ______________________________________________________________________
       }
     }
     ```
-    ````
 
 !!! tip "Read-only or admin access"
-    Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
+Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
 
 ______________________________________________________________________
 
@@ -252,7 +230,7 @@ ______________________________________________________________________
 
 **Create:** Kagan → New Project → add repo paths. First repo = active.
 
-**Switch:** `Ctrl+R` → `j`/`k` → `Enter` select · `Ctrl+P` add via palette · `Esc` cancel.
+**Switch:** `Ctrl+R` -> `j`/`k` -> `Enter` select · `Ctrl+Shift+P` Quick Actions · `Esc` cancel.
 
 **Branch:** `b` = task-level base branch override. Repo base from checked-out branch.
 

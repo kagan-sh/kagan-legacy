@@ -1,5 +1,5 @@
 ---
-title: Configuration reference
+title: Configuration Reference
 description: Full schema for config.toml, locations, and environment overrides
 icon: material/cog
 ---
@@ -25,10 +25,9 @@ Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 [general]
 default_worker_agent = "claude"
 auto_skill_discovery = false
-worker_persona = "Implementer: ship the smallest correct change and verify with tests."
-orchestrator_persona = "Orchestrator: plan concrete tasks and communicate concisely."
-pr_reviewer_persona = "PR Reviewer: validate requirements, regressions, and test coverage."
-default_pair_terminal_backend = "tmux"
+review_strictness = "balanced"
+additional_instructions = "Use conventional commit format"
+attached_launcher = "tmux"
 doctor_verbosity = "short"
 interaction_verbosity = "short"
 max_concurrent_agents = 3
@@ -38,7 +37,7 @@ max_concurrent_agents = 3
 
 | Key                                  | Type           | Default                          | Notes                                                                               |
 | ------------------------------------ | -------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
-| `max_concurrent_agents`              | integer        | `3`                              | Concurrent AUTO execution cap                                                       |
+| `max_concurrent_agents`              | integer        | `3`                              | Concurrent managed-run cap                                                          |
 | `mcp_server_name`                    | string         | `"kagan"`                        | MCP server registration name                                                        |
 | `worktree_base_ref_strategy`         | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local`      |
 | `auto_review`                        | boolean        | `true`                           | Run AI review on completion                                                         |
@@ -47,10 +46,11 @@ max_concurrent_agents = 3
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
 | `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                                |
-| `worker_persona`                     | string         | Built-in implementer preset      | Global AUTO worker persona prompt                                                   |
-| `orchestrator_persona`               | string         | Built-in orchestrator preset     | Global orchestrator/planning persona prompt                                         |
-| `pr_reviewer_persona`                | string         | Built-in reviewer preset         | Global PR reviewer persona prompt                                                   |
-| `default_pair_terminal_backend`      | string         | `"tmux"` (`"vscode"` on Windows) | Allowed: `tmux`, `nvim`, `vscode`, `cursor`, `windsurf`, `kiro`, `antigravity`      |
+| `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
+| `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
+| `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |
+| `auto_confirm_single_tasks`          | boolean        | `false`                          | Skip confirmation for single-task plans                                             |
+| `attached_launcher`                  | string         | `"tmux"` (`"vscode"` on Windows) | Preferred launcher for interactive runs                                             |
 | `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
 | `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
 | `default_model_claude`               | string or null | `null`                           | Optional default model                                                              |
@@ -103,8 +103,8 @@ Fields:
 | `protocol`            | string  | Currently `acp`                  |
 | `active`              | boolean | Enable/disable this agent        |
 | `model_env_var`       | string  | Env var used for model selection |
-| `run_command`         | table   | OS-keyed commands for AUTO mode  |
-| `interactive_command` | table   | OS-keyed commands for PAIR mode  |
+| `run_command`         | table   | OS-keyed commands for managed runs |
+| `interactive_command` | table   | OS-keyed commands for interactive launches |
 
 OS keys for command tables: `macos`, `linux`, `windows`, `*`.
 
@@ -121,7 +121,7 @@ OS keys for command tables: `macos`, `linux`, `windows`, `*`.
 
 | Key                       | Type        | Default               | Notes                                                      |
 | ------------------------- | ----------- | --------------------- | ---------------------------------------------------------- |
-| `skip_pair_instructions`  | boolean     | `false`               | Skip PAIR instruction modal                                |
+| `skip_attached_instructions_popup` | boolean | `false` | Skip interactive-launch instruction modal |
 | `tui_plugin_ui_allowlist` | string list | `["official.github"]` | Plugin IDs allowed to contribute declarative UI to the TUI |
 
 ## `[plugins]`
@@ -137,7 +137,21 @@ Third-party: install plugin → add to `discovery` → restart core. No remote f
 discovery = [..., "my_company.kagan_plugins.my_plugin:MyPlugin"]
 ```
 
-## Environment variables passed into PAIR sessions
+## Environment variables passed into interactive sessions
+
+## Prompt override files
+
+Place Markdown files in `.kagan/prompts/` at the root of your project repository to fully replace the built-in prompts:
+
+| File              | Replaces                       | Notes                                                                     |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| `orchestrator.md` | Orchestrator system prompt     | Full replacement — settings and additional instructions are skipped       |
+| `execution.md`    | Task execution prompt template | Supports `{title}`, `{description}`, `{acceptance_criteria}` placeholders |
+| `review.md`       | Review prompt                  | Full replacement                                                          |
+
+If a file is absent, the built-in default is used with behavioral settings and additional instructions appended.
+
+The TUI Settings modal and web dashboard show which override files are detected.
 
 | Variable                | Meaning                   |
 | ----------------------- | ------------------------- |

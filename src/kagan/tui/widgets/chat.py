@@ -15,10 +15,12 @@ from textual.widgets.option_list import Option
 from kagan.chat import (
     SLASH_COMMAND_REGISTRY,
     build_slash_presentation_lines,
+    fuzzy_match,
     list_registered_agent_backends,
     normalize_chat_input,
     resolve_slash_input,
 )
+from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import CHAT_BINDINGS
 from kagan.tui.screens.session_picker import (
     SessionPickerGroup,
@@ -26,22 +28,8 @@ from kagan.tui.screens.session_picker import (
     SessionPickerOption,
 )
 from kagan.tui.widgets.permission import PermissionPrompt
-from kagan.tui.widgets.plan import PlanApprovalWidget, PlanDisplay
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
-
-
-def _fuzzy_match(pattern: str, text: str) -> bool:
-    """Check if all chars of *pattern* appear in *text* in order (case-insensitive)."""
-    lower_text = text.casefold()
-    pos = 0
-    for ch in pattern.casefold():
-        idx = lower_text.find(ch, pos)
-        if idx < 0:
-            return False
-        pos = idx + 1
-    return True
-
 
 _SLASH_ALIASES: Final[dict[str, str]] = {
     "q": "exit",
@@ -57,7 +45,6 @@ class _SessionState:
     draft: str = ""
     prompt_history: list[str] = field(default_factory=list)
     history_index: int | None = None
-    plan_entries: list[str | dict[str, str]] = field(default_factory=list)
     decision_surface: tuple[str, dict[str, Any]] | None = None
 
 
@@ -138,6 +125,21 @@ class ChatPanel(Vertical):
         self._chat_input_disable_depth = 0
         self._runtime_input_locked = False
         self._history_programmatic_update = False
+        self._overlay_split_key = "Ctrl+I"
+        self._overlay_fullscreen_key = "Ctrl+Shift+T"
+        self._overlay_close_key = "Esc"
+        self._state_only_updates = 0
+
+    @contextlib.contextmanager
+    def state_only_updates(self):
+        self._state_only_updates += 1
+        try:
+            yield
+        finally:
+            self._state_only_updates = max(0, self._state_only_updates - 1)
+
+    def stream_output(self) -> StreamingOutput:
+        return self.query_one("#chat-overlay-output", StreamingOutput)
 
     def compose(self) -> ComposeResult:
         yield Static("Orchestrator", id="chat-title")
@@ -179,11 +181,10 @@ class ChatPanel(Vertical):
                                         f"  • {example}", classes="chat-overlay-empty-example"
                                     )
                             yield Static(
-                                "Tip: press Ctrl+T to toggle AI chat.",
+                                "Tip: use this screen's chat shortcut to open AI chat.",
                                 id="chat-overlay-first-boot-nudge",
                             )
                 yield StreamingOutput(id="chat-overlay-output", classes="chat-output")
-                yield PlanDisplay(id="chat-plan-display")
                 yield Vertical(id="chat-inline-surface")
                 yield Static(
                     self._EMPTY_TEXT,
@@ -201,7 +202,7 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             yield Input(
-                                placeholder=("What's next? Try /flow · Ctrl+C to clear"),
+                                placeholder=("What's next? Try /flow · Esc to interrupt"),
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
@@ -242,7 +243,6 @@ class ChatPanel(Vertical):
 
         self.query_one("#slash-complete", Vertical).display = False
         self.query_one("#task-mention-complete", Vertical).display = False
-        self.query_one("#chat-plan-display", PlanDisplay).display = False
         self.query_one("#chat-inline-surface", Vertical).display = False
         self.query_one("#chat-messages", Static).display = False
 
@@ -322,12 +322,18 @@ class ChatPanel(Vertical):
 
     def set_session_kind(self, kind: str) -> None:
         indicator = self.query_one("#chat-overlay-session-indicator", Static)
-        for css_kind in ("orchestrator", "auto", "review", "pair"):
+        for css_kind in SessionKind:
             indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
         with contextlib.suppress(NoMatches):
             badge = self.query_one("#chat-overlay-session-badge", Static)
-            for css_kind in ("orchestrator", "auto", "review", "pair"):
+            for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
+
+    def set_overlay_shortcuts(self, *, split: str, fullscreen: str, close: str = "Esc") -> None:
+        self._overlay_split_key = split.strip() or self._overlay_split_key
+        self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
+        self._overlay_close_key = close.strip() or self._overlay_close_key
+        self._refresh_status()
 
     def set_first_boot(self, enabled: bool = True) -> None:
         self.set_class(enabled, "first-boot")
@@ -390,7 +396,7 @@ class ChatPanel(Vertical):
                 )
             )
         self._trim_session_entries(state)
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return
@@ -414,19 +420,13 @@ class ChatPanel(Vertical):
             if result is not None:
                 payload["result"] = result
             state.entries[index] = ("tool", payload)
-            if self.is_mounted:
+            if self.is_mounted and self._state_only_updates == 0:
                 stream = self._stream_output()
                 if stream is None:
                     return
                 stream.update_tool_status(tool_id, status, result=result)
                 self._schedule_deferred_update()
             return
-
-    def set_plan_entries(self, entries: list[str | dict[str, str]]) -> None:
-        state = self._current_state()
-        state.plan_entries = list(entries)
-        if self.is_mounted:
-            self._render_plan_display()
 
     def request_permission(self, text: str, *, timeout_seconds: int = 30) -> None:
         state = self._current_state()
@@ -437,16 +437,9 @@ class ChatPanel(Vertical):
         if self.is_mounted:
             self._render_decision_surface()
 
-    def show_plan_approval(self, tasks: list[Any]) -> None:
-        state = self._current_state()
-        state.decision_surface = ("plan_approval", {"tasks": tasks})
-        if self.is_mounted:
-            self._render_decision_surface()
-
     def clear_messages(self) -> None:
         state = self._current_state()
         state.entries.clear()
-        state.plan_entries.clear()
         state.decision_surface = None
         self._runtime_status = "ready"
         self._cancel_deferred_timer()
@@ -494,32 +487,26 @@ class ChatPanel(Vertical):
                 status_bar.turn_count += 1
 
     def handle_interrupt(self) -> bool:
-        """Handle Ctrl+C: interrupt active agent or clear input text.
+        """Handle Ctrl+C: clear input text only.
 
         Called by the App-level ``action_help_quit`` override so that the
         Textual system binding for Ctrl+C is redirected here instead of
         showing a quit-hint toast.
 
-        Returns True if the interrupt was handled.
+        Returns True if the clear was handled.
         """
-        # Agent active → interrupt (highest priority)
-        if self._runtime_status in {"thinking", "initializing", "waiting"}:
-            self.post_message(ChatPanel.InterruptRequested())
-            return True
-        # Agent idle → clear input text if any
         try:
             input_widget = self._input_widget()
             if input_widget.value:
                 self.action_clear_input()
                 return True
-        except Exception:
+        except NoMatches:
             pass
         return False
 
     def hydrate_current_session_history(self, history: list[tuple[str, str]]) -> None:
         state = self._current_state()
         state.entries.clear()
-        state.plan_entries.clear()
         state.decision_surface = None
         self._cancel_deferred_timer()
         for role, content in history:
@@ -581,32 +568,14 @@ class ChatPanel(Vertical):
         self._switch_session(value, emit=True)
 
     @on(Input.Submitted, "#chat-overlay-input")
-    def _on_input_submitted(self) -> None:
-        self._submit_current_input()
+    async def _on_input_submitted(self) -> None:
+        await self._submit_current_input()
 
     @on(PermissionPrompt.DecisionMade)
     def _on_permission_decision(self, event: PermissionPrompt.DecisionMade) -> None:
         state = self._current_state()
         state.decision_surface = None
         self.add_system_message(f"Permission {event.decision}")
-        self._render_decision_surface()
-
-    @on(PlanApprovalWidget.Approved)
-    def _on_plan_approved(self, _event: PlanApprovalWidget.Approved) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan approved")
-        self._render_decision_surface()
-
-    @on(PlanApprovalWidget.EditRequested)
-    def _on_plan_edit_requested(self, _event: PlanApprovalWidget.EditRequested) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan sent back for editing")
-        self._render_decision_surface()
-
-    @on(PlanApprovalWidget.Dismissed)
-    def _on_plan_dismissed(self, _event: PlanApprovalWidget.Dismissed) -> None:
-        self._current_state().decision_surface = None
-        self.add_system_message("Plan dismissed")
         self._render_decision_surface()
 
     def on_key(self, event: Key) -> None:
@@ -644,7 +613,7 @@ class ChatPanel(Vertical):
                     exact_match = any(spec.name == cmd_name for spec in specs)
                     if exact_match:
                         self._hide_overlays()
-                        self.action_send_message()
+                        self.call_later(self.action_send_message)
                         return
                 event.prevent_default()
                 event.stop()
@@ -669,11 +638,7 @@ class ChatPanel(Vertical):
         if event.key == "ctrl+c":
             event.prevent_default()
             event.stop()
-            # Agent active → interrupt first (regardless of input text)
-            if self._runtime_status in {"thinking", "initializing", "waiting"}:
-                self.post_message(ChatPanel.InterruptRequested())
-                return
-            # Agent idle → clear input text if any
+            # Ctrl+C always clears input — Esc interrupts the agent
             if self._input_widget().value:
                 self.action_clear_input()
             return
@@ -681,7 +646,7 @@ class ChatPanel(Vertical):
         if event.key == "enter":
             event.prevent_default()
             event.stop()
-            self.action_send_message()
+            self.call_later(self.action_send_message)
             return
 
         if overlay_visible:
@@ -699,8 +664,8 @@ class ChatPanel(Vertical):
                 event.stop()
             return
 
-    def action_send_message(self) -> None:
-        self._submit_current_input()
+    async def action_send_message(self) -> None:
+        await self._submit_current_input()
 
     def action_focus_output_latest(self) -> None:
         stream = self._stream_output()
@@ -747,6 +712,10 @@ class ChatPanel(Vertical):
         if self._mention_matches or self._slash_matches:
             self._hide_overlays()
             return
+        # Esc interrupts the active agent instead of closing the panel
+        if self._runtime_status in {"thinking", "initializing", "waiting"}:
+            self.post_message(ChatPanel.InterruptRequested())
+            return
         self._request_close()
 
     def action_open_session_picker(self, initial_query: str | None = None) -> None:
@@ -759,7 +728,7 @@ class ChatPanel(Vertical):
             initial_query=initial_query,
         )
 
-    def _submit_current_input(self) -> None:
+    async def _submit_current_input(self) -> None:
         input_widget = self._input_widget()
         if input_widget.disabled:
             return
@@ -788,7 +757,7 @@ class ChatPanel(Vertical):
 
         self._append_prompt_history(text)
 
-        handled = self._handle_slash_command(text)
+        handled = await self._handle_slash_command(text)
         if not handled:
             self.post_message(self.SubmitRequested(text))
             self.add_user_message(text)
@@ -798,7 +767,7 @@ class ChatPanel(Vertical):
         input_widget.focus()
         self._hide_overlays()
 
-    def _handle_slash_command(self, text: str) -> bool:
+    async def _handle_slash_command(self, text: str) -> bool:
         by_key = {key: label for label, key in self._session_options}
         session_label = by_key.get(self._selected_session_key, "Orchestrator")
 
@@ -823,10 +792,7 @@ class ChatPanel(Vertical):
             self._request_session_picker(result.sessions_query or "")
 
         if result.delete_session_query is not None:
-            self.add_system_message(
-                "Session deletion is currently available in REPL only. "
-                "Use /sessions in REPL to delete sessions."
-            )
+            await self._delete_chat_session(result.delete_session_query)
 
         if result.new_session_requested:
             self.post_message(self.NewSessionRequested())
@@ -836,6 +802,22 @@ class ChatPanel(Vertical):
 
         if result.help_overlay_requested:
             self._show_help_overlay()
+
+        if result.status_requested:
+            self.add_system_message(
+                f"Session: {self._selected_session_key} | Agent: {self._agent_hint or 'default'}"
+            )
+
+        if result.project_info_requested:
+            core = getattr(self.app, "core", None)
+            pid = getattr(core, "active_project_id", None) if core else None
+            self.add_system_message(f"Active project: {pid or '(none)'}")
+
+        if result.project_switch_requested is not None:
+            self.add_system_message(
+                "Project switching is available via CLI or REPL. "
+                f"Requested: {result.project_switch_requested}"
+            )
 
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
@@ -859,6 +841,42 @@ class ChatPanel(Vertical):
         input_widget.value = "/"
         input_widget.focus()
         self._sync_slash_complete("/")
+
+    async def _delete_chat_session(self, query: str) -> None:
+        """Delete a chat session by number or id."""
+        from kagan.chat.sessions import (
+            build_chat_session_list_items,
+            delete_chat_session,
+            list_chat_sessions,
+            resolve_chat_session_selector,
+        )
+
+        core = getattr(self.app, "core", None)
+        if core is None:
+            self.add_system_message("No client available.")
+            return
+
+        sessions = await list_chat_sessions(core)
+        if not sessions:
+            self.add_system_message("No sessions to delete.")
+            return
+
+        items = build_chat_session_list_items(sessions)
+        target = resolve_chat_session_selector(items, query)
+        if target is None:
+            self.add_system_message(f"Unknown session: {query}")
+            return
+
+        # Don't allow deleting current session
+        if target.session_id == self._selected_session_key:
+            self.add_system_message("Cannot delete the current session.")
+            return
+
+        deleted = await delete_chat_session(core, target.session_id)
+        if deleted:
+            self.add_system_message(f"Deleted: {target.label} [{target.session_id}]")
+        else:
+            self.add_system_message(f"Failed to delete session {target.session_id}.")
 
     def _request_close(self) -> None:
         if self.has_class("chat-overlay"):
@@ -893,7 +911,7 @@ class ChatPanel(Vertical):
             state.entries.append((kind, {"text": cleaned}))
         self._trim_session_entries(state)
 
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return
@@ -932,7 +950,7 @@ class ChatPanel(Vertical):
             state.entries.append((kind, {"text": text}))
         self._trim_session_entries(state)
 
-        if self.is_mounted:
+        if self.is_mounted and self._state_only_updates == 0:
             stream = self._stream_output()
             if stream is None:
                 return
@@ -990,7 +1008,6 @@ class ChatPanel(Vertical):
             stream.clear()
             for kind, payload in self._current_state().entries:
                 self._render_entry(stream, kind, payload)
-        self._render_plan_display()
         self._render_decision_surface()
         self._update_hidden_buffer()
         self._update_content_state()
@@ -1021,16 +1038,6 @@ class ChatPanel(Vertical):
                 kind=payload.get("kind"),
             )
 
-    def _render_plan_display(self) -> None:
-        plan_display = self.query_one("#chat-plan-display", PlanDisplay)
-        entries = self._current_state().plan_entries
-        if not entries:
-            plan_display.clear()
-            plan_display.display = False
-            return
-        plan_display.set_entries(entries)
-        plan_display.display = True
-
     def _render_decision_surface(self) -> None:
         container = self.query_one("#chat-inline-surface", Vertical)
         for child in list(container.children):
@@ -1048,10 +1055,6 @@ class ChatPanel(Vertical):
                     timeout_seconds=int(payload.get("timeout_seconds") or 30),
                 )
             )
-        elif kind == "plan_approval":
-            tasks = payload.get("tasks")
-            if isinstance(tasks, list):
-                container.mount(PlanApprovalWidget(tasks))
         container.display = True
 
     def _rendered_messages(self) -> list[str]:
@@ -1084,7 +1087,7 @@ class ChatPanel(Vertical):
 
     def _update_content_state(self) -> None:
         state = self._current_state()
-        has_content = bool(state.entries or state.plan_entries or state.decision_surface)
+        has_content = bool(state.entries or state.decision_surface)
         self.set_class(has_content, "has-content")
 
     def _cancel_deferred_timer(self) -> None:
@@ -1163,7 +1166,9 @@ class ChatPanel(Vertical):
             return
 
         # Determine if we're in an orchestrator session
-        is_orchestrator = self._infer_session_kind(self._selected_session_key) == "orchestrator"
+        is_orchestrator = (
+            self._infer_session_kind(self._selected_session_key) == SessionKind.ORCHESTRATOR
+        )
 
         seen: set[str] = set()
         matches: list[tuple[str, str]] = []
@@ -1172,7 +1177,7 @@ class ChatPanel(Vertical):
             # Skip orchestrator-only commands in non-orchestrator sessions
             if spec.orchestrator_only and not is_orchestrator:
                 continue
-            if (not query or _fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
+            if (not query or fuzzy_match(query.casefold(), spec.name)) and spec.name not in seen:
                 seen.add(spec.name)
                 matches.append((spec.name, spec.description))
         # 2. Exact alias match
@@ -1273,17 +1278,22 @@ class ChatPanel(Vertical):
 
     def _refresh_status(self) -> None:
         input_disabled = self._input_widget().disabled
+        split_key = self._overlay_split_key
+        fullscreen_key = self._overlay_fullscreen_key
+        close_key = self._overlay_close_key
         if input_disabled:
             right = "Read-only timeline"
         elif bool(self._slash_matches or self._mention_matches):
             right = (
                 "Enter send · Tab complete · Ctrl+J timeline · "
-                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
+                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
+                f"Ctrl+C clear · Esc interrupt · {close_key} close"
             )
         else:
             right = (
                 "Enter send · Up/Down history · Ctrl+J timeline · "
-                "Ctrl+K sessions · Ctrl+C clear/cancel · Esc close"
+                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
+                f"Ctrl+C clear · Esc interrupt · {close_key} close"
             )
         status_bar = self._status_bar()
         if status_bar is None:
@@ -1350,7 +1360,25 @@ class ChatPanel(Vertical):
         orchestrator: list[SessionPickerOption] = []
         task_targets_by_ticket: dict[str, list[SessionPickerOption]] = {}
         other: list[SessionPickerOption] = []
-        for label, key in self._session_options:
+
+        # Filter by active project when available
+        core = getattr(self.app, "core", None)
+        active_project_id = getattr(core, "active_project_id", None) if core else None
+        filtered_options = self._session_options
+        if active_project_id is not None:
+            project_keys = self._project_session_keys(active_project_id)
+            if project_keys is not None:
+                # Keep all non-chat sessions (task sessions are DB-scoped),
+                # plus chat sessions matching the active project
+                filtered_options = [
+                    (label, key)
+                    for label, key in self._session_options
+                    if key == "orchestrator"
+                    or key in project_keys
+                    or self._infer_session_kind(key) != SessionKind.ORCHESTRATOR
+                ]
+
+        for label, key in filtered_options:
             kind = self._infer_session_kind(key)
             option = SessionPickerOption(
                 key=key,
@@ -1358,9 +1386,9 @@ class ChatPanel(Vertical):
                 label=label,
                 search_text=f"{label} {key} {kind}",
             )
-            if kind == "orchestrator":
+            if kind == SessionKind.ORCHESTRATOR:
                 orchestrator.append(option)
-            elif kind in {"auto", "review", "pair"}:
+            elif kind in {SessionKind.DETACHED, SessionKind.REVIEW, SessionKind.ATTACHED}:
                 ticket_label = self._ticket_group_label(option.label)
                 task_targets_by_ticket.setdefault(ticket_label, []).append(option)
             else:
@@ -1386,7 +1414,7 @@ class ChatPanel(Vertical):
                     icon="◉",
                     label=ticket_label,
                     subtitle=f"{len(options)} agent(s)",
-                    search_text=f"ticket task auto review pair worktree {ticket_label}",
+                    search_text=f"ticket task managed review interactive worktree {ticket_label}",
                     options=tuple(options),
                 )
             )
@@ -1403,6 +1431,36 @@ class ChatPanel(Vertical):
             )
         return groups
 
+    def _project_session_keys(self, project_id: str) -> set[str] | None:
+        """Return session keys belonging to the given project, or None if unavailable."""
+        import json
+
+        from sqlmodel import select
+
+        from kagan.core._db_helpers import _db_sync
+        from kagan.core.models import Setting
+
+        core = getattr(self.app, "core", None)
+        engine = getattr(core, "_engine", None) if core else None
+        if engine is None:
+            return None
+        try:
+            settings = _db_sync(
+                engine, lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()}
+            )
+            blob = settings.get("chat_sessions_v1", "")
+            if not blob:
+                return None
+            parsed = json.loads(blob)
+            sessions = parsed.get("sessions", []) if isinstance(parsed, dict) else []
+            return {
+                s.get("id", "")
+                for s in sessions
+                if isinstance(s, dict) and s.get("project_id") == project_id and s.get("id")
+            }
+        except Exception:
+            return None
+
     @staticmethod
     def _ticket_group_label(option_label: str) -> str:
         ticket_label, _separator, _role = option_label.partition(" · ")
@@ -1413,21 +1471,26 @@ class ChatPanel(Vertical):
     def _infer_session_kind(key: str) -> str:
         normalized = key.casefold()
         if "orchestrator" in normalized:
-            return "orchestrator"
+            return SessionKind.ORCHESTRATOR
         if "review" in normalized:
-            return "review"
-        if "pair" in normalized:
-            return "pair"
-        return "auto"
+            return SessionKind.REVIEW
+        if "interactive" in normalized or "attached" in normalized:
+            return SessionKind.ATTACHED
+        if "managed" in normalized:
+            return SessionKind.DETACHED
+        return SessionKind.DETACHED
 
     @staticmethod
     def _session_icon(kind: str) -> str:
-        return {
-            "orchestrator": "◎",
-            "auto": "◉",
-            "review": "◆",
-            "pair": "◌",
-        }.get(kind, "●")
+        if kind == SessionKind.ORCHESTRATOR:
+            return "◎"
+        if kind == SessionKind.REVIEW:
+            return "◆"
+        if kind == SessionKind.ATTACHED:
+            return "◌"
+        if kind == SessionKind.DETACHED:
+            return "◉"
+        return "●"
 
     @staticmethod
     def _mention_span(value: str) -> tuple[int, int, str] | None:

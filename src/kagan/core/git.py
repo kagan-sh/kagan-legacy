@@ -4,20 +4,33 @@ import asyncio
 import os
 import re
 from pathlib import Path
+from typing import TypedDict
 
 from loguru import logger
 
+from kagan.core.enums import BranchRefStrategy
 from kagan.core.errors import MergeConflictError, WorktreeError
 from kagan.runtime_env import build_sanitized_subprocess_environment
+
+
+class WorktreeEntry(TypedDict):
+    path: str
+    branch: str | None
+
+
+class DiffStats(TypedDict):
+    files: int
+    insertions: int
+    deletions: int
+
 
 # Default git identity for Kagan agent commits.
 KAGAN_AGENT_NAME = "Kagan Agent"
 KAGAN_AGENT_EMAIL = "info@kagan.sh"
 
-# Timeout constants for git operations (in seconds)
-TIMEOUT_DEFAULT = 30.0  # Regular operations
-TIMEOUT_FETCH = 120.0  # Fetch/pull operations
-TIMEOUT_CLONE = 300.0  # Clone operations
+TIMEOUT_DEFAULT = 30.0
+TIMEOUT_FETCH = 120.0
+TIMEOUT_CLONE = 300.0
 
 
 async def _run_git(
@@ -26,7 +39,6 @@ async def _run_git(
     check: bool = True,
     timeout: float = TIMEOUT_DEFAULT,
 ) -> tuple[str, str]:
-    """Run a git command, returning (stdout, stderr). Raises WorktreeError on failure."""
     logger.debug("git {}", " ".join(args))
     proc = await asyncio.create_subprocess_exec(
         "git",
@@ -58,7 +70,6 @@ async def _run_git_result(
     cwd: Path,
     timeout: float = TIMEOUT_DEFAULT,
 ) -> tuple[int, str, str]:
-    """Run a git command, returning (returncode, stdout, stderr). Never raises."""
     logger.debug("git {}", " ".join(args))
     proc = await asyncio.create_subprocess_exec(
         "git",
@@ -112,12 +123,6 @@ async def current_branch(repo_path: str | Path) -> str | None:
 
 
 async def get_system_git_identity() -> tuple[str, str]:
-    """Get the system-configured git user identity.
-
-    Checks environment variables first (GIT_AUTHOR_NAME, GIT_COMMITTER_NAME,
-    GIT_AUTHOR_EMAIL, GIT_COMMITTER_EMAIL), then falls back to git config.
-    Returns (name, email) tuple with Kagan Agent defaults as final fallback.
-    """
     env_name = os.environ.get("GIT_AUTHOR_NAME") or os.environ.get("GIT_COMMITTER_NAME")
     env_email = os.environ.get("GIT_AUTHOR_EMAIL") or os.environ.get("GIT_COMMITTER_EMAIL")
 
@@ -138,13 +143,6 @@ async def get_system_git_identity() -> tuple[str, str]:
 
 
 async def get_git_user_identity(settings: dict[str, str]) -> tuple[str, str]:
-    """Resolve git identity based on settings.
-
-    Three modes controlled by ``git_user_mode`` setting:
-    - ``kagan_agent`` (default): Uses Kagan Agent <info@kagan.sh>.
-    - ``system_default``: Uses the system git config / env vars.
-    - ``custom``: Uses ``git_user_name`` / ``git_user_email`` from settings.
-    """
     mode = settings.get("git_user_mode", "kagan_agent")
 
     if mode == "system_default":
@@ -197,14 +195,14 @@ async def resolve_worktree_base(
     repo_path: str | Path,
     *,
     preferred_branch: str,
-    strategy: str,
+    strategy: BranchRefStrategy,
     refresh_remote: bool = False,
 ) -> str:
     repo = Path(repo_path)
 
-    # Fetch from origin before resolving (kagan2 sync-on-start pattern).
+    # Fetch from origin before resolving.
     # Skipped for "local" strategy which never consults the remote.
-    if refresh_remote and strategy != "local" and await _has_remote(repo, "origin"):
+    if refresh_remote and strategy != BranchRefStrategy.LOCAL and await _has_remote(repo, "origin"):
         await _run_git(
             "fetch", "origin", preferred_branch, cwd=repo, check=False, timeout=TIMEOUT_FETCH
         )
@@ -213,12 +211,12 @@ async def resolve_worktree_base(
     remote_exists = await _has_remote_branch(repo, preferred_branch)
     remote_ref = f"origin/{preferred_branch}"
 
-    if strategy == "remote":
+    if strategy == BranchRefStrategy.REMOTE:
         if remote_exists:
             return remote_ref
         if local_exists:
             return preferred_branch
-    elif strategy == "local":
+    elif strategy == BranchRefStrategy.LOCAL:
         if local_exists:
             return preferred_branch
         if remote_exists:
@@ -247,11 +245,11 @@ async def worktree_remove(repo_path: str | Path, worktree_path: str | Path) -> N
     await _run_git("worktree", "prune", cwd=repo, check=False)
 
 
-async def worktree_list(repo_path: str | Path) -> list[dict]:
+async def worktree_list(repo_path: str | Path) -> list[WorktreeEntry]:
     """List all worktrees; returns dicts with 'path' and 'branch' keys."""
     repo = Path(repo_path)
     stdout, _ = await _run_git("worktree", "list", "--porcelain", cwd=repo)
-    worktrees: list[dict] = []
+    worktrees: list[WorktreeEntry] = []
     current: dict = {}
     for line in stdout.splitlines():
         if line.startswith("worktree "):
@@ -274,7 +272,7 @@ async def diff(
     worktree_path: str | Path,
     *,
     base_branch: str,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> str:
     """Return the unified diff between worktree HEAD and base_branch."""
     wt = Path(worktree_path)
@@ -287,8 +285,8 @@ async def diff_stats(
     worktree_path: str | Path,
     *,
     base_branch: str,
-    strategy: str = "local_if_ahead",
-) -> dict:
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
+) -> DiffStats:
     """Return diff statistics: {'files', 'insertions', 'deletions'}."""
     wt = Path(worktree_path)
     base_ref = await _resolve_base_ref(wt, base_branch, strategy=strategy)
@@ -328,8 +326,7 @@ async def merge(
 
     Squashes all commits from branch into a single commit on target_branch,
     then updates the branch ref to the squash SHA so follow-up work can
-    continue from the merged state without conflicts (kagan2 / vibe-kanban
-    pattern).
+    continue from the merged state without conflicts.
 
     Returns the SHA of the squash commit.
     Raises MergeConflictError on merge conflicts.
@@ -362,7 +359,7 @@ async def merge(
             head_sha, _ = await _run_git("rev-parse", "HEAD", cwd=repo)
             return head_sha.strip()
         # Commit with explicit agent identity so the repo's local config is
-        # left untouched (mirrors commit_all / kagan2 squash pattern).
+        # left untouched.
         await _run_git(
             "-c",
             f"user.name={user_name}",
@@ -435,37 +432,24 @@ async def detect_conflict_op(worktree_path: str | Path) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
 async def _resolve_base_ref(
     cwd: Path,
     base_branch: str,
     *,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> str:
-    """Resolve the best ref for *base_branch* according to *strategy*.
-
-    Strategies:
-        local          — prefer refs/heads/<branch>.
-        remote         — prefer origin/<branch>.
-        local_if_ahead — use local when it has commits ahead of origin,
-                         otherwise fall back to origin/<branch>.  (default)
-    """
     local_exists = await _has_local_branch(cwd, base_branch)
     remote_exists = await _has_remote_branch(cwd, base_branch)
     remote_ref = f"origin/{base_branch}"
 
-    if strategy == "local":
+    if strategy == BranchRefStrategy.LOCAL:
         if local_exists:
             return base_branch
         if remote_exists:
             return remote_ref
         return base_branch
 
-    if strategy == "remote":
+    if strategy == BranchRefStrategy.REMOTE:
         if remote_exists:
             return remote_ref
         return base_branch
@@ -505,7 +489,6 @@ async def _has_remote_branch(repo: Path, branch: str) -> bool:
 
 
 async def _has_remote(repo: Path, remote: str) -> bool:
-    """Return True if the named remote (e.g. 'origin') is configured."""
     stdout, _ = await _run_git("remote", "get-url", remote, cwd=repo, check=False)
     return bool(stdout)
 
@@ -530,16 +513,11 @@ async def _is_local_ahead_of_origin(repo: Path, branch: str) -> bool:
 
 
 async def _abort_merge(repo: Path) -> None:
-    """Abort an in-progress merge and hard-reset to a clean state.
-
-    Safe to call even when no merge is in progress.
-    """
     await _run_git("merge", "--abort", cwd=repo, check=False)
     await _run_git("reset", "--hard", cwd=repo, check=False)
 
 
 async def _collect_conflict_files(repo: Path) -> list[str]:
-    """Return list of files with merge conflicts."""
     stdout, _ = await _run_git("diff", "--name-only", "--diff-filter=U", cwd=repo, check=False)
     files = [line.strip() for line in stdout.splitlines() if line.strip()]
     if files:
@@ -550,14 +528,86 @@ async def _collect_conflict_files(repo: Path) -> list[str]:
 
 
 def _extract_number(text: str, word: str) -> int:
-    """Extract the integer before 'word' in a git stat summary line."""
     match = re.search(rf"(\d+)\s+{word}", text)
     return int(match.group(1)) if match else 0
 
 
-# ---------------------------------------------------------------------------
-# Commit enforcement helpers — used by agent completion to gate REVIEW transition
-# ---------------------------------------------------------------------------
+def parse_diff_changed_files(diff_text: str) -> list[str]:
+    files: list[str] = []
+    for line in diff_text.splitlines():
+        if not line.startswith("diff --git a/"):
+            continue
+        parts = line.split(" b/", maxsplit=1)
+        if len(parts) != 2:
+            continue
+        files.append(parts[1].strip())
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for path in files:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
+def parse_diff_totals(diff_text: str) -> tuple[int, int, int]:
+    insertions = 0
+    deletions = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        if line.startswith("+"):
+            insertions += 1
+            continue
+        if line.startswith("-"):
+            deletions += 1
+    return len(parse_diff_changed_files(diff_text)), insertions, deletions
+
+
+def parse_diff_file_entries(diff_text: str) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    current: dict[str, object] | None = None
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git a/"):
+            if current is not None:
+                entries.append(current)
+            parts = line.split(" b/", maxsplit=1)
+            path = parts[1].strip() if len(parts) == 2 else "-"
+            current = {
+                "path": path,
+                "status": "modified",
+                "insertions": 0,
+                "deletions": 0,
+            }
+            continue
+        if current is None:
+            continue
+        if line.startswith("new file mode") or line.startswith("--- /dev/null"):
+            current["status"] = "added"
+            continue
+        if line.startswith("deleted file mode") or line.startswith("+++ /dev/null"):
+            current["status"] = "deleted"
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            current["insertions"] = int(current["insertions"]) + 1
+            continue
+        if line.startswith("-") and not line.startswith("---"):
+            current["deletions"] = int(current["deletions"]) + 1
+
+    if current is not None:
+        entries.append(current)
+
+    deduped: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        path = str(entry.get("path", ""))
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(entry)
+    return deduped
 
 
 # Paths generated by Kagan or agent tooling — not meaningful uncommitted work.
@@ -571,16 +621,11 @@ _KAGAN_GENERATED: frozenset[str] = frozenset(
 
 
 def _is_kagan_generated(path: str) -> bool:
-    """Return True if *path* is a Kagan/agent-generated config file."""
     basename = Path(path).name
     return basename in _KAGAN_GENERATED or path.startswith(".kagan/")
 
 
 async def has_uncommitted_changes(worktree_path: str | Path) -> bool:
-    """Return True if the worktree has tracked uncommitted changes.
-
-    Ignores untracked files (`??`) and Kagan-generated config files.
-    """
     wt = Path(worktree_path)
     stdout, _ = await _run_git("status", "--porcelain", cwd=wt, check=False)
     for line in stdout.splitlines():
@@ -596,10 +641,6 @@ async def has_uncommitted_changes(worktree_path: str | Path) -> bool:
 
 
 async def has_pending_changes(worktree_path: str | Path) -> bool:
-    """Return True if the worktree has any uncommitted or untracked meaningful changes.
-
-    Ignores Kagan-generated config files.
-    """
     wt = Path(worktree_path)
     stdout, _ = await _run_git("status", "--porcelain", cwd=wt, check=False)
     for line in stdout.splitlines():
@@ -618,10 +659,6 @@ async def commit_all(
     user_name: str = KAGAN_AGENT_NAME,
     user_email: str = KAGAN_AGENT_EMAIL,
 ) -> None:
-    """Stage all tracked changes and commit with *message*.
-
-    Uses `-c` flags for identity so the worktree's local config is untouched.
-    """
     wt = Path(worktree_path)
     await _run_git("add", "-A", cwd=wt)
     await _run_git(
@@ -643,7 +680,7 @@ async def has_commits_since(
     worktree_path: str | Path,
     base_branch: str,
     *,
-    strategy: str = "local_if_ahead",
+    strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
 ) -> bool:
     """Return True if the worktree has commits ahead of *base_branch*."""
     wt = Path(worktree_path)
@@ -660,14 +697,6 @@ async def has_commits_since(
 
 
 async def prune_kagan_branches(repo_path: str | Path) -> list[str]:
-    """Delete kagan/* branches that have no live worktree.
-
-    After a squash-merge the task branch ref is updated to the squash SHA but
-    the branch still exists. This cleans up orphaned kagan/* branches that no
-    worktree is currently checked out on.
-
-    Returns the list of branch names that were deleted.
-    """
     repo = Path(repo_path)
     stdout, _ = await _run_git(
         "branch", "--list", "kagan/*", "--format=%(refname:short)", cwd=repo, check=False
@@ -695,6 +724,8 @@ async def prune_kagan_branches(repo_path: str | Path) -> list[str]:
 __all__ = [
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
+    "DiffStats",
+    "WorktreeEntry",
     "abort_rebase",
     "commit_all",
     "continue_rebase",
@@ -712,6 +743,9 @@ __all__ = [
     "is_git_repo",
     "is_rebase_in_progress",
     "merge",
+    "parse_diff_changed_files",
+    "parse_diff_file_entries",
+    "parse_diff_totals",
     "prune_kagan_branches",
     "rebase",
     "resolve_worktree_base",

@@ -13,26 +13,22 @@ pytestmark = [pytest.mark.mcp, pytest.mark.smoke]
 
 
 async def test_server_responds_to_list_tools(mcp_board: ClientSession) -> None:
-    """Server must respond to tools/list with a valid result."""
     result = await mcp_board.list_tools()
     assert result is not None
     assert isinstance(result.tools, list)
 
 
 def test_server_opts_readonly_admin_mutually_exclusive() -> None:
-    """ServerOptions must raise ValueError when both readonly and admin are set."""
     with pytest.raises(ValueError, match="mutually exclusive"):
         ServerOptions(readonly=True, admin=True)
 
 
 async def test_lifespan_app_context_accessible_from_tool(mcp_board: ClientSession) -> None:
-    """A tool registered with the server can access ServerContext via lifespan_context."""
     result = await mcp_board.list_tools()
     assert result is not None
 
 
 async def test_create_server_with_lifespan_runs() -> None:
-    """create_server must produce a FastMCP instance that can run with lifespan."""
     opts = ServerOptions()
     mcp = create_server(opts)
 

@@ -41,13 +41,12 @@ from kagan.core.models import Task
 class _TaskState:
     title: str
     status: str
-    execution_mode: str
 
 
 class DBWatcher:
-    _POLL_INTERVAL_MIN: float = 2.0
-    _POLL_INTERVAL_MAX: float = 8.0
-    _POLL_BACKOFF_FACTOR: float = 2.0
+    _POLL_INTERVAL_MIN: float = 0.5
+    _POLL_INTERVAL_MAX: float = 2.0
+    _POLL_BACKOFF_FACTOR: float = 1.5
     _MAX_PENDING_CONTEXT_LINES: int = 200
 
     def __init__(self, core: "KaganCore") -> None:
@@ -118,14 +117,13 @@ class DBWatcher:
 
     async def _take_snapshot(self) -> dict[str, _TaskState]:
         tasks = await self._core.tasks.list()
-        return {t.id: _TaskState(t.title, t.status.value, t.execution_mode.value) for t in tasks}
+        return {t.id: _TaskState(t.title, t.status.value) for t in tasks}
 
     async def _consume_events(self) -> None:
         async for event in self._core.tasks.events.stream_board():
             await self._handle_event(event)
 
     async def _poll_db_loop(self) -> None:
-        """Periodically poll the DB to detect cross-process changes (e.g. from MCP)."""
         while True:
             await asyncio.sleep(self._poll_interval)
             try:
@@ -148,7 +146,6 @@ class DBWatcher:
     def _detect_created(
         self, current: dict[str, _TaskState], old_ids: set[str], new_ids: set[str]
     ) -> bool:
-        """Detect newly created tasks and update snapshot."""
         changed = False
         for task_id in new_ids - old_ids:
             state = current[task_id]
@@ -158,7 +155,6 @@ class DBWatcher:
         return changed
 
     def _detect_deleted(self, old_ids: set[str], new_ids: set[str]) -> bool:
-        """Detect deleted tasks and update snapshot."""
         changed = False
         for task_id in old_ids - new_ids:
             state = self._snapshot.pop(task_id)
@@ -169,7 +165,6 @@ class DBWatcher:
     def _detect_modified(
         self, current: dict[str, _TaskState], old_ids: set[str], new_ids: set[str]
     ) -> bool:
-        """Detect status, execution mode, or title changes on existing tasks."""
         changed = False
         for task_id in old_ids & new_ids:
             old = self._snapshot[task_id]
@@ -180,13 +175,6 @@ class DBWatcher:
                     f"Task '{new.title}' ({task_id}) moved {old.status} \u2192 {new.status}"
                 )
                 changed = True
-            elif old.execution_mode != new.execution_mode:
-                self._snapshot[task_id] = new
-                self._record(
-                    f"Task '{new.title}' ({task_id}) mode changed "
-                    f"{old.execution_mode} \u2192 {new.execution_mode}"
-                )
-                changed = True
             elif old.title != new.title:
                 self._snapshot[task_id] = new
                 self._record(f"Task '{new.title}' ({task_id}) updated")
@@ -194,7 +182,6 @@ class DBWatcher:
         return changed
 
     def _diff_snapshot(self, current: dict[str, _TaskState]) -> bool:
-        """Compare *current* DB state against cached snapshot, emit synthetic events."""
         old_ids = set(self._snapshot)
         new_ids = set(current)
 
@@ -214,7 +201,6 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
-                task.execution_mode.value,
             )
             self._record(f"Task '{title}' ({event.task_id}) created [{status}]")
             return
@@ -228,7 +214,6 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
-                task.execution_mode.value,
             )
             self._record(f"Task '{title}' ({event.task_id}) updated")
             return
@@ -239,6 +224,14 @@ class DBWatcher:
                 return
             title = event.title or snap.title
             self._record(f"Task '{title}' ({event.task_id}) deleted")
+            return
+
+        if event.kind in ("session_started", "session_ended", "auto_review_started"):
+            # Session lifecycle events don't change task fields tracked in
+            # _TaskState, but the kanban board still needs a reload so that
+            # cards reflect the active-session / running indicator.
+            if event.task_id in self._snapshot or await self._resolve_if_relevant(event.task_id):
+                self._change_event.set()
             return
 
         if event.kind != "status_changed":
@@ -254,7 +247,6 @@ class DBWatcher:
         self._snapshot[event.task_id] = _TaskState(
             title,
             new_status,
-            task.execution_mode.value,
         )
         self._record(f"Task '{title}' ({event.task_id}) moved {prev_status} → {new_status}")
 
@@ -282,8 +274,6 @@ class DBWatcher:
 
 
 class KaganCore:
-    """Composition root for kagan.core."""
-
     def __init__(self, db_path: str | Path | None = None) -> None:
         resolved = Path(db_path) if db_path is not None else default_db_path()
         self._db_path: Path = resolved
@@ -303,7 +293,6 @@ class KaganCore:
 
     @property
     def engine(self) -> Any:
-        """SQLAlchemy engine for direct DB access (use sparingly)."""
         return self._engine
 
     def close(self) -> None:

@@ -23,12 +23,10 @@ class PreflightCheckResult:
 
     @property
     def is_blocking(self) -> bool:
-        """True when this check failure prevents operations."""
         return self.status == CheckStatus.FAIL
 
 
 def check_git() -> PreflightCheckResult:
-    """Verify git is installed and on PATH."""
     git = shutil.which("git")
     if git is None:
         return PreflightCheckResult(
@@ -46,7 +44,6 @@ def check_git() -> PreflightCheckResult:
 
 
 def check_tmux() -> PreflightCheckResult:
-    """Verify tmux is installed (warning only — PAIR mode degrades gracefully)."""
     import sys
 
     if sys.platform == "win32":
@@ -61,7 +58,7 @@ def check_tmux() -> PreflightCheckResult:
         return PreflightCheckResult(
             name="tmux",
             status=CheckStatus.WARN,
-            message="tmux not found on PATH — PAIR tmux sessions unavailable",
+            message="tmux not found on PATH — ATTACHED tmux sessions unavailable",
             fix_hint="Install tmux: brew install tmux (macOS) or apt install tmux (Linux)",
         )
     return PreflightCheckResult(
@@ -73,7 +70,6 @@ def check_tmux() -> PreflightCheckResult:
 
 
 def check_db_writability(db_path: Path) -> PreflightCheckResult:
-    """Verify the DB path is writable (parent directory can be created/written)."""
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         probe = db_path.parent / ".kagan_write_probe"
@@ -95,7 +91,6 @@ def check_db_writability(db_path: Path) -> PreflightCheckResult:
 
 
 def check_agent_backend(executable: str) -> PreflightCheckResult:
-    """Verify the configured agent backend executable is on PATH."""
     found = shutil.which(executable)
     if found is None:
         return PreflightCheckResult(
@@ -116,12 +111,6 @@ def run_all_checks(
     db_path: Path,
     agent_backend: str | None = None,
 ) -> list[PreflightCheckResult]:
-    """Run all preflight checks; agent_backend check is skipped when None.
-
-    Args:
-        db_path: Path to the kagan SQLite database (caller must supply — no lazy default).
-        agent_backend: Optional agent backend executable name to check.
-    """
     results: list[PreflightCheckResult] = [check_git(), check_tmux(), check_db_writability(db_path)]
     for result in results:
         logger.debug("Preflight: {} = {}", result.name, result.status)

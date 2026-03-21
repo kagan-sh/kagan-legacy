@@ -1,74 +1,89 @@
-"""Fake agent boundary — stub for acceptance tests.
-
-The new kagan.core architecture spawns agents via _agent.spawn_agent() directly
-and does not support AgentFactory injection. FakeAgentFactory is retained as a
-lightweight stub so KaganDriver can record agent configuration intent (e.g.
-agent_will_complete()) for future use when agent interception is re-introduced.
-
-For now, agent lifecycle tests should use real agent backends or skip agent
-execution entirely and test observable state changes through the public API.
-"""
+from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-# ---------------------------------------------------------------------------
-# Recorded interaction for assertions
-# ---------------------------------------------------------------------------
+from datetime import UTC, datetime
 
 
 @dataclass(frozen=True, slots=True)
 class AgentCall:
-    """A recorded prompt sent to a fake agent."""
-
     task_id: str | None
     prompt: str
     response: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
-# ---------------------------------------------------------------------------
-# FakeAgentFactory — lightweight stub (no injection point in new architecture)
-# ---------------------------------------------------------------------------
+class ChunkedResponse:
+    """A response that yields chunks on demand."""
+
+    def __init__(self, chunks: list[str]) -> None:
+        self._chunks = chunks
+
+    async def __aiter__(self):
+        for chunk in self._chunks:
+            yield chunk
 
 
 @dataclass
 class FakeAgentFactory:
-    """Stub factory — tracks configured responses for future agent interception.
-
-    The new KaganCore does not accept an agent_factory parameter.
-    This stub preserves the KaganDriver DSL surface (agent_will_complete etc.)
-    so tests can express intent without breaking when agent injection is added.
-    """
-
     _default_response: str = "<complete/>"
-    _response_queue: list[str] = field(default_factory=list)
-
-    # Tracking (no real agents created in new architecture)
-    agents: list[object] = field(default_factory=list)
+    _response_queue: list[str | ChunkedResponse] = field(default_factory=list)
+    _calls: list[AgentCall] = field(default_factory=list)
 
     def set_next_response(self, response: str) -> None:
-        """Queue a response for the next agent's first prompt."""
         self._response_queue.append(response)
 
-    def set_responses(self, responses: list[str]) -> None:
-        """Queue responses for successive prompts."""
-        self._response_queue.extend(responses)
+    def set_next_stream(self, chunks: list[str]) -> None:
+        """Queue a chunked streaming response."""
+        self._response_queue.append(ChunkedResponse(chunks))
 
-    def set_default_response(self, response: str) -> None:
-        """Set fallback response for all agents."""
-        self._default_response = response
+    def record_call(
+        self,
+        *,
+        task_id: str | None = None,
+        prompt: str = "",
+        response: str = "",
+    ) -> None:
+        """Record an agent invocation. Called by the agent adapter."""
+        self._calls.append(AgentCall(task_id=task_id, prompt=prompt, response=response))
 
-    @property
-    def last_agent(self) -> object | None:
-        """The most recently created agent (always None in stub)."""
-        return self.agents[-1] if self.agents else None
+    def next_response(self) -> str | ChunkedResponse:
+        """Pop the next queued response, or return the default."""
+        if self._response_queue:
+            return self._response_queue.pop(0)
+        return self._default_response
 
     @property
     def all_calls(self) -> list[AgentCall]:
-        """All prompt calls across all agents (always empty in stub)."""
-        return []
+        return list(self._calls)
+
+    @property
+    def last_call(self) -> AgentCall | None:
+        """Most recent agent invocation."""
+        return self._calls[-1] if self._calls else None
+
+    @property
+    def call_count(self) -> int:
+        """Total number of agent invocations."""
+        return len(self._calls)
+
+    def assert_called_with(self, *, prompt_contains: str) -> None:
+        """Assert that at least one call's prompt contains the given substring."""
+        for call in self._calls:
+            if prompt_contains in call.prompt:
+                return
+        prompts = [c.prompt[:80] for c in self._calls]
+        raise AssertionError(
+            f"No call with prompt containing {prompt_contains!r}. Recorded prompts: {prompts}"
+        )
+
+    def reset(self) -> None:
+        """Clear all recorded calls and queued responses."""
+        self._calls.clear()
+        self._response_queue.clear()
 
 
 __all__ = [
     "AgentCall",
+    "ChunkedResponse",
     "FakeAgentFactory",
 ]

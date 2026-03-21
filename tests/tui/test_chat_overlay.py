@@ -25,13 +25,13 @@ async def test_ctrl_o_cycles_chat_panel_vertical_horizontal_off(board: KaganDriv
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         chat_panel = app.screen.query_one("#chat-panel")
         assert chat_panel.has_class("visible")
         assert app.screen.has_class("chat-overlay-vertical")
         assert str(chat_panel.styles.layer) == "default"
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert chat_panel.has_class("visible")
         assert app.screen.has_class("chat-overlay-horizontal")
@@ -39,9 +39,58 @@ async def test_ctrl_o_cycles_chat_panel_vertical_horizontal_off(board: KaganDriv
         board_widget = app.screen.query_one("#board-container")
         assert board_widget.region.height > 0
         assert board_widget.region.height >= (chat_panel.region.height - 1)
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert not chat_panel.has_class("visible")
+
+
+async def test_ctrl_i_cycles_vertical_horizontal_closed(board: KaganDriver) -> None:
+    from kagan.tui import KaganApp
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test(size=(100, 20)) as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        chat_panel = app.screen.query_one("#chat-panel")
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert chat_panel.has_class("visible")
+        assert app.screen.has_class("chat-overlay-vertical")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert chat_panel.has_class("visible")
+        assert app.screen.has_class("chat-overlay-horizontal")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert not chat_panel.has_class("visible")
+
+
+async def test_ctrl_f_fullscreens_only_when_overlay_open(board: KaganDriver) -> None:
+    from kagan.tui import KaganApp
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test(size=(100, 20)) as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        chat_panel = app.screen.query_one("#chat-panel")
+        assert not chat_panel.has_class("visible")
+
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert not chat_panel.has_class("visible")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert chat_panel.has_class("visible")
+        assert chat_panel.has_class("fullscreen")
 
 
 async def test_horizontal_to_vertical_transition_restores_valid_board_height(
@@ -55,9 +104,9 @@ async def test_horizontal_to_vertical_transition_restores_valid_board_height(
         await pilot.press("enter")
         await pilot.pause()
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         chat_panel = app.screen.query_one("#chat-panel")
@@ -70,7 +119,7 @@ async def test_horizontal_to_vertical_transition_restores_valid_board_height(
         await pilot.pause()
         assert chat_panel.has_class("fullscreen")
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert chat_panel.has_class("visible")
         assert not chat_panel.has_class("fullscreen")
@@ -94,21 +143,21 @@ async def test_chat_overlay_keeps_empty_board_review_hint_visible(tmp_path) -> N
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
+        await pilot.pause()
 
         hint = app.screen.query_one("#review-queue-hint", Static)
         assert hint.has_class("visible")
         assert hint.display
 
-        await pilot.press("ctrl+t")
-        await pilot.pause()
-
+        # On empty boards the chat auto-opens during bootstrap
         assert app.screen.has_class("chat-overlay-visible")
         assert hint.display
         hint_text = str(hint.render())
         assert "No tasks yet." in hint_text
         assert "type in chat" in hint_text
 
-        await pilot.press("ctrl+t")
+        # ctrl+i closes the auto-opened panel
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         assert not app.screen.has_class("chat-overlay-visible")
@@ -128,7 +177,7 @@ async def test_send_message_updates_chat_output(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         app.screen.query_one("#chat-overlay-input", Input).focus()
         await pilot.press("H", "i")
@@ -160,7 +209,7 @@ async def test_chat_input_history_loops_with_up_and_down(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -203,7 +252,7 @@ async def test_ctrl_c_clears_chat_input_and_hint_is_visible(board: KaganDriver) 
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         status_hint = app.screen.query_one("#chat-overlay-status-right", Static)
@@ -274,7 +323,6 @@ async def test_board_orchestrator_message_does_not_fall_back_to_task_chat(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
         await pilot.pause()
 
         app.screen.query_one("#chat-overlay-input", Input).focus()
@@ -328,7 +376,6 @@ async def test_chat_input_is_disabled_while_orchestrator_reply_is_running(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -369,7 +416,7 @@ async def test_slash_clear_resets_chat_output(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         app.screen.query_one("#chat-overlay-input", Input).focus()
         await pilot.press("H", "i")
@@ -393,7 +440,7 @@ async def test_ctrl_k_opens_session_picker_modal(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         app.screen.query_one("#chat-overlay-input", Input).focus()
         await pilot.press("ctrl+k")
@@ -412,7 +459,7 @@ async def test_slash_sessions_opens_session_picker_modal(board: KaganDriver) -> 
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
         input_widget.focus()
@@ -431,7 +478,7 @@ async def test_session_picker_groups_task_sessions_by_ticket_and_role(board: Kag
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -465,7 +512,7 @@ async def test_slash_flow_adds_guided_messages(board: KaganDriver) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
         input_widget.focus()
@@ -479,7 +526,7 @@ async def test_slash_flow_adds_guided_messages(board: KaganDriver) -> None:
         assert "Goal: Build onboarding" in rendered
 
 
-async def test_slash_sessions_delete_shows_explicit_repl_only_message(board: KaganDriver) -> None:
+async def test_slash_delete_without_arg_shows_usage(board: KaganDriver) -> None:
     from textual.widgets import Input, Static
 
     from kagan.tui import KaganApp
@@ -489,16 +536,16 @@ async def test_slash_sessions_delete_shows_explicit_repl_only_message(board: Kag
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
         input_widget.focus()
-        input_widget.value = "/sessions delete abc123"
+        input_widget.value = "/delete"
         await pilot.press("enter")
         await pilot.pause()
 
         message_output = app.screen.query_one("#chat-messages", Static)
-        assert "Session deletion is currently available in REPL only" in str(message_output.content)
+        assert "Usage: /delete <number|id>" in str(message_output.content)
 
 
 async def test_slash_exit_closes_chat_panel_and_updates_layout(board: KaganDriver) -> None:
@@ -511,7 +558,7 @@ async def test_slash_exit_closes_chat_panel_and_updates_layout(board: KaganDrive
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         chat_panel = app.screen.query_one("#chat-panel")
@@ -540,7 +587,7 @@ async def test_chat_stays_visible_and_content_persists_on_card_navigation(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         app.screen.query_one("#chat-overlay-input", Input).focus()
         await pilot.press("P", "i", "n", "n", "e", "d")
@@ -565,7 +612,7 @@ async def test_tab_from_chat_input_does_not_open_session_picker_modal(board: Kag
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         input_widget = app.screen.query_one("#chat-overlay-input", Input)
@@ -618,11 +665,22 @@ async def test_ctrl_o_focuses_input_when_no_tasks(tmp_path) -> None:
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
         await pilot.pause()
 
-        input_widget = app.screen.query_one("#chat-overlay-input", Input)
-        assert app.screen.focused is input_widget
+        # On empty boards the chat auto-opens — verify panel is visible
+        app.screen.query_one("#chat-overlay-input", Input)
+        panel = app.screen.query_one("#chat-panel")
+        assert panel.has_class("visible")
+
+        # Close, then reopen with ctrl+i to test the toggle-open path
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert not panel.has_class("visible")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        await pilot.pause()
+        assert panel.has_class("visible")
 
     await driver.teardown()
 
@@ -639,7 +697,7 @@ async def test_tool_call_upsert_reuses_existing_widget_without_duplicate_ids(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -667,7 +725,7 @@ async def test_tool_call_details_render_literal_brackets_without_markup_crash(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -701,7 +759,7 @@ async def test_tool_call_header_renders_command_like_text_without_markup_crash(
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -733,7 +791,7 @@ async def test_expanded_tool_call_details_stay_scroll_bounded(board: KaganDriver
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         await pilot.press("ctrl+shift+t")
         await pilot.pause()
@@ -776,7 +834,7 @@ async def test_runtime_status_update_is_safe_when_status_bar_missing(board: Kaga
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -796,7 +854,7 @@ async def test_stream_updates_are_safe_when_stream_output_missing(board: KaganDr
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one("#chat-panel", ChatPanel)
@@ -833,7 +891,7 @@ async def test_orchestrator_sessions_persist_across_tui_restart_and_can_switch_b
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         selector = app.screen.query_one("#chat-overlay-session-select", Select)
@@ -861,7 +919,7 @@ async def test_orchestrator_sessions_persist_across_tui_restart_and_can_switch_b
         await pilot.pause()
         await pilot.press("enter")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         selector = app2.screen.query_one("#chat-overlay-session-select", Select)

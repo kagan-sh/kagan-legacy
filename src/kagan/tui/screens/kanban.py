@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlmodel import Session as DBSession
-from sqlmodel import desc, select
 from textual import events, on
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import Container
@@ -19,10 +17,16 @@ from kagan.chat import (
     warm_orchestrator_backend,
 )
 from kagan.core import resolve_launcher
-from kagan.core.enums import Priority, SessionStatus, TaskStatus, WorkMode
+from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
 from kagan.core.errors import KaganError
-from kagan.core.models import Session, Task
+from kagan.core.models import Task, Worktree
 from kagan.runtime_env import build_sanitized_subprocess_environment
+from kagan.tui._chat_helpers import (
+    TitleGenerationSession,
+    build_session_options,
+    kick_title_generation,
+    send_task_message,
+)
 from kagan.tui.keybindings import (
     KANBAN_BINDINGS,
     get_global_shortcut_help_rows,
@@ -88,16 +92,22 @@ _SEARCH_PRIORITY_ALIASES: dict[str, str] = {
     "critical": "high",
     "urgent": "high",
 }
-_SEARCH_MODE_ALIASES: dict[str, WorkMode] = {
-    "auto": WorkMode.AUTO,
-    "pair": WorkMode.PAIR,
-}
 _SEARCH_SORT_ALIASES: dict[str, str] = {
     "default": "default",
     "created": "created",
     "priority": "priority",
     "recent": "recent",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class SearchQuery:
+    """Parsed search query with optional filters."""
+
+    text: str
+    status: TaskStatus | None = None
+    priority: str | None = None
+    sort: str | None = None
 
 
 def _is_enabled(value: str | None, *, default: bool) -> bool:
@@ -110,8 +120,8 @@ def _is_enabled(value: str | None, *, default: bool) -> bool:
 class _TaskSessionSummary:
     has_history: bool = False
     has_active: bool = False
-    active_mode: WorkMode | None = None
-    latest_mode: WorkMode | None = None
+    active_launcher: str | None = None
+    latest_launcher: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +130,6 @@ class _BoardTaskView:
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
@@ -132,7 +141,8 @@ class _BoardTaskView:
     task_type: object | None = None
     has_active_session: bool = False
     has_session_history: bool = False
-    latest_session_mode: WorkMode | None = None
+    active_launcher: str | None = None
+    latest_launcher: str | None = None
 
 
 class KanbanScreen(Screen[None]):
@@ -148,9 +158,8 @@ class KanbanScreen(Screen[None]):
         self._search_query = ""
         self._search_status_filter: TaskStatus | None = None
         self._search_priority_filter: str | None = None
-        self._search_mode_filter: WorkMode | None = None
         self._search_sort_filter: str | None = None
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id: str | None = None
         self._chat_overlay_layout_mode = "vertical"
         self._chat_auto_opened = False
@@ -191,10 +200,11 @@ class KanbanScreen(Screen[None]):
     async def on_mount(self) -> None:
         self._refresh_header()
         panel = self.query_one(ChatPanel)
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
         await self._load_orchestrator_panel_state(panel)
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         self._set_tutorial_visible(False)
         self._chat_auto_opened = False
         self._update_search_bar_state()
@@ -316,7 +326,6 @@ class KanbanScreen(Screen[None]):
         self.set_class(too_small, "too-small")
 
     def _auto_focus_board(self) -> None:
-        """Focus the first task card on the board so arrow keys work immediately."""
         board = self.query_one(BoardView)
         cards = list(board.query("TaskCard"))
         if not cards:
@@ -356,28 +365,6 @@ class KanbanScreen(Screen[None]):
             self._chat_overlay_layout_mode = "vertical"
         expanded = visible and (panel.has_class("expanded") or fullscreen)
 
-        if visible and not fullscreen and self._chat_overlay_layout_mode == "vertical":
-            panel.styles.layer = "default"
-            panel.styles.dock = "right"
-            panel.styles.width = "44%"
-            panel.styles.height = "1fr"
-            panel.styles.max_height = "1fr"
-            panel.styles.min_height = "0"
-        elif visible and not fullscreen:
-            panel.styles.layer = "default"
-            panel.styles.dock = "bottom"
-            panel.styles.width = "100%"
-            panel.styles.height = "50%"
-            panel.styles.max_height = "50%"
-            panel.styles.min_height = "3"
-        else:
-            panel.styles.layer = "overlay"
-            panel.styles.dock = "bottom"
-            panel.styles.width = "100%"
-            panel.styles.height = "1fr"
-            panel.styles.max_height = "1fr"
-            panel.styles.min_height = "0"
-
         self.set_class(visible, "chat-overlay-visible")
         self.set_class(expanded, "chat-overlay-expanded")
         self.set_class(
@@ -407,43 +394,15 @@ class KanbanScreen(Screen[None]):
             return {}
 
         task_ids = [task.id for task in tasks]
-        engine = self.kagan_app.core._engine
-
-        def _query() -> list[Session]:
-            with DBSession(engine) as db:
-                stmt = (
-                    select(Session)
-                    .where(cast("Any", Session.task_id).in_(task_ids))
-                    .order_by(desc(cast("Any", Session.started_at)))
-                )
-                return list(db.exec(stmt).all())
-
-        sessions = await asyncio.to_thread(_query)
+        summaries_data = await self.kagan_app.core.tasks.sessions.active_session_summaries(task_ids)
 
         summaries: dict[str, _TaskSessionSummary] = {}
-        active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
-        for session in sessions:
-            existing = summaries.get(session.task_id)
-            is_active = session.status in active_statuses
-
-            if existing is None:
-                summaries[session.task_id] = _TaskSessionSummary(
-                    has_history=True,
-                    has_active=is_active,
-                    active_mode=session.mode if is_active else None,
-                    latest_mode=session.mode,
-                )
-                continue
-
-            active_mode = existing.active_mode
-            if active_mode is None and is_active:
-                active_mode = session.mode
-
-            summaries[session.task_id] = _TaskSessionSummary(
-                has_history=True,
-                has_active=existing.has_active or is_active,
-                active_mode=active_mode,
-                latest_mode=existing.latest_mode,
+        for task_id, summary_data in summaries_data.items():
+            summaries[task_id] = _TaskSessionSummary(
+                has_history=bool(summary_data.get("has_history")),
+                has_active=bool(summary_data.get("has_active")),
+                active_launcher=summary_data.get("active_launcher"),
+                latest_launcher=summary_data.get("latest_launcher"),
             )
 
         return summaries
@@ -458,7 +417,6 @@ class KanbanScreen(Screen[None]):
                     title=task.title,
                     description=task.description,
                     priority=task.priority,
-                    execution_mode=task.execution_mode,
                     status=task.status,
                     review_approved=task.review_approved,
                     acceptance_criteria=list(task.acceptance_criteria),
@@ -470,7 +428,8 @@ class KanbanScreen(Screen[None]):
                     task_type=getattr(task, "task_type", None),
                     has_active_session=summary.has_active,
                     has_session_history=summary.has_history,
-                    latest_session_mode=summary.latest_mode,
+                    active_launcher=summary.active_launcher,
+                    latest_launcher=summary.latest_launcher,
                 )
             )
         return views
@@ -488,21 +447,12 @@ class KanbanScreen(Screen[None]):
             return
 
     def _apply_filter(self) -> None:
-        text_query, status_filter, priority_filter, mode_filter, sort_filter = (
-            self._parse_search_query(self._search_query)
-        )
-        self._search_status_filter = status_filter
-        self._search_priority_filter = priority_filter
-        self._search_mode_filter = mode_filter
-        self._search_sort_filter = sort_filter
+        q = self._parse_search_query(self._search_query)
+        self._search_status_filter = q.status
+        self._search_priority_filter = q.priority
+        self._search_sort_filter = q.sort
 
-        if (
-            not text_query
-            and status_filter is None
-            and priority_filter is None
-            and mode_filter is None
-            and sort_filter is None
-        ):
+        if not q.text and q.status is None and q.priority is None and q.sort is None:
             self._tasks = list(self._all_tasks)
         else:
             self._tasks = [
@@ -510,14 +460,13 @@ class KanbanScreen(Screen[None]):
                 for task in self._all_tasks
                 if self._matches_search(
                     task,
-                    text_query=text_query,
-                    status_filter=status_filter,
-                    priority_filter=priority_filter,
-                    mode_filter=mode_filter,
+                    text_query=q.text,
+                    status_filter=q.status,
+                    priority_filter=q.priority,
                 )
             ]
 
-        self._tasks = self._apply_sort(self._tasks, sort_filter)
+        self._tasks = self._apply_sort(self._tasks, q.sort)
 
         tasks = self._tasks
         if tasks and (self._selected_task_id is None or self._selected_task() is None):
@@ -532,21 +481,15 @@ class KanbanScreen(Screen[None]):
                 self._hide_inspector()
             else:
                 self._show_inspector_for_selected()
-        status_counts = {status.value: 0 for status in TaskStatus}
-        high_priority_count = 0
-        for task in self._all_tasks:
-            status_counts[task.status.value] += 1
-            if task.priority >= Priority.HIGH:
-                high_priority_count += 1
+        status_counts, high_priority_count = self._compute_task_stats()
         self.query_one(SearchBar).update_state(
             filtered_count=len(tasks),
             total_count=len(self._all_tasks),
             status_counts=status_counts,
             high_priority_count=high_priority_count,
-            status_filter=status_filter.value.lower() if status_filter is not None else "",
-            priority_filter=priority_filter or "",
-            mode_filter=mode_filter.value.lower() if mode_filter is not None else "",
-            sort_filter=sort_filter or "",
+            status_filter=q.status.value.lower() if q.status is not None else "",
+            priority_filter=q.priority or "",
+            sort_filter=q.sort or "",
             search_active=self.search_visible,
         )
         self._refresh_header()
@@ -555,17 +498,20 @@ class KanbanScreen(Screen[None]):
         self._sync_search_header_swap_state()
         self._sync_layout_state()
 
-    def _update_search_bar_state(self) -> None:
-        """Push current filter state to the search bar widget."""
+    def _compute_task_stats(self) -> tuple[dict[str, int], int]:
+        """Count tasks per status and high-priority tasks."""
         status_counts = {status.value: 0 for status in TaskStatus}
         high_priority_count = 0
         for task in self._all_tasks:
             status_counts[task.status.value] += 1
             if task.priority >= Priority.HIGH:
                 high_priority_count += 1
+        return status_counts, high_priority_count
+
+    def _update_search_bar_state(self) -> None:
+        status_counts, high_priority_count = self._compute_task_stats()
         sf = self._search_status_filter
         pf = self._search_priority_filter
-        mf = self._search_mode_filter
         sf2 = self._search_sort_filter
         self.query_one(SearchBar).update_state(
             filtered_count=len(self._tasks),
@@ -574,7 +520,6 @@ class KanbanScreen(Screen[None]):
             high_priority_count=high_priority_count,
             status_filter=sf.value.lower() if sf is not None else "",
             priority_filter=pf or "",
-            mode_filter=mf.value.lower() if mf is not None else "",
             sort_filter=sf2 or "",
             search_active=self.search_visible,
         )
@@ -633,6 +578,8 @@ class KanbanScreen(Screen[None]):
 
     @staticmethod
     def _preferred_task_id(tasks: list[Task]) -> str:
+        if not tasks:
+            return ""
         for status in (
             TaskStatus.IN_PROGRESS,
             TaskStatus.REVIEW,
@@ -689,7 +636,6 @@ class KanbanScreen(Screen[None]):
         )
 
     async def _sync_branch(self) -> None:
-        """Detect git branch changes and update header + repo default_branch."""
         app = self.kagan_app
         repo_id = app.selected_repo_id
         project = app.project
@@ -712,7 +658,6 @@ class KanbanScreen(Screen[None]):
             await app.core.projects.set_repo_default_branch(project.id, repo_id, branch)
 
     async def _run_branch_sync_loop(self) -> None:
-        """Periodically sync the git branch."""
         while True:
             await asyncio.sleep(BRANCH_SYNC_INTERVAL)
             with contextlib.suppress(KaganError, OSError, RuntimeError):
@@ -722,18 +667,35 @@ class KanbanScreen(Screen[None]):
         open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+T")
+        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+I")
         right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
         left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
         session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
+        attach_key = get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a")
         start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
+        panel = self.query_one(ChatPanel)
+        overlay_open = panel.has_class("visible")
+        fullscreen_key = get_key_for_action(
+            KANBAN_BINDINGS, "expand_chat_overlay", default="Ctrl+F"
+        )
+
+        overlay_hints: list[tuple[str, str]] = []
+        if overlay_open:
+            overlay_hints.extend(
+                [
+                    (overlay_key, "split"),
+                    (fullscreen_key, "fullscreen"),
+                    ("Esc", "close"),
+                ]
+            )
 
         if task is None:
             return [
                 (new_key, "new"),
                 (search_key, "search"),
-                (overlay_key, "assistant dock"),
+                (overlay_key, "assistant split"),
+                *overlay_hints,
             ]
 
         if task.status is TaskStatus.BACKLOG:
@@ -743,16 +705,23 @@ class KanbanScreen(Screen[None]):
                 (new_key, "new"),
                 (right_key, "start"),
                 (start_agent_key, "agent"),
+                (attach_key, "attach"),
+                *overlay_hints,
             ]
 
         if task.status is TaskStatus.IN_PROGRESS:
+            summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
             actions = [
                 (open_key, "inspect"),
                 (session_key, "open"),
                 (right_key, "review"),
             ]
-            if task.execution_mode is WorkMode.AUTO:
+            if summary.has_active:
                 actions.append((stop_key, "stop"))
+            else:
+                actions.append((start_agent_key, "agent"))
+            actions.append((attach_key, "attach"))
+            actions.extend(overlay_hints)
             return actions
 
         if task.status is TaskStatus.REVIEW:
@@ -761,11 +730,13 @@ class KanbanScreen(Screen[None]):
                 (right_key, "merge"),
                 (left_key, "reopen"),
                 (session_key, "open"),
+                *overlay_hints,
             ]
 
         return [
             (open_key, "inspect"),
             (session_key, "history"),
+            *overlay_hints,
         ]
 
     def on_board_view_task_selected(self, message: BoardView.TaskSelected) -> None:
@@ -812,10 +783,10 @@ class KanbanScreen(Screen[None]):
         if not was_visible:
             self._chat_overlay_layout_mode = "vertical"
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         await self._load_orchestrator_panel_state(panel)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id = None
         self._sync_layout_state()
         self.run_worker(
@@ -833,7 +804,7 @@ class KanbanScreen(Screen[None]):
         if not was_visible:
             self._chat_overlay_layout_mode = "vertical"
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
 
         task = self._selected_task()
         if task is None:
@@ -844,14 +815,8 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            TASK_WORKER_SESSION_KEY,
-        )
+        panel.set_session_kind(SessionKind.DETACHED)
+        panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
 
@@ -860,7 +825,7 @@ class KanbanScreen(Screen[None]):
         panel.set_visible(True)
         panel.set_fullscreen(True)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
 
         task = self._selected_task()
         if task is None:
@@ -870,27 +835,14 @@ class KanbanScreen(Screen[None]):
 
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            TASK_WORKER_SESSION_KEY,
-        )
+        panel.set_session_kind(SessionKind.DETACHED)
+        panel.set_sessions(build_session_options(self.kagan_app, task), TASK_WORKER_SESSION_KEY)
         self._ensure_chat_stream_worker(task.id)
         self._sync_layout_state()
 
     def _transition_from_fullscreen(self, panel: ChatPanel) -> None:
         """Exit fullscreen mode and return to vertical overlay."""
         panel.set_fullscreen(False)
-        self._chat_auto_opened = False
-        self._chat_overlay_layout_mode = "vertical"
-        panel.query_one("#chat-overlay-input", Input).focus()
-        self._sync_layout_state()
-
-    def _transition_from_auto_opened(self, panel: ChatPanel) -> None:
-        """Reset auto-opened state and refocus the panel."""
         self._chat_auto_opened = False
         self._chat_overlay_layout_mode = "vertical"
         panel.query_one("#chat-overlay-input", Input).focus()
@@ -925,28 +877,14 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
 
     def action_toggle_chat(self) -> None:
-        """Toggle chat overlay through state machine transitions.
-
-        State detection and dispatch table pattern for clean transitions:
-        - fullscreen -> vertical overlay
-        - visible+auto_opened -> reset auto, keep vertical
-        - hidden -> open orchestrator chat
-        - vertical -> horizontal
-        - horizontal -> hidden
-        """
         panel = self.query_one(ChatPanel)
 
-        # State detection
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
-        auto_opened = self._chat_auto_opened
         vertical = self._chat_overlay_layout_mode == "vertical"
 
-        # State -> Action dispatch
         if fullscreen:
             self._transition_from_fullscreen(panel)
-        elif visible and auto_opened:
-            self._transition_from_auto_opened(panel)
         elif not visible:
             self._transition_from_hidden()
         elif vertical:
@@ -955,7 +893,6 @@ class KanbanScreen(Screen[None]):
             self._transition_to_hidden(panel)
 
     async def action_switch_session(self) -> None:
-        """Open session picker."""
         panel = self.query_one(ChatPanel)
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -980,10 +917,10 @@ class KanbanScreen(Screen[None]):
         panel.set_fullscreen(True)
         self._chat_auto_opened = False
         panel.set_mode_title("Orchestrator")
-        panel.set_session_kind("orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         await self._load_orchestrator_panel_state(panel)
         panel.query_one("#chat-overlay-input", Input).focus()
-        self._chat_mode = "orchestrator"
+        self._chat_mode = ChatMode.ORCHESTRATOR
         self._chat_active_task_id = None
         self._sync_layout_state()
         self.run_worker(
@@ -991,6 +928,24 @@ class KanbanScreen(Screen[None]):
             group="kanban-chat-warmup",
             exclusive=False,
             exit_on_error=False,
+        )
+
+    async def action_expand_chat_overlay(self) -> None:
+        panel = self.query_one(ChatPanel)
+        if not panel.has_class("visible"):
+            return
+        panel.set_fullscreen(True)
+        self._chat_auto_opened = False
+        panel.query_one("#chat-overlay-input", Input).focus()
+        self._sync_layout_state()
+
+    async def _persist_session_backend(self, backend: str) -> None:
+        """Persist the chosen agent backend to the active session record."""
+        panel = self.query_one(ChatPanel)
+        await self.kagan_app.orchestrator_sessions.persist_active(
+            history=self._chat_orchestrator_history,
+            rendered_messages=panel.export_rendered_messages(),
+            agent_backend=backend,
         )
 
     async def _warm_orchestrator_backend(self, preferred_backend: str | None = None) -> None:
@@ -1038,28 +993,25 @@ class KanbanScreen(Screen[None]):
 
     def _open_task(self, task: Task) -> None:
         self.kagan_app._active_task_id = task.id
-        if task.execution_mode == WorkMode.PAIR:
-            self.run_worker(self._open_pair_session_flow(task), exclusive=False)
-            return
-
         from kagan.tui.screens.task_screen import TaskScreen
 
         self.app.push_screen(TaskScreen(task_id=task.id))
 
-    async def _open_pair_session_flow(self, task: Task) -> None:
-        """Full PAIR session flow: resolve backend → show instructions → suspend + attach."""
-        import platform
-        from pathlib import Path
+    def _resolve_interactive_backend(self, task: Task, settings: dict[str, Any]) -> str | None:
+        """Resolve the interactive launcher backend with fallback logic.
 
-        from kagan.tui.screens.gateway import PairInstructionsModal
+        Returns the resolved backend name, or ``None`` if no usable backend
+        is available (caller should abort the flow).
+        """
+        import platform
+
         from kagan.tui.terminals.installer import (
             check_terminal_installed,
-            first_available_pair_backend,
+            first_available_attached_backend,
             get_manual_install_fallback,
         )
 
-        settings = await self.kagan_app.core.settings.get()
-        settings_launcher_raw = settings.get("pair_launcher", "tmux")
+        settings_launcher_raw = settings.get("attached_launcher", "tmux")
         settings_launcher = (
             settings_launcher_raw.strip().lower()
             if isinstance(settings_launcher_raw, str)
@@ -1068,30 +1020,116 @@ class KanbanScreen(Screen[None]):
         task_launcher = task.launcher.strip().lower() if isinstance(task.launcher, str) else ""
         backend = task_launcher or settings_launcher
         is_windows = platform.system() == "Windows"
-        self._set_inline_action_message(f"Checking {backend} backend...")
+        self._set_inline_action_message(f"Checking {backend} launcher...")
 
-        # --- Ensure backend is available ---
-        if not check_terminal_installed(backend):
-            # Try to find a fallback
-            fallback = first_available_pair_backend(windows=is_windows)
-            if fallback is not None:
+        if check_terminal_installed(backend):
+            return backend
+
+        fallback = first_available_attached_backend(windows=is_windows)
+        if fallback is not None:
+            self.app.notify(
+                f"{backend} not found. Using fallback: {fallback}.",
+                severity="information",
+            )
+            self._set_inline_action_message(f"Using fallback launcher: {fallback}.")
+            return fallback
+
+        hint = get_manual_install_fallback(backend)
+        self.app.notify(
+            f"Attach cancelled: {backend} not installed. {hint}",
+            severity="warning",
+        )
+        return None
+
+    async def _ensure_interactive_workspace(self, task: Task) -> Worktree | None:
+        """Provision a worktree for the task, creating one if needed.
+
+        Returns the ``Worktree`` instance, or ``None`` on failure.
+        """
+        workspace = await self.kagan_app.core.worktrees.get(task.id)
+        if workspace is not None:
+            return workspace
+
+        self._set_inline_action_message("Provisioning workspace...")
+        self.app.notify("Creating workspace...", severity="information")
+        try:
+            await self.kagan_app.core.worktrees.create(task.id)
+            workspace = await self.kagan_app.core.worktrees.get(task.id)
+        except (KaganError, OSError, RuntimeError, ValueError) as exc:
+            self.app.notify(f"Failed to create workspace: {exc}", severity="error")
+            return None
+
+        if workspace is None:
+            self.app.notify("Failed to provision workspace.", severity="error")
+        return workspace
+
+    async def _attach_interactive_terminal(
+        self,
+        task: Task,
+        interactive_session: Any,
+        *,
+        backend: str,
+        agent_backend: str,
+        launcher: str,
+        ide_name: str | None,
+        wt_path: Path,
+        prompt_path: Path,
+    ) -> bool:
+        """Attach the user's terminal to the interactive session.
+
+        Returns ``True`` if the terminal session was attached successfully.
+        """
+        if backend == "tmux":
+            self._set_inline_action_message("Attaching tmux session...")
+            session_name = self._tmux_session_name(interactive_session.id)
+            with self._suspend_app():
+                attached = await self._attach_tmux_session(session_name)
+            if not attached:
                 self.app.notify(
-                    f"{backend} not found. Using fallback: {fallback}.",
+                    "Interactive session missing; recreating session...",
                     severity="information",
                 )
-                backend = fallback
-                self._set_inline_action_message(f"Using fallback backend: {fallback}.")
-            else:
-                hint = get_manual_install_fallback(backend)
-                self.app.notify(
-                    f"PAIR cancelled: {backend} not installed. {hint}",
-                    severity="warning",
-                )
-                self._set_inline_action_message(None)
-                return
+                with contextlib.suppress(KaganError):
+                    retry_session = await self.kagan_app.core.tasks.run(
+                        task.id,
+                        agent_backend=agent_backend,
+                        launcher=launcher,
+                        ide=ide_name,
+                    )
+                    session_name = self._tmux_session_name(retry_session.id)
+                with self._suspend_app():
+                    attached = await self._attach_tmux_session(session_name)
+            return attached
 
-        # --- Check skip preference ---
-        skip_instructions_raw = settings.get("skip_pair_instructions_popup", "")
+        if backend == "nvim":
+            self._set_inline_action_message("Opening Neovim session...")
+            with self._suspend_app():
+                return await self._attach_nvim_session(wt_path, prompt_path)
+
+        # IDE backends (vscode/cursor/windsurf/kiro/antigravity) launch externally
+        self.app.notify(
+            f"Workspace opened in {backend}. Use startup prompt: {prompt_path}",
+            severity="information",
+        )
+        return False
+
+    async def _open_interactive_session_flow(self, task: Task) -> None:
+        from kagan.tui.screens.gateway import AttachedInstructionsModal
+
+        settings = await self.kagan_app.core.settings.get()
+
+        # 1. Resolve backend
+        backend = self._resolve_interactive_backend(task, settings)
+        if backend is None:
+            self._set_inline_action_message(None)
+            return
+
+        # Check whether a managed (background) agent is running on this task.
+        summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
+        taking_over = summary.has_active and summary.active_launcher is None
+
+        # 2. Show instructions modal (unless skipped)
+        skip_instructions_raw = settings.get("skip_attached_instructions_popup", "")
         skip_instructions = str(skip_instructions_raw).strip().lower() in {
             "1",
             "true",
@@ -1105,91 +1143,68 @@ class KanbanScreen(Screen[None]):
 
         if not skip_instructions:
             result = await self.app.push_screen_wait(
-                PairInstructionsModal(task.id, task.title, backend, prompt_path)
+                AttachedInstructionsModal(
+                    task.id, task.title, backend, prompt_path,
+                    taking_over=taking_over,
+                )
             )
             if result is None:
                 self._set_inline_action_message(None)
-                return  # User cancelled
-            if result == "skip_future":
-                await self.kagan_app.core.settings.set({"skip_pair_instructions_popup": "true"})
-
-        # --- Ensure workspace exists ---
-        if workspace is None:
-            self._set_inline_action_message("Provisioning workspace...")
-            self.app.notify("Creating workspace...", severity="information")
-            try:
-                await self.kagan_app.core.worktrees.create(task.id)
-                workspace = await self.kagan_app.core.worktrees.get(task.id)
-            except (KaganError, OSError, RuntimeError, ValueError) as exc:
-                self.app.notify(f"Failed to create workspace: {exc}", severity="error")
-                self._set_inline_action_message(None)
                 return
+            if result == "skip_future":
+                await self.kagan_app.core.settings.set({"skip_attached_instructions_popup": "true"})
+
+        # Cancel the managed run after user confirms (or if instructions skipped).
+        if taking_over:
+            self._set_inline_action_message("Stopping managed agent...")
+            with contextlib.suppress(KaganError):
+                await self.kagan_app.core.tasks.cancel(task.id)
+            await self._reload_tasks()
+
+        # 3. Ensure workspace exists
+        workspace = await self._ensure_interactive_workspace(task)
         if workspace is None:
-            self.app.notify("Failed to provision workspace.", severity="error")
             self._set_inline_action_message(None)
             return
 
         wt_path = Path(workspace.worktree_path)
         prompt_path = wt_path / ".kagan" / "start_prompt.md"
 
-        # --- Launch PAIR session via core ---
+        # 4. Start interactive session
         agent_backend = task.agent_backend or resolve_default_agent_backend(settings)
         launcher, ide_name = resolve_launcher(backend)
 
         try:
-            self._set_inline_action_message("Starting PAIR session...")
-            pair_session = await self.kagan_app.core.tasks.pair(
+            self._set_inline_action_message("Starting interactive session...")
+            interactive_session = await self.kagan_app.core.tasks.run(
                 task.id,
                 agent_backend=agent_backend,
                 launcher=launcher,
                 ide=ide_name,
             )
         except (KaganError, OSError, RuntimeError, ValueError) as exc:
-            self.app.notify(f"Failed to start PAIR session: {exc}", severity="error")
+            self.app.notify(f"Failed to start interactive session: {exc}", severity="error")
             self._set_inline_action_message(None)
             return
 
-        # --- Suspend TUI + attach for tmux/nvim ---
-        attached = False
-        if backend == "tmux":
-            self._set_inline_action_message("Attaching tmux session...")
-            session_name = self._tmux_session_name(pair_session.id)
-            with self._suspend_app():
-                attached = await self._attach_tmux_session(session_name)
-            if not attached:
-                # Retry: session may have been killed — recreate and re-attach
-                self.app.notify(
-                    "PAIR session missing; recreating session...",
-                    severity="information",
-                )
-                with contextlib.suppress(KaganError):
-                    retry_session = await self.kagan_app.core.tasks.pair(
-                        task.id,
-                        agent_backend=agent_backend,
-                        launcher=launcher,
-                        ide=ide_name,
-                    )
-                    session_name = self._tmux_session_name(retry_session.id)
-                with self._suspend_app():
-                    attached = await self._attach_tmux_session(session_name)
-        elif backend == "nvim":
-            self._set_inline_action_message("Opening Neovim session...")
-            with self._suspend_app():
-                attached = await self._attach_nvim_session(wt_path, prompt_path)
-        else:
-            # IDE backends (vscode/cursor/windsurf/kiro/antigravity) launch externally
-            self.app.notify(
-                f"Workspace opened in {backend}. Use startup prompt: {prompt_path}",
-                severity="information",
-            )
-            self._set_inline_action_message(None)
-            return
+        # 5. Attach terminal
+        attached = await self._attach_interactive_terminal(
+            task,
+            interactive_session,
+            backend=backend,
+            agent_backend=agent_backend,
+            launcher=launcher,
+            ide_name=ide_name,
+            wt_path=wt_path,
+            prompt_path=prompt_path,
+        )
 
-        # --- Post-detach: evaluate session state and offer REVIEW transition ---
         if attached:
             with contextlib.suppress(KaganError):
-                await self.kagan_app.core.tasks.end_pairing(task.id)
-            await self._reload_tasks()
+                await self.kagan_app.core.tasks.detach(task.id)
+        # Always reload board state after returning from a suspended terminal
+        # so the UI reflects any changes made during the interactive session.
+        await self._reload_tasks()
         self._set_inline_action_message(None)
 
     @staticmethod
@@ -1201,12 +1216,19 @@ class KanbanScreen(Screen[None]):
         try:
             with self.app.suspend():
                 yield
+            # Force full repaint after resuming — some terminals don't
+            # properly restore the alternate screen buffer on their own.
+            self.app.refresh(layout=True)
+            self.screen.refresh(layout=True)
         except SuspendNotSupported:
-            yield
+            self.app.notify(
+                "Terminal suspend not supported in this environment. "
+                "Use attach from a standard terminal (not textual dev).",
+                severity="warning",
+            )
 
     @staticmethod
     async def _attach_tmux_session(session_name: str) -> bool:
-        """Attach to tmux session in foreground (called within app.suspend())."""
         import asyncio as _aio
 
         try:
@@ -1224,30 +1246,13 @@ class KanbanScreen(Screen[None]):
 
     @staticmethod
     async def _attach_nvim_session(workspace_path: Path, prompt_path: Path) -> bool:
-        """Attach to Neovim in foreground (called within app.suspend())."""
         import asyncio as _aio
 
-        target = str(prompt_path) if prompt_path.exists() else "."
-        chat_bootstrap = (
-            "if filereadable('.kagan/start_prompt.md') | "
-            "let g:kagan_start_prompt = join(readfile('.kagan/start_prompt.md'), '\\n') | "
-            "if has('clipboard') | let @+ = g:kagan_start_prompt | endif | "
-            "endif | "
-            "if exists(':CodeCompanionChat') | CodeCompanionChat | "
-            "elseif exists(':AvanteChat') | AvanteChat | "
-            "elseif exists(':CopilotChat') | "
-            "lua local p = vim.g.kagan_start_prompt or ''; local ok, chat = pcall(require, "
-            "'CopilotChat'); if ok and chat and chat.ask then chat.open(); chat.ask(p, {}) else "
-            "vim.cmd('CopilotChat') end | "
-            "elseif exists(':ClaudeCode') | ClaudeCode | "
-            "silent! execute 'ClaudeCodeAdd ' . fnameescape('.kagan/start_prompt.md') | endif"
-        )
+        target = str(prompt_path) if prompt_path.exists() else str(workspace_path)
         try:
             proc = await _aio.create_subprocess_exec(
                 "nvim",
                 target,
-                "-c",
-                chat_bootstrap,
                 cwd=str(workspace_path),
                 env=build_sanitized_subprocess_environment(),
             )
@@ -1257,7 +1262,6 @@ class KanbanScreen(Screen[None]):
         return returncode == 0
 
     def action_open_session(self) -> None:
-        """Open task session (alternative to Enter for PAIR mode)."""
         if not self._require_inspector(action_label="Open session"):
             return
         task = self._selected_task()
@@ -1304,7 +1308,6 @@ class KanbanScreen(Screen[None]):
             f"{task.title} (copy)",
             description=task.description,
             priority=task.priority,
-            execution_mode=task.execution_mode,
             base_branch=task.base_branch,
             agent_backend=task.agent_backend,
             acceptance_criteria=list(task.acceptance_criteria),
@@ -1317,6 +1320,7 @@ class KanbanScreen(Screen[None]):
         task = self._selected_task()
         if task is None:
             return
+
         settings = await self.kagan_app.core.settings.get()
         backend = task.agent_backend or resolve_default_agent_backend(settings)
         workspace = await self.kagan_app.core.worktrees.get(task.id)
@@ -1324,6 +1328,14 @@ class KanbanScreen(Screen[None]):
             await self.kagan_app.core.worktrees.create(task.id)
         await self.kagan_app.core.tasks.run(task.id, agent_backend=backend)
         await self._reload_tasks()
+
+    async def action_attach_agent(self) -> None:
+        if not self._require_inspector(action_label="Attach"):
+            return
+        task = self._selected_task()
+        if task is None:
+            return
+        self.run_worker(self._open_interactive_session_flow(task), exclusive=False)
 
     async def action_stop_agent(self) -> None:
         if not self._require_inspector(action_label="Stop agent"):
@@ -1333,9 +1345,6 @@ class KanbanScreen(Screen[None]):
             return
         await self.kagan_app.core.tasks.cancel(task.id)
         await self._reload_tasks()
-
-    def action_new_auto_task(self) -> None:
-        self.app.push_screen(TaskEditorModal(execution_mode=WorkMode.AUTO))
 
     def action_edit_task(self) -> None:
         if not self._require_inspector(action_label="Edit"):
@@ -1555,7 +1564,7 @@ class KanbanScreen(Screen[None]):
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
 
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(
                 self._send_orchestrator_message(message.text),
                 name="kanban-chat-orchestrator-send",
@@ -1569,11 +1578,11 @@ class KanbanScreen(Screen[None]):
 
     def on_chat_panel_session_changed(self, message: ChatPanel.SessionChanged) -> None:
         if is_orchestrator_session_key(message.key):
-            self._chat_mode = "orchestrator"
+            self._chat_mode = ChatMode.ORCHESTRATOR
             self._chat_active_task_id = None
             panel = self.query_one(ChatPanel)
             panel.set_mode_title("Orchestrator")
-            panel.set_session_kind("orchestrator")
+            panel.set_session_kind(SessionKind.ORCHESTRATOR)
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.history_for_key(
                 message.key
             )
@@ -1585,24 +1594,19 @@ class KanbanScreen(Screen[None]):
                 exit_on_error=False,
             )
             return
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         task = self._selected_task()
         panel = self.query_one(ChatPanel)
         if task is None:
             panel.set_mode_title("Task Chat")
-            panel.set_session_kind("auto")
+            panel.set_session_kind(SessionKind.DETACHED)
             panel.add_system_message("Select a task first")
             return
         self._chat_active_task_id = task.id
         panel.set_mode_title(f"Task #{task.id[:8]}")
-        panel.set_session_kind("review" if "review" in message.key.casefold() else "auto")
-        panel.set_sessions(
-            [
-                *self.kagan_app.orchestrator_sessions.options(),
-                *self._task_session_options(task),
-            ],
-            message.key,
-        )
+        kind = SessionKind.REVIEW if "review" in message.key.casefold() else SessionKind.DETACHED
+        panel.set_session_kind(kind)
+        panel.set_sessions(build_session_options(self.kagan_app, task), message.key)
         self._ensure_chat_stream_worker(task.id)
 
     def on_chat_panel_session_picker_requested(
@@ -1632,6 +1636,12 @@ class KanbanScreen(Screen[None]):
                 return
             panel._agent_hint = selected
             panel.add_system_message(f"Default agent set to {selected}")
+            self.run_worker(
+                self._persist_session_backend(selected),
+                group="kanban-chat-persist",
+                exclusive=False,
+                exit_on_error=False,
+            )
             self.run_worker(
                 self._warm_orchestrator_backend(selected),
                 group="kanban-chat-warmup",
@@ -1665,6 +1675,7 @@ class KanbanScreen(Screen[None]):
         # Prepend accumulated DB-change context (invisible to user)
         ctx = self._watcher.drain_context() if self._watcher else None
         enriched = f"{ctx}\n\n{text}" if ctx else text
+        should_title = self.kagan_app.orchestrator_sessions.should_generate_title()
         try:
             self._chat_orchestrator_history = await send_chat_message(
                 core=self.kagan_app.core,
@@ -1677,6 +1688,22 @@ class KanbanScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
+            if should_title and self._chat_orchestrator_history:
+                task = self._selected_task()
+                asyncio.create_task(
+                    kick_title_generation(
+                        TitleGenerationSession(
+                            orchestrator_sessions=self.kagan_app.orchestrator_sessions,
+                            panel=panel,
+                            user_message=text,
+                            history=self._chat_orchestrator_history,
+                            session_options=build_session_options(self.kagan_app, task),
+                            is_mounted=lambda: self.is_mounted,
+                        ),
+                        self.kagan_app.core,
+                    ),
+                    name="tui-chat-title-gen",
+                )
         except asyncio.CancelledError:
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
@@ -1740,11 +1767,7 @@ class KanbanScreen(Screen[None]):
 
         active_key = self.kagan_app.orchestrator_sessions.active_key()
         task = self._selected_task()
-        task_sessions = self._task_session_options(task) if task is not None else []
-        panel.set_sessions(
-            [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-            active_key,
-        )
+        panel.set_sessions(build_session_options(self.kagan_app, task), active_key)
         panel.hydrate_current_session_history(self._chat_orchestrator_history)
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
@@ -1765,25 +1788,13 @@ class KanbanScreen(Screen[None]):
             return
 
         self._chat_active_task_id = task.id
-        with contextlib.suppress(KaganError, OSError, RuntimeError):
-            await self.kagan_app.core.tasks.cancel(task.id)
-
-        merged_description = task.description.strip()
-        follow_up = f"User follow-up:\n{text}".strip()
-        updated_description = (
-            f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-        )
         try:
-            await self.kagan_app.core.tasks.update(task.id, description=updated_description)
-
-            workspace = await self.kagan_app.core.worktrees.get(task.id)
-            if workspace is None:
-                await self.kagan_app.core.worktrees.create(task.id)
+            updated_task = await send_task_message(self.kagan_app.core, task, text)
 
             settings = await self.kagan_app.core.settings.get()
             backend = (
                 panel.preferred_agent_backend()
-                or task.agent_backend
+                or updated_task.agent_backend
                 or resolve_default_agent_backend(settings)
             )
             panel.set_runtime_status("initializing")
@@ -1807,7 +1818,7 @@ class KanbanScreen(Screen[None]):
         panel = self.query_one(ChatPanel)
         try:
             async for event in self.kagan_app.core.tasks.events.stream(task_id):
-                if self._chat_mode != "task" or self._chat_active_task_id != task_id:
+                if self._chat_mode != ChatMode.TASK or self._chat_active_task_id != task_id:
                     continue
 
                 payload = event.payload or {}
@@ -1845,7 +1856,14 @@ class KanbanScreen(Screen[None]):
         self.app.push_screen("repo-picker-modal")
 
     def action_open_settings(self) -> None:
-        self.app.push_screen("settings-modal")
+        self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
+
+    def _on_settings_dismissed(self, _result: None) -> None:
+        from kagan.tui.app import KaganApp
+
+        app = self.app
+        if isinstance(app, KaganApp):
+            app.run_worker(app._apply_saved_theme(), exclusive=False)
 
     def action_new_task(self) -> None:
         self.app.push_screen(TaskEditorModal())
@@ -1856,7 +1874,6 @@ class KanbanScreen(Screen[None]):
         self.call_after_refresh(self._auto_focus_board)
 
     def _handle_search_key(self, event: events.Key) -> bool:
-        """Handle key events when search bar is visible. Returns True if handled."""
         search_bar = self.query_one(SearchBar)
         if event.key == "slash":
             event.prevent_default()
@@ -1932,13 +1949,21 @@ class KanbanScreen(Screen[None]):
             panel.action_open_session_picker()
             return
 
+        if event.key == "ctrl+f":
+            panel = self.query_one(ChatPanel)
+            if panel.has_class("visible"):
+                event.prevent_default()
+                event.stop()
+                await self.action_expand_chat_overlay()
+                return
+
         if self._focused_widget_accepts_text():
             if event.key == "enter":
                 panel = self.query_one(ChatPanel)
                 if panel.has_class("visible"):
                     event.prevent_default()
                     event.stop()
-                    panel.action_send_message()
+                    panel.call_later(panel.action_send_message)
                     return
             return
 
@@ -1982,12 +2007,6 @@ class KanbanScreen(Screen[None]):
             action()
             return
 
-        if event.key == "space":
-            event.prevent_default()
-            event.stop()
-            self.action_peek_task()
-            return
-
     def action_copy_task_id(self) -> None:
         task = self._selected_task()
         if task is None:
@@ -1998,17 +2017,7 @@ class KanbanScreen(Screen[None]):
     async def _confirm_delete_task(self, task: Task) -> None:
         worktree = await self.kagan_app.core.worktrees.get(task.id)
         has_worktree = worktree is not None
-        engine = self.kagan_app.core._engine
-
-        def _check_active() -> bool:
-            with DBSession(engine) as db:
-                stmt = select(Session).where(
-                    Session.task_id == task.id,
-                    Session.status.in_([SessionStatus.RUNNING, SessionStatus.PENDING]),
-                )
-                return db.exec(stmt).first() is not None
-
-        has_active_session = await asyncio.to_thread(_check_active)
+        has_active_session = await self.kagan_app.core.tasks.sessions.has_active(task.id)
 
         def _on_result(confirmed: bool | None) -> None:
             if not confirmed:
@@ -2072,14 +2081,11 @@ class KanbanScreen(Screen[None]):
         return list(tasks)
 
     @staticmethod
-    def _parse_search_query(
-        query: str,
-    ) -> tuple[str, TaskStatus | None, str | None, WorkMode | None, str | None]:
+    def _parse_search_query(query: str) -> SearchQuery:
         tokens = [token for token in query.split() if token.strip()]
         text_parts: list[str] = []
         status_filter: TaskStatus | None = None
         priority_filter: str | None = None
-        mode_filter: WorkMode | None = None
         sort_filter: str | None = None
 
         for token in tokens:
@@ -2094,22 +2100,17 @@ class KanbanScreen(Screen[None]):
                 )
                 if priority_filter is not None:
                     continue
-            if normalized.startswith("@mode:"):
-                mode_filter = _SEARCH_MODE_ALIASES.get(normalized.removeprefix("@mode:"))
-                if mode_filter is not None:
-                    continue
             if normalized.startswith("@sort:"):
                 sort_filter = _SEARCH_SORT_ALIASES.get(normalized.removeprefix("@sort:"))
                 if sort_filter is not None:
                     continue
             text_parts.append(token)
 
-        return (
-            " ".join(text_parts).strip().lower(),
-            status_filter,
-            priority_filter,
-            mode_filter,
-            sort_filter,
+        return SearchQuery(
+            text=" ".join(text_parts).strip().lower(),
+            status=status_filter,
+            priority=priority_filter,
+            sort=sort_filter,
         )
 
     @staticmethod
@@ -2119,7 +2120,6 @@ class KanbanScreen(Screen[None]):
         text_query: str,
         status_filter: TaskStatus | None,
         priority_filter: str | None,
-        mode_filter: WorkMode | None,
     ) -> bool:
         if status_filter is not None and task.status != status_filter:
             return False
@@ -2128,8 +2128,6 @@ class KanbanScreen(Screen[None]):
         if priority_filter == "medium" and task.priority != Priority.MEDIUM:
             return False
         if priority_filter == "low" and task.priority != Priority.LOW:
-            return False
-        if mode_filter is not None and task.execution_mode != mode_filter:
             return False
         if not text_query:
             return True

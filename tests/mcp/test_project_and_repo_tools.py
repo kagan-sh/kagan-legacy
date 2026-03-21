@@ -93,11 +93,11 @@ async def test_project_write_tools_visible_on_default_server(mcp_board: ClientSe
     assert "project_set_repo_default_branch" in names
 
 
-async def test_project_create_hidden_on_default_server(mcp_board: ClientSession) -> None:
-    """project_create must not be visible on default (non-admin) server."""
+async def test_project_create_visible_on_default_server(mcp_board: ClientSession) -> None:
+    """project_create is visible on default server (orchestrator role)."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "project_create" not in names
+    assert "project_create" in names
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +105,11 @@ async def test_project_create_hidden_on_default_server(mcp_board: ClientSession)
 # ---------------------------------------------------------------------------
 
 
-async def test_project_list_visible_on_readonly_server() -> None:
-    """project_list is read-only and must be visible on readonly server."""
+async def test_project_list_hidden_on_worker_role() -> None:
+    """project_list is orchestrator-only and hidden for worker (readonly) role."""
     names = await _tool_names_for(ServerOptions(readonly=True))
-    assert "project_list" in names
-    assert "repo_list" in names
+    assert "project_list" not in names
+    assert "repo_list" not in names
 
 
 async def test_project_write_tools_hidden_on_readonly_server() -> None:

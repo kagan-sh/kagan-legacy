@@ -1,6 +1,6 @@
-"""``kagan chat`` — interactive REPL or single-shot agent prompt.
+"""`kagan chat` — interactive REPL or single-shot agent prompt.
 
-Thin Click adapter.  All logic lives in ``kagan.chat``.
+Thin Click adapter; logic lives in `kagan.chat`.
 """
 
 import importlib

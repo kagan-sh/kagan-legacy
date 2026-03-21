@@ -6,9 +6,9 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
-from textual.widgets import Footer, OptionList, Static
+from textual.widgets import OptionList, Static
 
-from kagan.core.errors import SessionError
+from kagan.core.errors import KaganError, SessionError
 from kagan.core.models import Project
 from kagan.tui.keybindings import WELCOME_BINDINGS, get_key_for_action
 from kagan.tui.screens.confirm import ConfirmModal
@@ -26,8 +26,6 @@ _WELCOME_LOGO = """\
 
 
 class WelcomeScreen(Screen[None]):
-    """Project launcher — one list, one action, zero redundancy."""
-
     BINDINGS = [*WELCOME_BINDINGS]
 
     def __init__(
@@ -51,10 +49,6 @@ class WelcomeScreen(Screen[None]):
     @property
     def kagan_app(self) -> "KaganApp":
         return cast("KaganApp", self.app)
-
-    # ------------------------------------------------------------------
-    # Compose — logo, optional CWD banner, project list. Nothing else.
-    # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         with Container(id="welcome-container"):
@@ -90,12 +84,7 @@ class WelcomeScreen(Screen[None]):
                 "No recent projects. Create a new project or open a folder.",
                 id="empty-state",
             )
-        yield KeybindingHint(id="welcome-hint", classes="keybinding-hint")
-        yield Footer(show_command_palette=False)
-
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+            yield KeybindingHint(id="welcome-hint")
 
     async def on_mount(self) -> None:
         await self._reload_projects()
@@ -108,7 +97,6 @@ class WelcomeScreen(Screen[None]):
         self._update_keybinding_hints()
 
     async def _maybe_hide_cwd_banner(self) -> None:
-        """Hide CWD banner when the path is already linked to a project."""
         if not self._suggest_cwd or not self._cwd_path:
             return
         banner = self.query_one("#cwd-suggestion-banner", Container)
@@ -116,10 +104,6 @@ class WelcomeScreen(Screen[None]):
         existing = await self.kagan_app.core.projects.find_by_repo(resolved)
         if existing is not None:
             banner.display = False
-
-    # ------------------------------------------------------------------
-    # Data loading
-    # ------------------------------------------------------------------
 
     async def action_reload_projects(self) -> None:
         await self._reload_projects()
@@ -167,10 +151,6 @@ class WelcomeScreen(Screen[None]):
         updated = self._relative_timestamp(project.updated_at)
         return f"{shortcut} {project.name} · {repo_count} {repo_label} · {updated}"
 
-    # ------------------------------------------------------------------
-    # Navigation
-    # ------------------------------------------------------------------
-
     def _update_keybinding_hints(self) -> None:
         hint_widget = self.query_one("#welcome-hint", KeybindingHint)
         escape_label = "back" if self.kagan_app.project is not None else "quit"
@@ -186,16 +166,23 @@ class WelcomeScreen(Screen[None]):
                     get_key_for_action(WELCOME_BINDINGS, "move_selection_down", "Down / j"),
                     "navigate",
                 ),
-                (get_key_for_action(WELCOME_BINDINGS, "focus_next", "Tab"), "next"),
                 (get_key_for_action(WELCOME_BINDINGS, "new_project", "n"), "new"),
                 (get_key_for_action(WELCOME_BINDINGS, "open_folder", "o"), "open folder"),
                 (get_key_for_action(WELCOME_BINDINGS, "delete_project", "x"), "delete"),
+                (",", "settings"),
                 (get_key_for_action(WELCOME_BINDINGS, "quit", "Esc"), escape_label),
             ]
         )
 
     def action_settings(self) -> None:
-        self.app.push_screen("settings-modal")
+        self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
+
+    def _on_settings_dismissed(self, _result: None) -> None:
+        from kagan.tui.app import KaganApp
+
+        app = self.app
+        if isinstance(app, KaganApp):
+            app.run_worker(app._apply_saved_theme(), exclusive=False)
 
     def action_move_up(self) -> None:
         option_list = self.query_one("#project-list", OptionList)
@@ -212,7 +199,6 @@ class WelcomeScreen(Screen[None]):
         option_list.highlighted = min(len(self._projects) - 1, current + 1)
 
     def action_focus_next(self) -> None:
-        """Focus next element."""
         self.focus_next()
 
     def action_focus_prev(self) -> None:
@@ -220,10 +206,6 @@ class WelcomeScreen(Screen[None]):
 
     async def action_quit(self) -> None:
         await self.kagan_app.action_quit()
-
-    # ------------------------------------------------------------------
-    # Project actions
-    # ------------------------------------------------------------------
 
     async def _create_project_from_cwd(self) -> None:
         if not self._cwd_path:
@@ -332,7 +314,6 @@ class WelcomeScreen(Screen[None]):
         )
 
     async def action_delete_project(self) -> None:
-        """Delete the selected project after confirmation."""
         project = self._get_selected_project()
         if project is None:
             return
@@ -343,9 +324,12 @@ class WelcomeScreen(Screen[None]):
         async def _on_confirmed(confirmed: bool) -> None:
             if not confirmed:
                 return
-            await self.kagan_app.core.projects.delete(captured_id)
-            self.app.notify(f"Deleted '{captured_name}'")
-            await self._reload_projects()
+            try:
+                await self.kagan_app.core.projects.delete(captured_id)
+                self.app.notify(f"Deleted '{captured_name}'")
+                await self._reload_projects()
+            except (KaganError, OSError, RuntimeError, ValueError) as exc:
+                self.app.notify(f"Failed to delete project: {exc}", severity="error")
 
         self.app.push_screen(
             ConfirmModal(
@@ -356,7 +340,6 @@ class WelcomeScreen(Screen[None]):
         )
 
     def _get_selected_project(self) -> Project | None:
-        """Return the currently highlighted project, or None."""
         if not self._projects:
             return None
         option_list = self.query_one("#project-list", OptionList)
@@ -364,10 +347,6 @@ class WelcomeScreen(Screen[None]):
         if index < 0 or index >= len(self._projects):
             return None
         return self._projects[index]
-
-    # ------------------------------------------------------------------
-    # Event handlers
-    # ------------------------------------------------------------------
 
     async def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         if event.option_list.id != "project-list":
@@ -420,10 +399,6 @@ class WelcomeScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             await self.action_reload_projects()
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _relative_timestamp(self, value: datetime) -> str:
         delta = datetime.now(UTC) - value.astimezone(UTC)

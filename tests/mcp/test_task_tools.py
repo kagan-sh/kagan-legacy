@@ -44,11 +44,11 @@ async def test_task_tools_visible_on_default_server(mcp_board: ClientSession) ->
     assert "task_counts" in names
 
 
-async def test_task_delete_hidden_on_default_server(mcp_board: ClientSession) -> None:
-    """task_delete must not be visible on default (non-admin) server."""
+async def test_task_delete_visible_on_default_server(mcp_board: ClientSession) -> None:
+    """task_delete is visible on default server (orchestrator role)."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "task_delete" not in names
+    assert "task_delete" in names
 
 
 # ---------------------------------------------------------------------------
@@ -88,13 +88,12 @@ async def test_task_batch_create_accepts_mixed_field_types(mcp_board: ClientSess
                     "title": "Batch alpha",
                     "description": "alpha",
                     "priority": 2,
-                    "execution_mode": "AUTO",
                     "acceptance_criteria": ["criterion one", "criterion two"],
                 },
                 {
                     "title": "Batch beta",
                     "priority": "1",
-                    "execution_mode": "PAIR",
+                    "launcher": "tmux",
                 },
             ]
         },
@@ -528,7 +527,7 @@ async def test_task_patch_updates_description(mcp_board: ClientSession) -> None:
 
 
 async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -> None:
-    create_result = await mcp_board.call_tool("task_create", {"title": "Execution metadata task"})
+    create_result = await mcp_board.call_tool("task_create", {"title": "Run metadata task"})
     task_id = _text(create_result)["id"]
 
     patch_result = await mcp_board.call_tool(
@@ -536,7 +535,7 @@ async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -
         {
             "task_id": task_id,
             "priority": "HIGH",
-            "execution_mode": "AUTO",
+            "launcher": "tmux",
             "base_branch": "main",
             "acceptance_criteria": ["Criterion A", "Criterion B"],
             "agent_backend": "kimi-cli",
@@ -545,13 +544,13 @@ async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -
     assert not patch_result.isError
     payload = _text(patch_result)
     assert payload["priority"] == "HIGH"
-    assert payload["execution_mode"] == "AUTO"
+    assert payload["launcher"] == "tmux"
     assert payload["base_branch"] == "main"
     assert payload["acceptance_criteria"] == ["Criterion A", "Criterion B"]
     assert payload["agent_backend"] == "kimi-cli"
     assert payload["verification"]["all_applied"] is True
     assert payload["verification"]["mismatched_fields"] == []
-    assert payload["verification"]["requested"]["execution_mode"] == "AUTO"
+    assert payload["verification"]["requested"]["launcher"] == "tmux"
 
 
 # ---------------------------------------------------------------------------

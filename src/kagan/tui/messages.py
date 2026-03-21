@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from textual.message import Message
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 from kagan.core.models import Project, Task
 
 __all__ = [
@@ -20,9 +20,6 @@ __all__ = [
     "OfflineBannerDismissed",
     "OfflineReconnectRequested",
     "OnboardingCompleted",
-    "PlanApprovalDismissed",
-    "PlanApprovalEditRequested",
-    "PlanApprovalRequested",
     "ProjectOpened",
     "RepoPickerRequested",
     "ReviewRequested",
@@ -102,7 +99,6 @@ class TaskSubmitted(Message):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     agent_backend: str | None
     launcher: str | None
     base_branch: str | None
@@ -132,9 +128,7 @@ class MentionQuery(Message):
 
 @dataclass
 class MentionDismissed(Message):
-    """User dismissed the mention autocomplete overlay."""
-
-    ...
+    pass
 
 
 @dataclass
@@ -149,34 +143,17 @@ class SlashCompletionCompleted(Message):
 
 @dataclass
 class SlashCompletionDismissed(Message):
-    """User dismissed the slash command completion overlay."""
-
-    ...
-
-
-@dataclass
-class PlanApprovalRequested(Message):
-    tasks: list[object]
-
-
-@dataclass
-class PlanApprovalEditRequested(Message):
-    tasks: list[object]
-
-
-@dataclass
-class PlanApprovalDismissed(Message):
-    """User dismissed the plan approval overlay."""
+    pass
 
 
 @dataclass
 class OfflineReconnectRequested(Message):
-    """User requested to reconnect to the server."""
+    pass
 
 
 @dataclass
 class OfflineBannerDismissed(Message):
-    """User dismissed the offline banner."""
+    pass
 
 
 @dataclass

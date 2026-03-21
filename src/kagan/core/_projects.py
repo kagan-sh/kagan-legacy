@@ -16,7 +16,13 @@ from kagan.core._db_helpers import (
     _setting_branch,
     _setting_enabled,
 )
-from kagan.core.errors import NotFoundError, SessionError, WorktreeError
+from kagan.core.errors import (
+    KaganError,
+    MultiRepoUnsupportedError,
+    NotFoundError,
+    SessionError,
+    WorktreeError,
+)
 from kagan.core.models import Project, Repository, Task
 
 if TYPE_CHECKING:
@@ -60,6 +66,36 @@ class Projects:
     async def delete(self, project_id: str) -> None:
         await self.get(project_id)
 
+        # Pre-delete cleanup
+        # Collect task IDs for this project
+        task_ids: list[str] = await _db_async(
+            self._engine,
+            lambda s: [
+                t.id for t in s.exec(select(Task).where(Task.project_id == project_id)).all()
+            ],
+        )
+
+        # Cancel running sessions
+        for tid in task_ids:
+            try:
+                await self._client.tasks.sessions.cancel(tid)
+            except (KaganError, OSError):
+                logger.warning(
+                    "Failed to cancel session during project cleanup task_id={}", tid, exc_info=True
+                )
+
+        # Clean up git worktrees
+        for tid in task_ids:
+            try:
+                await self._client.worktrees.cleanup(tid)
+            except (WorktreeError, OSError, RuntimeError):
+                logger.warning(
+                    "Failed to cleanup worktree during project cleanup task_id={}",
+                    tid,
+                    exc_info=True,
+                )
+
+        # DB transaction: delete remaining rows
         def op(s):
             tasks = list(s.exec(select(Task).where(Task.project_id == project_id)).all())
             for task in tasks:
@@ -208,6 +244,44 @@ class Projects:
             self._engine,
             lambda s: s.exec(select(Project).where(Project.name == name)).first(),
         )
+
+    async def resolve_repo(
+        self,
+        project_id: str,
+        *,
+        selected_repo_id: str | None = None,
+    ) -> Repository:
+        repos = await self.repos(project_id)
+        if not repos:
+            raise SessionError(None, f"No repos linked to project {project_id!r}.")
+        if selected_repo_id:
+            match = next((r for r in repos if r.id == selected_repo_id), None)
+            if match is not None:
+                return match
+        if len(repos) == 1:
+            return repos[0]
+        raise MultiRepoUnsupportedError(len(repos))
+
+    async def resolve_repo_path(
+        self,
+        *,
+        project_id: str | None = None,
+        settings: dict[str, str] | None = None,
+    ) -> Path | None:
+        project_id = project_id or self._client.active_project_id
+        if not project_id:
+            return None
+        repos = await self.repos(project_id)
+        if not repos:
+            return None
+        settings = settings or {}
+        selected_repo_id = settings.get(f"ui.selected_repo.{project_id}")
+        try:
+            repo = await self.resolve_repo(project_id, selected_repo_id=selected_repo_id)
+        except (MultiRepoUnsupportedError, SessionError):
+            return None
+        repo_path = Path(repo.path)
+        return repo_path if repo_path.is_dir() else None
 
 
 __all__ = ["Projects"]

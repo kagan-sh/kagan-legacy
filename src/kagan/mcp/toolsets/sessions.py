@@ -1,35 +1,40 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
-import asyncio
-from collections.abc import Awaitable, Callable
+import contextlib
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from kagan.core import resolve_default_agent_backend, resolve_launcher
 from kagan.core.errors import KaganError, SessionError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
 from kagan.mcp.toolsets import mcp_error_boundary
 
 
+class SessionExistsResult(TypedDict):
+    exists: bool
+    task_id: str
+
+
+class SessionCreateResult(TypedDict):
+    session_id: str
+    task_id: str
+
+
+class SessionGetResult(TypedDict):
+    task_id: str
+    status: str
+
+
+class SessionKillResult(TypedDict):
+    task_id: str
+    killed: bool
+
+
 async def _get_latest_session(client: Any, task_id: str) -> Any:
-    """Return the most recent session for a task, or None."""
-    from sqlmodel import Session as DBSession
-    from sqlmodel import desc, select
-
-    from kagan.core.models import Session as KaganRun
-
-    def _query():
-        with DBSession(client.engine) as session:
-            stmt = (
-                select(KaganRun)
-                .where(KaganRun.task_id == task_id)
-                .order_by(desc(KaganRun.started_at))
-            )
-            return session.exec(stmt).first()
-
-    return await asyncio.to_thread(_query)
+    return await client.tasks.sessions.get_latest(task_id)
 
 
 class SessionAction(StrEnum):
@@ -37,19 +42,10 @@ class SessionAction(StrEnum):
     CREATE = "create"
     GET = "get"
     KILL = "kill"
-    FINISH = "finish"
+    DETACH = "detach"
 
 
 _SESSION_ACTIONS = frozenset(item.value for item in SessionAction)
-
-
-class SessionStartAction(StrEnum):
-    RUN = "run"
-    PAIR = "pair"
-
-
-def _resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or settings.get("default_agent") or "claude-code"
 
 
 def _parse_session_action(action: str) -> SessionAction:
@@ -62,7 +58,7 @@ def _parse_session_action(action: str) -> SessionAction:
         ) from exc
 
 
-async def _handle_exists(client: Any, task_id: str) -> dict:
+async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
     from kagan.core.errors import NotFoundError
 
     try:
@@ -72,7 +68,7 @@ async def _handle_exists(client: Any, task_id: str) -> dict:
         return {"exists": False, "task_id": task_id}
 
 
-async def _handle_create(client: Any, task_id: str) -> dict:
+async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
     ws = await client.worktrees.get(task_id)
     if ws is None:
         try:
@@ -82,12 +78,10 @@ async def _handle_create(client: Any, task_id: str) -> dict:
                 None, f"Failed to provision workspace for task {task_id!r}: {prov_exc}"
             ) from prov_exc
     settings = await client.settings.get()
-    backend = _resolve_default_agent_backend(settings)
-    launcher = settings.get("pair_launcher", "tmux")
-    from kagan.core import resolve_launcher as _resolve_launcher
-
-    launcher_key, ide_name = _resolve_launcher(launcher)
-    session = await client.tasks.pair(
+    backend = resolve_default_agent_backend(settings)
+    launcher = settings.get("attached_launcher", "tmux")
+    launcher_key, ide_name = resolve_launcher(launcher)
+    session = await client.tasks.run(
         task_id,
         agent_backend=backend,
         launcher=launcher_key,
@@ -96,12 +90,12 @@ async def _handle_create(client: Any, task_id: str) -> dict:
     return {"session_id": session.id, "task_id": task_id}
 
 
-async def _handle_get(client: Any, task_id: str) -> dict:
+async def _handle_get(client: Any, task_id: str) -> SessionGetResult:
     task = await client.tasks.get(task_id)
     return {"task_id": task_id, "status": str(task.status)}
 
 
-async def _handle_kill(client: Any, task_id: str) -> dict:
+async def _handle_kill(client: Any, task_id: str) -> SessionKillResult:
     await client.tasks.cancel(task_id)
     return {"task_id": task_id, "killed": True}
 
@@ -110,24 +104,11 @@ async def _handle_kill(client: Any, task_id: str) -> dict:
 async def _run_start(
     task_id: str,
     ctx: Context,
-    action: str = "run",
     agent_backend: str | None = None,
     launcher: str | None = None,
     persona: str | None = None,
 ) -> dict:
-    """Start an agent session for a task.
-
-    If no workspace exists for the task, one is provisioned automatically.
-    ``agent_backend`` overrides the default from settings when provided.
-    """
     app = get_context(ctx)
-    try:
-        parsed_action = SessionStartAction(action)
-    except ValueError as exc:
-        raise ValidationError(
-            "Unknown run_start action",
-            f"{action!r}. Must be one of {[a.value for a in SessionStartAction]}",
-        ) from exc
 
     ws = await app.client.worktrees.get(task_id)
     if ws is None:
@@ -138,9 +119,9 @@ async def _run_start(
                 None, f"Failed to provision workspace for task {task_id!r}: {prov_exc}"
             ) from prov_exc
     settings = await app.client.settings.get()
-    resolved_backend = agent_backend or _resolve_default_agent_backend(settings)
+    resolved_backend = agent_backend or resolve_default_agent_backend(settings)
 
-    if parsed_action is SessionStartAction.RUN:
+    if launcher is None:
         session = await app.client.tasks.run(
             task_id,
             agent_backend=resolved_backend,
@@ -150,17 +131,12 @@ async def _run_start(
             "session_id": session.id,
             "task_id": task_id,
             "status": "STARTED",
-            "action": parsed_action.value,
-            "mode": "AUTO",
             "agent_backend": resolved_backend,
             "persona": session.persona,
         }
 
-    resolved_launcher = launcher or settings.get("pair_launcher", "tmux")
-    from kagan.core import resolve_launcher
-
-    launcher_key, ide_name = resolve_launcher(resolved_launcher)
-    session = await app.client.tasks.pair(
+    launcher_key, ide_name = resolve_launcher(launcher)
+    session = await app.client.tasks.run(
         task_id,
         agent_backend=resolved_backend,
         launcher=launcher_key,
@@ -171,17 +147,14 @@ async def _run_start(
         "session_id": session.id,
         "task_id": task_id,
         "status": "STARTED",
-        "action": parsed_action.value,
-        "mode": "PAIR",
         "agent_backend": resolved_backend,
-        "launcher": resolved_launcher,
+        "launcher": launcher,
         "persona": session.persona,
     }
 
 
 @mcp_error_boundary
 async def _run_cancel(session_id: str, task_id: str, ctx: Context) -> dict:
-    """Cancel a running session."""
     app = get_context(ctx)
     await app.client.tasks.cancel(task_id)
     return {"session_id": session_id, "task_id": task_id, "cancelled": True}
@@ -195,46 +168,61 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     if id_filter:
         tasks = [task for task in tasks if task.id in id_filter]
 
-    rows: list[dict[str, str | None]] = []
+    rows: list[dict[str, Any]] = []
     for task in tasks:
         session = await _get_latest_session(app.client, task.id)
-        rows.append(
-            {
-                "task_id": task.id,
-                "status": task.status.value,
-                "execution_mode": task.execution_mode.value,
-                "agent_backend": task.agent_backend,
-                "session_id": session.id if session is not None else None,
-                "session_backend": session.agent_backend if session is not None else None,
+        ws = None
+        with contextlib.suppress(Exception):
+            ws = await app.client.worktrees.get(task.id)
+        row: dict[str, Any] = {
+            "task_id": task.id,
+            "status": task.status.value,
+            "agent_backend": task.agent_backend,
+            "worktree_path": ws.worktree_path if ws is not None else None,
+            "session_id": session.id if session is not None else None,
+            "session_backend": session.agent_backend if session is not None else None,
+        }
+        if session is not None:
+            row["token_usage"] = {
+                "input_tokens": session.input_tokens,
+                "output_tokens": session.output_tokens,
+                "context_window_used": session.context_window_used,
+                "context_window_size": session.context_window_size,
+                "cost_amount": session.cost_amount,
+                "cost_currency": session.cost_currency,
             }
-        )
+        else:
+            row["token_usage"] = {
+                "input_tokens": None,
+                "output_tokens": None,
+                "context_window_used": None,
+                "context_window_size": None,
+                "cost_amount": None,
+                "cost_currency": None,
+            }
+        rows.append(row)
     return {"rows": rows}
 
 
-async def _run_update(action: str, task_id: str, ctx: Context) -> dict:
-    """Manage PAIR session lifecycle: exists, create, get, or kill."""
+async def _run_update(action: str, task_id: str, ctx: Context) -> dict[str, Any]:
     app = get_context(ctx)
     return await _run_update_core(action, task_id, app.client)
 
 
 @mcp_error_boundary
-async def _run_update_core(action: str, task_id: str, client: Any) -> dict:
-    """Dispatch run_update action against the real core client."""
+async def _run_update_core(action: str, task_id: str, client: Any) -> dict[str, Any]:
     parsed = _parse_session_action(action)
-
-    handlers: dict[SessionAction, Callable[[], Awaitable[dict]]] = {
-        SessionAction.EXISTS: lambda: _handle_exists(client, task_id),
-        SessionAction.CREATE: lambda: _handle_create(client, task_id),
-        SessionAction.GET: lambda: _handle_get(client, task_id),
-        SessionAction.KILL: lambda: _handle_kill(client, task_id),
-        SessionAction.FINISH: lambda: client.tasks.end_pairing(task_id),
-    }
-
-    handler = handlers.get(parsed)
-    if handler is None:
-        raise ValidationError("Unknown run_update action", repr(parsed.value))
-
-    return await handler()
+    if parsed is SessionAction.EXISTS:
+        return cast("dict[str, Any]", await _handle_exists(client, task_id))
+    if parsed is SessionAction.CREATE:
+        return cast("dict[str, Any]", await _handle_create(client, task_id))
+    if parsed is SessionAction.GET:
+        return cast("dict[str, Any]", await _handle_get(client, task_id))
+    if parsed is SessionAction.KILL:
+        return cast("dict[str, Any]", await _handle_kill(client, task_id))
+    if parsed is SessionAction.DETACH:
+        return cast("dict[str, Any]", await client.tasks.detach(task_id))
+    raise ValidationError("Unknown run_update action", repr(parsed.value))
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:

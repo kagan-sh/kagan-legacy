@@ -64,7 +64,6 @@ def _sync_rich_click_groups(root_group: click.Group) -> None:
 
 _configure_rich_click()
 
-# Explicit type for base class to satisfy type checkers while preserving runtime behavior
 _CLIGroupBase: type[click.Group] = _RICH_GROUP_BASE
 
 
@@ -101,14 +100,14 @@ class _CLIGroup(_CLIGroupBase):
 def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
     if not value or ctx.resilient_parsing:
         return
-    click.echo(version("kagan"))
+    click.echo(f"ᘚᘛ kagan {version('kagan')}")
     ctx.exit()
 
 
 @click.group(
     cls=_CLIGroup,
     invoke_without_command=True,
-    help="Kagan, your next CLI agent.",
+    help="ᘚᘛ Kagan — one orchestration layer to rule them all.",
 )
 @click.option(
     "--version",
@@ -133,7 +132,6 @@ def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
     _sanitize_startup_environment()
     configure_logging(verbose=verbose)
 
-    # Ensure commands are registered before accessing them
     _register_commands()
 
     latest = maybe_check_for_updates(skip=skip_update_check)
@@ -166,9 +164,11 @@ def _register_commands() -> None:
     from kagan.cli.mcp import mcp
     from kagan.cli.plugins import plugins
     from kagan.cli.reset import reset
+    from kagan.cli.serve import serve
     from kagan.cli.tools import tools
     from kagan.cli.tui import tui
     from kagan.cli.update import update
+    from kagan.cli.web import web
 
     cli.add_command(tui)
     cli.add_command(chat)
@@ -176,9 +176,11 @@ def _register_commands() -> None:
     cli.add_command(import_cmd)
     cli.add_command(list_projects)
     cli.add_command(mcp)
+    cli.add_command(serve)
     cli.add_command(reset)
     cli.add_command(update)
     cli.add_command(tools)
+    cli.add_command(web)
     if _plugins_cli_enabled():
         cli.add_command(plugins)
 

@@ -92,7 +92,6 @@ class OnboardingFlow(ModalScreen[None]):
                 yield Label(self._copy["subtitle"], id="setup-subtitle")
 
                 with VerticalScroll(id="onboarding-form"):
-                    # ── Project section ──
                     with Vertical(id="setup-section-project", classes="setup-section"):
                         yield Label("Project", classes="setup-section-title")
                         yield Label("Project Name", classes="form-label")
@@ -109,11 +108,10 @@ class OnboardingFlow(ModalScreen[None]):
                             id="new-project-repo-path",
                         )
 
-                    # ── Configuration section ──
                     with Vertical(id="setup-section-config", classes="setup-section"):
                         yield Label("Configuration", classes="setup-section-title")
 
-                        with Horizontal(classes="setup-field-pair"):
+                        with Horizontal(classes="setup-field-attached"):
                             with Vertical(classes="setup-field-half"):
                                 yield Label("AI Assistant", classes="form-label")
                                 yield Label(
@@ -128,15 +126,15 @@ class OnboardingFlow(ModalScreen[None]):
                                     compact=True,
                                 )
                             with Vertical(classes="setup-field-half"):
-                                yield Label("PAIR Launcher", classes="form-label")
+                                yield Label("Interactive launcher", classes="form-label")
                                 yield Label(
-                                    "Default PAIR launcher.",
+                                    "Default launcher used when you attach an interactive run.",
                                     classes="form-hint",
                                 )
                                 yield Select[str](
                                     options=_LAUNCHER_OPTIONS,
                                     value="tmux",
-                                    id="setup-pair-launcher",
+                                    id="setup-attached-launcher",
                                     allow_blank=False,
                                     compact=True,
                                 )
@@ -163,7 +161,7 @@ class OnboardingFlow(ModalScreen[None]):
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()
-        default_agent = settings.get("default_agent_backend") or settings.get("default_agent")
+        default_agent = settings.get("default_agent_backend")
         agent_select = self.query_one("#setup-default-agent", Select)
         allowed_agents = {value for _, value in _AGENT_OPTIONS}
         if isinstance(default_agent, str) and default_agent in allowed_agents:
@@ -171,10 +169,12 @@ class OnboardingFlow(ModalScreen[None]):
         else:
             agent_select.value = "claude-code"
 
-        pair_launcher = settings.get("pair_launcher", "tmux")
-        launcher_select = self.query_one("#setup-pair-launcher", Select)
+        attached_launcher = settings.get("attached_launcher", "tmux")
+        launcher_select = self.query_one("#setup-attached-launcher", Select)
         allowed_launchers = {value for _, value in _LAUNCHER_OPTIONS}
-        launcher_select.value = pair_launcher if pair_launcher in allowed_launchers else "tmux"
+        launcher_select.value = (
+            attached_launcher if attached_launcher in allowed_launchers else "tmux"
+        )
 
         auto_review = settings.get("auto_review", "true").strip().lower()
         self.query_one("#setup-auto-review", Checkbox).value = auto_review not in {
@@ -211,8 +211,8 @@ class OnboardingFlow(ModalScreen[None]):
 
         selected_agent = self.query_one("#setup-default-agent", Select).value
         default_agent = selected_agent if isinstance(selected_agent, str) else "claude-code"
-        selected_launcher = self.query_one("#setup-pair-launcher", Select).value
-        pair_launcher = selected_launcher if isinstance(selected_launcher, str) else "tmux"
+        selected_launcher = self.query_one("#setup-attached-launcher", Select).value
+        attached_launcher = selected_launcher if isinstance(selected_launcher, str) else "tmux"
         auto_review = self.query_one("#setup-auto-review", Checkbox).value
 
         name = self.query_one("#new-project-name", Input).value.strip()
@@ -237,7 +237,7 @@ class OnboardingFlow(ModalScreen[None]):
 
         self._is_creating = True
         try:
-            await self._persist_settings(default_agent, pair_launcher, auto_review)
+            await self._persist_settings(default_agent, attached_launcher, auto_review)
 
             if self._mode == "open-folder" and candidate_path is not None:
                 existing_project = await self.kagan_app.core.projects.find_by_repo(
@@ -275,14 +275,13 @@ class OnboardingFlow(ModalScreen[None]):
     async def _persist_settings(
         self,
         default_agent: str,
-        pair_launcher: str,
+        attached_launcher: str,
         auto_review: bool,
     ) -> None:
         await self.kagan_app.core.settings.set(
             {
                 "default_agent_backend": default_agent,
-                "default_agent": default_agent,
-                "pair_launcher": pair_launcher,
+                "attached_launcher": attached_launcher,
                 "auto_review": "true" if auto_review else "false",
             }
         )

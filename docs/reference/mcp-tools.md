@@ -37,48 +37,43 @@ ______________________________________________________________________
 | `task_list(...)`     | `read-only`   | List tasks with optional filtering and scratchpad inclusion                       |
 | `tasks_wait(...)`    | `read-only`   | Long-poll task status changes                                                     |
 | `task_create(...)`   | `mutating`    | Create a task                                                                     |
-| `task_patch(...)`    | `mutating`    | Apply partial task updates, transitions, and note append                          |
-| `task_annotate(...)` | `mutating`    | Append a timestamped reasoning note to a task's scratchpad                        |
+| `task_update(...)`   | `mutating`    | Apply partial task updates, transitions, and metadata adjustments                 |
+| `task_add_note(...)` | `mutating`    | Append a timestamped reasoning note to a task's scratchpad                        |
 | `task_delete(...)`   | `destructive` | Delete a task                                                                     |
 
-### Automation jobs
+### Automation & session tools
 
-| Tool              | Annotation  | Purpose                                                  |
-| ----------------- | ----------- | -------------------------------------------------------- |
-| `job_start(...)`  | `mutating`  | Submit async automation action for a task                |
-| `job_poll(...)`   | `read-only` | Read job state; optionally wait and/or page event stream |
-| `job_cancel(...)` | `mutating`  | Cancel a submitted job                                   |
-
-### PAIR session lifecycle
-
-| Tool                  | Annotation | Purpose                                       |
-| --------------------- | ---------- | --------------------------------------------- |
-| `session_manage(...)` | `mixed`    | `open`, `read`, or `close` PAIR session state |
+| Tool               | Annotation  | Purpose                                                                   |
+| ------------------ | ----------- | ------------------------------------------------------------------------- |
+| `run_start(...)`   | `mutating`  | Start a managed run or launch an interactive session for a task           |
+| `run_update(...)`  | `mixed`     | Manage session lifecycle (exists/create/get/kill/detach)                  |
+| `run_cancel(...)`  | `mutating`  | Cancel an active session                                                  |
+| `run_summary(...)` | `read-only` | List running sessions + statuses for active tasks                         |
 
 ### Project, review, and admin
 
-| Tool                | Annotation    | Purpose                                                      |
-| ------------------- | ------------- | ------------------------------------------------------------ |
-| `project_list(...)` | `read-only`   | List recent projects                                         |
-| `project_open(...)` | `mutating`    | Open/switch project                                          |
-| `repo_list(...)`    | `read-only`   | List repos by project                                        |
-| `review_apply(...)` | `destructive` | Apply review action (`approve`, `reject`, `merge`, `rebase`) |
-| `audit_list(...)`   | `read-only`   | List recent audit events                                     |
-| `settings_get()`    | `read-only`   | Read allowlisted settings                                    |
-| `settings_set(...)` | `mutating`    | Update allowlisted settings                                  |
-| `plan_submit(...)`  | `mutating`    | Submit planner proposal payload                              |
+| Tool                 | Annotation    | Purpose                                                      |
+| -------------------- | ------------- | ------------------------------------------------------------ |
+| `project_list(...)`  | `read-only`   | List recent projects                                         |
+| `project_open(...)`  | `mutating`    | Open/switch project                                          |
+| `repo_list(...)`     | `read-only`   | List repos by project                                        |
+| `review_decide(...)` | `destructive` | Apply review action (`approve`, `reject`, `merge`, `rebase`) |
+| `audit_list(...)`    | `read-only`   | List recent audit events                                     |
+| `settings_get()`     | `read-only`   | Read allowlisted settings                                    |
+| `settings_set(...)`  | `mutating`    | Update allowlisted settings                                  |
+| `plan_submit(...)`   | `mutating`    | Submit planner proposal payload                              |
 
 ### Plugin tools (experimental)
 
-| Tool                    | Annotation    | Purpose                                    |
-| ----------------------- | ------------- | ------------------------------------------ |
-| `plugins_sync(...)`     | `destructive` | Sync issues via plugin, returns counts     |
-| `plugins_preflight(...)` | `read-only`  | Check plugin prerequisites and readiness   |
+| Tool                     | Annotation    | Purpose                                  |
+| ------------------------ | ------------- | ---------------------------------------- |
+| `plugins_sync(...)`      | `destructive` | Sync issues via plugin, returns counts   |
+| `plugins_preflight(...)` | `read-only`   | Check plugin prerequisites and readiness |
 
 Review semantics:
 
-- `review_apply(action="approve")` records approval state but does **not** move task to `DONE`.
-- `DONE` is reached by completion flows (for example `review_apply(action="merge")` or no-change close flow).
+- `review_decide(action="approve")` records approval state but does **not** move task to `DONE`.
+- `DONE` is reached by completion flows (for example `review_decide(action="merge")` or no-change close flow).
 
 ______________________________________________________________________
 
@@ -138,30 +133,35 @@ or indicates more pages are available.
 
 ______________________________________________________________________
 
-## `task_patch` API
+## `task_update` API
 
-`task_patch` is the single task mutation endpoint for incremental updates.
+`task_update` is the single task mutation endpoint for incremental updates.
 
 ### Parameters
 
-| Parameter     | Type             | Description                                                                   |
-| ------------- | ---------------- | ----------------------------------------------------------------------------- |
-| `task_id`     | `string`         | Target task                                                                   |
-| `set`         | `object \| null` | Partial field updates (`title`, `description`, `priority`, `task_type`, etc.) |
-| `transition`  | `string \| null` | `request_review`, `set_status`, or `set_task_type`                            |
-| `append_note` | `string \| null` | Text appended to task notes/scratchpad                                        |
+| Parameter             | Type                   | Description                                         |
+| --------------------- | ---------------------- | --------------------------------------------------- |
+| `task_id`             | `string \| null`       | Target task (defaults to context-bound task)        |
+| `title`               | `string \| null`       | New title                                           |
+| `description`         | `string \| null`       | New description                                     |
+| `priority`            | `string \| int`        | `LOW`, `MEDIUM`, `HIGH`, or priority index          |
+| `base_branch`         | `string \| null`       | Base branch override                                |
+| `acceptance_criteria` | `list[string] \| null` | New acceptance criteria list                        |
+| `agent_backend`       | `string \| null`       | Preferred agent backend                             |
+| `launcher`            | `string \| null`       | Preferred interactive launcher                      |
+| `status`              | `string \| null`       | Force status transition (set_status under the hood) |
 
 ______________________________________________________________________
 
-## `task_annotate` API
+## `task_add_note` API
 
-`task_annotate` appends a structured, timestamped reasoning note to a task's scratchpad.
+`task_add_note` appends a structured, timestamped reasoning note to a task's scratchpad.
 Use this during agent execution to record decisions, tradeoffs, and observations.
 Each call appends a new entry — it never overwrites prior notes.
 
-!!! tip "When to use `task_annotate` vs `task_patch`"
-    Use `task_annotate` for mid-run agent notes (decision log, tradeoff record).
-    Use `task_patch(append_note=...)` for structured state transitions and status updates.
+!!! tip "When to use `task_add_note` vs `task_update`"
+Use `task_add_note` for mid-run agent notes (decision log, tradeoff record).
+Use `task_update()` for structured state transitions and status updates.
 
 ### Parameters
 
@@ -172,15 +172,15 @@ Each call appends a new entry — it never overwrites prior notes.
 
 ### Scratchpad format
 
-```
+```text
 ---
 [2026-02-20T14:31:00Z] Chose approach B over A — A required a schema migration.
 ---
 [2026-02-20T14:45:12Z] Added retry logic; upstream API returns 503 intermittently.
 ```
 
-Notes are visible in the Resume Context panel when a task is reopened, and are used
-as input to the acceptance criteria coverage check at REVIEW transition time.
+Notes live in the scratchpad (retrievable via `task_get(..., include_scratchpad=true)`)
+and feed the acceptance criteria coverage check at REVIEW transition time.
 
 ______________________________________________________________________
 
@@ -213,44 +213,88 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## `job_poll` API
+## `run_start` API
 
-`job_poll` consolidates job get/wait/events.
+`run_start` provisions a workspace and launches a task run. Omit `launcher` for a managed background run; provide a launcher for an interactive launch.
 
 ### Parameters
 
-| Parameter         | Type     | Default  | Description                               |
-| ----------------- | -------- | -------- | ----------------------------------------- |
-| `job_id`          | `string` | required | Target job                                |
-| `task_id`         | `string` | required | Parent task                               |
-| `wait`            | `bool`   | `false`  | If true, wait for progress/terminal state |
-| `timeout_seconds` | `float`  | `1.5`    | Wait timeout when `wait=true`             |
-| `events`          | `bool`   | `false`  | If true, return paginated events          |
-| `limit`           | `int`    | `50`     | Event page size when `events=true`        |
-| `offset`          | `int`    | `0`      | Event page offset when `events=true`      |
+| Parameter       | Type             | Description                                             |
+| --------------- | ---------------- | ------------------------------------------------------- |
+| `task_id`       | `string`         | Target task                                             |
+| `agent_backend` | `string \| null` | Override default agent backend                          |
+| `launcher`      | `string \| null` | Optional launcher for interactive runs                  |
+| `persona`       | `string \| null` | Optional persona name to seed agent conversation        |
+
+### Response
+
+- `session_id` — identifier of the run
+- `task_id`, `status`, `agent_backend`, `persona`, and optional `launcher`
+
+Use `run_start()` for managed execution or `run_start(launcher="tmux")` (or another launcher) for an interactive launch.
 
 ______________________________________________________________________
 
-## `session_manage` API
+## `run_update` API
 
-`session_manage` consolidates PAIR session lifecycle operations.
+`run_update` controls session lifecycle via discrete actions.
 
 ### Parameters
 
-| Parameter         | Type             | Description                       |
-| ----------------- | ---------------- | --------------------------------- |
-| `action`          | `string`         | `open`, `read`, or `close`        |
-| `task_id`         | `string`         | Target task                       |
-| `reuse_if_exists` | `bool`           | Used by `open`                    |
-| `worktree_path`   | `string \| null` | Optional path override for `open` |
+| Parameter | Type     | Description                                        |
+| --------- | -------- | -------------------------------------------------- |
+| `action`  | `string` | One of `exists`, `create`, `get`, `kill`, `detach` |
+| `task_id` | `string` | Target task                                         |
+
+### Actions
+
+- `exists`: Returns `{"exists": bool, "task_id": ...}` without mutating state.
+- `create`: Provisions a workspace and starts an interactive session using the configured launcher.
+- `get`: Reads the current interactive session status (`"STARTED"`, `"ENDED"`, etc.)
+- `kill`: Cancels the task run via `client.tasks.cancel`.
+- `detach`: Signals the server to finalize an interactive session via `client.tasks.detach`.
+
+______________________________________________________________________
+
+## `run_cancel` API
+
+`run_cancel` is the safe knob that cancels an active session when you already know the `session_id`.
+
+### Parameters
+
+| Parameter    | Type     | Description                |
+| ------------ | -------- | -------------------------- |
+| `session_id` | `string` | Running session identifier |
+| `task_id`    | `string` | Task owning the session    |
+
+### Response
+
+- `cancelled: true`
+- Echoed `session_id` and `task_id`.
+
+______________________________________________________________________
+
+## `run_summary` API
+
+`run_summary` lists tasks with active runs, useful for dashboards.
+
+### Parameters
+
+| Parameter  | Type                   | Description                                    |
+| ---------- | ---------------------- | ---------------------------------------------- |
+| `task_ids` | `list[string] \| None` | Optional filter, defaults to all running tasks |
+
+### Response
+
+- `rows`: list of `{task_id, status, agent_backend, session_id, session_backend}`
 
 ______________________________________________________________________
 
 ## Scope and isolation
 
 - Task mutations are enforced against task-scoped sessions (`task:<task_id>`).
-- PAIR workers use task-scoped MCP sessions.
-- AUTO workers use task-scoped MCP sessions resolved from runtime permission policy.
+- Interactive workers use task-scoped MCP sessions.
+- Managed workers use task-scoped MCP sessions resolved from runtime permission policy.
 - Scoped task sessions cannot mutate other task IDs.
 - Global MCP access does not override task-scoped worker isolation.
 
@@ -267,11 +311,11 @@ ______________________________________________________________________
 
 Tool visibility is controlled by the MCP server's access tier (set via `--readonly` / `--admin` flags).
 
-| Tier       | Visible tools                                                         |
-| ---------- | --------------------------------------------------------------------- |
-| `readonly` | Read-only operations (task_get, task_list, task_logs, etc.)           |
-| `default`  | Readonly + task_create, task_patch, task_annotate, jobs, sessions, reviews |
-| `admin`    | Default + task_delete, settings_set, plugins_sync, destructive review |
+| Tier       | Visible tools                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `readonly` | Read-only operations (`task_get`, `task_list`, `task_events`, `tasks_wait`, `run_summary`, etc.)                    |
+| `default`  | Read-only + `task_create`, `task_update`, `task_add_note`, `run_start`, `run_update`, `run_cancel`, `review_decide` |
+| `admin`    | `default` + `task_delete`, `settings_set`, `plugins_sync`, destructive review flows                                 |
 
 Unregistered tools are invisible to the host — it never knows they exist.
 
@@ -280,23 +324,9 @@ ______________________________________________________________________
 ## Task field semantics
 
 - `status` is Kanban state: `BACKLOG`, `IN_PROGRESS`, `REVIEW`, `DONE`.
-- `status=AUTO` and `status=PAIR` are rejected with `TASK_TYPE_VALUE_IN_STATUS`.
+- `status` only accepts Kanban states such as `BACKLOG`, `IN_PROGRESS`, `REVIEW`, and `DONE`.
 - Do not set `status=DONE` via generic task patch/move workflows.
   Use review completion flows to reach `DONE`.
-- `task_type` is execution mode: `AUTO`, `PAIR`.
 - `acceptance_criteria` accepts either a single string or a list of strings.
 
 ______________________________________________________________________
-
-## Common recovery codes
-
-| Code                         | Meaning                                      | Typical action                      |
-| ---------------------------- | -------------------------------------------- | ----------------------------------- |
-| `START_PENDING`              | Job accepted, pending scheduler admission    | Poll with `job_poll(wait=true)`     |
-| `DISCONNECTED`               | Core unavailable                             | Start/restart core, retry           |
-| `AUTH_STALE_TOKEN`           | MCP token is stale after core restart        | Reconnect MCP client                |
-| `CLIENT_OUTDATED`            | Client version/build hash mismatches core    | Restart MCP/TUI session             |
-| `CLIENT_VERSION_REQUIRED`    | Client did not send runtime version          | Restart MCP/TUI session             |
-| `CLIENT_BUILD_HASH_REQUIRED` | Client did not send runtime build hash       | Restart MCP/TUI session             |
-| `WAIT_TIMEOUT`               | `tasks_wait` timed out without status change | Retry with same or adjusted timeout |
-| `WAIT_INTERRUPTED`           | `tasks_wait` was interrupted/cancelled       | Retry with the same task_ids cursor |

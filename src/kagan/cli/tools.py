@@ -56,7 +56,7 @@ them as placeholders and request redacted inputs.
 <context>
 The rewritten prompt will be processed by a planning agent that:
 - Creates development tasks with title, description, and acceptance criteria
-- Assigns tasks as AUTO (AI-executed) or PAIR (human collaboration)
+- Assigns tasks as DETACHED (AI-executed) or ATTACHED (human collaboration)
 - Breaks complex requests into 2-5 focused, sequenced tasks
 </context>
 

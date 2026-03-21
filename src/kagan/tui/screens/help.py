@@ -1,11 +1,3 @@
-"""Help screen with context-organized shortcuts documentation.
-
-The help screen is organized into three tabs:
-1. Shortcuts - Organized by context (Global, Board, Task, etc.)
-2. Flows - Common workflows and how to accomplish them
-3. Concepts - Explanation of Kagan's model and terminology
-"""
-
 from collections.abc import Iterable
 
 from textual import on
@@ -29,8 +21,6 @@ from kagan.tui.keybindings import (
     KANBAN_BINDINGS,
     MESSAGE_ACTIONS_BINDINGS,
     PERMISSION_BINDINGS,
-    PLAN_APPROVAL_BINDINGS,
-    PLANNER_BINDINGS,
     REJECTION_BINDINGS,
     REPO_PICKER_BINDINGS,
     REVIEW_NO_CRITERIA_BINDINGS,
@@ -53,8 +43,6 @@ HelpSection = tuple[str, tuple[HelpRow, ...]]
 
 
 class HelpModal(ModalScreen[None]):
-    """Modal help screen with searchable shortcuts."""
-
     BINDINGS = HELP_BINDINGS
 
     def __init__(self, context_sections: tuple[HelpSection, ...] | None = None) -> None:
@@ -103,7 +91,6 @@ class HelpModal(ModalScreen[None]):
         self.dismiss(result)
 
     def _compose_shortcuts(self) -> Widget:
-        """Compose the shortcuts help content."""
         sections: tuple[HelpSection, ...] = (
             *self._context_sections,
             ("Global", tuple(self._rows_from_bindings(APP_BINDINGS))),
@@ -112,7 +99,6 @@ class HelpModal(ModalScreen[None]):
             ("Task Screen", tuple(self._rows_from_bindings(TASK_SCREEN_BINDINGS))),
             ("Session Dashboard", tuple(self._rows_from_bindings(SESSION_DASHBOARD_BINDINGS))),
             ("Chat Panel", tuple(self._rows_from_bindings(CHAT_BINDINGS))),
-            ("Planner", tuple(self._rows_from_bindings(PLANNER_BINDINGS))),
             ("Diff Viewer", tuple(self._rows_from_bindings(DIFF_BINDINGS))),
             ("Diff File Tree", tuple(self._rows_from_bindings(DIFF_FILE_TREE_BINDINGS))),
             ("Diff Content", tuple(self._rows_from_bindings(DIFF_CONTENT_PANE_BINDINGS))),
@@ -121,12 +107,11 @@ class HelpModal(ModalScreen[None]):
             ("Editors", tuple(self._rows_from_bindings(EDITOR_BINDINGS))),
             ("Settings", tuple(self._rows_from_bindings(SETTINGS_BINDINGS))),
             ("Repo Picker", tuple(self._rows_from_bindings(REPO_PICKER_BINDINGS))),
-            ("Session Picker", tuple(self._rows_from_bindings(SESSION_PICKER_BINDINGS))),
+            ("Session Switcher", tuple(self._rows_from_bindings(SESSION_PICKER_BINDINGS))),
             ("GitHub Import", tuple(self._rows_from_bindings(GITHUB_IMPORT_BINDINGS))),
             ("Agent Picker", tuple(self._rows_from_bindings(AGENT_PICKER_BINDINGS))),
             ("Permission Prompt", tuple(self._rows_from_bindings(PERMISSION_BINDINGS))),
             ("Chat Permission", tuple(self._rows_from_bindings(CHAT_PERMISSION_BINDINGS))),
-            ("Plan Approval", tuple(self._rows_from_bindings(PLAN_APPROVAL_BINDINGS))),
             ("Message Actions", tuple(self._rows_from_bindings(MESSAGE_ACTIONS_BINDINGS))),
             ("Review (No Criteria)", tuple(self._rows_from_bindings(REVIEW_NO_CRITERIA_BINDINGS))),
             ("Rejection Input", tuple(self._rows_from_bindings(REJECTION_BINDINGS))),
@@ -137,7 +122,6 @@ class HelpModal(ModalScreen[None]):
         return self._render_sections(sections)
 
     def _rows_from_bindings(self, bindings: list) -> list[HelpRow]:
-        """Build help rows from binding metadata."""
         rows: list[HelpRow] = []
         seen: set[tuple[str, str]] = set()
         for binding in bindings:
@@ -152,7 +136,6 @@ class HelpModal(ModalScreen[None]):
         return rows
 
     def _compose_flows(self) -> Widget:
-        """Compose the workflows help content."""
         return Vertical(
             Static("Quick Start", classes="help-section-title"),
             Static(
@@ -163,8 +146,8 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("Creating Tasks", classes="help-section-title"),
             Static(
-                "Press 'n' for a PAIR task (interactive, you'll work alongside the agent) "
-                "or 'Shift+N' for an AUTO task (agent works autonomously).",
+                "Press 'n' to create a task. Start a managed run with 's'. "
+                "Use 'a' to attach an interactive run using your launcher preference.",
                 classes="help-paragraph",
             ),
             Static("Kanban Workflow", classes="help-section-title"),
@@ -186,7 +169,7 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("AI Review (Advisory)", classes="help-section-title"),
             Static(
-                "Open Command Palette (Ctrl+P) and run AI review in the Review stage. "
+                "Open Quick Actions (Ctrl+Shift+P) and run AI review in the Review stage. "
                 "This is advisory only — it does not approve or merge. "
                 "You make the final decision with 'a' (approve) and 'm' (merge).",
                 classes="help-paragraph",
@@ -200,13 +183,12 @@ class HelpModal(ModalScreen[None]):
             Static("Repository Management", classes="help-section-title"),
             Static(
                 "Use Ctrl+R to select a repository. "
-                "Open Command Palette (Ctrl+P) for repo sync and GitHub import.",
+                "Open Quick Actions (Ctrl+Shift+P) for repo sync and GitHub import.",
                 classes="help-paragraph",
             ),
         )
 
     def _compose_concepts(self) -> Widget:
-        """Compose the concepts help content."""
         return Vertical(
             Static("Projects", classes="help-section-title"),
             Static(
@@ -220,28 +202,35 @@ class HelpModal(ModalScreen[None]):
                 "The preferred repo (set via Ctrl+R) is used for new worktrees and patches.",
                 classes="help-paragraph",
             ),
-            Static("AUTO vs PAIR Mode", classes="help-section-title"),
+            Static("Runs: Managed vs Interactive", classes="help-section-title"),
             Static(
-                "AUTO: Agent works autonomously to completion. Best for well-defined tasks. "
-                "Runs in background without user interaction.",
+                "Managed run: Agent works in background. Use this for most tasks.",
                 classes="help-paragraph",
             ),
             Static(
-                "PAIR: Agent works interactively with you in a terminal (tmux, Cursor, etc.). "
-                "Best for exploration and complex debugging.",
+                "Interactive run (attach): Launches via a launcher "
+                "(tmux, nvim, VS Code, Cursor, etc.) "
+                "so you can work alongside the agent.",
                 classes="help-paragraph",
             ),
             Static("Chat Sessions", classes="help-section-title"),
             Static(
                 "Task session: Context-aware chat tied to the current task. "
                 "Orchestrator session: General assistant for planning and questions. "
-                "Switch with Ctrl+K.",
+                "Switch sessions with Ctrl+K. Toggle the AI chat overlay with Ctrl+I.",
                 classes="help-paragraph",
             ),
             Static("Agent Backends", classes="help-section-title"),
             Static(
                 "Configure default backend in Settings (claude-code, codex, gemini-cli, etc.). "
-                "Change backends from Settings or the Command Palette.",
+                "Change backends from Settings or Quick Actions.",
+                classes="help-paragraph",
+            ),
+            Static("Settings Layers", classes="help-section-title"),
+            Static(
+                "Settings has typed controls (review strictness, planning depth). "
+                "Additional Instructions lets you add free-text rules to every agent prompt. "
+                "For full prompt replacement, place .kagan/prompts/ files in your repo.",
                 classes="help-paragraph",
             ),
             Static("Keyboard Philosophy", classes="help-section-title"),
@@ -254,7 +243,6 @@ class HelpModal(ModalScreen[None]):
         )
 
     def _render_sections(self, sections: Iterable[HelpSection]) -> Widget:
-        """Render help sections with filtering."""
         query = self._search_query.casefold()
         widgets: list[Widget] = []
         for title, rows in sections:

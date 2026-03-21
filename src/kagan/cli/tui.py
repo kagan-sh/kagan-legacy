@@ -7,12 +7,6 @@ from loguru import logger
 
 
 def _run_doctor_gate(*, skip_preflight: bool) -> bool:
-    """Run doctor checks and return True if TUI startup should proceed.
-
-    When critical checks fail the doctor report is rendered to stderr so the
-    user can fix the issues before re-launching.  Returns ``False`` to signal
-    the caller should abort.
-    """
     if skip_preflight:
         return True
 
@@ -27,7 +21,6 @@ def _run_doctor_gate(*, skip_preflight: bool) -> bool:
     if not doctor_has_failures(checks):
         return True
 
-    # Show the doctor report so the user knows what to fix.
     render_doctor_report(checks, title="Kagan Doctor (startup)", verbosity="short")
     click.echo()
     click.secho(
@@ -44,7 +37,6 @@ def _launch_tui(
     db_path: str | Path | None = None,
     startup_chat_session_id: str | None = None,
 ) -> None:
-    """Import and run the Textual TUI application."""
     from kagan.tui.app import KaganApp
 
     app = KaganApp(db_path=db_path, startup_chat_session_id=startup_chat_session_id)

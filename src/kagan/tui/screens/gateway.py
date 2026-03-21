@@ -1,5 +1,3 @@
-"""PAIR instructions modal shown before opening a PAIR session."""
-
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -14,15 +12,13 @@ from kagan.tui.widgets.hint_bar import format_hint
 
 __all__ = [
     "TMUX_DOCS_URL",
-    "PairInstructionsModal",
+    "AttachedInstructionsModal",
 ]
 
 TMUX_DOCS_URL = "https://github.com/tmux/tmux/wiki"
 
 
-class PairInstructionsModal(ModalScreen[str | None]):
-    """Instructions popup shown before launching PAIR tool."""
-
+class AttachedInstructionsModal(ModalScreen[str | None]):
     BINDINGS = TMUX_GATEWAY_BINDINGS
 
     def __init__(
@@ -31,6 +27,8 @@ class PairInstructionsModal(ModalScreen[str | None]):
         task_title: str,
         backend: str,
         prompt_path: Path,
+        *,
+        taking_over: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -38,16 +36,25 @@ class PairInstructionsModal(ModalScreen[str | None]):
         self._task_title = task_title
         self._backend = backend
         self._prompt_path = prompt_path
+        self._taking_over = taking_over
 
     def compose(self) -> ComposeResult:
-        with Container(id="pair-instructions-container"):
-            yield Label("PAIR Session Instructions", classes="modal-title")
+        with Container(id="attached-instructions-container"):
+            yield Label("Interactive Session Instructions", classes="modal-title")
             yield Rule()
+
+            if self._taking_over:
+                yield Static(
+                    "[bold yellow]A background agent is running on this task.[/bold yellow]\n"
+                    "It will be stopped when you continue, and you will take over manually.",
+                    classes="tmux-intro",
+                )
+                yield Rule()
 
             if self._backend == "tmux":
                 yield Static(
                     "You are about to enter a [bold]tmux[/bold] session.\n"
-                    "Kagan keybindings are paused until you detach.",
+                    "Kagan keybindings are paused until you detach back to Kagan.",
                     classes="tmux-intro",
                 )
                 yield Rule(line_style="heavy")
@@ -135,7 +142,7 @@ class PairInstructionsModal(ModalScreen[str | None]):
 
     def on_click(self, event: Click) -> None:
         try:
-            container = self.query_one("#pair-instructions-container")
+            container = self.query_one("#attached-instructions-container")
             if not container.region.contains(event.screen_x, event.screen_y):
                 self.dismiss(None)
         except (NoMatches, AttributeError):

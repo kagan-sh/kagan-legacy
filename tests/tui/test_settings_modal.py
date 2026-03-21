@@ -30,27 +30,28 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         agent_select = app.screen.query_one("#settings-default-agent", Select)
         agent_select.value = "kimi-cli"
         app.screen.query_one("#settings-default-base-branch", Input).value = "develop"
-        pair_select = app.screen.query_one("#settings-pair-launcher", Select)
-        pair_select.value = "nvim"
+        attached_select = app.screen.query_one("#settings-attached-launcher", Select)
+        attached_select.value = "nvim"
         strategy_select = app.screen.query_one("#settings-base-ref-strategy", Select)
         strategy_select.value = "remote"
         app.screen.query_one("#settings-auto-init-repo", Switch).value = True
         app.screen.query_one("#settings-auto-init-commit", Switch).value = False
 
-        await pilot.press("ctrl+s")
+        await pilot.pause(delay=0.6)
+        await pilot.press("escape")
         await pilot.pause()
         assert app.screen.id == "kanban-screen"
 
         settings = await app.core.settings.get()
         assert settings.get("default_agent_backend") == "kimi-cli"
-        assert settings.get("pair_launcher") == "nvim"
+        assert settings.get("attached_launcher") == "nvim"
         assert settings.get("default_base_branch") == "develop"
         assert settings.get("worktree_base_ref_strategy") == "remote"
         assert settings.get("auto_init_git_repo") == "true"
         assert settings.get("auto_init_git_initial_commit") == "false"
 
 
-async def test_prompts_section_prefills_default_prompt_templates(board: KaganDriver) -> None:
+async def test_instructions_section_shows_additional_instructions_field(board: KaganDriver) -> None:
     from textual.widgets import Input, TextArea
 
     from kagan.tui import KaganApp
@@ -67,19 +68,11 @@ async def test_prompts_section_prefills_default_prompt_templates(board: KaganDri
 
         await pilot.press("/")
         await pilot.pause()
-        app.screen.query_one("#settings-search-input", Input).value = "prompts"
+        app.screen.query_one("#settings-search-input", Input).value = "instructions"
         await pilot.pause()
 
-        orchestrator = app.screen.query_one("#settings-custom-orchestrator-prompt", TextArea).text
-        task_prompt = app.screen.query_one("#settings-custom-task-prompt", TextArea).text
-        review_prompt = app.screen.query_one("#settings-custom-review-prompt", TextArea).text
-        orchestrator_editor = app.screen.query_one("#settings-custom-orchestrator-prompt", TextArea)
-
-        assert "<identity>" in orchestrator
-        assert "MUST DO:" in task_prompt
-        assert "<review-protocol>" in review_prompt
-        assert orchestrator_editor.has_focus
-        assert orchestrator_editor.cursor_location == orchestrator_editor.document.end
+        instructions = app.screen.query_one("#settings-additional-instructions", TextArea).text
+        assert instructions == ""
 
 
 async def test_show_advanced_toggle_is_clickable_and_updates_navigation_state(

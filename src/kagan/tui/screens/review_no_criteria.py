@@ -1,11 +1,3 @@
-"""Modal for reviewing tasks that lack acceptance criteria.
-
-Offers three guided choices instead of a dead-end notification:
-    * Add Criteria  — opens the task editor focused on acceptance criteria
-    * Approve Manually — exceptional path with strong confirmation
-    * Reject — routes to the standard rejection flow
-"""
-
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -16,15 +8,6 @@ from kagan.tui.widgets.hint_bar import format_hint
 
 
 class ReviewNoCriteriaModal(ModalScreen[str | None]):
-    """Guided review gate when a task has no acceptance criteria.
-
-    Returns:
-        ``"add_criteria"``      — user wants to define criteria first
-        ``"approve_manually"``  — user confirms manual (exceptional) approval
-        ``"reject"``            — user wants to send the task back
-        ``None``                — user cancelled
-    """
-
     BINDINGS = REVIEW_NO_CRITERIA_BINDINGS
 
     DEFAULT_CSS = """

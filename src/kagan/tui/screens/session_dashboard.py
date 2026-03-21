@@ -2,8 +2,6 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlmodel import Session as DBSession
-from sqlmodel import desc, select
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -11,13 +9,20 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
-from kagan.core.enums import SessionEventType, SessionStatus
+from kagan.core import git
+from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
+from kagan.tui._chat_helpers import (
+    TitleGenerationSession,
+    build_session_options,
+    kick_title_generation,
+    send_task_message,
+)
 from kagan.tui.keybindings import SESSION_DASHBOARD_BINDINGS, get_key_for_action
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.kanban_chat import (
@@ -98,7 +103,7 @@ class SessionDashboardScreen(Screen[None]):
         self._task_id = task_id
         self._task_model: Task | None = None
         self._running = False
-        self._chat_mode = "task"
+        self._chat_mode = ChatMode.TASK
         self._chat_orchestrator_history: list[tuple[str, str]] = []
         self._chat_message_task: asyncio.Task[None] | None = None
         self._stream_task: asyncio.Task[None] | None = None
@@ -133,7 +138,7 @@ class SessionDashboardScreen(Screen[None]):
         panel = self._chat_panel()
         panel.set_visible(False)
         panel.set_fullscreen(False)
-        self._set_chat_mode("task")
+        self._set_chat_mode(ChatMode.TASK)
 
         self.query_one("#dashboard-agent-status").border_title = "Agent Status"
         self.query_one("#dashboard-persona-pipeline").border_title = "Persona Pipeline"
@@ -189,14 +194,12 @@ class SessionDashboardScreen(Screen[None]):
             await self.kagan_app.core.tasks.cancel(self._task_id)
 
     async def action_stop_agent(self) -> None:
-        """Stop the running agent with chat feedback."""
         chat = self._chat_panel()
         await self.action_cancel_run()
         chat.add_system_message("Agent stopped.")
         await self._refresh_agent_status()
 
     async def action_restart_agent(self) -> None:
-        """Restart the agent (stop current and start fresh)."""
         chat = self._chat_panel()
         if self._running:
             await self.action_cancel_run()
@@ -214,10 +217,10 @@ class SessionDashboardScreen(Screen[None]):
         )
 
     async def action_open_orchestrator_chat(self) -> None:
-        self._show_chat_overlay(mode="orchestrator", fullscreen=False)
+        self._show_chat_overlay(mode=ChatMode.ORCHESTRATOR, fullscreen=False)
 
     async def action_open_task_overlay(self) -> None:
-        self._show_chat_overlay(mode="task", fullscreen=False)
+        self._show_chat_overlay(mode=ChatMode.TASK, fullscreen=False)
 
     async def action_fullscreen_chat(self) -> None:
         panel = self._chat_panel()
@@ -229,7 +232,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.query_one("#chat-overlay-input", Input).focus()
             self._sync_layout_state()
             return
-        self._show_chat_overlay(mode="orchestrator", fullscreen=True)
+        self._show_chat_overlay(mode=ChatMode.ORCHESTRATOR, fullscreen=True)
 
     async def action_toggle_chat(self) -> None:
         panel = self._chat_panel()
@@ -244,7 +247,7 @@ class SessionDashboardScreen(Screen[None]):
         await self.action_open_task_overlay()
 
     def action_cycle_session(self) -> None:
-        if self._chat_mode == "task":
+        if self._chat_mode == ChatMode.TASK:
             self.run_worker(self.action_open_orchestrator_chat(), exit_on_error=False)
             return
         self.run_worker(self.action_open_task_overlay(), exit_on_error=False)
@@ -260,7 +263,7 @@ class SessionDashboardScreen(Screen[None]):
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
 
-        if self._chat_mode == "orchestrator":
+        if self._chat_mode == ChatMode.ORCHESTRATOR:
             self._chat_message_task = asyncio.create_task(
                 self._send_orchestrator_message(message.text),
                 name="session-dashboard-orchestrator-send",
@@ -274,14 +277,14 @@ class SessionDashboardScreen(Screen[None]):
 
     def on_chat_panel_session_changed(self, message: ChatPanel.SessionChanged) -> None:
         if is_orchestrator_session_key(message.key):
-            self._set_chat_mode("orchestrator")
+            self._set_chat_mode(ChatMode.ORCHESTRATOR)
             self.run_worker(
                 self._switch_orchestrator_session(self._chat_panel(), message.key),
                 exit_on_error=False,
             )
             self._sync_layout_state()
             return
-        self._set_chat_mode("task", active_task_key=message.key)
+        self._set_chat_mode(ChatMode.TASK, active_task_key=message.key)
         self._sync_layout_state()
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
@@ -339,7 +342,6 @@ class SessionDashboardScreen(Screen[None]):
         self.run_worker(self.action_cancel_run(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
-        """Open session picker."""
         panel = self._chat_panel()
         if not panel.has_class("visible"):
             await self.action_open_task_overlay()
@@ -371,15 +373,12 @@ class SessionDashboardScreen(Screen[None]):
     def _set_chat_mode(self, mode: str, *, active_task_key: str | None = None) -> None:
         panel = self._chat_panel()
         task_sessions = self._task_session_options()
-        if mode == "orchestrator":
+        if mode == ChatMode.ORCHESTRATOR:
             panel.set_mode_title("Orchestrator")
-            panel.set_session_kind("orchestrator")
+            panel.set_session_kind(SessionKind.ORCHESTRATOR)
             self._chat_orchestrator_history = self.kagan_app.orchestrator_sessions.active_history()
             active_key = self.kagan_app.orchestrator_sessions.active_key()
-            panel.set_sessions(
-                [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                active_key,
-            )
+            panel.set_sessions(build_session_options(self.kagan_app, task_sessions), active_key)
             panel.hydrate_current_session_history(self._chat_orchestrator_history)
             session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
             if session_backend is not None:
@@ -387,10 +386,14 @@ class SessionDashboardScreen(Screen[None]):
         else:
             panel.set_mode_title(f"Task #{self._task_id[:8]}")
             selected_task_key = active_task_key or TASK_WORKER_SESSION_KEY
-            panel.set_session_kind("review" if "review" in selected_task_key.casefold() else "auto")
+            kind = (
+                SessionKind.REVIEW
+                if "review" in selected_task_key.casefold()
+                else SessionKind.DETACHED
+            )
+            panel.set_session_kind(kind)
             panel.set_sessions(
-                [*self.kagan_app.orchestrator_sessions.options(), *task_sessions],
-                selected_task_key,
+                build_session_options(self.kagan_app, task_sessions), selected_task_key
             )
         self._chat_mode = mode
 
@@ -414,7 +417,7 @@ class SessionDashboardScreen(Screen[None]):
             agent_backend=panel.preferred_agent_backend(),
         )
         self._chat_orchestrator_history = await self.kagan_app.orchestrator_sessions.switch(key)
-        self._set_chat_mode("orchestrator")
+        self._set_chat_mode(ChatMode.ORCHESTRATOR)
 
     async def _create_new_orchestrator_session(self, panel: ChatPanel) -> None:
         await self.kagan_app.orchestrator_sessions.persist_active(
@@ -428,7 +431,7 @@ class SessionDashboardScreen(Screen[None]):
         self._chat_orchestrator_history = await self.kagan_app.orchestrator_sessions.switch(
             next_key
         )
-        self._set_chat_mode("orchestrator")
+        self._set_chat_mode(ChatMode.ORCHESTRATOR)
         panel.add_system_message("New session started.")
 
     def _show_chat_overlay(self, *, mode: str, fullscreen: bool) -> None:
@@ -511,6 +514,18 @@ class SessionDashboardScreen(Screen[None]):
                         )
                     case SessionEventType.AGENT_STATUS:
                         output.post_note(self._payload_text(payload) or "Agent status update")
+                        usage = payload.get("usage")
+                        if isinstance(usage, dict):
+                            try:
+                                panel = self.query_one(AgentStatusPanel)
+                                panel.set_usage_info(
+                                    usage.get("used"),
+                                    usage.get("size"),
+                                    usage.get("cost"),
+                                    usage.get("cost_currency"),
+                                )
+                            except Exception:
+                                pass
                     case SessionEventType.AGENT_COMPLETED:
                         self._running = False
                         self._set_compact_status("Completed")
@@ -534,6 +549,7 @@ class SessionDashboardScreen(Screen[None]):
 
     async def _send_orchestrator_message(self, text: str) -> None:
         panel = self._chat_panel()
+        should_title = self.kagan_app.orchestrator_sessions.should_generate_title()
         try:
             self._chat_orchestrator_history = await send_orchestrator_message(
                 core=self.kagan_app.core,
@@ -546,6 +562,21 @@ class SessionDashboardScreen(Screen[None]):
                 rendered_messages=panel.export_rendered_messages(),
                 agent_backend=panel.preferred_agent_backend(),
             )
+            if should_title and self._chat_orchestrator_history:
+                asyncio.create_task(
+                    kick_title_generation(
+                        TitleGenerationSession(
+                            orchestrator_sessions=self.kagan_app.orchestrator_sessions,
+                            panel=panel,
+                            user_message=text,
+                            history=self._chat_orchestrator_history,
+                            session_options=build_session_options(self.kagan_app, self._task_model),
+                            is_mounted=lambda: self.is_mounted,
+                        ),
+                        self.kagan_app.core,
+                    ),
+                    name="dashboard-chat-title-gen",
+                )
         except asyncio.CancelledError:
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
@@ -566,14 +597,7 @@ class SessionDashboardScreen(Screen[None]):
             panel.add_system_message("Unable to load task")
             return
 
-        merged_description = task.description.strip()
-        follow_up = f"User follow-up:\n{text}".strip()
-        updated_description = (
-            f"{merged_description}\n\n{follow_up}" if merged_description else follow_up
-        )
-        self._task_model = await self.kagan_app.core.tasks.update(
-            self._task_id, description=updated_description
-        )
+        self._task_model = await send_task_message(self.kagan_app.core, task, text)
         panel.set_runtime_status("initializing")
         panel.set_stream_action("Restarting task agent...", confidence="assumption")
         await self._start_or_attach_session(backend_hint=panel.preferred_agent_backend())
@@ -590,7 +614,6 @@ class SessionDashboardScreen(Screen[None]):
             backend_hint
             or task.agent_backend
             or settings.get("default_agent_backend")
-            or settings.get("default_agent")
             or "claude-code"
         )
 
@@ -710,7 +733,7 @@ class SessionDashboardScreen(Screen[None]):
                 "deletions": int(raw_stats.get("deletions", 0)),
             }
 
-        files = self._parse_diff_files(diff_text)
+        files = git.parse_diff_file_entries(diff_text)
         if files:
             worktree_panel.set_changes(files, stats)
         else:
@@ -745,28 +768,10 @@ class SessionDashboardScreen(Screen[None]):
         self.query_one(DashboardStatusBar).update_persona(summary)
 
     async def _latest_run(self) -> Session | None:
-        def op() -> Session | None:
-            with DBSession(self.kagan_app.core._engine) as db:
-                stmt = (
-                    select(Session)
-                    .where(Session.task_id == self._task_id)
-                    .order_by(desc(cast("Any", Session.started_at)))
-                )
-                return db.exec(stmt).first()
-
-        return await asyncio.to_thread(op)
+        return await self.kagan_app.core.tasks.sessions.get_latest_for_task(self._task_id)
 
     async def _all_runs(self) -> list[Session]:
-        def op() -> list[Session]:
-            with DBSession(self.kagan_app.core._engine) as db:
-                stmt = (
-                    select(Session)
-                    .where(Session.task_id == self._task_id)
-                    .order_by(cast("Any", Session.started_at))
-                )
-                return list(db.exec(stmt).all())
-
-        return await asyncio.to_thread(op)
+        return await self.kagan_app.core.tasks.sessions.list_for_task(self._task_id)
 
     async def _load_commits(self, worktree_path: str, base_branch: str) -> list[tuple[str, str]]:
         proc = await asyncio.create_subprocess_exec(
@@ -852,47 +857,3 @@ class SessionDashboardScreen(Screen[None]):
             return "DEFAULT"
         cleaned = value.strip()
         return cleaned.upper() if cleaned else "DEFAULT"
-
-    @staticmethod
-    def _parse_diff_files(diff_text: str) -> list[dict[str, object]]:
-        entries: list[dict[str, object]] = []
-        current: dict[str, object] | None = None
-        for line in diff_text.splitlines():
-            if line.startswith("diff --git a/"):
-                if current is not None:
-                    entries.append(current)
-                parts = line.split(" b/", maxsplit=1)
-                path = parts[1].strip() if len(parts) == 2 else "-"
-                current = {
-                    "path": path,
-                    "status": "modified",
-                    "insertions": 0,
-                    "deletions": 0,
-                }
-                continue
-            if current is None:
-                continue
-            if line.startswith("new file mode") or line.startswith("--- /dev/null"):
-                current["status"] = "added"
-                continue
-            if line.startswith("deleted file mode") or line.startswith("+++ /dev/null"):
-                current["status"] = "deleted"
-                continue
-            if line.startswith("+") and not line.startswith("+++"):
-                current["insertions"] = int(current["insertions"]) + 1
-                continue
-            if line.startswith("-") and not line.startswith("---"):
-                current["deletions"] = int(current["deletions"]) + 1
-
-        if current is not None:
-            entries.append(current)
-
-        deduped: list[dict[str, object]] = []
-        seen: set[str] = set()
-        for entry in entries:
-            path = str(entry.get("path", ""))
-            if path in seen:
-                continue
-            seen.add(path)
-            deduped.append(entry)
-        return deduped

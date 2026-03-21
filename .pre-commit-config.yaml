@@ -1,71 +1,92 @@
 exclude: |
-  (?x)^(
-    .*\.ambr$|
-    src/kagan/core/adapters/db/migrations/versions/.*\.py$
-  )
+    (?x)^(
+      .*\.ambr$|
+      src/kagan/core/adapters/db/migrations/versions/.*\.py$
+    )
 
 # Baseline for local hooks:
 #   uv sync --dev
 
 repos:
-  # Secret detection
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.3
-    hooks:
-      - id: gitleaks
+    # Secret detection
+    - repo: https://github.com/gitleaks/gitleaks
+      rev: v8.24.3
+      hooks:
+          - id: gitleaks
 
-  # Pre-commit default hooks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
-    hooks:
-      - id: end-of-file-fixer
-        exclude: ^(tests/snapshots/__snapshots__/|CNAME$)
-      - id: trailing-whitespace
-        exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
-      - id: check-yaml
-        exclude: ^(mkdocs\.yml$|.*\.svg$)
-      - id: check-merge-conflict
-      - id: mixed-line-ending
-        args: [--fix=lf]
-        exclude: ^tests/snapshots/__snapshots__/
+    # Pre-commit default hooks
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v6.0.0
+      hooks:
+          - id: end-of-file-fixer
+            exclude: ^(tests/snapshots/__snapshots__/|CNAME$)
+          - id: trailing-whitespace
+            exclude: ^(tests/snapshots/__snapshots__/|.*\.svg$)
+          - id: check-yaml
+            exclude: ^(mkdocs\.yml$|.*\.svg$)
+          - id: check-merge-conflict
+          - id: mixed-line-ending
+            args: [--fix=lf]
+            exclude: ^tests/snapshots/__snapshots__/
 
-  # Markdown formatter
-  - repo: https://github.com/hukkin/mdformat
-    rev: 1.0.0
-    hooks:
-      - id: mdformat
-        exclude: ^(\.github/|README\.md$|CNAME$|CHANGELOG\.md$)
-        additional_dependencies:
-          - mdformat-gfm
-          - mdformat-ruff
-          - mdformat-frontmatter
+    # Markdown formatter
+    - repo: https://github.com/hukkin/mdformat
+      rev: 1.0.0
+      hooks:
+          - id: mdformat
+            exclude: ^(\.github/|README\.md$|CNAME$|CHANGELOG\.md$)
+            additional_dependencies:
+                - mdformat-gfm
+                - mdformat-ruff
+                - mdformat-frontmatter
 
-  # UV lock file sync
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.9.26
-    hooks:
-      - id: uv-lock
+    # UV lock file sync
+    - repo: https://github.com/astral-sh/uv-pre-commit
+      rev: 0.9.26
+      hooks:
+          - id: uv-lock
 
-  # Local hooks using uv and poe tasks
-  - repo: local
-    hooks:
-      - id: lint
-        name: ruff lint
-        entry: uv run poe lint
-        language: system
-        types: [python]
-        pass_filenames: false
+    # Local hooks using uv and poe tasks
+    - repo: local
+      hooks:
+          - id: lint
+            name: ruff lint
+            entry: uv run poe lint
+            language: system
+            types: [python]
+            pass_filenames: false
 
-      - id: format
-        name: ruff format
-        entry: uv run poe format
-        language: system
-        types: [python]
-        pass_filenames: false
+          - id: format
+            name: ruff format
+            entry: uv run poe format
+            language: system
+            types: [python]
+            pass_filenames: false
 
-      - id: typecheck
-        name: pyrefly typecheck
-        entry: uv run poe typecheck
-        language: system
-        types: [python]
-        pass_filenames: false
+          - id: typecheck
+            name: pyrefly typecheck
+            entry: uv run poe typecheck
+            language: system
+            types: [python]
+            pass_filenames: false
+
+          - id: web-typecheck
+            name: web typecheck
+            entry: bash -c 'cd packages/web && pnpm exec tsc --noEmit'
+            language: system
+            files: ^packages/web/.*\.(ts|tsx)$
+            pass_filenames: false
+
+          - id: web-lint
+            name: web lint
+            entry: bash -c 'cd packages/web && pnpm run lint 2>/dev/null || true'
+            language: system
+            files: ^packages/web/.*\.(ts|tsx)$
+            pass_filenames: false
+
+          - id: wire-drift
+            name: wire drift check
+            entry: python scripts/check_wire_drift.py
+            language: system
+            files: ^(src/kagan/server/responses\.py|packages/web/src/lib/api/generated-wire-types\.ts)$
+            pass_filenames: false

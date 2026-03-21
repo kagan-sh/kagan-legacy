@@ -32,6 +32,10 @@ class AgentStatusPanel(Static):
     run_id: reactive[str] = reactive("-")
     pid: reactive[int | None] = reactive(None)
     elapsed: reactive[str] = reactive("0m 00s")
+    context_used: reactive[int | None] = reactive(None)
+    context_size: reactive[int | None] = reactive(None)
+    cost_amount: reactive[float | None] = reactive(None)
+    cost_currency: reactive[str | None] = reactive(None)
 
     def on_mount(self) -> None:
         self._refresh_display()
@@ -50,6 +54,18 @@ class AgentStatusPanel(Static):
         self.run_id = run_id.strip() or "-"
         self.pid = pid
         self.tick()
+
+    def set_usage_info(
+        self,
+        context_used: int | None,
+        context_size: int | None,
+        cost_amount: float | None,
+        cost_currency: str | None,
+    ) -> None:
+        self.context_used = context_used
+        self.context_size = context_size
+        self.cost_amount = cost_amount
+        self.cost_currency = cost_currency
 
     def tick(self) -> None:
         if self.started_at is None:
@@ -75,9 +91,44 @@ class AgentStatusPanel(Static):
     def watch_pid(self, _: int | None) -> None:
         self._refresh_display()
 
+    def watch_context_used(self, _: int | None) -> None:
+        self._refresh_display()
+
+    def watch_context_size(self, _: int | None) -> None:
+        self._refresh_display()
+
+    def watch_cost_amount(self, _: float | None) -> None:
+        self._refresh_display()
+
+    def watch_cost_currency(self, _: str | None) -> None:
+        self._refresh_display()
+
     def _refresh_display(self) -> None:
         symbol, label = STATUS_META.get(self.status, ("[dim]○[/]", self.status.title() or "Idle"))
         pid_value = "-" if self.pid is None else str(self.pid)
+        context_line = "Context: -"
+        ctx_used = self.context_used
+        ctx_total = self.context_size
+        if ctx_used is not None and ctx_total is not None and ctx_total > 0:
+            pct = ctx_used / ctx_total
+            if pct > 0.8:
+                ctx_color = "red"
+            elif pct > 0.6:
+                ctx_color = "yellow"
+            else:
+                ctx_color = "green"
+            context_line = (
+                f"Context: [{ctx_color}]{ctx_used:,} / {ctx_total:,} ({pct:.0%})[/{ctx_color}]"
+            )
+        elif ctx_used is not None and ctx_total is not None:
+            context_line = f"Context: {ctx_used:,} / {ctx_total:,}"
+        cost_line = "Cost: -"
+        if self.cost_amount is not None:
+            currency = self.cost_currency or "USD"
+            if currency == "USD":
+                cost_line = f"Cost: ${self.cost_amount:.4f}"
+            else:
+                cost_line = f"Cost: {self.cost_amount:.4f} {currency}"
         self.update(
             "\n".join(
                 [
@@ -86,6 +137,8 @@ class AgentStatusPanel(Static):
                     f"Elapsed: {self.elapsed}",
                     f"Run ID: {self.run_id}",
                     f"PID: {pid_value}",
+                    context_line,
+                    cost_line,
                 ]
             )
         )

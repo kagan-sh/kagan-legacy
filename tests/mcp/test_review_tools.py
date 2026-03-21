@@ -213,6 +213,7 @@ async def test_review_apply_approve_blocked_without_acceptance_criteria(
     assert not result.isError
     payload = _text(result)
     assert payload.get("action") == "blocked"
+    assert payload.get("reason_code") == "MANUAL_REVIEW_REQUIRED"
     assert "manual human review" in payload.get("reason", "").lower()
 
 
@@ -280,6 +281,7 @@ async def test_review_apply_merge_blocked_without_acceptance_criteria(
     assert not result.isError
     payload = _text(result)
     assert payload.get("action") == "blocked"
+    assert payload.get("reason_code") == "MANUAL_REVIEW_REQUIRED"
 
 
 # ---------------------------------------------------------------------------

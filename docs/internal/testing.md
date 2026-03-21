@@ -21,14 +21,14 @@ ______________________________________________________________________
 All tests flow through `KaganDriver`. Test files never import from `kagan.core` internals,
 repositories, or adapters. They import from `tests.helpers` and `kagan.core` (public API).
 
-```
+```text
 Test Cases  →  KaganDriver (DSL)  →  CoreDriver / TuiDriver  →  Real system
 ```
 
 ```python
 async def test_auto_task_runs_to_completion_and_moves_to_review(board):
-    task = await board.create_task("Fix login bug", execution_mode=AUTO)
-    await board.start_auto(task)
+    task = await board.create_task("Fix login bug")
+    await board.run_task(task.id)
     await board.wait_for_status(task, REVIEW)
     assert await board.get_status(task) == REVIEW
 ```
@@ -76,7 +76,7 @@ ______________________________________________________________________
 
 Test files mirror sections in `docs/internal/features/*.md` (one file per feature section):
 
-````
+```text
 tests/
 ├── core/                                # kagan.core (behavioral)
 │   ├── test_cli_surface.py              # CLI help text, exit codes (snapshot carve-out)
@@ -124,6 +124,7 @@ tests/
 │   ├── test_github_import.py            # GitHub sync: create, skip, re-import, labels
 │   └── test_github_integrations.py      # Slug canonicalization, state normalization, URL parsing
 └── helpers/                             # DSL: KaganDriver, FakeAgent, fixtures
+```
 
 Name tests as specs: `test_<behavior>_<expected_outcome>`. Each file has 2-6 tests,
 each test is 5-15 lines. The suite targets under 60 seconds.
@@ -136,7 +137,7 @@ ______________________________________________________________________
 @pytest.mark.unit           # Implementation details (tests/unit/ only)
 @pytest.mark.smoke          # Fast, core behaviors
 @pytest.mark.slow           # Workspace provisioning, merges
-````
+```
 
 ______________________________________________________________________
 
@@ -144,7 +145,7 @@ ______________________________________________________________________
 
 Configure `FakeAgent` per-test:
 
-```python
+```text
 board.configure_agent(responses=["<complete/>"])
 board.configure_agent(responses=["<blocked reason='needs API key'/>"])
 board.configure_review_agent(verdict="approve", summary="LGTM")
@@ -192,11 +193,52 @@ Use `app.run_test()` with `Pilot`. Use targeted waits (`wait_for_screen`,
 
 ______________________________________________________________________
 
+## Web Client Tests
+
+Web tests follow a two-layer split:
+
+1. **Vitest + @testing-library/react** for isolated component/state behavior (fast, no server)
+1. **Playwright** for end-to-end behavior against a real running `kagan web` instance
+
+Vitest conventions:
+
+- Tests live in `packages/web/src/**/*.test.ts` and `packages/web/src/**/*.test.tsx`
+- Prefer `.test.tsx` for component suites that render React trees
+- Mock API singletons (`apiClient`) with `vi.mock()`
+- Prefer behavior assertions (rendered output, grouped state, visible status labels)
+
+```bash
+cd packages/web
+npx vitest run
+```
+
+Playwright conventions:
+
+- Tests live in `packages/web/e2e/*.spec.ts`
+- Start the server first (`kagan web`) and run tests against `BASE_URL` (default `http://127.0.0.1:8765`)
+- Focus on high-value flows (board visibility, route transitions, creation actions)
+- Keep E2E suites small and resilient; avoid brittle selectors tied to styling
+
+```bash
+cd packages/web
+npx playwright test
+```
+
+Relationship to Python tests:
+
+- Python behavioral suites (`tests/server/`) validate the REST/SSE contract directly
+- Web tests validate browser behavior and UI integration with that contract
+- Both layers are complementary; neither replaces the other
+
+Prioritize web tests in this order: **stores -> components -> E2E smoke flows**.
+
+______________________________________________________________________
+
 ## Priority
 
 What to test first:
 
-1. **Core lifecycle** — task CRUD, status transitions, AUTO execution, PAIR sessions, reviews, workspaces
+1. **Core lifecycle** — task CRUD, status transitions, managed runs, interactive launches, reviews, workspaces
 1. **Integration** — project/repo management, MCP tool dispatch, settings
 1. **Edge cases** — concurrent starts, merge conflicts, agent crashes, orphan cleanup
 

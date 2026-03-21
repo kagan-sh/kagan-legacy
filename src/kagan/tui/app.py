@@ -15,7 +15,7 @@ from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
 from kagan.tui.screens.agent_picker import AgentPickerModal
 from kagan.tui.screens.confirm import ConfirmModal
-from kagan.tui.screens.gateway import PairInstructionsModal  # noqa: F401
+from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
 from kagan.tui.screens.repo_picker import RepoPickerModal
@@ -78,18 +78,26 @@ class KaganApp(App[None]):
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
 
-        # Register themes in __init__ so the correct theme is visible from first paint.
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)
         self.theme = KAGAN_THEME.name
 
     async def on_mount(self) -> None:
         install_asyncio_subprocess_exception_filter()
+        await self._apply_saved_theme()
         await self._route_startup()
         self.run_worker(self._startup_cleanup(), exclusive=False)
 
     def on_unmount(self) -> None:
         self.core.close()
+
+    async def _apply_saved_theme(self) -> None:
+        settings = await self.core.settings.get()
+        theme_name = settings.get("theme", "")
+        if theme_name and theme_name in self.available_themes:
+            self.theme = theme_name
+        elif not theme_name:
+            self.theme = KAGAN_THEME.name
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         for command in super().get_system_commands(screen):
@@ -108,7 +116,6 @@ class KaganApp(App[None]):
             try:
                 project = await self.core.projects.get(last_project_id)
             except NotFoundError:
-                # Project was deleted, clear the setting
                 await self.core.settings.set({"ui.last_project_id": None})
                 self.push_screen("welcome-screen")
                 return
@@ -122,22 +129,21 @@ class KaganApp(App[None]):
         self.push_screen("welcome-screen")
 
     async def activate_project(self, project: Project) -> None:
+        from kagan.core.errors import KaganError
+
         await self.core.projects.set_active(project.id)
         self.project = project
         settings = await self.core.settings.get()
         selected_repo_id = settings.get(self._repo_setting_key(project.id)) or None
-        repos = await self.core.projects.repos(project.id)
-        if selected_repo_id and any(repo.id == selected_repo_id for repo in repos):
-            self.selected_repo_id = selected_repo_id
-            self.selected_repo_name = next(
-                (repo.name for repo in repos if repo.id == selected_repo_id),
-                None,
+        try:
+            repo = await self.core.projects.resolve_repo(
+                project.id, selected_repo_id=selected_repo_id
             )
-        elif repos:
-            self.selected_repo_id = repos[0].id
-            self.selected_repo_name = repos[0].name
-            await self.remember_selected_repo(repos[0].id)
-        else:
+            self.selected_repo_id = repo.id
+            self.selected_repo_name = repo.name
+            if repo.id != selected_repo_id:
+                await self.remember_selected_repo(repo.id)
+        except KaganError:
             self.selected_repo_id = None
             self.selected_repo_name = None
         await self.core.settings.set({"ui.last_project_id": project.id})
@@ -157,7 +163,6 @@ class KaganApp(App[None]):
         return f"ui.selected_repo.{project_id}"
 
     async def _startup_cleanup(self) -> None:
-        """Remove orphaned worktrees left from prior sessions (best-effort)."""
         import contextlib
 
         with contextlib.suppress(KaganError, OSError, RuntimeError):
@@ -196,11 +201,6 @@ class KaganApp(App[None]):
             self.screen.action_new_project()
 
     def action_help_quit(self) -> None:
-        """Override Textual's default Ctrl+C system binding.
-
-        Instead of showing a quit-hint toast, delegate to the visible
-        ChatPanel so Ctrl+C interrupts the agent or clears input.
-        """
         from kagan.tui.widgets.chat import ChatPanel
 
         for panel in self.screen.query(ChatPanel):
@@ -281,11 +281,9 @@ class KaganApp(App[None]):
         self.push_screen(HelpModal(context_sections=tuple(sections)))
 
     async def action_open_project_selector(self) -> None:
-        """Return to the project selector (welcome screen)."""
         self.switch_screen("welcome-screen")
 
     async def action_open_repo_selector(self) -> None:
-        """Open the repository selector for the active project."""
         await self._open_repo_picker()
 
     async def _open_repo_picker(self) -> None:

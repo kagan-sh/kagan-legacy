@@ -32,6 +32,7 @@ class ChatSessionListItem:
     label: str
     source: str
     agent_backend: str | None
+    project_id: str | None
     updated_at: str
     updated_relative: str
     is_current: bool
@@ -42,7 +43,6 @@ def _utc_now() -> str:
 
 
 def _format_relative_time(iso_timestamp: str) -> str:
-    """Format an ISO timestamp as a human-readable relative time."""
     try:
         dt = datetime.fromisoformat(iso_timestamp)
         if dt.tzinfo is None:
@@ -68,8 +68,6 @@ def _format_relative_time(iso_timestamp: str) -> str:
 
 
 def _clean_generated_title(raw: str) -> str:
-    """Clean an LLM-generated session title to a short, human-readable string."""
-    # Strip think tags (reasoning models like DeepSeek)
     import re
 
     cleaned = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
@@ -126,6 +124,7 @@ def _normalize_session(raw: Any) -> dict[str, Any] | None:
         "orchestrator_history": _normalize_history(raw.get("orchestrator_history")),
         "messages_rendered": _normalize_rendered_messages(raw.get("messages_rendered")),
         "updated_at": updated_at,
+        "project_id": raw.get("project_id"),
     }
 
 
@@ -198,6 +197,7 @@ def build_chat_session_list_items(
                 label=label,
                 source=source,
                 agent_backend=backend_value,
+                project_id=session.get("project_id"),
                 updated_at=updated_at,
                 updated_relative=updated_relative,
                 is_current=bool(current_session_id) and sid == current_session_id,
@@ -228,27 +228,16 @@ def resolve_chat_session_selector(
     return None
 
 
-def resolve_chat_session_id(items: Sequence[ChatSessionListItem], query: str | None) -> str | None:
-    item = resolve_chat_session_selector(items, query)
-    return None if item is None else item.session_id
-
-
-async def list_chat_session_items(
-    client: Any,
-    *,
-    source: str | None = None,
-    current_session_id: str | None = None,
-) -> list[ChatSessionListItem]:
-    sessions = await list_chat_sessions(client, source=source)
-    return build_chat_session_list_items(sessions, current_session_id=current_session_id)
-
-
-async def list_chat_sessions(client: Any, *, source: str | None = None) -> list[dict[str, Any]]:
+async def list_chat_sessions(
+    client: Any, *, source: str | None = None, project_id: str | None = None
+) -> list[dict[str, Any]]:
     settings = await client.settings.get()
     sessions = _parse_sessions_blob(settings.get(CHAT_SESSIONS_SETTING_KEY))
-    if source is None:
-        return sessions
-    return [session for session in sessions if session.get("source") == source]
+    if source is not None:
+        sessions = [s for s in sessions if s.get("source") == source]
+    if project_id is not None:
+        sessions = [s for s in sessions if s.get("project_id") == project_id]
+    return sessions
 
 
 async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | None:
@@ -300,6 +289,7 @@ async def create_chat_session(
     source: str,
     label: str | None = None,
     agent_backend: str | None = None,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     session_id = uuid4().hex[:8]
     session = {
@@ -310,6 +300,7 @@ async def create_chat_session(
         "orchestrator_history": [],
         "messages_rendered": [],
         "updated_at": _utc_now(),
+        "project_id": project_id,
     }
     await save_chat_session(client, session)
     return session
@@ -327,7 +318,6 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:
-    """Delete a session by ID. Returns True if deleted, False if not found."""
     normalized_id = session_id.strip()
     if not normalized_id:
         return False

@@ -27,7 +27,7 @@ stateDiagram-v2
 | Status          | Meaning                                     |
 | --------------- | ------------------------------------------- |
 | **BACKLOG**     | Planned but not started                     |
-| **IN_PROGRESS** | Agent running (AUTO) or session open (PAIR) |
+| **IN_PROGRESS** | Managed run active or interactive session open |
 | **REVIEW**      | Work complete, awaiting human review        |
 | **DONE**        | Reviewed and merged                         |
 
@@ -37,7 +37,7 @@ Moving between columns is constrained. You can drag tasks left or right within t
 
 When a task starts, Kagan creates a **git worktree** — an isolated branch copy of your repo. The agent works there. Your main branch stays untouched.
 
-```
+```text
 your-repo/
   .git/
   src/                     ← your working copy (unchanged)
@@ -52,28 +52,30 @@ your-repo/
 - Worktrees are cleaned up after merge.
 - State lives outside your repo — no `.kagan/` directory in your codebase.
 
-## Execution modes
+## Launch styles
 
-Each task runs as **AUTO** or **PAIR**. Set the mode when creating or editing a task.
+Each task is just a task. When you launch it, choose between a managed run or an interactive launcher handoff.
 
-| Mode | Who drives  | Where it happens                                       |
-| ---- | ----------- | ------------------------------------------------------ |
-| AUTO | Agent       | Background process; follow progress in the TUI overlay |
-| PAIR | You + agent | Interactive session in tmux, Neovim, VS Code, etc.     |
+| Style | Who drives  | Where it happens                                       |
+| ----- | ----------- | ------------------------------------------------------ |
+| Managed run | Agent | Background process; follow progress in the task or session views |
+| Interactive launch | You + agent | tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, etc. |
 
-[:octicons-arrow-right-24: AUTO vs PAIR guide](../guides/modes-auto-vs-pair.md)
+Attach can interrupt a managed run at any time — Kagan stops the background agent and hands control to you in an interactive session.
+
+[:octicons-arrow-right-24: Managed vs interactive guide](../guides/managed-vs-interactive.md)
 
 ## Review
 
-When work finishes — agent completes (AUTO) or you move the task (PAIR) — it enters REVIEW.
+When work finishes — the managed run completes or you detach/finish the interactive session — it enters REVIEW.
 
-**What you see:**
+### What you see
 
 - Diff summary (files changed, lines added/removed)
 - Acceptance criteria checklist (if defined)
-- Agent reasoning notes (from `task_annotate` calls during the run)
+- Agent reasoning notes (from `task_add_note` scratchpad entries during the run)
 
-**What you can do:**
+### What you can do
 
 | Action  | Effect                                         |
 | ------- | ---------------------------------------------- |
@@ -86,19 +88,15 @@ Approve records intent but does not move the task. **Only merge transitions to D
 
 ## Acceptance criteria
 
-Optional. When set, Kagan checks coverage after the agent completes. If any criteria appear unaddressed, a warning is appended to the task scratchpad before REVIEW:
+Optional. Kagan stores acceptance criteria with the task and shows them during review.
 
-```
-[CRITERIA REVIEW NOTE] The following acceptance criteria may need verification:
-  1. All API endpoints return 4xx on invalid input
-  2. Migration is reversible
-```
-
-This is a **soft gate** — informational only. It never blocks the agent mid-run.
+- Tasks with criteria can use AI-assisted review and approval flows.
+- Tasks without criteria still run normally, but automated approve/merge actions stay blocked.
+- Human review remains available either way.
 
 ## Scratchpad and resume
 
-Each task accumulates notes — agent decisions, status changes, your annotations. When you reopen a task, the last 500 characters appear at the top of the detail view. No hunting through tabs.
+Each task accumulates notes — agent decisions, status changes, your annotations. When you reopen an `IN_PROGRESS` or `REVIEW` task, the Resume Context strip shows the most recent ~500 characters at the top of the detail view. The full scratchpad remains available through `task_get(..., include_scratchpad=true)` or `task_events`.
 
 ______________________________________________________________________
 

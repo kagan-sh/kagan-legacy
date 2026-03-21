@@ -7,7 +7,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Select, Static, TextArea
 
-from kagan.core.enums import Priority, WorkMode
+from kagan.core.enums import Priority
 from kagan.tui.messages import TaskSubmitted
 
 _PRIORITY_OPTIONS: list[tuple[str, int]] = [
@@ -15,11 +15,6 @@ _PRIORITY_OPTIONS: list[tuple[str, int]] = [
     ("Medium", int(Priority.MEDIUM)),
     ("High", int(Priority.HIGH)),
     ("Critical", int(Priority.CRITICAL)),
-]
-
-_MODE_OPTIONS: list[tuple[str, str]] = [
-    ("Auto", WorkMode.AUTO.value),
-    ("Pair", WorkMode.PAIR.value),
 ]
 
 _LAUNCHER_OPTIONS: list[tuple[str, str]] = [
@@ -59,27 +54,31 @@ class TaskEditor(Vertical):
     class Cancelled(Message):
         pass
 
+    @dataclass
+    class FieldChanged(Message):
+        pass
+
     def __init__(
         self,
         *,
         title: str = "",
         description: str = "",
         priority: Priority = Priority.MEDIUM,
-        execution_mode: WorkMode = WorkMode.AUTO,
         agent_backend: str | None = None,
         launcher: str | None = None,
         available_agent_backends: list[str] | None = None,
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
         focus_field: str | None = None,
+        editing: bool = False,
     ) -> None:
         super().__init__()
         self._initial_title = title
         self._initial_description = description
         self._initial_priority = priority
-        self._initial_execution_mode = execution_mode
         self._initial_agent_backend = agent_backend or ""
         self._initial_launcher = launcher or ""
+        self._editing = editing
         backend_set = set(available_agent_backends or [])
         if self._initial_agent_backend:
             backend_set.add(self._initial_agent_backend)
@@ -124,14 +123,6 @@ class TaskEditor(Vertical):
                 allow_blank=False,
                 classes="task-select",
             )
-            yield Label("Execution mode", classes="task-label")
-            yield Select[str](
-                options=_MODE_OPTIONS,
-                value=self._initial_execution_mode.value,
-                id="task-execution-mode",
-                allow_blank=False,
-                classes="task-select",
-            )
             with Vertical(id="task-advanced-fields", classes="task-advanced-fields"):
                 yield Label("Acceptance Criteria", classes="task-label")
                 yield TextArea(
@@ -150,7 +141,7 @@ class TaskEditor(Vertical):
                     allow_blank=False,
                     classes="task-select",
                 )
-                yield Label("PAIR launcher", classes="task-label")
+                yield Label("Interactive launcher", classes="task-label")
                 yield Select[str](
                     options=self._launcher_options,
                     value=self._initial_launcher,
@@ -165,16 +156,27 @@ class TaskEditor(Vertical):
                     id="task-base-branch",
                     classes="task-input",
                 )
-        yield Static(
-            "[bold]Ctrl+S[/] save  [bold]Ctrl+.[/] advanced  "
-            "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
-            classes="modal-action-hint",
-        )
+        if self._editing:
+            yield Static(
+                "Auto-saved  ·  [bold]Ctrl+.[/] advanced  "
+                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] close",
+                classes="modal-action-hint",
+            )
+        else:
+            yield Static(
+                "[bold]Ctrl+S[/] create  [bold]Ctrl+.[/] advanced  "
+                "[bold]PgUp/PgDn[/] scroll  [bold]Esc[/] cancel",
+                classes="modal-action-hint",
+            )
 
     def on_mount(self) -> None:
         self._sync_advanced_visibility()
         self.focus_preferred_field()
+        self.call_after_refresh(self._restore_initial_title)
         self._set_title_error(None)
+
+    def _restore_initial_title(self) -> None:
+        self.query_one("#task-title", Input).value = self._initial_title
 
     def _sync_advanced_visibility(self) -> None:
         advanced = self.query_one("#task-advanced-fields", Vertical)
@@ -242,9 +244,18 @@ class TaskEditor(Vertical):
             self.call_after_refresh(self._reveal_advanced_fields)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "task-title":
-            return
-        self._set_title_error(self._validate_title())
+        if event.input.id == "task-title":
+            self._set_title_error(self._validate_title())
+        if self._editing:
+            self.post_message(self.FieldChanged())
+
+    def on_select_changed(self, _: Select.Changed) -> None:
+        if self._editing:
+            self.post_message(self.FieldChanged())
+
+    def on_text_area_changed(self, _: TextArea.Changed) -> None:
+        if self._editing:
+            self.post_message(self.FieldChanged())
 
     def scroll_form(self, delta_y: int) -> None:
         form = self.query_one(".task-form", VerticalScroll)
@@ -258,18 +269,13 @@ class TaskEditor(Vertical):
         self.scroll_form(-3)
         event.stop()
 
-    def submit(self) -> None:
+    def collect_values(self) -> TaskSubmitted | None:
         title = self.query_one("#task-title", Input).value.strip()
         if not title:
-            self._set_title_error("Title is required.")
-            self.app.notify("Task title is required.", severity="warning")
-            self.query_one("#task-title", Input).focus()
-            return
-        self._set_title_error(None)
+            return None
 
         description = self.query_one("#task-description", TextArea).text
         priority_select = cast("Select[int]", self.query_one("#task-priority", Select))
-        mode_select = cast("Select[str]", self.query_one("#task-execution-mode", Select))
         backend_select = cast("Select[str]", self.query_one("#task-agent-backend", Select))
         launcher_select = cast("Select[str]", self.query_one("#task-launcher", Select))
         base_branch = self.query_one("#task-base-branch", Input).value.strip() or None
@@ -279,12 +285,6 @@ class TaskEditor(Vertical):
             priority = self._initial_priority
         else:
             priority = Priority(priority_value)
-
-        mode_value = mode_select.value
-        if mode_value is Select.BLANK or not isinstance(mode_value, str):
-            execution_mode = self._initial_execution_mode
-        else:
-            execution_mode = WorkMode(mode_value)
 
         backend_value = backend_select.value
         if backend_value is Select.BLANK or not isinstance(backend_value, str):
@@ -298,17 +298,24 @@ class TaskEditor(Vertical):
         else:
             launcher = launcher_value.strip() or None
 
-        self.post_message(
-            TaskSubmitted(
-                title=title,
-                description=description,
-                priority=priority,
-                execution_mode=execution_mode,
-                agent_backend=agent_backend,
-                launcher=launcher,
-                base_branch=base_branch,
-            )
+        return TaskSubmitted(
+            title=title,
+            description=description,
+            priority=priority,
+            agent_backend=agent_backend,
+            launcher=launcher,
+            base_branch=base_branch,
         )
+
+    def submit(self) -> None:
+        values = self.collect_values()
+        if values is None:
+            self._set_title_error("Title is required.")
+            self.app.notify("Task title is required.", severity="warning")
+            self.query_one("#task-title", Input).focus()
+            return
+        self._set_title_error(None)
+        self.post_message(values)
 
     def cancel(self) -> None:
         self.post_message(self.Cancelled())

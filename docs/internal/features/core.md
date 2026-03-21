@@ -49,7 +49,7 @@ ______________________________________________________________________
 
 ## 5. Worktrees
 
-- Starting a task (AUTO or PAIR) provisions an isolated git worktree at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (outside the repo, preventing untracked-file collisions)
+- Starting a task provisions an isolated git worktree at `$XDG_STATE_HOME/kagan/worktrees/{task_id}` (outside the repo, preventing untracked-file collisions)
 - Worktree branches from the repo's default branch (or task's base branch) under `kagan/{task_id}`
 - Diff shows all changes in the worktree as unified diff
 - Diff stats show files changed, insertions, deletions
@@ -59,7 +59,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 6. AUTO Execution
+## 6. Managed Runs
 
 - Run a task → provisions worktree, spawns agent subprocess (ACP over STDIO), returns run
 - Agent streams progress via ACP session updates (text chunks, tool calls, plans, permissions)
@@ -67,16 +67,24 @@ ______________________________________________________________________
 - Events stream reactively to any connected client (near-zero latency)
 - Client reconnects and picks up full event history from offset 0
 - Cancel kills the agent process and moves task to BACKLOG
+- Repetition guard detects agents stuck in tool-call loops: if the same tool+arguments hash appears ≥8 times within a 20-call window, the agent is cancelled
+- Repetition guard normalizes arguments (dict, JSON string, None) before hashing — different files read via the same tool produce distinct hashes
+- On repetition-triggered cancellation, AGENT_FAILED is emitted **before** cancel to guarantee subscribers receive the error before the terminal TASK_STATUS_CHANGED
+- ACP UsageUpdate events capture context window usage (size, used) and cumulative cost (amount, currency)
+- Usage metrics are persisted on the Session record at session completion (context_window_used, context_window_size, cost_amount, cost_currency)
+- Real-time usage updates are emitted as AGENT_STATUS events with a `usage` payload and streamed to all connected surfaces
 
 ______________________________________________________________________
 
-## 7. PAIR Sessions
+## 7. Interactive Launches
 
-- Pair on a task → provisions worktree, launches interactive environment
+- Launch interactive run on a task → provisions worktree, launches interactive environment
 - Environment options: tmux session, IDE (vscode/cursor/windsurf/kiro), neovim
 - Agent backend and launcher are orthogonal choices
 - `.mcp.json` in worktree lets agent and IDE discover kagan's MCP server
 - Session status tracked in DB; survives client restart
+- Attach interrupts a managed run: if a background agent is active, it is cancelled before the interactive session starts
+- TUI resumes and repaints the board after detaching from tmux (`Ctrl+b d`) or exiting neovim
 
 ______________________________________________________________________
 
@@ -88,20 +96,49 @@ ______________________________________________________________________
 - Merge can require prior approval (configurable)
 - Rebase a task's worktree onto latest base branch
 - Rebase conflicts are reported with affected file list
+- Continue a paused rebase after resolving conflicts manually
+- Query current conflict files for a task
+- Record a pass/fail verdict for each acceptance criterion individually (`set_criterion_verdict`)
+- Clear all criterion verdicts to reset review state
 
 ______________________________________________________________________
 
 ## 9. Settings & Audit
 
 - Read and update key-value settings persisted in DB
-- Known keys: default agent backend, default launcher, auto-review, require approval
-- All mutations are audit-logged automatically (who, what, when)
+- Behavioral settings: review strictness, planning depth, auto-confirm
+- Additional instructions: single free-text field appended to all agent prompts
+- Dotfile overrides: `.kagan/prompts/` files fully replace built-in prompts when present
+- Known keys: default agent backend, attached launcher, auto-review, require approval, additional instructions, review strictness, planning depth
+- Task mutations are audit-logged automatically (`task.create`, `task.update`, `task.status_change`, `task.delete`).
 - Audit trail is queryable with limit
 
 ______________________________________________________________________
 
-## 10. Preflight
+## 10. Persona Pipeline
+
+- Four built-in personas: `analyst`, `planner`, `implementer`, `reviewer`
+- Each persona has a distinct prompt profile tuned to its role
+- Run a persona against a repo for structured analysis (`audit_repo`)
+- Import persona presets from GitHub repos (subject to whitelist)
+- Export persona presets to GitHub repos
+- Manage an import whitelist of approved persona source repos
+- Multi-session task execution: run a task through a sequence of personas in order (analyst → planner → implementer → reviewer) without manual handoff between sessions
+
+______________________________________________________________________
+
+## 11. Preflight
 
 - Checks: git, configured agent backend executable, tmux, DB writability
 - Each check returns pass, warn, or fail with fix hints
 - Blocking checks prevent operations; warnings are informational
+
+______________________________________________________________________
+
+## 12. Project Learnings
+
+- Agents save project-wide learnings by calling `task_add_note` with content starting with `[LEARNING] `
+- Before each managed task run, kagan queries all `[LEARNING]`-prefixed notes across every task in the current project
+- Up to 20 unique learnings (newest-first, deduplicated) are injected into the task prompt as a `PROJECT CONTEXT (from prior tasks):` section
+- Learnings are strictly scoped to the project — notes from other projects are never included
+- No new data model required: `TaskNote` with the `[LEARNING]` prefix convention is the storage mechanism

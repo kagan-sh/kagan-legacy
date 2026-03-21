@@ -87,6 +87,22 @@ TaskScreen {
     height: auto;
 }
 
+#ts-resume-context-section {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    overflow: hidden;
+}
+
+#ts-resume-context {
+    width: 100%;
+    padding: 0;
+    height: auto;
+    min-height: 4;
+    max-height: 8;
+    overflow-y: auto;
+}
+
 .ts-section-label {
     width: 100%;
     text-style: bold;
@@ -129,7 +145,9 @@ TaskScreen {
 #ts-detail-review-section {
     width: 100%;
     height: auto;
+    min-height: 0;
     margin-top: 1;
+    overflow-y: auto;
 }
 
 .ts-detail-review,
@@ -158,8 +176,23 @@ TaskScreen {
 .ts-detail-criterion {
     width: 100%;
     height: auto;
-    margin: 0 0 1 0;
+    margin: 0;
     text-wrap: wrap;
+}
+
+.ts-detail-criterion-verdict {
+    width: 100%;
+    height: auto;
+    padding: 0 0 0 2;
+}
+
+.ts-detail-criterion-reason {
+    width: 100%;
+    height: auto;
+    padding: 0 0 0 2;
+    margin: 0 0 1 0;
+    color: $text-disabled;
+    text-style: italic;
 }
 
 .ts-detail-criterion:focus {
@@ -169,6 +202,22 @@ TaskScreen {
 .ts-criteria-complete {
     color: $success;
     text-style: bold;
+}
+
+.ts-criteria-fail {
+    color: $error;
+}
+
+.ts-criteria-pending {
+    color: $text-disabled;
+}
+
+.ts-detail-criteria-status.ts-ai-pass {
+    color: $success;
+}
+
+.ts-detail-criteria-status.ts-ai-fail {
+    color: $error;
 }
 
 #ts-workspace-bar {
@@ -221,18 +270,6 @@ TaskScreen Footer {
     text-align: center;
 }
 
-.ts-stream {
-    width: 100%;
-    height: 1fr;
-    min-height: 10;
-    background: $surface;
-    border: round $border;
-}
-
-.ts-hidden-stream {
-    display: none;
-}
-
 TaskScreen.ts-chat-vertical #task-screen-root {
     width: 1fr;
     min-width: 0;
@@ -272,7 +309,20 @@ TaskScreen.ts-chat-horizontal #ts-chat-overlay {
 TaskScreen.ts-chat-fullscreen .ts-title,
 TaskScreen.ts-chat-fullscreen .ts-branch,
 TaskScreen.ts-chat-fullscreen .ts-status,
-TaskScreen.ts-chat-fullscreen #ts-tabs,
-TaskScreen.ts-chat-fullscreen #ts-actions {
+TaskScreen.ts-chat-fullscreen #ts-tabs {
     display: none;
+}
+
+#load-more-bar {
+    width: 100%;
+    height: auto;
+    text-align: center;
+    color: $primary;
+    background: $surface;
+    padding: 0 1;
+    text-style: bold;
+}
+
+#load-more-bar:hover {
+    background: $primary 20%;
 }

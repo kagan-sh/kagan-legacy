@@ -23,19 +23,17 @@ from acp.schema import (
 from loguru import logger
 
 from kagan.chat.prompt import (
-    _ORCHESTRATOR_SYSTEM_PROMPT,
     _format_user_request_block,
 )
 from kagan.core import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
-    PROMPT_ORCHESTRATOR_KEY,
     ACPClientBase,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
     get_backend,
-    prepend_custom_prompt,
+    resolve_orchestrator_prompt,
 )
 from kagan.core.errors import AgentError
 
@@ -129,7 +127,7 @@ def _friendly_acp_error_message(*, error: object, agent_backend: str, during: st
     ):
         return (
             f"{prefix} Account usage/subscription limit reached. "
-            "Review your Anthropic plan and billing limits."
+            "Review your provider plan and billing limits."
         )
     if (
         "authentication" in lowered
@@ -157,7 +155,7 @@ def _friendly_acp_error_message(*, error: object, agent_backend: str, during: st
             "Check connection, VPN/proxy, then retry."
         )
     if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
-        return f"{prefix} Anthropic service is overloaded right now. Retry shortly."
+        return f"{prefix} The provider service is overloaded right now. Retry shortly."
     return f"{prefix} {raw}"
 
 
@@ -244,23 +242,33 @@ async def run_orchestrator_turn(
     mcp_session_id: str | None = None,
     on_update: Callable[[Any], Awaitable[None] | None] | None = None,
     send_prompt: bool = True,
+    attachments: list[dict[str, str]] | None = None,
+    cwd: Path | None = None,
+    lightweight: bool = False,
 ) -> str:
+    """Run a single orchestrator turn via ACP.
+
+    When *lightweight* is True the turn is stripped down for simple completions
+    (e.g. title generation): no MCP tools, no orchestrator system prompt, and
+    the prompt is sent as-is without the "User request:" wrapper.
+    """
     if send_prompt and not prompt.strip():
         return ""
 
     exe, exe_args = _resolve_acp_command_for_backend(agent_backend)
     session_id = mcp_session_id or uuid4().hex[:8]
     db_path = str(default_db_path())
-    cwd = Path.cwd()
-    mcp_path = cwd / ".mcp.json"
+    resolved_cwd = cwd or Path.cwd()
+    mcp_path = resolved_cwd / ".mcp.json"
 
-    mcp_content = build_mcp_manifest(
-        session_id=session_id,
-        db_path=db_path,
-        access_tier="admin",
-        project_id=client.active_project_id,
-    )
-    await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
+    if not lightweight:
+        mcp_content = build_mcp_manifest(
+            session_id=session_id,
+            db_path=db_path,
+            role="ORCHESTRATOR",
+            project_id=client.active_project_id,
+        )
+        await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
 
     backend = get_backend(agent_backend)
     env = build_agent_environment(
@@ -276,7 +284,7 @@ async def run_orchestrator_turn(
             capture_client,
             exe,
             *exe_args,
-            cwd=str(cwd),
+            cwd=str(resolved_cwd),
             env=env,
             transport_kwargs={"limit": _ACP_STDIO_BUFFER_LIMIT_BYTES},
         ) as (conn, proc):
@@ -309,31 +317,37 @@ async def run_orchestrator_turn(
                 )
                 raise AgentError(timeout_message) from exc
 
-            mcp_server = McpServerStdio(
-                name="kagan",
-                command="kagan",
-                args=[
-                    "mcp",
-                    "--session-id",
-                    session_id,
-                    "--db",
-                    db_path,
-                    "--admin",
-                    *(
-                        [
-                            "--project-id",
-                            client.active_project_id,
-                        ]
-                        if client.active_project_id
-                        else []
-                    ),
-                ],
-                env=[],
-            )
+            # Lightweight mode: no MCP tools — just a bare session
+            if lightweight:
+                mcp_servers: list[Any] = []
+            else:
+                mcp_servers = [
+                    McpServerStdio(
+                        name="kagan",
+                        command="kagan",
+                        args=[
+                            "mcp",
+                            "--session-id",
+                            session_id,
+                            "--db",
+                            db_path,
+                            "--admin",
+                            *(
+                                [
+                                    "--project-id",
+                                    client.active_project_id,
+                                ]
+                                if client.active_project_id
+                                else []
+                            ),
+                        ],
+                        env=[],
+                    )
+                ]
 
             try:
                 sess = await asyncio.wait_for(
-                    conn.new_session(cwd=str(cwd), mcp_servers=[mcp_server]),
+                    conn.new_session(cwd=str(resolved_cwd), mcp_servers=mcp_servers),
                     timeout=timeout_s,
                 )
             except TimeoutError as exc:
@@ -352,16 +366,26 @@ async def run_orchestrator_turn(
                 raise AgentError(timeout_message) from exc
 
             if send_prompt:
-                # Inject custom orchestrator prompt from settings if configured
-                settings = await client.settings.get()
-                system_prompt = _ORCHESTRATOR_SYSTEM_PROMPT
-                custom = settings.get(PROMPT_ORCHESTRATOR_KEY, "").strip()
-                if custom:
-                    system_prompt = prepend_custom_prompt(system_prompt, custom)
-                prompt_blocks: list[Any] = [
-                    acp.text_block(system_prompt),
-                    acp.text_block(_format_user_request_block(prompt)),
-                ]
+                if lightweight:
+                    # Lightweight: send the prompt directly — no orchestrator
+                    # system prompt, no "User request:" wrapper.
+                    prompt_blocks: list[Any] = [acp.text_block(prompt)]
+                else:
+                    settings = await client.settings.get()
+                    system_prompt = resolve_orchestrator_prompt(settings, resolved_cwd)
+                    prompt_blocks = [
+                        acp.text_block(system_prompt),
+                        acp.text_block(_format_user_request_block(prompt)),
+                    ]
+                    for att in attachments or []:
+                        if att.get("type") == "image":
+                            prompt_blocks.append(
+                                acp.image_block(data=att["data"], mime_type=att["mime_type"]),
+                            )
+                        else:
+                            prompt_blocks.append(
+                                acp.text_block(f"--- {att['name']} ---\n{att['data']}"),
+                            )
                 try:
                     await conn.prompt(session_id=sess.session_id, prompt=prompt_blocks)
                 except (acp.RequestError, OSError, RuntimeError, ValueError, AttributeError) as exc:
@@ -377,7 +401,7 @@ async def run_orchestrator_turn(
             _friendly_acp_error_message(error=exc, agent_backend=agent_backend, during="handshake")
         ) from exc
     finally:
-        if mcp_path.exists():
+        if not lightweight and mcp_path.exists():
             with contextlib.suppress(OSError):
                 mcp_path.unlink()
 

@@ -116,13 +116,13 @@ async def test_audit_list_visible_on_default_server(mcp_board: ClientSession) ->
     assert "audit_list" in names
 
 
-async def test_settings_set_hidden_on_default_server(mcp_board: ClientSession) -> None:
-    """settings_set must not be visible on default (non-admin) server."""
+async def test_settings_set_visible_on_default_server(mcp_board: ClientSession) -> None:
+    """settings_set is visible on default server (orchestrator role)."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "settings_set" not in names
-    assert "persona_preset_import" not in names
-    assert "persona_preset_export" not in names
+    assert "settings_set" in names
+    assert "persona_preset_import" in names
+    assert "persona_preset_export" in names
 
 
 # ---------------------------------------------------------------------------
@@ -131,12 +131,12 @@ async def test_settings_set_hidden_on_default_server(mcp_board: ClientSession) -
 
 
 async def test_settings_get_visible_on_readonly_server() -> None:
-    """settings_get is read-only and must be visible on readonly server."""
+    """settings_get is in worker role and visible on readonly (worker) server."""
     names = await _tool_names_for(ServerOptions(readonly=True))
     assert "settings_get" in names
-    assert "audit_list" in names
-    assert "persona_preset_audit" in names
-    assert "persona_preset_whitelist_list" in names
+    assert "audit_list" not in names
+    assert "persona_preset_audit" not in names
+    assert "persona_preset_whitelist_list" not in names
 
 
 async def test_settings_set_hidden_on_readonly_server() -> None:
@@ -197,12 +197,13 @@ async def test_settings_set_returns_confirmation_on_admin_server() -> None:
     session, task, ready = await _admin_session()
     try:
         result = await session.call_tool(
-            "settings_set", {"section": "general", "key": "default_agent", "value": "claude-code"}
+            "settings_set",
+            {"section": "general", "key": "default_agent_backend", "value": "claude-code"},
         )
         assert not result.isError
         payload = _text(result)
         assert "key" in payload
-        assert payload["key"] == "default_agent"
+        assert payload["key"] == "default_agent_backend"
     finally:
         ready.set()
         await task

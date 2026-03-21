@@ -68,8 +68,21 @@ jobs:
             uv.lock
             pyproject.toml
 
-      - name: Install dependencies
-        run: uv sync --frozen --dev
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install web dependencies
+        run: pnpm install --prefix packages/web
+
+      - name: Build bundled web UI
+        run: uv run poe web-build
 
       - name: Run release smoke checks
         run: |

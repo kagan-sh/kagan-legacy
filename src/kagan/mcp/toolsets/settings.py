@@ -14,7 +14,6 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def settings_get(ctx: Context) -> dict:
-            """Get current settings snapshot."""
             app = get_context(ctx)
             return await app.client.settings.get()
 
@@ -23,7 +22,6 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def audit_list(ctx: Context, limit: int | None = None) -> dict:
-            """List recent audit entries, newest first."""
             app = get_context(ctx)
             entries = await app.client.audit_log.list(limit=limit)
             return {
@@ -43,7 +41,6 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def settings_set(section: str, key: str, value: str, ctx: Context) -> dict:
-            """Update a setting (admin only)."""
             app = get_context(ctx)
             await app.client.settings.set({key: value})
             return {"section": section, "key": key, "value": value}

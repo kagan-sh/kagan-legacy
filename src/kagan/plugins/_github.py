@@ -8,8 +8,8 @@ needed. Label conventions on the GitHub side auto-map to kagan task properties:
     priority:high      →  Priority.HIGH
     priority:medium    →  Priority.MEDIUM
     priority:low       →  Priority.LOW
-    kagan:auto         →  WorkMode.AUTO
-    kagan:pair         →  WorkMode.PAIR
+    kagan:detached     →  ignored (legacy label)
+    kagan:attached     →  ignored (legacy label)
 
 Sync is idempotent: a mapping of issue numbers → task IDs is persisted in
 the kagan settings table. Re-running sync skips already-imported issues.
@@ -25,14 +25,10 @@ from typing import Any, Final, TypedDict
 from loguru import logger
 
 from kagan.core import CheckStatus, KaganCore, PreflightCheckResult
-from kagan.core.enums import Priority, WorkMode
+from kagan.core.enums import Priority
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.plugins import ImporterPlugin, ImportResult, PluginError, PluginSyncError
 from kagan.runtime_env import build_sanitized_subprocess_environment
-
-# ---------------------------------------------------------------------------
-# TypedDict for GitHub issue data
-# ---------------------------------------------------------------------------
 
 
 class GitHubIssue(TypedDict, total=False):
@@ -44,10 +40,6 @@ class GitHubIssue(TypedDict, total=False):
     url: str
 
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
 # Label prefix → (task field, mapping)
 _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:critical": Priority.CRITICAL,
@@ -56,10 +48,7 @@ _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:low": Priority.LOW,
 }
 
-_MODE_LABELS: dict[str, WorkMode] = {
-    "kagan:auto": WorkMode.AUTO,
-    "kagan:pair": WorkMode.PAIR,
-}
+_MODE_LABELS: Final[set[str]] = {"kagan:detached", "kagan:attached"}
 
 _GH_JSON_FIELDS = "number,title,body,labels,state,url"
 
@@ -78,22 +67,14 @@ class GitHubImportConfig:
         return f"{self.owner}/{self.repo}"
 
     def settings_key(self) -> str:
-        """Settings key for the sync map of this repo."""
         return f"plugin.github.{self.repo_slug}.sync_map"
 
 
-# ---------------------------------------------------------------------------
-# gh CLI helpers
-# ---------------------------------------------------------------------------
-
-
 def _gh_path() -> str | None:
-    """Return path to gh CLI, or None if not installed."""
     return shutil.which("gh")
 
 
 async def _gh_is_authenticated() -> bool:
-    """Check if gh CLI is authenticated. Returns False on any error."""
     try:
         proc = await asyncio.create_subprocess_exec(
             "gh",
@@ -110,7 +91,6 @@ async def _gh_is_authenticated() -> bool:
 
 
 async def _gh_fetch_issues(config: GitHubImportConfig) -> list[GitHubIssue]:
-    """Fetch issues from GitHub using gh CLI. Returns parsed JSON list."""
     cmd: list[str] = [
         "gh",
         "issue",
@@ -150,24 +130,13 @@ async def _gh_fetch_issues(config: GitHubImportConfig) -> list[GitHubIssue]:
     return data
 
 
-# ---------------------------------------------------------------------------
-# Label mapping
-# ---------------------------------------------------------------------------
-
-
 def _extract_label_names(issue: GitHubIssue) -> list[str]:
-    """Extract label name strings from a gh issue dict."""
     raw = issue.get("labels") or []
     return [lbl["name"] for lbl in raw if isinstance(lbl, dict) and "name" in lbl]
 
 
-def _map_labels(label_names: list[str]) -> tuple[Priority, WorkMode, list[str]]:
-    """Map GitHub labels to kagan task properties.
-
-    Returns (priority, execution_mode, remaining_labels).
-    """
+def _map_labels(label_names: list[str]) -> tuple[Priority, list[str]]:
     priority = Priority.MEDIUM
-    mode = WorkMode.AUTO
     remaining: list[str] = []
 
     for name in label_names:
@@ -175,15 +144,14 @@ def _map_labels(label_names: list[str]) -> tuple[Priority, WorkMode, list[str]]:
         if lower in _PRIORITY_LABELS:
             priority = _PRIORITY_LABELS[lower]
         elif lower in _MODE_LABELS:
-            mode = _MODE_LABELS[lower]
+            continue
         else:
             remaining.append(name)
 
-    return priority, mode, remaining
+    return priority, remaining
 
 
 def _build_description(issue: GitHubIssue, extra_labels: list[str]) -> str:
-    """Build task description from issue body and unmapped labels."""
     parts: list[str] = []
 
     if url := issue.get("url"):
@@ -200,13 +168,7 @@ def _build_description(issue: GitHubIssue, extra_labels: list[str]) -> str:
     return "\n\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Sync map persistence (Settings table)
-# ---------------------------------------------------------------------------
-
-
 async def _load_sync_map(client: KaganCore, key: str) -> dict[str, str]:
-    """Load the issue→task mapping from settings. Returns {issue_number: task_id}."""
     settings = await client.settings.get()
     raw = settings.get(key, "{}")
     try:
@@ -217,21 +179,11 @@ async def _load_sync_map(client: KaganCore, key: str) -> dict[str, str]:
 
 
 async def _save_sync_map(client: KaganCore, key: str, sync_map: dict[str, str]) -> None:
-    """Persist the issue→task mapping to settings."""
     await client.settings.set({key: json.dumps(sync_map, separators=(",", ":"))})
 
 
-# ---------------------------------------------------------------------------
-# Plugin
-# ---------------------------------------------------------------------------
-
-
 class GitHubImporter(ImporterPlugin):
-    """Import GitHub issues into kagan as tasks.
-
-    Construct with no arguments (entry-point discovery). Call ``configure()``
-    with repo details before ``sync()``.
-    """
+    """Import GitHub issues into kagan as tasks."""
 
     def __init__(self, config: GitHubImportConfig | None = None) -> None:
         self._config: GitHubImportConfig | None = config
@@ -248,11 +200,6 @@ class GitHubImporter(ImporterPlugin):
         self._client = None
 
     def configure(self, config: object) -> None:
-        """Configure the plugin with repo details.
-
-        Args:
-            config: GitHubImportConfig with owner, repo, state, and import_label.
-        """
         if not isinstance(config, GitHubImportConfig):
             msg = f"Expected GitHubImportConfig, got {type(config).__name__}"
             raise TypeError(msg)
@@ -261,7 +208,6 @@ class GitHubImporter(ImporterPlugin):
         self._config = config
 
     def preflight(self) -> list[PreflightCheckResult]:
-        """Check gh CLI installation and authentication status."""
         checks: list[PreflightCheckResult] = []
         gh = _gh_path()
         if gh is None:
@@ -273,7 +219,7 @@ class GitHubImporter(ImporterPlugin):
                     fix_hint="Install → https://cli.github.com",
                 )
             )
-            return checks  # no point checking auth if gh missing
+            return checks
 
         checks.append(
             PreflightCheckResult(
@@ -284,7 +230,6 @@ class GitHubImporter(ImporterPlugin):
             )
         )
 
-        # Auth check is sync (called from doctor), so run in a simple subprocess
         try:
             result = subprocess.run(
                 ["gh", "auth", "token"],
@@ -324,7 +269,6 @@ class GitHubImporter(ImporterPlugin):
         return checks
 
     async def sync(self, project_id: str) -> ImportResult:
-        """Import GitHub issues into the project. Idempotent."""
         if self._client is None:
             raise PluginError("Plugin not set up — call setup() first")
         if self._config is None:
@@ -333,13 +277,11 @@ class GitHubImporter(ImporterPlugin):
         client = self._client
         config = self._config
 
-        # Pre-check gh availability
         if _gh_path() is None:
             raise PluginError("GitHub CLI (gh) not found. Install → https://cli.github.com")
         if not await _gh_is_authenticated():
             raise PluginError("GitHub CLI not authenticated. Run → gh auth login")
 
-        # Fetch issues
         issues = await _gh_fetch_issues(config)
         logger.info(
             "GitHub sync: fetched {} issues from {}",
@@ -347,7 +289,6 @@ class GitHubImporter(ImporterPlugin):
             config.repo_slug,
         )
 
-        # Load existing sync map
         settings_key = config.settings_key()
         sync_map = await _load_sync_map(client, settings_key)
         result = ImportResult()
@@ -372,7 +313,6 @@ class GitHubImporter(ImporterPlugin):
                 result = result.with_error(f"Issue #{number}: {exc}")
                 logger.opt(exception=True).warning("Failed to sync issue #{}", number)
 
-        # Persist updated sync map
         await _save_sync_map(client, settings_key, sync_map)
         logger.info(
             "GitHub sync complete: created={} skipped={} errors={}",
@@ -391,10 +331,8 @@ class GitHubImporter(ImporterPlugin):
         sync_map: dict[str, str],
         result: ImportResult,
     ) -> ImportResult:
-        """Process one GitHub issue. Mutates sync_map and returns updated result."""
         title = (issue.get("title") or "").strip()
 
-        # Already synced and task still exists?
         if number in sync_map:
             task_id = sync_map[number]
             try:
@@ -406,20 +344,16 @@ class GitHubImporter(ImporterPlugin):
                     errors=result.errors,
                 )
             except NotFoundError:
-                # Task was deleted — re-import
                 logger.debug("Task {} for issue #{} was deleted, re-importing", task_id, number)
 
-        # Map labels
         label_names = _extract_label_names(issue)
-        priority, mode, extra_labels = _map_labels(label_names)
+        priority, extra_labels = _map_labels(label_names)
         description = _build_description(issue, extra_labels)
 
-        # Create task
         task = await client.tasks.create(
             title,
             description=description,
             priority=priority,
-            execution_mode=mode,
         )
         sync_map[number] = task.id
         return ImportResult(

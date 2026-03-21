@@ -1,7 +1,6 @@
 from typing import Any, cast
 
 import pytest
-from rich.panel import Panel
 
 from kagan.chat import (
     SLASH_COMMAND_REGISTRY,
@@ -85,12 +84,14 @@ def test_slash_command_registry_is_canonical() -> None:
     assert names == [
         "agents",
         "clear",
+        "delete",
         "exit",
         "flow",
         "help",
         "new",
-        "session",
+        "project",
         "sessions",
+        "status",
         "tool",
     ]
     assert SLASH_COMMAND_REGISTRY.get("help") is not None
@@ -203,6 +204,7 @@ class _FakeSettingsOps:
 class _FakeClient:
     def __init__(self) -> None:
         self.settings = _FakeSettingsOps()
+        self.active_project_id: str | None = None
 
 
 @pytest.mark.asyncio
@@ -239,6 +241,11 @@ async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) ->
 
 @pytest.mark.asyncio
 async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
+    from io import StringIO
+
+    from rich.console import Console as _RichConsole
+    from rich.table import Table
+
     client = _FakeClient()
     await save_chat_session(
         client,
@@ -252,12 +259,12 @@ async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
         },
     )
 
-    lines: list[str] = []
+    printed: list[Any] = []
 
     def _capture_print(*args, **kwargs) -> None:
         del kwargs
         if args:
-            lines.append(str(args[0]))
+            printed.append(args[0])
 
     monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
 
@@ -265,7 +272,17 @@ async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
     should_restart = await controller._open_sessions(None)
 
     assert should_restart is False
-    assert any("claude-code" in line for line in lines)
+    # Render Table objects to text to check content
+    all_text: list[str] = []
+    for item in printed:
+        if isinstance(item, Table):
+            buf = StringIO()
+            c = _RichConsole(file=buf, width=120)
+            c.print(item)
+            all_text.append(buf.getvalue())
+        else:
+            all_text.append(str(item))
+    assert any("claude-code" in t for t in all_text)
 
 
 def test_resolve_slash_input_new_requests_new_session() -> None:
@@ -453,9 +470,9 @@ def test_format_relative_time_handles_recent_and_old() -> None:
     assert _format_relative_time("invalid") == ""
 
 
-def test_resolve_slash_input_sessions_delete_parses_correctly() -> None:
+def test_resolve_slash_input_delete_parses_correctly() -> None:
     result = resolve_slash_input(
-        "/sessions delete abc123",
+        "/delete abc123",
         session_label="Orchestrator",
         session_key="orchestrator",
         runtime_session_id=None,
@@ -467,9 +484,9 @@ def test_resolve_slash_input_sessions_delete_parses_correctly() -> None:
     assert result.sessions_requested is False
 
 
-def test_resolve_slash_input_sessions_delete_without_arg_errors() -> None:
+def test_resolve_slash_input_delete_without_arg_errors() -> None:
     result = resolve_slash_input(
-        "/sessions delete",
+        "/delete",
         session_label="Orchestrator",
         session_key="orchestrator",
         runtime_session_id=None,
@@ -535,6 +552,7 @@ def test_resolve_slash_input_flow_rejected_in_non_orchestrator_session() -> None
         runtime_session_id=None,
         current_backend="claude-code",
         available_backends=["claude-code"],
+        is_orchestrator=False,
     )
 
     assert result.handled is True
@@ -566,6 +584,8 @@ def test_slash_command_registry_filters_by_orchestrator_only() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_slash_help_prints_structured_help_documentation(monkeypatch) -> None:
+    from rich.table import Table
+
     client = _FakeClient()
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
 
@@ -581,12 +601,7 @@ async def test_handle_slash_help_prints_structured_help_documentation(monkeypatc
     should_exit = await controller._handle_slash("/help")
 
     assert should_exit is False
-    panels = [item for item in printed if isinstance(item, Panel)]
-    panel_titles = {str(panel.title) for panel in panels}
-    assert "kagan chat" in panel_titles
-    assert "Commands" in panel_titles
-    assert "Quick refs" in panel_titles
-    assert any(
-        isinstance(item, str) and "Documentation: https://docs.kagan.sh/" in item
-        for item in printed
-    )
+    tables = [item for item in printed if isinstance(item, Table)]
+    assert len(tables) >= 1
+    assert any(isinstance(item, str) and "Commands" in item for item in printed)
+    assert any(isinstance(item, str) and "docs.kagan.sh" in item for item in printed)

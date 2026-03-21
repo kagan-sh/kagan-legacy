@@ -49,7 +49,7 @@ These labels map automatically when importing:
 - `priority:critical`, `priority:high`, `priority:medium`, `priority:low`
 - `kagan:auto`, `kagan:pair`
 
-If an issue has no mode label, Kagan imports it as `AUTO` by default.
+Legacy `kagan:auto` / `kagan:pair` labels are ignored. Imported tasks have no run style baked in; choose Start or Attach when you launch them.
 
 Other labels are kept in the task description as tags.
 

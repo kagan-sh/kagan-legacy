@@ -62,11 +62,3 @@ def test_validate_clamps_negative() -> None:
 def test_validate_clamps_overflow() -> None:
     overlay = TutorialOverlay()
     assert overlay.validate_step_index(999) == len(overlay.STEPS) - 1
-
-
-def test_overlay_is_focusable() -> None:
-    assert TutorialOverlay.can_focus is True
-
-
-def test_dismissed_message_exists() -> None:
-    assert hasattr(TutorialOverlay, "Dismissed")

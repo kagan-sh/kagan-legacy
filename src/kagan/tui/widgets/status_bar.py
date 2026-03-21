@@ -143,4 +143,7 @@ class StatusBar(Horizontal):
 
     def _update_display(self) -> None:
         self.query_one("#chat-overlay-status-left", Static).update(self._build_status_text())
-        self.query_one("#chat-overlay-status-right", Static).update(self.hint)
+        right_text = self.hint
+        if not right_text and self.status in WORKING_STATES:
+            right_text = "esc interrupt"
+        self.query_one("#chat-overlay-status-right", Static).update(right_text)

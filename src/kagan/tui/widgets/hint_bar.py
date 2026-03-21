@@ -1,18 +1,15 @@
-"""Hint bar widgets for displaying keybinding hints in the TUI."""
-
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
 from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Static
 
-KANBAN_GLOBAL_STRIP_FULL = "[bold]?[/] help  [bold]Ctrl+P[/] palette  [bold]/[/] search"
-KANBAN_GLOBAL_STRIP_NARROW = "[bold]?[/]  [bold]Ctrl+P[/]  [bold]/[/]"
+KANBAN_GLOBAL_STRIP_FULL = "[bold]?[/] help  [bold]Ctrl+Shift+P[/] quick actions  [bold]/[/] search"
+KANBAN_GLOBAL_STRIP_NARROW = "[bold]?[/]  [bold]Ctrl+Shift+P[/]  [bold]/[/]"
 KEYBINDING_HINT_NARROW_TERMINAL_WIDTH = 80
 
 
 def _render_group(hints: list[tuple[str, str]], *, separator: str = " · ") -> str:
-    """Render a group of hints."""
     parts: list[str] = []
     for key, description in hints:
         if not key:
@@ -25,7 +22,6 @@ def _render_group(hints: list[tuple[str, str]], *, separator: str = " · ") -> s
 
 
 def format_hint(hints: list[tuple[str, str]], *, separator: str = "  ") -> str:
-    """Format hints for display."""
     return _render_group(hints, separator=separator)
 
 
@@ -33,7 +29,6 @@ def action_hints_from_bindings(
     bindings: list,
     specs: list[tuple[str | tuple[str, ...], str]],
 ) -> list[tuple[str, str]]:
-    """Resolve key labels from bindings for action specs."""
     from kagan.tui.keybindings import get_key_for_action
 
     result: list[tuple[str, str]] = []
@@ -62,15 +57,12 @@ def build_action_strip(
     prefix_hints: list[tuple[str, str]] | None = None,
     separator: str = "  ",
 ) -> str:
-    """Build a formatted action-hint strip from bindings and specs."""
     resolved = action_hints_from_bindings(bindings, specs)
     all_hints = list(prefix_hints or []) + resolved
     return format_hint(all_hints, separator=separator)
 
 
 class KeybindingHint(Static):
-    """Reactive keybinding hint widget."""
-
     hints: reactive[str] = reactive("")
 
     def watch_hints(self, hints: str) -> None:
@@ -84,8 +76,6 @@ class KeybindingHint(Static):
 
 
 class GlobalShortcutsStrip(Static):
-    """Global shortcuts strip - updated for new binding scheme."""
-
     def on_mount(self) -> None:
         self._refresh_label()
 
@@ -102,8 +92,6 @@ class GlobalShortcutsStrip(Static):
 
 
 class KanbanHintBar(Widget):
-    """Kanban hint bar for navigation and action hints."""
-
     has_card: var[bool] = var(False, init=False)
 
     def __init__(self, *, id: str | None = None, classes: str | None = None) -> None:
@@ -137,7 +125,6 @@ class KanbanHintBar(Widget):
         *,
         mode_label: str = "Board",
     ) -> None:
-        """Update hint bar with navigation, action, and global hints."""
         try:
             nav_left = self.query_one("#hint-nav-left", Static)
             nav_center = self.query_one("#hint-nav-center", Static)
@@ -148,7 +135,7 @@ class KanbanHintBar(Widget):
         except NoMatches:
             return
 
-        self.has_card = bool(navigation)
+        self.has_card = bool(navigation or actions)
 
         left = navigation[0] if navigation else ("", "")
         right = navigation[1] if len(navigation) > 1 else ("", "")

@@ -1,13 +1,7 @@
-"""Feature tests: Session and Backend — TUI integration.
-
-Behavioral specs using KaganDriver DSL and TUI Pilot.
-Tests verify observable UI state, not mock calls.
-"""
+"""Feature tests: Session and Backend — TUI integration."""
 
 import pytest
 from tests.helpers.driver import KaganDriver
-
-from kagan.core import WorkMode
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
@@ -19,13 +13,12 @@ async def board(tmp_path):
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
     await driver.add_repo(repo_path)
-    await driver.create_task("Pair task", task_type=WorkMode.PAIR)
+    await driver.create_task("Attached task", launcher="tmux")
     yield driver
     await driver.teardown()
 
 
 async def test_ctrl_r_opens_repo_picker_modal(board: KaganDriver) -> None:
-    """Pressing Ctrl+R opens the repo picker modal."""
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
@@ -39,7 +32,6 @@ async def test_ctrl_r_opens_repo_picker_modal(board: KaganDriver) -> None:
 
 
 async def test_repo_picker_lists_project_repositories(board: KaganDriver) -> None:
-    """Repo picker modal shows project repositories."""
     from textual.widgets import OptionList
 
     from kagan.tui import KaganApp
@@ -55,8 +47,7 @@ async def test_repo_picker_lists_project_repositories(board: KaganDriver) -> Non
         assert repo_list.option_count >= 1
 
 
-def test_tmux_session_name_uses_pair_session_id() -> None:
-    """Tmux session name is derived from pair session ID."""
+def test_tmux_session_name_uses_attached_session_id() -> None:
     from kagan.tui.screens.kanban import KanbanScreen
 
     assert KanbanScreen._tmux_session_name("session:abc123") == "kagan-session-abc123"

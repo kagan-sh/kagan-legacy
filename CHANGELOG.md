@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.0-beta.3 (2026-03-21)
+
+### Bug Fixes
+
+- **core**: Compat import for ACP KillTerminalResponse rename
+  ([`2db3485`](https://github.com/kagan-sh/kagan/commit/2db34855eb3fb4687d828f45d218b28134c08c27))
+
+
 ## v0.10.0-beta.2 (2026-03-21)
 
 ### Bug Fixes

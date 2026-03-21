@@ -70,10 +70,9 @@ def _get_data_dirs() -> list[tuple[str, Path, str]]:
 
     data_dir = Path(os.environ.get("KAGAN_DATA_DIR") or user_data_dir("kagan", "kagan"))
     config_dir = Path(os.environ.get("KAGAN_CONFIG_DIR") or user_config_dir("kagan", "kagan"))
+    default_worktree_dir = Path(user_state_dir("kagan", "kagan")) / "worktrees"
     wt_override = os.environ.get("KAGAN_WORKTREE_BASE")
-    worktree_dir = (
-        Path(wt_override) if wt_override else Path(user_state_dir("kagan", "kagan")) / "worktrees"
-    )
+    worktree_dir = Path(wt_override).expanduser() if wt_override else default_worktree_dir
     log_dir = Path(user_log_dir("kagan", "kagan"))
 
     return [
@@ -82,6 +81,19 @@ def _get_data_dirs() -> list[tuple[str, Path, str]]:
         ("Worktrees", worktree_dir, "Git worktree checkouts for task execution"),
         ("Logs", log_dir, "Application log files"),
     ]
+
+
+def _safe_to_remove_tree(label: str, path: Path) -> bool:
+    if label != "Worktrees":
+        return True
+
+    from platformdirs import user_state_dir
+
+    default_worktree_dir = (Path(user_state_dir("kagan", "kagan")) / "worktrees").resolve()
+    try:
+        return path.resolve() == default_worktree_dir
+    except OSError:
+        return False
 
 
 def _query(engine, fn):
@@ -272,6 +284,12 @@ def _do_full_reset(client, force: bool) -> None:
         # Don't delete the data dir itself (DB was just recreated there),
         # but do clean worktrees and logs
         if label == "Database":
+            continue
+        if not _safe_to_remove_tree(label, path):
+            click.echo(
+                f"  {click.style('!', fg='yellow')} Skipped {label}: {path} "
+                "(external override requires manual cleanup)"
+            )
             continue
         try:
             shutil.rmtree(path)

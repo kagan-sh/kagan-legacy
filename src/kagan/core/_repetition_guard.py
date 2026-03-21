@@ -54,7 +54,9 @@ class RepetitionGuard:
         Returns:
             True if the call appears repetitive (same call >= threshold times in window)
         """
-        arg_hash = hashlib.md5(_normalize_for_hash(arguments).encode()).hexdigest()[:8]
+        arg_hash = hashlib.blake2s(
+            _normalize_for_hash(arguments).encode(), digest_size=8
+        ).hexdigest()
         key = f"{tool_name}:{arg_hash}"
 
         self._recent.append(key)

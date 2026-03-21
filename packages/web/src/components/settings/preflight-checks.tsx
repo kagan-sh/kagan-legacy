@@ -5,17 +5,27 @@ import type { PreflightCheck, PreflightResponse } from '@/lib/api/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-const STATUS_ICON: Record<string, typeof CheckCircle> = {
-  pass: CheckCircle,
-  fail: XCircle,
-  warn: AlertTriangle,
-};
+function getStatusIcon(status: string): typeof CheckCircle {
+  switch (status) {
+    case 'fail':
+      return XCircle;
+    case 'warn':
+      return AlertTriangle;
+    default:
+      return CheckCircle;
+  }
+}
 
-const STATUS_COLOR: Record<string, string> = {
-  pass: 'text-[var(--kagan-success)]',
-  fail: 'text-[var(--destructive)]',
-  warn: 'text-[var(--kagan-warning)]',
-};
+function getStatusColor(status: string): string {
+  switch (status) {
+    case 'fail':
+      return 'text-[var(--destructive)]';
+    case 'warn':
+      return 'text-[var(--kagan-warning)]';
+    default:
+      return 'text-[var(--kagan-success)]';
+  }
+}
 
 export function PreflightChecks() {
   const [data, setData] = useState<PreflightResponse | null>(null);
@@ -60,8 +70,8 @@ export function PreflightChecks() {
       ) : data ? (
         <div className="space-y-2">
           {data.checks.map((check: PreflightCheck) => {
-            const Icon = STATUS_ICON[check.status] ?? AlertTriangle;
-            const color = STATUS_COLOR[check.status] ?? 'text-[var(--muted-foreground)]';
+            const Icon = getStatusIcon(check.status);
+            const color = getStatusColor(check.status);
             return (
               <div key={check.name} className="flex items-start gap-2 text-sm">
                 <Icon className={`mt-0.5 size-4 shrink-0 ${color}`} />

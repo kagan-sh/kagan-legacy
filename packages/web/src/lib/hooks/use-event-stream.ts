@@ -41,10 +41,9 @@ export function useEventStream() {
   // Ref to track abort controller for cleanup
   const abortRef = useRef<AbortController | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   useEffect(() => {
-    let attempts = 0;
-
     const connect = () => {
       // Clean up previous
       abortRef.current?.abort();
@@ -55,7 +54,6 @@ export function useEventStream() {
         let streamEstablished = false;
         try {
           setSseConnected(true);
-          setReconnectAttempts(0);
 
           // Initial board fetch on connect
           fetchTasks();
@@ -66,7 +64,8 @@ export function useEventStream() {
             // Reset backoff once stream delivers its first message
             if (!streamEstablished) {
               streamEstablished = true;
-              attempts = 0;
+              reconnectAttemptsRef.current = 0;
+              setReconnectAttempts(0);
             }
             if (msg.type === 'TASK_UPDATED') {
               if (msg.task_id) {
@@ -117,10 +116,10 @@ export function useEventStream() {
         } finally {
           if (!controller.signal.aborted) {
             setSseConnected(false);
-            attempts += 1;
-            setReconnectAttempts(attempts);
+            reconnectAttemptsRef.current += 1;
+            setReconnectAttempts(reconnectAttemptsRef.current);
             // Exponential backoff: 1s, 2s, 4s, ... max 30s
-            const delay = Math.min(1000 * 2 ** attempts, 30_000);
+            const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30_000);
             reconnectTimerRef.current = setTimeout(connect, delay);
           }
         }

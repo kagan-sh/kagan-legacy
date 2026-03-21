@@ -1122,6 +1122,16 @@ class KanbanScreen(Screen[None]):
             self._set_inline_action_message(None)
             return
 
+        # Guard: cannot attach while a managed run is active
+        summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
+        if summary.has_active and summary.active_launcher is None:
+            self.app.notify(
+                "A managed run is already active. Stop it first to attach interactively.",
+                severity="warning",
+            )
+            self._set_inline_action_message(None)
+            return
+
         # 2. Show instructions modal (unless skipped)
         skip_instructions_raw = settings.get("skip_attached_instructions_popup", "")
         skip_instructions = str(skip_instructions_raw).strip().lower() in {

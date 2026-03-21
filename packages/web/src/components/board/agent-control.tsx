@@ -308,7 +308,7 @@ export function AgentControl({
             }
 
             if (isRunning && !hasInteractiveSession) {
-                toast.info("A managed run is already active.");
+                toast.info("A managed run is already active. Stop it first to attach interactively.");
                 return;
             }
 

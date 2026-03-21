@@ -54,3 +54,15 @@ Run `kagan web` (add `--host 0.0.0.0` for network access). See [docs](https://do
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">
+  <a href="https://www.star-history.com/#kagan-sh/kagan&type=date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kagan-sh/kagan&type=date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kagan-sh/kagan&type=date" />
+      <img alt="Star History" src="https://api.star-history.com/svg?repos=kagan-sh/kagan&type=date" width="600" />
+    </picture>
+  </a>
+</p>

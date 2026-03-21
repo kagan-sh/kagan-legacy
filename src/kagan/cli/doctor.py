@@ -238,7 +238,15 @@ def _emit_technical(checks: list[DoctorCheck]) -> None:
         click.echo(f"  verify: {check.verify_hint}")
 
 
-@click.command(name="doctor")
+@click.command(
+    name="doctor",
+    epilog=(
+        "Examples:\n"
+        "  kagan doctor                      Quick health check\n"
+        "  kagan doctor --verbosity tldr     One-line summary\n"
+        "  kagan doctor --verbosity technical Full diagnostic output"
+    ),
+)
 @click.option(
     "--verbosity",
     type=click.Choice(["tldr", "short", "technical"], case_sensitive=False),
@@ -257,6 +265,11 @@ def doctor(verbosity: str) -> None:
         _emit_short(checks)
 
     has_failures = any(check.status == "fail" for check in checks)
+    if has_failures:
+        from kagan.core._logging import default_log_path
+
+        click.echo(f"\nLog file: {default_log_path()}")
+
     click.get_current_context().exit(1 if has_failures else 0)
 
 
@@ -279,6 +292,11 @@ def render_doctor_report(
         _emit_technical(checks)
     else:
         _emit_short(checks)
+
+    if any(c.status == "fail" for c in checks):
+        from kagan.core._logging import default_log_path
+
+        click.echo(f"\nLog file: {default_log_path()}")
 
 
 def doctor_has_failures(checks: list[DoctorCheck]) -> bool:

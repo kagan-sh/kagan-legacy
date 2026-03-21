@@ -1,3 +1,4 @@
+import difflib
 import importlib
 from importlib.metadata import version
 
@@ -64,6 +65,17 @@ def _sync_rich_click_groups(root_group: click.Group) -> None:
 
 _configure_rich_click()
 
+_ISSUES_URL = "https://github.com/kagan-sh/kagan/issues"
+
+
+def _print_crash_footer() -> None:
+    from kagan.core._logging import default_log_path
+
+    log_path = default_log_path()
+    click.echo(f"Log file: {log_path}", err=True)
+    click.echo(f"Bug report: {_ISSUES_URL}/new", err=True)
+
+
 _CLIGroupBase: type[click.Group] = _RICH_GROUP_BASE
 
 
@@ -83,6 +95,23 @@ class _CLIGroup(_CLIGroupBase):
         self._ensure_commands_registered()
         return super().get_command(ctx, cmd_name)
 
+    def resolve_command(self, ctx: click.Context, args: list[str]) -> tuple:
+        self._ensure_commands_registered()
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            if args:
+                cmd_name = args[0]
+                matches = difflib.get_close_matches(
+                    cmd_name, self.list_commands(ctx), n=3, cutoff=0.6
+                )
+                if matches:
+                    suggestion = ", ".join(f"'{m}'" for m in matches)
+                    raise click.UsageError(
+                        f"No such command '{cmd_name}'. Did you mean: {suggestion}?"
+                    ) from exc
+            raise
+
     def invoke(self, ctx: click.Context):
         try:
             return super().invoke(ctx)
@@ -94,7 +123,12 @@ class _CLIGroup(_CLIGroupBase):
             raise
         except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.exception("Unhandled CLI exception")
-            raise click.ClickException(str(exc)) from exc
+            _print_crash_footer()
+            hint = getattr(exc, "hint", "")
+            message = str(exc)
+            if hint:
+                message = f"{message}\nhint: {hint}"
+            raise click.ClickException(message) from exc
 
 
 def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
@@ -108,6 +142,14 @@ def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> 
     cls=_CLIGroup,
     invoke_without_command=True,
     help="ᘚᘛ Kagan — one orchestration layer to rule them all.",
+    epilog=(
+        "Examples:\n"
+        "  kagan                     Launch the TUI\n"
+        "  kagan chat --prompt '...' Single-shot agent prompt\n"
+        "  kagan web                 Open the web dashboard\n"
+        "  kagan doctor              Check system health\n"
+        "  kagan import github       Import GitHub issues"
+    ),
 )
 @click.option(
     "--version",

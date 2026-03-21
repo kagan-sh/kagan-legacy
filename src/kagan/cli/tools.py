@@ -257,7 +257,15 @@ def _run_refinement(prompt_text: str, backend_name: str) -> str:
     return refined
 
 
-@click.group(name="tools")
+@click.group(
+    name="tools",
+    epilog=(
+        "Examples:\n"
+        "  kagan tools enhance 'fix the login bug'\n"
+        "  kagan tools enhance --file prompt.txt\n"
+        "  kagan tools enhance --agent claude 'add dark mode'"
+    ),
+)
 def tools() -> None:
     return
 

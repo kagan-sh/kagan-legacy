@@ -16,58 +16,45 @@ uv run pytest tests/ -v
 
 ## Local CLI Install
 
-- `uv run poe install-local` is a one-time editable install for your machine.
-- After that, `kagan` points at your local repo checkout, so code changes are picked up automatically.
-- Re-run `uv run poe install-local` only when you change packaging metadata or entry points (for example `pyproject.toml` `[project.scripts]` / dependencies), or if the tool install becomes stale.
+`uv run poe install-local` installs the CLI in editable mode. After that, `kagan` points to your local checkout. Re-run only when changing `pyproject.toml` metadata or entry points.
 
 ## What to Submit
 
 - Small, focused PRs
 - Tests for behavior changes
-- Clear commit messages that explain why
+- Clear commit messages explaining why
 
-## Persona Preset Safety and Whitelist
+## Persona Preset Safety
 
-Kagan supports importing persona presets from public GitHub repos.
+Kagan supports importing persona presets from public GitHub repos. Imports are blocked for untrusted repos unless the user opts in with risk acknowledgment.
 
-- Imports are blocked for untrusted repos unless the user explicitly opts in with risk acknowledgment.
-- Trusted repos come from:
-  - project registry: `registry/persona_repo_whitelist.json`
-  - user-local whitelist (settings)
+Trusted repos are listed in:
+- `registry/persona_repo_whitelist.json`
+- User-local whitelist (settings)
 
-If you want your repo added to the project registry whitelist:
-
-1. Open a PR editing `registry/persona_repo_whitelist.json`
-1. Add your repo as `owner/repo` in lowercase
-1. Include a short note in the PR description:
-   - what the preset contains
-   - why it is safe to publish
-   - how users can review it
-
-Maintainers may remove entries at any time if trust signals change.
+To add your repo to the project registry, open a PR editing the whitelist JSON. Include: what the preset contains, why it is safe, and how users can review it.
 
 ## Security Expectations
 
-- Never include secrets or tokens in prompts
+- Never include secrets in prompts
 - Keep preset files human-reviewable JSON
 - Prefer immutable references (commit SHA) when sharing exact versions
 - Assume users will inspect source before import
 
 ## Documentation
 
-- Architecture and feature specs live in `docs/internal/`
+- Architecture and feature specs: `docs/internal/`
+- User docs: `docs/`
 
-- User docs live in `docs/`
+If you change TUI controls, update: `src/kagan/tui/keybindings.py`, in-app hints/help, `docs/reference/keybindings.md`, and related tests.
 
-- If you change TUI controls, update all of: `src/kagan/tui/keybindings.py`, in-app hints/help, `docs/reference/keybindings.md`, and related tests.
+Current chat-overlay controls: `Space` cycles split orientation, `Esc` closes, `Ctrl+F` opens fullscreen when overlay is visible.
 
-- Current chat-overlay control contract (Kanban/Task): `Space` cycles split orientation, `Esc` closes overlay, `Ctrl+F` opens fullscreen when overlay is visible.
-
-- If you change behavioral settings or prompt resolution, update: `src/kagan/core/_prompts.py`, the TUI settings modal, the web settings panel, `docs/reference/configuration.md`, and the AGENTS.md knowledge base.
+If you change behavioral settings or prompt resolution, update: `src/kagan/core/_prompts.py`, the TUI settings modal, web settings panel, `docs/reference/configuration.md`, and AGENTS.md.
 
 ## Web Client Changes
 
-If your PR touches `packages/web`, run these checks before opening the PR:
+If your PR touches `packages/web`, run these checks:
 
 ```bash
 cd packages/web
@@ -75,7 +62,7 @@ pnpm run typecheck
 pnpm run build
 ```
 
-If the bundled server assets are affected, also run:
+If bundled server assets are affected, also run:
 
 ```bash
 uv run poe web-build

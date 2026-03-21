@@ -15,10 +15,6 @@ class KaganBootstrapConfig:
 
 
 def default_config_path() -> Path:
-    """Return the default config file path.
-
-    Uses KAGAN_CONFIG_DIR environment variable if set, otherwise uses platformdirs.
-    """
     kagan_override = os.environ.get("KAGAN_CONFIG_DIR")
     if kagan_override:
         return Path(kagan_override) / "config.toml"
@@ -28,7 +24,6 @@ def default_config_path() -> Path:
 
 
 def load_config(config_path: Path | None = None) -> KaganBootstrapConfig:
-    """Load bootstrap config from TOML; returns defaults when file is missing."""
     path = config_path if config_path is not None else default_config_path()
     logger.debug("Loading config from {}", path)
     if not path.exists():
@@ -48,7 +43,6 @@ def load_config(config_path: Path | None = None) -> KaganBootstrapConfig:
 
 
 def save_config(cfg: KaganBootstrapConfig, config_path: Path | None = None) -> None:
-    """Persist bootstrap config to TOML, creating parent directories as needed."""
     path = config_path if config_path is not None else default_config_path()
     logger.debug("Saving config to {}", path)
     path.parent.mkdir(parents=True, exist_ok=True)

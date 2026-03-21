@@ -13,7 +13,7 @@ Tests ONLY use KaganDriver. They never touch services or drivers directly.
 from pathlib import Path
 from typing import Any
 
-from kagan.core import KaganCore, TaskStatus, WorkMode
+from kagan.core import KaganCore, TaskStatus
 from kagan.core.enums import Priority
 from tests.helpers.core_driver import CoreDriver, ProjectView, RepoView, TaskView
 from tests.helpers.fake_agent import FakeAgentFactory
@@ -81,6 +81,10 @@ class KaganDriver:
         """Configure a custom agent response (for advanced signal testing)."""
         self._agents.set_next_response(response)
 
+    def agent_will_stream(self, chunks: list[str]) -> None:
+        """Configure the next agent run to yield chunks in sequence."""
+        self._agents.set_next_stream(chunks)
+
     # ======================================================================
     # Project operations
     # ======================================================================
@@ -92,7 +96,7 @@ class KaganDriver:
         description: str | None = None,
     ) -> str:
         """Create a project, optionally linking a git repo. Returns project_id."""
-        repo_paths = [repo_path] if repo_path else None
+        repo_paths: list[str | Path] | None = [repo_path] if repo_path else None
         return await self._driver.create_project(
             name, repo_paths=repo_paths, description=description
         )
@@ -134,7 +138,6 @@ class KaganDriver:
         title: str = "Test Task",
         description: str = "",
         *,
-        task_type: WorkMode = WorkMode.AUTO,
         priority: Priority = Priority.MEDIUM,
         acceptance_criteria: list[str] | None = None,
         base_branch: str | None = None,
@@ -145,7 +148,6 @@ class KaganDriver:
         return await self._driver.create_task(
             title,
             description,
-            task_type=task_type,
             priority=priority,
             acceptance_criteria=acceptance_criteria,
             base_branch=base_branch,
@@ -157,9 +159,31 @@ class KaganDriver:
         """Fetch a task by ID."""
         return await self._driver.get_task(task_id)
 
-    async def update_task(self, task_id: str, **kwargs: object) -> TaskView:
+    async def update_task(
+        self,
+        task_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        priority: Priority | None = None,
+        acceptance_criteria: list[str] | None = None,
+        base_branch: str | None = None,
+        agent_backend: str | None = None,
+        launcher: str | None = None,
+        status: TaskStatus | None = None,
+    ) -> TaskView:
         """Update task fields."""
-        return await self._driver.update_task(task_id, **kwargs)
+        return await self._driver.update_task(
+            task_id,
+            title=title,
+            description=description,
+            priority=priority,
+            acceptance_criteria=acceptance_criteria,
+            base_branch=base_branch,
+            agent_backend=agent_backend,
+            launcher=launcher,
+            status=status,
+        )
 
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task."""
@@ -207,39 +231,43 @@ class KaganDriver:
         """Read the task's scratchpad."""
         return await self._driver.get_scratchpad(task_id)
 
+    async def list_notes(self, task_id: str) -> list[str]:
+        return await self._driver.list_notes(task_id)
+
     async def annotate(self, task_id: str, note: str) -> None:
         """Append a note to the task's scratchpad."""
-        existing = await self._driver.get_scratchpad(task_id)
-        separator = "\n\n" if existing else ""
-        await self._driver.update_scratchpad(task_id, existing + separator + note)
+        await self._driver.update_scratchpad(task_id, note)
 
     # ======================================================================
     # Automation lifecycle (composite operations)
     # ======================================================================
 
-    async def start_auto(self, task_id: str) -> bool:
-        """Start an AUTO agent run for a task."""
-        return await self._driver.start_auto(task_id)
+    async def run_task(
+        self,
+        task_id: str,
+        *,
+        agent_backend: str | None = None,
+        launcher: str | None = None,
+    ) -> Any | None:
+        return await self._driver.run_task(
+            task_id,
+            agent_backend=agent_backend,
+            launcher=launcher,
+        )
 
-    async def stop_auto(self, task_id: str) -> bool:
-        """Stop a running AUTO agent."""
-        return await self._driver.stop_auto(task_id)
+    async def cancel_task(self, task_id: str) -> bool:
+        return await self._driver.cancel_task(task_id)
 
-    async def run_auto_to_completion(
+    async def run_detached_to_completion(
         self,
         task_id: str,
         *,
         timeout: float = 10.0,
     ) -> TaskView:
-        """Start an AUTO task and wait for the agent to finish.
-
-        The caller must have configured the agent response beforehand
-        (e.g. agent_will_complete(), agent_will_block()).
-        """
-        started = await self._driver.start_auto(task_id)
-        if not started:
+        session = await self._driver.run_task(task_id)
+        if session is None:
             return await self._driver.get_task(task_id)
-        return await self._driver.wait_for_auto_complete(task_id, timeout=timeout)
+        return await self._driver.wait_for_detached_complete(task_id, timeout=timeout)
 
     # ======================================================================
     # Review
@@ -369,23 +397,8 @@ class KaganDriver:
             return False
         return await commit_file(Path(path), relative_path, content, message=message)
 
-    async def pair_task(
-        self,
-        task_id: str,
-        *,
-        agent_backend: str = "claude-code",
-        launcher: str = "tmux",
-    ) -> Any:
-        """Start a PAIR session for a task. Returns session or raises."""
-        return await self._driver.pair_task(task_id, agent_backend=agent_backend, launcher=launcher)
-
-    async def cancel_task(self, task_id: str) -> None:
-        """Cancel a task's active session."""
-        await self._driver.cancel_task(task_id)
-
-    async def end_pairing(self, task_id: str) -> dict[str, Any]:
-        """End a PAIR session for a task. Returns result with status info."""
-        return await self._driver.end_pairing(task_id)
+    async def detach_task(self, task_id: str) -> dict[str, Any]:
+        return await self._driver.detach_task(task_id)
 
     async def wait_for_status(
         self,

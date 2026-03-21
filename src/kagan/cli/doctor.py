@@ -27,7 +27,6 @@ class DoctorCheck:
 
 
 def _parse_zellij_version() -> tuple[int, ...] | None:
-    """Parse Zellij version from ``zellij --version`` output."""
     try:
         out = subprocess.run(
             ["zellij", "--version"],
@@ -80,7 +79,6 @@ def _verify_hint(name: str) -> str:
 
 
 async def _load_and_collect_plugin_checks(manager: PluginManager) -> list[PreflightCheckResult]:
-    """Load plugins and collect their preflight checks."""
     await manager.load()
     return manager.preflight()
 
@@ -188,7 +186,6 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
                 )
             )
 
-        # Plugin preflight checks
         try:
             from kagan.plugins import PluginManager
 
@@ -264,7 +261,6 @@ def doctor(verbosity: str) -> None:
 
 
 def run_doctor_checks() -> list[DoctorCheck]:
-    """Run all doctor checks and return the results."""
     return _collect_doctor_checks()
 
 
@@ -274,7 +270,6 @@ def render_doctor_report(
     title: str = "Kagan Doctor",
     verbosity: str = "short",
 ) -> None:
-    """Render a doctor report to stdout."""
     click.echo()
     click.secho(title, bold=True)
     click.echo()
@@ -287,5 +282,4 @@ def render_doctor_report(
 
 
 def doctor_has_failures(checks: list[DoctorCheck]) -> bool:
-    """Return True if any check has a 'fail' status."""
     return any(check.status == "fail" for check in checks)

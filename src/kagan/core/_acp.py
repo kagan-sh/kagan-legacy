@@ -32,6 +32,7 @@ from acp.schema import (
     ToolCallProgress,
     ToolCallStart,
     ToolCallUpdate,
+    UsageUpdate,
     UserMessageChunk,
     WaitForTerminalExitResponse,
     WriteTextFileResponse,
@@ -203,7 +204,7 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
     ):
         return (
             f"{prefix} Account usage/subscription limit reached. "
-            "Review your Anthropic plan and billing limits."
+            "Review your provider plan and billing limits."
         )
     if (
         "authentication" in lowered
@@ -231,7 +232,7 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
             "Check connection, VPN/proxy, then retry."
         )
     if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
-        return f"{prefix} Anthropic service is overloaded right now. Retry shortly."
+        return f"{prefix} The provider service is overloaded right now. Retry shortly."
     return f"{prefix} {raw}"
 
 
@@ -269,7 +270,7 @@ class KaganACPClient(ACPClientBase):
         )
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 
-    async def session_update(  # noqa: bad-override
+    async def session_update(
         self,
         session_id: str,
         update: UserMessageChunk
@@ -280,7 +281,8 @@ class KaganACPClient(ACPClientBase):
         | AgentPlanUpdate
         | AvailableCommandsUpdate
         | CurrentModeUpdate
-        | SessionInfoUpdate,
+        | SessionInfoUpdate
+        | UsageUpdate,
         **kwargs: Any,
     ) -> None:
         logger.debug(
@@ -302,7 +304,8 @@ def map_acp_update_to_event(
     | AgentPlanUpdate
     | AvailableCommandsUpdate
     | CurrentModeUpdate
-    | SessionInfoUpdate,
+    | SessionInfoUpdate
+    | UsageUpdate,
 ) -> tuple[SessionEventType, dict[str, Any]] | None:
     """Map ACP session updates to kagan event types and payloads."""
     if isinstance(update, UserMessageChunk):
@@ -336,6 +339,17 @@ def map_acp_update_to_event(
         return SessionEventType.TOOL_CALL_UPDATE, payload
     if isinstance(update, AgentPlanUpdate):
         return SessionEventType.PLAN_UPDATE, payload
+    if isinstance(update, UsageUpdate):
+        usage_payload: dict[str, Any] = {
+            "usage": {
+                "size": update.size,
+                "used": update.used,
+                "cost": update.cost.amount if update.cost else None,
+                "cost_currency": update.cost.currency if update.cost else None,
+            },
+            "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True),
+        }
+        return SessionEventType.AGENT_STATUS, usage_payload
     return SessionEventType.AGENT_STATUS, payload
 
 

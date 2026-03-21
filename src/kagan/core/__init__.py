@@ -22,19 +22,27 @@ from kagan.core._agent import (
     build_mcp_manifest,
     get_backend,
     list_backends,
+    resolve_default_agent_backend,
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
 from kagan.core._db import default_db_path
 from kagan.core._launchers import resolve_launcher
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._prompts import (
+    ADDITIONAL_INSTRUCTIONS_KEY,
+    AUTO_CONFIRM_SINGLE_KEY,
+    DEFAULT_ORCHESTRATOR_PROMPT,
     PERSONA_DEFINITIONS_KEY,
     PERSONA_USER_WHITELIST_KEY,
-    PROMPT_ORCHESTRATOR_KEY,
-    PROMPT_REVIEW_KEY,
+    PLANNING_DEPTH_KEY,
+    REVIEW_STRICTNESS_KEY,
     build_conflict_resolution_feedback,
+    detect_dotfile_overrides,
     load_persona_definitions,
     prepend_custom_prompt,
+    resolve_orchestrator_prompt,
+    resolve_review_prompt,
+    resolve_task_prompt,
     serialize_persona_definitions,
 )
 from kagan.core.client import DBWatcher, KaganCore
@@ -44,7 +52,7 @@ from kagan.core.enums import (
     SessionEventType,
     SessionStatus,
     TaskStatus,
-    WorkMode,
+    parse_priority,
 )
 from kagan.core.errors import (
     AgentError,
@@ -52,6 +60,7 @@ from kagan.core.errors import (
     InvalidTransitionError,
     KaganError,
     MergeConflictError,
+    MultiRepoUnsupportedError,
     NotFoundError,
     PreflightError,
     SessionError,
@@ -72,8 +81,11 @@ from kagan.core.models import (
 )
 
 __all__ = [
+    "ADDITIONAL_INSTRUCTIONS_KEY",
+    "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
     "CODEX_BACKEND",
+    "DEFAULT_ORCHESTRATOR_PROMPT",
     "GEMINI_CLI_BACKEND",
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
@@ -81,8 +93,8 @@ __all__ = [
     "OPENCODE_BACKEND",
     "PERSONA_DEFINITIONS_KEY",
     "PERSONA_USER_WHITELIST_KEY",
-    "PROMPT_ORCHESTRATOR_KEY",
-    "PROMPT_REVIEW_KEY",
+    "PLANNING_DEPTH_KEY",
+    "REVIEW_STRICTNESS_KEY",
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
@@ -95,6 +107,7 @@ __all__ = [
     "KaganCore",
     "KaganError",
     "MergeConflictError",
+    "MultiRepoUnsupportedError",
     "NotFoundError",
     "PreflightCheckResult",
     "PreflightError",
@@ -111,19 +124,24 @@ __all__ = [
     "TaskNote",
     "TaskStatus",
     "ValidationError",
-    "WorkMode",
     "Worktree",
     "WorktreeError",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
     "default_db_path",
+    "detect_dotfile_overrides",
     "get_backend",
     "get_system_git_identity",
     "install_asyncio_subprocess_exception_filter",
     "list_backends",
     "load_persona_definitions",
+    "parse_priority",
     "prepend_custom_prompt",
+    "resolve_default_agent_backend",
     "resolve_launcher",
+    "resolve_orchestrator_prompt",
+    "resolve_review_prompt",
+    "resolve_task_prompt",
     "serialize_persona_definitions",
 ]

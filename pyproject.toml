@@ -34,19 +34,24 @@ classifiers = [
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-  "agent-client-protocol>=0.7.0,<1.0.0",
+  "agent-client-protocol>=0.8.0,<1.0.0",
   "alembic>=1.16.0",
   "click>=8.1.0",
+  "cryptography>=46.0",
   "loguru>=0.7.0",
   "mcp>=1.26.0,<2.0.0",
   "mslex>=1.3.0",
   "packaging>=24.0",
   "platformdirs>=4.3.0",
+  "pydantic>=2.0.0",
   "prompt-toolkit>=3.0.0",
+  "qrcode>=8.2",
   "rich>=14.0.0",
   "sqlmodel>=0.0.22",
   "textual>=7.0.0",
   "tomlkit>=0.13.0",
+  "uvicorn>=0.34.0",
+  "websockets>=15.0",
 ]
 
 [project.scripts]
@@ -70,6 +75,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/kagan"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/kagan/server/_web_static" = "kagan/server/_web_static"
 [dependency-groups]
 dev = [
   "poethepoet>=0.40.0",
@@ -86,6 +93,8 @@ dev = [
   "pytest-xdist>=3.8.0",
   "python-semantic-release>=10.5.3",
   "pytest-sugar>=1.1.1",
+  "playwright>=1.58.0",
+  "pytest-playwright>=0.7.2",
 ]
 
 [tool.ruff]
@@ -113,6 +122,9 @@ max-complexity = 20
 "src/kagan/mcp/**/*.py" = [
   "TC001", "TC002", "TC003",
 ] # MCP framework evaluates annotations at runtime via inspect.signature(eval_str=True)
+"src/kagan/server/_routes.py" = [
+  "C901",
+]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -188,7 +200,8 @@ test = "pytest tests/"
 lint = "ruff check src/"
 check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"
-check-guardrails = ["check-loc", "check-complexity"]
+check-wire-drift = "python scripts/check_wire_drift.py"
+check-guardrails = ["check-loc", "check-complexity", "check-wire-drift"]
 format = "ruff format src/ tests/"
 typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrations/versions src/"
 deadcode = "vulture"
@@ -211,7 +224,7 @@ cmd = "uv tool install --editable --force --reinstall ."
 
 [tool.poe.tasks.dev-setup]
 help = "Install local CLI, reset DB, and stop core daemon"
-sequence = [{ ref = "install-local" }, { cmd = "kagan reset --force" }]
+sequence = [{ ref = "web-build" }, { ref = "install-local" }, { cmd = "kagan reset --force" }]
 
 [tool.poe.tasks.fix]
 help = "Fix linting issues and format code"
@@ -234,6 +247,59 @@ help = "Dry-run beta release (no changes made)"
 [tool.poe.tasks.snapshot-update]
 help = "Update TUI snapshot tests (run sequentially)"
 cmd = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
+
+[tool.poe.tasks.web-build]
+help = "Build React web bundle and copy into the Python package for 'kagan web'"
+sequence = [
+  { shell = "cd packages/web && pnpm run build" },
+  { shell = "rm -rf src/kagan/server/_web_static/* && cp -R packages/web/dist/* src/kagan/server/_web_static/ && touch src/kagan/server/_web_static/.gitkeep" },
+]
+
+[tool.poe.tasks.dev-web]
+help = "Rebuild latest web frontend and start the web server"
+sequence = [
+  { ref = "web-build" },
+  { cmd = "uv run kg web" },
+]
+
+[tool.poe.tasks.dev-web-hot]
+help = "Start backend + Vite dev server with hot reload (no bundle rebuild)"
+shell = """
+echo "Starting Kagan dev servers..."
+echo "  Frontend: http://localhost:5173 (Vite with hot reload)"
+echo "  Backend:  http://127.0.0.1:8765 (API server)"
+echo ""
+cd packages/web && pnpm exec concurrently \\
+  --names "VITE,API" \\
+  --prefix-colors "cyan,magenta" \\
+  --kill-others \\
+  "pnpm exec vite" \\
+  "sleep 2 && cd ../.. && uv run kg web --dev --no-open"
+"""
+
+[tool.poe.tasks.web-typecheck]
+help = "Run TypeScript type checking on the web package"
+shell = "cd packages/web && pnpm exec tsc --noEmit"
+
+[tool.poe.tasks.web-lint]
+help = "Run ESLint on the web package"
+shell = "cd packages/web && pnpm run lint 2>/dev/null || true"
+
+[tool.poe.tasks.web-test]
+help = "Run Vitest unit tests on the web package"
+shell = "cd packages/web && pnpm exec vitest run"
+
+[tool.poe.tasks.web-check]
+help = "Run all web package checks (typecheck + test)"
+sequence = ["web-typecheck", "web-test"]
+
+[tool.poe.tasks.test-all]
+help = "Run all tests across the monorepo (Python + web)"
+sequence = ["test", "web-test"]
+
+[tool.poe.tasks.check-all]
+help = "Run all checks across the monorepo (Python lint/typecheck/deadcode/test + web typecheck/test)"
+sequence = ["lint", "typecheck", "deadcode", "test", "web-check"]
 
 [tool.poe.tasks.workflows-check]
 help = "Validate GitHub Actions workflows using act (requires act installed)"

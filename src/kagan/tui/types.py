@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 
 __all__ = [
     "ChatTargetKind",
@@ -41,19 +41,15 @@ class TaskView(Protocol):
     description: str
     status: TaskStatus
     priority: Priority
-    execution_mode: WorkMode
     agent_backend: str | None
     base_branch: str | None
     acceptance_criteria: list[str]
 
 
 class TaskUpdateResult(Protocol):
-    """Result shape returned from task create/edit modals."""
-
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     task_type: str | None
     agent_backend: str | None
     terminal_backend: str | None
@@ -63,12 +59,9 @@ class TaskUpdateResult(Protocol):
 
 
 class ModalActionResult(Protocol):
-    """Result shape for special modal actions (e.g. DELETE)."""
-
     action: str
 
 
-# Union of possible screen results.
 ScreenResult = TaskUpdateResult | ModalActionResult | dict[str, object] | None
 
 

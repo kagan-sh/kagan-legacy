@@ -17,15 +17,12 @@ def _patch_select_overlay_page_navigation() -> None:
         return
 
     def _safe_move_page(self: SelectOverlay, direction: Any) -> None:
-        # Guard 1: No options at all -> nothing to navigate
         options = getattr(self, "_options", None)
         if not options:
             return
-        # Guard 2: No lines rendered yet -> cannot compute page offset
         lines = getattr(self, "_lines", None)
         if not lines:
             return
-        # Guard 3: Index map empty or missing highlighted key -> fallback to boundary
         highlighted = self.highlighted
         anchor = highlighted if isinstance(highlighted, int) else 0
         index_to_line = getattr(self, "_index_to_line", None)
@@ -38,10 +35,7 @@ def _patch_select_overlay_page_navigation() -> None:
         try:
             original_move_page(self, direction)
         except KeyError:
-            # Defensive guard for transient stale index maps on overlay updates.
-            logger.debug(
-                "Caught KeyError in SelectOverlay._move_page, falling back to boundary action"
-            )
+            logger.debug("SelectOverlay._move_page KeyError, using fallback")
             if direction < 0:
                 self.action_first()
             else:
@@ -52,7 +46,6 @@ def _patch_select_overlay_page_navigation() -> None:
 
 
 def apply_textual_compat_workarounds() -> None:
-    """Apply runtime compatibility fixes for known Textual edge cases."""
     _patch_select_overlay_page_navigation()
 
 

@@ -43,7 +43,6 @@ def _ensure_required_columns(conn: Connection) -> None:
             ("default_branch", "VARCHAR DEFAULT 'main'"),
         ),
         "tasks": (
-            ("execution_mode", "VARCHAR DEFAULT 'AUTO'"),
             ("launcher", "VARCHAR DEFAULT NULL"),
             ("review_approved", "BOOLEAN DEFAULT 0"),
             ("scratchpad", "TEXT DEFAULT ''"),
@@ -54,7 +53,6 @@ def _ensure_required_columns(conn: Connection) -> None:
         ),
         "sessions": (
             ("task_id", "VARCHAR DEFAULT NULL"),
-            ("mode", "VARCHAR DEFAULT 'PAIR'"),
             ("agent_backend", "VARCHAR DEFAULT 'codex'"),
             ("launcher", "VARCHAR DEFAULT NULL"),
             ("pid", "INTEGER DEFAULT NULL"),
@@ -177,25 +175,6 @@ def _backfill_tasks(conn: Connection) -> None:
     if not task_columns:
         return
 
-    if "task_type" in task_columns:
-        conn.exec_driver_sql(
-            """
-            UPDATE tasks
-            SET execution_mode = CASE UPPER(COALESCE(task_type, ''))
-                WHEN 'AUTO' THEN 'AUTO'
-                WHEN 'PAIR' THEN 'PAIR'
-                ELSE 'AUTO'
-            END
-            WHERE task_type IS NOT NULL
-            """
-        )
-    conn.exec_driver_sql(
-        """
-        UPDATE tasks
-        SET execution_mode = 'AUTO'
-        WHERE execution_mode IS NULL OR execution_mode = ''
-        """
-    )
     if "terminal_backend" in task_columns:
         conn.exec_driver_sql(
             """
@@ -336,7 +315,6 @@ def _migrate_sessions(conn: Connection) -> None:
     if not is_legacy:
         return
 
-    conn.exec_driver_sql("DROP INDEX IF EXISTS ix_sessions_mode")
     conn.exec_driver_sql("DROP INDEX IF EXISTS ix_sessions_status")
     conn.exec_driver_sql("DROP INDEX IF EXISTS ix_sessions_task_id")
     conn.exec_driver_sql("ALTER TABLE sessions RENAME TO sessions_legacy")
@@ -345,7 +323,6 @@ def _migrate_sessions(conn: Connection) -> None:
         "sessions",
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("task_id", sa.String(), nullable=False),
-        sa.Column("mode", sa.String(), nullable=False),
         sa.Column("agent_backend", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("launcher", sa.String(), nullable=True),
@@ -356,7 +333,6 @@ def _migrate_sessions(conn: Connection) -> None:
         sa.ForeignKeyConstraint(["task_id"], ["tasks.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_sessions_mode ON sessions (mode)")
     conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_sessions_status ON sessions (status)")
     conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_sessions_task_id ON sessions (task_id)")
 
@@ -365,7 +341,6 @@ def _migrate_sessions(conn: Connection) -> None:
         INSERT OR IGNORE INTO sessions (
             id,
             task_id,
-            mode,
             agent_backend,
             status,
             launcher,
@@ -377,10 +352,6 @@ def _migrate_sessions(conn: Connection) -> None:
         SELECT
             s.id,
             COALESCE(s.task_id, w.task_id),
-            CASE UPPER(COALESCE(s.session_type, ''))
-                WHEN 'ACP' THEN 'AUTO'
-                ELSE 'PAIR'
-            END,
             COALESCE(t.agent_backend, 'codex'),
             CASE UPPER(COALESCE(s.status, ''))
                 WHEN 'ACTIVE' THEN 'RUNNING'
@@ -411,25 +382,6 @@ def _backfill_sessions(conn: Connection) -> None:
     if not columns:
         return
 
-    conn.exec_driver_sql(
-        """
-        UPDATE sessions
-        SET mode = (
-            SELECT t.execution_mode
-            FROM tasks AS t
-            WHERE t.id = sessions.task_id
-            LIMIT 1
-        )
-        WHERE mode IS NULL OR mode = '' OR mode = 'PAIR'
-        """
-    )
-    conn.exec_driver_sql(
-        """
-        UPDATE sessions
-        SET mode = 'PAIR'
-        WHERE mode IS NULL OR mode = ''
-        """
-    )
     conn.exec_driver_sql(
         """
         UPDATE sessions
@@ -507,4 +459,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("Downgrade is not supported for the bootstrap migration")
+    raise RuntimeError("Downgrade is not supported")

@@ -9,8 +9,6 @@ from kagan.tui.widgets.hint_bar import format_hint
 
 
 class MessageActionsModal(ModalScreen[str | None]):
-    """Modal for user message actions: copy text or go back."""
-
     BINDINGS = MESSAGE_ACTIONS_BINDINGS
 
     def __init__(

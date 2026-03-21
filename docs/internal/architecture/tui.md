@@ -7,21 +7,21 @@ ______________________________________________________________________
 
 ## References
 
-| Package     | Repo                                                        | Use                                                                                                     |
-| ----------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers, message passing.                            |
-| **Loguru**  | [Delgan/loguru](https://github.com/Delgan/loguru)           | Structured logging. Config and sink setup in core — see `docs/internal/architecture/core.md` § Logging. |
+| Package     | Repo                                                        | Use                                                       |
+| ----------- | ----------------------------------------------------------- | --------------------------------------------------------- |
+| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers |
+| **Loguru**  | [Delgan/loguru](https://github.com/Delgan/loguru)           | Structured logging. Config in core — see `core.md` § Logging |
 
 ______________________________________________________________________
 
 ## Design Principles
 
-- **Thin shell**: TUI calls core's async API, observes progress via `task.events.stream()`. Zero business logic in `kagan.tui`.
-- **Compose over inherit**: Build screens from small widgets, not deep class trees.
-- **Reactive state**: Textual's `reactive`/`var` for all mutable state. Watch methods drive re-renders, never manual refresh.
-- **Message-driven**: Widgets communicate via Textual messages, not direct method calls. Data binding flows down, messages bubble up.
-- **Flat structure**: `screens/` and `widgets/` each one file per concept. No sub-sub-directories.
-- **CSS for layout**: All visual concerns in `.tcss` files, not Python.
+- **Thin shell**: TUI calls core's async API, observes progress via `task.events.stream()`
+- **Compose over inherit**: Build screens from small widgets, not deep class trees
+- **Reactive state**: Textual's `reactive`/`var` for mutable state; watch methods drive re-renders
+- **Message-driven**: Widgets communicate via Textual messages; data flows down, messages bubble up
+- **Flat structure**: One file per concept in `screens/` and `widgets/`
+- **CSS for layout**: All visual concerns in `.tcss` files
 
 ______________________________________________________________________
 
@@ -29,135 +29,118 @@ ______________________________________________________________________
 
 ### How TUI uses core
 
-`KaganApp` holds a `KaganCore` instance, created during `on_mount`. No adapter,
-no protocol wrapper — screens and widgets call core's namespaced API directly through
-`self.app.core`.
+`KaganApp` holds a `KaganCore` instance, created during `on_mount`. Screens/widgets call core's namespaced API directly via `self.app.core`:
 
-| Namespace        | Example operations                                     |
+| Namespace        | Operations                                             |
 | ---------------- | ------------------------------------------------------ |
 | `core.tasks`     | `list`, `create`, `set_status`, `run`, `events.stream` |
 | `core.projects`  | `list`, `create`, `set_active`                         |
-| `core.worktrees` | `diff`                                                 |
+| `core.worktrees` | `diff`, `diff_stats`                                   |
 | `core.reviews`   | `approve`, `merge`                                     |
 | `core.settings`  | `get`, `set`                                           |
 
-### Observing progress — workers, not callbacks
+### Observing progress — workers
 
-Core writes events to the `run_events` table. TUI consumes them in exclusive Textual
+Core writes events to `run_events`. TUI consumes them in exclusive workers iterating over `core.tasks.events.stream(task_id)`. The stream uses reactive `asyncio.Event` signaling — when core's `_emit()` fires, the stream wakes immediately.
 
-workers that iterate over `core.tasks.events.stream(task_id)`. The stream uses reactive
-`asyncio.Event` signaling — when core's `_emit()` fires, the stream wakes immediately
-with near-zero latency and zero idle cost.
-
-Each worker posts Textual messages for every event it receives. No `CoreHooks`,
-no `call_from_thread`, no callback bridging. One pattern:
-**worker pulls `tasks.events.stream()`, posts Textual messages.**
-
-### Testing
-
-Real database, real git, real services. The only fake is the agent (`FakeAgentFactory`).
-Tests flow through the `KaganDriver` DSL — they never import TUI widgets or screens
-directly. See the Testing Philosophy section below for full details.
+Each worker posts Textual messages for events. One pattern: worker pulls `tasks.events.stream()` and posts messages.
 
 ### Dependency Direction
 
-```
+```text
 kagan.tui ──► kagan.core    (KaganCore: task ops, project ops, event streaming)
 kagan.tui ──► kagan.chat    (ChatSession: slash commands, conversation state)
 
 kagan.core ──✘──► kagan.tui   NEVER
 kagan.chat ──✘──► kagan.tui   NEVER
-kagan.mcp  ──✘──► kagan.tui   NEVER
-kagan.cli  ──✘──► kagan.tui   NEVER
 ```
 
 ______________________________________________________________________
 
 ## App & Screen Hierarchy
 
-```
+```text
 KaganApp (Textual App)
 │
-├── WelcomeScreen            # Logo, CWD banner (conditional), project OptionList
-│   └── OnboardingFlow          # Modal: default agent backend, default launcher, auto-review
-
+├── WelcomeScreen            # Logo, CWD banner, project OptionList
+│   └── OnboardingFlow       # Modal: default agent backend, launcher, auto-review
 │
 ├── KanbanScreen             # Main screen after project selected
 │   ├── BoardView            # 4-column kanban (BACKLOG → DONE)
-│   ├── TaskInspector        # Docked details panel opened from board selection
-│   ├── ChatPanel            # Docked / fullscreen AI chat overlay
-│   └── PeekOverlay          # Task preview on Space
+│   ├── TaskInspector        # Docked details panel
+│   ├── ChatPanel            # Docked / fullscreen AI Panel
+│   └── PeekOverlay          # Task preview on P
 │
 ├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
 │
-├── TaskScreen              # Pushed from kanban for AUTO tasks (idle / past runs)
+├── TaskScreen               # Pushed from kanban for idle / past tasks and REVIEW surveys
 │
-├── SessionDashboardScreen   # Pushed from kanban for running AUTO tasks
+├── SessionDashboardScreen   # Pushed from kanban for running managed tasks
 │   ├── AgentStatusPanel     # Backend, status, elapsed, run ID, PID
 │   ├── PersonaPipelineMap   # Horizontal persona sequence with current step
 │   ├── LiveOutputPanel      # Latest agent output + tool calls (auto-scroll)
 │   ├── WorktreePanel        # File-level diff stats per modified file
 │   ├── CommitsPanel         # Task-branch commits since base
 │   ├── DiffPreviewPanel     # Unified diff of selected file
-│   └── ChatPanel            # Docked / fullscreen overlay streaming from agent
-│
-├── ReviewModal              # Pushed when task enters REVIEW
+│   └── ChatPanel            # Docked / fullscreen AI Panel streaming from agent
 │
 ├── RepoPickerModal          # Ctrl+R — switch project / repo
-│
-├── TmuxGatewayModal             # Pre-launch backend readiness check
-
-│
+├── PairInstructionsModal    # Pre-launch backend readiness check
 ├── AgentPickerModal         # Select agent backend for task execution
-│
-├── ConfirmModal             # Generic confirmation dialog
-│
-├── HelpScreen               # Keybinding reference
-│
+├── GitHubImportModal        # GitHub issue/PR import flow
 ├── SessionPickerModal       # Session list / switch
-│
-├── SettingsScreen           # User preferences
-│
+├── SettingsModal            # User preferences
 ├── TaskEditorModal          # Inline task create/edit form
-│
+├── TutorialOverlay          # Interactive onboarding tutorial
+├── ReviewNoCriteriaModal    # Shown when reviewers encounter tasks with no acceptance criteria
+├── ConfirmModal             # Generic confirmation dialog
+├── HelpModal                # Keybinding reference
+├── MessageActionsModal      # Per-message action menu (copy, retry, etc.)
 └── RejectionInputModal      # Review rejection feedback input
 ```
 
 ### Screen Transitions
 
-```
+```text
 WelcomeScreen ──select project──→ KanbanScreen (switch)
-KanbanScreen  ──Enter──────────────────→ Open/refresh TaskInspector (in-place)
-KanbanScreen  ──Enter on selected task──→ TaskScreen or PAIR attach flow (push/attach)
-KanbanScreen  ──Ctrl+R────────→ RepoPickerModal (push)
-Any screen    ──Escape─────────→ pop (back to previous)
+KanbanScreen  ──Enter───────────→ TaskInspector (in-place)
+KanbanScreen  ──Enter on task───→ TaskScreen or attach flow (push)
+KanbanScreen  ──Ctrl+R──────────→ RepoPickerModal (push)
+Any screen    ──Escape──────────→ close overlay, then pop
 ```
 
-Screens are lazy — instantiated on first navigation via a `SCREENS` map of names to
-factory callables.
+9 screens are registered in `SCREENS` lazy-loading dict; modals are instantiated directly via `push_screen()`.
 
 ______________________________________________________________________
 
 ## Widget Composition
 
-Key composition (the primary screen):
-
-```
-
+```text
 KanbanScreen
-├── Header # project name, connection status
-├── BoardView + TaskInspector (horizontal pane)
-│ └── Column × 4 → [TaskCard, ...]
-├── PeekOverlay # hidden by default, shown on Space
-├── ChatPanel # toggleable, docked right or fullscreen
-│ ├── MessageList / ChatInput / SlashComplete
-│ ├── PlanDisplay / PermissionPrompt
-└── Footer # keybinding hints
+├── KaganHeader              # Project name, connection status
+├── BoardView + TaskInspector
+│   └── Column × 4 → [TaskCard, ...]
+├── PeekOverlay              # Hidden by default, shown on P
+├── ChatPanel                # Toggleable, docked or fullscreen
+│   ├── MessageList / ChatInput / SlashComplete
+│   └── PermissionPrompt
+└── KanbanHintBar            # Keybinding hints
 
+SessionDashboardScreen
+├── KaganHeader
+├── DashboardStatusBar       # Task title, branch, status
+├── Horizontal (dashboard-body)
+│   ├── Vertical (left-col)
+│   │   ├── AgentStatusPanel # Backend, status badge, elapsed, PID
+│   │   ├── PersonaPipelineMap # Horizontal ✓/●/○ persona chain
+│   │   └── StreamingOutput  # Latest output + tool calls
+│   └── Vertical (right-col)
+│       ├── WorktreePanel    # File change summary table
+│       ├── CommitsPanel     # Commit log since base branch
+│       └── DiffView         # Unified diff
+├── ChatPanel                # Overlay (hidden by default)
+└── HintBar                  # Contextual keybinding hints
 ```
-
-Other screens follow the same pattern — Header, content area, Footer.
-Full widget-to-file mapping is in the File Layout section below.
 
 ______________________________________________________________________
 
@@ -165,40 +148,34 @@ ______________________________________________________________________
 
 ### Reactive Declarations
 
-| Owner        | Name           | Type                        | Purpose                    |
-| ------------ | -------------- | --------------------------- | -------------------------- |
-| KaganApp     | `project`      | `reactive[Project \| None]` | Currently active project   |
-| KanbanScreen | `tasks`        | `reactive[list[Task]]`      | Tasks for the board        |
-| KanbanScreen | `selected`     | `var[str \| None]`          | Selected task ID           |
-| KanbanScreen | `filter_text`  | `var[str]`                  | Search filter              |
-| KanbanScreen | `chat_visible` | `var[bool]`                 | Chat panel toggle          |
-| TaskScreen   | `run`          | `reactive[Session \| None]` | Active execution run       |
-| TaskScreen   | `running`      | `var[bool]`                 | Whether agent is executing |
+| Owner               | Name           | Type                        | Purpose                      |
+| ------------------- | -------------- | --------------------------- | ---------------------------- |
+| `KaganApp`          | `project`      | `reactive[Project \| None]` | Active project               |
+| `KanbanScreen`      | `tasks`        | `reactive[list[Task]]`      | Board tasks                  |
+| `KanbanScreen`      | `selected`     | `var[str \| None]`          | Selected task ID             |
+| `KanbanScreen`      | `filter_text`  | `var[str]`                  | Search filter                |
+| `KanbanScreen`      | `chat_visible` | `var[bool]`                 | AI Panel open state          |
+| `SessionDashboard`  | `session`      | `reactive[Session \| None]` | Active execution run         |
 
 ### Data Flow Direction
 
-- **Down** — parent to child via `data_bind`. Parent composes a child widget and binds a
-  reactive property to it. When the parent's value changes, the child updates automatically.
-- **Up** — child to parent via Textual message bubbling. Widgets define `Message` subclasses;
-  parent screens handle them with `@on()` decorators.
+- **Down** — parent to child via `data_bind`. Parent composes child and binds reactive property.
+- **Up** — child to parent via Textual message bubbling. Parent handles with `@on()` decorators.
 
 ### Watch Methods
 
-Watch methods fire automatically when a reactive or var changes value:
-
-| Owner        | Watches        | Effect                                     |
-| ------------ | -------------- | ------------------------------------------ |
-| KanbanScreen | `tasks`        | Refreshes BoardView columns                |
-| KanbanScreen | `chat_visible` | Toggles CSS class to show/hide ChatPanel   |
-| KanbanScreen | `filter_text`  | Filters `_all_tasks` and reassigns `tasks` |
-| TaskScreen   | `session`      | Updates header status badge                |
+| Owner              | Watches        | Effect                           |
+| ------------------ | -------------- | -------------------------------- |
+| `KanbanScreen`     | `tasks`        | Refreshes BoardView columns      |
+| `KanbanScreen`     | `chat_visible` | Toggles ChatPanel CSS class      |
+| `KanbanScreen`     | `filter_text`  | Filters `_all_tasks`             |
+| `SessionDashboard` | `session`      | Updates header status badge      |
 
 ______________________________________________________________________
 
 ## Navigation & Keybindings
 
-Bindings are declared as static `BINDINGS` lists on each screen class. Shown bindings
-appear in the footer; hidden bindings (vim motions) work but don't clutter the UI.
+Bindings are declared as static `BINDINGS` lists on each screen. Shown bindings appear in the footer; hidden bindings (vim motions) work but don't clutter UI.
 
 Full keybinding tables are in `docs/internal/features/tui.md`.
 
@@ -206,17 +183,9 @@ ______________________________________________________________________
 
 ## Chat Integration
 
-### ChatSession lives in `kagan.chat`
+### ChatSession
 
-`ChatSession` is a conversational abstraction over core's agent streaming. It lives in
-`kagan.chat`, not in core or TUI. Both TUI and CLI import it.
-
-ChatSession wraps core primitives:
-
-- Agent spawning via `core.task.run()`
-- Event consumption via `core.task.events.stream()` (reactive signaling)
-- Slash command parsing
-- Plan mode state machine
+`ChatSession` lives in `kagan.chat` (not core or TUI). It wraps core primitives:
 
 | Member     | Type                | Purpose                                   |
 | ---------- | ------------------- | ----------------------------------------- |
@@ -234,9 +203,7 @@ ChatSession wraps core primitives:
 
 ### TUI Chat Binding
 
-ChatPanel holds a `ChatSession` as a reactive `var`. An exclusive worker iterates over
-the session's stream and posts `NewChatMessage` Textual messages for each incoming event.
-The stream uses the same reactive `asyncio.Event` signaling as `task.events.stream()`.
+`ChatPanel` holds a `ChatSession` as a reactive `var`. An exclusive worker iterates over the session's stream and posts `NewChatMessage` Textual messages for each event.
 
 Slash commands and plan/permission flows are behavioral — see `docs/internal/features/tui.md`.
 
@@ -246,84 +213,93 @@ ______________________________________________________________________
 
 Three TCSS layers, ascending specificity:
 
-1. **Widget `DEFAULT_CSS`** — scoped to widget class, lowest specificity.
-1. **`app.tcss`** — global variables, base layout, theme.
-1. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed.
+1. **Widget `DEFAULT_CSS`** — scoped to widget class, lowest specificity
+2. **`app.tcss`** — global variables, base layout, theme
+3. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed
 
-```
-
+```text
 styles/
-├── app.tcss # theme vars ($primary, $surface, etc.), global layout
-├── kanban.tcss # board columns, card styles, peek overlay
-└── chat.tcss # chat panel, messages, input, plan display
-
+├── app.tcss              # theme vars ($primary, $surface, etc.)
+├── kanban.tcss           # board columns, card styles
+├── chat.tcss             # AI Panel, messages, input
+├── task_screen.tcss      # task screen layout
+└── session_dashboard.tcss # dashboard layout + panels
 ```
 
-Visibility toggles use CSS classes (e.g., `.chat-hidden` hides ChatPanel, `.peek-visible`
-shows PeekOverlay). Responsive breakpoints handle narrow terminals — columns stack
-vertically below 80 columns.
+Visibility toggles use CSS classes (e.g., `.chat-hidden`, `.peek-visible`). Responsive breakpoints stack columns vertically below 80 columns.
 
 ______________________________________________________________________
 
 ## File Layout
 
-```
-
+```text
 src/kagan/tui/
-├── __init__.py # re-exports KaganApp
-├── app.py # KaganApp — top-level Textual App
-├── messages.py # all custom Message classes
-├── keybindings.py # binding tables per screen
-├── types.py # shared type aliases
+├── __init__.py              # re-exports KaganApp
+├── app.py                   # KaganApp — top-level Textual App
+├── messages.py              # all custom Message classes
+├── keybindings.py           # binding tables per screen
+├── types.py                 # shared type aliases
+├── _chat_helpers.py         # chat helper utilities
+├── orchestrator_sessions.py # TuiOrchestratorSessionStore
+├── textual_compat.py        # Textual compatibility workarounds
+├── theme.py                 # KAGAN_THEME, KAGAN_THEME_256
 │
 ├── screens/
-│ ├── __init__.py # screen exports
-│ ├── welcome.py # WelcomeScreen
-│ └── setup.py # OnboardingFlow (modal)
-│ ├── kanban.py # KanbanScreen
-│ ├── kanban_chat.py # KanbanChatScreen (orchestrator/task chat modes)
-│ ├── task_screen.py # TaskScreen
-│ ├── review.py # ReviewModal
-│ ├── repo_picker.py # RepoPickerModal
-│ ├── gateway.py # TmuxGatewayModal
-│ ├── agent_picker.py # AgentPickerModal
-│ ├── confirm.py # ConfirmModal
-│ ├── help.py # HelpScreen
-│ ├── session_picker.py # SessionPickerModal
-│ ├── settings.py # SettingsScreen
-│ ├── task_editor_modal.py # TaskEditorModal
-│ └── rejection_input.py # RejectionInputModal
-│ ├── session_dashboard.py # SessionDashboardScreen (running AUTO task monitor)
+│   ├── __init__.py
+│   ├── welcome.py           # WelcomeScreen
+│   ├── setup.py             # OnboardingFlow (modal)
+│   ├── kanban.py            # KanbanScreen
+│   ├── kanban_chat.py       # KanbanChatScreen
+│   ├── task_screen.py       # TaskScreen
+│   ├── session_dashboard.py # SessionDashboardScreen
+│   ├── review_no_criteria.py
+│   ├── repo_picker.py
+│   ├── gateway.py           # PairInstructionsModal
+│   ├── agent_picker.py
+│   ├── confirm.py
+│   ├── github_import_modal.py
+│   ├── message_actions_modal.py
+│   ├── help.py
+│   ├── session_picker.py
+│   ├── settings.py
+│   ├── task_editor_modal.py
+│   ├── rejection_input.py
+│   ├── kanban_commands.py   # Kanban command palette helpers
+│   ├── task_commands.py     # Task command palette helpers
+│   └── tutorial.py          # TutorialOverlay
 │
 ├── widgets/
-│ ├── __init__.py # widget exports
-│ ├── board.py # BoardView, Column
-│ ├── card.py # TaskCard
-│ ├── peek.py # PeekOverlay
-│ ├── task_editor.py # TaskEditor (create/edit form)
-│ ├── chat.py # ChatPanel, MessageList, ChatInput, SlashComplete
-│ ├── streaming.py # StreamingOutput, OutputChunk, ToolCallView
-
-│ ├── diff.py # DiffView, DiffStats
-│ ├── plan.py # PlanDisplay
-│ ├── permission.py # PermissionPrompt
-│ ├── header.py # Header
-│ ├── hint_bar.py # HintBar (contextual keybinding hints)
-│ └── search_bar.py # SearchBar (board filter input)
-│ ├── agent_status.py # AgentStatusPanel (backend, status, elapsed, PID)
-│ ├── persona_pipeline.py # PersonaPipelineMap (horizontal persona chain)
-│ ├── worktree_panel.py # WorktreePanel (file change stats table)
-│ └── commits_panel.py # CommitsPanel (task-branch commit log)
+│   ├── __init__.py
+│   ├── board.py             # BoardView, Column
+│   ├── card.py              # TaskCard
+│   ├── peek.py              # PeekOverlay
+│   ├── task_editor.py       # TaskEditor (create/edit form)
+│   ├── task_inspector.py    # TaskInspector
+│   ├── task_diff_pane.py    # TaskDiffPane
+│   ├── chat.py              # ChatPanel, MessageList, ChatInput, SlashComplete
+│   ├── streaming.py         # StreamingOutput, OutputChunk, ToolCallView
+│   ├── diff.py              # DiffView, DiffStats
+│   ├── permission.py        # PermissionPrompt
+│   ├── header.py            # KaganHeader
+│   ├── hint_bar.py          # KanbanHintBar
+│   ├── status_bar.py        # StatusBar, SimpleFooter
+│   ├── context_footer.py    # ContextFooter
+│   ├── search_bar.py        # SearchBar
+│   ├── agent_status.py      # AgentStatusPanel
+│   ├── persona_pipeline.py  # PersonaPipelineMap
+│   ├── worktree_panel.py    # WorktreePanel
+│   ├── commits_panel.py     # CommitsPanel
+│   └── task_detail_pane.py  # TaskDetailPane
 │
 └── styles/
-├── app.tcss # global theme + layout
-├── kanban.tcss # board styles
-└── chat.tcss # chat styles
-└── session_dashboard.tcss # dashboard layout + panels
-
+    ├── app.tcss
+    ├── kanban.tcss
+    ├── chat.tcss
+    ├── task_screen.tcss
+    └── session_dashboard.tcss
 ```
 
-~43 files. Each file has one clear responsibility.
+~58 files, ~17K LOC. Each file has one clear responsibility.
 
 ______________________________________________________________________
 
@@ -332,7 +308,6 @@ ______________________________________________________________________
 See `docs/internal/testing.md` for the full testing guide.
 
 TUI-specific:
-
 - Use `app.run_test()` with `Pilot`, not manual event loops
 - Use targeted waits (`wait_for_screen`, `pilot.pause()`), never `wait_for_workers()`
 
@@ -340,130 +315,4 @@ ______________________________________________________________________
 
 ## Data Flow Summary
 
-All screens/widgets call core's namespaced API directly via `self.app.core`.
-Workers iterate `core.task.events.stream()` — reactive `asyncio.Event` signaling,
-near-zero latency, zero idle cost. Data flows down via `data_bind`, messages
-bubble up via Textual message passing. Watch methods fire on reactive changes.
-
-______________________________________________________________________
-
-## Session Dashboard Screen
-
-### Purpose
-
-A dedicated monitoring screen for running AUTO tasks. Shows all relevant
-information about the active agent session: worktree changes, commits,
-agent status, persona pipeline progress, live output, and unified diffs.
-Supports chat overlay for streaming agent output and user interjection.
-
-### Layout
-
-Two-column, six-panel layout. Left column: agent status, persona pipeline,
-live output. Right column: worktree changes, commits, diff preview.
-
-```
-
-SessionDashboardScreen
-├── KaganHeader
-├── DashboardStatusBar # Task title, branch, compact status + persona
-├── Horizontal (dashboard-body)
-│ ├── Vertical (left-col)
-│ │ ├── AgentStatusPanel # Backend, status badge, elapsed, run ID, PID
-│ │ ├── PersonaPipelineMap # Horizontal ✓/●/○ persona chain
-│ │ └── StreamingOutput # Latest output + tool calls (reused widget)
-│ └── Vertical (right-col)
-│ ├── WorktreePanel # File change summary table
-│ ├── CommitsPanel # Commit log since base branch
-│ └── DiffView # Unified diff (reused widget)
-├── ChatPanel # Overlay (hidden by default)
-└── HintBar # Contextual keybinding hints
-
-```
-
-### Data Sources
-
-| Panel              | Core API                                           | Refresh                  |
-| ------------------ | -------------------------------------------------- | ------------------------ |
-| AgentStatusPanel   | `tasks.get(id)` + Session query via DB             | 1s timer                 |
-| PersonaPipelineMap | Session history for task + `Session.persona` field | On AGENT_COMPLETED event |
-| StreamingOutput    | `tasks.events.stream(task_id)` (reactive)          | Real-time                |
-| WorktreePanel      | `worktrees.diff_stats(task_id)`                    | 5s timer                 |
-| CommitsPanel       | `worktrees.diff(task_id)` + git log                | 5s timer                 |
-| DiffView           | `worktrees.diff(task_id)`                          | 5s timer                 |
-
-### Chat Overlay Integration
-
-Chat overlay follows the same pattern as `TaskScreen`:
-
-- `Ctrl+T` toggles docked chat overlay pre-connected to the running agent stream
-- `Ctrl+Shift+T` toggles fullscreen chat
-- `Tab` cycles between task agent and orchestrator sessions
-- User messages sent via task chat interject with the running agent
-  (cancel current run, append to description, restart)
-- Orchestrator messages go through the separate orchestrator flow
-
-When the chat overlay opens, the dashboard body gets a CSS class
-`dashboard-chat-active` that collapses the six-panel layout into a
-compact status bar, giving maximum vertical space to the chat.
-
-### Persona Pipeline Visualization
-
-The `PersonaPipelineMap` widget renders the persona execution plan as a
-horizontal chain of steps:
-
-```
-
-✓ ANALYST ─→ ✓ PLANNER ─→ ● IMPLEMENTER ─→ ○ REVIEWER
-(3/4)
-
-```
-
-State symbols: `✓` completed (dim green), `●` running (bright yellow,
-animated), `○` pending (dim). The pipeline is derived from:
-
-1. Query all `Session` records for the task, ordered by `started_at`
-1. Each run with a non-null `persona` field maps to a step
-1. The latest run's status determines the `●` running indicator
-1. If no runs have `persona` set, the widget is hidden
-
-### File Layout
-
-```
-
-src/kagan/tui/
-screens/
-session_dashboard.py # SessionDashboardScreen
-widgets/
-agent_status.py # AgentStatusPanel
-persona_pipeline.py # PersonaPipelineMap
-worktree_panel.py # WorktreePanel
-commits_panel.py # CommitsPanel
-styles/
-session_dashboard.tcss # Dashboard-specific styles
-
-```
-
-### Navigation
-
-```
-
-KanbanScreen
-│
-├─ Enter ──────────────────────→ show TaskInspector (in place)
-├─ O/P on AUTO task ───────────→ TaskScreen (push)
-└─ O/P on PAIR task ───────────→ Attach/launch session
-
-SessionDashboardScreen
-├─ Escape ──────────────────→ pop back to KanbanScreen
-├─ Ctrl+T ──────────────────→ toggle docked chat overlay
-├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
-└─ Shift+S ─────────────────→ cancel running agent
-
-```
-
-├─ Ctrl+T ──────────────────→ toggle docked chat overlay
-├─ Ctrl+Shift+T ────────────→ toggle fullscreen chat
-└─ Ctrl+C ──────────────────→ cancel running agent
-
-```
-```
+All screens/widgets call core's namespaced API directly via `self.app.core`. Workers iterate `core.task.events.stream()` — reactive `asyncio.Event` signaling. Data flows down via `data_bind`, messages bubble up via Textual message passing. Watch methods fire on reactive changes.

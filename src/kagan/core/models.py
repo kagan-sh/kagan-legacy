@@ -1,13 +1,14 @@
 """SQLModel table classes for kagan.core — single class is both validation model and DB table."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 from uuid import uuid4
 
+from pydantic import field_serializer
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
-from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus, WorkMode
+from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 
 
 def _new_id() -> str:
@@ -16,6 +17,12 @@ def _new_id() -> str:
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class ReviewVerdict(TypedDict):
+    criterion_index: int
+    verdict: Literal["PASS", "FAIL"]
+    reason: str
 
 
 class Project(SQLModel, table=True):
@@ -50,13 +57,20 @@ class Task(SQLModel, table=True):
     description: str = Field(default="")
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, index=True)
     priority: Priority = Field(default=Priority.MEDIUM, index=True)
-    execution_mode: WorkMode = Field(default=WorkMode.AUTO)
+
+    @field_serializer("priority")
+    @classmethod
+    def _serialize_priority(cls, v: Priority) -> str:
+        return v.name
+
     agent_backend: str | None = Field(default=None)
     launcher: str | None = Field(default=None)
     base_branch: str | None = Field(default=None)
     acceptance_criteria: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     review_approved: bool = Field(default=False)
-    scratchpad: str = Field(default="")
+    review_verdicts: list[ReviewVerdict] = Field(default_factory=list, sa_column=Column(JSON))
+    max_retries: int = Field(default=0)
+    success_command: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 
@@ -78,7 +92,6 @@ class Session(SQLModel, table=True):
 
     id: str = Field(default_factory=_new_id, primary_key=True)
     task_id: str = Field(foreign_key="tasks.id", index=True)
-    mode: WorkMode = Field(index=True)
     agent_backend: str
     status: SessionStatus = Field(default=SessionStatus.PENDING, index=True)
     launcher: str | None = Field(default=None)
@@ -86,6 +99,13 @@ class Session(SQLModel, table=True):
     started_at: datetime = Field(default_factory=_utc_now)
     ended_at: datetime | None = Field(default=None)
     persona: str | None = Field(default=None)
+    attempt: int = Field(default=1)
+    input_tokens: int | None = Field(default=None)
+    output_tokens: int | None = Field(default=None)
+    context_window_used: int | None = Field(default=None)
+    context_window_size: int | None = Field(default=None)
+    cost_amount: float | None = Field(default=None)
+    cost_currency: str | None = Field(default=None)
 
 
 class SessionEvent(SQLModel, table=True):
@@ -130,6 +150,7 @@ __all__ = [
     "AuditEntry",
     "Project",
     "Repository",
+    "ReviewVerdict",
     "Session",
     "SessionEvent",
     "Setting",

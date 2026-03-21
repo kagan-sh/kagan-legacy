@@ -109,7 +109,6 @@ class SearchBar(Widget):
     total_count: reactive[int] = reactive(0, init=False)
     status_filter: reactive[str] = reactive("", init=False)
     priority_filter: reactive[str] = reactive("", init=False)
-    mode_filter: reactive[str] = reactive("", init=False)
     sort_filter: reactive[str] = reactive("", init=False)
 
     @dataclass
@@ -138,10 +137,6 @@ class SearchBar(Widget):
             self.query_one("#search-input", Input).can_focus = False
         self._render_state()
 
-    # ------------------------------------------------------------------
-    # Input handlers
-    # ------------------------------------------------------------------
-
     @on(Input.Changed, "#search-input")
     def _on_input_changed(self, event: Input.Changed) -> None:
         if self._history_programmatic_update:
@@ -165,10 +160,6 @@ class SearchBar(Widget):
         self.search_query = event.query
         self.post_message(self.QueryChanged(self.search_query))
         self._dismiss_presets()
-
-    # ------------------------------------------------------------------
-    # Watchers
-    # ------------------------------------------------------------------
 
     def watch_is_visible(self, is_visible: bool) -> None:
         try:
@@ -213,17 +204,9 @@ class SearchBar(Widget):
         del value
         self._render_state()
 
-    def watch_mode_filter(self, value: str) -> None:
-        del value
-        self._render_state()
-
     def watch_sort_filter(self, value: str) -> None:
         del value
         self._render_state()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def show(self) -> None:
         """Activate search mode and focus the input."""
@@ -256,18 +239,15 @@ class SearchBar(Widget):
         total_count: int,
         status_filter: str = "",
         priority_filter: str = "",
-        mode_filter: str = "",
         sort_filter: str = "",
         search_active: bool,
         status_counts: dict[str, int] | None = None,
         high_priority_count: int = 0,
     ) -> None:
-        """Bulk-update the search bar display state."""
         self.filtered_count = filtered_count
         self.total_count = max(0, int(total_count))
         self.status_filter = status_filter
         self.priority_filter = priority_filter
-        self.mode_filter = mode_filter
         self.sort_filter = sort_filter
         self.is_visible = bool(search_active)
         if status_counts is not None:
@@ -333,10 +313,6 @@ class SearchBar(Widget):
             event.prevent_default()
             event.stop()
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _render_state(self) -> None:
         """Update meta text and clear/hide hint to reflect current state."""
         try:
@@ -351,8 +327,6 @@ class SearchBar(Widget):
             filters.append(f"@status:{self.status_filter}")
         if self.priority_filter:
             filters.append(f"@priority:{self.priority_filter}")
-        if self.mode_filter:
-            filters.append(f"@mode:{self.mode_filter}")
         if self.sort_filter:
             filters.append(f"@sort:{self.sort_filter}")
 
@@ -370,7 +344,6 @@ class SearchBar(Widget):
             self.search_query.strip()
             or self.status_filter
             or self.priority_filter
-            or self.mode_filter
             or self.sort_filter
         )
         if has_filter:

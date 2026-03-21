@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from typing import Final, Literal
 
 from rich.markup import escape
@@ -8,10 +9,7 @@ from kagan.chat.agents import (
     format_agent_usage,
     resolve_agent_command_argument,
 )
-from kagan.chat.prompt import (
-    format_session_payload,
-    normalize_chat_input,
-)
+from kagan.chat.prompt import normalize_chat_input
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +39,23 @@ def format_unknown_slash_command(name: str) -> str:
     return f"Unknown command: /{name}  (type /help for list)"
 
 
+class SlashAction(Enum):
+    NONE = "none"
+    CLOSE = "close"
+    CLEAR = "clear"
+    NEW_SESSION = "new_session"
+    SWITCH_AGENT = "switch_agent"
+    LIST_SESSIONS = "list_sessions"
+    DELETE_SESSION = "delete_session"
+    SHOW_AGENTS = "show_agents"
+    SHOW_HELP = "show_help"
+    SHOW_TOOL = "show_tool"
+    SHOW_STATUS = "show_status"
+    SWITCH_PROJECT = "switch_project"
+    SHOW_PROJECT = "show_project"
+    SHOW_INFO = "show_info"
+
+
 @dataclass(frozen=True, slots=True)
 class SlashCommandOutcome:
     handled: bool
@@ -57,6 +72,11 @@ class SlashCommandOutcome:
     error_lines: tuple[str, ...] = ()
     tool_requested: bool = False
     tool_query: str | None = None
+    status_requested: bool = False
+    project_switch_requested: str | None = None
+    project_info_requested: bool = False
+    action: SlashAction = SlashAction.NONE
+    data: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +92,10 @@ class _SlashCommandContext:
     runtime_session_id: str | None
     current_backend: str | None
     available_backends: list[str] | None
+    project_name: str | None
+    project_id: str | None
+    turn_count: int
+    is_orchestrator: bool = True
 
 
 SlashCommandHandler = Callable[[SlashCommandInvocation, _SlashCommandContext], SlashCommandOutcome]
@@ -86,6 +110,14 @@ class SlashCommand:
 class SlashCommandRegistry:
     def __init__(self) -> None:
         self._commands: dict[str, SlashCommand] = {}
+        self._aliases: dict[str, str] = {}
+
+    def register_alias(self, alias: str, target: str) -> None:
+        self._aliases[alias] = target
+
+    @property
+    def aliases(self) -> dict[str, str]:
+        return dict(self._aliases)
 
     def register(
         self,
@@ -105,7 +137,10 @@ class SlashCommandRegistry:
         )
 
     def get(self, name: str) -> SlashCommand | None:
-        return self._commands.get(name.strip().lower())
+        key = name.strip().lower()
+        if key not in self._commands:
+            key = self._aliases.get(key, key)
+        return self._commands.get(key)
 
     def specs(self, *, orchestrator_only: bool | None = None) -> tuple[SlashCommandSpec, ...]:
         """Return command specs, optionally filtering by orchestrator_only flag.
@@ -127,6 +162,11 @@ class SlashCommandRegistry:
         for spec in self.specs():
             lines.append(f"  /{spec.name}  {escape(spec.description)}")
         quick_refs = " ".join(f"/{spec.name}" for spec in self.specs())
+        if self._aliases:
+            alias_parts = " ".join(
+                f"/{alias}→{target}" for alias, target in sorted(self._aliases.items())
+            )
+            quick_refs += f"  Aliases: {alias_parts}"
         lines.append(f"Quick refs: {quick_refs}".strip())
         return lines
 
@@ -134,55 +174,74 @@ class SlashCommandRegistry:
 def _handle_help(
     _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    return SlashCommandOutcome(handled=True, help_overlay_requested=True)
+    return SlashCommandOutcome(
+        handled=True, help_overlay_requested=True, action=SlashAction.SHOW_HELP
+    )
 
 
 def _handle_exit(
     _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    return SlashCommandOutcome(handled=True, close_requested=True)
+    return SlashCommandOutcome(handled=True, close_requested=True, action=SlashAction.CLOSE)
 
 
 def _handle_clear(
     _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    return SlashCommandOutcome(handled=True, clear_requested=True)
+    return SlashCommandOutcome(handled=True, clear_requested=True, action=SlashAction.CLEAR)
 
 
 def _handle_new(
     _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    return SlashCommandOutcome(handled=True, new_session_requested=True)
-
-
-def _handle_session(
-    _invocation: SlashCommandInvocation, ctx: _SlashCommandContext
-) -> SlashCommandOutcome:
-    descriptor, runtime = format_session_payload(
-        session_label=ctx.session_label,
-        session_key=ctx.session_key,
-        runtime_session_id=ctx.runtime_session_id,
+    return SlashCommandOutcome(
+        handled=True, new_session_requested=True, action=SlashAction.NEW_SESSION
     )
-    return SlashCommandOutcome(handled=True, info_lines=(descriptor, runtime))
 
 
 def _handle_sessions(
     invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    normalized_query = invocation.arg.strip() or None
-    # /sessions delete <id|number>
-    if normalized_query and normalized_query.startswith("delete"):
-        delete_arg = normalized_query[len("delete") :].strip() or None
-        if not delete_arg:
-            return SlashCommandOutcome(
-                handled=True,
-                error_lines=("Usage: /sessions delete <number|id>",),
-            )
-        return SlashCommandOutcome(handled=True, delete_session_query=delete_arg)
+    query = invocation.arg.strip() or None
     return SlashCommandOutcome(
         handled=True,
         sessions_requested=True,
-        sessions_query=normalized_query,
+        sessions_query=query,
+        action=SlashAction.LIST_SESSIONS,
+        data=query,
+    )
+
+
+def _handle_status(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(handled=True, status_requested=True, action=SlashAction.SHOW_STATUS)
+
+
+def _handle_project(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    arg = invocation.arg.strip()
+    if arg:
+        return SlashCommandOutcome(
+            handled=True, project_switch_requested=arg, action=SlashAction.SWITCH_PROJECT, data=arg
+        )
+    return SlashCommandOutcome(
+        handled=True, project_info_requested=True, action=SlashAction.SHOW_PROJECT
+    )
+
+
+def _handle_delete(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    query = invocation.arg.strip() or None
+    if not query:
+        return SlashCommandOutcome(
+            handled=True,
+            error_lines=("Usage: /delete <number|id>",),
+        )
+    return SlashCommandOutcome(
+        handled=True, delete_session_query=query, action=SlashAction.DELETE_SESSION, data=query
     )
 
 
@@ -196,26 +255,36 @@ def _handle_agents(
         invocation.arg, ctx.available_backends
     )
     if show_list:
-        return SlashCommandOutcome(handled=True, agent_picker_requested=True)
+        return SlashCommandOutcome(
+            handled=True, agent_picker_requested=True, action=SlashAction.SHOW_AGENTS
+        )
     if error is not None:
         return SlashCommandOutcome(handled=True, error_lines=(error,))
     if selected is None:
         return SlashCommandOutcome(handled=True, error_lines=(format_agent_usage(),))
-    return SlashCommandOutcome(handled=True, selected_agent=selected)
+    return SlashCommandOutcome(
+        handled=True, selected_agent=selected, action=SlashAction.SWITCH_AGENT, data=selected
+    )
 
 
 def _handle_tool(
     invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
     query = invocation.arg.strip() or None
-    return SlashCommandOutcome(handled=True, tool_requested=True, tool_query=query)
+    return SlashCommandOutcome(
+        handled=True,
+        tool_requested=True,
+        tool_query=query,
+        action=SlashAction.SHOW_TOOL,
+        data=query,
+    )
 
 
 def _handle_flow(
     invocation: SlashCommandInvocation, ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
     # Only available in orchestrator sessions
-    if "orchestrator" not in ctx.session_key.casefold():
+    if not ctx.is_orchestrator:
         return SlashCommandOutcome(
             handled=True,
             error_lines=(
@@ -233,7 +302,7 @@ def _handle_flow(
     if goal:
         lines.insert(1, f"Goal: {goal}")
     lines.append("Tip: Start your next message with 'Plan for: <goal>' to begin explicitly.")
-    return SlashCommandOutcome(handled=True, info_lines=tuple(lines))
+    return SlashCommandOutcome(handled=True, info_lines=tuple(lines), action=SlashAction.SHOW_INFO)
 
 
 def _build_slash_command_registry() -> SlashCommandRegistry:
@@ -259,14 +328,24 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         handler=_handle_new,
     )
     registry.register(
-        name="session",
-        description="Show current session details",
-        handler=_handle_session,
+        name="sessions",
+        description="List or attach chat sessions",
+        handler=_handle_sessions,
     )
     registry.register(
-        name="sessions",
-        description="List, create, or attach chat sessions",
-        handler=_handle_sessions,
+        name="status",
+        description="Show current project, session, and agent",
+        handler=_handle_status,
+    )
+    registry.register(
+        name="project",
+        description="Show or switch active project",
+        handler=_handle_project,
+    )
+    registry.register(
+        name="delete",
+        description="Delete a chat session: /delete <number|id>",
+        handler=_handle_delete,
     )
     registry.register(
         name="agents",
@@ -293,6 +372,12 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         ),
         handler=flow_cmd.handler,
     )
+    registry.register_alias("q", "exit")
+    registry.register_alias("?", "help")
+    registry.register_alias("s", "sessions")
+    registry.register_alias("a", "agents")
+    registry.register_alias("f", "flow")
+    registry.register_alias("p", "project")
     return registry
 
 
@@ -308,6 +393,10 @@ def resolve_slash_command(
     runtime_session_id: str | None,
     current_backend: str | None,
     available_backends: list[str] | None,
+    project_name: str | None = None,
+    project_id: str | None = None,
+    turn_count: int = 0,
+    is_orchestrator: bool = True,
 ) -> SlashCommandOutcome:
     invocation = SlashCommandInvocation(name=name.strip().lower(), arg=arg)
     command = SLASH_COMMAND_REGISTRY.get(invocation.name)
@@ -322,6 +411,10 @@ def resolve_slash_command(
         runtime_session_id=runtime_session_id,
         current_backend=current_backend,
         available_backends=available_backends,
+        project_name=project_name,
+        project_id=project_id,
+        turn_count=turn_count,
+        is_orchestrator=is_orchestrator,
     )
     return command.handler(invocation, ctx)
 
@@ -334,6 +427,10 @@ def resolve_slash_input(
     runtime_session_id: str | None,
     current_backend: str | None,
     available_backends: list[str] | None,
+    project_name: str | None = None,
+    project_id: str | None = None,
+    turn_count: int = 0,
+    is_orchestrator: bool = True,
 ) -> SlashCommandOutcome:
     parsed = parse_slash_invocation(text)
     if parsed is None:
@@ -347,6 +444,10 @@ def resolve_slash_input(
             runtime_session_id=runtime_session_id,
             current_backend=current_backend,
             available_backends=available_backends,
+            project_name=project_name,
+            project_id=project_id,
+            turn_count=turn_count,
+            is_orchestrator=is_orchestrator,
         )
     name, arg = parsed.name, parsed.arg
     return resolve_slash_command(
@@ -357,6 +458,10 @@ def resolve_slash_input(
         runtime_session_id=runtime_session_id,
         current_backend=current_backend,
         available_backends=available_backends,
+        project_name=project_name,
+        project_id=project_id,
+        turn_count=turn_count,
+        is_orchestrator=is_orchestrator,
     )
 
 

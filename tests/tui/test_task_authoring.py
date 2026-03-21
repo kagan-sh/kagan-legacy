@@ -117,7 +117,7 @@ async def test_toggling_advanced_brings_acceptance_criteria_into_view(
         assert form.scroll_y > initial_scroll
 
 
-async def test_task_form_saves_pair_launcher_override(board: KaganDriver) -> None:
+async def test_task_form_saves_attached_launcher_override(board: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")

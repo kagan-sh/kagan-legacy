@@ -26,7 +26,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 
 ### Option A - Zero-config guided import (recommended)
 
-- Entry points: welcome empty state, board empty state, command palette action.
+- Entry points: welcome empty state, board empty state, Quick Actions action.
 - Guided flow: connect GitHub -> pick repo -> preview -> import.
 - Best for first-time success and least cognitive load.
 
@@ -63,7 +63,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 
 ### 4.2 Repeat path
 
-- User runs "Sync GitHub issues" from command palette.
+- User runs "Sync GitHub issues" from Quick Actions.
 - Show quick toast summary only.
 
 ### 4.3 Failure path
@@ -76,7 +76,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 ### TUI surfaces
 
 - Welcome/empty state CTA: "Import from GitHub".
-- Command palette actions:
+- Quick Actions actions:
   - `Import from GitHub`
   - `Sync GitHub issues`
   - `Manage GitHub connection`
@@ -147,7 +147,7 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 
 ### Phase 1 - Guided import MVP
 
-- Add TUI command palette action and modal flow.
+- Add TUI Quick Actions action and modal flow.
 - Add CLI `kagan import github` interactive command.
 - Add public docs rewrite from "plugin" language to "import" language.
 
@@ -166,5 +166,5 @@ Concrete rollout plan for exposing GitHub issue import to non-technical users wi
 - Layman can import issues without knowing plugin internals.
 - First import success path requires at most 4 user decisions.
 - Missing prerequisites produce actionable guidance in one screen.
-- Repeat sync is one action from board or command palette.
+- Repeat sync is one action from board or Quick Actions.
 - Internal plugin architecture remains hidden in default user surfaces.

@@ -6,7 +6,7 @@ from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 
 
 class _TaskData(Protocol):
@@ -15,7 +15,6 @@ class _TaskData(Protocol):
     description: str
     status: TaskStatus
     priority: Priority
-    execution_mode: WorkMode
 
 
 def _priority_name(value: Priority) -> str:
@@ -92,8 +91,7 @@ class PeekOverlay(Vertical):
     def _build_model(self, task: _TaskData | None) -> _PeekModel:
         if task is None:
             return _PeekModel("", "", "")
-        mode = "AUTO" if task.execution_mode == WorkMode.AUTO else "PAIR"
         title = f"#{task.id}: {task.title[:30]}"
-        status = f"{task.status.value} · {mode} · {_priority_name(task.priority)}"
+        status = f"{task.status.value} · {_priority_name(task.priority)}"
         content = (task.description.strip() or "(No content)")[:300]
         return _PeekModel(title, status, content)

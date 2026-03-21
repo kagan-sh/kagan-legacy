@@ -8,7 +8,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus, WorkMode
+from kagan.core.enums import Priority, TaskStatus
 from kagan.tui.widgets.card import TaskCard
 
 
@@ -17,13 +17,13 @@ class _TaskData(Protocol):
     title: str
     description: str
     priority: Priority
-    execution_mode: WorkMode
     status: TaskStatus
     review_approved: bool
     acceptance_criteria: list[str]
     has_active_session: bool
     has_session_history: bool
-    latest_session_mode: WorkMode | None
+    active_launcher: str | None
+    latest_launcher: str | None
 
 
 _COLUMN_ORDER: tuple[TaskStatus, ...] = (
@@ -223,7 +223,6 @@ class BoardView(Widget):
                     self._select_task(task_ids[new_index])
                 return
 
-        # Nothing currently selected — pick the first available card.
         for task_ids in columns:
             if task_ids:
                 self._select_task(task_ids[0])
@@ -256,7 +255,6 @@ class BoardView(Widget):
                     break
 
         if not found:
-            # Nothing selected — pick the first non-empty column.
             for task_ids in columns:
                 if task_ids:
                     self._select_task(task_ids[0])
@@ -328,7 +326,6 @@ class BoardView(Widget):
         self.post_message(self.TaskSelected(task_id))
 
     def _focus_card_by_id(self, task_id: str) -> None:
-        """Move Textual focus to the TaskCard matching *task_id*."""
         for card in self.query(TaskCard):
             task_data = card.task_data
             if task_data is not None and task_data.id == task_id:

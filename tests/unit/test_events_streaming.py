@@ -5,7 +5,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 
-from kagan.core._events import Events
+from kagan.core._events import Events, _BoundedEventQueue
 from kagan.core.enums import SessionEventType
 from kagan.core.models import SessionEvent
 from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, _sanitize_stream_text
@@ -20,7 +20,7 @@ class _StreamingHarness(App[None]):
 
 def test_enqueue_output_chunk_replaces_old_non_critical_event_when_queue_is_full() -> None:
     events = Events.__new__(Events)
-    queue: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=1)
+    queue: _BoundedEventQueue[SessionEvent] = _BoundedEventQueue(maxsize=1)
     queue.put_nowait(
         SessionEvent(
             task_id="task-1",

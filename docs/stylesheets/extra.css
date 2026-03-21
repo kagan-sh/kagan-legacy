@@ -1,9 +1,12 @@
-/* Fonts loaded via <link> in docs/overrides/main.html for non-blocking render */
+/* Commit Mono loaded via <link> in docs/overrides/main.html for non-blocking render */
 
 /* ===== KAGAN MKDOCS THEME ===== */
 /* Black + warm ivory + amber — aligned with kagan-landing */
 :root,
 [data-md-color-scheme="slate"] {
+  /* Typography — Commit Mono, single cohesive font family */
+  --font-mono: 'CommitMono', 'Commit Mono', 'SF Mono', 'Consolas', monospace;
+
   /* Backgrounds — near-black (matches landing --bg / --bg-darker) */
   --md-default-bg-color: #020202;
   --md-default-bg-color--light: #0E0C0A;
@@ -52,37 +55,40 @@
 }
 
 /* ===== TYPOGRAPHY ===== */
-/* Body text — Geist Mono, matching landing page */
+/* All text — Commit Mono, single cohesive developer-first font */
 body,
 .md-typeset {
-  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
+  font-family: var(--font-mono) !important;
 }
 
-/* Headings h1, h2 — Barlow Condensed, matching landing --font-display */
-.md-typeset h1,
-.md-typeset h2 {
-  font-family: 'Barlow Condensed', 'Barlow', 'IBM Plex Sans Condensed', sans-serif !important;
+/* Headings h1, h2 — heavier weight for hierarchy */
+.md-typeset h1 {
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.02em;
 }
 
-/* Headings h3–h6 — Geist Mono, matching landing pattern */
+.md-typeset h2 {
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* Headings h3–h6 — medium weight */
 .md-typeset h3,
 .md-typeset h4,
 .md-typeset h5,
 .md-typeset h6 {
-  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
   font-weight: 500;
   line-height: 1.25;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
-/* Code — Geist Mono */
+/* Code — Commit Mono */
 .md-typeset code,
 .md-typeset pre,
 .md-typeset kbd {
-  font-family: 'Geist Mono', 'SF Mono', 'Consolas', monospace !important;
+  font-family: var(--font-mono) !important;
 }
 
 /* ===== HEADER ===== */

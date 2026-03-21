@@ -23,31 +23,31 @@ from acp.schema import (
     McpServerStdio,
     ToolCallProgress,
     ToolCallStart,
+    UsageUpdate,
 )
 from loguru import logger
 from rich.live import Live
-from rich.markdown import Markdown as RichMarkdown
+from rich.markup import escape as _rich_escape
 from rich.measure import Measurement
-from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from kagan.chat._title import generate_session_title
 from kagan.chat.acp import (
     _ACP_CLIENT_NAME,
     _ACP_CLIENT_TITLE,
     _ACP_CLIENT_VERSION,
+    _ACP_STDIO_BUFFER_LIMIT_BYTES,
     _acp_handshake_timeout_seconds,
-    run_orchestrator_turn,
 )
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.chat.commands import (
     SLASH_COMMAND_REGISTRY,
+    SlashAction,
     build_slash_presentation_lines,
     resolve_slash_input,
 )
 from kagan.chat.prompt import (
-    _ORCHESTRATOR_SYSTEM_PROMPT,
     _format_user_request_block,
     _runtime_guidance_for_request,
     build_chat_status_line,
@@ -63,7 +63,6 @@ from kagan.chat.repl import (
     _get_prompt_session,
 )
 from kagan.chat.sessions import (
-    _clean_generated_title,
     build_chat_session_list_items,
     create_chat_session,
     delete_chat_session,
@@ -78,7 +77,6 @@ from kagan.chat.tool_runs import ToolRunTracker
 from kagan.core import (
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
-    PROMPT_ORCHESTRATOR_KEY,
     ACPClientBase,
     DBWatcher,
     build_agent_environment,
@@ -86,20 +84,16 @@ from kagan.core import (
     default_db_path,
     get_backend,
     get_system_git_identity,
-    prepend_custom_prompt,
+    resolve_orchestrator_prompt,
 )
+from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError, KaganError
 
-# Markdown syntax patterns that warrant re-rendering
-_MARKDOWN_PATTERNS = ("```", "## ", "### ", "**", "- ", "1. ", "> ")
-_ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 _STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 
 @dataclass(frozen=True, slots=True)
 class _WaveIndicator:
-    """Animated wave indicator for Rich.Live during ACP handshake."""
-
     _start: float = field(default_factory=time.monotonic)
 
     def __rich_console__(self, console, options):
@@ -131,12 +125,10 @@ class _TurnWaveAnimation:
         self._write_wave(f"\r{' ' * self._line_width}\r")
 
     def stop(self) -> None:
-        """Stop the animation."""
         if self._active:
             self._stop_event.set()
 
     async def _animate(self) -> None:
-        """Animation loop."""
         self._active = True
         frame_index = 0
         while not self._stop_event.is_set():
@@ -151,11 +143,9 @@ class _TurnWaveAnimation:
         self._active = False
 
     async def start(self) -> None:
-        """Start the animation."""
         self._task = asyncio.create_task(self._animate(), name="chat-turn-wave")
 
     async def shutdown(self) -> None:
-        """Shutdown the animation and cleanup."""
         self._stop_event.set()
         if self._task is not None:
             with contextlib.suppress(asyncio.CancelledError):
@@ -168,7 +158,6 @@ class _TurnWaveAnimation:
 async def _turn_wave_animation(
     _console, frames: tuple[str, ...]
 ) -> AsyncIterator[Callable[[], None]]:
-    """Context manager for turn wave animation. Yields callback to stop animation."""
     animator = _TurnWaveAnimation(_console, frames)
     await animator.start()
     try:
@@ -177,14 +166,7 @@ async def _turn_wave_animation(
         await animator.shutdown()
 
 
-def _has_markdown_syntax(text: str) -> bool:
-    """Return True if *text* contains markdown formatting worth re-rendering."""
-    return any(p in text for p in _MARKDOWN_PATTERNS)
-
-
 class _OrchestratorACPClient(ACPClientBase):
-    """ACP client that streams agent output to the Rich console."""
-
     def __init__(self) -> None:
         self._conn: acp.Agent | None = None
         self._streaming = False
@@ -196,6 +178,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._flush_handle: asyncio.TimerHandle | None = None
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
+        self.last_usage: Any = None
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._cancel_flush_timer()
@@ -205,6 +188,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._tool_runs.start_turn()
         self._first_update_notified = False
         self._on_first_update = on_first_update
+        self.last_usage = None
 
     def _flush_pending_output(self, *, force: bool = False) -> None:
         self._cancel_flush_timer()
@@ -217,11 +201,11 @@ class _OrchestratorACPClient(ACPClientBase):
                 loop = asyncio.get_running_loop()
                 self._flush_handle = loop.call_later(remaining, self._do_deferred_flush)
             except RuntimeError:
-                pass  # No event loop — will flush on next call or finish_turn
+                pass
             return
         merged = "".join(self._pending_output_chunks)
         self._pending_output_chunks = []
-        _console.print(merged, end="", highlight=False)
+        _console.print(merged, end="", highlight=False, markup=False)
         _console.file.flush()
         self._last_output_flush = now
 
@@ -231,7 +215,6 @@ class _OrchestratorACPClient(ACPClientBase):
             self._flush_handle = None
 
     def _do_deferred_flush(self) -> None:
-        """Callback invoked by the event-loop timer to flush buffered output."""
         self._flush_handle = None
         self._flush_pending_output(force=True)
 
@@ -271,7 +254,7 @@ class _OrchestratorACPClient(ACPClientBase):
                     if text:
                         self._notify_first_update()
                         self._flush_pending_output(force=True)
-                        _console.print(f"[dim]{text}[/dim]", end="", highlight=False)
+                        _console.print(f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False)
                         _console.file.flush()
         elif isinstance(update, ToolCallStart):
             self._notify_first_update()
@@ -286,12 +269,8 @@ class _OrchestratorACPClient(ACPClientBase):
                 run.args = self._tool_runs.serialize_payload(
                     self._tool_runs.extract_tool_args(update)
                 )
-                label = (
-                    f"▶ {run.display_id} {title} ({key_arg})"
-                    if key_arg
-                    else f"▶ {run.display_id} {title}"
-                )
-                _console.print(f"\n[dim cyan]{label}[/dim cyan]", highlight=False)
+                arg_suffix = f"({key_arg})" if key_arg else ""
+                _console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
         elif isinstance(update, ToolCallProgress):
             self._notify_first_update()
             self._flush_pending_output(force=True)
@@ -310,19 +289,22 @@ class _OrchestratorACPClient(ACPClientBase):
             result = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_result(update))
             if result:
                 run.result = result
+            arg_suffix = f"({key_arg})" if key_arg else ""
             if status == "completed":
                 self._tool_runs.set_status(tool_key, status)
                 run.ended_at = run.ended_at or time.monotonic()
-                label = (
-                    f"  ✓ {run.display_id} {title} ({key_arg})"
-                    if key_arg
-                    else f"  ✓ {run.display_id} {title}"
-                )
-                _console.print(f"[dim green]{label}[/dim green]", highlight=False)
+                duration = ""
+                if run.started_at and run.ended_at:
+                    elapsed = run.ended_at - run.started_at
+                    duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
+                _console.print(f"  [green]● {title}{arg_suffix}[/green]{duration}", highlight=False)
             elif status == "failed":
                 self._tool_runs.set_status(tool_key, status)
                 run.ended_at = run.ended_at or time.monotonic()
-                _console.print(f"[dim red]  ✗ {run.display_id} {title}[/dim red]", highlight=False)
+                _console.print(f"  [red]● {title}{arg_suffix} failed[/red]", highlight=False)
+        elif isinstance(update, UsageUpdate):
+            self._notify_first_update()
+            self.last_usage = update
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):
         from acp.schema import AllowedOutcome, RequestPermissionResponse
@@ -338,12 +320,6 @@ class _OrchestratorACPClient(ACPClientBase):
 
 
 class ChatController:
-    """Manages the orchestrator agent lifecycle.
-
-    Spawns a claude-code ACP agent with admin MCP access in CWD.
-    User messages are forwarded to the agent; responses stream back.
-    """
-
     def __init__(
         self,
         client: Any,
@@ -368,10 +344,9 @@ class ChatController:
         self._chat_history: list[tuple[str, str]] = []
         self._rendered_messages: list[str] = []
         self._restored_messages_printed = False
-        self._custom_orchestrator_prompt: str | None = None
         self._session_title: str | None = None
         self._title_task: asyncio.Task[None] | None = None
-        # DB-change context injection
+        self._project_name: str | None = None
         self._watcher = DBWatcher(client)
 
     async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
@@ -382,12 +357,9 @@ class ChatController:
                 source="repl",
                 label="REPL session",
                 agent_backend=self.agent_backend,
+                project_id=self.client.active_project_id,
             )
         await self._attach_session(selected, switching=False)
-        # Load custom orchestrator prompt from settings
-        settings = await self.client.settings.get()
-        custom = settings.get(PROMPT_ORCHESTRATOR_KEY, "").strip()
-        self._custom_orchestrator_prompt = custom if custom else None
 
     async def _resolve_initial_session(
         self, explicit_session_id: str | None
@@ -445,7 +417,6 @@ class ChatController:
         return self._restart_requested
 
     def _append_turn(self, user_text: str, assistant_reply: str) -> None:
-        """Record a user/assistant exchange in conversation history."""
         self._chat_history.append(("user", user_text))
         self._rendered_messages.append(f"You: {user_text.strip()}")
         if assistant_reply:
@@ -471,30 +442,15 @@ class ChatController:
         await set_last_session_id(self.client, scope="repl", session_id=self._chat_session_id)
 
     async def _generate_session_title(self, user_message: str, assistant_reply: str) -> None:
-        """Generate a human-readable session title from the first exchange."""
-        try:
-            context = user_message.strip()
-            if assistant_reply:
-                # Include start of reply for better context
-                reply_preview = assistant_reply.strip()[:200]
-                context = f"User: {context}\nAssistant: {reply_preview}"
-            title = await run_orchestrator_turn(
-                self.client,
-                prompt=(
-                    "Generate a very short title (3-8 words) for a chat session "
-                    "that starts with this exchange. Return ONLY the title, nothing else. "
-                    "No quotes, no punctuation at the end, no prefixes like 'Title:'.\n\n"
-                    f"{context}"
-                ),
-                agent_backend=self.agent_backend,
-            )
-            cleaned = _clean_generated_title(title)
-            if cleaned:
-                self._session_title = cleaned
-                await self._persist_session()
-                logger.debug("Auto-generated session title: {}", cleaned)
-        except (AgentError, OSError, RuntimeError, ValueError):
-            logger.debug("Session title generation failed, keeping default")
+        title = await generate_session_title(
+            self.client,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            agent_backend=self.agent_backend,
+        )
+        if title:
+            self._session_title = title
+            await self._persist_session()
 
     def _print_restored_messages(self) -> None:
         if self._restored_messages_printed or not self._rendered_messages:
@@ -506,17 +462,9 @@ class ChatController:
         self._restored_messages_printed = True
 
     async def _open_sessions(self, query: str | None) -> bool:
-        sessions = await list_chat_sessions(self.client, source="repl")
-        if query is not None and query.lower() == "new":
-            created = await create_chat_session(
-                self.client,
-                source="repl",
-                label="REPL session",
-                agent_backend=self.agent_backend,
-            )
-            return await self._attach_session(created, switching=True)
+        sessions = await list_chat_sessions(self.client, project_id=self.client.active_project_id)
         if not sessions:
-            _console.print("[dim]No persisted sessions yet. Use /sessions new.[/dim]")
+            _console.print("[dim]No persisted sessions yet.[/dim]")
             return False
 
         items = build_chat_session_list_items(sessions, current_session_id=self._chat_session_id)
@@ -535,18 +483,24 @@ class ChatController:
                 _console.print(f"[red]Unknown session selector: {query}[/red]")
                 return False
         else:
-            _console.print("Sessions:")
+            table = Table(box=None, show_header=False, pad_edge=False)
+            table.add_column(justify="right", style="dim", no_wrap=True)
+            table.add_column(no_wrap=True)
+            table.add_column(style="dim", no_wrap=True)
+            table.add_column(style="dim", no_wrap=True)
+            table.add_column(no_wrap=True)
             for item in items:
-                current = " [bold cyan]● current[/bold cyan]" if item.is_current else ""
-                backend = f" [dim]{item.agent_backend}[/dim]" if item.agent_backend else ""
-                time_str = f"  [dim]{item.updated_relative}[/dim]" if item.updated_relative else ""
-                _console.print(f"  {item.index:>2}  {item.label}{backend}{current}{time_str}")
+                marker = "[bold cyan]● current[/bold cyan]" if item.is_current else ""
+                table.add_row(
+                    str(item.index),
+                    item.label,
+                    item.agent_backend or "",
+                    item.updated_relative or "",
+                    marker,
+                )
+            _console.print(table)
             _console.print()
-            _console.print(
-                "[dim]/sessions <number|id>[/dim] attach  "
-                "[dim]/sessions new[/dim] create  "
-                "[dim]/sessions delete <number|id>[/dim] remove"
-            )
+            _console.print("[dim]/sessions <n> attach · /new create · /delete <n> remove[/dim]")
             return False
 
         should_restart = await self._attach_session(selected, switching=True)
@@ -556,20 +510,19 @@ class ChatController:
         return should_restart
 
     async def _create_new_session(self) -> bool:
-        """Create a fresh session and attach it. Returns True if agent restart needed."""
         created = await create_chat_session(
             self.client,
             source="repl",
             label="REPL session",
             agent_backend=self.agent_backend,
+            project_id=self.client.active_project_id,
         )
         should_restart = await self._attach_session(created, switching=True)
         _console.print(f"[green]New session:[/green] {created['id']}")
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
-        """Delete a session by number or ID prefix."""
-        sessions = await list_chat_sessions(self.client, source="repl")
+        sessions = await list_chat_sessions(self.client)
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
             return
@@ -597,8 +550,6 @@ class ChatController:
         else:
             _console.print(f"[red]Failed to delete session {target_id}.[/red]")
 
-    # -- project resolution --------------------------------------------------
-
     async def ensure_project(self) -> bool:
         """Resolve an active project from CWD.  Always checks CWD on every boot.
 
@@ -611,6 +562,7 @@ class ChatController:
         project = await self.client.projects.find_by_repo(cwd_str)
         if project is not None:
             await self.client.projects.set_active(project.id)
+            self._project_name = project.name
             return True
 
         # 2. Try to match by git root.
@@ -623,10 +575,23 @@ class ChatController:
                 for repo in repos:
                     if Path(repo.path).expanduser().resolve() == resolved_git_root:
                         await self.client.projects.set_active(proj.id)
+                        await self._refresh_project_name()
                         return True
 
         # 3. No match — bootstrap a new project for this CWD.
-        return await self._bootstrap_project()
+        result = await self._bootstrap_project()
+        if result:
+            await self._refresh_project_name()
+        return result
+
+    async def _refresh_project_name(self) -> None:
+        projects = await self.client.projects.list()
+        active_id = self.client.active_project_id
+        for p in projects:
+            if p.id == active_id:
+                self._project_name = p.name
+                return
+        self._project_name = None
 
     async def _bootstrap_project(self) -> bool:
         cwd = Path.cwd()
@@ -637,7 +602,11 @@ class ChatController:
         default_name = repo_root.name
 
         if not sys.stdin.isatty():
-            return await self._create_project(default_name, repo_path)
+            _console.print(
+                "[red]No project found.[/red] Run [bold]kagan[/bold] interactively "
+                "or use [bold]kg chat --project <name>[/bold] to specify one."
+            )
+            return False
 
         _console.print()
         _console.print("[bold]No project found.[/bold] Let's create one.")
@@ -657,19 +626,16 @@ class ChatController:
 
         name = name.strip() or default_name
 
-        # -- git identity setup (first-time only) ---
         await self._ensure_git_identity()
 
         return await self._create_project(name, repo_path)
 
     async def _ensure_git_identity(self) -> None:
-        """Prompt for git identity mode if not yet configured."""
         settings = await self.client.settings.get()
         if "git_user_mode" in settings:
-            return  # already configured
+            return
 
         if not sys.stdin.isatty():
-            # non-interactive — use default
             await self.client.settings.set({"git_user_mode": "kagan_agent"})
             return
 
@@ -757,10 +723,7 @@ class ChatController:
             _console.print(f"[red]Failed to create project:[/red] {exc}")
             return False
 
-    # -- agent lifecycle (spawn_agent_process context manager) ---------------
-
     def _resolve_acp_command(self) -> tuple[str, list[str]]:
-        """Return (executable, args) for the ACP agent process."""
         backend = get_backend(self.agent_backend)
         if not backend.get("supports_acp", True):
             raise AgentError(
@@ -774,7 +737,6 @@ class ChatController:
         if not acp_cmd:
             raise AgentError(f"No ACP command configured for backend {self.agent_backend!r}")
 
-        # Verify the executable is available
         exe = acp_cmd[0]
         if shutil.which(exe) is None:
             hint = ""
@@ -785,34 +747,29 @@ class ChatController:
         return acp_cmd[0], acp_cmd[1:]
 
     async def run(self, *, prompt: str | None = None) -> None:
-        """Run the full orchestrator lifecycle, restarting on agent switch."""
         while True:
             self._restart_requested = False
             self._is_primed = False
             await self._run_agent_session(prompt=prompt)
             if not self._restart_requested:
                 break
-            # On restart, don't re-send the original prompt
             prompt = None
             _console.print()
             _console.print(f"[bold cyan]Switching to {self.agent_backend}...[/bold cyan]")
 
     async def _run_agent_session(self, *, prompt: str | None = None) -> None:
-        """Single agent session lifecycle inside spawn_agent_process context."""
-        # Resolve the ACP command
         try:
             exe, exe_args = self._resolve_acp_command()
         except AgentError as exc:
             _console.print(f"[red]{exc}[/red]")
             return
 
-        # Prepare MCP server config
         session_id = self._mcp_session_id or uuid4().hex[:8]
         db_path = str(default_db_path())
         mcp_content = build_mcp_manifest(
             session_id=session_id,
             db_path=db_path,
-            access_tier="admin",
+            role="ORCHESTRATOR",
             project_id=self.client.active_project_id,
         )
         cwd = Path.cwd()
@@ -830,7 +787,6 @@ class ChatController:
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
         logger.debug("Wrote .mcp.json with admin access at {}", mcp_path)
 
-        # Prepare environment
         backend = get_backend(self.agent_backend)
         env = build_agent_environment(
             session_id=session_id,
@@ -838,11 +794,9 @@ class ChatController:
             backend_env_vars=backend.get("env_vars", {}),
         )
 
-        # Spawn ACP agent process (context manager owns the lifecycle)
         self._acp_client = _OrchestratorACPClient()
 
         async def _handshake(conn_inner):
-            """Run ACP initialize + new_session."""
             timeout_s = _acp_handshake_timeout_seconds(self.agent_backend)
             client_caps = ClientCapabilities(terminal=False)
             await asyncio.wait_for(
@@ -895,7 +849,6 @@ class ChatController:
                 self._acp_conn = conn
                 logger.info("ACP agent process spawned pid={}", proc.pid)
 
-                # Run handshake with live wave animation
                 ready_event = asyncio.Event()
                 handshake_error: Exception | None = None
 
@@ -966,7 +919,6 @@ class ChatController:
                 await self._watcher.initialize()
                 await self._watcher.subscribe()
 
-                # Run single-shot or REPL inside the context
                 if prompt is not None:
                     await self._send(text=prompt)
                 else:
@@ -981,18 +933,15 @@ class ChatController:
             await self._watcher.close()
             self._acp_conn = None
             self._acp_session_id = None
-            # Clean up .mcp.json
             if mcp_path.exists():
                 with contextlib.suppress(OSError):
                     mcp_path.unlink()
 
     async def _send(self, text: str) -> None:
-        """Send a user message to the orchestrator agent and stream the response."""
         if self._acp_conn is None or self._acp_session_id is None:
             _console.print("[red]No agent connected. Try restarting.[/red]")
             return
 
-        # Prepend accumulated DB-change context (invisible to user)
         ctx = self._watcher.drain_context()
         request_text = f"{ctx}\n\n{text}" if ctx else text
 
@@ -1006,12 +955,8 @@ class ChatController:
             resumed_text = build_orchestrator_prompt(
                 self._chat_history, request_text, history_limit=20
             )
-            system_prompt = _ORCHESTRATOR_SYSTEM_PROMPT
-            # Inject custom orchestrator prompt from settings if configured
-            if self._custom_orchestrator_prompt:
-                system_prompt = prepend_custom_prompt(
-                    system_prompt, self._custom_orchestrator_prompt
-                )
+            settings = await self.client.settings.get()
+            system_prompt = resolve_orchestrator_prompt(settings, Path.cwd())
             prompt_blocks = [
                 acp.text_block(system_prompt),
                 acp.text_block(_format_user_request_block(resumed_text)),
@@ -1034,8 +979,11 @@ class ChatController:
             )
             original_sigint = signal.getsignal(signal.SIGINT)
             loop = asyncio.get_running_loop()
-            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(prompt_task.cancel))
             try:
+                signal.signal(
+                    signal.SIGINT,
+                    lambda *_: loop.call_soon_threadsafe(prompt_task.cancel),
+                )
                 await prompt_task
             except asyncio.CancelledError:
                 interrupted = True
@@ -1052,8 +1000,10 @@ class ChatController:
 
         assistant_reply = ""
         if self._acp_client is not None:
-            with contextlib.suppress(Exception):
+            try:
                 assistant_reply = self._acp_client.finish_turn()
+            except Exception:
+                logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
 
         self._append_turn(text, assistant_reply)
 
@@ -1063,14 +1013,9 @@ class ChatController:
             return
 
         _console.print()  # newline after streamed output
-        # Re-render as markdown if the response contains rich formatting
-        if assistant_reply and _has_markdown_syntax(assistant_reply):
-            _console.print(Rule(style="dim"))
-            _console.print(RichMarkdown(assistant_reply))
         self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
 
-        # Auto-generate session title after first turn
         if self._turn_count == 1 and self._session_title is None:
             self._title_task = asyncio.create_task(
                 self._generate_session_title(text, assistant_reply),
@@ -1083,15 +1028,57 @@ class ChatController:
             message_count=self._turn_count,
         )
         _console.print(f"[dim]{status_line}[/dim]")
+        if self._acp_client is not None and self._acp_client.last_usage is not None:
+            usage = self._acp_client.last_usage
+            metrics_parts: list[str] = []
+            if usage.used is not None and usage.size is not None and usage.size > 0:
+                used_k = usage.used / 1000
+                size_k = usage.size / 1000
+                if size_k >= 1000:
+                    metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
+                else:
+                    metrics_parts.append(f"ctx {used_k:.1f}k/{size_k:.1f}k")
+            if usage.cost is not None:
+                metrics_parts.append(f"${usage.cost.amount:.2f}")
+            if metrics_parts:
+                _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
+            # Context window warning
+            if usage.used is not None and usage.size is not None and usage.size > 0:
+                pct = usage.used / usage.size
+                if pct > 0.8:
+                    _console.print(
+                        f"[bold red]  ⚠ Context window {pct:.0%} full — "
+                        f"agent may degrade[/bold red]"
+                    )
+                elif pct > 0.6:
+                    _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
         await self._persist_session()
 
+    async def _event_watcher(self) -> None:
+        """Background coroutine that prints one-line notifications for task events."""
+        try:
+            async for event in self.client.tasks.events.stream_all(replay=False):
+                if event.event_type == SessionEventType.AGENT_FAILED:
+                    error = (event.payload or {}).get("error", "Agent failed")
+                    _console.print(
+                        f"\n[bold red]  \u26a0 Task {event.task_id[:8]}: {error}[/bold red]"
+                    )
+                elif event.event_type == SessionEventType.AGENT_COMPLETED:
+                    _console.print(
+                        f"\n[green]  \u2713 Task {event.task_id[:8]}: Agent completed[/green]"
+                    )
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
+
     async def _repl_loop(self) -> None:
-        """Interactive REPL loop — runs inside spawn_agent_process context."""
         _console.print(
             "[dim]Type [bold]/help[/bold] for commands, [bold]/flow[/bold] for guided mode, "
             "[bold]Ctrl-C[/bold] to interrupt, "
             "[bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
+        watcher_task = asyncio.create_task(self._event_watcher())
         try:
             while True:
                 try:
@@ -1105,7 +1092,6 @@ class ChatController:
                 if not stripped:
                     continue
 
-                # Slash command dispatch
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
                         break  # /exit or agent switch
@@ -1119,12 +1105,13 @@ class ChatController:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
         finally:
+            watcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher_task
             if not self._restart_requested:
                 _console.print("\n[dim]Session ended.[/dim]")
 
     async def _handle_slash(self, text: str) -> bool:
-        """Handle a slash command. Returns True if exit requested."""
-
         result = resolve_slash_input(
             text,
             session_label="Orchestrator",
@@ -1132,81 +1119,112 @@ class ChatController:
             runtime_session_id=self._acp_session_id,
             current_backend=self.agent_backend,
             available_backends=list_registered_agent_backends(),
+            project_name=self._project_name,
+            project_id=self.client.active_project_id,
+            turn_count=self._turn_count,
         )
         if not result.handled:
             return False
 
-        if result.clear_requested:
-            click.clear()
-
-        # REPL text fallback for TUI-native actions
-        if result.help_overlay_requested:
-            self._print_help_documentation()
-
-        if result.agent_picker_requested:
-            backends = list_registered_agent_backends()
-            for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
-                _console.print(line)
-
+        # Print any info/error presentation lines
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
                 _console.print(f"[red]{line.text}[/red]")
             else:
                 _console.print(line.text)
-        if result.selected_agent is not None:
-            return await self._switch_agent(result.selected_agent)
 
-        if result.sessions_requested:
-            return await self._open_sessions(result.sessions_query)
+        match result.action:
+            case SlashAction.CLEAR:
+                click.clear()
+            case SlashAction.SHOW_HELP:
+                self._print_help_documentation()
+            case SlashAction.SHOW_AGENTS:
+                backends = list_registered_agent_backends()
+                for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
+                    _console.print(line)
+            case SlashAction.SWITCH_AGENT:
+                return await self._switch_agent(result.data or result.selected_agent or "")
+            case SlashAction.LIST_SESSIONS:
+                return await self._open_sessions(result.data or result.sessions_query)
+            case SlashAction.DELETE_SESSION:
+                await self._delete_session(result.data or result.delete_session_query or "")
+            case SlashAction.NEW_SESSION:
+                return await self._create_new_session()
+            case SlashAction.SHOW_TOOL:
+                self._show_tool_report(result.data or result.tool_query)
+            case SlashAction.SHOW_STATUS:
+                self._print_status_panel()
+            case SlashAction.SHOW_PROJECT:
+                self._print_project_info()
+            case SlashAction.SWITCH_PROJECT:
+                await self._switch_project(result.data or result.project_switch_requested or "")
+            case SlashAction.CLOSE:
+                return True
+            case _:
+                pass
 
-        if result.delete_session_query is not None:
-            await self._delete_session(result.delete_session_query)
-            return False
-
-        if result.new_session_requested:
-            return await self._create_new_session()
-
-        if result.tool_requested:
-            self._show_tool_report(result.tool_query)
-            return False
-
-        return bool(result.close_requested)
+        return False
 
     def _print_help_documentation(self) -> None:
-        usage_panel = Panel.fit(
-            "[bold]Usage:[/bold] /<command> [args]\n[dim]Kagan chat slash-command reference.[/dim]",
-            title="kagan chat",
-            border_style="cyan",
-            padding=(0, 1),
-        )
+        # Build reverse alias map: {target: [aliases]}
+        aliases = SLASH_COMMAND_REGISTRY.aliases
+        reverse_aliases: dict[str, list[str]] = {}
+        for alias, target in aliases.items():
+            reverse_aliases.setdefault(target, []).append(alias)
 
-        command_table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-        command_table.add_column("Command", style="bold cyan", no_wrap=True)
-        command_table.add_column("Description", style="default")
+        _console.print("[bold]Commands:[/bold]")
+        table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1, 0, 0))
+        table.add_column(style="bold cyan", no_wrap=True)
+        table.add_column(style="default")
         for spec in SLASH_COMMAND_REGISTRY.specs():
-            command_table.add_row(f"/{spec.name}", spec.description)
+            cmd_aliases = reverse_aliases.get(spec.name, [])
+            alias_str = f" ({', '.join(cmd_aliases)})" if cmd_aliases else ""
+            table.add_row(f"  /{spec.name}{alias_str}", spec.description)
+        _console.print(table)
+        _console.print()
+        _console.print("[dim]Keyboard: Alt-Enter newline · Ctrl-C clear · Ctrl-D exit[/dim]")
+        _console.print("[dim]Docs: https://docs.kagan.sh/[/dim]")
 
-        commands_panel = Panel(
-            command_table,
-            title="Commands",
-            border_style="green",
-            padding=(0, 1),
-            expand=False,
-        )
+    def _print_status_panel(self) -> None:
+        session_label = self._session_title or self._chat_session_id or "none"
+        session_id_short = (self._chat_session_id or "?")[:8]
+        parts = [
+            f"project: {self._project_name or 'none'}",
+            f"session: {session_label} ({session_id_short})",
+            f"agent: {self.agent_backend}",
+            f"turns: {self._turn_count}",
+        ]
+        line = " · ".join(parts)
+        cols = shutil.get_terminal_size().columns
+        if len(line) <= cols:
+            _console.print(f"[dim]{line}[/dim]")
+        else:
+            for part in parts:
+                _console.print(f"  [dim]{part}[/dim]")
 
-        quick_refs = " ".join(f"/{spec.name}" for spec in SLASH_COMMAND_REGISTRY.specs())
-        quick_refs_panel = Panel.fit(
-            f"[dim]{quick_refs}[/dim]",
-            title="Quick refs",
-            border_style="magenta",
-            padding=(0, 1),
-        )
+    def _print_project_info(self) -> None:
+        if self._project_name:
+            _console.print(f"[bold]Project:[/bold] {self._project_name}")
+            _console.print(f"[dim]ID:[/dim] {self.client.active_project_id or 'unknown'}")
+        else:
+            _console.print("[dim]No active project.[/dim]")
 
-        _console.print(usage_panel)
-        _console.print(commands_panel)
-        _console.print(quick_refs_panel)
-        _console.print("Documentation: https://docs.kagan.sh/")
-        _console.print("CLI reference: https://docs.kagan.sh/reference/cli/")
+    async def _switch_project(self, name: str) -> None:
+        projects = await self.client.projects.list()
+        target = None
+        for p in projects:
+            if p.name.casefold() == name.casefold():
+                target = p
+                break
+        if target is None:
+            _console.print(f"[red]Project not found: {name}[/red]")
+            available = ", ".join(p.name for p in projects) if projects else "none"
+            _console.print(f"[dim]Available: {available}[/dim]")
+            return
+        await self.client.projects.set_active(target.id)
+        self._project_name = target.name
+        _TOOLBAR_STATE.project_name = target.name
+        _console.print(f"[green]Switched to project:[/green] {target.name}")
 
     def _show_tool_report(self, query: str | None) -> None:
         if self._acp_client is None:
@@ -1222,11 +1240,11 @@ class ChatController:
         _console.print(report, highlight=False)
 
     async def _switch_agent(self, new_backend: str) -> bool:
-        """Request agent switch and persist to settings. Returns True to exit REPL loop."""
         if new_backend == self.agent_backend:
             _console.print(f"[dim]Already using {new_backend}.[/dim]")
             return False
 
+        _console.print(f"[bold]Switching to {new_backend}...[/bold]")
         self.agent_backend = new_backend
         _TOOLBAR_STATE.agent_backend = new_backend
         self._restart_requested = True

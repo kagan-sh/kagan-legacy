@@ -1,10 +1,33 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Kagan Docs" />
+  {% if page %}
+  <meta property="og:title" content="{{ page.title }} - Kagan Docs" />
+  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  <meta property="og:url" content="{{ page.canonical_url }}" />
+  {% else %}
+  <meta property="og:title" content="Kagan Docs" />
+  <meta property="og:description" content="{{ config.site_description }}" />
+  {% endif %}
+  <meta property="og:image" content="https://kagan.sh/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  {% if page %}
+  <meta name="twitter:title" content="{{ page.title }} - Kagan Docs" />
+  <meta name="twitter:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  {% else %}
+  <meta name="twitter:title" content="Kagan Docs" />
+  <meta name="twitter:description" content="{{ config.site_description }}" />
+  {% endif %}
+  <meta name="twitter:image" content="https://kagan.sh/og-image.png" />
+{% endblock %}
+
 {% block fonts %}
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Commit Mono — Developer-first programming typeface -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500&family=Geist+Mono:wght@100..900&display=swap"
+    href="https://cdn.jsdelivr.net/gh/eigilnikolajsen/commit-mono@latest/css/commit-mono.css"
   />
 {% endblock %}

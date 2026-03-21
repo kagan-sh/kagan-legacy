@@ -1,3 +1,5 @@
+"""Tests for tmux launcher — v0.5.0-style prompt-as-CLI-arg approach."""
+
 import asyncio
 import sys
 
@@ -12,164 +14,142 @@ pytestmark = [
 ]
 
 
-async def _launch_with_blocked_injection(
-    *,
-    monkeypatch: pytest.MonkeyPatch,
+async def test_launch_tmux_creates_session_and_sends_command(
     tmp_path,
-    agent_cmd: str,
-    agent_backend: str,
-) -> tuple[dict[str, object], float]:
-    captured: dict[str, object] = {}
-    started = asyncio.Event()
-    release = asyncio.Event()
-    finished = asyncio.Event()
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """launch_tmux creates an empty tmux session then send-keys the launch command."""
+    calls: list[tuple[str, ...]] = []
 
-    async def _fake_run_detached(*_cmd: str, **_kwargs: object) -> None:
-        return None
+    async def _fake_run_detached(*cmd: str, **_kw: object) -> None:
+        calls.append(cmd)
 
-    async def _fake_inject(**kwargs: object) -> None:
-        captured.update(kwargs)
-        started.set()
-        await release.wait()
-        finished.set()
+    async def _fake_send_keys(session_name: str, text: str) -> None:
+        calls.append(("send-keys", session_name, text))
 
     monkeypatch.setattr(_launchers, "_run_detached", _fake_run_detached)
-    monkeypatch.setattr(_launchers, "_inject_tmux_startup_prompt", _fake_inject)
+    monkeypatch.setattr(_launchers, "_tmux_send_keys", _fake_send_keys)
+
+    await _launchers.launch_tmux(
+        worktree_path=tmp_path,
+        session_id="session:abc123",
+        agent_cmd="claude",
+        agent_backend="claude-code",
+        startup_prompt="Implement feature X",
+    )
+
+    # First call: tmux new-session
+    assert calls[0][0] == "tmux"
+    assert "new-session" in calls[0]
+    assert "-d" in calls[0]
+    session_name = "kagan-session-abc123"
+    assert session_name in calls[0]
+
+    # Second call: send-keys with launch command containing prompt
+    assert calls[1][0] == "send-keys"
+    assert calls[1][1] == session_name
+    launch_cmd = calls[1][2]
+    assert "claude" in launch_cmd
+    assert "Implement feature X" in launch_cmd
+
+
+async def test_launch_tmux_falls_back_to_agent_cmd_without_backend(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without agent_backend, launch_tmux falls back to bare agent_cmd."""
+    calls: list[tuple[str, ...]] = []
+
+    async def _fake_run_detached(*cmd: str, **_kw: object) -> None:
+        calls.append(cmd)
+
+    async def _fake_send_keys(session_name: str, text: str) -> None:
+        calls.append(("send-keys", session_name, text))
+
+    monkeypatch.setattr(_launchers, "_run_detached", _fake_run_detached)
+    monkeypatch.setattr(_launchers, "_tmux_send_keys", _fake_send_keys)
+
+    await _launchers.launch_tmux(
+        worktree_path=tmp_path,
+        session_id="sess1",
+        agent_cmd="my-agent",
+        agent_backend=None,
+        startup_prompt="Hello",
+    )
+
+    launch_cmd = calls[1][2]
+    assert launch_cmd == "my-agent"
+
+
+async def test_launch_tmux_writes_mcp_json_and_prompt(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _noop_run(*_cmd: str, **_kw: object) -> None:
+        return None
+
+    async def _noop_send(_name: str, _text: str) -> None:
+        return None
+
+    monkeypatch.setattr(_launchers, "_run_detached", _noop_run)
+    monkeypatch.setattr(_launchers, "_tmux_send_keys", _noop_send)
+
+    await _launchers.launch_tmux(
+        worktree_path=tmp_path,
+        session_id="s1",
+        agent_cmd="claude",
+        agent_backend="claude-code",
+        db_path="/tmp/test.db",
+        startup_prompt="Test prompt content",
+    )
+
+    mcp_json = tmp_path / ".mcp.json"
+    assert mcp_json.exists()
+
+    prompt_file = tmp_path / ".kagan" / "start_prompt.md"
+    assert prompt_file.exists()
+    assert "Test prompt content" in prompt_file.read_text()
+
+
+async def test_launch_tmux_does_not_block(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """launch_tmux should return quickly — no blocking injection loop."""
+
+    async def _noop_run(*_cmd: str, **_kw: object) -> None:
+        return None
+
+    async def _noop_send(_name: str, _text: str) -> None:
+        return None
+
+    monkeypatch.setattr(_launchers, "_run_detached", _noop_run)
+    monkeypatch.setattr(_launchers, "_tmux_send_keys", _noop_send)
 
     loop = asyncio.get_running_loop()
     start = loop.time()
     await _launchers.launch_tmux(
         worktree_path=tmp_path,
-        session_id="session:abc123",
-        agent_cmd=agent_cmd,
-        agent_backend=agent_backend,
-        startup_prompt="Implement feature X",
+        session_id="s1",
+        agent_cmd="claude",
+        agent_backend="claude-code",
+        startup_prompt="Test",
     )
     elapsed = loop.time() - start
-
-    await asyncio.wait_for(started.wait(), timeout=0.2)
-    assert not finished.is_set()
-
-    release.set()
-    await asyncio.wait_for(finished.wait(), timeout=0.2)
-
-    return captured, elapsed
+    assert elapsed < 1.0
 
 
-async def test_launch_tmux_does_not_wait_for_codex_prompt_injection(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured, elapsed = await _launch_with_blocked_injection(
-        monkeypatch=monkeypatch,
-        tmp_path=tmp_path,
-        agent_cmd="codex",
-        agent_backend="codex",
-    )
-
-    assert elapsed < 0.2
-    assert captured["max_attempts"] == 60
-    assert captured["wait_commands"] == ("codex",)
-    assert "use_literal_send_keys" not in captured
-    assert "ready_text" not in captured
+def test_build_launch_command_uses_prompt_flag() -> None:
+    """_build_launch_command uses the registry's prompt_flag."""
+    cmd = _launchers._build_launch_command("claude-code", "Hello world")
+    assert cmd is not None
+    assert cmd.startswith("claude -p ")
 
 
-async def test_launch_tmux_keeps_opencode_prompt_injection_behavior(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured, elapsed = await _launch_with_blocked_injection(
-        monkeypatch=monkeypatch,
-        tmp_path=tmp_path,
-        agent_cmd="opencode",
-        agent_backend="opencode",
-    )
-
-    assert elapsed < 0.2
-    assert captured["max_attempts"] == 60
-    assert captured["wait_commands"] == ("node", "opencode")
-    assert captured["use_literal_send_keys"] is True
-    assert captured["ready_text"] == "Ask anything..."
-    settle_seconds = captured.get("settle_seconds")
-    assert isinstance(settle_seconds, (int, float))
-    assert settle_seconds > 0
-
-
-async def test_launch_tmux_uses_literal_prompt_injection_for_kimi(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured, elapsed = await _launch_with_blocked_injection(
-        monkeypatch=monkeypatch,
-        tmp_path=tmp_path,
-        agent_cmd="kimi",
-        agent_backend="kimi-cli",
-    )
-
-    assert elapsed < 0.2
-    assert captured["max_attempts"] == 60
-    assert captured["wait_commands"] == ("kimi",)
-    assert captured["use_literal_send_keys"] is True
-    assert "ready_text" not in captured
-    settle_seconds = captured.get("settle_seconds")
-    assert isinstance(settle_seconds, (int, float))
-    assert settle_seconds > 0
-
-
-@pytest.mark.smoke
 @pytest.mark.parametrize("agent_backend", sorted(_agent.AGENT_BACKENDS))
-async def test_tmux_startup_prompt_smoke_all_supported_backends(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-    agent_backend: str,
-) -> None:
-    session_name = "kagan-session-smoke"
-    prompt_path = tmp_path / "start_prompt.md"
-    prompt_path.write_text("First line\nSecond line\n", encoding="utf-8")
-
-    executable_value = _agent.AGENT_BACKENDS[agent_backend].get("executable")
-    assert isinstance(executable_value, str)
-    executable = executable_value
-    wait_commands = _launchers._prompt_injection_wait_commands(
-        agent_cmd=executable,
-        agent_backend=agent_backend,
-    )
-    options = _launchers._tmux_prompt_injection_options(agent_backend=agent_backend)
-    use_literal = bool(options["use_literal_send_keys"])
-    ready_text_raw = options["ready_text"]
-    ready_text = ready_text_raw if isinstance(ready_text_raw, str) else None
-    current_command = wait_commands[0] if wait_commands else executable
-
-    seen_calls: list[tuple[str, ...]] = []
-
-    async def _fake_run_tmux_command(*args: str, capture_stdout: bool = False) -> tuple[int, str]:
-        del capture_stdout
-        seen_calls.append(args)
-        cmd = args[0]
-        if cmd == "has-session":
-            return 0, ""
-        if cmd == "display-message":
-            return 0, f"{current_command}\n"
-        if cmd == "capture-pane":
-            return 0, f"{ready_text}\n" if ready_text else ""
-        if cmd in {"send-keys", "load-buffer", "paste-buffer", "delete-buffer"}:
-            return 0, ""
-        return 0, ""
-
-    monkeypatch.setattr(_launchers, "_run_tmux_command", _fake_run_tmux_command)
-
-    injected = await _launchers._send_tmux_startup_prompt(
-        session_name,
-        prompt_path,
-        wait_for_commands=wait_commands,
-        max_attempts=2,
-        use_literal_send_keys=use_literal,
-        ready_text=ready_text,
-    )
-
-    assert injected is True
-    if use_literal:
-        assert any(call and call[0] == "send-keys" and "-l" in call for call in seen_calls)
-    else:
-        assert any(call and call[0] == "load-buffer" for call in seen_calls)
-        assert any(call and call[0] == "paste-buffer" for call in seen_calls)
+def test_build_launch_command_smoke_all_backends(agent_backend: str) -> None:
+    """All registered backends produce a non-None command."""
+    cmd = _launchers._build_launch_command(agent_backend, "test prompt")
+    assert cmd is not None
+    executable = _agent.AGENT_BACKENDS[agent_backend].get("executable", "")
+    assert executable in cmd

@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import Priority, TaskStatus, WorkMode
+from kagan.core import Priority, TaskStatus, parse_priority
 from kagan.core.errors import KaganError, ValidationError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -17,7 +17,6 @@ from kagan.mcp.toolsets import mcp_error_boundary
 class _BatchTaskEntry(TypedDict, total=False):
     title: str
     description: str
-    execution_mode: str
     priority: str | int
     base_branch: str | None
     acceptance_criteria: list[str] | None
@@ -44,18 +43,18 @@ def _resolve_task_ids(ctx: Context, task_ids: list[str] | None) -> list[str]:
 
 
 def _task_to_dict(task: Any) -> dict[str, Any]:
-    """Convert a core Task model to a plain dict."""
     return {
         "id": task.id,
         "title": task.title,
         "description": getattr(task, "description", ""),
         "status": task.status.value,
         "priority": task.priority.name,
-        "execution_mode": task.execution_mode.value,
         "base_branch": getattr(task, "base_branch", None),
         "acceptance_criteria": getattr(task, "acceptance_criteria", []),
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
+        "review_approved": getattr(task, "review_approved", False),
+        "review_verdicts": getattr(task, "review_verdicts", []) or [],
     }
 
 
@@ -88,32 +87,16 @@ def _parse_wait_for_task_statuses(
         ) from exc
 
 
-def _parse_priority(value: str | int | None) -> Priority:
-    """Parse a priority value from string, int, or None."""
-    if value is None:
-        return Priority.MEDIUM
-    if isinstance(value, int):
-        return Priority(value)
-    if value.isdigit():
-        return Priority(int(value))
-    return Priority[value]
-
-
-def _parse_work_mode(value: str | None) -> WorkMode:
-    """Parse a work mode value from string or None."""
-    return WorkMode(value) if value else WorkMode.AUTO
-
-
 def _build_update_verification(
     task_payload: dict[str, Any],
     *,
     title: str | None,
     description: str | None,
     priority: Priority | None,
-    execution_mode: WorkMode | None,
     base_branch: str | None,
     acceptance_criteria: list[str] | None,
     agent_backend: str | None,
+    launcher: str | None,
     status: TaskStatus | None,
 ) -> dict[str, Any]:
     requested: dict[str, Any] = {}
@@ -123,14 +106,14 @@ def _build_update_verification(
         requested["description"] = description
     if priority is not None:
         requested["priority"] = priority.name
-    if execution_mode is not None:
-        requested["execution_mode"] = execution_mode.value
     if base_branch is not None:
         requested["base_branch"] = base_branch
     if acceptance_criteria is not None:
         requested["acceptance_criteria"] = acceptance_criteria
     if agent_backend is not None:
         requested["agent_backend"] = agent_backend
+    if launcher is not None:
+        requested["launcher"] = launcher
     if status is not None:
         requested["status"] = status.value
 
@@ -148,19 +131,49 @@ def _build_update_verification(
 
 @mcp_error_boundary
 async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
-    """Get a task by ID."""
+    """Get a task by ID.
+
+    The response includes a ``board_hint`` field summarizing other active
+    tasks in the same project so the agent can decide whether to call
+    ``task_list()`` for coordination.
+    """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     task = await app.client.tasks.get(resolved_task_id)
     result = _task_to_dict(task)
     if app.bound_session_id is not None:
         result["session_id"] = app.bound_session_id
+
+    # Include worktree path so agents know where task files live
+    with contextlib.suppress(Exception):
+        ws = await app.client.worktrees.get(resolved_task_id)
+        if ws is not None:
+            result["worktree_path"] = ws.worktree_path
+
+    try:
+        all_tasks = await app.client.tasks.list()
+        siblings = [t for t in all_tasks if t.id != resolved_task_id]
+        active = [t for t in siblings if t.status in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)]
+        if active:
+            hint_lines = [f"{len(active)} active sibling task(s):"]
+            for t in active[:5]:
+                hint_lines.append(f"- {t.id} | {t.title} | {t.status.value}")
+            if len(active) > 5:
+                hint_lines.append(f"  ... and {len(active) - 5} more")
+            hint_lines.append("Call task_list() or task_get(id) for full details.")
+            result["board_hint"] = "\n".join(hint_lines)
+        elif siblings:
+            result["board_hint"] = (
+                f"{len(siblings)} other task(s) in project (none currently active)."
+            )
+    except Exception:
+        pass  # Board hint is best-effort; never block task_get
+
     return result
 
 
 @mcp_error_boundary
 async def _task_list(ctx: Context, status: str | None = None) -> dict:
-    """List tasks with optional status filter."""
     app = get_context(ctx)
     status_enum = TaskStatus(status) if status else None
     tasks = await app.client.tasks.list(status=status_enum)
@@ -176,21 +189,17 @@ async def _task_create(
     ctx: Context,
     title: str,
     description: str = "",
-    execution_mode: str | None = None,
     priority: str | int | None = None,
     base_branch: str | None = None,
     acceptance_criteria: list[str] | None = None,
     agent_backend: str | None = None,
     launcher: str | None = None,
 ) -> dict:
-    """Create a new task."""
     app = get_context(ctx)
-    priority_enum = _parse_priority(priority)
-    mode_enum = _parse_work_mode(execution_mode)
+    priority_enum = parse_priority(priority)
     task = await app.client.tasks.create(
         title,
         description=description,
-        execution_mode=mode_enum,
         priority=priority_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
@@ -210,25 +219,21 @@ async def _task_update(
     title: str | None = None,
     description: str | None = None,
     priority: str | int | None = None,
-    execution_mode: str | None = None,
     base_branch: str | None = None,
     acceptance_criteria: list[str] | None = None,
     agent_backend: str | None = None,
     launcher: str | None = None,
     status: str | None = None,
 ) -> dict:
-    """Patch task fields or transition status."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
-    priority_enum = _parse_priority(priority) if priority is not None else None
-    mode_enum = _parse_work_mode(execution_mode) if execution_mode is not None else None
+    priority_enum = parse_priority(priority) if priority is not None else None
     status_enum = TaskStatus(status) if status is not None else None
     task = await app.client.tasks.update(
         resolved_task_id,
         title=title,
         description=description,
         priority=priority_enum,
-        execution_mode=mode_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
@@ -242,10 +247,10 @@ async def _task_update(
         title=title,
         description=description,
         priority=priority_enum,
-        execution_mode=mode_enum,
         base_branch=base_branch,
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
+        launcher=launcher,
         status=status_enum,
     )
     return result
@@ -253,7 +258,6 @@ async def _task_update(
 
 @mcp_error_boundary
 async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) -> dict:
-    """Annotate a task with a timestamped note."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     await app.client.tasks.add_note(resolved_task_id, note)
@@ -262,7 +266,6 @@ async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) ->
 
 @mcp_error_boundary
 async def _task_search(ctx: Context, query: str) -> dict:
-    """Search tasks by title or description."""
     app = get_context(ctx)
     tasks = await app.client.tasks.search(query)
     return {"tasks": [_task_to_dict(t) for t in tasks]}
@@ -278,7 +281,6 @@ async def _task_events(
     max_payload_bytes: int = 16384,
     max_total_bytes: int = 262144,
 ) -> dict:
-    """Get paginated execution logs for a task."""
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     safe_limit = _clamp_int(limit, minimum=1, maximum=200)
@@ -357,7 +359,6 @@ async def _tasks_wait(
     wait_for_status: list[str] | str | None = None,
     resolve_when_any: bool = False,
 ) -> dict:
-    """Wait for task lifecycle progress using event-driven status transitions."""
     app = get_context(ctx)
     resolved_task_ids = _resolve_task_ids(ctx, task_ids)
     statuses = _parse_wait_for_task_statuses(wait_for_status)
@@ -434,14 +435,12 @@ async def _tasks_wait(
 
 @mcp_error_boundary
 async def _task_counts(ctx: Context) -> dict:
-    """Get per-status task counts."""
     app = get_context(ctx)
     return await app.client.tasks.counts()
 
 
 @mcp_error_boundary
 async def _task_delete(ctx: Context, task_id: str) -> dict:
-    """Delete a task and all associated data (admin only)."""
     app = get_context(ctx)
     await app.client.tasks.delete(task_id)
     return {"task_id": task_id, "deleted": True}
@@ -452,7 +451,7 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
     """Create multiple tasks at once.
 
     Each entry must have a ``title`` key and may include ``description``,
-    ``execution_mode`` (AUTO or PAIR), ``priority``, ``base_branch``,
+    ``priority``, ``base_branch``,
     ``acceptance_criteria``, and ``agent_backend``.
     Returns the list of created tasks.
     """
@@ -465,14 +464,12 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
             errors.append({"index": str(idx), "error": "title is required"})
             continue
         try:
-            mode = _parse_work_mode(entry.get("execution_mode"))
-            pri = _parse_priority(entry.get("priority"))
+            pri = parse_priority(entry.get("priority"))
             criteria_raw = entry.get("acceptance_criteria")
             criteria = criteria_raw if isinstance(criteria_raw, list) else None
             task = await app.client.tasks.create(
                 title,
                 description=entry.get("description", ""),
-                execution_mode=mode,
                 priority=pri,
                 base_branch=entry.get("base_branch"),
                 acceptance_criteria=criteria,

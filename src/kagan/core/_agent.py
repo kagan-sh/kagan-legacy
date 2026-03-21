@@ -49,6 +49,11 @@ async def cleanup_all_spawned_processes() -> None:
     _spawned_processes.clear()
 
 
+def resolve_default_agent_backend(settings: dict[str, str]) -> str:
+    """Return the default agent backend from settings, falling back to claude-code."""
+    return settings.get("default_agent_backend") or "claude-code"
+
+
 class AgentBackendConfig(TypedDict, total=False):
     """Schema for an agent backend registry entry."""
 
@@ -205,8 +210,6 @@ _AGENT_BACKEND_ALIASES: dict[str, str] = {
     "kimi": KIMI_CLI_BACKEND,
 }
 
-_VALID_ACCESS_TIERS = frozenset({"default", "admin", "readonly"})
-
 
 def normalize_backend_name(name: str) -> str:
     """Normalize user-provided backend names to canonical registry keys."""
@@ -254,20 +257,12 @@ def build_mcp_manifest(
     *,
     session_id: str,
     db_path: str,
-    access_tier: str = "default",
+    role: str = "WORKER",
     project_id: str | None = None,
 ) -> str:
     """Build the .mcp.json content string for a given session."""
-    if access_tier not in _VALID_ACCESS_TIERS:
-        raise ValueError(
-            f"access_tier must be one of {sorted(_VALID_ACCESS_TIERS)!r}, got {access_tier!r}"
-        )
-
     mcp_args = ["kagan", "mcp", "--session-id", session_id, "--db", db_path]
-    if access_tier == "admin":
-        mcp_args.append("--admin")
-    elif access_tier == "readonly":
-        mcp_args.append("--readonly")
+    mcp_args += ["--role", role]
     if project_id is not None:
         mcp_args += ["--project-id", project_id]
 
@@ -295,7 +290,9 @@ async def _prepare_spawn(
 ) -> tuple[list[str], dict[str, str], dict[str, object], str]:
     entry = get_backend(backend_name)
 
-    mcp_content = build_mcp_manifest(session_id=session_id, db_path=db_path, project_id=project_id)
+    mcp_content = build_mcp_manifest(
+        session_id=session_id, db_path=db_path, role="WORKER", project_id=project_id
+    )
     if write_mcp_manifest:
         mcp_path = worktree_path / ".mcp.json"
         try:
@@ -408,9 +405,9 @@ async def spawn_agent_via_acp(
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
     kwargs["stderr"] = asyncio.subprocess.PIPE
-    # Raise the StreamReader pipe limit to 50 MB (matches acp.DEFAULT_STDIO_BUFFER_LIMIT_BYTES)
-    # so large JSON-RPC lines (e.g. file reads, multimodal payloads) don't hit the
-    # default 64 KB cap and crash the receive loop with ValueError/LimitOverrunError.
+    # Raise the StreamReader pipe limit to 50 MB so large JSON-RPC lines
+    # (e.g. file reads, multimodal payloads) don't hit the default 64 KB cap
+    # and crash the receive loop with ValueError/LimitOverrunError.
     kwargs["limit"] = 50 * 1024 * 1024
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, **cast("Any", kwargs))

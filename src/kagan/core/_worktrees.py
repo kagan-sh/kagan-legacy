@@ -12,14 +12,15 @@ from sqlmodel import select
 from kagan.core import git
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_branch
 from kagan.core.enums import BranchRefStrategy
-from kagan.core.errors import SessionError, WorktreeError
+from kagan.core.errors import MultiRepoUnsupportedError, SessionError, WorktreeError
+from kagan.core.git import DiffStats
 from kagan.core.models import Repository, Task, Worktree
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
 
 
-def _normalize_base_ref_strategy(value: str | None) -> str:
+def _normalize_base_ref_strategy(value: str | None) -> BranchRefStrategy:
     """Validate and normalize a raw strategy setting to a known enum value."""
     if value is None:
         return BranchRefStrategy.LOCAL_IF_AHEAD
@@ -46,12 +47,14 @@ class Worktrees:
 
     async def create(self, task_id: str) -> Worktree:
         task = await self._client.tasks.get(task_id)
-        project_id = self._client.active_project_id
-        if project_id is None:
-            raise SessionError(None, "No active project.")
+        project_id = task.project_id
+        if not project_id:
+            raise SessionError(None, f"Task {task_id!r} is not linked to a project.")
         repos = await self._client.projects.repos(project_id)
         if not repos:
             raise SessionError(None, f"No repos linked to project {project_id!r}.")
+        if len(repos) != 1:
+            raise MultiRepoUnsupportedError(len(repos))
         repo = repos[0]
 
         if not await git.is_git_repo(repo.path):
@@ -118,7 +121,7 @@ class Worktrees:
 
         return _db_sync(self._engine, op)
 
-    async def diff_stats(self, task_id: str) -> dict:
+    async def diff_stats(self, task_id: str) -> DiffStats:
         ws = await self.get(task_id)
         if ws is None:
             raise SessionError(None, f"No workspace for task {task_id!r}.")
@@ -127,7 +130,7 @@ class Worktrees:
         strategy = await self._ref_strategy()
         return await git.diff_stats(ws.worktree_path, base_branch=base, strategy=strategy)
 
-    async def _ref_strategy(self) -> str:
+    async def _ref_strategy(self) -> BranchRefStrategy:
         settings = await self._client.settings.get()
         return _normalize_base_ref_strategy(settings.get("worktree_base_ref_strategy"))
 

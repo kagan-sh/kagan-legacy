@@ -1,8 +1,4 @@
-"""Feature tests: Projects & Repos — docs/internal/features/core.md §2.
-
-Behavioral specs using KaganDriver DSL. No private imports.
-Each test is isolated with its own tmp_path and fresh DB.
-"""
+"""Feature tests: Projects & Repos — docs/internal/features/core.md §2."""
 
 import pytest
 
@@ -12,39 +8,22 @@ from tests.helpers.helpers import make_git_repo
 
 pytestmark = pytest.mark.core
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture
 async def board(tmp_path):
-    """Fresh KaganDriver with no active project."""
     driver = await KaganDriver.boot(tmp_path)
     yield driver
     await driver.teardown()
 
 
-# ---------------------------------------------------------------------------
-# §2.1 — Create a project → persisted, appears in project list
-# ---------------------------------------------------------------------------
-
-
 async def test_create_project_appears_in_list(board: KaganDriver) -> None:
-    """Creating a project persists it and makes it visible in project list."""
     project_id = await board.create_project("Alpha Project")
     projects = await board.list_projects()
     assert any(p.id == project_id for p in projects)
     assert any(p.name == "Alpha Project" for p in projects)
 
 
-# ---------------------------------------------------------------------------
-# §2.2 — Link one or more repos to a project by path
-# ---------------------------------------------------------------------------
-
-
 async def test_link_repo_to_project_by_path(board: KaganDriver, tmp_path) -> None:
-    """Linking a repo by path associates it with the active project."""
     repo_path = tmp_path / "my-repo"
     await make_git_repo(repo_path)
     project_id = await board.create_project("Repo Project")
@@ -131,42 +110,26 @@ async def test_create_project_with_duplicate_repo_path_rolls_back_new_project(
     assert all(project.name != "Conflicting Project" for project in projects_after)
 
 
-# ---------------------------------------------------------------------------
-# §2.3 — Set a project as active → scopes all subsequent ops
-# ---------------------------------------------------------------------------
-
-
 async def test_set_active_project_scopes_task_ops(board: KaganDriver) -> None:
-    """Setting a project active scopes task creation to that project."""
     pid_a = await board.create_project("Project A")
     pid_b = await board.create_project("Project B")
 
-    # Switch to A and create a task
     await board.open_project(pid_a)
     task_a = await board.create_task("Task in A")
 
-    # Switch to B and create a task
     await board.open_project(pid_b)
     task_b = await board.create_task("Task in B")
 
-    # Tasks belong to their respective projects
     assert task_a.project_id == pid_a
     assert task_b.project_id == pid_b
 
-    # Listing tasks in B only shows B's tasks
     tasks_in_b = await board.list_tasks()
     task_ids = {t.id for t in tasks_in_b}
     assert task_b.id in task_ids
     assert task_a.id not in task_ids
 
 
-# ---------------------------------------------------------------------------
-# §2.4 — Find a project by name or by repo path on disk
-# ---------------------------------------------------------------------------
-
-
 async def test_find_project_by_name(board: KaganDriver) -> None:
-    """A project can be found by its exact name."""
     await board.create_project("Findable Project")
     project = await board.get_project(
         next(p.id for p in await board.list_projects() if p.name == "Findable Project")
@@ -176,7 +139,6 @@ async def test_find_project_by_name(board: KaganDriver) -> None:
 
 
 async def test_find_project_by_repo_path(board: KaganDriver, tmp_path) -> None:
-    """A project can be found by a repo path linked to it."""
     repo_path = tmp_path / "linked-repo"
     await make_git_repo(repo_path)
     await board.create_project("Repo-Linked Project")
@@ -200,13 +162,7 @@ async def test_find_project_by_repo_path_normalizes_query_path(
     assert found.name == "Normalized Lookup Project"
 
 
-# ---------------------------------------------------------------------------
-# §2.5 — Delete a project → cascades to tasks, workspaces, sessions, events
-# ---------------------------------------------------------------------------
-
-
 async def test_delete_project_removes_it_from_list(board: KaganDriver) -> None:
-    """Deleting a project removes it from the project list."""
     project_id = await board.create_project("Doomed Project")
     await board.delete_project(project_id)
     projects = await board.list_projects()
@@ -214,7 +170,6 @@ async def test_delete_project_removes_it_from_list(board: KaganDriver) -> None:
 
 
 async def test_delete_project_cascades_tasks(board: KaganDriver) -> None:
-    """Deleting a project removes all its tasks."""
     project_id = await board.create_project("Cascade Project")
     await board.create_task("Task to be deleted")
     tasks_before = await board.list_tasks()
@@ -222,7 +177,6 @@ async def test_delete_project_cascades_tasks(board: KaganDriver) -> None:
 
     await board.delete_project(project_id)
 
-    # Create a new project to verify the old tasks are gone
     await board.create_project("Fresh Project")
     tasks_after = await board.list_tasks()
     assert all(t.project_id != project_id for t in tasks_after)

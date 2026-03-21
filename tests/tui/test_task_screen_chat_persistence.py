@@ -31,7 +31,7 @@ async def test_ctrl_o_ctrl_p_toggles_keep_task_chat_session(board: KaganDriver) 
         app.push_screen(TaskScreen(task_id=task.id))
         await pilot.pause()
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one(ChatPanel)
@@ -43,9 +43,9 @@ async def test_ctrl_o_ctrl_p_toggles_keep_task_chat_session(board: KaganDriver) 
 
         await pilot.press("ctrl+shift+t")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         await pilot.press("ctrl+shift+t")
         await pilot.pause()
@@ -73,7 +73,7 @@ async def test_task_screen_ctrl_o_cycles_vertical_horizontal_off(board: KaganDri
         app.push_screen(TaskScreen(task_id=task.id))
         await pilot.pause()
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one(ChatPanel)
@@ -81,15 +81,78 @@ async def test_task_screen_ctrl_o_cycles_vertical_horizontal_off(board: KaganDri
         assert app.screen.has_class("ts-chat-vertical")
         assert str(panel.styles.layer) == "default"
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert panel.has_class("visible")
         assert app.screen.has_class("ts-chat-horizontal")
         assert str(panel.styles.layer) == "default"
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
         assert not panel.has_class("visible")
+
+
+async def test_task_screen_ctrl_i_cycles_vertical_horizontal_closed(board: KaganDriver) -> None:
+    from kagan.tui import KaganApp
+    from kagan.tui.screens.task_screen import TaskScreen
+    from kagan.tui.widgets.chat import ChatPanel
+
+    task = (await board.list_tasks())[0]
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        app.push_screen(TaskScreen(task_id=task.id))
+        await pilot.pause()
+
+        panel = app.screen.query_one(ChatPanel)
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert panel.has_class("visible")
+        assert app.screen.has_class("ts-chat-vertical")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert panel.has_class("visible")
+        assert app.screen.has_class("ts-chat-horizontal")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        assert not panel.has_class("visible")
+
+
+async def test_task_screen_ctrl_f_requires_open_overlay(board: KaganDriver) -> None:
+    from kagan.tui import KaganApp
+    from kagan.tui.screens.task_screen import TaskScreen
+    from kagan.tui.widgets.chat import ChatPanel
+
+    task = (await board.list_tasks())[0]
+
+    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        app.push_screen(TaskScreen(task_id=task.id))
+        await pilot.pause()
+
+        panel = app.screen.query_one(ChatPanel)
+        assert not panel.has_class("visible")
+
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert not panel.has_class("visible")
+
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        assert panel.has_class("visible")
+        assert panel.has_class("fullscreen")
 
 
 async def test_task_screen_ctrl_k_opens_session_picker_modal(board: KaganDriver) -> None:
@@ -134,9 +197,9 @@ async def test_tab_in_task_chat_does_not_switch_sessions_or_layout(
         app.push_screen(TaskScreen(task_id=task.id))
         await pilot.pause()
 
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
-        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+i")
         await pilot.pause()
 
         panel = app.screen.query_one(ChatPanel)

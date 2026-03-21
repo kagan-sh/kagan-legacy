@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -13,6 +12,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 if TYPE_CHECKING:
     from kagan.core import KaganCore
+    from kagan.core.enums import AgentRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,8 +21,9 @@ class ServerOptions:
     admin: bool = False
     session_id: str | None = None
     enable_instrumentation: bool = False
-    db_path: str | None = None  # optional path for KaganCore; None = default
-    project_id: str | None = None  # if set, activate this project at lifespan start
+    db_path: str | None = None
+    project_id: str | None = None
+    role: AgentRole | None = field(default=None)
 
     def __post_init__(self) -> None:
         if self.readonly and self.admin:
@@ -63,20 +64,7 @@ def get_server_context(mcp: FastMCP) -> ServerContext | None:
 
 
 async def _resolve_binding(client: KaganCore, session_id: str) -> tuple[str | None, str | None]:
-    from sqlmodel import Session as DBSession
-
-    from kagan.core.models import Session as CoreRun
-    from kagan.core.models import Task
-
-    def _read() -> tuple[str | None, str | None]:
-        with DBSession(client._engine) as session:
-            bound = session.get(CoreRun, session_id)
-            if bound is None:
-                return None, None
-            task = session.get(Task, bound.task_id)
-            return bound.task_id, (task.project_id if task is not None else None)
-
-    return await asyncio.to_thread(_read)
+    return await client.tasks.sessions.resolve_binding(session_id)
 
 
 async def _ensure_active_project(client: KaganCore) -> str:
@@ -140,36 +128,19 @@ def create_server(opts: ServerOptions) -> FastMCP:
 
     instructions = (
         "Kagan — AI-powered Kanban board MCP server for autonomous development workflows.\n"
+        "Tools are registered dynamically — use tools/list to discover available capabilities.\n"
         "\n"
-        "Core capabilities:\n"
-        "- Task lifecycle: task_create, task_list, task_get, task_update, task_delete, "
-        "task_search, task_batch_create, task_add_note, task_events, tasks_wait, task_counts\n"
-        "- Run control: run_start (run/pair agents), run_summary, "
-        "run_cancel, run_update\n"
-        "- Project management: project_list, project_create, project_set_active, project_delete, "
-        "project_add_repo, repo_list\n"
-        "- Review: review_decide (approve/reject/merge/rebase), review_conflicts, "
-        "review_continue_rebase, review_abort_rebase\n"
-        "- Settings: settings_get, settings_set, audit_list\n"
-        "- Diagnostics: diagnostics_get_instrumentation\n"
-        "\n"
-        "Execution modes (IMPORTANT — clarify with user when creating tasks):\n"
-        "- AUTO (default): Agent works independently to completion. Best for "
-        "well-defined tasks with clear acceptance criteria.\n"
-        "- PAIR: Agent works interactively as a co-pilot with the user in a tmux session. "
-        "Best for exploratory work, complex debugging, or when the user wants hands-on "
-        "control.\n"
-        "When creating tasks, ALWAYS ask the user whether they want AUTO or PAIR mode "
-        "if they have not specified. Briefly explain the difference: AUTO runs the agent "
-        "independently, PAIR opens an interactive co-pilot session. Default to AUTO "
-        "when the user does not express a preference. When batch-creating tasks, consider which "
-        "tasks suit AUTO vs PAIR and recommend accordingly.\n"
+        "Run behavior (IMPORTANT — clarify at run_start time):\n"
+        "- Managed run (default): Agent runs autonomously in the background to completion.\n"
+        "- Attached run: Agent launches interactively in a terminal session via launcher.\n"
+        "When starting runs, ask whether interactive attachment is needed. Default to managed "
+        "run when preference is not specified. Use launcher selection for attached runs.\n"
         "\n"
         "Tool result truthfulness protocol:\n"
         "- Never claim a mutation succeeded unless the tool call returned success "
         "and payload values.\n"
         "- For task_create/task_update/task_batch_create, echo persisted fields from tool results "
-        "(especially execution_mode, status, acceptance_criteria).\n"
+        "(especially status and acceptance_criteria).\n"
         "- If any item fails in batch operations, report partial success explicitly "
         "with counts and failed indexes.\n"
         "- If a claim depends on current state and payload is incomplete, call task_get before "
@@ -178,8 +149,9 @@ def create_server(opts: ServerOptions) -> FastMCP:
         "Workflow: create tasks (task_batch_create) → start agents (run_start) → "
         "monitor (tasks_wait/run_summary) → review (review_decide) → merge.\n"
         "\n"
-        "Access tiers: admin (full control), standard (task-scoped), readonly (read only). "
-        "Tools are filtered by access tier at registration time."
+        "Agent roles: WORKER (own-task ops + board awareness), "
+        "REVIEWER (verdicts + read), ORCHESTRATOR (full control). "
+        "Tools are filtered by role at registration time."
     )
     mcp = FastMCP(name="kagan", instructions=instructions, lifespan=_lifespan)
     _SERVER_OPTS[id(mcp)] = opts

@@ -1,11 +1,15 @@
 import asyncio
 import builtins
 import contextlib
+import re
+from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import Engine, desc
+from loguru import logger
+from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _db_async
@@ -16,6 +20,43 @@ LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
 BOARD_STREAM_QUEUE_MAX_SIZE = 256
 
+# Secret scrubbing — compiled at module level for performance.
+_SECRET_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"AKIA[A-Z0-9]{16}"),  # AWS access key IDs
+    re.compile(r"ghp_[a-zA-Z0-9]{36}"),  # GitHub personal access tokens
+    re.compile(r"ghu_[a-zA-Z0-9]{36}"),  # GitHub user tokens
+    re.compile(r"sk-[a-zA-Z0-9]{20,}"),  # OpenAI API keys
+    re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),  # Private key blocks
+    re.compile(r"Bearer [a-zA-Z0-9._\-]{20,}"),  # Bearer tokens
+]
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {"password", "secret", "token", "api_key", "apikey", "authorization"}
+)
+
+
+def _scrub_secrets(payload: dict) -> dict:
+    """Deep-copy payload replacing secrets with [REDACTED]. Never mutates input."""
+
+    def _scrub_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                k: "[REDACTED]" if k.lower() in _SENSITIVE_KEYS else _scrub_value(v)
+                for k, v in value.items()
+            }
+        if isinstance(value, list):
+            return [_scrub_value(item) for item in value]
+        if isinstance(value, str):
+            result = value
+            for pattern in _SECRET_PATTERNS:
+                result = pattern.sub("[REDACTED]", result)
+            if result != value:
+                logger.debug("Scrubbing secret from event payload")
+            return result
+        return value
+
+    return _scrub_value(payload)
+
+
 _NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(
     {
         SessionEventType.AGENT_STATUS,
@@ -23,6 +64,43 @@ _NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(
         SessionEventType.PLAN_UPDATE,
     }
 )
+
+
+class _BoundedEventQueue[T]:
+    def __init__(self, *, maxsize: int) -> None:
+        self._maxsize = maxsize
+        self._pending: deque[T] = deque()
+        self._not_empty = asyncio.Event()
+
+    @property
+    def pending(self) -> deque[T]:
+        return self._pending
+
+    def put_nowait(self, item: T) -> None:
+        if len(self._pending) >= self._maxsize:
+            raise asyncio.QueueFull
+        self._pending.append(item)
+        self._not_empty.set()
+
+    def force_put_nowait(self, item: T) -> None:
+        self._pending.append(item)
+        self._not_empty.set()
+
+    def get_nowait(self) -> T:
+        if not self._pending:
+            raise asyncio.QueueEmpty
+        item = self._pending.popleft()
+        if not self._pending:
+            self._not_empty.clear()
+        return item
+
+    async def get(self) -> T:
+        while not self._pending:
+            await self._not_empty.wait()
+        return self.get_nowait()
+
+    def empty(self) -> bool:
+        return not self._pending
 
 
 @dataclass(slots=True)
@@ -36,14 +114,12 @@ class BoardEvent:
 
 
 class Events:
-    """Event operations for a task — emit, list, stream."""
-
     def __init__(self, engine: Engine, signals: dict[str, asyncio.Event]) -> None:
         self._engine = engine
         self._signals = signals
-        self._live_queues: dict[str, list[asyncio.Queue[SessionEvent]]] = {}
-        self._global_live_queues: list[asyncio.Queue[SessionEvent]] = []
-        self._board_live_queues: list[asyncio.Queue[BoardEvent]] = []
+        self._live_queues: dict[str, list[_BoundedEventQueue[SessionEvent]]] = {}
+        self._global_live_queues: list[_BoundedEventQueue[SessionEvent]] = []
+        self._board_live_queues: list[_BoundedEventQueue[BoardEvent]] = []
 
     def _signal_for(self, task_id: str) -> asyncio.Event:
         if task_id not in self._signals:
@@ -74,14 +150,13 @@ class Events:
 
     def _coalesce_or_drop_non_critical_event(
         self,
-        queue: asyncio.Queue[SessionEvent],
+        queue: _BoundedEventQueue[SessionEvent],
         event: SessionEvent,
     ) -> bool:
         key = self._session_event_key_for_coalesce(event)
         if key is None:
             return False
-        any_queue = cast("Any", queue)
-        pending = cast("Any", any_queue._queue)
+        pending = queue.pending
         for idx in range(len(pending) - 1, -1, -1):
             existing = pending[idx]
             if self._session_event_key_for_coalesce(existing) == key:
@@ -89,17 +164,27 @@ class Events:
                 return True
         return False
 
-    def _drop_oldest_non_critical_event(self, queue: asyncio.Queue[SessionEvent]) -> bool:
-        any_queue = cast("Any", queue)
-        pending = cast("Any", any_queue._queue)
+    def _drop_oldest_non_critical_event(self, queue: _BoundedEventQueue[SessionEvent]) -> bool:
+        pending = queue.pending
         for idx, existing in enumerate(pending):
-            if existing.event_type in _NON_CRITICAL_EVENT_TYPES:
+            if (
+                existing.event_type in _NON_CRITICAL_EVENT_TYPES
+                and not self._is_terminal_live_event(existing)
+            ):
+                del pending[idx]
+                return True
+        return False
+
+    def _drop_oldest_non_terminal_event(self, queue: _BoundedEventQueue[SessionEvent]) -> bool:
+        pending = queue.pending
+        for idx, existing in enumerate(pending):
+            if not self._is_terminal_live_event(existing):
                 del pending[idx]
                 return True
         return False
 
     def _enqueue_session_event(
-        self, queue: asyncio.Queue[SessionEvent], event: SessionEvent
+        self, queue: _BoundedEventQueue[SessionEvent], event: SessionEvent
     ) -> None:
         try:
             queue.put_nowait(event)
@@ -112,14 +197,29 @@ class Events:
                 return
 
         if not self._drop_oldest_non_critical_event(queue):
-            any_queue = cast("Any", queue)
-            pending = cast("Any", any_queue._queue)
-            if pending:
-                pending.popleft()
+            if self._drop_oldest_non_terminal_event(queue):
+                logger.warning(
+                    "Live event queue reached capacity; dropping oldest non-terminal event "
+                    "to preserve terminal delivery"
+                )
+            else:
+                logger.warning(
+                    "Live event queue contains only terminal events; temporarily exceeding "
+                    "capacity to avoid dropping terminal event"
+                )
+                queue.force_put_nowait(event)
+                return
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(event)
 
-    def _enqueue_board_event(self, queue: asyncio.Queue[BoardEvent], event: BoardEvent) -> None:
+    @staticmethod
+    def _parse_cursor_timestamp(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(UTC).replace(tzinfo=None)
+
+    def _enqueue_board_event(
+        self, queue: _BoundedEventQueue[BoardEvent], event: BoardEvent
+    ) -> None:
         try:
             queue.put_nowait(event)
             return
@@ -127,8 +227,7 @@ class Events:
             pass
 
         key = self._board_event_key_for_coalesce(event)
-        any_queue = cast("Any", queue)
-        pending = cast("Any", any_queue._queue)
+        pending = queue.pending
         for idx in range(len(pending) - 1, -1, -1):
             if self._board_event_key_for_coalesce(pending[idx]) == key:
                 pending[idx] = event
@@ -158,11 +257,12 @@ class Events:
         session_id: str | None = None,
         persist: bool = True,
     ) -> SessionEvent:
+        scrubbed_payload = _scrub_secrets(payload)
         event = SessionEvent(
             task_id=task_id,
             session_id=session_id,
             event_type=event_type,
-            payload=payload,
+            payload=scrubbed_payload,
         )
         if persist:
             await _db_async(self._engine, lambda s: _add_and_refresh(s, event))
@@ -182,6 +282,8 @@ class Events:
                     to_status=str(payload.get("to") or ""),
                 )
             )
+        elif event_type is SessionEventType.AUTO_REVIEW_STARTED:
+            self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
         return event
 
     def publish_board(self, event: BoardEvent) -> None:
@@ -207,37 +309,135 @@ class Events:
         *,
         offset: int = 0,
         limit: int = 20,
+        session_id: str | None = None,
     ) -> list[SessionEvent]:
-        return await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(SessionEvent)
-                    .where(SessionEvent.task_id == task_id)
-                    .order_by(cast("Any", SessionEvent.created_at))
-                    .offset(offset)
-                    .limit(limit)
-                ).all()
-            ),
-        )
+        def _query(s):
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(cast("Any", SessionEvent.created_at)).offset(offset).limit(limit)
+            return list(s.exec(stmt).all())
 
-    async def list_recent(self, task_id: str, *, limit: int = 50) -> builtins.list[SessionEvent]:
+        return await _db_async(self._engine, _query)
+
+    async def list_recent(
+        self,
+        task_id: str,
+        *,
+        limit: int = 50,
+        before: str | None = None,
+        before_id: str | None = None,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
         bounded = max(limit, 0)
         if bounded == 0:
             return []
-        recent = await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(SessionEvent)
-                    .where(SessionEvent.task_id == task_id)
-                    .order_by(desc(cast("Any", SessionEvent.created_at)))
-                    .limit(bounded)
-                ).all()
-            ),
-        )
+
+        cutoff = self._parse_cursor_timestamp(before) if before is not None else None
+
+        def _query(s):
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            if cutoff is not None:
+                if before_id:
+                    stmt = stmt.where(
+                        or_(
+                            cast("Any", SessionEvent.created_at) < cutoff,
+                            and_(
+                                cast("Any", SessionEvent.created_at) == cutoff,
+                                cast("Any", SessionEvent.id) < before_id,
+                            ),
+                        )
+                    )
+                else:
+                    stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+            stmt = stmt.order_by(
+                desc(cast("Any", SessionEvent.created_at)),
+                desc(cast("Any", SessionEvent.id)),
+            ).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        recent = await _db_async(self._engine, _query)
         recent.reverse()
         return recent
+
+    async def list_before(
+        self,
+        task_id: str,
+        *,
+        before: str,
+        before_id: str | None = None,
+        limit: int = 50,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
+        bounded = max(limit, 0)
+        if bounded == 0:
+            return []
+
+        cutoff = self._parse_cursor_timestamp(before)
+
+        def _query(s):
+            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+            if before_id:
+                stmt = stmt.where(
+                    or_(
+                        cast("Any", SessionEvent.created_at) < cutoff,
+                        and_(
+                            cast("Any", SessionEvent.created_at) == cutoff,
+                            cast("Any", SessionEvent.id) < before_id,
+                        ),
+                    )
+                )
+            else:
+                stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(
+                desc(cast("Any", SessionEvent.created_at)),
+                desc(cast("Any", SessionEvent.id)),
+            ).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        recent = await _db_async(self._engine, _query)
+        recent.reverse()
+        return recent
+
+    async def list_after(
+        self,
+        task_id: str,
+        *,
+        after_ts: str,
+        after_id: str,
+        limit: int = 50,
+        session_id: str | None = None,
+    ) -> builtins.list[SessionEvent]:
+        bounded = max(limit, 0)
+        if bounded == 0:
+            return []
+
+        cutoff = self._parse_cursor_timestamp(after_ts)
+
+        def _query(s):
+            stmt = select(SessionEvent).where(
+                SessionEvent.task_id == task_id,
+                or_(
+                    cast("Any", SessionEvent.created_at) > cutoff,
+                    and_(
+                        cast("Any", SessionEvent.created_at) == cutoff,
+                        cast("Any", SessionEvent.id) > after_id,
+                    ),
+                ),
+            )
+            if session_id is not None:
+                stmt = stmt.where(SessionEvent.session_id == session_id)
+            stmt = stmt.order_by(
+                cast("Any", SessionEvent.created_at),
+                cast("Any", SessionEvent.id),
+            ).limit(bounded)
+            return list(s.exec(stmt).all())
+
+        return await _db_async(self._engine, _query)
 
     async def latest(
         self,
@@ -277,7 +477,7 @@ class Events:
                 for event in await self.list_recent(task_id, limit=replay_limit):
                     yield event
 
-        queue: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=LIVE_STREAM_QUEUE_MAX_SIZE)
+        queue = _BoundedEventQueue[SessionEvent](maxsize=LIVE_STREAM_QUEUE_MAX_SIZE)
         queues = self._live_queues.setdefault(task_id, [])
         queues.append(queue)
         should_close_when_idle = False
@@ -310,7 +510,7 @@ class Events:
                     yield event
                 offset += len(batch)
 
-        queue: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=GLOBAL_STREAM_QUEUE_MAX_SIZE)
+        queue = _BoundedEventQueue[SessionEvent](maxsize=GLOBAL_STREAM_QUEUE_MAX_SIZE)
         self._global_live_queues.append(queue)
         try:
             while True:
@@ -321,7 +521,7 @@ class Events:
                 self._global_live_queues.remove(queue)
 
     async def stream_board(self) -> AsyncIterator[BoardEvent]:
-        queue: asyncio.Queue[BoardEvent] = asyncio.Queue(maxsize=BOARD_STREAM_QUEUE_MAX_SIZE)
+        queue = _BoundedEventQueue[BoardEvent](maxsize=BOARD_STREAM_QUEUE_MAX_SIZE)
         self._board_live_queues.append(queue)
         try:
             while True:

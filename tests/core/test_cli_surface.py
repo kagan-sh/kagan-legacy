@@ -9,7 +9,6 @@ from click.testing import CliRunner
 from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
-# Check if rich_click is available for extended CLI output
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
@@ -21,7 +20,6 @@ def _runner_env(tmp_path: Path) -> dict[str, str]:
         "KAGAN_DATA_DIR": str(tmp_path),
         "KAGAN_CONFIG_DIR": str(tmp_path),
         "COLUMNS": "120",
-        # Prevent tests from accidentally spawning real agent binaries
         "KAGAN_INTEGRATION_TESTS": "",
     }
 
@@ -166,9 +164,8 @@ def test_mcp_help_includes_access_tier_guidance(tmp_path: Path) -> None:
     result = runner.invoke(cli, ["mcp", "--help"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert "Access tiers:" in result.output
-    assert "--readonly" in result.output
-    assert "--admin" in result.output
+    assert "Agent roles:" in result.output
+    assert "--role" in result.output
 
 
 @pytest.mark.parametrize("source_mode", ["prompt", "file"])
@@ -244,7 +241,6 @@ def test_chat_prompt_single_shot_prints_response(monkeypatch, tmp_path: Path) ->
     result = runner.invoke(cli, ["chat", "--prompt", "hello"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    # With no projects, the controller prints a "no projects" message.
     assert "project" in result.output.lower() or "hello" in result.output
 
 
@@ -258,6 +254,23 @@ def test_chat_ctrl_c_exits_one(monkeypatch, tmp_path: Path) -> None:
     result = runner.invoke(cli, ["chat"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 1
+
+
+def test_web_ctrl_c_exits_cleanly(monkeypatch, tmp_path: Path) -> None:
+    def _raise_keyboard_interrupt(coro):
+        coro.close()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("kagan.server._web_ui.has_web_bundle", lambda: True)
+    monkeypatch.setattr("kagan.cli.web._is_server_running", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("kagan.cli.web.run_async", _raise_keyboard_interrupt)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["web", "--no-open", "--port", "9999"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Stopping Kagan web dashboard" in result.output
+    assert "Aborted!" not in result.output
 
 
 def test_chat_help_uses_structured_options_panel(tmp_path: Path) -> None:

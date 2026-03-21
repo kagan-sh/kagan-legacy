@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.10.1-beta.1 (2026-03-21)
+
+### Bug Fixes
+
+- **web**: Graceful shutdown and service worker API denylist
+  ([`b5d9aca`](https://github.com/kagan-sh/kagan/commit/b5d9acac4279fcd689563706d966c0ba6a959e92))
+
+### Documentation
+
+- Restore star history chart to README
+  ([`157f77c`](https://github.com/kagan-sh/kagan/commit/157f77c5890d5bf432b5e3f05cf806acb4f93f29))
+
+
 ## v0.10.0 (2026-03-21)
 
 

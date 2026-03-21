@@ -854,7 +854,12 @@ class Sessions:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, _stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+            try:
+                _, _stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+            except TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise
             exit_code = proc.returncode
         except (TimeoutError, OSError) as exc:
             logger.warning("Success command failed for task={}: {}", task.id, exc)

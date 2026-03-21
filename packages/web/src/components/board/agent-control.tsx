@@ -308,8 +308,12 @@ export function AgentControl({
             }
 
             if (isRunning && !hasInteractiveSession) {
-                toast.info("A managed run is already active. Stop it first to attach interactively.");
-                return;
+                try {
+                    await apiClient.cancelTask(taskId);
+                } catch {
+                    toast.error("Failed to stop managed agent before attaching.");
+                    return;
+                }
             }
 
             const skipInstructions = asBool(settings.skip_attached_instructions_popup, false);
@@ -441,8 +445,9 @@ export function AgentControl({
                     <DialogHeader>
                         <DialogTitle>Interactive Session Instructions</DialogTitle>
                         <DialogDescription>
-                            We will start an interactive session, then you continue in
-                            your own terminal/editor using the task startup prompt.
+                            {isRunning && !hasInteractiveSession
+                                ? "A background agent is running. It will be stopped and you will take over manually in your terminal/editor."
+                                : "We will start an interactive session, then you continue in your own terminal/editor using the task startup prompt."}
                         </DialogDescription>
                     </DialogHeader>
 

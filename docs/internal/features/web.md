@@ -95,3 +95,4 @@ ______________________________________________________________________
 - terminal backends (tmux, nvim) copy a runnable command to clipboard
 - "Do not show this guidance again" toggle persists the `skip_attached_instructions_popup` setting
 - task-level launcher override (`task.launcher`) takes priority over global `settings.attached_launcher`
+- if a managed run is active when Attach is clicked, the dialog warns that the background agent will be stopped; on confirmation the managed run is cancelled before the interactive session starts

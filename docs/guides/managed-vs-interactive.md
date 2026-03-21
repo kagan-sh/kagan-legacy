@@ -38,9 +38,15 @@ When `attached_launcher = "vscode"`, Kagan attempts to auto-start
 `code chat --mode agent` when Copilot Chat is installed, preloading `.kagan/start_prompt.md`
 as context and asking for first-step acknowledgement.
 
-## Switching later
+## Switching mid-flight
 
-You do not edit a task to change its run style. Launch managed work with Start, or launch an interactive session with Attach when you need it.
+You do not edit a task to change its run style. If a managed run is already active and you press `a` (TUI) or click **Attach** (web), Kagan will:
+
+1. Show an instructions modal with a warning that a background agent is running.
+2. On confirmation, **stop the managed run** automatically.
+3. Start the interactive session so you can take over manually.
+
+This lets you intervene at any point — if the agent is heading in the wrong direction, attach, cancel it, and continue the work yourself.
 
 ## Acceptance criteria gate
 

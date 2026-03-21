@@ -78,7 +78,7 @@ ______________________________________________________________________
 | ------------------ | -------------------- |
 | `n`                | New task |
 | `Enter`            | Open task flow       |
-| `a`                | Attach interactive run |
+| `a`                | Attach interactive run (stops managed run if active) |
 | `Space`            | Cycle AI split       |
 | `p`                | Peek                 |
 | `e`                | Edit                 |

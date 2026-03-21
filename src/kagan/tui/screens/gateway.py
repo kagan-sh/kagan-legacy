@@ -27,6 +27,8 @@ class AttachedInstructionsModal(ModalScreen[str | None]):
         task_title: str,
         backend: str,
         prompt_path: Path,
+        *,
+        taking_over: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -34,11 +36,20 @@ class AttachedInstructionsModal(ModalScreen[str | None]):
         self._task_title = task_title
         self._backend = backend
         self._prompt_path = prompt_path
+        self._taking_over = taking_over
 
     def compose(self) -> ComposeResult:
         with Container(id="attached-instructions-container"):
             yield Label("Interactive Session Instructions", classes="modal-title")
             yield Rule()
+
+            if self._taking_over:
+                yield Static(
+                    "[bold yellow]A background agent is running on this task.[/bold yellow]\n"
+                    "It will be stopped when you continue, and you will take over manually.",
+                    classes="tmux-intro",
+                )
+                yield Rule()
 
             if self._backend == "tmux":
                 yield Static(

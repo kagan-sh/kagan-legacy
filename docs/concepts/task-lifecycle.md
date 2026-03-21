@@ -61,6 +61,8 @@ Each task is just a task. When you launch it, choose between a managed run or an
 | Managed run | Agent | Background process; follow progress in the task or session views |
 | Interactive launch | You + agent | tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, etc. |
 
+Attach can interrupt a managed run at any time — Kagan stops the background agent and hands control to you in an interactive session.
+
 [:octicons-arrow-right-24: Managed vs interactive guide](../guides/managed-vs-interactive.md)
 
 ## Review

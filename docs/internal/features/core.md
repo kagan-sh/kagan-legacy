@@ -83,6 +83,8 @@ ______________________________________________________________________
 - Agent backend and launcher are orthogonal choices
 - `.mcp.json` in worktree lets agent and IDE discover kagan's MCP server
 - Session status tracked in DB; survives client restart
+- Attach interrupts a managed run: if a background agent is active, it is cancelled before the interactive session starts
+- TUI resumes and repaints the board after detaching from tmux (`Ctrl+b d`) or exiting neovim
 
 ______________________________________________________________________
 

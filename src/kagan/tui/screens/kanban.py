@@ -718,6 +718,8 @@ class KanbanScreen(Screen[None]):
             ]
             if summary.has_active:
                 actions.append((stop_key, "stop"))
+            else:
+                actions.append((start_agent_key, "agent"))
             actions.append((attach_key, "attach"))
             actions.extend(overlay_hints)
             return actions
@@ -1122,15 +1124,9 @@ class KanbanScreen(Screen[None]):
             self._set_inline_action_message(None)
             return
 
-        # Guard: cannot attach while a managed run is active
+        # Check whether a managed (background) agent is running on this task.
         summary = self._session_summary_by_task.get(task.id, _TaskSessionSummary())
-        if summary.has_active and summary.active_launcher is None:
-            self.app.notify(
-                "A managed run is already active. Stop it first to attach interactively.",
-                severity="warning",
-            )
-            self._set_inline_action_message(None)
-            return
+        taking_over = summary.has_active and summary.active_launcher is None
 
         # 2. Show instructions modal (unless skipped)
         skip_instructions_raw = settings.get("skip_attached_instructions_popup", "")
@@ -1147,13 +1143,23 @@ class KanbanScreen(Screen[None]):
 
         if not skip_instructions:
             result = await self.app.push_screen_wait(
-                AttachedInstructionsModal(task.id, task.title, backend, prompt_path)
+                AttachedInstructionsModal(
+                    task.id, task.title, backend, prompt_path,
+                    taking_over=taking_over,
+                )
             )
             if result is None:
                 self._set_inline_action_message(None)
                 return
             if result == "skip_future":
                 await self.kagan_app.core.settings.set({"skip_attached_instructions_popup": "true"})
+
+        # Cancel the managed run after user confirms (or if instructions skipped).
+        if taking_over:
+            self._set_inline_action_message("Stopping managed agent...")
+            with contextlib.suppress(KaganError):
+                await self.kagan_app.core.tasks.cancel(task.id)
+            await self._reload_tasks()
 
         # 3. Ensure workspace exists
         workspace = await self._ensure_interactive_workspace(task)
@@ -1196,7 +1202,9 @@ class KanbanScreen(Screen[None]):
         if attached:
             with contextlib.suppress(KaganError):
                 await self.kagan_app.core.tasks.detach(task.id)
-            await self._reload_tasks()
+        # Always reload board state after returning from a suspended terminal
+        # so the UI reflects any changes made during the interactive session.
+        await self._reload_tasks()
         self._set_inline_action_message(None)
 
     @staticmethod
@@ -1208,6 +1216,10 @@ class KanbanScreen(Screen[None]):
         try:
             with self.app.suspend():
                 yield
+            # Force full repaint after resuming — some terminals don't
+            # properly restore the alternate screen buffer on their own.
+            self.app.refresh(layout=True)
+            self.screen.refresh(layout=True)
         except SuspendNotSupported:
             self.app.notify(
                 "Terminal suspend not supported in this environment. "

@@ -21,7 +21,6 @@ from acp.schema import (
     CurrentModeUpdate,
     DeniedOutcome,
     EnvVariable,
-    KillTerminalCommandResponse,
     McpServerStdio,
     PermissionOption,
     ReadTextFileResponse,
@@ -37,6 +36,12 @@ from acp.schema import (
     WaitForTerminalExitResponse,
     WriteTextFileResponse,
 )
+
+# ACP 0.9.0a1 renamed KillTerminalCommandResponse → KillTerminalResponse
+try:
+    from acp.schema import KillTerminalResponse
+except ImportError:
+    from acp.schema import KillTerminalCommandResponse as KillTerminalResponse
 from loguru import logger
 
 from kagan.core._agent import (
@@ -131,7 +136,7 @@ class ACPClientBase(acp.Client):
         session_id: str,
         terminal_id: str,
         **kwargs: Any,
-    ) -> KillTerminalCommandResponse | None:
+    ) -> KillTerminalResponse | None:
         raise RequestError.method_not_found("terminal/kill")
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:

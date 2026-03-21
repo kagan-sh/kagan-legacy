@@ -137,7 +137,8 @@ class TuiOrchestratorSessionStore:
         items = build_chat_session_list_items(sessions, current_session_id=current_id)
         options: list[tuple[str, str]] = []
         for item in items:
-            label = f"{item.label} [{item.session_id}]"
+            backend_tag = f" · {item.agent_backend}" if getattr(item, "agent_backend", None) else ""
+            label = f"{item.label} [{item.session_id}]{backend_tag}"
             options.append((label, self._session_key(item.session_id)))
         return options
 

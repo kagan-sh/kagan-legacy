@@ -199,6 +199,7 @@ async def _run_chat_stream(
         turn_task = asyncio.create_task(_run_turn_and_persist())
         _chat_turn_tasks[session_id] = turn_task
 
+        disconnected = False
         try:
             while True:
                 item = await chunk_queue.get()
@@ -211,10 +212,14 @@ async def _run_chat_stream(
             yield f"data: {json.dumps({'t': 'CHAT_DONE', 'full_response': full_response})}\n\n"
 
         except (asyncio.CancelledError, GeneratorExit, ConnectionError):
-            # Client disconnected — let the turn task keep running.
-            # It will persist its own result via _run_turn_and_persist.
+            disconnected = True
             logger.debug("Client disconnected during chat stream for session {}", session_id)
             return
+        finally:
+            if disconnected and not turn_task.done():
+                turn_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await turn_task
 
     except asyncio.CancelledError:
         return
@@ -290,6 +295,28 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         session = await get_chat_session(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
+        return _ok(_session_to_wire(session))
+
+    @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["PATCH"])
+    @require_context(mcp)
+    @handle_errors
+    async def update_session(request: Request, *, ctx: Any) -> JSONResponse:
+        forbidden = _require_access(
+            ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
+        )
+        if forbidden is not None:
+            return cast("JSONResponse", forbidden)
+        session_id = cast("str", request.path_params["session_id"])
+        session = await get_chat_session(ctx.client, session_id)
+        if session is None:
+            return _err("Session not found", status=404)
+        body = await request.json()
+        if not isinstance(body, dict):
+            return _err("Request body must be a JSON object", status=400)
+        agent_backend = body.get("agent_backend")
+        if agent_backend is not None:
+            session["agent_backend"] = agent_backend
+        await save_chat_session(ctx.client, session)
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])

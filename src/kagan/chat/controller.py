@@ -1244,6 +1244,7 @@ class ChatController:
             _console.print(f"[dim]Already using {new_backend}.[/dim]")
             return False
 
+        _console.print(f"[bold]Switching to {new_backend}...[/bold]")
         self.agent_backend = new_backend
         _TOOLBAR_STATE.agent_backend = new_backend
         self._restart_requested = True

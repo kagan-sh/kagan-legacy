@@ -937,6 +937,15 @@ class KanbanScreen(Screen[None]):
         panel.query_one("#chat-overlay-input", Input).focus()
         self._sync_layout_state()
 
+    async def _persist_session_backend(self, backend: str) -> None:
+        """Persist the chosen agent backend to the active session record."""
+        panel = self.query_one(ChatPanel)
+        await self.kagan_app.orchestrator_sessions.persist_active(
+            history=self._chat_orchestrator_history,
+            rendered_messages=panel.export_rendered_messages(),
+            agent_backend=backend,
+        )
+
     async def _warm_orchestrator_backend(self, preferred_backend: str | None = None) -> None:
         panel = self.query_one(ChatPanel)
         settings = await self.kagan_app.core.settings.get()
@@ -1605,6 +1614,12 @@ class KanbanScreen(Screen[None]):
                 return
             panel._agent_hint = selected
             panel.add_system_message(f"Default agent set to {selected}")
+            self.run_worker(
+                self._persist_session_backend(selected),
+                group="kanban-chat-persist",
+                exclusive=False,
+                exit_on_error=False,
+            )
             self.run_worker(
                 self._warm_orchestrator_backend(selected),
                 group="kanban-chat-warmup",

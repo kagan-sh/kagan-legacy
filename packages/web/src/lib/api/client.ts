@@ -465,6 +465,17 @@ export class KaganApiClient {
     return this.request<WireChatSession>(`/api/chat/sessions/${sessionId}`);
   }
 
+  /** PATCH /api/chat/sessions/:sessionId */
+  async updateChatSession(
+    sessionId: string,
+    input: { agent_backend?: string },
+  ): Promise<WireChatSession> {
+    return this.request<WireChatSession>(`/api/chat/sessions/${sessionId}`, {
+      method: 'PATCH',
+      body: input,
+    });
+  }
+
   /** DELETE /api/chat/sessions/:sessionId */
   async deleteChatSession(sessionId: string): Promise<{ session_id: string; deleted: boolean }> {
     return this.request<{ session_id: string; deleted: boolean }>(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, MessageSquareText } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MessageSquareText } from 'lucide-react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
@@ -22,6 +22,12 @@ import { ChatInputBar } from '@/components/chat/chat-input-bar';
 
 import { ActionEmptyState } from '@/components/shared/workspace';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function Component() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +48,8 @@ export function Component() {
 
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
+  const [agentBackend, setAgentBackend] = useState<string | null>(null);
+  const [availableBackends, setAvailableBackends] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Poll for turn completion after reconnect (e.g. page reload)
@@ -84,6 +92,7 @@ export function Component() {
         const session = await apiClient.getChatSession(id);
         setMessages(session.messages);
         setLabel(session.label || 'Chat');
+        setAgentBackend(session.agent_backend ?? null);
 
         // Check if a turn is still running (e.g. after page reload)
         const turnStatus = await apiClient.getTurnStatus(id);
@@ -103,6 +112,25 @@ export function Component() {
       resetStream();
     };
   }, [id, setMessages, resetStream, setIsStreaming, addNote, pollForTurnCompletion]);
+
+  // ── Fetch available backends ────────────────────────────────────────────────
+  useEffect(() => {
+    apiClient.getChatAgents().then((resp) => setAvailableBackends(resp.backends)).catch(() => {});
+  }, []);
+
+  const switchBackend = useCallback(
+    async (backend: string) => {
+      if (!id) return;
+      try {
+        await apiClient.updateChatSession(id, { agent_backend: backend });
+        setAgentBackend(backend);
+        toast.success(`Switched to ${backend}`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to switch backend');
+      }
+    },
+    [id],
+  );
 
   // ── SSE chat stream abort ref ──────────────────────────────────────────────
   const chatAbortRef = useRef<AbortController | null>(null);
@@ -228,7 +256,7 @@ export function Component() {
           break;
         case '/agents':
           if (args.length > 0) {
-            handleSend(`Switch to agent: ${args.join(' ')}`, undefined);
+            void switchBackend(args.join(' '));
           } else {
             setMessages((prev) => [
               ...prev,
@@ -240,7 +268,7 @@ export function Component() {
           handleSend(command, undefined);
       }
     },
-    [handleSend, navigate, setMessages],
+    [handleSend, navigate, setMessages, switchBackend],
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -266,6 +294,27 @@ export function Component() {
           </Button>
           <h1 className="truncate text-sm font-semibold">{label}</h1>
           <span className="text-xs text-[var(--muted-foreground)]">Orchestrator</span>
+          {availableBackends.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="ml-1 inline-flex items-center gap-1 rounded bg-[var(--muted)] px-1.5 py-0.5 font-code text-[10px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                >
+                  {agentBackend ?? 'default'}
+                  <ChevronDown className="size-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {availableBackends.map((b) => (
+                  <DropdownMenuItem key={b} onSelect={() => void switchBackend(b)}>
+                    {b}
+                    {b === agentBackend && <span className="ml-auto text-[10px] text-[var(--muted-foreground)]">active</span>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">

@@ -148,6 +148,11 @@ export function SessionPicker() {
                 >
                   <MessageSquare className="size-4" />
                   <span className="min-w-0 flex-1 truncate">{session.label || 'Untitled chat'}</span>
+                  {session.agent_backend && (
+                    <span className="ml-auto shrink-0 rounded bg-[var(--muted)] px-1.5 py-0.5 font-code text-[10px] text-[var(--muted-foreground)]">
+                      {session.agent_backend}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="ml-auto hidden shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive group-hover:block"

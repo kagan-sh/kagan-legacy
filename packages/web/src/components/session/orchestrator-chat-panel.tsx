@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import {
+    ChevronDown,
     Maximize2,
     MoreVertical,
     PanelBottom,
@@ -65,6 +66,8 @@ export function OrchestratorChatPanel({
     const [label, setLabel] = useState("Orchestrator Chat");
     const scrollRef = useRef<HTMLDivElement>(null);
     const [projectContext, setProjectContext] = useState<string | null>(null);
+    const [agentBackend, setAgentBackend] = useState<string | null>(null);
+    const [availableBackends, setAvailableBackends] = useState<string[]>([]);
 
     // Poll for turn completion after reconnect (e.g. page reload)
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -111,6 +114,7 @@ export function OrchestratorChatPanel({
                 if (cancelled) return;
                 setMessages(session.messages);
                 setLabel(session.label || "Orchestrator Chat");
+                setAgentBackend(session.agent_backend ?? null);
 
                 // Check if a turn is still running (e.g. after page reload)
                 const turnStatus = await apiClient.getTurnStatus(sessionId);
@@ -168,6 +172,33 @@ export function OrchestratorChatPanel({
             cancelled = true;
         };
     }, [sessionId]); // Re-fetch when session changes
+
+    // Fetch available backends
+    useEffect(() => {
+        apiClient
+            .getChatAgents()
+            .then((resp) => setAvailableBackends(resp.backends))
+            .catch(() => {});
+    }, []);
+
+    const switchBackend = useCallback(
+        async (backend: string) => {
+            try {
+                await apiClient.updateChatSession(sessionId, {
+                    agent_backend: backend,
+                });
+                setAgentBackend(backend);
+                toast.success(`Switched to ${backend}`);
+            } catch (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to switch backend",
+                );
+            }
+        },
+        [sessionId],
+    );
 
     // Abort controller ref for SSE chat stream
     const chatAbortRef = useRef<AbortController | null>(null);
@@ -367,7 +398,7 @@ export function OrchestratorChatPanel({
             }
             if (cmd === "/agents") {
                 if (args.length > 0) {
-                    handleSend(`Switch to agent: ${args.join(" ")}`);
+                    void switchBackend(args.join(" "));
                 } else {
                     setMessages((prev) => [
                         ...prev,
@@ -401,7 +432,7 @@ export function OrchestratorChatPanel({
             }
             handleSend(command);
         },
-        [handleSend, setSessionPickerOpen],
+        [handleSend, setSessionPickerOpen, switchBackend],
     );
 
     // Progressive rendering: show only the last 30 messages initially
@@ -442,6 +473,36 @@ export function OrchestratorChatPanel({
                             </span>
                         )}
                     </p>
+                    {availableBackends.length > 0 && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="mt-0.5 inline-flex items-center gap-1 rounded bg-[var(--muted)] px-1.5 py-0.5 font-code text-[10px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                                >
+                                    {agentBackend ?? "default"}
+                                    <ChevronDown className="size-3" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                                {availableBackends.map((b) => (
+                                    <DropdownMenuItem
+                                        key={b}
+                                        onSelect={() =>
+                                            void switchBackend(b)
+                                        }
+                                    >
+                                        {b}
+                                        {b === agentBackend && (
+                                            <span className="ml-auto text-[10px] text-[var(--muted-foreground)]">
+                                                active
+                                            </span>
+                                        )}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
                 </div>
                 <div className="flex items-center gap-1">
                     <Button

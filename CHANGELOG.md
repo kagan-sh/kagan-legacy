@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.0-beta.4 (2026-03-21)
+
+### Bug Fixes
+
+- **build**: Restore force-include with exclude to prevent duplicates
+  ([`98b05d0`](https://github.com/kagan-sh/kagan/commit/98b05d04d3e783308f560660c2937da6091a9140))
+
+
 ## v0.10.0-beta.3 (2026-03-21)
 
 ### Bug Fixes

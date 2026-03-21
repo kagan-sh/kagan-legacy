@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.0-beta.2 (2026-03-21)
+
+### Bug Fixes
+
+- **build**: Remove duplicate force-include causing PyPI upload rejection
+  ([`6aa37e5`](https://github.com/kagan-sh/kagan/commit/6aa37e585d1fc50423ab9e200ce51eadebc9bb2e))
+
+
 ## v0.10.0-beta.1 (2026-03-21)
 
 ### Bug Fixes

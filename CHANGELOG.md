@@ -2,6 +2,376 @@
 
 <!-- version list -->
 
+## v0.10.0-beta.1 (2026-03-21)
+
+### Bug Fixes
+
+- Address greptile review — persist, subprocess leak, task cancel, backoff
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Clear busy state on agent failure in web UI and flush throttler on chat error
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Guard page reference in docs template, resolve all type errors
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Include web-build in dev-setup sequence ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Raise repetition guard threshold, expose worktree path, smart cancel recovery
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Remove type:ignore suppressions, use proper type annotations
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Repetition guard false-positive, event ordering race, session interop
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Resolve pyrefly type errors in chat routes and agent status widget
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Simplify PAIR launchers — prompt as CLI arg, IDE opens worktree+file
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Web admin access, ws reconnect, load-earlier pagination, and worker board awareness
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Web streaming resilience, race condition resolution, and repetition guard integration
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **chat**: Persist user message before turn and recover busy state on remount
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **chat**: Re-read session before title save to prevent history overwrite
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Audit task mutations ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Emit board events for all session lifecycle changes
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Kill subprocess on success_command timeout
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **e2e**: Seed one task in ensureBoardReady so Kanban columns render
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **e2e**: WaitForLoadState('load') — networkidle hangs on SSE stream
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **prompts**: Correct agent prompt inconsistencies with actual MCP toolset
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **server**: Allow project creation from web ui ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **server**: Handle WebSocket scope in SPA static handler
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **streaming**: Overhaul agent output streaming across TUI and web
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **tui**: Pair instruction modal keybindings fire non-existent actions
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Allow chat input while WebSocket is disconnected
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Blank screen on first board load after project creation
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Chat stream survives page reload + project picker blank page
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Filter streaming noise from board task inspector activity
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Recover dashboard runtime failures ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Split task chat rail by lane ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Streaming resilience, race conditions, structural improvements + test helpers
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Chores
+
+- Comments and docstrings cleanup ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Track pnpm-lock.yaml, restore frozen-lockfile in CI
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Update project configuration, CI pipeline, and dependencies
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Continuous Integration
+
+- Add test-web job for Vitest unit tests and Playwright E2E
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Trigger rerun after cache fix ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **test-web**: Bump timeout to 20m, fix pnpm store path
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **test-web**: Fix pnpm store caching — use actions/cache@v4 directly
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **test-web**: Pnpm-lock.yaml is gitignored — no-frozen-lockfile, key on package.json
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **test-web**: Use poe web-build to copy assets into _web_static
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Documentation
+
+- Add mkdocs-redirects plugin to fix 404 errors for old URLs
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Add mkdocs-redirects plugin to fix 404 errors for old URLs
+  ([#43](https://github.com/kagan-sh/kagan/pull/43),
+  [`bebfe06`](https://github.com/kagan-sh/kagan/commit/bebfe06477cf0847e127dc2226838ee5c43f9da2))
+
+- Align mcp, tui, and web references ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Clean internal chat and review feature notes ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Clean internal docs index and testing examples ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Correct plugin registration guidance ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Docs bump
+  ([`9d46b7f`](https://github.com/kagan-sh/kagan/commit/9d46b7f4f2442ca1c5db27e8804dbd5b346845a6))
+
+- Fix 404 redirects, add OG tags, improve page titles and docs metadata
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Fix Material tab formatting in MCP setup guide ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Label internal platform architecture code fences
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Minor seo tweaks ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Minor seo tweaks ([#43](https://github.com/kagan-sh/kagan/pull/43),
+  [`bebfe06`](https://github.com/kagan-sh/kagan/commit/bebfe06477cf0847e127dc2226838ee5c43f9da2))
+
+- Normalize command examples in chat and CLI docs ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Normalize internal chat and task architecture docs
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Refine docs ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Refine docs ([#43](https://github.com/kagan-sh/kagan/pull/43),
+  [`bebfe06`](https://github.com/kagan-sh/kagan/commit/bebfe06477cf0847e127dc2226838ee5c43f9da2))
+
+- Remove shortcut artifacts from user navigation docs
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Repair internal architecture and testing rendering
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Rewrite guidance for managed and interactive runs
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Tighten lifecycle and remote access sections ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Update AGENTS.md and server architecture for response models
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Update architecture and feature specifications ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Update documentation and add remote access guide
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Update internal architecture and feature docs for AI best practices
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Features
+
+- Add attribution (OSS license, GitHub, MakerX) to web UI
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Add HTTP/WebSocket server, crypto, and wire protocol subsystems
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Add React 19 web dashboard with jotai state and Tailwind CSS 4
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Display ACP token usage and cost metrics across all surfaces
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Enhance core domain with reviews, prompts, events, and DB migrations
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Redesign TUI task screen, chat system, and MCP toolsets
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Refactor MCP access to role-based model and refine web pair mode UX
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Remote clients, web dashboard, unified sessions, and attach-as-interrupt
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Replace WebSocket with SSE, add repetition guard, retry logic, context warnings, error
+  classification ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **chat**: Refine picker and slash-command UX ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **chat**: Unified per-session backend switching across REPL, TUI, and web
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **chat,tui,web**: Session picker improvements, chat commands, and keybindings
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **cli**: Restore informative impact summary to kg reset command
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Add secret scrubbing on event storage ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Add session token tracking with ACP UsageUpdate extraction
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Inject project-scoped learnings into task prompts
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **mcp**: Add typed tool profiles for per-session tool filtering
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **server**: Add response models as single source of truth for API wire shape
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **tui**: Add resume context to task detail ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **tui,web**: Attach interrupts managed runs and improves board resume
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Refactoring
+
+- Eliminate wire model layer, serialize SQLModel directly
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Reduce chat route complexity below McCabe cap ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Remove dead code, consolidate duplicates, clean unused parameters
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Replace stringly-typed patterns with StrEnum and TypedDict
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- Server API and TUI widgets for remote client resilience
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **core**: Unify runs around launcher sessions ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **mcp**: Reduce complexity in review toolset register function
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **prompts**: Remove redundant hardcoded MCP tool listings from agent prompts
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **tui**: Remove dead review modal styles ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **tui,web**: Replace task modes with start and attach flows
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+### Testing
+
+- **core**: Add prompt snapshot tests for regression detection
+  ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+- **web**: Align e2e smoke flows with current ui ([#44](https://github.com/kagan-sh/kagan/pull/44),
+  [`7010551`](https://github.com/kagan-sh/kagan/commit/7010551d00dba0cb12dbe0bc67aee80bd59e87d8))
+
+
 ## v0.9.0 (2026-03-08)
 
 

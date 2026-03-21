@@ -74,9 +74,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kagan"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/kagan/server/_web_static" = "kagan/server/_web_static"
 [dependency-groups]
 dev = [
   "poethepoet>=0.40.0",

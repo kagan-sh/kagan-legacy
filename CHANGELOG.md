@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.11.0-beta.1 (2026-03-22)
+
+### Documentation
+
+- Sync documentation with web, mcp, chat, and tui implementations
+  ([`1b76bec`](https://github.com/kagan-sh/kagan/commit/1b76bec5cd0b8b583ee8029b23642aa3525c5fe7))
+
+### Features
+
+- **cli**: Improve error UX and discoverability per clig.dev guidelines
+  ([`bd8b883`](https://github.com/kagan-sh/kagan/commit/bd8b883ef0295d724c01ee6c529a916a5a85fac1))
+
+
 ## v0.10.1 (2026-03-21)
 
 

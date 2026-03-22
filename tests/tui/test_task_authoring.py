@@ -6,19 +6,10 @@ from textual.widgets import Input, Select, TextArea
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Authoring Project")
-    await driver.create_task("Existing task")
-    yield driver
-    await driver.teardown()
-
-
-async def test_n_opens_task_creation_form(board: KaganDriver) -> None:
+async def test_n_opens_task_creation_form(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -28,10 +19,10 @@ async def test_n_opens_task_creation_form(board: KaganDriver) -> None:
         assert app.screen.id == "task-editor-modal"
 
 
-async def test_save_in_task_form_creates_new_backlog_task(board: KaganDriver) -> None:
+async def test_save_in_task_form_creates_new_backlog_task(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -41,16 +32,16 @@ async def test_save_in_task_form_creates_new_backlog_task(board: KaganDriver) ->
         await pilot.press("A", "u", "t", "h", "o", "r", "e", "d")
         await pilot.press("ctrl+s")
         await pilot.pause()
-    results = await board.search_tasks("Authored")
+    results = await board_with_task.search_tasks("Authored")
     assert len(results) == 1
 
 
 async def test_task_form_stays_scrollable_when_advanced_options_expand(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test(size=(90, 20)) as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -70,11 +61,11 @@ async def test_task_form_stays_scrollable_when_advanced_options_expand(
 
 
 async def test_task_form_scroll_action_moves_view_when_advanced_expanded(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test(size=(90, 20)) as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -93,11 +84,11 @@ async def test_task_form_scroll_action_moves_view_when_advanced_expanded(
 
 
 async def test_toggling_advanced_brings_acceptance_criteria_into_view(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test(size=(90, 20)) as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -117,10 +108,10 @@ async def test_toggling_advanced_brings_acceptance_criteria_into_view(
         assert form.scroll_y > initial_scroll
 
 
-async def test_task_form_saves_attached_launcher_override(board: KaganDriver) -> None:
+async def test_task_form_saves_attached_launcher_override(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -136,7 +127,7 @@ async def test_task_form_saves_attached_launcher_override(board: KaganDriver) ->
         await pilot.press("ctrl+s")
         await pilot.pause()
 
-    results = await board.search_tasks("Launcher")
+    results = await board_with_task.search_tasks("Launcher")
     assert len(results) == 1
-    saved = await board.get_task(results[0].id)
+    saved = await board_with_task.get_task(results[0].id)
     assert saved.launcher == "vscode"

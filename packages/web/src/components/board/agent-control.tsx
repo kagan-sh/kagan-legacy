@@ -11,7 +11,7 @@ import { useAtomValue } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { sseConnectedAtom } from "@/lib/atoms/connection";
-import { cn } from "@/lib/utils";
+import { cn, asBool, normalizeLauncher, quoteShell } from "@/lib/utils";
 import {
     openInEditor,
     launcherDisplayName,
@@ -28,32 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 
-const LAUNCHER_BACKENDS: readonly LauncherBackend[] = [
-    "tmux",
-    "nvim",
-    "vscode",
-    "cursor",
-    "windsurf",
-    "kiro",
-    "antigravity",
-];
-
-function asBool(value: string | undefined, fallback: boolean): boolean {
-    if (value === undefined) return fallback;
-    return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
-}
-
-function normalizeLauncher(value: string | null | undefined): LauncherBackend {
-    if (!value) return "vscode";
-    const normalized = value.trim().toLowerCase();
-    return LAUNCHER_BACKENDS.includes(normalized as LauncherBackend)
-        ? (normalized as LauncherBackend)
-        : "vscode";
-}
-
-function quoteShell(value: string): string {
-    return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
-}
 
 function tmuxSessionName(sessionId: string): string {
     return `kagan-${sessionId.replaceAll(":", "-")}`;

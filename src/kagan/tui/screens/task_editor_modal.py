@@ -1,6 +1,6 @@
-import contextlib
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -132,7 +132,7 @@ class TaskEditorModal(ModalScreen[None]):
         if values is None:
             return
         acceptance_criteria = editor.acceptance_criteria()
-        with contextlib.suppress(Exception):  # quality-allow-broad-except
+        try:  # quality-allow-broad-except
             await self.kagan_app.core.tasks.update(
                 self._editing_task.id,
                 title=values.title,
@@ -143,6 +143,8 @@ class TaskEditorModal(ModalScreen[None]):
                 launcher=values.launcher,
                 acceptance_criteria=acceptance_criteria,
             )
+        except Exception as exc:
+            logger.debug("Auto-save failed for task {}: {}", self._editing_task.id, exc)
 
     def action_finish(self) -> None:
         self.query_one(TaskEditor).submit()

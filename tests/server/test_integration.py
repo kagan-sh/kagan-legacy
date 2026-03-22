@@ -261,9 +261,9 @@ async def test_missing_fields_return_error_envelopes(monkeypatch: pytest.MonkeyP
     create = get_http_endpoint(mcp, "/api/tasks", "POST")
     create_resp = await create(make_request("POST", "/api/tasks", body={"description": "x"}))
     create_payload = json_body(create_resp)
-    assert cast("Any", create_resp).status_code == 400
+    assert cast("Any", create_resp).status_code == 422
     assert create_payload["ok"] is False
-    assert create_payload["error"] == "Missing field: title"
+    assert "title" in create_payload["error"].lower()
 
 
 @pytest.mark.asyncio

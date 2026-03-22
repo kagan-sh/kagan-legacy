@@ -32,6 +32,6 @@ def pytest_unconfigure(config: pytest.Config) -> None:
         _kagan_test_root = None
 
 
-from tests.helpers.fixtures import board, git_board  # noqa: E402
+from tests.helpers.fixtures import board, board_with_task, git_board  # noqa: E402
 
-__all__ = ["board", "git_board"]
+__all__ = ["board", "board_with_task", "git_board"]

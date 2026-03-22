@@ -18,7 +18,16 @@ except ModuleNotFoundError:
     _RICH_COMMAND_CLS = click.Command
 
 
-@click.command(name="chat", cls=_RICH_COMMAND_CLS)
+@click.command(
+    name="chat",
+    cls=_RICH_COMMAND_CLS,
+    epilog=(
+        "Examples:\n"
+        "  kagan chat                         Interactive REPL\n"
+        "  kagan chat --prompt 'fix the bug'  Single-shot prompt\n"
+        "  kagan chat --session-id abc123     Resume a session"
+    ),
+)
 @click.option(
     "--prompt",
     "prompt_text",

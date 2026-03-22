@@ -333,10 +333,51 @@ def _do_project_reset(client, project, force: bool) -> None:
     logger.info("Project '{}' deleted", project.name)
 
 
-@click.command(name="reset")
+def _do_dry_run(client, project_name: str | None) -> None:
+    """Show what would be deleted without deleting anything."""
+    if project_name:
+        project = run_async(client.projects.find_by_name(project_name))
+        if project is None:
+            raise click.ClickException(f"Project not found: {project_name}")
+        try:
+            stats = _collect_project_stats(client, project.id)
+        except Exception:
+            stats = {
+                "task_count": "?",
+                "session_count": "?",
+                "worktree_count": "?",
+                "repo_count": "?",
+            }
+        _print_project_impact(project.name, stats)
+    else:
+        try:
+            stats = _collect_stats(client)
+        except Exception:
+            stats = {
+                "projects": [],
+                "task_count": "?",
+                "session_count": "?",
+                "worktree_count": "?",
+                "repo_count": "?",
+            }
+        _print_full_impact(stats)
+    click.secho("Dry run — no changes made.", fg="cyan", bold=True)
+
+
+@click.command(
+    name="reset",
+    epilog=(
+        "Examples:\n"
+        "  kagan reset                   Interactive reset menu\n"
+        "  kagan reset --project myapp   Delete a single project\n"
+        "  kagan reset --dry-run         Preview what would be deleted\n"
+        "  kagan reset --force           Full reset without confirmation"
+    ),
+)
 @click.option("--project", "project_name", type=str, help="Reset a single project by name")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation (use with caution)")
-def reset(project_name: str | None, force: bool) -> None:
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without deleting")
+def reset(project_name: str | None, force: bool, dry_run: bool) -> None:
     """Remove Kagan data with a detailed impact summary.
 
     Without --project, presents a menu to reset all data or a specific project.
@@ -355,6 +396,12 @@ def reset(project_name: str | None, force: bool) -> None:
 
     client = make_client()
     try:
+        if dry_run:
+            if force:
+                raise click.UsageError("--force has no effect with --dry-run")
+            _do_dry_run(client, project_name)
+            return
+
         if project_name:
             project = run_async(client.projects.find_by_name(project_name))
             if project is None:

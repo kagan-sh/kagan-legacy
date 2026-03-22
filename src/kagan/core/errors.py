@@ -2,7 +2,7 @@
 
 
 class KaganError(Exception):
-    pass
+    hint: str = ""
 
 
 class NotFoundError(KaganError):
@@ -25,6 +25,7 @@ class WorktreeError(KaganError):
 
 class MultiRepoUnsupportedError(WorktreeError):
     code = "MULTI_REPO_UNSUPPORTED"
+    hint = "Link exactly one repository to the project."
 
     def __init__(self, repo_count: int) -> None:
         self.repo_count = repo_count
@@ -37,6 +38,8 @@ class MultiRepoUnsupportedError(WorktreeError):
 class MergeConflictError(WorktreeError):
     def __init__(self, message: str, *, conflict_files: list[str] | None = None) -> None:
         self.conflict_files: list[str] = conflict_files or []
+        if self.conflict_files:
+            self.hint = f"Resolve conflicts in: {', '.join(self.conflict_files)}"
         super().__init__(message)
 
 
@@ -45,7 +48,7 @@ class AgentError(KaganError):
 
 
 class AgentTimeoutError(AgentError):
-    pass
+    hint = "The agent took too long. Try a simpler prompt or check agent connectivity."
 
 
 class AgentRepetitionError(AgentError):
@@ -53,11 +56,11 @@ class AgentRepetitionError(AgentError):
 
 
 class AgentRateLimitError(AgentError):
-    pass
+    hint = "Wait a moment and retry, or switch to a different agent backend."
 
 
 class PreflightError(KaganError):
-    pass
+    hint = "Run 'kagan doctor' for details."
 
 
 class ValidationError(KaganError):
@@ -71,6 +74,7 @@ class ConfigurationError(KaganError):
     def __init__(self, context: str, detail: str) -> None:
         self.context = context
         self.detail = detail
+        self.hint = "Run 'kagan doctor' to diagnose configuration issues."
         super().__init__(f"{context}: {detail}" if detail else context)
 
 

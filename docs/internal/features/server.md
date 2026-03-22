@@ -98,7 +98,9 @@ Keepalive comments (`: keepalive`) are sent every 25 seconds.
 Start an agent run via REST:
 
 ```bash
-curl -X POST http://localhost:8765/api/tasks/<TASK_ID>/run
+curl -X POST -H "Content-Type: application/json" \
+     -d '{}' \
+     http://localhost:8765/api/tasks/<TASK_ID>/run
 ```
 
 Cancel a running agent:
@@ -123,7 +125,7 @@ curl -X POST http://localhost:8765/api/chat/sessions
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
-     -d '{"message": "Explain the auth flow"}' \
+     -d '{"text": "Explain the auth flow"}' \
      http://localhost:8765/api/chat/<SESSION_ID>/stream
 ```
 

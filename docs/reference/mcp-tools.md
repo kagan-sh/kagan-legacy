@@ -134,22 +134,25 @@ Use this tool to fetch execution event history for a task, with pagination suppo
 
 ### Parameters
 
-| Parameter | Type     | Default  | Description         |
-| --------- | -------- | -------- | ------------------- |
-| `task_id` | `string` | required | Target task         |
-| `limit`   | `int`    | `5`      | Runs per page       |
-| `offset`  | `int`    | `0`      | Newest-first offset |
+| Parameter           | Type     | Default  | Description                                |
+| ------------------- | -------- | -------- | ------------------------------------------ |
+| `task_id`           | `string` | required | Target task                                |
+| `limit`             | `int`    | `20`     | Events per page (1–200)                    |
+| `offset`            | `int`    | `0`      | Chronological offset                       |
+| `include_payload`   | `bool`   | `false`  | Include full event payloads                |
+| `max_payload_bytes` | `int`    | `16384`  | Max bytes per individual payload (256–128K)|
+| `max_total_bytes`   | `int`    | `262144` | Total byte budget for response (4K–1M)     |
 
 ### Response fields
 
-| Field           | Type          | Description                            |
-| --------------- | ------------- | -------------------------------------- |
-| `logs`          | `list`        | Returned run log entries               |
-| `total_runs`    | `int`         | Total runs available                   |
-| `returned_runs` | `int`         | Runs returned in this response         |
-| `has_more`      | `bool`        | Whether another page is available      |
-| `next_offset`   | `int \| null` | Offset to fetch the next older page    |
-| `truncated`     | `bool`        | Whether content was reduced for safety |
+| Field                      | Type     | Description                                  |
+| -------------------------- | -------- | -------------------------------------------- |
+| `task_id`                  | `string` | The task these events belong to              |
+| `offset`                   | `int`    | Offset used for this page                    |
+| `limit`                    | `int`    | Limit used for this page                     |
+| `returned`                 | `int`    | Number of events returned                    |
+| `truncated_by_total_bytes` | `bool`   | Whether response was truncated by byte budget|
+| `logs`                     | `list`   | Returned event entries                       |
 
 ______________________________________________________________________
 

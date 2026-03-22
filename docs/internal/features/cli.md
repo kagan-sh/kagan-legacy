@@ -51,9 +51,10 @@ ______________________________________________________________________
 
 - Starts MCP server on STDIO (blocks until host disconnects)
 - `--readonly`, `--admin`, `--session-id` (readonly and admin are mutually exclusive)
+- `--role ROLE`: agent role (`WORKER`, `REVIEWER`, `ORCHESTRATOR`) controls tool visibility
 - `--enable-internal-instrumentation` for diagnostics tool
 
-### `kagan reset-state`
+### `kagan reset`
 
 - Wipes all data with confirmation prompt
 - `--project NAME`: scope to one project
@@ -87,11 +88,14 @@ ______________________________________________________________________
 - `--port PORT`: listen port (default: 8765)
 - `--host HOST`: bind address (default: 127.0.0.1)
 - `--readonly`, `--admin`: mutually exclusive access tiers
+- `--tls`: enable HTTPS with self-signed certificate
 
 ### `kagan web`
 
 - Launches the web dashboard (starts server + opens browser)
 - Accepts same `--host` and `--port` flags as `kagan serve`
+- `--no-open`: suppress automatic browser launch
+- `--readonly`, `--admin`: mutually exclusive access tiers
 
 ### `kagan plugins`
 

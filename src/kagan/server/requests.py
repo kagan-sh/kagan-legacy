@@ -9,42 +9,35 @@ from __future__ import annotations
 from pydantic import BaseModel, field_validator
 
 
-class CreateTaskRequest(BaseModel):
+class _CriteriaMixin(BaseModel):
+    acceptance_criteria: list[str] | None = None
+
+    @field_validator("acceptance_criteria", mode="before")
+    @classmethod
+    def _validate_criteria(cls, v: object) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            raise ValueError("acceptance_criteria must be a list of strings")
+        return v
+
+
+class CreateTaskRequest(_CriteriaMixin):
     title: str
     description: str = ""
     priority: str | int | None = None
     base_branch: str | None = None
-    acceptance_criteria: list[str] | None = None
     agent_backend: str | None = None
     launcher: str | None = None
 
-    @field_validator("acceptance_criteria", mode="before")
-    @classmethod
-    def _validate_criteria(cls, v: object) -> list[str] | None:
-        if v is None:
-            return None
-        if not isinstance(v, list):
-            raise ValueError("acceptance_criteria must be a list of strings")
-        return v
 
-
-class UpdateTaskRequest(BaseModel):
+class UpdateTaskRequest(_CriteriaMixin):
     title: str | None = None
     description: str | None = None
     priority: str | int | None = None
     base_branch: str | None = None
-    acceptance_criteria: list[str] | None = None
     agent_backend: str | None = None
     launcher: str | None = None
-
-    @field_validator("acceptance_criteria", mode="before")
-    @classmethod
-    def _validate_criteria(cls, v: object) -> list[str] | None:
-        if v is None:
-            return None
-        if not isinstance(v, list):
-            raise ValueError("acceptance_criteria must be a list of strings")
-        return v
 
 
 class UpdateTaskStatusRequest(BaseModel):
@@ -52,7 +45,7 @@ class UpdateTaskStatusRequest(BaseModel):
 
 
 class RunTaskRequest(BaseModel):
-    agent_backend: str = ""
+    agent_backend: str | None = None
     persona: str | None = None
     launcher: str | None = None
 
@@ -76,6 +69,9 @@ class FollowUpRequest(BaseModel):
     @field_validator("text", mode="before")
     @classmethod
     def _strip_text(cls, v: object) -> str:
-        if not isinstance(v, str) or not v.strip():
-            raise ValueError("text is required")
-        return v.strip()
+        if not isinstance(v, str):
+            raise TypeError("text must be a string")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("text must not be empty")
+        return stripped

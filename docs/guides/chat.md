@@ -55,6 +55,9 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 | `/session`  | Show current session details (ID, title, agent, message count)             |
 | `/sessions` | List, attach, or delete chat sessions                                      |
 | `/agents`   | List or switch agent backends                                              |
+| `/status`   | Show current project, session, and agent info                              |
+| `/project`  | Show or switch active project                                              |
+| `/delete`   | Delete a chat session by number or ID                                      |
 | `/tool`     | Inspect recent tool calls                                                  |
 | `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator sessions only) |
 

@@ -91,8 +91,13 @@ class SlashCommandSpec:
 | `/clear`    | Clear the current session                           |
 | `/new`      | Start a new chat session                            |
 | `/session`  | Show current session details                        |
+| `/status`   | Show current project, session, and agent            |
+| `/project`  | Show or switch active project                       |
+| `/delete`   | Delete a chat session by number or ID               |
 | `/flow`     | Show guided Plan → Execute → Orchestrate flow       |
 | `/exit`     | Exit the REPL                                       |
+
+Aliases: `q→exit`, `?→help`, `s→sessions`, `a→agents`, `f→flow`, `p→project`.
 
 ### Session Persistence
 

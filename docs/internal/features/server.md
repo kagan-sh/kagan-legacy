@@ -74,22 +74,37 @@ ______________________________________________________________________
 
 ## Real-time Event Stream
 
-The SSE event stream provides real-time updates for the board and agent executions.
+The SSE event stream provides real-time updates for board and agent executions.
 
-### Subscribing to Board Updates
+### Subscribing to updates
 
-To receive initial state and subsequent updates:
+Connect to the SSE endpoint to receive board and session events:
 
-```json
-{ "t": "BOARD_SUBSCRIBE" }
+```bash
+curl -N http://localhost:8765/api/events/stream
 ```
+
+Event types pushed by the server:
+
+| `type` field     | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| `TASK_UPDATED`   | A task was created, updated, or deleted            |
+| `SESSION_EVENT`  | Agent session event (output, tool call, status)    |
+
+Keepalive comments (`: keepalive`) are sent every 25 seconds.
 
 ### Managing Runs
 
-Start an agent run:
+Start an agent run via REST:
 
-```json
-{ "t": "RUN_START", "task_id": "<TASK_ID>" }
+```bash
+curl -X POST http://localhost:8765/api/tasks/<TASK_ID>/run
+```
+
+Cancel a running agent:
+
+```bash
+curl -X POST http://localhost:8765/api/tasks/<TASK_ID>/cancel
 ```
 
 ______________________________________________________________________
@@ -104,18 +119,18 @@ Chat sessions are managed via REST and streamed in real time over SSE.
 curl -X POST http://localhost:8765/api/chat/sessions
 ```
 
-### Sending a message
+### Sending a message (streamed response)
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
      -d '{"message": "Explain the auth flow"}' \
-     http://localhost:8765/api/chat/sessions/<SESSION_ID>/send
+     http://localhost:8765/api/chat/<SESSION_ID>/stream
 ```
 
 ### Interrupting a turn
 
 ```bash
-curl -X POST http://localhost:8765/api/chat/sessions/<SESSION_ID>/interrupt
+curl -X POST http://localhost:8765/api/chat/<SESSION_ID>/interrupt
 ```
 
 ### SSE events

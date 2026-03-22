@@ -116,6 +116,38 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+### `/status` — Show current project, session, and agent
+
+**Given** the user types `/status`
+**When** the command executes
+**Then** it prints the current project, active session, and agent backend info.
+
+______________________________________________________________________
+
+### `/project` — Show or switch active project
+
+**Given** the user types `/project`
+**When** the command executes
+**Then** it shows the current project name and path.
+
+**Given** the user types `/project <name>`
+**When** the command executes
+**Then** it switches to the named project if it exists.
+
+______________________________________________________________________
+
+### `/delete` — Delete a chat session
+
+**Given** the user types `/delete <number|id>`
+**When** the command executes and the session exists
+**Then** it deletes the specified session and confirms removal.
+
+**Given** the user types `/delete` with no argument
+**When** the command is parsed
+**Then** it shows usage guidance.
+
+______________________________________________________________________
+
 ### `/clear` — Clear current session
 
 **Given** the user types `/clear`

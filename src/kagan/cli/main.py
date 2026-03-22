@@ -76,6 +76,12 @@ def _print_crash_footer() -> None:
     click.echo(f"Bug report: {_ISSUES_URL}/new", err=True)
 
 
+class _CrashException(click.ClickException):
+    def show(self, file=None) -> None:
+        super().show(file=file)
+        _print_crash_footer()
+
+
 _CLIGroupBase: type[click.Group] = _RICH_GROUP_BASE
 
 
@@ -123,12 +129,11 @@ class _CLIGroup(_CLIGroupBase):
             raise
         except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.exception("Unhandled CLI exception")
-            _print_crash_footer()
             hint = getattr(exc, "hint", "")
             message = str(exc)
             if hint:
                 message = f"{message}\nhint: {hint}"
-            raise click.ClickException(message) from exc
+            raise _CrashException(message) from exc
 
 
 def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:

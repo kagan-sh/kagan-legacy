@@ -339,10 +339,27 @@ def _do_dry_run(client, project_name: str | None) -> None:
         project = run_async(client.projects.find_by_name(project_name))
         if project is None:
             raise click.ClickException(f"Project not found: {project_name}")
-        stats = _collect_project_stats(client, project.id)
+        try:
+            stats = _collect_project_stats(client, project.id)
+        except Exception:
+            stats = {
+                "task_count": "?",
+                "session_count": "?",
+                "worktree_count": "?",
+                "repo_count": "?",
+            }
         _print_project_impact(project.name, stats)
     else:
-        stats = _collect_stats(client)
+        try:
+            stats = _collect_stats(client)
+        except Exception:
+            stats = {
+                "projects": [],
+                "task_count": "?",
+                "session_count": "?",
+                "worktree_count": "?",
+                "repo_count": "?",
+            }
         _print_full_impact(stats)
     click.secho("Dry run — no changes made.", fg="cyan", bold=True)
 
@@ -380,6 +397,8 @@ def reset(project_name: str | None, force: bool, dry_run: bool) -> None:
     client = make_client()
     try:
         if dry_run:
+            if force:
+                raise click.UsageError("--force has no effect with --dry-run")
             _do_dry_run(client, project_name)
             return
 

@@ -9,12 +9,14 @@ ______________________________________________________________________
 
 - Get a task by ID (summary, full, or context mode)
 - List tasks filtered by status, scoped to active project
+- Search tasks by query string
 - Create a task with title and optional fields
 - Batch-create multiple tasks at once (title required, description optional per entry)
 - Patch task fields or transition status (lifecycle enforced)
 - Delete a task and all associated data
 - Add a timestamped note to a task
-- Read paginated execution event logs
+- Read paginated execution event logs via `task_events`
+- Get task counts grouped by status via `task_counts`
 - Wait for task status changes or target statuses via event-driven lifecycle signals
 
 ______________________________________________________________________
@@ -51,6 +53,11 @@ ______________________________________________________________________
 - Apply review actions: approve, reject (with feedback), merge, rebase
 - Merge enforces lifecycle (REVIEW status required, approval if configured)
 - Rebase reports conflicts with affected file list
+- Get merge conflict details via `review_conflicts`
+- Continue an interrupted rebase via `review_continue_rebase`
+- Abort a rebase operation via `review_abort_rebase`
+- Set verdict on individual acceptance criteria via `review_set_criterion_verdict`
+- Clear all AI review verdicts via `review_clear_verdicts`
 
 ______________________________________________________________________
 
@@ -89,7 +96,18 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 10. Resources
+## 10. Persona Tools
+
+- `persona_preset_audit` — audit persona presets in a repository
+- `persona_preset_import` — import persona presets from a GitHub repository
+- `persona_preset_export` — export persona presets to a GitHub repository
+- `persona_preset_whitelist_list` — list trusted persona repositories
+- `persona_preset_whitelist_add` — add a repository to the trusted list
+- `persona_preset_whitelist_remove` — remove a repository from the trusted list
+
+______________________________________________________________________
+
+## 11. Resources
 
 - Read-only data endpoints, always available regardless of access mode
 - `kagan://ping` — health check
@@ -100,7 +118,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 11. Access Control
+## 12. Access Control
 
 - Three roles: WORKER (board awareness + own-task annotation), REVIEWER (+ verdicts), ORCHESTRATOR (full control)
 - `--role` flag sets the agent role; defaults to ORCHESTRATOR

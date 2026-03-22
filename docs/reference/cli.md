@@ -14,14 +14,13 @@ tags:
 | Command   | Description                                      |
 | --------- | ------------------------------------------------ |
 | `chat`    | Orchestrator REPL / one-shot prompt              |
-| `core`    | Manage core process                              |
 | `doctor`  | Environment diagnostics                          |
 | `import`  | Import tasks from external sources               |
 | `list`    | List projects with task counts                   |
 | `mcp`     | Run MCP server (stdio)                           |
 | `plugins` | Plugin management (requires opt-in, see below)   |
 | `reset`   | Remove local state                               |
-| `serve`   | Run HTTP API server for integrations/API clients |
+| `serve`   | Run HTTP API server (no web UI)                  |
 | `tools`   | Stateless utilities                              |
 | `tui`     | Run TUI explicitly                               |
 | `update`  | Check/install updates                            |
@@ -101,18 +100,6 @@ Lists projects with repository paths and per-status task counts (BACKLOG, IN_PRO
 
 ______________________________________________________________________
 
-## `kagan core`
-
-| Subcommand | Description                 |
-| ---------- | --------------------------- |
-| `start`    | Start core (if not running) |
-| `status`   | Show core status            |
-| `stop`     | Stop core                   |
-
-`kagan core start`: `--foreground` for foreground run.
-
-______________________________________________________________________
-
 ## `kagan mcp`
 
 Starts the MCP server on STDIO. Blocks until the host disconnects.
@@ -122,6 +109,7 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 | `--readonly`                        | Read-only tier (read-only tools/resources/prompts only) |
 | `--admin`                           | Admin tier (includes destructive/admin tools)           |
 | `--session-id TEXT`                 | Bind server context to a session or task                |
+| `--role ROLE`                       | Agent role: `WORKER`, `REVIEWER`, or `ORCHESTRATOR`     |
 | `--enable-internal-instrumentation` | Expose diagnostics instrumentation tool                 |
 
 `--readonly` and `--admin` are mutually exclusive. Without either flag, the server runs in default tier (read + write, no destructive operations).
@@ -174,7 +162,7 @@ Starts the HTTP API server for local integrations. REST + SSE endpoints are serv
 | `--port`     | Bind port (default: `8765`)            |
 | `--readonly` | Read-only access tier                  |
 | `--admin`    | Admin access tier                      |
-| `--token`    | Auth token (auto-generated if omitted) |
+| `--tls`      | Enable HTTPS with self-signed certificate |
 
 `--readonly` and `--admin` are mutually exclusive. Use `--host 0.0.0.0` to allow connections from other devices on the network.
 

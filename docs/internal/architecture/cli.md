@@ -23,7 +23,7 @@ src/kagan/cli/
 ├── doctor.py          # kagan doctor [--verbosity]
 ├── list_projects.py   # kagan projects
 ├── mcp.py             # kagan mcp [flags]
-├── reset.py           # kagan reset-state [--force] [--project]
+├── reset.py           # kagan reset [--force] [--project]
 ├── serve.py           # kagan serve [--port] [--host] [--readonly]
 ├── update.py          # kagan update [--check-only] [--prerelease]
 ├── tools.py           # kagan tools enhance [prompt]
@@ -56,7 +56,7 @@ src/kagan/cli/
 | `doctor`     | System health checks                              | Sync only, no async boundary needed        |
 | `projects`   | List projects                                     | Thin wrapper around core                   |
 | `mcp`        | Start MCP STDIO server                            | Blocks on STDIO; `--readonly`, `--admin`   |
-| `reset-state`| Reset database/state                              | `--force` to skip confirmation             |
+| `reset`      | Reset database/state                              | `--force` to skip confirmation             |
 | `update`     | Self-update via pipx/pip                          | `--check-only`, `--prerelease`             |
 | `tools`      | LLM tool utilities                                | Subgroup: `enhance`                        |
 | `plugins`    | Plugin management                                 | Subgroup: `sync`, `list`, `check`          |

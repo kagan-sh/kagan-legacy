@@ -67,6 +67,7 @@ kagan web --help
 | ------------ | ----------- | -------------------------------------------- |
 | `--host`     | `127.0.0.1` | Bind address                                 |
 | `--port`     | `8765`      | Bind port                                    |
+| `--no-open`  | off         | Do not auto-open a browser window            |
 | `--readonly` | off         | Read-only access (no mutations)              |
 | `--admin`    | off         | Admin access (delete tasks, manage projects) |
 

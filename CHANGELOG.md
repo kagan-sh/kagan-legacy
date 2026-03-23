@@ -2,6 +2,62 @@
 
 <!-- version list -->
 
+## v0.11.1-beta.1 (2026-03-23)
+
+### Bug Fixes
+
+- **mcp**: Keep attached session tools consistent ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Report attached session state explicitly
+  ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Resolve remaining bot review findings ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Restore static resource registration ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+### Documentation
+
+- **mcp**: Align tiers and payload wording ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Clarify orchestrator tier semantics ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Document explicit session and review tools
+  ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Explain review tool registration split ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+### Refactoring
+
+- **mcp**: Align role profiles with explicit tools
+  ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Apply bot review follow-ups ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Make session and review tools explicit ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Read resources from request context ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Split attached session actions into explicit tools
+  ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+- **mcp**: Split review actions into explicit tools
+  ([#49](https://github.com/kagan-sh/kagan/pull/49),
+  [`a2f2dcf`](https://github.com/kagan-sh/kagan/commit/a2f2dcf801d44047d1487f2ad0bafce6dcc17075))
+
+
 ## v0.11.0 (2026-03-23)
 
 

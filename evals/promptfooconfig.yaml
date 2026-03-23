@@ -8,13 +8,14 @@ providers:
     config:
       temperature: 0
       max_tokens: 1024
+      seed: 42
 
 prompts:
-  - id: file://evals/prompts/orchestrator.json
+  - id: file://prompts/orchestrator.json
     label: orchestrator
-  - id: file://evals/prompts/review.json
+  - id: file://prompts/review.json
     label: review
-  - id: file://evals/prompts/execution.json
+  - id: file://prompts/execution.json
     label: execution
 
 defaultTest:

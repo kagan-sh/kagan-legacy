@@ -5,6 +5,7 @@ Private module. Called by ``kagan.cli.prompts``.
 
 from pathlib import Path
 from textwrap import indent
+from types import SimpleNamespace
 from typing import Any
 
 from loguru import logger
@@ -16,6 +17,12 @@ from kagan.core._prompts import (
 )
 
 PROMPT_TYPES = ("orchestrator", "execution", "review")
+
+_PLACEHOLDER_TASK = SimpleNamespace(
+    title="Example task",
+    description="Placeholder task for prompt export preview.",
+    acceptance_criteria=["Tests pass", "No regressions"],
+)
 
 
 def export_prompt_yml(
@@ -33,27 +40,7 @@ def export_prompt_yml(
 
     Raises ``ValueError`` if *prompt_type* is not one of ``PROMPT_TYPES``.
     """
-    if prompt_type not in PROMPT_TYPES:
-        raise ValueError(
-            f"Unknown prompt type {prompt_type!r}. Choose from: {', '.join(PROMPT_TYPES)}"
-        )
-
-    # Resolve using the existing three-layer pipeline
-    if prompt_type == "orchestrator":
-        content = resolve_orchestrator_prompt(settings, project_path)
-    elif prompt_type == "execution":
-        content = resolve_task_prompt(
-            task or _placeholder_task(),
-            settings,
-            project_path,
-        )
-    else:  # review
-        content = resolve_review_prompt(
-            task_id or "TASK_ID_PLACEHOLDER",
-            settings,
-            project_path,
-        )
-
+    content = _resolve(prompt_type, settings, task=task, task_id=task_id, project_path=project_path)
     return _format_yml(
         name=f"kagan-{prompt_type}",
         description=f"Kagan {prompt_type} system prompt",
@@ -77,25 +64,7 @@ def export_prompt_text(
 
     Raises ``ValueError`` if *prompt_type* is not one of ``PROMPT_TYPES``.
     """
-    if prompt_type not in PROMPT_TYPES:
-        raise ValueError(
-            f"Unknown prompt type {prompt_type!r}. Choose from: {', '.join(PROMPT_TYPES)}"
-        )
-
-    if prompt_type == "orchestrator":
-        return resolve_orchestrator_prompt(settings, project_path)
-    elif prompt_type == "execution":
-        return resolve_task_prompt(
-            task or _placeholder_task(),
-            settings,
-            project_path,
-        )
-    else:  # review
-        return resolve_review_prompt(
-            task_id or "TASK_ID_PLACEHOLDER",
-            settings,
-            project_path,
-        )
+    return _resolve(prompt_type, settings, task=task, task_id=task_id, project_path=project_path)
 
 
 def write_prompt_yml(content: str, output_path: Path) -> Path:
@@ -111,31 +80,55 @@ def write_prompt_yml(content: str, output_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _resolve(
+    prompt_type: str,
+    settings: dict[str, str],
+    *,
+    task: Any | None = None,
+    task_id: str | None = None,
+    project_path: Path | None = None,
+) -> str:
+    """Validate *prompt_type* and resolve through the three-layer pipeline."""
+    if prompt_type not in PROMPT_TYPES:
+        raise ValueError(
+            f"Unknown prompt type {prompt_type!r}. Choose from: {', '.join(PROMPT_TYPES)}"
+        )
+
+    if prompt_type == "orchestrator":
+        return resolve_orchestrator_prompt(settings, project_path)
+    if prompt_type == "execution":
+        return resolve_task_prompt(task or _PLACEHOLDER_TASK, settings, project_path)
+    return resolve_review_prompt(task_id or "TASK_ID_PLACEHOLDER", settings, project_path)
+
+
+_YAML_MUST_QUOTE = frozenset(':#{}[]&*?|>=!%@`"\'')
+
+
+def _yaml_quote(value: str) -> str:
+    """Quote a YAML scalar value if it contains characters that need quoting.
+
+    Hyphens, slashes, dots, and angle brackets in isolation are safe in YAML
+    plain scalars. We only quote when truly ambiguous characters appear.
+    """
+    if _YAML_MUST_QUOTE.intersection(value):
+        escaped = value.replace('"', '\\"')
+        return f'"{escaped}"'
+    return value
+
+
 def _format_yml(*, name: str, description: str, model: str, content: str) -> str:
     """Build a .prompt.yml string without a YAML library.
 
-    The format is intentionally simple — a YAML library would be overkill
-    for a fixed structure with one multi-line string field.
+    Header scalars are quoted to prevent YAML injection via special characters.
+    The content field uses a block scalar (``|``) which is safe by construction.
     """
-    # Indent every line of content by 8 spaces for the YAML block scalar
     indented = indent(content, "        ")
     return (
-        f"name: {name}\n"
-        f"description: {description}\n"
-        f"model: {model}\n"
+        f"name: {_yaml_quote(name)}\n"
+        f"description: {_yaml_quote(description)}\n"
+        f"model: {_yaml_quote(model)}\n"
         f"messages:\n"
         f"  - role: system\n"
         f"    content: |\n"
         f"{indented}\n"
     )
-
-
-def _placeholder_task() -> object:
-    """Minimal stand-in when no real task is provided for execution export."""
-
-    class _Placeholder:
-        title = "Example task"
-        description = "Placeholder task for prompt export preview."
-        acceptance_criteria: list[str] = ["Tests pass", "No regressions"]
-
-    return _Placeholder()

@@ -12,16 +12,18 @@ for prompt_type in orchestrator execution review; do
   echo "Wrote $OUT_DIR/$prompt_type.txt"
 done
 
-# Build JSON chat-format files for promptfoo (system + user template)
+# Build JSON chat-format files for promptfoo (system + user template).
+# Paths passed via sys.argv to avoid shell injection in inline Python.
 for prompt_type in orchestrator execution review; do
-  python3 -c "
+  python3 - "$OUT_DIR/$prompt_type.txt" "$OUT_DIR/$prompt_type.json" <<'PYEOF'
 import json, sys
-content = open('$OUT_DIR/$prompt_type.txt').read()
+content = open(sys.argv[1]).read()
 messages = [
-    {'role': 'system', 'content': content},
-    {'role': 'user', 'content': '{{user_message}}'},
+    {"role": "system", "content": content},
+    {"role": "user", "content": "{{user_message}}"},
 ]
-json.dump(messages, sys.stdout, indent=2)
-" > "$OUT_DIR/$prompt_type.json"
+with open(sys.argv[2], "w") as f:
+    json.dump(messages, f, indent=2)
+PYEOF
   echo "Wrote $OUT_DIR/$prompt_type.json"
 done

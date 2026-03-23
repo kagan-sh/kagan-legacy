@@ -48,6 +48,13 @@ jobs:
           echo "Failures: $failures"
           if [ "$failures" -gt 0 ]; then
             echo "::error::$failures prompt assertion(s) failed"
-            npx promptfoo@latest eval -c evals/promptfooconfig.yaml --no-progress-bar --output-format table 2>&1 || true
             exit 1
           fi
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-eval-results
+          path: evals/results.json
+          retention-days: 30

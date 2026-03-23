@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from kagan.core._prompt_export import PROMPT_TYPES, export_prompt_text, export_prompt_yml, write_prompt_yml
 
 
@@ -75,7 +77,7 @@ class TestWritePromptYml:
     """Tests for write_prompt_yml()."""
 
     @pytest.mark.unit
-    def test_writes_file(self, tmp_path) -> None:
+    def test_writes_file(self, tmp_path: Path) -> None:
         content = "name: test\nmodel: test\n"
         dest = tmp_path / "sub" / "test.prompt.yml"
         result = write_prompt_yml(content, dest)
@@ -83,7 +85,7 @@ class TestWritePromptYml:
         assert dest.read_text() == content
 
     @pytest.mark.unit
-    def test_creates_parent_directories(self, tmp_path) -> None:
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
         dest = tmp_path / "deep" / "nested" / "dir" / "prompt.yml"
         write_prompt_yml("content", dest)
         assert dest.exists()
@@ -122,6 +124,11 @@ class TestExportPromptText:
     def test_unknown_type_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown prompt type"):
             export_prompt_text("bogus", _EMPTY_SETTINGS)
+
+    @pytest.mark.unit
+    def test_model_with_special_chars_is_quoted(self) -> None:
+        result = export_prompt_yml("orchestrator", _EMPTY_SETTINGS, model="my-model: v2 # test")
+        assert 'model: "my-model: v2 # test"' in result
 
     @pytest.mark.unit
     def test_text_differs_from_yml(self) -> None:

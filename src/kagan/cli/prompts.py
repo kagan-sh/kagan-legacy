@@ -44,16 +44,17 @@ def prompts() -> None:
 )
 def export(prompt_type: str, output: str | None, model: str, output_format: str) -> None:
     """Export a resolved prompt to .prompt.yml or raw text format."""
+    import asyncio
+
     from kagan.cli._bootstrap import make_client
     from kagan.core._prompt_export import export_prompt_text, export_prompt_yml, write_prompt_yml
 
+    settings: dict[str, str] = {}
     try:
         client = make_client()
-        import asyncio
-
         settings = asyncio.run(client.settings.get())
-    except Exception:  # graceful fallback when no DB exists
-        settings: dict[str, str] = {}
+    except (OSError, RuntimeError):
+        pass  # No DB available — use empty settings (defaults only)
 
     if output_format == "text":
         content = export_prompt_text(prompt_type, settings)

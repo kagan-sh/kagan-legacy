@@ -102,7 +102,7 @@ async def test_session_manage_exists_false_for_unknown_task(mcp_board: ClientSes
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_create_returns_session_id(mcp_board: ClientSession) -> None:
+async def test_session_manage_create_fails_without_prerequisites(mcp_board: ClientSession) -> None:
     """run_create must fail when attached prerequisites are missing."""
     result = await mcp_board.call_tool("run_create", {"task_id": "task-attached-2"})
     assert result.isError

@@ -44,15 +44,16 @@ async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
 
     try:
         await client.tasks.get(task_id)
-        session = await client.tasks.sessions.get_latest(task_id)
-        has_attached_session = (
-            session is not None
-            and session.launcher is not None
-            and session.status in {SessionStatus.PENDING, SessionStatus.RUNNING}
-        )
-        return {"exists": has_attached_session, "task_id": task_id}
     except NotFoundError:
         return {"exists": False, "task_id": task_id}
+
+    session = await client.tasks.sessions.get_latest(task_id)
+    has_attached_session = (
+        session is not None
+        and session.launcher is not None
+        and session.status in {SessionStatus.PENDING, SessionStatus.RUNNING}
+    )
+    return {"exists": has_attached_session, "task_id": task_id}
 
 
 async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:

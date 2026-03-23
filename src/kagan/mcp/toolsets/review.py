@@ -6,18 +6,13 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import build_conflict_resolution_feedback
 from kagan.core.errors import MergeConflictError
+from kagan.core.models import Task
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerContext, ServerOptions, get_context
 from kagan.mcp.toolsets import mcp_error_boundary
 
 
-async def _require_acceptance_criteria(
-    app: ServerContext, task_id: str
-) -> tuple[dict | None, object]:
-    task = await app.client.tasks.get(task_id)
-    criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-    if criteria:
-        return None, task
+def _manual_review_block(task_id: str) -> dict[str, str]:
     return {
         "task_id": task_id,
         "action": "blocked",
@@ -26,16 +21,21 @@ async def _require_acceptance_criteria(
             "This task has no acceptance criteria. "
             "Cannot auto-approve — manual human review required."
         ),
-    }, task
+    }
+
+
+def _has_acceptance_criteria(task: Task) -> bool:
+    criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+    return bool(criteria)
 
 
 @mcp_error_boundary
 async def _review_approve(task_id: str, ctx: Context) -> dict:
     """Approve a review-ready task."""
     app = get_context(ctx)
-    blocked, _task = await _require_acceptance_criteria(app, task_id)
-    if blocked is not None:
-        return blocked
+    task = await app.client.tasks.get(task_id)
+    if not _has_acceptance_criteria(task):
+        return _manual_review_block(task_id)
     await app.client.reviews.approve(task_id)
     return {"task_id": task_id, "action": "approve"}
 
@@ -52,9 +52,9 @@ async def _review_reject(task_id: str, feedback: str, ctx: Context) -> dict:
 async def _review_merge(task_id: str, ctx: Context) -> dict:
     """Merge an approved task into its base branch."""
     app = get_context(ctx)
-    blocked, task = await _require_acceptance_criteria(app, task_id)
-    if blocked is not None:
-        return blocked
+    task = await app.client.tasks.get(task_id)
+    if not _has_acceptance_criteria(task):
+        return _manual_review_block(task_id)
     return await _handle_merge(app, task_id, task)
 
 
@@ -66,7 +66,7 @@ async def _review_rebase(task_id: str, ctx: Context) -> dict:
     return {"task_id": task_id, "action": "rebase"}
 
 
-async def _handle_merge(app: ServerContext, task_id: str, task: object | None = None) -> dict:
+async def _handle_merge(app: ServerContext, task_id: str, task: Task | None = None) -> dict:
     """Execute a merge action and return the result dict."""
     try:
         await app.client.reviews.merge(task_id)

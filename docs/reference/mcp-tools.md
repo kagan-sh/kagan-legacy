@@ -338,7 +338,7 @@ Tool visibility is controlled by the MCP server's access tier (set via `--readon
 
 | Tier       | Visible tools                                                                                                                |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
+| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
 | `default`  | Read-only + `task_create`, `task_batch_create`, `task_update`, `task_add_note`, `run_start`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `run_cancel`, `review_approve`, `review_reject`, `review_merge`, `review_rebase` |
 | `admin`    | `default` + `task_delete`, `settings_set`, `plugins_sync`, review flows, persona management                                 |
 

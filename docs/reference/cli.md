@@ -118,12 +118,12 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 
 | Tier       | Scope                                                                                                                  |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `readonly` | Read-only operations (task_get, task_list, etc.)                                                                       |
+| `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
 | `default`  | Read + write (`task_create`, `task_update`, `task_add_note`, `run_start`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `run_cancel`, `review_approve`, `review_reject`, `review_merge`, `review_rebase`) |
 | `admin`    | Default + destructive (task_delete, settings, plugin sync)                                                             |
 
 ```bash
-kagan mcp --readonly                    # read-only auditing
+kagan mcp --readonly                    # worker-scope access
 kagan mcp                               # default read+write
 kagan mcp --admin                       # full admin access
 kagan mcp --session-id task:abc123      # task-scoped session

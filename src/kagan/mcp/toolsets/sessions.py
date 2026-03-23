@@ -82,7 +82,7 @@ async def _handle_get(client: Any, task_id: str) -> SessionGetResult:
     session = await client.tasks.sessions.get_latest(task_id)
     return {
         "task_id": task_id,
-        "task_status": str(task.status),
+        "task_status": task.status.value,
         "session_id": session.id if session is not None else None,
         "session_status": (session.status.value if session is not None else None),
     }

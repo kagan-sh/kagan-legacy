@@ -147,7 +147,7 @@ def create_server(opts: ServerOptions) -> FastMCP:
         "summarizing.\n"
         "\n"
         "Workflow: create tasks (task_batch_create) → start agents (run_start) → "
-        "monitor (tasks_wait/run_summary) → review (review_decide) → merge.\n"
+        "monitor (tasks_wait/run_summary) → review (review_approve/review_reject) → merge.\n"
         "\n"
         "Agent roles: WORKER (own-task ops + board awareness), "
         "REVIEWER (verdicts + read), ORCHESTRATOR (full control). "

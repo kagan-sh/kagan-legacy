@@ -53,7 +53,15 @@ def _run_alembic_upgrade(database_url: str, connection: Connection | None = None
     config = _make_alembic_config(database_url, connection)
     if connection is not None:
         _normalize_revision_state(config, connection)
-    command.upgrade(config, "head")
+    # Suppress stdout during migration to prevent corrupting JSON-RPC streams (e.g., MCP)
+    import sys
+    from io import StringIO
+    old_stdout = sys.stdout
+    sys.stdout = StringIO()
+    try:
+        command.upgrade(config, "head")
+    finally:
+        sys.stdout = old_stdout
 
 
 def _ensure_workspace_fk_compat(connection: Connection) -> None:

@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v0.11.0-beta.2 (2026-03-23)
+
+### Bug Fixes
+
+- Address pre-release audit findings (security, correctness, metadata)
+  ([`80b1d4a`](https://github.com/kagan-sh/kagan/commit/80b1d4a47762c28221719969611f5aaaaf051a5e))
+
+- **server**: Add @require_context auth to /api/fs/browse endpoint
+  ([`80b1d4a`](https://github.com/kagan-sh/kagan/commit/80b1d4a47762c28221719969611f5aaaaf051a5e))
+
+### Refactoring
+
+- Apply Zen of Python UX refinements across TUI, web, and CLI
+  ([`3beb88a`](https://github.com/kagan-sh/kagan/commit/3beb88a4a329c43129a3addfd9ba91614607e8bb))
+
+- Zen of Python refinements across server, web, and tests
+  ([`be8e0ce`](https://github.com/kagan-sh/kagan/commit/be8e0ceb55f84c94a352c0d2fedfdd4b1e35ec1c))
+
+
 ## v0.11.0-beta.1 (2026-03-22)
 
 ### Documentation

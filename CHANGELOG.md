@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.11.3-beta.1 (2026-03-23)
+
+### Chores
+
+- Remove unused environmentVariables from MCP server.json
+  ([`cb4b2ce`](https://github.com/kagan-sh/kagan/commit/cb4b2ce6b25efdbd430f9293bbec89c4926c9be9))
+
+
 ## v0.11.2 (2026-03-23)
 
 

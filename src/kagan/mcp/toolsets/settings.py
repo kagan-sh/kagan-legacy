@@ -14,6 +14,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def settings_get(ctx: Context) -> dict:
+            """Read allowlisted runtime settings."""
             app = get_context(ctx)
             return await app.client.settings.get()
 
@@ -22,6 +23,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def audit_list(ctx: Context, limit: int | None = None) -> dict:
+            """List recent audit log entries."""
             app = get_context(ctx)
             entries = await app.client.audit_log.list(limit=limit)
             return {
@@ -41,6 +43,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def settings_set(section: str, key: str, value: str, ctx: Context) -> dict:
+            """Update one allowlisted setting value."""
             app = get_context(ctx)
             await app.client.settings.set({key: value})
             return {"section": section, "key": key, "value": value}
@@ -55,6 +58,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             path: str = ".kagan/personas.json",
             ref: str | None = None,
         ) -> dict:
+            """Audit a persona preset repository before import."""
             app = get_context(ctx)
             return await app.client.persona_presets.audit_repo(repo=repo, path=path, ref=ref)
 
@@ -71,6 +75,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             acknowledge_risk: bool = False,
             merge_mode: str = "merge",
         ) -> dict:
+            """Import persona presets from GitHub into Kagan."""
             app = get_context(ctx)
             return await app.client.persona_presets.import_from_github(
                 repo=repo,
@@ -92,6 +97,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             branch: str | None = None,
             commit_message: str = "chore: publish kagan persona presets",
         ) -> dict:
+            """Export local persona presets to GitHub."""
             app = get_context(ctx)
             return await app.client.persona_presets.export_to_github(
                 repo=repo,
@@ -105,6 +111,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def persona_preset_whitelist_list(ctx: Context) -> dict:
+            """List trusted persona preset repositories."""
             app = get_context(ctx)
             return await app.client.persona_presets.whitelist_list()
 
@@ -113,6 +120,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def persona_preset_whitelist_add(ctx: Context, repo: str) -> dict:
+            """Trust a persona preset repository for future imports."""
             app = get_context(ctx)
             return await app.client.persona_presets.whitelist_add(repo)
 
@@ -121,5 +129,6 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         @mcp.tool()
         @mcp_error_boundary
         async def persona_preset_whitelist_remove(ctx: Context, repo: str) -> dict:
+            """Remove a repository from the persona preset trust list."""
             app = get_context(ctx)
             return await app.client.persona_presets.whitelist_remove(repo)

@@ -17,6 +17,8 @@ interface KanbanColumnProps {
   onDeleteTask?: (task: WireTask) => void;
   selectedTaskId?: string | null;
   wipLimit?: number;
+  isValidDropTarget?: boolean;
+  isDragActive?: boolean;
 }
 
 const EMPTY_COPY: Record<TaskStatus, { title: string; description: string }> = {
@@ -49,6 +51,8 @@ export function KanbanColumn({
   onDeleteTask,
   selectedTaskId,
   wipLimit = 0,
+  isValidDropTarget,
+  isDragActive,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const isOverLimit = wipLimit > 0 && tasks.length > wipLimit;
@@ -61,7 +65,9 @@ export function KanbanColumn({
       aria-label={`${STATUS_LABELS[status]}, ${tasks.length} ${tasks.length === 1 ? 'item' : 'items'}`}
       className={cn(
         'flex h-full min-h-0 min-w-0 flex-col overflow-hidden border border-border/50 bg-[color:var(--surface-1)] transition-colors duration-150',
-        isOver && 'ring-2 ring-primary/30 bg-[color:var(--surface-1)]/40',
+        isOver && isValidDropTarget && 'ring-2 ring-primary/30 bg-[color:var(--surface-1)]/40',
+        isDragActive && isValidDropTarget && !isOver && 'ring-1 ring-primary/20',
+        isDragActive && !isValidDropTarget && 'opacity-40',
         className,
       )}
     >

@@ -26,7 +26,7 @@ describe('TaskCard', () => {
         })}
       />,
     );
-    expect(screen.getByText('Live')).toBeVisible();
+    expect(screen.getByTestId('live-indicator')).toBeVisible();
   });
 
   it('shows a live indicator when an interactive run is active', () => {
@@ -44,7 +44,7 @@ describe('TaskCard', () => {
         })}
       />,
     );
-    expect(screen.getByText('Live')).toBeVisible();
+    expect(screen.getByTestId('live-indicator')).toBeVisible();
   });
 
   it('calls inspector callback when provided', async () => {

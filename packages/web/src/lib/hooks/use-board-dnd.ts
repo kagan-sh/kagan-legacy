@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import {
     PointerSensor,
     pointerWithin,
+    type DragCancelEvent,
     type DragEndEvent,
     type DragOverEvent,
     type DragStartEvent,
@@ -12,6 +13,7 @@ import type { TaskStatus, WireTask } from "@/lib/api/types";
 import {
     COLUMN_ORDER,
     STATUS_LABELS,
+    ALLOWED_TASK_TRANSITIONS,
     isAllowedTaskTransition,
 } from "@/lib/utils/constants";
 import { apiClient } from "@/lib/api/client";
@@ -31,6 +33,9 @@ interface UseBoardDndReturn {
     handleDragStart: (e: DragStartEvent) => void;
     handleDragOver: (e: DragOverEvent) => void;
     handleDragEnd: (e: DragEndEvent) => void;
+    handleDragCancel: (e: DragCancelEvent) => void;
+    validDropTargets: Set<TaskStatus>;
+    isDragActive: boolean;
 }
 
 export function useBoardDnd({
@@ -43,6 +48,7 @@ export function useBoardDnd({
         TaskStatus,
         WireTask[]
     > | null>(null);
+    const [validDropTargets, setValidDropTargets] = useState<Set<TaskStatus>>(new Set());
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -52,6 +58,9 @@ export function useBoardDnd({
         (e: DragStartEvent) => {
             const task = tasks.find((item) => item.id === e.active.id);
             setActiveTask(task ?? null);
+            if (task) {
+                setValidDropTargets(new Set(ALLOWED_TASK_TRANSITIONS[task.status as TaskStatus]));
+            }
         },
         [tasks],
     );
@@ -102,6 +111,7 @@ export function useBoardDnd({
         async (e: DragEndEvent) => {
             setActiveTask(null);
             setDragState(null);
+            setValidDropTargets(new Set());
 
             const { active, over } = e;
             if (!over) return;
@@ -145,6 +155,12 @@ export function useBoardDnd({
         [fetchTasks, tasks],
     );
 
+    const handleDragCancel = useCallback((_e: DragCancelEvent) => {
+        setActiveTask(null);
+        setDragState(null);
+        setValidDropTargets(new Set());
+    }, []);
+
     return {
         activeTask,
         liveTasksByStatus: dragState ?? grouped,
@@ -153,5 +169,8 @@ export function useBoardDnd({
         handleDragStart,
         handleDragOver,
         handleDragEnd,
+        handleDragCancel,
+        validDropTargets,
+        isDragActive: activeTask !== null,
     };
 }

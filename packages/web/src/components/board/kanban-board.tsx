@@ -33,7 +33,12 @@ import { BacklogListView } from '@/components/board/backlog-list-view';
 import { FirstBootTutorialDialog } from '@/components/board/first-boot-tutorial-dialog';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@/lib/api/types';
-import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
+import {
+  createTaskDialogOpenAtom,
+  deleteTaskDialogTaskIdAtom,
+  editTaskDialogTaskIdAtom,
+  helpOverlayOpenAtom,
+} from '@/lib/atoms/ui';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
@@ -69,7 +74,9 @@ export function KanbanBoard() {
   const [query, setQuery] = useAtom(searchQueryAtom);
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
   const [sort, setSort] = useAtom(boardSortAtom);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useAtom(createTaskDialogOpenAtom);
+  const [editDialogTaskId, setEditDialogTaskId] = useAtom(editTaskDialogTaskIdAtom);
+  const [deleteDialogTaskId, setDeleteDialogTaskId] = useAtom(deleteTaskDialogTaskIdAtom);
   const [view, setView] = useState<'kanban' | 'backlog'>('kanban');
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -101,7 +108,7 @@ export function KanbanBoard() {
     return null;
   }, [grouped, selectedTaskId]);
 
-  const { activeTask, liveTasksByStatus, sensors, collisionDetection, handleDragStart, handleDragOver, handleDragEnd } =
+  const { activeTask, liveTasksByStatus, sensors, collisionDetection, handleDragStart, handleDragOver, handleDragEnd, handleDragCancel, validDropTargets, isDragActive } =
     useBoardDnd({ tasks, grouped, fetchTasks });
 
   // Re-fetch tasks on mount and when the active project changes
@@ -193,7 +200,21 @@ export function KanbanBoard() {
 
   const openCreateDialog = useCallback(() => {
     setCreateOpen(true);
-  }, []);
+  }, [setCreateOpen]);
+
+  useEffect(() => {
+    if (!editDialogTaskId) return;
+    const task = tasks.find((t) => t.id === editDialogTaskId) ?? null;
+    if (task) setEditingTask(task);
+    setEditDialogTaskId(null);
+  }, [editDialogTaskId, tasks, setEditDialogTaskId]);
+
+  useEffect(() => {
+    if (!deleteDialogTaskId) return;
+    const task = tasks.find((t) => t.id === deleteDialogTaskId) ?? null;
+    if (task) setDeleteTask(task);
+    setDeleteDialogTaskId(null);
+  }, [deleteDialogTaskId, tasks, setDeleteDialogTaskId]);
 
   useEffect(() => {
     if (loading) return;
@@ -417,6 +438,7 @@ export function KanbanBoard() {
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
             >
               <div className="flex h-full min-h-0 min-w-0 gap-px overflow-x-auto snap-x snap-mandatory xl:grid xl:grid-cols-4 xl:overflow-x-visible xl:snap-none">
                 {COLUMN_ORDER.map((status) => (
@@ -431,6 +453,8 @@ export function KanbanBoard() {
                     onDeleteTask={setDeleteTask}
                     selectedTaskId={selectedTaskId}
                     wipLimit={wipLimits[status] ?? 0}
+                    isDragActive={isDragActive}
+                    isValidDropTarget={validDropTargets.has(status as TaskStatus)}
                     className="w-[80vw] shrink-0 snap-start sm:w-[44vw] xl:w-auto xl:shrink xl:snap-align-none"
                   />
                 ))}

@@ -85,8 +85,13 @@ export interface CreateChatSessionInput {
     label?: string;
 }
 
+export interface AgentBackend {
+    name: string;
+    available: boolean;
+}
+
 export interface ChatAgentsResponse {
-    backends: string[];
+    backends: AgentBackend[];
     default: string;
 }
 

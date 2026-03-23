@@ -128,8 +128,13 @@ async def test_enter_on_detail_tab_does_not_switch_tab(review_board: KaganDriver
     async with app.run_test() as pilot:
         await pilot.pause()
         app.push_screen(TaskScreen(task_id=task.id))
-        await pilot.pause()
-        await pilot.pause()
+        for _ in range(10):
+            await pilot.pause()
+            ts = next((s for s in reversed(app.screen_stack) if isinstance(s, TaskScreen)), None)
+            if ts is not None:
+                tabs = ts.query_one("#ts-tabs", TabbedContent)
+                if tabs.active == "review":
+                    break
 
         # Press Enter (primary_action) — should trigger approve flow, not switch tab
         await pilot.press("enter")
@@ -140,7 +145,7 @@ async def test_enter_on_detail_tab_does_not_switch_tab(review_board: KaganDriver
         task_screen = next((s for s in reversed(screen_stack) if isinstance(s, TaskScreen)), None)
         if task_screen is not None:
             tabs = task_screen.query_one("#ts-tabs", TabbedContent)
-            assert tabs.active == "detail"
+            assert tabs.active == "review"
 
         # Top of stack should be the no-criteria modal
         assert isinstance(app.screen, ReviewNoCriteriaModal)

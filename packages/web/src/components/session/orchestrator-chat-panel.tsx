@@ -177,7 +177,7 @@ export function OrchestratorChatPanel({
     useEffect(() => {
         apiClient
             .getChatAgents()
-            .then((resp) => setAvailableBackends(resp.backends))
+            .then((resp) => setAvailableBackends(resp.backends.map((b) => b.name)))
             .catch(() => {});
     }, []);
 

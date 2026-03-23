@@ -41,22 +41,6 @@ class TaskDetailPane(Widget):
                 yield Static("", id="ts-overview-base-branch", classes="ts-detail-meta")
                 yield Static("", id="ts-overview-agent-backend", classes="ts-detail-meta")
 
-            with Vertical(id="ts-detail-review-section"):
-                yield Static("Review", classes="ts-section-label")
-                yield Static("", id="ts-merge-readiness", classes="ts-detail-review")
-
-                yield Static("Verify Criteria", classes="ts-section-label")
-                yield Vertical(id="ts-detail-criteria-list", classes="ts-detail-criteria-list")
-                yield Static(
-                    "", id="ts-detail-criteria-status", classes="ts-detail-criteria-status"
-                )
-
-                yield Static("", id="ts-detail-stream-source", classes="ts-detail-stream-source")
-                yield Static("", id="ts-detail-status", classes="ts-detail-status")
-                yield Static(
-                    "", id="ts-detail-changes-summary", classes="ts-detail-changes-summary"
-                )
-
     def watch_task_data(self, task: Task | None) -> None:
         self._render_overview(task)
 
@@ -79,7 +63,6 @@ class TaskDetailPane(Widget):
 
         self.query_one("#ts-overview-base-branch", Static).update("Base branch: repo default")
         self.query_one("#ts-overview-agent-backend", Static).update("Agent: project default")
-        self._set_review_section_visible(False)
         self._hide_resume_context()
 
     def _render_task(self, task: Task) -> None:
@@ -117,13 +100,6 @@ class TaskDetailPane(Widget):
         self.query_one("#ts-overview-agent-backend", Static).update(
             f"Agent: {task.agent_backend or 'project default'}"
         )
-        has_verdicts = bool(task.review_verdicts)
-        self._set_review_section_visible(
-            task.status is TaskStatus.REVIEW or (task.status is TaskStatus.DONE and has_verdicts)
-        )
-
-    def _set_review_section_visible(self, is_visible: bool) -> None:
-        self.query_one("#ts-detail-review-section", Vertical).display = is_visible
 
     def _hide_resume_context(self) -> None:
         container = self.query_one("#ts-resume-context-section", Vertical)

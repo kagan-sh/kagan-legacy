@@ -63,32 +63,50 @@ function formatLastActivity(value?: string | null) {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function TaskCardBody({ task }: { task: WireTask }) {
+function TaskCardBody({
+    task,
+    isSelected = false,
+}: {
+    task: WireTask;
+    isSelected?: boolean;
+}) {
     const criteriaCount = task.acceptance_criteria?.length ?? 0;
 
     return (
-        <>
-            <div className="ml-2 flex h-full min-h-0 flex-col gap-0.5">
-                <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                        <p className="line-clamp-1 text-[0.84rem] font-semibold leading-4 text-[color:var(--foreground)]">
-                            {task.title}
-                        </p>
-                        <p className="font-code text-[10px] uppercase tracking-[0.16em] text-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-                            {task.id}
-                        </p>
-                    </div>
-                </div>
+        <div className="ml-2 flex min-h-0 flex-col gap-0.5">
+            <div className="flex items-center justify-between gap-2">
+                <p className="line-clamp-1 text-[0.84rem] font-semibold leading-4 text-[color:var(--foreground)]">
+                    {task.title}
+                </p>
+                {task.active_session ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[color:var(--foreground)]" data-testid="live-indicator">
+                        <span
+                            className="size-1.5 animate-pulse rounded-full bg-[var(--primary)]"
+                            aria-hidden="true"
+                        />
+                    </span>
+                ) : null}
+            </div>
 
-                <div className="min-h-0">
-                    {task.description ? (
-                        <p className="line-clamp-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
-                            {task.description}
-                        </p>
-                    ) : null}
-                </div>
+            <div
+                className={cn(
+                    "overflow-hidden transition-all duration-150",
+                    isSelected
+                        ? "max-h-20 opacity-100"
+                        : "max-h-0 opacity-0 group-hover:max-h-20 group-hover:opacity-100",
+                )}
+            >
+                <p className="font-code text-[10px] uppercase tracking-[0.16em] text-foreground/60">
+                    {task.id}
+                </p>
 
-                <div className="flex flex-wrap items-center gap-1">
+                {task.description ? (
+                    <p className="line-clamp-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
+                        {task.description}
+                    </p>
+                ) : null}
+
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
                     <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                         <ListChecks className="size-2.5" />
                         {criteriaCount} AC
@@ -101,24 +119,15 @@ function TaskCardBody({ task }: { task: WireTask }) {
                     ) : null}
                 </div>
 
-                <div className="mt-auto flex items-center justify-between gap-1 bg-[color:var(--surface-1)] px-2 py-0.5 text-[9px] text-muted-foreground">
+                <div className="mt-0.5 flex items-center justify-between gap-1 bg-[color:var(--surface-1)] px-2 py-0.5 text-[9px] text-muted-foreground">
                     <span className="inline-flex min-w-0 items-center truncate">
                         {formatLastActivity(
                             task.last_event_at || task.updated_at,
                         )}
                     </span>
-                    {task.active_session ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 text-[color:var(--foreground)]">
-                            <span
-                                className="size-1.5 rounded-full bg-[var(--primary)]"
-                                aria-hidden="true"
-                            />
-                            Live
-                        </span>
-                    ) : null}
                 </div>
             </div>
-        </>
+        </div>
     );
 }
 
@@ -129,7 +138,7 @@ export function TaskCardOverlayPreview({
     return (
         <div
             className={cn(
-                "group relative h-[6.5rem] w-full overflow-hidden border border-border bg-card px-3 py-2 text-left shadow-lg",
+                "group relative min-h-[3.5rem] w-full overflow-hidden border border-border bg-card px-3 py-2 text-left shadow-lg",
                 className,
             )}
             role="presentation"
@@ -141,7 +150,7 @@ export function TaskCardOverlayPreview({
                     PRIORITY_RAIL[task.priority] ?? PRIORITY_RAIL.MEDIUM,
                 )}
             />
-            <TaskCardBody task={task} />
+            <TaskCardBody task={task} isSelected={true} />
         </div>
     );
 }
@@ -226,7 +235,7 @@ export function TaskCard({
                 setContextMenuOpen(true);
             }}
             className={cn(
-                "group relative h-[6.5rem] w-full cursor-grab overflow-hidden border border-border/50 bg-card px-3 py-2 text-left transition-all duration-150 hover:border-border hover:bg-[color:var(--surface-2)] active:cursor-grabbing",
+                "group relative min-h-[3.5rem] w-full cursor-grab overflow-hidden border border-border/50 bg-card px-3 py-2 text-left transition-all duration-150 hover:border-border hover:bg-[color:var(--surface-2)] active:cursor-grabbing",
                 isSelected &&
                     "ring-1 ring-[var(--primary)]/50 border-[var(--primary)]/30 bg-[color:var(--surface-2)]",
                 isDragging && "opacity-0",
@@ -252,7 +261,7 @@ export function TaskCard({
                 aria-hidden="true"
             />
 
-            <TaskCardBody task={task} />
+            <TaskCardBody task={task} isSelected={isSelected} />
         </div>
     );
 

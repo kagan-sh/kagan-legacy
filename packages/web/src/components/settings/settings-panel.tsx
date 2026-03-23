@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
+import { Check, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { themeModeAtom, setThemeModeAtom } from '@/lib/atoms/theme';
@@ -7,6 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import {
   Field,
   FieldContent,
@@ -18,11 +21,6 @@ import {
   FieldSet,
 } from '@/components/ui/field';
 import { asBool } from '@/lib/utils';
-import { AppearanceSettings } from './sections/appearance-settings';
-import { WorkflowSettings } from './sections/workflow-settings';
-import { WorkspaceSettings } from './sections/workspace-settings';
-import { OrchestrationSettings } from './sections/orchestration-settings';
-import { AdditionalInstructionsSettings } from './sections/additional-instructions';
 
 type ThemeMode = 'system' | 'dark' | 'light';
 
@@ -113,7 +111,6 @@ export function SettingsPanel() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  /** Save a single field atomically to the API. */
   const saveField = async <K extends keyof SettingsFormState>(
     key: K,
     value: SettingsFormState[K],
@@ -140,7 +137,7 @@ export function SettingsPanel() {
           apiClient.getChatAgents(),
         ]);
 
-        setAvailableBackends(agents.backends);
+        setAvailableBackends(agents.backends.map((b) => b.name));
 
         setResolvedGit({
           name: resolved.git_user_name || '',
@@ -212,6 +209,10 @@ export function SettingsPanel() {
     }
   };
 
+  const detectedDotfileOverrides = Object.entries(dotfileOverrides)
+    .filter(([, v]) => v != null)
+    .map(([k]) => k);
+
   return (
     <Card className="overflow-hidden p-0">
 
@@ -223,30 +224,9 @@ export function SettingsPanel() {
         </div>
       ) : (
         <FieldGroup className="space-y-0 px-5 py-5">
-          <OrchestrationSettings form={form} saveField={saveField} />
-
-          <FieldSeparator />
-
-          <AppearanceSettings
-            form={form}
-            setField={setField}
-            saveField={saveField}
-            themeMode={themeMode as ThemeMode}
-            setThemeMode={(mode) => setThemeMode(mode)}
-          />
-
-          <FieldSeparator />
-
-          <WorkflowSettings form={form} saveField={saveField} />
-
-          <FieldSeparator />
-
-          <WorkspaceSettings form={form} setField={setField} saveField={saveField} />
-
-          <FieldSeparator />
 
           <FieldSet>
-            <FieldLegend variant="label">Identity and Models</FieldLegend>
+            <FieldLegend variant="label">Essentials</FieldLegend>
             <Field>
               <FieldLabel>Default agent backend</FieldLabel>
               <FieldDescription>Agent used for new tasks when none is specified.</FieldDescription>
@@ -263,6 +243,88 @@ export function SettingsPanel() {
                 )}
               </NativeSelect>
             </Field>
+            <Field>
+              <FieldLabel>Theme</FieldLabel>
+              <FieldDescription>Choose how Kagan renders across desktop and mobile surfaces.</FieldDescription>
+              <NativeSelect
+                value={themeMode}
+                onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+              >
+                <NativeSelectOption value="system">Follow system</NativeSelectOption>
+                <NativeSelectOption value="dark">Dark</NativeSelectOption>
+                <NativeSelectOption value="light">Light</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Field>
+              <FieldLabel>Instructions</FieldLabel>
+              <FieldDescription>Appended to every agent prompt — your preferences, conventions, and workflow rules.</FieldDescription>
+              <Textarea
+                rows={4}
+                value={form.additional_instructions}
+                onChange={(event) => setField('additional_instructions', event.target.value)}
+                placeholder="Use conventional commits · Explain tradeoffs first · Commit messages in Portuguese"
+              />
+              {form.additional_instructions !== savedRef.current.additional_instructions && (
+                <div className="flex items-center justify-end gap-2 pt-1.5">
+                  <span className="text-[11px] text-[var(--muted-foreground)]">Unsaved changes</span>
+                  <Button variant="ghost" size="xs" onClick={() => setField('additional_instructions', savedRef.current.additional_instructions)}>
+                    <Undo2 className="size-3" /> Discard
+                  </Button>
+                  <Button size="xs" onClick={() => saveField('additional_instructions', form.additional_instructions)}>
+                    <Check className="size-3" /> Apply
+                  </Button>
+                </div>
+              )}
+              <div className="pt-2 text-[11px] text-[var(--muted-foreground)]">
+                {detectedDotfileOverrides.length > 0 ? (
+                  <span>Prompt overrides active: <strong>{detectedDotfileOverrides.join(', ')}</strong></span>
+                ) : (
+                  <span>Full prompt overrides → <code className="text-[10px]">.kagan/prompts/</code></span>
+                )}
+              </div>
+            </Field>
+          </FieldSet>
+
+          <FieldSeparator />
+
+          <FieldSet>
+            <FieldLegend variant="label">Workflow</FieldLegend>
+            <ToggleRow
+              title="Auto review"
+              description="Run review checks automatically when task execution completes."
+              checked={form.auto_review}
+              onCheckedChange={(value) => saveField('auto_review', value)}
+            />
+            <ToggleRow
+              title="Require review approval"
+              description="Block merge transitions unless reviewer approval is present."
+              checked={form.require_review_approval}
+              onCheckedChange={(value) => saveField('require_review_approval', value)}
+            />
+            <ToggleRow
+              title="Auto-confirm single tasks"
+              description="Skip the confirmation step for single-task plans and proceed directly to execution."
+              checked={form.auto_confirm_single_tasks}
+              onCheckedChange={(value) => saveField('auto_confirm_single_tasks', value)}
+            />
+            <Field>
+              <FieldLabel>Review strictness</FieldLabel>
+              <FieldDescription>Controls how thoroughly task outputs are reviewed before approval.</FieldDescription>
+              <NativeSelect
+                value={form.review_strictness}
+                onChange={(event) => saveField('review_strictness', event.target.value)}
+              >
+                <NativeSelectOption value="strict">Strict</NativeSelectOption>
+                <NativeSelectOption value="balanced">Balanced</NativeSelectOption>
+                <NativeSelectOption value="relaxed">Relaxed</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+          </FieldSet>
+
+          <FieldSeparator />
+
+          <FieldSet>
+            <FieldLegend variant="label">Git</FieldLegend>
             <Field>
               <FieldLabel>Git identity mode</FieldLabel>
               <FieldDescription>Choose between managed, system, or custom commit identity.</FieldDescription>
@@ -295,36 +357,116 @@ export function SettingsPanel() {
               />
             </Field>
             <Field>
-              <FieldLabel>Default Claude model</FieldLabel>
-              <FieldDescription>Default model hint when using Claude-family agents.</FieldDescription>
+              <FieldLabel>Default base branch</FieldLabel>
+              <FieldDescription>Base branch used for task worktrees when none is specified.</FieldDescription>
               <Input
-                value={form.default_model_claude}
-                onChange={(event) => setField('default_model_claude', event.target.value)}
-                onBlur={() => saveField('default_model_claude', form.default_model_claude)}
-                placeholder="Uses agent default"
-              />
-            </Field>
-            <Field>
-              <FieldLabel>Default OpenAI model</FieldLabel>
-              <FieldDescription>Default model hint when using OpenAI-family agents.</FieldDescription>
-              <Input
-                value={form.default_model_openai}
-                onChange={(event) => setField('default_model_openai', event.target.value)}
-                onBlur={() => saveField('default_model_openai', form.default_model_openai)}
-                placeholder="Uses agent default"
+                value={form.default_base_branch}
+                onChange={(event) => setField('default_base_branch', event.target.value)}
+                onBlur={() => saveField('default_base_branch', form.default_base_branch)}
               />
             </Field>
           </FieldSet>
 
           <FieldSeparator />
 
-          <AdditionalInstructionsSettings
-            form={form}
-            savedValue={savedRef.current.additional_instructions}
-            setField={setField}
-            saveField={saveField}
-            dotfileOverrides={dotfileOverrides}
-          />
+          <FieldSet>
+            <details className="space-y-6">
+              <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                Advanced settings
+              </summary>
+              <Field>
+                <FieldLabel>Worktree base strategy</FieldLabel>
+                <FieldDescription>Controls whether worktrees anchor to local or remote references.</FieldDescription>
+                <NativeSelect
+                  value={form.worktree_base_ref_strategy}
+                  onChange={(event) => saveField('worktree_base_ref_strategy', event.target.value)}
+                >
+                  <NativeSelectOption value="local_if_ahead">local_if_ahead</NativeSelectOption>
+                  <NativeSelectOption value="remote">remote</NativeSelectOption>
+                  <NativeSelectOption value="local">local</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel>Planning depth</FieldLabel>
+                <FieldDescription>When the orchestrator creates detailed task plans before execution.</FieldDescription>
+                <NativeSelect
+                  value={form.planning_depth}
+                  onChange={(event) => saveField('planning_depth', event.target.value)}
+                >
+                  <NativeSelectOption value="always">Always plan</NativeSelectOption>
+                  <NativeSelectOption value="multi_task">Multi-task only</NativeSelectOption>
+                  <NativeSelectOption value="never">Never plan</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <ToggleRow
+                title="Serialize merges"
+                description="Queue manual merges to avoid branch collision under high throughput."
+                checked={form.serialize_merges}
+                onCheckedChange={(value) => saveField('serialize_merges', value)}
+              />
+              <ToggleRow
+                title="Auto-initialize git repository"
+                description="Initialize git automatically when creating a fresh workspace."
+                checked={form.auto_init_git_repo}
+                onCheckedChange={(value) => saveField('auto_init_git_repo', value)}
+              />
+              <ToggleRow
+                title="Create initial commit automatically"
+                description="Create a bootstrap commit after automatic repository initialization."
+                checked={form.auto_init_git_initial_commit}
+                onCheckedChange={(value) => saveField('auto_init_git_initial_commit', value)}
+              />
+              <Field>
+                <FieldLabel>Interactive launcher</FieldLabel>
+                <FieldDescription>Primary tool used when you attach an interactive run.</FieldDescription>
+                <NativeSelect
+                  value={form.attached_launcher}
+                  onChange={(event) => saveField('attached_launcher', event.target.value)}
+                >
+                  <NativeSelectOption value="tmux">tmux</NativeSelectOption>
+                  <NativeSelectOption value="nvim">nvim</NativeSelectOption>
+                  <NativeSelectOption value="vscode">vscode</NativeSelectOption>
+                  <NativeSelectOption value="cursor">cursor</NativeSelectOption>
+                  <NativeSelectOption value="windsurf">windsurf</NativeSelectOption>
+                  <NativeSelectOption value="kiro">kiro</NativeSelectOption>
+                  <NativeSelectOption value="antigravity">antigravity</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <ToggleRow
+                title="Restore last workspace on startup"
+                description="Resume directly in your recent project context after app launch."
+                checked={form.open_last_project_on_startup}
+                onCheckedChange={(value) => saveField('open_last_project_on_startup', value)}
+              />
+              <ToggleRow
+                title="Show attach guidance"
+                description="Keep onboarding instructions visible when attaching an interactive run."
+                checked={!form.skip_attached_instructions_popup}
+                onCheckedChange={(value) => saveField('skip_attached_instructions_popup', !value)}
+              />
+              <Field>
+                <FieldLabel>Default Claude model</FieldLabel>
+                <FieldDescription>Default model hint when using Claude-family agents.</FieldDescription>
+                <Input
+                  value={form.default_model_claude}
+                  onChange={(event) => setField('default_model_claude', event.target.value)}
+                  onBlur={() => saveField('default_model_claude', form.default_model_claude)}
+                  placeholder="Uses agent default"
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Default OpenAI model</FieldLabel>
+                <FieldDescription>Default model hint when using OpenAI-family agents.</FieldDescription>
+                <Input
+                  value={form.default_model_openai}
+                  onChange={(event) => setField('default_model_openai', event.target.value)}
+                  onBlur={() => saveField('default_model_openai', form.default_model_openai)}
+                  placeholder="Uses agent default"
+                />
+              </Field>
+            </details>
+          </FieldSet>
+
         </FieldGroup>
       )}
     </Card>

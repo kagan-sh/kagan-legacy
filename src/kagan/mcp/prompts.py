@@ -72,6 +72,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
     async def security_audit_persona_repo(
         repo: str, path: str = ".kagan/personas.json"
     ) -> list[UserMessage]:
+        """Return a read-only audit prompt for a persona preset repository."""
         return [
             UserMessage(
                 f"Audit persona preset source {repo} at path {path}.\n\n"

@@ -108,6 +108,10 @@ async def _run_start(
     launcher: str | None = None,
     persona: str | None = None,
 ) -> dict:
+    """Start a managed or attached run for a task.
+
+    Creates the task worktree first if one does not already exist.
+    """
     app = get_context(ctx)
 
     ws = await app.client.worktrees.get(task_id)
@@ -155,6 +159,7 @@ async def _run_start(
 
 @mcp_error_boundary
 async def _run_cancel(session_id: str, task_id: str, ctx: Context) -> dict:
+    """Cancel a task run and stop its active session."""
     app = get_context(ctx)
     await app.client.tasks.cancel(task_id)
     return {"session_id": session_id, "task_id": task_id, "cancelled": True}
@@ -162,6 +167,7 @@ async def _run_cancel(session_id: str, task_id: str, ctx: Context) -> dict:
 
 @mcp_error_boundary
 async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
+    """Summarize runs, sessions, worktrees, and token usage for tasks."""
     app = get_context(ctx)
     tasks = await app.client.tasks.list()
     id_filter = set(task_ids or [])

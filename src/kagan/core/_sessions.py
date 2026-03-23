@@ -720,11 +720,13 @@ class Sessions:
             logger.warning("Post-commit pending check failed for task={}: {}", task_id, exc)
             pending_after = True
 
-        has_commits = False
+        has_commits = True
         try:
             has_commits = await git.has_commits_since(worktree, base_branch, strategy=strategy)
         except WorktreeError as exc:
-            logger.debug("Commit check failed for task={}: {}", task_id, exc)
+            logger.warning(
+                "Commit check failed for task={}, assuming commits exist: {}", task_id, exc,
+            )
 
         ready_for_review = has_commits and not pending_after
         return ready_for_review, pending_before, pending_after

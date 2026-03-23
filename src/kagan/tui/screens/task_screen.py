@@ -853,7 +853,7 @@ class TaskScreen(Screen[None]):
                 if self._should_refresh_after_event(event.event_type):
                     self._queue_stream_refresh(workspace=True, review=True)
         except asyncio.CancelledError:
-            pass
+            raise
         except (KaganError, NoMatches, AttributeError, OSError, RuntimeError) as exc:
             self._running = False
             self._set_status("Failed")

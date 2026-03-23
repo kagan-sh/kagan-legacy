@@ -1,0 +1,62 @@
+{% from '.components/release_macros.md.j2' import render_sections %}
+{% set license_name = license_name | default("", true) %}
+{% set releases = context.history.released.values() | list %}
+{% set curr_release_index = releases.index(release) %}
+{% set series = namespace(prereleases=[], previous_stable=None, collecting=true) %}
+{% if not release.version.is_prerelease %}
+{% for candidate in releases[curr_release_index + 1:] %}
+{% if series.collecting and candidate.version.is_prerelease and candidate.version.major == release.version.major and candidate.version.minor == release.version.minor and candidate.version.patch == release.version.patch %}
+{% set _ = series.prereleases.append(candidate) %}
+{% elif series.previous_stable is none and not candidate.version.is_prerelease %}
+{% set series.previous_stable = candidate %}
+{% set series.collecting = false %}
+{% elif series.prereleases | length == 0 %}
+{% set series.collecting = false %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% set stable_promotion = (not release.version.is_prerelease) and (series.prereleases | length > 0) %}
+{% set aggregate = namespace(elements={}) %}
+{% set sources = [release] + (series.prereleases | list) %}
+{% for source_release in sources %}
+{% for type_, commits in source_release["elements"].items() %}
+{% if aggregate.elements.get(type_) is none %}{% set _ = aggregate.elements.update({type_: []}) %}{% endif %}
+{% for commit in commits %}{% set _ = aggregate.elements[type_].append(commit) %}{% endfor %}
+{% endfor %}
+{% endfor %}
+## {{ release.version.as_semver_tag() }} ({{ release.tagged_date.strftime("%Y-%m-%d") }})
+{% if license_name %}
+
+_This release is published under the {{ license_name }} License._
+{% endif %}
+{% if stable_promotion %}
+
+This production release promotes the {{ release.version.major }}.{{ release.version.minor }}.{{ release.version.patch }} beta series to stable.
+{% set prerelease_tags = [] %}
+{% for candidate in series.prereleases | reverse %}{% set _ = prerelease_tags.append(candidate.version.as_tag()) %}{% endfor %}
+{% if prerelease_tags %}
+
+Included prereleases: {{ prerelease_tags | join(", ") }}.
+{% endif %}
+{% endif %}
+{% set sections = render_sections(aggregate.elements if stable_promotion else release["elements"], hide_internal_types=true) | trim %}
+{% if sections %}
+
+{{ sections }}
+{% elif stable_promotion %}
+
+No additional user-facing changes landed after the beta series; this release marks it stable.
+{% endif %}
+{% set compare_from = none %}
+{% if stable_promotion and series.previous_stable is not none %}
+{% set compare_from = series.previous_stable.version.as_tag() %}
+{% elif curr_release_index + 1 < releases | length %}
+{% set compare_from = releases[curr_release_index + 1].version.as_tag() %}
+{% endif %}
+{% if 'compare_url' is filter and compare_from %}
+{% set detailed_changes_link = '[{}...{}]({})'.format(compare_from, release.version.as_tag(), compare_from | compare_url(release.version.as_tag())) %}
+
+---
+
+**Detailed Changes**: {{ detailed_changes_link }}
+{% endif %}

@@ -1,0 +1,91 @@
+{% macro format_link(link, label) -%}
+[{{ label }}]({{ link }})
+{%- endmacro %}
+
+{% macro capitalize_first(sentence) -%}
+{% if sentence %}{{ sentence[0] | upper }}{{ sentence[1:] }}{% endif %}
+{%- endmacro %}
+
+{% macro format_commit_summary(commit) -%}
+{% if commit.error is undefined %}
+{% set summary = capitalize_first(commit.descriptions[0] | safe) %}
+{% if commit.scope %}{% set summary = "**%s**: %s" | format(commit.scope, summary) %}{% endif %}
+{% set links = [] %}
+{% if commit.linked_merge_request != "" %}
+{% set _ = links.append(format_link(commit.linked_merge_request | pull_request_url, commit.linked_merge_request)) %}
+{% endif %}
+{% set _ = links.append(format_link(commit.hexsha | commit_hash_url, "`%s`" | format(commit.short_hash))) %}
+{{ summary }}{% if links %} ({{ links | join(", ") }}){% endif %}
+{% else %}
+{{ (commit.commit.message | string).split("\n", maxsplit=1)[0] }}
+{% endif %}
+{%- endmacro %}
+
+{% macro format_notice(commit, attribute) -%}
+{% if commit.error is undefined %}
+{% set paragraphs = [] %}
+{% for paragraph in commit | attr(attribute) %}
+{% if paragraph | trim %}{% set _ = paragraphs.append(capitalize_first(paragraph | trim | safe)) %}{% endif %}
+{% endfor %}
+{% set body = paragraphs | join("\n\n") %}
+{% if commit.scope and body %}{% set body = "**%s**: %s" | format(commit.scope, body) %}{% endif %}
+{{ body }}
+{% endif %}
+{%- endmacro %}
+
+{% macro render_sections(elements, hide_internal_types=false) -%}
+{% set hidden_types = ["Chores", "Continuous Integration", "Refactoring", "Style", "Test", "Tests"] %}
+{% for type_, commits in elements | dictsort %}
+{% if type_ != "unknown" and (not hide_internal_types or type_ not in hidden_types) %}
+{% set lines = [] %}
+{% for commit in commits | rejectattr("error", "defined") | sort(attribute="descriptions.0") %}
+{% set _ = lines.append(("- %s" | format(format_commit_summary(commit))) | autofit_text_width(100, 2)) %}
+{% endfor %}
+{% if lines %}
+
+### {{ type_ }}
+
+{{ lines | unique | join("\n\n") }}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% set breaking = [] %}
+{% for type_, commits in elements | dictsort %}
+{% for commit in commits | rejectattr("error", "defined") | selectattr("breaking_descriptions.0") | list %}
+{% set _ = breaking.append(("- %s" | format(format_notice(commit, "breaking_descriptions"))) | autofit_text_width(100, 2)) %}
+{% endfor %}
+{% endfor %}
+{% if breaking %}
+
+### Breaking Changes
+
+{{ breaking | unique | join("\n\n") }}
+{% endif %}
+
+{% set notices = [] %}
+{% for type_, commits in elements | dictsort %}
+{% for commit in commits | rejectattr("error", "defined") | selectattr("release_notices.0") | list %}
+{% set _ = notices.append(("- %s" | format(format_notice(commit, "release_notices"))) | autofit_text_width(100, 2)) %}
+{% endfor %}
+{% endfor %}
+{% if notices %}
+
+### Additional Release Information
+
+{{ notices | unique | join("\n\n") }}
+{% endif %}
+{%- endmacro %}
+
+{% macro render_release_block(release, license_name="", hide_internal_types=false, include_license=false) -%}
+## {{ release.version.as_semver_tag() }} ({{ release.tagged_date.strftime("%Y-%m-%d") }})
+{% if include_license and license_name %}
+
+_This release is published under the {{ license_name }} License._
+{% endif %}
+{% set sections = render_sections(release["elements"], hide_internal_types=hide_internal_types) | trim %}
+{% if sections %}
+
+{{ sections }}
+{% endif %}
+{%- endmacro %}

@@ -22,6 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.BOT_ID }}
+          private-key: ${{ secrets.BOT_SK }}
+
       - uses: actions/checkout@v6
 
       - uses: astral-sh/setup-uv@v7
@@ -37,7 +43,7 @@ jobs:
       - name: Generate prompt files and resolved config
         run: uv run poe eval-generate
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Run promptfoo evaluation
         run: >-
@@ -48,7 +54,7 @@ jobs:
           --max-concurrency 1
           --delay 6500
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Check for failures
         run: |

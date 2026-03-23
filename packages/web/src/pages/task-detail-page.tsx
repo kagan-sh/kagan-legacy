@@ -30,7 +30,6 @@ import { useTaskEvents } from "@/lib/hooks/use-task-events";
 import {
     openInEditor,
     launcherDisplayName,
-    type LauncherBackend,
 } from "@/lib/utils/editor-links";
 import {
     ActionEmptyState,
@@ -62,30 +61,10 @@ import { EditTaskDialog } from "@/components/board/edit-task-dialog";
 import { TaskDeleteDialog } from "@/components/board/task-delete-dialog";
 import { TaskSidebar } from "@/components/board/task-sidebar";
 import { isEditableTarget, hasOpenOverlay } from "@/lib/utils/dom";
+import { normalizeLauncher, quoteShell } from "@/lib/utils";
 
 export type WorkspaceTab = "overview" | "changes" | "review";
 
-const LAUNCHER_BACKENDS: readonly LauncherBackend[] = [
-    "tmux",
-    "nvim",
-    "vscode",
-    "cursor",
-    "windsurf",
-    "kiro",
-    "antigravity",
-];
-
-function normalizeLauncher(value: string | null | undefined): LauncherBackend {
-    if (!value) return "vscode";
-    const normalized = value.trim().toLowerCase();
-    return LAUNCHER_BACKENDS.includes(normalized as LauncherBackend)
-        ? (normalized as LauncherBackend)
-        : "vscode";
-}
-
-function quoteShell(value: string): string {
-    return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
-}
 
 function tmuxSessionName(sessionId: string): string {
     return `kagan-${sessionId.replaceAll(":", "-")}`;

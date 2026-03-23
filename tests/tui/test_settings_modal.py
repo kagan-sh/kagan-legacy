@@ -4,14 +4,6 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Settings Project")
-    yield driver
-    await driver.teardown()
-
-
 async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
     from textual.widgets import Input, Select, Switch
 

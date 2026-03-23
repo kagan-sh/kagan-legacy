@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
+from loguru import logger
 
 from kagan.core import (
     TaskStatus,
@@ -21,10 +22,21 @@ from kagan.server._helpers import (
     _ok,
     _require_access,
     handle_errors,
+    parse_body,
     require_context,
     task_to_wire_dict,
 )
 from kagan.server._sse import _sse_event_generator, sse_response
+from kagan.server.requests import (
+    AddRepoRequest,
+    CreateProjectRequest,
+    CreateTaskRequest,
+    FollowUpRequest,
+    ReviewDecideRequest,
+    RunTaskRequest,
+    UpdateTaskRequest,
+    UpdateTaskStatusRequest,
+)
 from kagan.server.responses import EventResponse, ProjectResponse, RepositoryResponse
 
 if TYPE_CHECKING:
@@ -76,13 +88,6 @@ def _repo_dict(repo: Any, *, selected: bool = False) -> dict[str, Any]:
 
 def _event_dict(event: Any) -> dict[str, Any]:
     return EventResponse.model_validate(event).model_dump(mode="json")
-
-
-async def _body(request: Request) -> dict[str, Any]:
-    payload = await request.json()
-    if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
-    return cast("dict[str, Any]", payload)
 
 
 def _manual_review_required(task_id: str) -> JSONResponse:
@@ -152,19 +157,15 @@ def register_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
-        payload = await _body(request)
-        acceptance_criteria = payload.get("acceptance_criteria")
-        if acceptance_criteria is not None and not isinstance(acceptance_criteria, list):
-            raise ValueError("acceptance_criteria must be a list of strings")
-
+        body = await parse_body(request, CreateTaskRequest)
         task = await ctx.client.tasks.create(
-            cast("str", payload["title"]),
-            description=cast("str", payload.get("description", "")),
-            priority=parse_priority(cast("str | int | None", payload.get("priority"))),
-            base_branch=cast("str | None", payload.get("base_branch")),
-            acceptance_criteria=cast("list[str] | None", acceptance_criteria),
-            agent_backend=cast("str | None", payload.get("agent_backend")),
-            launcher=cast("str | None", payload.get("launcher")),
+            body.title,
+            description=body.description,
+            priority=parse_priority(body.priority),
+            base_branch=body.base_branch,
+            acceptance_criteria=body.acceptance_criteria,
+            agent_backend=body.agent_backend,
+            launcher=body.launcher,
         )
         runtime = await ctx.client.tasks.runtime_summary(task.id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
@@ -194,29 +195,13 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-
+        body = await parse_body(request, UpdateTaskRequest)
         update_args: dict[str, Any] = {}
-        if "title" in payload:
-            update_args["title"] = payload["title"]
-        if "description" in payload:
-            update_args["description"] = payload["description"]
-        if "priority" in payload:
-            update_args["priority"] = parse_priority(
-                cast("str | int | None", payload.get("priority"))
-            )
-        if "base_branch" in payload:
-            update_args["base_branch"] = payload["base_branch"]
-        if "acceptance_criteria" in payload:
-            criteria = payload["acceptance_criteria"]
-            if criteria is not None and not isinstance(criteria, list):
-                raise ValueError("acceptance_criteria must be a list of strings")
-            update_args["acceptance_criteria"] = criteria
-        if "agent_backend" in payload:
-            update_args["agent_backend"] = payload["agent_backend"]
-        if "launcher" in payload:
-            update_args["launcher"] = payload["launcher"]
-
+        for field in body.model_fields_set:
+            value = getattr(body, field)
+            if field == "priority":
+                value = parse_priority(value)
+            update_args[field] = value
         task = await ctx.client.tasks.update(task_id, **update_args)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
@@ -242,9 +227,8 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-        status_value = cast("str", payload["status"])
-        task = await ctx.client.tasks.set_status(task_id, TaskStatus(status_value))
+        body = await parse_body(request, UpdateTaskStatusRequest)
+        task = await ctx.client.tasks.set_status(task_id, TaskStatus(body.status))
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
 
@@ -258,24 +242,21 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-        agent_backend = cast("str", payload.get("agent_backend", ""))
+        body = await parse_body(request, RunTaskRequest)
+        agent_backend = body.agent_backend
         settings = await ctx.client.settings.get()
         if not agent_backend:
             agent_backend = settings.get("default_agent_backend", "claude-code")
-        persona = cast("str | None", payload.get("persona"))
         launcher = None
         ide = None
-        payload_launcher = cast("str | None", payload.get("launcher"))
-        if isinstance(payload_launcher, str) and payload_launcher.strip():
-            launcher_input = payload_launcher.strip().lower()
-            launcher, ide = resolve_launcher(launcher_input)
+        if body.launcher and body.launcher.strip():
+            launcher, ide = resolve_launcher(body.launcher.strip().lower())
         await ctx.client.tasks.run(
             task_id,
             agent_backend=agent_backend,
             launcher=launcher,
             ide=ide,
-            persona=persona,
+            persona=body.persona,
         )
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
@@ -391,8 +372,8 @@ def register_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
-        payload = await _body(request)
-        project = await ctx.client.projects.create(cast("str", payload["name"]))
+        body = await parse_body(request, CreateProjectRequest)
+        project = await ctx.client.projects.create(body.name)
         return _ok(_project_dict(project, active=project.id == ctx.client.active_project_id))
 
     @mcp.custom_route("/api/projects/{project_id}/activate", methods=["POST"])
@@ -441,9 +422,8 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         project_id = cast("str", request.path_params["project_id"])
-        payload = await _body(request)
-        path = cast("str", payload["path"])
-        repo = await ctx.client.projects.add_repo(project_id, path)
+        body = await parse_body(request, AddRepoRequest)
+        repo = await ctx.client.projects.add_repo(project_id, body.path)
         return _ok(_repo_dict(repo))
 
     @mcp.custom_route("/api/projects/{project_id}/repos/{repo_id}/select", methods=["POST"])
@@ -488,8 +468,8 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-        action = cast("str", payload["action"]).lower()
+        body = await parse_body(request, ReviewDecideRequest)
+        action = body.action.lower()
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
@@ -501,7 +481,7 @@ def register_routes(mcp: FastMCP) -> None:
             task = await ctx.client.reviews.approve(task_id)
             return _ok({"task": task_to_wire_dict(task), "action": action})
         if action == "reject":
-            feedback = cast("str | None", payload.get("feedback"))
+            feedback = body.feedback
             if not feedback:
                 raise ValueError("feedback is required for reject action")
             task = await ctx.client.reviews.reject(task_id, feedback=feedback)
@@ -539,7 +519,9 @@ def register_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
-        payload = await _body(request)
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be a JSON object")
         updates = {str(key): "" if value is None else str(value) for key, value in payload.items()}
         await ctx.client.settings.set(updates)
         return _ok(await ctx.client.settings.get())
@@ -744,20 +726,19 @@ def register_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return cast("JSONResponse", forbidden)
         task_id = cast("str", request.path_params["task_id"])
-        payload = await _body(request)
-        text = cast("str", payload.get("text", "")).strip()
-        if not text:
-            raise ValueError("text is required")
+        body = await parse_body(request, FollowUpRequest)
 
         from kagan.core import resolve_default_agent_backend
 
         # Best-effort cancel current run
-        with contextlib.suppress(Exception):
+        try:
             await ctx.client.tasks.cancel(task_id)
+        except Exception as exc:
+            logger.debug("Failed to cancel current run for task {}: {}", task_id, exc)
 
         task = await ctx.client.tasks.get(task_id)
         current_desc = (getattr(task, "description", "") or "").strip()
-        follow_up = f"User follow-up:\n{text}"
+        follow_up = f"User follow-up:\n{body.text}"
         updated_desc = f"{current_desc}\n\n{follow_up}" if current_desc else follow_up
         task = await ctx.client.tasks.update(task_id, description=updated_desc)
 

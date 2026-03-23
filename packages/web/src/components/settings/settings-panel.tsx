@@ -17,6 +17,7 @@ import {
   FieldSeparator,
   FieldSet,
 } from '@/components/ui/field';
+import { asBool } from '@/lib/utils';
 import { AppearanceSettings } from './sections/appearance-settings';
 import { WorkflowSettings } from './sections/workflow-settings';
 import { WorkspaceSettings } from './sections/workspace-settings';
@@ -70,11 +71,6 @@ export const DEFAULT_FORM: SettingsFormState = {
   planning_depth: 'always',
   auto_confirm_single_tasks: false,
 };
-
-export function asBool(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) return fallback;
-  return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
-}
 
 export interface ToggleRowProps {
   title: string;

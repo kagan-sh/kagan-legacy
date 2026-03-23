@@ -1144,7 +1144,10 @@ class KanbanScreen(Screen[None]):
         if not skip_instructions:
             result = await self.app.push_screen_wait(
                 AttachedInstructionsModal(
-                    task.id, task.title, backend, prompt_path,
+                    task.id,
+                    task.title,
+                    backend,
+                    prompt_path,
                     taking_over=taking_over,
                 )
             )

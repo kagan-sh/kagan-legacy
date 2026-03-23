@@ -9,15 +9,6 @@ if TYPE_CHECKING:
     from kagan.tui.screens.task_screen import TaskScreen
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Output Project")
-    await driver.create_task("Detached task")
-    yield driver
-    await driver.teardown()
-
-
 async def _enter_project(pilot) -> None:
     await pilot.pause()
     await pilot.press("enter")
@@ -40,13 +31,13 @@ async def _open_task_screen(pilot) -> None:
     await pilot.pause()
 
 
-async def test_enter_on_detached_task_opens_task_screen(board: KaganDriver) -> None:
+async def test_enter_on_detached_task_opens_task_screen(board_with_task: KaganDriver) -> None:
     from textual.widgets import TabbedContent
 
     from kagan.tui import KaganApp
     from kagan.tui.widgets.task_inspector import TaskInspector
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _enter_project(pilot)
         await _open_inspector(pilot)
@@ -61,13 +52,13 @@ async def test_enter_on_detached_task_opens_task_screen(board: KaganDriver) -> N
         assert tabs.active == "detail"
 
 
-async def test_task_screen_shows_action_hint_footer(board: KaganDriver) -> None:
+async def test_task_screen_shows_action_hint_footer(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
     from kagan.tui.widgets.task_action_bar import TaskActionBar
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
 
@@ -80,11 +71,13 @@ async def test_task_screen_shows_action_hint_footer(board: KaganDriver) -> None:
         assert "back" in hint_text
 
 
-async def test_enter_requires_open_inspector_before_task_screen(board: KaganDriver) -> None:
+async def test_enter_requires_open_inspector_before_task_screen(
+    board_with_task: KaganDriver,
+) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.widgets.task_inspector import TaskInspector
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _enter_project(pilot)
 
@@ -102,10 +95,10 @@ async def test_enter_requires_open_inspector_before_task_screen(board: KaganDriv
         assert app.screen.id == "task-screen"
 
 
-async def test_escape_from_task_screen_returns_to_kanban(board: KaganDriver) -> None:
+async def test_escape_from_task_screen_returns_to_kanban(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("escape")
@@ -113,12 +106,12 @@ async def test_escape_from_task_screen_returns_to_kanban(board: KaganDriver) -> 
         assert app.screen.id == "kanban-screen"
 
 
-async def test_enter_starts_and_ctrl_c_stops_run_indicator(board: KaganDriver) -> None:
+async def test_enter_starts_and_ctrl_c_stops_run_indicator(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("enter")
@@ -130,13 +123,13 @@ async def test_enter_starts_and_ctrl_c_stops_run_indicator(board: KaganDriver) -
         assert "Stopped" in status_text or status_text == "Ready | BACKLOG"
 
 
-async def test_ctrl_o_on_detached_task_opens_docked_task_chat(board: KaganDriver) -> None:
+async def test_ctrl_o_on_detached_task_opens_docked_task_chat(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
     from kagan.tui.widgets.chat import ChatPanel
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("ctrl+i")
@@ -154,7 +147,7 @@ async def test_ctrl_o_on_detached_task_opens_docked_task_chat(board: KaganDriver
 
 
 async def test_ctrl_p_on_detached_task_opens_fullscreen_task_chat(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from textual.containers import Vertical
     from textual.widgets import Static
@@ -163,7 +156,7 @@ async def test_ctrl_p_on_detached_task_opens_fullscreen_task_chat(
     from kagan.tui.widgets.chat import ChatPanel
     from kagan.tui.widgets.header import KaganHeader
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("ctrl+shift+t")
@@ -181,12 +174,14 @@ async def test_ctrl_p_on_detached_task_opens_fullscreen_task_chat(
         assert panel.parent is root
 
 
-async def test_enter_in_task_chat_submits_follow_up_and_restarts_agent(board: KaganDriver) -> None:
+async def test_enter_in_task_chat_submits_follow_up_and_restarts_agent(
+    board_with_task: KaganDriver,
+) -> None:
     from textual.widgets import Input, Static, TabbedContent
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("ctrl+shift+t")
@@ -209,13 +204,13 @@ async def test_enter_in_task_chat_submits_follow_up_and_restarts_agent(board: Ka
         assert tabs.active == active_before_send
 
 
-async def test_tab_switch_does_not_revert_to_previous_tab(board: KaganDriver) -> None:
+async def test_tab_switch_does_not_revert_to_previous_tab(board_with_task: KaganDriver) -> None:
     from textual.widgets import TabbedContent
 
     from kagan.tui import KaganApp
     from kagan.tui.widgets.diff import DiffFileTree
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
 
@@ -235,7 +230,7 @@ async def test_tab_switch_does_not_revert_to_previous_tab(board: KaganDriver) ->
 
 
 async def test_task_chat_restart_failure_surfaces_error_state(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from textual.widgets import Input, Static
@@ -254,7 +249,7 @@ async def test_task_chat_restart_failure_surfaces_error_state(
         fake_start_or_attach_session,
     )
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
         await pilot.press("ctrl+shift+t")
@@ -286,14 +281,14 @@ async def test_task_chat_restart_failure_surfaces_error_state(
 
 
 async def test_ctrl_o_on_running_detached_task_keeps_task_screen_visible(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from textual.widgets import Label
 
     from kagan.tui import KaganApp
     from kagan.tui.widgets.chat import ChatPanel
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await _open_task_screen_for_selected_detached_task(pilot)
 
@@ -369,7 +364,7 @@ async def test_inspector_scrolls_when_description_is_long() -> None:
 
 
 async def test_task_stream_uses_bounded_replay_and_merges_chunks(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from textual.containers import Vertical
@@ -391,7 +386,7 @@ async def test_task_stream_uses_bounded_replay_and_merges_chunks(
                 payload={"text": fragment, "kind": "assistant"},
             )
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     monkeypatch.setattr(app.core.tasks.events, "stream", fake_stream)
 
     async with app.run_test() as pilot:

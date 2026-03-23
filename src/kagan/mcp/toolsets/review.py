@@ -96,6 +96,7 @@ def _register_review_conflicts(mcp: FastMCP) -> None:
     @mcp.tool()
     @mcp_error_boundary
     async def review_conflicts(task_id: str, ctx: Context) -> dict:
+        """Return merge or rebase conflict details for a task."""
         app = get_context(ctx)
         return await app.client.reviews.conflicts(task_id)
 
@@ -104,6 +105,7 @@ def _register_review_continue_rebase(mcp: FastMCP) -> None:
     @mcp.tool()
     @mcp_error_boundary
     async def review_continue_rebase(task_id: str, ctx: Context) -> dict:
+        """Continue an in-progress rebase after conflicts are resolved."""
         app = get_context(ctx)
         await app.client.reviews.continue_rebase(task_id)
         return {"task_id": task_id, "action": "rebase_continue"}
@@ -113,6 +115,7 @@ def _register_review_abort_rebase(mcp: FastMCP) -> None:
     @mcp.tool()
     @mcp_error_boundary
     async def review_abort_rebase(task_id: str, ctx: Context) -> dict:
+        """Abort an in-progress rebase and restore the task branch."""
         app = get_context(ctx)
         await app.client.reviews.abort_rebase(task_id)
         return {"task_id": task_id, "action": "abort_conflicts"}

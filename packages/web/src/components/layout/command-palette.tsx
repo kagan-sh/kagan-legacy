@@ -5,7 +5,7 @@ import {
   ArrowRightLeft,
   Check,
   Download,
-  Github,
+  GitBranch,
   GitMerge,
   HelpCircle,
   LayoutDashboard,
@@ -170,7 +170,7 @@ export function CommandPalette() {
 
         <CommandGroup heading="About">
           <CommandItem onSelect={() => { onOpenChange(false); window.open('https://github.com/kagan-sh/kagan', '_blank'); }}>
-            <Github className="size-4" />
+            <GitBranch className="size-4" />
             GitHub Repository
           </CommandItem>
           <CommandItem onSelect={() => { onOpenChange(false); window.open('https://makerx.com.au', '_blank'); }}>

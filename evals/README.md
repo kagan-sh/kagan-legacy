@@ -23,21 +23,29 @@ All assertions are deterministic (`icontains`, `not-icontains`). Zero LLM-judge 
 
 ## Model
 
-`github:openai/gpt-5-mini` at `temperature: 0`, `seed: 42`.
+`uv run poe eval` resolves the strongest documented free GitHub Models default
+available to the current token. Preference order:
+`openai/gpt-4.1` → `openai/gpt-4o` → `openai/gpt-4.1-mini` → `openai/gpt-4o-mini`.
 
-Cheapest GitHub Models tier. Good behavior here is a strong lower-bound.
+`openai/gpt-4.1` is the primary default because GitHub documents it directly in
+the API examples and catalog example, and describes it as stronger than
+`gpt-4o`.
+
 Requires `GITHUB_TOKEN` with `models:read` scope.
 
 ## CI
 
 Runs on PRs that touch `src/kagan/core/_prompts.py` or `evals/`, gated to `aorumbayev` and `kagan-agent`.
 
+The workflow runs promptfoo with `--max-concurrency 1 --delay 6500` so
+`openai/gpt-4.1` stays under GitHub Models' free high-tier rate limits.
+
 ## Adding tests
 
 ```yaml
 - description: "What this verifies"
   vars:
-    system_prompt: file://prompts/orchestrator.txt  # or review.txt, execution.txt
+    system_prompt: file://prompts/orchestrator.txt
     user_message: "The user input"
   assert:
     - type: icontains-any

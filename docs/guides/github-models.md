@@ -88,4 +88,6 @@ uv run poe eval          # generate prompts + run 12-test suite
 uv run poe eval-view     # open results in browser
 ```
 
-Uses `gpt-5-mini` as a lower-bound benchmark. See `evals/README.md` for details.
+The eval suite resolves the strongest documented free GitHub Models default
+available to your token, preferring `openai/gpt-4.1`. See `evals/README.md` for
+details.

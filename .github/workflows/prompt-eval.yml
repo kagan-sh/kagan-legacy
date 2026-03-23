@@ -34,11 +34,19 @@ jobs:
 
       - run: uv sync --frozen --dev
 
-      - name: Generate prompt files
-        run: bash evals/generate-prompts.sh
+      - name: Generate prompt files and resolved config
+        run: uv run poe eval-generate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run promptfoo evaluation
-        run: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o evals/results.json --no-progress-bar
+        run: >-
+          npx promptfoo@latest eval
+          -c evals/promptfooconfig.resolved.yaml
+          -o evals/results.json
+          --no-progress-bar
+          --max-concurrency 1
+          --delay 6500
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -304,13 +304,16 @@ sequence = ["lint", "typecheck", "deadcode", "test", "web-check"]
 
 [tool.poe.tasks.eval-generate]
 help = "Export resolved prompts for the eval suite"
-cmd = "bash evals/generate-prompts.sh"
+sequence = [
+  { shell = "bash evals/generate-prompts.sh" },
+  { shell = "python evals/resolve_promptfoo_config.py" },
+]
 
 [tool.poe.tasks.eval]
 help = "Run promptfoo prompt evaluation (requires GITHUB_TOKEN with models:read)"
 sequence = [
   { ref = "eval-generate" },
-  { shell = "npx promptfoo@latest eval -c evals/promptfooconfig.yaml --no-progress-bar" },
+  { shell = "npx promptfoo@latest eval -c evals/promptfooconfig.resolved.yaml --no-progress-bar --max-concurrency 1 --delay 6500" },
 ]
 
 [tool.poe.tasks.eval-view]

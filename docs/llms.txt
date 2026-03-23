@@ -1,0 +1,31 @@
+# Kagan Documentation
+
+> Documentation for Kagan: an open-source daemon that orchestrates AI coding agents with a terminal Kanban board, MCP server, and CLI.
+
+Kagan runs 14+ AI coding agents (Claude Code, Codex, Gemini CLI, and more) in parallel on isolated git worktrees. Every task is tracked from backlog to merge in a keyboard-first TUI.
+
+## Docs
+
+- [Home](https://docs.kagan.sh/): Documentation home
+- [Quickstart](https://docs.kagan.sh/quickstart/): 60-second setup guide
+- [Architecture Overview](https://docs.kagan.sh/concepts/architecture-overview/): System components and supported agents
+- [Task Lifecycle](https://docs.kagan.sh/concepts/task-lifecycle/): How tasks flow from backlog to merge
+- [Managed Runs](https://docs.kagan.sh/guides/managed-vs-interactive/): Run modes — managed vs interactive attach
+- [Chat & REPL](https://docs.kagan.sh/guides/chat/): Interactive chat orchestrator
+- [ACP Sessions](https://docs.kagan.sh/guides/acp-session-lifecycle/): Chat session lifecycle management
+- [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/): Editor integration via MCP
+- [GitHub Import](https://docs.kagan.sh/guides/github/): Import issues from GitHub
+- [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone
+- [CLI Reference](https://docs.kagan.sh/reference/cli/): All CLI commands and flags
+- [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference
+- [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI keyboard shortcuts
+- [MCP Tools](https://docs.kagan.sh/reference/mcp-tools/): Full MCP tool catalog (23+ tools)
+- [Plugins](https://docs.kagan.sh/reference/plugins/): Plugin system and SDK
+- [Troubleshooting](https://docs.kagan.sh/troubleshooting/): Common issues and fixes
+
+## Links
+
+- [Landing Page](https://kagan.sh/): Product homepage
+- [GitHub](https://github.com/kagan-sh/kagan): Source code
+- [PyPI](https://pypi.org/project/kagan/): Python package
+- [Discord](https://discord.gg/dB5AgMwWMy): Community

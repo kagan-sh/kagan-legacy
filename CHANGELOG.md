@@ -2,6 +2,78 @@
 
 <!-- version list -->
 
+## v0.12.0-beta.1 (2026-03-23)
+
+### Bug Fixes
+
+- **chat**: Satisfy lint on prompt and ACP probe ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- **chat**: Stabilize copilot ACP and refine kg chat
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- **ci**: Resolve GitHub Models eval model from catalog
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- **ci**: Use app token for prompt evaluation ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- **prompts**: Address review feedback on export helpers
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- **web**: Eliminate 5-second delay on project switch
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+### Chores
+
+- Auto-assign kagan-agent to issues and PRs ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- Close contributor infrastructure gaps from review
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+### Continuous Integration
+
+- Make prompt evaluation advisory ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+### Documentation
+
+- Fix broken font CDN and add llms.txt
+  ([`e4a4601`](https://github.com/kagan-sh/kagan/commit/e4a4601be205fb9482b129342b7531e93b8fce37))
+
+- Rewrite CONTRIBUTING.md for developer onboarding
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+### Features
+
+- Add GitHub Models integration with prompt export and evaluation
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- GitHub Models integration with prompt export and evaluation
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+### Refactoring
+
+- Apply Zen of Python review to prompt export pipeline
+  ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- Reduce eval suite from 78 to 12 API calls ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+- Route all dev commands through uv run poe ([#52](https://github.com/kagan-sh/kagan/pull/52),
+  [`a28104f`](https://github.com/kagan-sh/kagan/commit/a28104fb976c200e213307e003e48e292c58cd18))
+
+
 ## v0.11.4 (2026-03-23)
 
 ### Documentation

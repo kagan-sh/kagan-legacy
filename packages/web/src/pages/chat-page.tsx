@@ -115,7 +115,7 @@ export function Component() {
 
   // ── Fetch available backends ────────────────────────────────────────────────
   useEffect(() => {
-    apiClient.getChatAgents().then((resp) => setAvailableBackends(resp.backends)).catch(() => {});
+    apiClient.getChatAgents().then((resp) => setAvailableBackends(resp.backends.map((b) => b.name))).catch(() => {});
   }, []);
 
   const switchBackend = useCallback(

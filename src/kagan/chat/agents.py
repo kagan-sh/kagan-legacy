@@ -1,6 +1,7 @@
 """Agent backend listing, selection, and formatting."""
 
 from kagan.core import list_backends
+from kagan.core._agent import list_available_backends
 
 
 def list_registered_agent_backends() -> list[str]:
@@ -59,6 +60,11 @@ def format_agent_usage() -> str:
 
 def format_agent_switching(backend: str) -> str:
     return f"Switching to {backend}..."
+
+
+def list_backends_with_availability() -> list[dict[str, str | bool]]:
+    availability = list_available_backends()
+    return [{"name": name, "available": avail} for name, avail in availability.items()]
 
 
 def resolve_default_agent_backend(settings: dict[str, str]) -> str:

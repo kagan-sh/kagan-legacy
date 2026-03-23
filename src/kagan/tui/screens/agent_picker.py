@@ -8,6 +8,7 @@ from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from kagan.chat import list_registered_agent_backends
+from kagan.core._agent import list_available_backends
 from kagan.tui.keybindings import AGENT_PICKER_BINDINGS
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ class AgentPickerModal(ModalScreen[str | None]):
         super().__init__(id="agent-picker-modal")
         self._agents: list[str] = []
         self._current_agent = "claude-code"
+        self._separator_index: int | None = None
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -48,37 +50,54 @@ class AgentPickerModal(ModalScreen[str | None]):
         normalized_configured = self._BACKEND_ALIASES.get(configured or "", configured)
         self._current_agent = normalized_configured or "claude-code"
 
-        options = {self._current_agent, *list_registered_agent_backends()}
-        self._agents = sorted(options)
+        all_agents = sorted({self._current_agent, *list_registered_agent_backends()})
+        availability = list_available_backends()
+
+        available = [a for a in all_agents if availability.get(a, True)]
+        unavailable = [a for a in all_agents if not availability.get(a, True)]
+        self._agents = available + unavailable
 
         option_list = self.query_one("#agent-picker-options", OptionList)
         option_list.clear_options()
-        option_list.add_options(
-            [
-                Option(
-                    f"{agent}{' (current)' if agent == self._current_agent else ''}",
-                    id=agent,
-                )
-                for agent in self._agents
-            ]
-        )
+
+        for agent in available:
+            label = f"{agent}{' (current)' if agent == self._current_agent else ''}"
+            option_list.add_option(Option(label, id=agent))
+
+        if unavailable:
+            self._separator_index = len(available)
+            option_list.add_option(Option("[dim]── Not installed ──[/dim]", disabled=True))
+            for agent in unavailable:
+                label = f"[dim]{agent}{' (current)' if agent == self._current_agent else ''}[/dim]"
+                option_list.add_option(Option(label, id=agent))
+
         option_list.focus()
 
         selected_index = 0
         for index, agent in enumerate(self._agents):
             if agent == self._current_agent:
-                selected_index = index
+                after_sep = self._separator_index is not None and index >= self._separator_index
+                selected_index = index + 1 if after_sep else index
                 break
         option_list.highlighted = selected_index
 
     async def action_select_agent(self) -> None:
         option_list = self.query_one("#agent-picker-options", OptionList)
         index = option_list.highlighted
-        if index is None or index < 0 or index >= len(self._agents):
+        if index is None or index < 0:
             self.dismiss(None)
             return
 
-        selected = self._agents[index]
+        if self._separator_index is not None and index == self._separator_index:
+            return
+
+        after_sep = self._separator_index is not None and index > self._separator_index
+        agent_index = index - 1 if after_sep else index
+        if agent_index >= len(self._agents):
+            self.dismiss(None)
+            return
+
+        selected = self._agents[agent_index]
         await self.kagan_app.core.settings.set(
             {
                 "default_agent_backend": selected,

@@ -148,12 +148,12 @@ def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> 
     invoke_without_command=True,
     help="ᘚᘛ Kagan — one orchestration layer to rule them all.",
     epilog=(
-        "Examples:\n"
-        "  kagan                     Launch the TUI\n"
-        "  kagan chat --prompt '...' Single-shot agent prompt\n"
+        "Common workflows:\n"
+        "  kagan                     Launch the Kanban TUI\n"
+        "  kagan chat 'fix the bug'  Single-shot agent prompt\n"
         "  kagan web                 Open the web dashboard\n"
-        "  kagan doctor              Check system health\n"
-        "  kagan import github       Import GitHub issues"
+        "  kagan doctor              Check system health\n\n"
+        "Full reference: https://docs.kagan.sh/reference/cli/"
     ),
 )
 @click.option(
@@ -186,6 +186,10 @@ def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
         click.echo(f"hint: kagan {latest} available. Run `kagan update`.")
 
     if ctx.invoked_subcommand is None:
+        import sys
+
+        if sys.stdout.isatty():
+            click.echo("ᘚᘛ Kagan — launching TUI. Run 'kagan --help' for all commands.")
         tui_cmd = cli.commands.get("tui")
         if tui_cmd is None:
             raise click.ClickException("TUI command not available")

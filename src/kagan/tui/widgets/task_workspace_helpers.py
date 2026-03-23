@@ -150,7 +150,7 @@ async def hydrate_workspace_panels(
         no_workspace=False,
     )
 
-    if active_tab == "diff":
+    if active_tab == "changes":
         selected_path = diff_view.current_file_path()
         diff_pane.update_diff(diff_text)
         if selected_path is not None and selected_path in files:

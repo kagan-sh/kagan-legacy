@@ -3,15 +3,22 @@ import { useLocation, useNavigate } from 'react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   ArrowRightLeft,
+  Check,
   Download,
   Github,
+  GitMerge,
   HelpCircle,
   LayoutDashboard,
   MessageSquare,
   PanelRight,
+  Pencil,
   Play,
+  Plus,
   Search,
   Settings,
+  Square,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -26,10 +33,15 @@ import {
 import { tasksAtom } from '@/lib/atoms/board';
 import {
   commandPaletteOpenAtom,
+  createTaskDialogOpenAtom,
+  deleteTaskDialogTaskIdAtom,
+  editTaskDialogTaskIdAtom,
   helpOverlayOpenAtom,
   pluginImportOpenAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
+import { apiClient } from '@/lib/api/client';
+import { toast } from 'sonner';
 
 export function CommandPalette() {
   const location = useLocation();
@@ -39,6 +51,9 @@ export function CommandPalette() {
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
   const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
   const setPluginImportOpen = useSetAtom(pluginImportOpenAtom);
+  const setCreateTaskDialogOpen = useSetAtom(createTaskDialogOpenAtom);
+  const setEditTaskDialogTaskId = useSetAtom(editTaskDialogTaskIdAtom);
+  const setDeleteTaskDialogTaskId = useSetAtom(deleteTaskDialogTaskIdAtom);
 
   const currentTaskId = useMemo(() => {
     const taskMatch = /^\/task\/([^/?]+)/.exec(location.pathname);
@@ -167,6 +182,125 @@ export function CommandPalette() {
             Documentation
           </CommandItem>
         </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="Task Operations">
+          <CommandItem
+            onSelect={() => {
+              onOpenChange(false);
+              setCreateTaskDialogOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            task.new — Create task
+          </CommandItem>
+          <CommandItem
+            disabled={!currentTask}
+            onSelect={() => {
+              if (!currentTask) return;
+              onOpenChange(false);
+              setEditTaskDialogTaskId(currentTask.id);
+            }}
+          >
+            <Pencil className="size-4" />
+            task.edit — Edit selected task
+          </CommandItem>
+          <CommandItem
+            disabled={!currentTask}
+            onSelect={() => {
+              if (!currentTask) return;
+              onOpenChange(false);
+              setDeleteTaskDialogTaskId(currentTask.id);
+            }}
+          >
+            <Trash2 className="size-4" />
+            task.delete — Delete selected task
+          </CommandItem>
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="Agent Operations">
+          <CommandItem
+            disabled={!currentTask || currentTask.status === 'DONE'}
+            onSelect={() => {
+              if (!currentTask || currentTask.status === 'DONE') return;
+              onOpenChange(false);
+              apiClient.runTask(currentTask.id).catch((err) =>
+                toast.error(err instanceof Error ? err.message : 'Failed to start task'),
+              );
+              toast.success(`Starting ${currentTask.title}`);
+            }}
+          >
+            <Play className="size-4" />
+            agent.start — Start task run
+          </CommandItem>
+          <CommandItem
+            disabled={!currentTask?.active_session}
+            onSelect={() => {
+              if (!currentTask?.active_session) return;
+              onOpenChange(false);
+              apiClient.cancelTask(currentTask.id).catch((err) =>
+                toast.error(err instanceof Error ? err.message : 'Failed to stop task'),
+              );
+              toast.success(`Stopping ${currentTask.title}`);
+            }}
+          >
+            <Square className="size-4" />
+            agent.stop — Stop task run
+          </CommandItem>
+        </CommandGroup>
+
+        {currentTask?.status === 'REVIEW' ? (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Review Operations">
+              <CommandItem
+                onSelect={() => {
+                  onOpenChange(false);
+                  apiClient
+                    .reviewDecide(currentTask.id, { action: 'approve' })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : 'Failed to approve review'),
+                    );
+                  toast.success('Review approved');
+                }}
+              >
+                <Check className="size-4" />
+                review.approve — Approve task review
+              </CommandItem>
+              <CommandItem
+                onSelect={() => {
+                  onOpenChange(false);
+                  apiClient
+                    .reviewDecide(currentTask.id, { action: 'reject' })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : 'Failed to reject review'),
+                    );
+                  toast.success('Review rejected');
+                }}
+              >
+                <X className="size-4" />
+                review.reject — Reject task review
+              </CommandItem>
+              <CommandItem
+                onSelect={() => {
+                  onOpenChange(false);
+                  apiClient
+                    .reviewDecide(currentTask.id, { action: 'merge' })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : 'Failed to merge task'),
+                    );
+                  toast.success('Merging task changes');
+                }}
+              >
+                <GitMerge className="size-4" />
+                review.merge — Merge task changes
+              </CommandItem>
+            </CommandGroup>
+          </>
+        ) : null}
 
         {sortedTasks.length > 0 ? (
           <>

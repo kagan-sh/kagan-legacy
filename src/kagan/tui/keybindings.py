@@ -84,8 +84,9 @@ KANBAN_BINDINGS: list[BindingType] = [
 ]
 
 TASK_SCREEN_BINDINGS: list[BindingType] = [
-    Binding("1", "tab_detail", "Detail"),
-    Binding("2", "tab_diff", "Diff"),
+    Binding("1", "tab_overview", "Overview"),
+    Binding("2", "tab_changes", "Changes"),
+    Binding("3", "tab_review", "Review"),
     Binding("enter", "primary_action", "Primary Action"),
     Binding("e", "edit_task", "Edit"),
     Binding("d", "delete_task", "Delete"),

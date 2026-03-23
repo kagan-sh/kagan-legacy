@@ -339,9 +339,9 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def list_agents(_request: Request, *, ctx: Any) -> JSONResponse:
         """List available agent backends."""
-        from kagan.chat.agents import list_registered_agent_backends
+        from kagan.chat.agents import list_backends_with_availability
 
-        backends = list_registered_agent_backends()
+        backends = list_backends_with_availability()
         settings = await ctx.client.settings.get()
         default = settings.get("default_agent_backend") or "claude-code"
         return _ok({"backends": backends, "default": default})

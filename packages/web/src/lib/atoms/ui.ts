@@ -26,6 +26,16 @@ export const helpOverlayOpenAtom = atom(false);
 
 /** Plugin import dialog open state. */
 export const pluginImportOpenAtom = atom(false);
+
+/** Create task dialog open state (used by command palette). */
+export const createTaskDialogOpenAtom = atom(false);
+
+/** Edit task dialog task ID (used by command palette; null = closed). */
+export const editTaskDialogTaskIdAtom = atom<string | null>(null);
+
+/** Delete task dialog task ID (used by command palette; null = closed). */
+export const deleteTaskDialogTaskIdAtom = atom<string | null>(null);
+
 /** Track whether any dialog/modal is open to pause background refetches. */
 export const dialogOpenCountAtom = atom(0);
 

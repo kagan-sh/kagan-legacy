@@ -148,81 +148,41 @@ class SettingsModal(ModalScreen[None]):
         self._auto_save_timer: Timer | None = None
         self._categories = [
             SettingCategory(
-                id="orchestration",
-                name="Orchestration",
-                search_terms=("review", "strict", "planning", "confirm"),
+                id="essentials",
+                name="Essentials",
+                search_terms=(
+                    "agent", "backend", "theme", "appearance", "color",
+                    "instructions", "custom", "prompt", "additional", "dotfile",
+                ),
             ),
             SettingCategory(
-                id="general",
-                name="General",
-                search_terms=("agent", "launcher", "base", "branch", "startup", "recent"),
+                id="workflow",
+                name="Workflow",
+                search_terms=(
+                    "review", "strict", "planning", "confirm", "auto", "approval", "merge",
+                ),
             ),
             SettingCategory(
-                id="automation",
-                name="Automation",
-                search_terms=("auto", "review", "init", "commit"),
+                id="git",
+                name="Git",
+                search_terms=(
+                    "git", "user", "name", "email", "identity", "agent", "kagan",
+                    "base", "branch",
+                ),
             ),
             SettingCategory(
-                id="merge",
-                name="Merge Policy",
-                search_terms=("merge", "approval", "review", "serialize"),
-            ),
-            SettingCategory(
-                id="appearance",
-                name="Appearance",
-                search_terms=("theme", "appearance", "color", "attached", "instructions"),
-            ),
-            SettingCategory(
-                id="worktree",
-                name="Worktree",
-                search_terms=("strategy", "ref", "remote", "local"),
-            ),
-            SettingCategory(
-                id="instructions",
-                name="Additional Instructions",
-                search_terms=("instructions", "custom", "prompt", "additional", "dotfile"),
-                is_advanced=True,
-            ),
-            SettingCategory(
-                id="git_identity",
-                name="Git Identity",
-                search_terms=("git", "user", "name", "email", "identity", "agent", "kagan"),
-                is_advanced=True,
-            ),
-            SettingCategory(
-                id="models",
-                name="Models",
-                search_terms=("model", "claude", "openai", "default", "backend"),
+                id="advanced",
+                name="Advanced",
+                search_terms=(
+                    "worktree", "strategy", "ref", "remote", "local", "serialize",
+                    "init", "commit", "launcher", "startup", "recent", "model",
+                    "claude", "openai", "attached", "instructions", "popup",
+                ),
                 is_advanced=True,
             ),
         ]
         self._category_fields: dict[str, tuple[SettingFieldSpec, ...]] = {
-            "orchestration": (
-                SettingFieldSpec(
-                    "switch", "Auto-confirm plans for single tasks", "settings-auto-confirm-single"
-                ),
-                SettingFieldSpec(
-                    "select",
-                    "Review strictness",
-                    "settings-review-strictness",
-                    options=(
-                        ("Strict", "strict"),
-                        ("Balanced", "balanced"),
-                        ("Relaxed", "relaxed"),
-                    ),
-                ),
-                SettingFieldSpec(
-                    "select",
-                    "Planning depth",
-                    "settings-planning-depth",
-                    options=(
-                        ("Always plan", "always"),
-                        ("Multi-task only", "multi_task"),
-                        ("Never plan", "never"),
-                    ),
-                ),
-            ),
-            "general": (
+            "essentials": (
                 SettingFieldSpec(
                     "select",
                     "Default agent backend",
@@ -231,62 +191,10 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "Interactive launcher",
-                    "settings-attached-launcher",
-                    options=(
-                        ("tmux", "tmux"),
-                        ("nvim", "nvim"),
-                        ("vscode", "vscode"),
-                        ("cursor", "cursor"),
-                        ("windsurf", "windsurf"),
-                        ("kiro", "kiro"),
-                        ("antigravity", "antigravity"),
-                    ),
-                ),
-                SettingFieldSpec("text", "Default base branch", "settings-default-base-branch"),
-                SettingFieldSpec(
-                    "switch", "Open last project on launch", "settings-open-last-project"
-                ),
-            ),
-            "worktree": (
-                SettingFieldSpec(
-                    "select",
-                    "Worktree base ref strategy",
-                    "settings-base-ref-strategy",
-                    options=(
-                        ("Local if ahead", "local_if_ahead"),
-                        ("Remote", "remote"),
-                        ("Local", "local"),
-                    ),
-                ),
-            ),
-            "automation": (
-                SettingFieldSpec("switch", "Enable auto review", "settings-auto-review"),
-                SettingFieldSpec("switch", "Auto init git repo", "settings-auto-init-repo"),
-                SettingFieldSpec(
-                    "switch", "Auto create initial commit", "settings-auto-init-commit"
-                ),
-            ),
-            "merge": (
-                SettingFieldSpec(
-                    "switch", "Require approval before merge", "settings-require-review-approval"
-                ),
-                SettingFieldSpec("switch", "Serialize manual merges", "settings-serialize-merges"),
-            ),
-            "appearance": (
-                SettingFieldSpec(
-                    "select",
                     "Theme",
                     "settings-theme",
                     options_factory=_build_theme_options,
                 ),
-                SettingFieldSpec(
-                    "switch",
-                    "Skip attach instructions popup",
-                    "settings-skip-attached-instructions",
-                ),
-            ),
-            "instructions": (
                 SettingFieldSpec(
                     "textarea", "Additional instructions", "settings-additional-instructions"
                 ),
@@ -306,7 +214,26 @@ class SettingsModal(ModalScreen[None]):
                     text="[dim]Full prompt overrides -> .kagan/prompts/[/dim]",
                 ),
             ),
-            "git_identity": (
+            "workflow": (
+                SettingFieldSpec("switch", "Enable auto review", "settings-auto-review"),
+                SettingFieldSpec(
+                    "switch", "Require approval before merge", "settings-require-review-approval"
+                ),
+                SettingFieldSpec(
+                    "switch", "Auto-confirm plans for single tasks", "settings-auto-confirm-single"
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Review strictness",
+                    "settings-review-strictness",
+                    options=(
+                        ("Strict", "strict"),
+                        ("Balanced", "balanced"),
+                        ("Relaxed", "relaxed"),
+                    ),
+                ),
+            ),
+            "git": (
                 SettingFieldSpec(
                     "select",
                     "Git user mode",
@@ -319,8 +246,56 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec("text", "Git user name (custom mode)", "settings-git-user-name"),
                 SettingFieldSpec("text", "Git email (custom mode)", "settings-git-user-email"),
+                SettingFieldSpec("text", "Default base branch", "settings-default-base-branch"),
             ),
-            "models": (
+            "advanced": (
+                SettingFieldSpec(
+                    "select",
+                    "Worktree base ref strategy",
+                    "settings-base-ref-strategy",
+                    options=(
+                        ("Local if ahead", "local_if_ahead"),
+                        ("Remote", "remote"),
+                        ("Local", "local"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Planning depth",
+                    "settings-planning-depth",
+                    options=(
+                        ("Always plan", "always"),
+                        ("Multi-task only", "multi_task"),
+                        ("Never plan", "never"),
+                    ),
+                ),
+                SettingFieldSpec("switch", "Serialize manual merges", "settings-serialize-merges"),
+                SettingFieldSpec("switch", "Auto init git repo", "settings-auto-init-repo"),
+                SettingFieldSpec(
+                    "switch", "Auto create initial commit", "settings-auto-init-commit"
+                ),
+                SettingFieldSpec(
+                    "select",
+                    "Interactive launcher",
+                    "settings-attached-launcher",
+                    options=(
+                        ("tmux", "tmux"),
+                        ("nvim", "nvim"),
+                        ("vscode", "vscode"),
+                        ("cursor", "cursor"),
+                        ("windsurf", "windsurf"),
+                        ("kiro", "kiro"),
+                        ("antigravity", "antigravity"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "switch", "Open last project on launch", "settings-open-last-project"
+                ),
+                SettingFieldSpec(
+                    "switch",
+                    "Skip attach instructions popup",
+                    "settings-skip-attached-instructions",
+                ),
                 SettingFieldSpec("text", "Claude default model", "settings-default-model-claude"),
                 SettingFieldSpec("text", "OpenAI default model", "settings-default-model-openai"),
             ),

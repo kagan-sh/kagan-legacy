@@ -6,29 +6,20 @@ from textual.widgets import Input
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("TUI Project")
-    await driver.create_task("First task")
-    yield driver
-    await driver.teardown()
-
-
-async def test_launch_shows_welcome_with_project_list(board: KaganDriver) -> None:
+async def test_launch_shows_welcome_with_project_list(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.screen.id == "welcome-screen"
         assert app.screen.query_one("#project-list") is not None
 
 
-async def test_enter_on_welcome_opens_kanban(board: KaganDriver) -> None:
+async def test_enter_on_welcome_opens_kanban(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")

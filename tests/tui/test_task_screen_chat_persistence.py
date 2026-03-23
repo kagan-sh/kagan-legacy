@@ -4,25 +4,16 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Task Chat Persistence Project")
-    await driver.create_task("Task chat persistence")
-    yield driver
-    await driver.teardown()
-
-
-async def test_ctrl_o_ctrl_p_toggles_keep_task_chat_session(board: KaganDriver) -> None:
+async def test_ctrl_o_ctrl_p_toggles_keep_task_chat_session(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
     from kagan.tui.screens.task_screen import TaskScreen
     from kagan.tui.widgets.chat import ChatPanel
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -57,14 +48,16 @@ async def test_ctrl_o_ctrl_p_toggles_keep_task_chat_session(board: KaganDriver) 
         assert "session anchor" in str(panel.query_one("#chat-messages", Static).content)
 
 
-async def test_task_screen_ctrl_o_cycles_vertical_horizontal_off(board: KaganDriver) -> None:
+async def test_task_screen_ctrl_o_cycles_vertical_horizontal_off(
+    board_with_task: KaganDriver,
+) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.screens.task_screen import TaskScreen
     from kagan.tui.widgets.chat import ChatPanel
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -92,14 +85,16 @@ async def test_task_screen_ctrl_o_cycles_vertical_horizontal_off(board: KaganDri
         assert not panel.has_class("visible")
 
 
-async def test_task_screen_ctrl_i_cycles_vertical_horizontal_closed(board: KaganDriver) -> None:
+async def test_task_screen_ctrl_i_cycles_vertical_horizontal_closed(
+    board_with_task: KaganDriver,
+) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.screens.task_screen import TaskScreen
     from kagan.tui.widgets.chat import ChatPanel
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -124,14 +119,14 @@ async def test_task_screen_ctrl_i_cycles_vertical_horizontal_closed(board: Kagan
         assert not panel.has_class("visible")
 
 
-async def test_task_screen_ctrl_f_requires_open_overlay(board: KaganDriver) -> None:
+async def test_task_screen_ctrl_f_requires_open_overlay(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.screens.task_screen import TaskScreen
     from kagan.tui.widgets.chat import ChatPanel
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -155,14 +150,14 @@ async def test_task_screen_ctrl_f_requires_open_overlay(board: KaganDriver) -> N
         assert panel.has_class("fullscreen")
 
 
-async def test_task_screen_ctrl_k_opens_session_picker_modal(board: KaganDriver) -> None:
+async def test_task_screen_ctrl_k_opens_session_picker_modal(board_with_task: KaganDriver) -> None:
     from kagan.tui import KaganApp
     from kagan.tui.screens.session_picker import SessionPickerModal
     from kagan.tui.screens.task_screen import TaskScreen
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -178,7 +173,7 @@ async def test_task_screen_ctrl_k_opens_session_picker_modal(board: KaganDriver)
 
 
 async def test_tab_in_task_chat_does_not_switch_sessions_or_layout(
-    board: KaganDriver,
+    board_with_task: KaganDriver,
 ) -> None:
     from textual.widgets import Static
 
@@ -186,9 +181,9 @@ async def test_tab_in_task_chat_does_not_switch_sessions_or_layout(
     from kagan.tui.screens.task_screen import TaskScreen
     from kagan.tui.widgets.chat import ChatPanel
 
-    task = (await board.list_tasks())[0]
+    task = (await board_with_task.list_tasks())[0]
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")

@@ -4,21 +4,12 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-@pytest.fixture
-async def board(tmp_path):
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Chat Modes Project")
-    await driver.create_task("Chat task")
-    yield driver
-    await driver.teardown()
-
-
-async def test_ctrl_o_opens_chat_overlay_docked(board: KaganDriver) -> None:
+async def test_ctrl_o_opens_chat_overlay_docked(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -34,12 +25,12 @@ async def test_ctrl_o_opens_chat_overlay_docked(board: KaganDriver) -> None:
         assert "Orchestrator" in str(title.content)
 
 
-async def test_ctrl_p_opens_command_palette(board: KaganDriver) -> None:
+async def test_ctrl_p_opens_command_palette(board_with_task: KaganDriver) -> None:
     from textual.command import CommandPalette
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -50,12 +41,12 @@ async def test_ctrl_p_opens_command_palette(board: KaganDriver) -> None:
         assert isinstance(app.screen, CommandPalette)
 
 
-async def test_ctrl_p_opens_chat_fullscreen(board: KaganDriver) -> None:
+async def test_ctrl_p_opens_chat_fullscreen(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -70,12 +61,12 @@ async def test_ctrl_p_opens_chat_fullscreen(board: KaganDriver) -> None:
         assert "Orchestrator" in str(title.content)
 
 
-async def test_fullscreen_toggle_preserves_session(board: KaganDriver) -> None:
+async def test_fullscreen_toggle_preserves_session(board_with_task: KaganDriver) -> None:
     from textual.widgets import Static
 
     from kagan.tui import KaganApp
 
-    app = KaganApp(db_path=board.tmp_path / "kagan.db")
+    app = KaganApp(db_path=board_with_task.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")

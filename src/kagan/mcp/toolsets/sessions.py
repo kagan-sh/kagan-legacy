@@ -1,9 +1,9 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
-import contextlib
 from enum import StrEnum
 from typing import Any, TypedDict, cast
 
+from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import resolve_default_agent_backend, resolve_launcher
@@ -172,8 +172,10 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     for task in tasks:
         session = await _get_latest_session(app.client, task.id)
         ws = None
-        with contextlib.suppress(Exception):
+        try:
             ws = await app.client.worktrees.get(task.id)
+        except (KaganError, OSError) as exc:
+            logger.debug("Failed to fetch worktree for task {}: {}", task.id, exc)
         row: dict[str, Any] = {
             "task_id": task.id,
             "status": task.status.value,

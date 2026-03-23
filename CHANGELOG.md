@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.11.4-beta.2 (2026-03-23)
+
+### Chores
+
+- Improve glama metadata
+  ([`d30c1c0`](https://github.com/kagan-sh/kagan/commit/d30c1c0500500c484ef4bb8ab7c5759fecb98fe1))
+
+
 ## v0.11.4-beta.1 (2026-03-23)
 
 ### Chores

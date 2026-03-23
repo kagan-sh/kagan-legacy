@@ -13,6 +13,21 @@
 
 
 
+## v0.12.1-beta.4 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#64](https://github.com/kagan-sh/kagan/pull/64),
+  [`b71b625`](https://github.com/kagan-sh/kagan/commit/b71b6252569bb9756ad4e81e9e60ef2b43e3ee6e))
+
+
+
+
+
 ## v0.12.1-beta.3 (2026-03-23)
 
 

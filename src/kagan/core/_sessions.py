@@ -120,7 +120,7 @@ def _build_attached_startup_prompt(task: Task) -> str:
             "- You are in a git worktree, NOT the main repository",
             "- Only modify files within this worktree",
             "- COMMIT all changes before finishing (semantic commits: feat:, fix:, docs:, etc.)",
-            "- When complete: commit your work, then call `run_update` with action `detach`",
+            "- When complete: commit your work, then call `run_detach`",
             "- Your tools are available via the connected MCP server (WORKER role)",
             "",
             "## Coordination Workflow",
@@ -134,7 +134,7 @@ def _build_attached_startup_prompt(task: Task) -> str:
             "",
             "1. Implement and verify against acceptance criteria",
             "2. Commit with clear WHY-focused message",
-            "3. Call `run_update` with action `detach` to signal completion",
+            "3. Call `run_detach` to signal completion",
         ]
     )
     return "\n".join(lines).strip() + "\n"
@@ -725,7 +725,9 @@ class Sessions:
             has_commits = await git.has_commits_since(worktree, base_branch, strategy=strategy)
         except WorktreeError as exc:
             logger.warning(
-                "Commit check failed for task={}, assuming commits exist: {}", task_id, exc,
+                "Commit check failed for task={}, assuming commits exist: {}",
+                task_id,
+                exc,
             )
 
         ready_for_review = has_commits and not pending_after

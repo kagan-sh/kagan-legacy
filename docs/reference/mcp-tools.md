@@ -49,7 +49,11 @@ ______________________________________________________________________
 | Tool               | Annotation  | Purpose                                                                   |
 | ------------------ | ----------- | ------------------------------------------------------------------------- |
 | `run_start(...)`   | `mutating`  | Start a managed run or launch an interactive session for a task           |
-| `run_update(...)`  | `mixed`     | Manage session lifecycle (exists/create/get/kill/detach)                  |
+| `run_exists(...)`  | `read-only` | Check whether a task currently has an interactive session                 |
+| `run_create(...)`  | `mutating`  | Provision a workspace and start an interactive session                    |
+| `run_get(...)`     | `read-only` | Read the current interactive session status for a task                    |
+| `run_kill(...)`    | `mutating`  | Cancel a task run by task id                                              |
+| `run_detach(...)`  | `mutating`  | Finalize an interactive session and update task status                    |
 | `run_cancel(...)`  | `mutating`  | Cancel an active session                                                  |
 | `run_summary(...)` | `read-only` | List running sessions + statuses for active tasks                         |
 
@@ -63,7 +67,10 @@ ______________________________________________________________________
 | `project_add_repo(...)`     | `mutating`    | Link a repo to a project                                      |
 | `project_delete(...)`       | `destructive` | Delete a project                                              |
 | `repo_list(...)`            | `read-only`   | List repos by project                                         |
-| `review_decide(...)`        | `destructive` | Apply review action (`approve`, `reject`, `merge`, `rebase`)  |
+| `review_approve(...)`       | `mutating`    | Record approval for a review-ready task                       |
+| `review_reject(...)`        | `mutating`    | Reject a review-ready task with explicit feedback             |
+| `review_merge(...)`         | `destructive` | Merge an approved task into its base branch                   |
+| `review_rebase(...)`        | `mutating`    | Rebase a task branch onto its base branch                     |
 | `review_conflicts(...)`     | `read-only`   | Get merge conflict details                                    |
 | `review_continue_rebase(...)` | `mutating`  | Continue an interrupted rebase                                |
 | `review_abort_rebase(...)`  | `mutating`    | Abort a rebase operation                                      |
@@ -93,8 +100,8 @@ ______________________________________________________________________
 
 Review semantics:
 
-- `review_decide(action="approve")` records approval state but does **not** move task to `DONE`.
-- `DONE` is reached by completion flows (for example `review_decide(action="merge")` or no-change close flow).
+- `review_approve()` records approval state but does **not** move task to `DONE`.
+- `DONE` is reached by completion flows (for example `review_merge()` or no-change close flow).
 
 ______________________________________________________________________
 
@@ -258,24 +265,19 @@ Use `run_start()` for managed execution or `run_start(launcher="tmux")` (or anot
 
 ______________________________________________________________________
 
-## `run_update` API
+## Attached run APIs
 
-`run_update` controls session lifecycle via discrete actions.
+The attached-run lifecycle now uses one explicit tool per action.
 
 ### Parameters
 
-| Parameter | Type     | Description                                        |
-| --------- | -------- | -------------------------------------------------- |
-| `action`  | `string` | One of `exists`, `create`, `get`, `kill`, `detach` |
-| `task_id` | `string` | Target task                                         |
-
-### Actions
-
-- `exists`: Returns `{"exists": bool, "task_id": ...}` without mutating state.
-- `create`: Provisions a workspace and starts an interactive session using the configured launcher.
-- `get`: Reads the current interactive session status (`"STARTED"`, `"ENDED"`, etc.)
-- `kill`: Cancels the task run via `client.tasks.cancel`.
-- `detach`: Signals the server to finalize an interactive session via `client.tasks.detach`.
+| Tool              | Parameter | Type     | Description                                                |
+| ----------------- | --------- | -------- | ---------------------------------------------------------- |
+| `run_exists(...)` | `task_id` | `string` | Returns `{"exists": bool, "task_id": ...}`             |
+| `run_create(...)` | `task_id` | `string` | Provisions a workspace and starts an interactive session   |
+| `run_get(...)`    | `task_id` | `string` | Reads the current interactive session status for the task  |
+| `run_kill(...)`   | `task_id` | `string` | Cancels the task run via `client.tasks.cancel`             |
+| `run_detach(...)` | `task_id` | `string` | Finalizes an interactive session via `client.tasks.detach` |
 
 ______________________________________________________________________
 
@@ -332,13 +334,15 @@ ______________________________________________________________________
 
 ## Access tiers
 
-Tool visibility is controlled by the MCP server's access tier (set via `--readonly` / `--admin` flags).
+Tool visibility is controlled by the MCP server's role tier. `--readonly` maps to the
+worker-scoped surface, while the default and `--admin` modes both expose the
+same orchestrator-scoped MCP tool set.
 
 | Tier       | Visible tools                                                                                                                |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `readonly` | Read-only operations (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `tasks_wait`, `run_summary`, etc.) |
-| `default`  | Read-only + `task_create`, `task_batch_create`, `task_update`, `task_add_note`, `run_start`, `run_update`, `run_cancel`, `review_decide` |
-| `admin`    | `default` + `task_delete`, `settings_set`, `plugins_sync`, review flows, persona management                                 |
+| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
+| `default`  | Orchestrator-scope tools (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management) |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                         |
 
 Unregistered tools are invisible to the host — it never knows they exist.
 

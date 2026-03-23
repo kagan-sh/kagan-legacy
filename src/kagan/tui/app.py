@@ -129,9 +129,10 @@ class KaganApp(App[None]):
         self.push_screen("welcome-screen")
 
     async def activate_project(self, project: Project) -> None:
-        from kagan.core.errors import KaganError
-
-        await self.core.projects.set_active(project.id)
+        # Use set_active_project to avoid redundant DB lookup
+        # since we already have the full Project object
+        await self.core.projects.set_active_project(project)
+        
         self.project = project
         settings = await self.core.settings.get()
         selected_repo_id = settings.get(self._repo_setting_key(project.id)) or None

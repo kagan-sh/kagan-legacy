@@ -7,6 +7,7 @@ spawn_agent() writes .mcp.json to the worktree and spawns a detached OS process.
 
 import asyncio
 import errno
+import functools
 import json
 import shutil
 import subprocess
@@ -72,6 +73,7 @@ CODEX_BACKEND: Final = "codex"
 GEMINI_CLI_BACKEND: Final = "gemini-cli"
 KIMI_CLI_BACKEND: Final = "kimi-cli"
 OPENCODE_BACKEND: Final = "opencode"
+GITHUB_COPILOT_BACKEND: Final = "github-copilot"
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
         "acp_command": ["kimi", "acp"],
         "acp_args": [],
     },
-    "github-copilot": {
+    GITHUB_COPILOT_BACKEND: {
         "executable": "copilot",
         "prompt_flag": "-p",
         "workdir_flag": None,
@@ -207,6 +209,7 @@ AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
 }
 _AGENT_BACKEND_ALIASES: dict[str, str] = {
     "claude": CLAUDE_CODE_BACKEND,
+    "copilot": GITHUB_COPILOT_BACKEND,
     "gemini": GEMINI_CLI_BACKEND,
     "kimi": KIMI_CLI_BACKEND,
 }
@@ -236,9 +239,53 @@ def list_backends() -> list[str]:
 def list_available_backends() -> dict[str, bool]:
     """Return {backend_name: is_installed} for all registered backends."""
     return {
-        name: shutil.which(cfg["executable"]) is not None
-        for name, cfg in AGENT_BACKENDS.items()
+        name: shutil.which(cfg["executable"]) is not None for name, cfg in AGENT_BACKENDS.items()
     }
+
+
+@functools.lru_cache(maxsize=1)
+def _copilot_builtin_acp_supported() -> bool:
+    """Return whether the locally installed Copilot CLI supports `--acp`."""
+    if shutil.which("copilot") is None:
+        return False
+
+    try:
+        completed = subprocess.run(
+            ["copilot", "--acp", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    combined_output = "\n".join(
+        part.strip() for part in (completed.stdout, completed.stderr) if part.strip()
+    ).lower()
+    return "unknown option '--acp'" not in combined_output
+
+
+def resolve_acp_command(backend_name: str) -> list[str]:
+    """Resolve the ACP launch command for a backend on the current machine."""
+    entry = get_backend(backend_name)
+    executable = entry.get("executable")
+    fallback = [executable] if isinstance(executable, str) and executable else []
+    acp_cmd = list(entry.get("acp_command", fallback))
+    if not acp_cmd:
+        raise AgentError(f"No ACP command configured for backend {backend_name!r}")
+
+    if backend_name != GITHUB_COPILOT_BACKEND:
+        return acp_cmd
+
+    if _copilot_builtin_acp_supported():
+        return acp_cmd
+
+    raise AgentError(
+        "Installed Copilot CLI does not support `--acp`. Current GitHub Copilot CLI releases "
+        "do support ACP, so update your local Copilot installation with `copilot update`, "
+        "`brew upgrade copilot-cli`, or reinstall the latest build from `github/copilot-cli`."
+    )
 
 
 def build_agent_environment(
@@ -404,8 +451,8 @@ async def spawn_agent_via_acp(
         project_id,
         write_mcp_manifest=False,
     )
-    acp_cmd = entry.get("acp_command")
-    if isinstance(acp_cmd, list) and acp_cmd:
+    acp_cmd = resolve_acp_command(backend_name)
+    if acp_cmd:
         cmd = list(acp_cmd)
     acp_args = entry.get("acp_args")
     if isinstance(acp_args, list) and acp_args:

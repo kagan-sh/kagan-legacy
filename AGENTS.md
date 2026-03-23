@@ -112,17 +112,20 @@ uv run poe snapshot-update # Update TUI snapshot tests
 | server | `docs/internal/architecture/server.md` | `docs/internal/features/server.md` |
 | web    | `docs/internal/architecture/web.md`    | `docs/internal/features/web.md`    |
 
-Web deep dives:
-
-- Architecture: `docs/internal/architecture/web.md`
-- Features: `docs/internal/features/web.md`
-
 ## TypeScript / Web Checks
 
 ```bash
-cd packages/web && pnpm exec vitest run
-cd packages/web && pnpm exec playwright test   # requires running server (`kagan web`)
-cd packages/web && pnpm run build
+uv run poe web-test          # Vitest unit tests
+uv run poe web-typecheck     # TypeScript type checking
+uv run poe web-build         # Build React bundle
+uv run poe web-check         # All web checks (typecheck + test)
+```
+
+## Prompt Evaluation
+
+```bash
+uv run poe eval              # Generate prompts + run promptfoo suite
+uv run poe eval-view         # Open results in browser
 ```
 
 ## Module Pitfalls

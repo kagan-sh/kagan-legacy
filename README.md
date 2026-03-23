@@ -24,7 +24,8 @@
   <a href="https://docs.kagan.sh/">Docs</a> ·
   <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> ·
   <a href="https://docs.kagan.sh/guides/mcp-setup/">MCP Setup</a> ·
-  <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a>
+  <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
 </h3>
 
 ---

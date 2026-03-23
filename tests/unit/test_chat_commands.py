@@ -78,6 +78,20 @@ def test_resolve_slash_input_help_and_unknown_are_structured() -> None:
     assert any("Unknown command" in line for line in unknown_result.error_lines)
 
 
+def test_resolve_slash_input_quit_alias_requests_close() -> None:
+    result = resolve_slash_input(
+        "/quit",
+        session_label="Orchestrator",
+        session_key="orchestrator",
+        runtime_session_id=None,
+        current_backend="claude-code",
+        available_backends=["claude-code", "opencode"],
+    )
+
+    assert result.handled is True
+    assert result.close_requested is True
+
+
 def test_slash_command_registry_is_canonical() -> None:
     specs = SLASH_COMMAND_REGISTRY.specs()
     names = [spec.name for spec in specs]
@@ -240,7 +254,76 @@ async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) ->
 
 
 @pytest.mark.asyncio
-async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
+async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) -> None:
+    client = _FakeClient()
+    await save_chat_session(
+        client,
+        {
+            "id": "sess1111",
+            "label": "REPL sess1111",
+            "source": "repl",
+            "agent_backend": "claude-code",
+            "orchestrator_history": [["user", "hi"]],
+            "messages_rendered": ["You: hi"],
+        },
+    )
+
+    lines: list[str] = []
+
+    async def _pick_session(title: str, options: list[Any]) -> str | None:
+        assert title == "Select session"
+        assert any(option.value == "sess1111" for option in options)
+        return "sess1111"
+
+    def _capture_print(*args, **kwargs) -> None:
+        del kwargs
+        if args:
+            lines.append(str(args[0]))
+
+    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _pick_session)
+    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    should_restart = await controller._open_sessions(None)
+
+    assert should_restart is False
+    assert controller._chat_session_id == "sess1111"
+    assert any("Attached session" in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_open_sessions_cancelled_picker_keeps_current_session(monkeypatch) -> None:
+    client = _FakeClient()
+    await save_chat_session(
+        client,
+        {
+            "id": "sess1111",
+            "label": "REPL sess1111",
+            "source": "repl",
+            "agent_backend": "claude-code",
+            "orchestrator_history": [],
+            "messages_rendered": [],
+        },
+    )
+
+    async def _cancel_picker(_title: str, _options: list[Any]) -> str | None:
+        return None
+
+    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _cancel_picker)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    controller._chat_session_id = "current123"
+
+    should_restart = await controller._open_sessions(None)
+
+    assert should_restart is False
+    assert controller._chat_session_id == "current123"
+
+
+@pytest.mark.asyncio
+async def test_open_sessions_noninteractive_falls_back_to_static_list(monkeypatch) -> None:
     from io import StringIO
 
     from rich.console import Console as _RichConsole
@@ -266,6 +349,7 @@ async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
         if args:
             printed.append(args[0])
 
+    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: False)
     monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
@@ -283,6 +367,37 @@ async def test_open_sessions_list_includes_agent_backend(monkeypatch) -> None:
         else:
             all_text.append(str(item))
     assert any("claude-code" in t for t in all_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_slash_agents_without_arg_uses_picker_selection(monkeypatch) -> None:
+    client = _FakeClient()
+
+    async def _pick_agent(title: str, options: list[Any]) -> str | None:
+        assert title == "Select agent backend"
+        assert any(option.value == "opencode" for option in options)
+        return "opencode"
+
+    selected: list[str] = []
+
+    async def _switch_agent(backend: str) -> bool:
+        selected.append(backend)
+        return True
+
+    monkeypatch.setattr(
+        "kagan.chat.controller.list_registered_agent_backends",
+        lambda: ["claude-code", "opencode"],
+    )
+    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _pick_agent)
+
+    controller = ChatController(cast("Any", client), agent_backend="claude-code")
+    monkeypatch.setattr(controller, "_switch_agent", _switch_agent)
+
+    should_exit = await controller._handle_slash("/agents")
+
+    assert should_exit is True
+    assert selected == ["opencode"]
 
 
 def test_resolve_slash_input_new_requests_new_session() -> None:
@@ -584,7 +699,10 @@ def test_slash_command_registry_filters_by_orchestrator_only() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_slash_help_prints_structured_help_documentation(monkeypatch) -> None:
-    from rich.table import Table
+    from io import StringIO
+
+    from rich.console import Console as _RichConsole
+    from rich.panel import Panel
 
     client = _FakeClient()
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
@@ -601,7 +719,15 @@ async def test_handle_slash_help_prints_structured_help_documentation(monkeypatc
     should_exit = await controller._handle_slash("/help")
 
     assert should_exit is False
-    tables = [item for item in printed if isinstance(item, Table)]
-    assert len(tables) >= 1
-    assert any(isinstance(item, str) and "Commands" in item for item in printed)
-    assert any(isinstance(item, str) and "docs.kagan.sh" in item for item in printed)
+    assert any(isinstance(item, Panel) for item in printed)
+
+    buffer = StringIO()
+    console = _RichConsole(file=buffer, width=120)
+    for item in printed:
+        console.print(item)
+
+    output = buffer.getvalue()
+    assert "Help Guide" in output
+    assert "/help" in output
+    assert "/quit" in output
+    assert "docs.kagan.sh" in output

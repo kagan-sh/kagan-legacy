@@ -36,6 +36,7 @@ Relates to #
 <!-- Describe how you tested your changes -->
 
 - [ ] All existing tests pass (`uv run poe check`)
+- [ ] Web checks pass if `packages/web/` was touched (`uv run poe web-check`)
 - [ ] Added new tests for new functionality
 - [ ] Tested manually in the TUI
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import {
     ArrowLeft,
@@ -99,7 +99,8 @@ export function Component() {
         initialLimit: 80,
     });
 
-    // 2.4: Always read tab from URL params — URL is the source of truth
+    // 2.4: Set initial tab from URL or task status — only on first load / task change
+    const prevTaskIdRef = useRef<string | null>(null);
     useEffect(() => {
         if (!task) return;
         const urlTab = searchParams.get("tab");
@@ -109,9 +110,10 @@ export function Component() {
             urlTab === "review"
         ) {
             setActiveTab(urlTab);
-        } else {
+        } else if (prevTaskIdRef.current !== task.id) {
             setActiveTab(defaultTabForTask(task));
         }
+        prevTaskIdRef.current = task.id;
     }, [task, searchParams]);
 
     useEffect(() => {

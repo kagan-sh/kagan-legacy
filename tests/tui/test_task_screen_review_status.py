@@ -60,6 +60,7 @@ async def test_review_stream_source_prefers_reviewer_for_review_tasks(board: Kag
         app.push_screen(TaskScreen(task_id=task.id))
         await pilot.pause()
         await pilot.pause()
+        await pilot.pause()
 
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
         source = str(app.screen.query_one("#ts-detail-stream-source", Static).content)

@@ -1,6 +1,15 @@
 import pytest
 
-from kagan.chat.repl import _bottom_toolbar, _build_prompt_style_rules, _history_cycle_target
+from kagan.chat.repl import (
+    SearchPickerOption,
+    _cancel_search_picker,
+    _bottom_toolbar,
+    _build_prompt_style_rules,
+    _history_cycle_target,
+    _picker_move_completion,
+    _picker_submit_value,
+    _resolve_search_picker_value,
+)
 
 pytestmark = [pytest.mark.unit]
 
@@ -55,3 +64,82 @@ def test_prompt_style_rules_ansi_fallback_use_terminal_defaults(
 
     assert rules["bottom-toolbar"] == "noreverse bg:default fg:default"
     assert rules["selected-text"] == "noreverse bg:ansigreen fg:ansiblack"
+
+
+def test_search_picker_value_resolves_unique_label_and_value_matches() -> None:
+    options = [
+        SearchPickerOption(value="claude-code", label="1. claude-code"),
+        SearchPickerOption(value="opencode", label="2. opencode"),
+    ]
+
+    assert _resolve_search_picker_value("opencode", options) == "opencode"
+    assert _resolve_search_picker_value("2.", options) == "opencode"
+    assert _resolve_search_picker_value("open", options) == "opencode"
+    assert _resolve_search_picker_value("ghost", options) is None
+
+
+def test_cancel_search_picker_exits_with_keyboard_interrupt() -> None:
+    class _FakeApp:
+        def __init__(self) -> None:
+            self.exception: BaseException | None = None
+
+        def exit(self, *, exception: BaseException | None = None, result=None) -> None:
+            del result
+            self.exception = exception
+
+    class _FakeEvent:
+        def __init__(self) -> None:
+            self.app = _FakeApp()
+
+    event = _FakeEvent()
+
+    _cancel_search_picker(event)
+
+    assert isinstance(event.app.exception, KeyboardInterrupt)
+
+
+def test_picker_move_completion_starts_menu_and_cycles_items() -> None:
+    class _FakeBuffer:
+        def __init__(self) -> None:
+            self.complete_state = None
+            self.actions: list[str] = []
+
+        def start_completion(self, *, select_first: bool) -> None:
+            self.actions.append(f"start:{select_first}")
+            self.complete_state = object()
+
+        def complete_previous(self) -> None:
+            self.actions.append("previous")
+
+        def complete_next(self) -> None:
+            self.actions.append("next")
+
+    class _FakeEvent:
+        def __init__(self) -> None:
+            self.current_buffer = _FakeBuffer()
+
+    event = _FakeEvent()
+
+    _picker_move_completion(event, "up")
+    _picker_move_completion(event, "up")
+    _picker_move_completion(event, "down")
+
+    assert event.current_buffer.actions == ["start:False", "previous", "next"]
+
+
+def test_picker_submit_value_prefers_highlighted_completion() -> None:
+    class _Completion:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+    class _CompleteState:
+        def __init__(self) -> None:
+            self.completions = [_Completion("claude-code"), _Completion("opencode")]
+            self.current_completion = self.completions[1]
+
+    class _Buffer:
+        def __init__(self) -> None:
+            self.complete_state = _CompleteState()
+            self.text = "open"
+
+    assert _picker_submit_value(_Buffer()) == "opencode"

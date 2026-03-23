@@ -22,6 +22,7 @@ from kagan.core._agent import (
     build_mcp_manifest,
     get_backend,
     list_backends,
+    resolve_acp_command,
     resolve_default_agent_backend,
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
@@ -138,6 +139,7 @@ __all__ = [
     "load_persona_definitions",
     "parse_priority",
     "prepend_custom_prompt",
+    "resolve_acp_command",
     "resolve_default_agent_backend",
     "resolve_launcher",
     "resolve_orchestrator_prompt",

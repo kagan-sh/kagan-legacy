@@ -37,6 +37,7 @@ def test_help_surface_contains_commands(tmp_path: Path) -> None:
     assert "mcp" in result.output
     assert "reset" in result.output
     assert "tools" in result.output
+    assert "prompts" in result.output
     assert "tui" in result.output
     assert "update" in result.output
     assert "--skip-update-check" not in result.output
@@ -331,3 +332,53 @@ def test_sanitize_startup_environment_removes_macos_malloc_keys(monkeypatch) -> 
     assert os.environ.get("MALLOCSTACKLOGGINGNOCOMPACT") is None
     assert os.environ.get("MALLOCSTACKLOGGINGDIRECTORY") is None
     assert os.environ.get("__XPC_MALLOCSTACKLOGGING") is None
+
+
+def test_prompts_help_lists_export_subcommand(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["prompts", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "export" in result.output
+
+
+def test_prompts_export_writes_valid_yml_to_stdout(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["prompts", "export", "--type", "orchestrator"], env=_runner_env(tmp_path)
+    )
+
+    assert result.exit_code == 0
+    assert "name: kagan-orchestrator" in result.output
+    assert "model:" in result.output
+    assert "messages:" in result.output
+
+
+def test_prompts_export_writes_file(tmp_path: Path) -> None:
+    dest = tmp_path / "out.prompt.yml"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["prompts", "export", "--type", "review", "-o", str(dest)],
+        env=_runner_env(tmp_path),
+    )
+
+    assert result.exit_code == 0
+    assert dest.exists()
+    assert "kagan-review" in dest.read_text()
+
+
+def test_prompts_export_text_format_outputs_raw_prompt(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["prompts", "export", "--type", "orchestrator", "--format", "text"],
+        env=_runner_env(tmp_path),
+    )
+
+    assert result.exit_code == 0
+    # Raw text should NOT have YAML structure
+    assert "name:" not in result.output
+    assert "messages:" not in result.output
+    # But SHOULD have actual prompt content
+    assert "kagan" in result.output.lower()

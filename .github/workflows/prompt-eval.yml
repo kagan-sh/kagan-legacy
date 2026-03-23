@@ -1,0 +1,53 @@
+name: Prompt Evaluation
+
+on:
+  pull_request:
+    paths:
+      - "src/kagan/core/_prompts.py"
+      - "evals/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  models: read
+
+jobs:
+  eval:
+    if: >-
+      github.actor == 'aorumbayev' ||
+      github.actor == 'kagan-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: uv sync --frozen --dev
+
+      - name: Generate prompt files
+        run: bash evals/generate-prompts.sh
+
+      - name: Run promptfoo evaluation
+        run: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o evals/results.json --no-progress-bar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for failures
+        run: |
+          failures=$(jq '.results.stats.failures' evals/results.json)
+          echo "Failures: $failures"
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::$failures prompt assertion(s) failed"
+            npx promptfoo@latest eval -c evals/promptfooconfig.yaml --no-progress-bar --output-format table 2>&1 || true
+            exit 1
+          fi

@@ -40,6 +40,8 @@ The bundled dashboard is served by `kagan web` and talks to the same same-origin
 
 Kagan orchestrates 14 coding agents. Every task uses one run model: start a managed background run or launch an interactive session in your preferred tool. Install one agent or install them all -- they share the board and compete on merit.
 
+Agents that support OpenAI-compatible endpoints can use alternative LLM providers including [GitHub Models](../guides/github-models.md) — 40+ models, free tier included.
+
 | Agent              | Author       | Install                                                                                      |
 | ------------------ | ------------ | -------------------------------------------------------------------------------------------- |
 | **Claude Code**    | Anthropic    | `curl -fsSL https://claude.ai/install.sh \| bash`                                            |

@@ -7,13 +7,13 @@
     "url": "https://github.com/kagan-sh/kagan",
     "source": "github"
   },
-  "version": "0.0.0",
+  "version": "0.11.4-beta.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "kagan",
-      "version": "0.0.0",
+      "version": "0.11.4-beta.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

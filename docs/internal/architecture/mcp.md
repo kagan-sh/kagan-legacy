@@ -54,7 +54,7 @@ server.py: create_server(opts)
     ▼           ▼           ▼
 toolsets/   toolsets/   toolsets/
 tasks.py    projects.py review.py
-  task_get    project_list  review_decide
+  task_get    project_list  review_approve
   task_list   project_create
   task_create
 toolsets/   toolsets/   toolsets/
@@ -85,9 +85,9 @@ src/kagan/mcp/
 └── toolsets/          # one file per domain
     ├── __init__.py    # register_all_toolsets()
     ├── tasks.py       # task_get, task_list, task_create, task_update, ...
-    ├── sessions.py    # run_start, run_summary, run_cancel, run_update
+    ├── sessions.py    # run_start, run_summary, run_cancel, run_exists, ...
     ├── projects.py    # project_list, project_create, project_set_active, ...
-    ├── review.py      # review_decide
+    ├── review.py      # review_approve, review_reject, review_merge, ...
     ├── settings.py    # settings_get, settings_set, audit_log_list
     └── plugins.py     # plugins_sync, plugins_preflight
 ```

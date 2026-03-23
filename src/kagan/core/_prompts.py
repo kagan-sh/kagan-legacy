@@ -115,9 +115,9 @@ Custom personas can be loaded via settings — use settings_get to check.
   calling tasks_wait on any single task.
 - Review decisions: when a task reaches REVIEW, follow the structured review flow:
   clear prior verdicts, record PASS/FAIL for every acceptance criterion, then call
-  review_decide. Tasks WITHOUT acceptance criteria must be flagged for manual
+  review_approve or review_reject. Tasks WITHOUT acceptance criteria must be flagged for manual
   human review — do NOT auto-approve them.
-- Merge: call review_decide action="merge" only after approval.
+- Merge: call review_merge only after approval.
 - Failure recovery: if any tool call fails, explain briefly and fall back to
   run_summary so the user still gets an answer.
 </tool-discipline>
@@ -169,18 +169,18 @@ Standard autonomous workflow:
 8. When tasks reach REVIEW:
    a. If acceptance criteria exist → verify each criterion is met → approve/reject.
    b. If NO acceptance criteria → flag for manual review, do not auto-approve.
-9. Merge approved tasks via review_decide action="merge".
+9. Merge approved tasks via review_merge.
 </workflow>
 
 <merge-conflict-recovery>
-When review_decide action="merge" returns status="conflict":
+When review_merge returns status="conflict":
 1. Report to user: task title, conflicting file count, target branch.
 2. Ask: "Merge failed — N files conflict with {target_branch}.
    Want me to reject and re-run the agent with rebase instructions?"
-3. On YES: call review_decide action="reject" with the suggested_feedback from
+3. On YES: call review_reject with the suggested_feedback from
    the conflict response, then call run_start to re-launch the agent.
    The agent will rebase onto the updated base branch and resolve conflicts.
-4. On NO: present options — rebase manually (review_decide action="rebase"),
+4. On NO: present options — rebase manually (review_rebase),
    abort and skip this task, or inspect conflicts (review_conflicts).
 5. NEVER auto-resolve without asking the user first.
 6. NEVER retry more than twice per task — after 2 conflict rejections for the
@@ -212,8 +212,8 @@ DEFAULT_REVIEW_PROMPT = (
     "   Call the tool once per criterion. Do NOT skip any.\n"
     "5. Review code quality: bugs, missing edge cases, style violations.\n"
     "6. Final verdict:\n"
-    "   - ALL criteria PASS and no blocking issues → call review_decide action='approve'.\n"
-    "   - ANY criterion FAIL or blocking issue → call review_decide action='reject'\n"
+    "   - ALL criteria PASS and no blocking issues → call review_approve.\n"
+    "   - ANY criterion FAIL or blocking issue → call review_reject\n"
     "     with specific feedback listing all failures.\n"
     "</review-protocol>"
 )

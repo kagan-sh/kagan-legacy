@@ -28,7 +28,11 @@ async def test_session_tools_visible_on_default_server(mcp_board: ClientSession)
     assert "run_start" in names
     assert "run_summary" in names
     assert "run_cancel" in names
-    assert "run_update" in names
+    assert "run_exists" in names
+    assert "run_create" in names
+    assert "run_get" in names
+    assert "run_kill" in names
+    assert "run_detach" in names
     assert "run_wait" not in names
 
 

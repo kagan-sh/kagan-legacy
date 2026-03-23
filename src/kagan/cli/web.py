@@ -54,7 +54,7 @@ def _resolve_lan_ip() -> str:
 @click.option("--port", default=8765, show_default=True, type=int, help="Bind port")
 @click.option("--no-open", is_flag=True, help="Don't auto-open browser")
 @click.option("--readonly", is_flag=True, help="Read-only access tier")
-@click.option("--admin", is_flag=True, help="Admin access tier")
+@click.option("--admin", is_flag=True, default=True, help="Admin access tier (default: on)")
 @click.option("--db", "db_path", type=str, hidden=True)
 @click.option("--project-id", "project_id", type=str, hidden=True)
 @click.option(
@@ -122,7 +122,7 @@ def web(
 
     mcp_opts = ServerOptions(
         readonly=readonly,
-        admin=not readonly,  # Local orchestrator gets admin by default
+        admin=admin,
         db_path=db_path,
         project_id=project_id,
     )

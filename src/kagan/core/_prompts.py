@@ -494,8 +494,8 @@ def load_persona_definitions(settings: dict[str, str]) -> dict[str, dict[str, st
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
             return {str(k): v for k, v in parsed.items() if isinstance(v, dict)}
-    except (json.JSONDecodeError, TypeError):
-        pass
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Invalid persona definitions in settings, using defaults: {}", exc)
     return dict(DEFAULT_PERSONAS)
 
 

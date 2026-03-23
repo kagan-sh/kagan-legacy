@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -105,6 +106,8 @@ async def _load_task_branch_commits(
     worktree_path: str,
     base_branch: str,
 ) -> list[dict[str, str]]:
+    if not re.match(r"^[a-zA-Z0-9/_.\-]+$", base_branch):
+        return []
     proc = await asyncio.create_subprocess_exec(
         "git",
         "-C",
@@ -557,8 +560,9 @@ def register_routes(mcp: FastMCP) -> None:
         )
 
     @mcp.custom_route("/api/fs/browse", methods=["GET"])
+    @require_context(mcp)
     @handle_errors
-    async def browse_filesystem(request: Request) -> JSONResponse:
+    async def browse_filesystem(request: Request, *, ctx: Any) -> JSONResponse:
         import asyncio
 
         raw_path = request.query_params.get("path", "~")

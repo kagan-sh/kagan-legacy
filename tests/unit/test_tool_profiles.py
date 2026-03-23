@@ -19,7 +19,11 @@ def test_worker_role_tools() -> None:
         "task_add_note",
         "task_counts",
         "tasks_wait",
-        "run_update",
+        "run_exists",
+        "run_create",
+        "run_get",
+        "run_kill",
+        "run_detach",
         "run_summary",
         "settings_get",
         "review_conflicts",
@@ -70,12 +74,16 @@ def test_worker_cannot_mutate_tasks() -> None:
     assert not is_tool_allowed("task_delete", opts)
     assert not is_tool_allowed("run_start", opts)
     assert not is_tool_allowed("run_cancel", opts)
-    assert not is_tool_allowed("review_decide", opts)
+    assert not is_tool_allowed("review_approve", opts)
+    assert not is_tool_allowed("review_merge", opts)
 
 
 @pytest.mark.unit
 def test_reviewer_cannot_decide_reviews() -> None:
     opts = ServerOptions(role=AgentRole.REVIEWER)
-    assert not is_tool_allowed("review_decide", opts)
+    assert not is_tool_allowed("review_approve", opts)
+    assert not is_tool_allowed("review_reject", opts)
+    assert not is_tool_allowed("review_merge", opts)
+    assert not is_tool_allowed("review_rebase", opts)
     assert not is_tool_allowed("review_continue_rebase", opts)
     assert not is_tool_allowed("review_abort_rebase", opts)

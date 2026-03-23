@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAtom } from 'jotai';
-import { HelpCircle, Github, ExternalLink } from 'lucide-react';
+import { ExternalLink, GitBranch, HelpCircle } from 'lucide-react';
 import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
 import {
   Dialog,
@@ -261,7 +261,7 @@ export function HelpOverlay() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
                     >
-                      <Github className="size-3" />
+                      <GitBranch className="size-3" />
                       GitHub
                       <ExternalLink className="size-3" />
                     </a>

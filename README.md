@@ -8,10 +8,14 @@
 <p align="center">
   <a href="https://pypi.org/project/kagan/"><img src="https://img.shields.io/pypi/v/kagan?style=for-the-badge" alt="PyPI"></a>
   <a href="https://pypi.org/project/kagan/"><img src="https://img.shields.io/pypi/pyversions/kagan?style=for-the-badge" alt="Python"></a>
-  <a href="https://glama.ai/mcp/servers/kagan-sh/kagan"><img src="https://glama.ai/mcp/servers/kagan-sh/kagan/badges/score.svg" alt="Glama"></a>
   <a href="https://opensource.org/license/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://github.com/kagan-sh/kagan/stargazers"><img src="https://img.shields.io/github/stars/kagan-sh/kagan?style=for-the-badge" alt="Stars"></a>
   <a href="https://discord.gg/dB5AgMwMy"><img src="https://img.shields.io/badge/discord-join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+</p>
+
+<p align="center">
+  <a href="https://snyk.io/test/github/kagan-sh/kagan?targetFile=pyproject.toml"><img src="https://snyk.io/test/github/kagan-sh/kagan/badge.svg?targetFile=pyproject.toml&style=flat" alt="Snyk"></a>
+  <a href="https://glama.ai/mcp/servers/kagan-sh/kagan"><img src="https://glama.ai/mcp/servers/kagan-sh/kagan/badges/score.svg" alt="Glama"></a>
 </p>
 
 <!-- mcp-name: io.github.kagan-sh/kagan -->

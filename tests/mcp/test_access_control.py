@@ -80,7 +80,9 @@ async def test_worker_hides_mutating_tools() -> None:
     assert "task_update" not in names
     assert "run_start" not in names
     assert "review_approve" not in names
+    assert "review_reject" not in names
     assert "review_merge" not in names
+    assert "review_rebase" not in names
 
 
 async def test_worker_exposes_read_tools() -> None:

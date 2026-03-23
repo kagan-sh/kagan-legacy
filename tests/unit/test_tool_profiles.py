@@ -75,7 +75,9 @@ def test_worker_cannot_mutate_tasks() -> None:
     assert not is_tool_allowed("run_start", opts)
     assert not is_tool_allowed("run_cancel", opts)
     assert not is_tool_allowed("review_approve", opts)
+    assert not is_tool_allowed("review_reject", opts)
     assert not is_tool_allowed("review_merge", opts)
+    assert not is_tool_allowed("review_rebase", opts)
 
 
 @pytest.mark.unit

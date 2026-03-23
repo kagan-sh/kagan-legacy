@@ -126,6 +126,7 @@ class TaskScreen(Screen[None]):
         self._worker_session_id: str | None = None
         self._reviewer_session_id: str | None = None
         self._pending_reviewer_session_id = False
+        self._user_switched_tab = False
 
     @property
     def kagan_app(self) -> KaganApp:
@@ -138,12 +139,38 @@ class TaskScreen(Screen[None]):
             yield Label("Branch: -", id="ts-branch", classes="ts-branch")
             yield Label("Idle", id="ts-status", classes="ts-status")
 
-            with TabbedContent(id="ts-tabs", initial="detail"):
-                with TabPane("Detail", id="detail"):
+            with TabbedContent(id="ts-tabs", initial="overview"):
+                with TabPane("Overview", id="overview"):
                     yield TaskDetailPane(id="ts-overview-pane")
 
-                with TabPane("Diff", id="diff"):
+                with TabPane("Changes", id="changes"):
                     yield TaskDiffPane(id="ts-diff-pane")
+
+                with TabPane("Review", id="review"):
+                    with VerticalScroll(id="ts-review-scroll"):
+                        yield Static(
+                            "",
+                            id="ts-detail-stream-source",
+                            classes="ts-detail-stream-source",
+                        )
+                        yield Static("", id="ts-detail-status", classes="ts-detail-status")
+                        yield Static(
+                            "",
+                            id="ts-detail-changes-summary",
+                            classes="ts-detail-changes-summary",
+                        )
+                        yield Static("Merge Readiness", classes="ts-section-label")
+                        yield Static("", id="ts-merge-readiness", classes="ts-detail-review")
+                        yield Static("Verify Criteria", classes="ts-section-label")
+                        yield Vertical(
+                            id="ts-detail-criteria-list",
+                            classes="ts-detail-criteria-list",
+                        )
+                        yield Static(
+                            "",
+                            id="ts-detail-criteria-status",
+                            classes="ts-detail-criteria-status",
+                        )
 
             yield ChatPanel(id="ts-chat-overlay", classes="chat-overlay")
 
@@ -239,24 +266,29 @@ class TaskScreen(Screen[None]):
         self.app.pop_screen()
 
     def action_tab_detail(self) -> None:
-        self._switch_tab("detail")
+        self._switch_tab("overview")
 
     def action_tab_diff(self) -> None:
-        self._switch_tab("diff")
+        self._switch_tab("changes")
 
     def action_tab_overview(self) -> None:
-        self.action_tab_detail()
+        self._switch_tab("overview")
 
     def action_tab_changes(self) -> None:
-        self.action_tab_diff()
+        self._switch_tab("changes")
 
-    def _switch_tab(self, tab_id: str) -> None:
+    def action_tab_review(self) -> None:
+        self._switch_tab("review")
+
+    def _switch_tab(self, tab_id: str, *, user_initiated: bool = True) -> None:
         tabs = self.query_one("#ts-tabs", TabbedContent)
         self.set_focus(None)
         tabs.active = tab_id
         self.call_after_refresh(lambda: self._focus_tab_after_switch(tab_id))
         self._sync_action_bar()
         self.refresh_bindings()
+        if user_initiated:
+            self._user_switched_tab = True
 
     def action_switch_tab(self, tab_id: str) -> None:
         self._switch_tab(tab_id)
@@ -264,16 +296,16 @@ class TaskScreen(Screen[None]):
     def on_tabbed_content_tab_activated(self) -> None:
         self._sync_action_bar()
         self.refresh_bindings()
-        if self._active_tab() == "diff":
+        if self._active_tab() == "changes":
             self._schedule_runtime_refresh()
 
     def _focus_tab_after_switch(self, tab_id: str) -> None:
-        if tab_id == "diff":
+        if tab_id == "changes":
             with contextlib.suppress(NoMatches):
                 self.set_focus(self.query_one(DiffFileTree))
                 return
 
-        if tab_id == "detail":
+        if tab_id in {"overview", "review"}:
             for node in self.query(".ts-detail-criterion"):
                 if isinstance(node, Checkbox):
                     self.set_focus(node)
@@ -292,11 +324,11 @@ class TaskScreen(Screen[None]):
                 self.action_approve()
 
         active = self._active_tab()
-        if active == "detail":
+        if active == "overview":
             if task is not None and task.status is TaskStatus.REVIEW:
                 _approve_or_merge()
                 return
-            self._switch_tab("diff")
+            self._switch_tab("changes")
             if self._running:
                 self._set_status("Running")
                 return
@@ -307,7 +339,7 @@ class TaskScreen(Screen[None]):
             await self._start_or_attach_session()
             return
 
-        if active == "diff":
+        if active in {"changes", "review"}:
             _approve_or_merge()
             return
 
@@ -1126,6 +1158,15 @@ class TaskScreen(Screen[None]):
                 exit_on_error=False,
             )
 
+    def _maybe_auto_switch_to_review(self) -> None:
+        if self._user_switched_tab:
+            return
+        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
+            with contextlib.suppress(NoMatches):
+                tabs = self.query_one("#ts-tabs", TabbedContent)
+                if getattr(tabs, "active", "") != "review":
+                    tabs.active = "review"
+
     async def _refresh_runtime_state(self) -> None:
         if self._task_id is None:
             return
@@ -1135,6 +1176,7 @@ class TaskScreen(Screen[None]):
             self._refresh_header()
             self._refresh_header_labels()
             self._sync_action_bar()
+            self._maybe_auto_switch_to_review()
             await self._load_review_context()
             await self._hydrate_workspace_panels()
 
@@ -1562,7 +1604,7 @@ class TaskScreen(Screen[None]):
         if panel.has_class("visible"):
             return
 
-        if active != "diff":
+        if active != "changes":
             return
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -1627,10 +1669,13 @@ class TaskScreen(Screen[None]):
             active = getattr(tabs, "active", "")
             if isinstance(active, str) and active:
                 return active
-        return "detail"
+        return "overview"
 
     def _select_initial_tab(self) -> None:
-        self.query_one("#ts-tabs", TabbedContent).active = "detail"
+        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
+            self.query_one("#ts-tabs", TabbedContent).active = "review"
+        else:
+            self.query_one("#ts-tabs", TabbedContent).active = "overview"
 
     def _configure_overlay_chat(
         self,

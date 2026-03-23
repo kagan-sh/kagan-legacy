@@ -90,6 +90,10 @@ class TaskCard(Widget):
     DEFAULT_CSS = """
     TaskCard {
         layout: vertical;
+        height: 3;
+    }
+
+    TaskCard.-selected {
         height: 4;
     }
 
@@ -168,6 +172,9 @@ class TaskCard(Widget):
         self._pr_label: Static | None = None
         self._type_label: Static | None = None
         self._priority_label: Static | None = None
+        # Row container refs — toggled for compact/expanded layout.
+        self._desc_row: Horizontal | None = None
+        self._badge_row: Horizontal | None = None
         # Set reactive after super().__init__ so id is assigned.
         self.task_data = task
         self.selected = selected
@@ -285,6 +292,11 @@ class TaskCard(Widget):
             "", classes="card-badge card-badge-priority task-card-badge-priority"
         )
 
+        self._desc_row = Horizontal(classes="card-row task-card-row")
+        self._badge_row = Horizontal(
+            classes="card-row task-card-row card-badge-row task-card-badge-row"
+        )
+
         with Vertical(classes="card-content task-card-content"):
             with Horizontal(classes="card-row task-card-row"):
                 yield self._rail_label
@@ -292,14 +304,14 @@ class TaskCard(Widget):
                 yield self._title_label
                 yield self._id_label
 
-            with Horizontal(classes="card-row task-card-row"):
+            with self._desc_row:
                 yield self._desc_label
                 yield self._elapsed_label
 
             with Horizontal(classes="card-row task-card-row"):
                 yield self._status_label
 
-            with Horizontal(classes="card-row task-card-row card-badge-row task-card-badge-row"):
+            with self._badge_row:
                 yield self._backend_label
                 yield self._branch_label
                 yield self._issue_label
@@ -328,7 +340,12 @@ class TaskCard(Widget):
     # ------------------------------------------------------------------
 
     def _labels_ready(self) -> bool:
-        return self._title_label is not None and self._desc_label is not None
+        return (
+            self._title_label is not None
+            and self._desc_label is not None
+            and self._desc_row is not None
+            and self._badge_row is not None
+        )
 
     def _render_task(self) -> None:
         task = self.task_data
@@ -348,6 +365,12 @@ class TaskCard(Widget):
         assert self._pr_label is not None
         assert self._type_label is not None
         assert self._priority_label is not None
+        assert self._desc_row is not None
+        assert self._badge_row is not None
+
+        # Compact vs expanded row visibility
+        self._desc_row.display = self.selected
+        self._badge_row.display = self.selected
 
         # Title
         self._title_label.update(_truncate_text(task.title, _TITLE_MAX))
@@ -367,7 +390,9 @@ class TaskCard(Widget):
             self._indicator_label.remove_class(cls)
         self._indicator_label.add_class(indicator_css)
 
-        # Description
+        elapsed = self._format_elapsed(getattr(task, "updated_at", None))
+
+        # Description row — only shown when selected
         desc = (task.description or "").strip()
         if self.selected and desc:
             self._desc_label.update(_truncate_text(desc, _DESC_MAX))
@@ -377,17 +402,22 @@ class TaskCard(Widget):
             self._desc_label.update("")
             self._desc_label.display = False
 
-        # Elapsed
-        elapsed = self._format_elapsed(getattr(task, "updated_at", None))
-        if elapsed:
-            self._elapsed_label.update(elapsed)
-            self._elapsed_label.display = True
+        # Elapsed — on desc row when selected, appended to status row when unselected
+        if self.selected:
+            if elapsed:
+                self._elapsed_label.update(elapsed)
+                self._elapsed_label.display = True
+            else:
+                self._elapsed_label.update("")
+                self._elapsed_label.display = False
         else:
             self._elapsed_label.update("")
             self._elapsed_label.display = False
 
-        # Status line
+        # Status line — when unselected, append elapsed inline
         status_text, status_css = self._status_line(task)
+        if not self.selected and elapsed:
+            status_text = f"{status_text}  {elapsed}"
         self._status_label.update(status_text)
         for cls in _STATUS_CLASSES:
             self._status_label.remove_class(cls)
@@ -409,22 +439,29 @@ class TaskCard(Widget):
         self._pr_label.update("")
         self._pr_label.display = False
 
-        # Type
+        # Type badge — only shown when selected
         task_type = str(getattr(getattr(task, "task_type", None), "value", "")).strip()
-        if task_type:
+        if self.selected and task_type:
             self._type_label.update(task_type)
             self._type_label.display = True
         else:
             self._type_label.update("")
             self._type_label.display = False
 
-        # Priority
+        # Priority badge — only shown when selected
         priority = _priority_label(task.priority)
         priority_css = self._priority_css(task.priority)
-        self._priority_label.update(priority)
-        for cls in _PRIORITY_CLASSES:
-            self._priority_label.remove_class(cls)
-        self._priority_label.add_class(priority_css)
+        if self.selected:
+            self._priority_label.update(priority)
+            for cls in _PRIORITY_CLASSES:
+                self._priority_label.remove_class(cls)
+            self._priority_label.add_class(priority_css)
+            self._priority_label.display = True
+        else:
+            self._priority_label.update("")
+            for cls in _PRIORITY_CLASSES:
+                self._priority_label.remove_class(cls)
+            self._priority_label.display = False
 
     # ------------------------------------------------------------------
     # Events

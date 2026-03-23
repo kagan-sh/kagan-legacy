@@ -2,7 +2,7 @@ import type { TaskStatus, Priority } from '@/lib/api/types';
 
 export const COLUMN_ORDER: TaskStatus[] = ['BACKLOG', 'IN_PROGRESS', 'REVIEW', 'DONE'];
 
-const ALLOWED_TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+export const ALLOWED_TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   BACKLOG: ['IN_PROGRESS'],
   IN_PROGRESS: ['BACKLOG', 'REVIEW'],
   REVIEW: ['BACKLOG', 'IN_PROGRESS'],

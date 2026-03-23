@@ -66,7 +66,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
 
   useEffect(() => {
     if (!open) return;
-    apiClient.getChatAgents().then((data) => setBackends(data.backends)).catch(() => {});
+    apiClient.getChatAgents().then((data) => setBackends(data.backends.map((b) => b.name))).catch(() => {});
   }, [open]);
 
   useEffect(() => {

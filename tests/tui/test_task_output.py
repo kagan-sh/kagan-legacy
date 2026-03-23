@@ -49,7 +49,7 @@ async def test_enter_on_detached_task_opens_task_screen(board_with_task: KaganDr
         await _open_task_screen(pilot)
         assert app.screen.id == "task-screen"
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
-        assert tabs.active == "detail"
+        assert tabs.active == "overview"
 
 
 async def test_task_screen_shows_action_hint_footer(board_with_task: KaganDriver) -> None:
@@ -221,12 +221,12 @@ async def test_tab_switch_does_not_revert_to_previous_tab(board_with_task: Kagan
         tree.focus()
         await pilot.pause()
 
-        cast("TaskScreen", app.screen).action_switch_tab("detail")
+        cast("TaskScreen", app.screen).action_switch_tab("overview")
         await pilot.pause()
         await pilot.pause()
 
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
-        assert tabs.active == "detail"
+        assert tabs.active == "overview"
 
 
 async def test_task_chat_restart_failure_surfaces_error_state(

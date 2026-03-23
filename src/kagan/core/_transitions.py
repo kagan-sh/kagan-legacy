@@ -41,3 +41,14 @@ def can_merge_move(from_status: TaskStatus, to_status: TaskStatus) -> bool:
 def validate_merge_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
     if not can_merge_move(from_status, to_status):
         raise InvalidTransitionError(from_status, to_status)
+
+
+def allowed_targets(status: TaskStatus) -> list[TaskStatus]:
+    """Return valid transition targets for a given status (excluding merge-only)."""
+    return [to for (frm, to) in _ALLOWED if frm == status]
+
+
+def all_allowed_targets(status: TaskStatus) -> list[TaskStatus]:
+    """Return all valid targets including merge transitions."""
+    merge = [to for (frm, to) in _MERGE_ALLOWED if frm == status]
+    return allowed_targets(status) + merge

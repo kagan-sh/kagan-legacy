@@ -530,7 +530,7 @@ def _build_prompt_message() -> FormattedText:
         prompt_style = f"bold {_REPL_COLORS['accent']}"
     else:
         prompt_style = f"bold {_ANSI_REPL_COLORS['accent']}"
-    return FormattedText([(prompt_style, "❯ ")])
+    return FormattedText([(prompt_style, "> ")])
 
 
 _kb = KeyBindings()

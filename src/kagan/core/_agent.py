@@ -252,8 +252,7 @@ def _copilot_builtin_acp_supported() -> bool:
     try:
         completed = subprocess.run(
             ["copilot", "--acp", "--help"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=5,
             check=False,

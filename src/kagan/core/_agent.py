@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final, TypedDict, cast
 
@@ -234,7 +233,6 @@ def list_backends() -> list[str]:
     return list(AGENT_BACKENDS)
 
 
-@lru_cache(maxsize=1)
 def list_available_backends() -> dict[str, bool]:
     """Return {backend_name: is_installed} for all registered backends."""
     return {

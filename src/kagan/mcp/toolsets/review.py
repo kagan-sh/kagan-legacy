@@ -66,13 +66,11 @@ async def _review_rebase(task_id: str, ctx: Context) -> dict:
     return {"task_id": task_id, "action": "rebase"}
 
 
-async def _handle_merge(app: ServerContext, task_id: str, task: Task | None = None) -> dict:
+async def _handle_merge(app: ServerContext, task_id: str, task: Task) -> dict:
     """Execute a merge action and return the result dict."""
     try:
         await app.client.reviews.merge(task_id)
     except MergeConflictError as exc:
-        if task is None:
-            task = await app.client.tasks.get(task_id)
         ws = await app.client.worktrees.get(task_id)
         repo = None
         if ws is not None:

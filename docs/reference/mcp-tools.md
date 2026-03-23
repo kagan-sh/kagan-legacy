@@ -334,13 +334,15 @@ ______________________________________________________________________
 
 ## Access tiers
 
-Tool visibility is controlled by the MCP server's access tier (set via `--readonly` / `--admin` flags).
+Tool visibility is controlled by the MCP server's role tier. `--readonly` maps to the
+worker-scoped surface, while the default and `--admin` modes both expose the
+same orchestrator-scoped MCP tool set.
 
 | Tier       | Visible tools                                                                                                                |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
-| `default`  | Read-only + `task_create`, `task_batch_create`, `task_update`, `task_add_note`, `run_start`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `run_cancel`, `review_approve`, `review_reject`, `review_merge`, `review_rebase` |
-| `admin`    | `default` + `task_delete`, `settings_set`, `plugins_sync`, review flows, persona management                                 |
+| `default`  | Orchestrator-scope tools (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management) |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                         |
 
 Unregistered tools are invisible to the host — it never knows they exist.
 

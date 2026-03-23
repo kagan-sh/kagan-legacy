@@ -119,13 +119,13 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 | Tier       | Scope                                                                                                                  |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
-| `default`  | Read + write (`task_create`, `task_update`, `task_add_note`, `run_start`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `run_cancel`, `review_approve`, `review_reject`, `review_merge`, `review_rebase`) |
-| `admin`    | Default + destructive (task_delete, settings, plugin sync)                                                             |
+| `default`  | Orchestrator-scope access (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management) |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                    |
 
 ```bash
 kagan mcp --readonly                    # worker-scope access
-kagan mcp                               # default read+write
-kagan mcp --admin                       # full admin access
+kagan mcp                               # orchestrator-scope access
+kagan mcp --admin                       # same MCP tool surface as default
 kagan mcp --session-id task:abc123      # task-scoped session
 ```
 

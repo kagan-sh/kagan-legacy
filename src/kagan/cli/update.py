@@ -16,5 +16,5 @@ def update(check_only: bool, prerelease: bool, force: bool) -> None:
         force=force,
     )
     click.echo(message)
-    if not ok and not check_only and message.startswith("Update failed"):
+    if not ok and not check_only and not message.startswith("Already up to date"):
         raise click.ClickException(message)

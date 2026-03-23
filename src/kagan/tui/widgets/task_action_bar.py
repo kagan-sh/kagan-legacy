@@ -11,7 +11,7 @@ from kagan.tui.widgets.hint_bar import action_hints_from_bindings, format_hint
 
 
 class TaskActionBar(Widget):
-    active_tab: reactive[str] = reactive("detail")
+    active_tab: reactive[str] = reactive("overview")
     task_data: reactive[Task | None] = reactive(None)
     task_running: reactive[bool] = reactive(False)
     has_criteria: reactive[bool] = reactive(False)
@@ -55,7 +55,7 @@ class TaskActionBar(Widget):
         active = self.active_tab
         task = self.task_data
         b = TASK_SCREEN_BINDINGS
-        tabs_hint: tuple[str, str] = ("1-2", "tabs")
+        tabs_hint: tuple[str, str] = ("1-3", "tabs")
         shared_specs: list[tuple[str | tuple[str, ...], str]] = [
             ("switch_session", "sessions"),
         ]
@@ -71,11 +71,11 @@ class TaskActionBar(Widget):
             shared_specs = [("toggle_chat", "split"), *shared_specs]
             esc = action_hints_from_bindings(b, [("back", "back")])
 
-        if active == "detail":
+        if active == "overview":
             self._sync_detail_hints(hint, task, b, tabs_hint, shared_specs, esc)
             return
 
-        if active == "diff":
+        if active == "changes":
             nav_hints: list[tuple[str, str]] = [
                 tabs_hint,
                 ("j/k", "navigate"),
@@ -91,6 +91,10 @@ class TaskActionBar(Widget):
                     ]
                 ),
             )
+            return
+
+        if active == "review":
+            self._sync_detail_hints(hint, task, b, tabs_hint, shared_specs, esc)
             return
 
         self._update_hint_text(

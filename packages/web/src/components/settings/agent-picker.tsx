@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bot, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
+import type { AgentBackend } from '@/lib/api/types';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export function AgentPicker() {
-  const [backends, setBackends] = useState<string[]>([]);
+  const [backends, setBackends] = useState<AgentBackend[]>([]);
   const [defaultBackend, setDefaultBackend] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -15,7 +17,11 @@ export function AgentPicker() {
     (async () => {
       try {
         const data = await apiClient.getChatAgents();
-        setBackends(data.backends);
+        const sorted = [...data.backends].sort((a, b) => {
+          if (a.available === b.available) return 0;
+          return a.available ? -1 : 1;
+        });
+        setBackends(sorted);
         setDefaultBackend(data.default);
       } catch {
         toast.error('Failed to load agent backends');
@@ -56,23 +62,26 @@ export function AgentPicker() {
         <div className="flex flex-wrap gap-2">
           {backends.map((backend) => (
             <Button
-              key={backend}
+              key={backend.name}
               variant="outline"
               size="xs"
-              onClick={() => selectBackend(backend)}
+              onClick={() => selectBackend(backend.name)}
               disabled={saving}
-              className={`transition-colors ${
-                backend === defaultBackend
+              title={!backend.available ? 'Not installed' : undefined}
+              className={cn(
+                'transition-colors',
+                backend.name === defaultBackend
                   ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]'
-                  : 'border-[color:var(--border-subtle)] text-[var(--muted-foreground)] hover:bg-[color:var(--surface-2)]'
-              }`}
+                  : 'border-[color:var(--border-subtle)] text-[var(--muted-foreground)] hover:bg-[color:var(--surface-2)]',
+                !backend.available && 'opacity-40',
+              )}
             >
-              {backend === defaultBackend ? (
+              {backend.name === defaultBackend ? (
                 <Check className="size-3" />
               ) : (
                 <Bot className="size-3" />
               )}
-              {backend}
+              {backend.name}
             </Button>
           ))}
         </div>

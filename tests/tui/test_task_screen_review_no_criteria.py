@@ -140,7 +140,7 @@ async def test_enter_on_detail_tab_does_not_switch_tab(review_board: KaganDriver
         task_screen = next((s for s in reversed(screen_stack) if isinstance(s, TaskScreen)), None)
         if task_screen is not None:
             tabs = task_screen.query_one("#ts-tabs", TabbedContent)
-            assert tabs.active == "detail"
+            assert tabs.active == "review"
 
         # Top of stack should be the no-criteria modal
         assert isinstance(app.screen, ReviewNoCriteriaModal)

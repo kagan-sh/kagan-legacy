@@ -64,7 +64,7 @@ async def test_review_stream_source_prefers_reviewer_for_review_tasks(board: Kag
         tabs = app.screen.query_one("#ts-tabs", TabbedContent)
         source = str(app.screen.query_one("#ts-detail-stream-source", Static).content)
 
-        assert tabs.active == "detail"
+        assert tabs.active == "review"
         assert "Stream: AI REVIEWER" in source
 
 
@@ -87,7 +87,7 @@ async def test_overview_hints_surface_review_actions_for_review_tasks(board: Kag
 
         hint_text = str(app.screen.query_one("#ts-action-hint", Static).content).lower()
 
-        assert "1-2" in hint_text
+        assert "1-3" in hint_text
         assert "approve" in hint_text
         assert "reject" in hint_text
 

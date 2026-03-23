@@ -8,9 +8,11 @@ spawn_agent() writes .mcp.json to the worktree and spawns a detached OS process.
 import asyncio
 import errno
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final, TypedDict, cast
 
@@ -230,6 +232,15 @@ def get_backend(name: str) -> AgentBackendConfig:
 def list_backends() -> list[str]:
     """Return all registered backend names."""
     return list(AGENT_BACKENDS)
+
+
+@lru_cache(maxsize=1)
+def list_available_backends() -> dict[str, bool]:
+    """Return {backend_name: is_installed} for all registered backends."""
+    return {
+        name: shutil.which(cfg["executable"]) is not None
+        for name, cfg in AGENT_BACKENDS.items()
+    }
 
 
 def build_agent_environment(

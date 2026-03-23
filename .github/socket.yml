@@ -1,0 +1,61 @@
+# Socket Security Policy Configuration
+# https://socket.dev/docs/configuration
+
+licensePolicy:
+  allow:
+    # Permissive licenses
+    - "MIT"
+    - "Apache-2.0"
+    - "Apache-2.0 WITH LLVM-exception"
+    - "BSD-2-Clause"
+    - "BSD-3-Clause"
+    - "BSD-3-Clause-Clear"
+    - "ISC"
+    - "0BSD"
+    - "Unlicense"
+    - "CC0-1.0"
+    - "WTFPL"
+    # Weak copyleft - safe for dependencies
+    - "MPL-2.0"
+    - "LGPL-3.0"
+    - "LGPL-2.1"
+    # Microsoft/W3C licenses (TypeScript 6.0+)
+    - "W3C-Community-Final-Specification-Agreement"
+    - "LicenseRef-W3C-Community-Final-Specification-Agreement"
+  
+  warn:
+    # Strong copyleft - review required
+    - "GPL-3.0"
+    - "GPL-2.0"
+    - "AGPL-3.0"
+    # Custom/non-standard licenses
+    - "SEE LICENSE IN *"
+    - "LicenseRef-*"
+  
+  deny:
+    # Problematic licenses
+    - "CC-BY-NC-*"
+    - "CC-BY-ND-*"
+    - "Proprietary"
+    - "Commercial"
+    - "UNLICENSED"
+
+# Security policy overrides
+curation:
+  # Auto-approve specific trusted packages with license warnings
+  - package: "typescript"
+    license: "W3C-Community-Final-Specification-Agreement"
+    reason: "Official Microsoft TypeScript - W3C license is OSI-compliant"
+  
+  - packagePattern: "lightningcss*"
+    license: "MPL-2.0"
+    reason: "Tailwind CSS v4 dependency - MPL-2.0 is weak copyleft, safe for deps"
+
+# Disable specific alert types for this repo
+ignore:
+  # We trust GitHub Actions and major ecosystem packages
+  - alertType: "license"
+    packagePattern: "actions/*"
+  
+  - alertType: "license"
+    packagePattern: "@types/*"

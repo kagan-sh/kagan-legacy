@@ -17,29 +17,7 @@
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
-      },
-      "environmentVariables": [
-        {
-          "name": "KAGAN_OPENAI_API_KEY",
-          "description": "OpenAI API key for agent execution (if using OpenAI backend)",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
-        },
-        {
-          "name": "KAGAN_ANTHROPIC_API_KEY",
-          "description": "Anthropic API key for agent execution (if using Claude backend)",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
-        },
-        {
-          "name": "KAGAN_DB_PATH",
-          "description": "Custom path for Kagan database file",
-          "isRequired": false,
-          "format": "filepath"
-        }
-      ]
+      }
     }
   ]
 }

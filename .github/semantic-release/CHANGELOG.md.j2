@@ -1,0 +1,41 @@
+{% from '.components/release_macros.md.j2' import render_release_block %}
+{% set insertion_flag = ctx.changelog_insertion_flag %}
+{% set releases = ctx.history.released.values() | list %}
+{% if ctx.changelog_mode == "init" %}
+# CHANGELOG
+
+{{ insertion_flag }}
+{% for release in releases %}
+
+{{ render_release_block(release) }}
+{% endfor %}
+{% else %}
+{% set previous = ctx.prev_changelog_file | read_file | safe %}
+{% set parts = previous.split(insertion_flag, maxsplit=1) %}
+{% if parts | length < 2 %}
+# CHANGELOG
+
+{{ insertion_flag }}
+{% if releases %}
+
+{{ render_release_block(releases[0]) }}
+{% endif %}
+{% elif parts[0] | trim %}
+{{ parts[0] | trim }}
+
+{{ insertion_flag }}
+{% else %}
+{{ insertion_flag }}
+{% endif %}
+{% if releases %}
+{% set latest = releases[0] %}
+{% if "## " ~ latest.version.as_semver_tag() ~ " " not in parts[1] %}
+
+{{ render_release_block(latest) }}
+{% endif %}
+{% endif %}
+{% if parts | length > 1 and parts[1] | trim %}
+
+{{ parts[1] | trim }}
+{% endif %}
+{% endif %}

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -75,6 +76,7 @@ class OnboardingFlow(ModalScreen[None]):
         self._mode: SetupMode = mode
         self._initial_repo_path = initial_repo_path
         self._last_inferred_name: str | None = None
+        self._debounce_timer: asyncio.TimerHandle | None = None
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -203,7 +205,11 @@ class OnboardingFlow(ModalScreen[None]):
 
     @on(Input.Changed, "#new-project-repo-path")
     def _on_repo_path_changed(self, event: Input.Changed) -> None:
-        self._infer_project_name(event.value)
+        # Debounce rapid input changes to prevent performance issues
+        if self._debounce_timer is not None:
+            self._debounce_timer.cancel()
+        loop = asyncio.get_running_loop()
+        self._debounce_timer = loop.call_later(0.1, self._infer_project_name, event.value)
 
     async def _create_project(self) -> None:
         if self._is_creating:
@@ -270,6 +276,7 @@ class OnboardingFlow(ModalScreen[None]):
             self.app.switch_screen("kanban-screen")
         except Exception as exc:  # quality-allow-broad-except
             self.app.notify(f"Unable to save setup: {exc}", severity="error")
+        finally:
             self._is_creating = False
 
     async def _persist_settings(
@@ -309,4 +316,14 @@ class OnboardingFlow(ModalScreen[None]):
         self._last_inferred_name = inferred_name
 
     async def action_dismiss(self, result: None = None) -> None:
+        # Clean up debounce timer to prevent callbacks after dismissal
+        if self._debounce_timer is not None:
+            self._debounce_timer.cancel()
+            self._debounce_timer = None
         self.dismiss(result)
+
+    def on_unmount(self) -> None:
+        # Ensure timer cleanup on all dismissal paths (covers success case)
+        if self._debounce_timer is not None:
+            self._debounce_timer.cancel()
+            self._debounce_timer = None

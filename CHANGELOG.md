@@ -13,6 +13,20 @@
 
 
 
+## v0.12.1-beta.3 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **deps**: Pin httpx to stable versions <1.0 ([#63](https://github.com/kagan-sh/kagan/pull/63),
+  [`7b5b6e8`](https://github.com/kagan-sh/kagan/commit/7b5b6e8323bd2479d05ed6082ca8107ac4dddbfc))
+
+
+
+
+
 ## v0.12.1-beta.2 (2026-03-23)
 
 

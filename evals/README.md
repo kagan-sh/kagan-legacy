@@ -5,9 +5,8 @@ Benchmark Kagan's default prompts with [promptfoo](https://promptfoo.dev).
 ## Quick start
 
 ```bash
-bash evals/generate-prompts.sh
-npx promptfoo@latest eval -c evals/promptfooconfig.yaml
-npx promptfoo@latest view
+uv run poe eval          # generate prompts + run suite
+uv run poe eval-view     # open results in browser
 ```
 
 ## Design

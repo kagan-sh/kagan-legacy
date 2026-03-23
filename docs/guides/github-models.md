@@ -20,53 +20,34 @@ tags:
 
 ## Configure a backend
 
-Several Kagan backends accept an OpenAI-compatible base URL. Set these environment variables to point them at GitHub Models:
-
-### Goose
-
-```bash
-export GOOSE_PROVIDER=openai
-export OPENAI_BASE_URL=https://models.github.ai/inference
-export OPENAI_API_KEY=ghp_your_token_here
-export GOOSE_MODEL=openai/gpt-4.1
-```
-
-### OpenCode
+Backends that accept OpenAI-compatible endpoints work with GitHub Models out of the box. Set these environment variables before launching Kagan:
 
 ```bash
 export OPENAI_BASE_URL=https://models.github.ai/inference
 export OPENAI_API_KEY=ghp_your_token_here
 ```
 
-Then select your model in OpenCode's own configuration.
+Backend-specific additions:
 
-### Codex
-
-```bash
-export OPENAI_BASE_URL=https://models.github.ai/inference
-export OPENAI_API_KEY=ghp_your_token_here
-```
-
-Set these before launching Kagan, or add them to your shell profile.
+| Backend | Extra env vars |
+| ------- | -------------- |
+| Goose | `GOOSE_PROVIDER=openai GOOSE_MODEL=openai/gpt-4.1` |
+| OpenCode | Select model in OpenCode's own config |
+| Codex | None — base URL + key is sufficient |
 
 ## Available models
 
-Model IDs use the `publisher/name` format. A curated selection:
+Model IDs use `publisher/name` format:
 
-| Model ID | Tier | Context | Best for |
-| -------- | ---- | ------- | -------- |
-| `openai/gpt-4.1` | high | 1M | Complex reasoning, large codebases |
-| `openai/gpt-4.1-mini` | low | 1M | Fast general-purpose coding |
-| `openai/gpt-4o-mini` | low | 128K | Quick tasks, cost-sensitive |
-| `meta/llama-4-scout-17b-16e-instruct` | high | 10M | Long-context open-weight model |
-| `meta/llama-3.3-70b-instruct` | high | 128K | Strong open-weight coding |
-| `mistral-ai/codestral-2501` | low | 256K | Code generation and completion |
-| `deepseek/deepseek-r1` | custom | 128K | Step-by-step reasoning |
-| `microsoft/phi-4` | low | 16K | Lightweight local-quality tasks |
-| `cohere/cohere-command-a` | low | 128K | Instruction following |
-| `xai/grok-3-mini` | custom | 128K | Reasoning with speed |
+| Model ID | Tier | Best for |
+| -------- | ---- | -------- |
+| `openai/gpt-4.1` | high | Complex reasoning, large codebases |
+| `openai/gpt-4.1-mini` | low | Fast general-purpose coding |
+| `mistral-ai/codestral-2501` | low | Code generation |
+| `deepseek/deepseek-r1` | custom | Step-by-step reasoning |
+| `meta/llama-4-scout-17b-16e-instruct` | high | Long-context open-weight |
 
-Browse the full catalog at <https://github.com/marketplace/models>.
+Full catalog: <https://github.com/marketplace/models>
 
 ## Free tier limits
 
@@ -103,9 +84,8 @@ Types: `orchestrator`, `execution`, `review`. Formats: `yml` (GitHub Models `.pr
 ### Evaluate locally
 
 ```bash
-bash evals/generate-prompts.sh
-npx promptfoo@latest eval -c evals/promptfooconfig.yaml
-npx promptfoo@latest view
+uv run poe eval          # generate prompts + run 12-test suite
+uv run poe eval-view     # open results in browser
 ```
 
-The bundled eval suite in `evals/` uses `gpt-5-mini` as a lower-bound benchmark — good behavior on the cheapest model means the prompts are robust. See the [evals README](https://github.com/kagan-sh/kagan/tree/main/evals) for details.
+Uses `gpt-5-mini` as a lower-bound benchmark. See `evals/README.md` for details.

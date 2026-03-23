@@ -58,10 +58,21 @@ class Projects:
         return await _db_async(self._engine, lambda s: list(s.exec(select(Project)).all()))
 
     async def set_active(self, project_id: str) -> None:
+        """Set the active project by ID. Validates the project exists."""
         await self.get(project_id)
         self._client.active_project_id = project_id
         self._client.tasks._active_project_id = project_id
         logger.info("Active project set to {}", project_id)
+
+    async def set_active_project(self, project: Project) -> None:
+        """Set the active project from an already-loaded Project object.
+        
+        Use this when the project was just retrieved from list() or create()
+        to avoid redundant database lookups. Trusts the object is valid.
+        """
+        self._client.active_project_id = project.id
+        self._client.tasks._active_project_id = project.id
+        logger.info("Active project set to {}", project.id)
 
     async def delete(self, project_id: str) -> None:
         await self.get(project_id)

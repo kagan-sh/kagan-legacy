@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.11.4-beta.1 (2026-03-23)
+
+### Chores
+
+- Add glama metadata
+  ([`ab12fc3`](https://github.com/kagan-sh/kagan/commit/ab12fc3362bd328f3878f19efe17d3000ea78f89))
+
+
 ## v0.11.3 (2026-03-23)
 
 

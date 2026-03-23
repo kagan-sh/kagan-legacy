@@ -15,6 +15,7 @@ Kagan runs 14+ AI coding agents (Claude Code, Codex, Gemini CLI, and more) in pa
 - [ACP Sessions](https://docs.kagan.sh/guides/acp-session-lifecycle/): Chat session lifecycle management
 - [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/): Editor integration via MCP
 - [GitHub Import](https://docs.kagan.sh/guides/github/): Import issues from GitHub
+- [GitHub Models](https://docs.kagan.sh/guides/github-models/): Use 40+ LLMs for free via GitHub Models
 - [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone
 - [CLI Reference](https://docs.kagan.sh/reference/cli/): All CLI commands and flags
 - [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference

@@ -4,18 +4,23 @@ import asyncio
 import os
 import shutil
 import subprocess
+import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import Final, Literal
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
-from rich.console import Console
+from rich import box
+from rich.console import Console, Group
+from rich.panel import Panel
 from rich.text import Text
 
 from kagan.chat._completion import fuzzy_match
@@ -61,6 +66,7 @@ class ToolbarState:
     turn_count: int = 0
     session_label: str = "orchestrator"
     context_pct: float | None = None
+    workspace_label: str = ""
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -83,6 +89,10 @@ _ANSI_REPL_COLORS: Final[dict[str, str]] = {
     "primary": "ansiyellow",
 }
 
+_BOOT_TIP_COMMAND: Final[str] = "/flow"
+_BOOT_TIP_TEXT: Final[str] = "Walk through Plan -> Execute -> Orchestrate."
+_SHORTCUT_HINT_TEXT: Final[str] = "Ctrl-J newline · Ctrl-C clear · Ctrl-D exit"
+
 
 def _supports_truecolor_terminal() -> bool:
     if os.environ.get("NO_COLOR") is not None:
@@ -102,6 +112,10 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "bottom-toolbar.text": (
                 f"noreverse bg:{_REPL_COLORS['panel']} fg:{_REPL_COLORS['text']}"
             ),
+            "bottom-toolbar.rule": f"fg:{_REPL_COLORS['accent_soft']}",
+            "bottom-toolbar.status": f"fg:{_REPL_COLORS['text_muted']}",
+            "bottom-toolbar.hint": f"fg:{_REPL_COLORS['text_soft']}",
+            "bottom-toolbar.key": f"fg:{_REPL_COLORS['accent']} bold",
             "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
             "completion-menu.completion.current": (
                 f"bg:{_REPL_COLORS['accent_soft']} fg:{_REPL_COLORS['text']} bold"
@@ -112,6 +126,10 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "prompt": "fg:ansigreen bold",
         "bottom-toolbar": "noreverse bg:default fg:default",
         "bottom-toolbar.text": "noreverse bg:default fg:default",
+        "bottom-toolbar.rule": "fg:ansibrightblack",
+        "bottom-toolbar.status": "fg:ansibrightblack",
+        "bottom-toolbar.hint": "fg:default",
+        "bottom-toolbar.key": "fg:ansigreen bold",
         "completion-menu": "bg:default fg:default",
         "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
         "selected-text": "noreverse bg:ansigreen fg:ansiblack",
@@ -119,6 +137,332 @@ def _build_prompt_style_rules() -> dict[str, str]:
 
 
 _PROMPT_STYLE_RULES: Final[dict[str, str]] = _build_prompt_style_rules()
+
+
+@dataclass(frozen=True, slots=True)
+class SearchPickerOption:
+    value: str
+    label: str
+    meta: str = ""
+
+    @property
+    def search_text(self) -> str:
+        return f"{self.value} {self.label} {self.meta}".casefold()
+
+
+class _SearchPickerCompleter(Completer):
+    def __init__(self, options: Sequence[SearchPickerOption]) -> None:
+        self._options = list(options)
+
+    def get_completions(self, document, complete_event):
+        del complete_event
+        query = document.text_before_cursor.strip().casefold()
+        for option in self._options:
+            if query and not fuzzy_match(query, option.search_text):
+                continue
+            yield Completion(
+                option.value,
+                start_position=-len(document.text_before_cursor),
+                display=option.label,
+                display_meta=option.meta,
+            )
+
+
+def supports_interactive_picker() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _resolve_search_picker_value(
+    query: str,
+    options: Sequence[SearchPickerOption],
+) -> str | None:
+    normalized = query.strip().casefold()
+    if not normalized:
+        return None
+
+    exact_matches = [
+        option.value
+        for option in options
+        if normalized in {option.value.casefold(), option.label.casefold()}
+    ]
+    if exact_matches:
+        return exact_matches[0]
+
+    prefix_matches = [
+        option.value
+        for option in options
+        if option.value.casefold().startswith(normalized)
+        or option.label.casefold().startswith(normalized)
+    ]
+    if len(prefix_matches) == 1:
+        return prefix_matches[0]
+
+    fuzzy_matches = [
+        option.value for option in options if fuzzy_match(normalized, option.search_text)
+    ]
+    if len(fuzzy_matches) == 1:
+        return fuzzy_matches[0]
+    return None
+
+
+async def searchable_picker(
+    title: str,
+    options: Sequence[SearchPickerOption],
+) -> str | None:
+    if not options or not supports_interactive_picker():
+        return None
+
+    session: PromptSession[str] = PromptSession(
+        style=_prompt_style,
+        completer=_SearchPickerCompleter(options),
+        key_bindings=_build_search_picker_key_bindings(),
+        bottom_toolbar=lambda: FormattedText(
+            [("class:bottom-toolbar.hint", "Type to filter · Enter select · Ctrl-C cancel")]
+        ),
+    )
+
+    while True:
+        try:
+            selection = await session.prompt_async(
+                f"{title}: ",
+                complete_while_typing=True,
+                reserve_space_for_menu=min(max(len(options), 1), 10),
+                pre_run=lambda: get_app().current_buffer.start_completion(select_first=False),
+            )
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        resolved = _resolve_search_picker_value(selection, options)
+        if resolved is not None:
+            return resolved
+        if not selection.strip():
+            return None
+        _console.print(
+            "[red]No matching selection. Keep typing to filter, or Ctrl-C to cancel.[/red]"
+        )
+
+
+def _cancel_search_picker(event) -> None:
+    event.app.exit(exception=KeyboardInterrupt())
+
+
+def _picker_move_completion(event, direction: Literal["up", "down"]) -> None:
+    buffer = event.current_buffer
+    if buffer.complete_state is None:
+        buffer.start_completion(select_first=False)
+        return
+    if direction == "up":
+        buffer.complete_previous()
+        return
+    buffer.complete_next()
+
+
+def _picker_submit_value(buffer) -> str:
+    complete_state = getattr(buffer, "complete_state", None)
+    completions = getattr(complete_state, "completions", None)
+    if completions:
+        current = complete_state.current_completion or completions[0]
+        return str(current.text)
+    return str(buffer.text)
+
+
+def _submit_search_picker(event) -> None:
+    event.app.exit(result=_picker_submit_value(event.current_buffer))
+
+
+def _build_search_picker_key_bindings() -> KeyBindings:
+    kb = KeyBindings()
+
+    @kb.add("c-c", eager=True)
+    @kb.add("escape", eager=True)
+    def _cancel(event) -> None:
+        _cancel_search_picker(event)
+
+    @kb.add("up", eager=True)
+    def _up_completion(event) -> None:
+        _picker_move_completion(event, "up")
+
+    @kb.add("down", eager=True)
+    def _down_completion(event) -> None:
+        _picker_move_completion(event, "down")
+
+    @kb.add("enter", eager=True)
+    def _submit(event) -> None:
+        _submit_search_picker(event)
+
+    return kb
+
+
+def _truncate_left(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return "…"
+    return f"…{text[-(max_chars - 1) :]}"
+
+
+def _truncate_right(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return "…"
+    return f"{text[: max_chars - 1]}…"
+
+
+def _display_path(path: Path) -> str:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+
+    try:
+        relative = resolved.relative_to(Path.home())
+        rendered = f"~/{relative.as_posix()}"
+    except ValueError:
+        rendered = resolved.as_posix()
+
+    return _truncate_left(rendered, 48)
+
+
+def _git_branch_badge(path: Path) -> str | None:
+    git_root = _find_git_root(path)
+    if git_root is None:
+        return None
+
+    env = build_sanitized_subprocess_environment()
+    try:
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=git_root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            env=env,
+        )
+        branch = branch_result.stdout.strip()
+        if not branch:
+            head_result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=git_root,
+                capture_output=True,
+                text=True,
+                timeout=2,
+                env=env,
+            )
+            branch = head_result.stdout.strip()
+        if not branch:
+            return None
+
+        dirty_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=git_root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+    dirty_suffix = "*" if dirty_result.stdout.strip() else ""
+    return f"[⎇ {branch}{dirty_suffix}]"
+
+
+def _build_workspace_label(path: Path) -> str:
+    label = _display_path(path)
+    branch_badge = _git_branch_badge(path)
+    if branch_badge:
+        label = f"{label} {branch_badge}"
+    return label
+
+
+def _set_workspace_context(path: Path) -> None:
+    _TOOLBAR_STATE.project_name = path.name
+    _TOOLBAR_STATE.workspace_label = _build_workspace_label(path)
+
+
+def _compose_toolbar_line(left: str, right: str, cols: int) -> str:
+    if cols <= 0:
+        return ""
+    if not right:
+        return _truncate_right(left, cols)
+    if len(right) >= cols:
+        return _truncate_right(right, cols)
+
+    gap = 2
+    max_left = max(cols - len(right) - gap, 0)
+    left = _truncate_left(left, max_left)
+    padding = max(cols - len(left) - len(right), gap)
+    return f"{left}{' ' * padding}{right}"
+
+
+def _find_instruction_file(path: Path) -> str | None:
+    try:
+        current = path.resolve()
+    except OSError:
+        current = path
+    git_root = _find_git_root(current)
+
+    for candidate_dir in (current, *current.parents):
+        for filename in ("AGENTS.md", "CLAUDE.md"):
+            if (candidate_dir / filename).exists():
+                return filename
+        if git_root is not None and candidate_dir == git_root:
+            break
+
+    return None
+
+
+def _build_environment_summary(project_root: Path | None, *, agent_backend: str | None) -> Text:
+    items: list[str] = []
+    if project_root is not None:
+        if instruction_file := _find_instruction_file(project_root):
+            items.append(instruction_file)
+        items.append("1 MCP server")
+        items.append(f"repo {project_root.name}")
+    if agent_backend:
+        items.append(f"agent {agent_backend}")
+
+    summary = " · ".join(items) if items else "chat ready"
+    return Text.assemble(
+        ("● ", "bold green"),
+        ("Environment loaded: ", "dim"),
+        (summary, "dim"),
+    )
+
+
+def _build_prompt_placeholder() -> FormattedText:
+    if _supports_truecolor_terminal():
+        muted_style = f"fg:{_REPL_COLORS['text_muted']}"
+        accent_style = f"fg:{_REPL_COLORS['accent']} bold"
+    else:
+        muted_style = f"fg:{_ANSI_REPL_COLORS['muted']}"
+        accent_style = f"fg:{_ANSI_REPL_COLORS['accent']} bold"
+
+    return FormattedText(
+        [
+            (muted_style, "Type a request, "),
+            (accent_style, "/"),
+            (muted_style, " for commands, or "),
+            (accent_style, "?"),
+            (muted_style, " for shortcuts"),
+        ]
+    )
+
+
+def _build_banner_heading(agent_backend: str | None, *, version_text: str) -> Text:
+    return Text.assemble(
+        ("ᘚᘛ", "bold green"),
+        ("  ", ""),
+        ("Kagan", "bold green"),
+        (f" v{version_text}", "dim"),
+        (" · ", "dim"),
+        (agent_backend or "chat", "dim"),
+    )
 
 
 def _history_cycle_target(
@@ -152,39 +496,41 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
 
 
 def _bottom_toolbar() -> FormattedText:
-    left_parts: list[str] = []
-    if _TOOLBAR_STATE.session_label:
-        left_parts.append(f"session: {_TOOLBAR_STATE.session_label}")
+    status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
+    status_right_parts: list[str] = []
     if _TOOLBAR_STATE.agent_backend:
-        left_parts.append(f"agent: {_TOOLBAR_STATE.agent_backend}")
-    left_parts.append(f"turns: {_TOOLBAR_STATE.turn_count}")
+        status_right_parts.append(_TOOLBAR_STATE.agent_backend)
     if _TOOLBAR_STATE.context_pct is not None:
-        left_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
-    left = " · ".join(left_parts)
-    right = "Ctrl-C clear · Ctrl-D exit"
+        status_right_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
+    status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} msg")
+    if _TOOLBAR_STATE.turn_count != 1:
+        status_right_parts[-1] = f"{_TOOLBAR_STATE.turn_count} msgs"
+    status_right = " · ".join(status_right_parts)
+
+    shortcut_left = _SHORTCUT_HINT_TEXT
+    shortcut_right = f"session: {_TOOLBAR_STATE.session_label}"
     cols = shutil.get_terminal_size().columns
-    padding = max(cols - len(left) - len(right), 2)
-    return FormattedText([("", left + " " * padding + right)])
+    rule = "─" * max(cols, 1)
+    return FormattedText(
+        [
+            ("class:bottom-toolbar.rule", rule),
+            ("", "\n"),
+            ("class:bottom-toolbar.status", _compose_toolbar_line(status_left, status_right, cols)),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.status",
+                _compose_toolbar_line(shortcut_left, shortcut_right, cols),
+            ),
+        ]
+    )
 
 
 def _build_prompt_message() -> FormattedText:
-    project = Path.cwd().name
     if _supports_truecolor_terminal():
-        user_style = f"bold {_REPL_COLORS['accent']}"
-        at_style = _REPL_COLORS["text_muted"]
-        project_style = _REPL_COLORS["primary"]
+        prompt_style = f"bold {_REPL_COLORS['accent']}"
     else:
-        user_style = f"bold {_ANSI_REPL_COLORS['accent']}"
-        at_style = _ANSI_REPL_COLORS["muted"]
-        project_style = _ANSI_REPL_COLORS["primary"]
-    return FormattedText(
-        [
-            (user_style, "kg"),
-            (at_style, "@"),
-            (project_style, project),
-            ("", " \u203a "),
-        ]
-    )
+        prompt_style = f"bold {_ANSI_REPL_COLORS['accent']}"
+    return FormattedText([(prompt_style, "> ")])
 
 
 _kb = KeyBindings()
@@ -265,31 +611,33 @@ WAVE_FRAMES = (
 )
 
 
-_BRAND_SIGIL: Final[str] = "ᘚᘛ"  # mirrored wave pair — matches docs/TUI logo
-
-
 def _write_boot_banner(
     project_root: Path | None = None, *, agent_backend: str | None = None
 ) -> None:
     ver = version("kagan")
-    line1 = Text.assemble(
-        (_BRAND_SIGIL, "bold green"),
-        (" kagan", "bold green"),
-        (f" v{ver}", "dim"),
-        (" · ", "dim"),
-        (agent_backend or "chat", "dim"),
+    cols = shutil.get_terminal_size().columns
+    panel_width = min(cols, 88) if cols >= 52 else None
+    title = _build_banner_heading(agent_backend, version_text=ver)
+    subtitle = Text("Describe a task to get started.", style="default")
+    tip = Text.assemble(
+        ("Tip: ", "dim"),
+        (_BOOT_TIP_COMMAND, "bold green"),
+        (f" {_BOOT_TIP_TEXT}", "dim"),
     )
-    project = project_root.name if project_root else None
-    pad = " " * (len(_BRAND_SIGIL) + 1)
-    line2 = Text.assemble(
-        (pad, ""),
-        (f"project: {project}", "dim") if project else ("", ""),
-        (" · ", "dim") if project else ("", ""),
-        ("/help for commands", "dim"),
+    safety = Text("Review agent output before you apply it.", style="dim")
+
+    banner = Panel(
+        Group(title, subtitle, tip, safety),
+        box=box.ROUNDED,
+        border_style="green",
+        padding=(0, 2),
+        expand=False,
+        width=panel_width,
     )
+
     _console.print()
-    _console.print(line1)
-    _console.print(line2)
+    _console.print(banner)
+    _console.print(_build_environment_summary(project_root, agent_backend=agent_backend))
     _console.print()
 
 
@@ -355,6 +703,11 @@ async def run_chat_async(
             return None
 
         await controller.hydrate_persistent_session(explicit_session_id=session_id)
+
+        _set_workspace_context(Path.cwd())
+        _TOOLBAR_STATE.agent_backend = controller.agent_backend
+        _TOOLBAR_STATE.turn_count = controller._turn_count
+        _TOOLBAR_STATE.context_pct = None
 
         _write_boot_banner(Path.cwd(), agent_backend=controller.agent_backend)
 

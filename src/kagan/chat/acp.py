@@ -33,6 +33,7 @@ from kagan.core import (
     build_mcp_manifest,
     default_db_path,
     get_backend,
+    resolve_acp_command,
     resolve_orchestrator_prompt,
 )
 from kagan.core.errors import AgentError
@@ -196,10 +197,7 @@ class _CaptureACPClient(ACPClientBase):
 
 
 def _resolve_acp_command_for_backend(agent_backend: str) -> tuple[str, list[str]]:
-    backend = get_backend(agent_backend)
-    executable = backend.get("executable")
-    fallback = [executable] if isinstance(executable, str) and executable else []
-    acp_cmd: list[str] = backend.get("acp_command", fallback)
+    acp_cmd = resolve_acp_command(agent_backend)
     if not acp_cmd:
         raise RuntimeError(f"No ACP command configured for backend {agent_backend!r}")
 

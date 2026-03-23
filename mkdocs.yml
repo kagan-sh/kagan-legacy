@@ -168,6 +168,7 @@ nav:
           - ACP session lifecycle: guides/acp-session-lifecycle.md
           - MCP setup: guides/mcp-setup.md
           - GitHub import: guides/github.md
+          - GitHub Models: guides/github-models.md
           - Remote access: guides/remote-access.md
     - Reference:
           - CLI: reference/cli.md

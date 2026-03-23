@@ -85,12 +85,15 @@ function AppLayout() {
         let cancelled = false;
         apiClient
             .getProjects()
-            .then(async (projects) => {
+            .then((projects) => {
                 if (cancelled) return;
                 const active = projects.find((p) => p.active);
                 if (active) {
-                    await fetchTasks();
-                    if (!cancelled) setProjectChecked(true);
+                    // Render the board immediately — don't block on task fetch.
+                    // fetchTasks runs in parallel; the board shows a loading
+                    // state until tasks arrive via SSE or the fetch resolves.
+                    setProjectChecked(true);
+                    fetchTasks();
                 } else {
                     navigateRef.current("/welcome", { replace: true });
                 }

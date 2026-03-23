@@ -119,6 +119,20 @@ Plugin management subgroup.
 - `kagan plugins check [name]` runs preflight checks for one or all plugins
 - Displays PASS/WARN/FAIL per check with fix hints
 
+### `kagan prompts`
+
+Prompt inspection and export subgroup.
+
+#### `kagan prompts export`
+
+- `--type orchestrator|execution|review` (required): which prompt to resolve and export
+- `--output/-o PATH`: write to file; prints to stdout when omitted
+- `--format yml|text`: output format (default: `yml`)
+- `--model ID`: model ID for the `.prompt.yml` header (default: `openai/gpt-4.1`)
+- Resolves through the three-layer pipeline (dotfile → defaults + behavioral → additional instructions)
+- `yml` format: GitHub Models `.prompt.yml` (also compatible with promptfoo)
+- `text` format: raw resolved prompt text, no wrapper
+
 ______________________________________________________________________
 
 ## Startup Behavior

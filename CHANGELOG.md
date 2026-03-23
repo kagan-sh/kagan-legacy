@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.11.4 (2026-03-23)
+
+### Documentation
+
+- Add MCP tool descriptions
+  ([`cbcc0eb`](https://github.com/kagan-sh/kagan/commit/cbcc0ebf114c331f2b54dd66088e9039cef78737))
+
+- Move glama badge to secondary row
+  ([`9c27f44`](https://github.com/kagan-sh/kagan/commit/9c27f44c7a2dc98f2e2850ebe42c963ef2ae8f72))
+
+
 ## v0.11.4-beta.2 (2026-03-23)
 
 ### Chores

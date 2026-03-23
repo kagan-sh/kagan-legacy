@@ -165,6 +165,8 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("review_merge", _review_merge),
         ("review_rebase", _review_rebase),
     ]
+    # Standalone coroutines register directly; helper-backed tools keep their
+    # inline closures because they bundle richer per-tool registration logic.
     wrapped_tools = [
         ("review_conflicts", _register_review_conflicts),
         ("review_continue_rebase", _register_review_continue_rebase),

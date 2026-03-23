@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.11.2-beta.1 (2026-03-23)
+
+### Chores
+
+- Add MCP registry publishing configuration
+  ([`0e860ea`](https://github.com/kagan-sh/kagan/commit/0e860ea453e6fef71cb8b8cd0c661bd6468f91cf))
+
+
 ## v0.11.1 (2026-03-23)
 
 

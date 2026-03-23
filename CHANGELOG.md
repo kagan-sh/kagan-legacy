@@ -13,6 +13,29 @@
 
 
 
+## v0.12.1-beta.5 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+- **core,tui**: Eliminate redundant DB lookup and handle race condition
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+- **core,tui**: Eliminate redundant DB lookup in project activation
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+
+
+
+
 ## v0.12.1-beta.4 (2026-03-23)
 
 

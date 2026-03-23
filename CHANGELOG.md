@@ -1,6 +1,127 @@
+
+
+
+
+
+
+
 # CHANGELOG
 
 <!-- version list -->
+
+
+
+
+
+## v0.12.1-beta.1 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **web**: Replace unstable GitHub icon import
+  ([`5a37881`](https://github.com/kagan-sh/kagan/commit/5a378816f48b2441058f78fbf2843d827e651853))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **security**: Add Socket license policy
+  ([`ffffe9b`](https://github.com/kagan-sh/kagan/commit/ffffe9b916594337d6ef32050a8bf93bdca6c349))
+
+- **ci**: Bump actions/create-github-app-token from 2 to 3
+  ([#57](https://github.com/kagan-sh/kagan/pull/57),
+  [`11081af`](https://github.com/kagan-sh/kagan/commit/11081af701b4f52b03fa4b60400a11d4295149e6))
+
+- **ci**: Bump actions/github-script from 7 to 8 ([#53](https://github.com/kagan-sh/kagan/pull/53),
+  [`ed4bb82`](https://github.com/kagan-sh/kagan/commit/ed4bb82b043a0a872206a487dd6d6096ded2e115))
+
+- **ci**: Bump actions/setup-node from 4 to 6 ([#56](https://github.com/kagan-sh/kagan/pull/56),
+  [`c0cd18a`](https://github.com/kagan-sh/kagan/commit/c0cd18ad744c5f6ceeabda4c52fd3717032f5d28))
+
+- **ci**: Bump actions/upload-artifact from 4 to 7
+  ([#55](https://github.com/kagan-sh/kagan/pull/55),
+  [`1190a8b`](https://github.com/kagan-sh/kagan/commit/1190a8b770a280e1697b6771e443320dc6f9623c))
+
+- **deps**: Bump lucide-react from 0.469.0 to 1.0.1 in /packages/web
+  ([#62](https://github.com/kagan-sh/kagan/pull/62),
+  [`9652e9b`](https://github.com/kagan-sh/kagan/commit/9652e9b77e5768f466d79b081e54b58343b12413))
+
+- **deps**: Bump marked from 15.0.12 to 17.0.5 in /packages/web
+  ([#59](https://github.com/kagan-sh/kagan/pull/59),
+  [`44584aa`](https://github.com/kagan-sh/kagan/commit/44584aadafd366190222e3d030d3ab6301cfa6a9))
+
+- **ci**: Bump pnpm/action-setup from 4 to 5 ([#54](https://github.com/kagan-sh/kagan/pull/54),
+  [`b3d6969`](https://github.com/kagan-sh/kagan/commit/b3d6969dc035de877475826c01bb7f627ba93aa2))
+
+- **deps**: Bump the all group in /packages/web with 8 updates
+  ([#58](https://github.com/kagan-sh/kagan/pull/58),
+  [`0c597d8`](https://github.com/kagan-sh/kagan/commit/0c597d801ddbf208ed348932a0993af589eed3b1))
+
+- **deps**: Bump zod from 3.25.76 to 4.3.6 in /packages/web
+  ([#61](https://github.com/kagan-sh/kagan/pull/61),
+  [`5538356`](https://github.com/kagan-sh/kagan/commit/5538356ca573f58d7af0e3e721b3b33d324c5a67))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### continuous integration
+
+- Guard semantic release summaries
+  ([`505126e`](https://github.com/kagan-sh/kagan/commit/505126edb8457663e176f4d2c5ff8a41633d2533))
+
+- Improve semantic release notes
+  ([`ecce4da`](https://github.com/kagan-sh/kagan/commit/ecce4da763254df5a603126d6321642ca199e74e))
+
+
+
+
 
 ## v0.12.0 (2026-03-23)
 

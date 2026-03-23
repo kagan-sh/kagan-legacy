@@ -13,6 +13,8 @@
   <a href="https://discord.gg/dB5AgMwMy"><img src="https://img.shields.io/badge/discord-join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
+[![Kagan - AI Orchestration Layer MCP server](https://glama.ai/mcp/servers/kagan-sh/kagan/badges/card.svg)](https://glama.ai/mcp/servers/kagan-sh/kagan)
+
 <!-- mcp-name: io.github.kagan-sh/kagan -->
 
 <h3 align="center">

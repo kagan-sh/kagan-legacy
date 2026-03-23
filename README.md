@@ -12,6 +12,9 @@
   <a href="https://github.com/kagan-sh/kagan/stargazers"><img src="https://img.shields.io/github/stars/kagan-sh/kagan?style=for-the-badge" alt="Stars"></a>
   <a href="https://discord.gg/dB5AgMwMy"><img src="https://img.shields.io/badge/discord-join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
+
+<!-- mcp-name: io.github.kagan-sh/kagan -->
+
 <h3 align="center">
   <a href="https://docs.kagan.sh/">Docs</a> ·
   <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> ·

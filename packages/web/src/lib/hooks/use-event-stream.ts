@@ -134,7 +134,7 @@ export function useEventStream() {
         clearTimeout(reconnectTimerRef.current);
       }
     };
-  }, [setSseConnected, setReconnectAttempts, setTasks, fetchTasks]);
+  }, [setSseConnected, setReconnectAttempts, setTasks, fetchTasks, projectVersion]);
 
   // Adaptive polling fallback when SSE is disconnected
   useEffect(() => {

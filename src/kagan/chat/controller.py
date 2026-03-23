@@ -26,9 +26,11 @@ from acp.schema import (
     UsageUpdate,
 )
 from loguru import logger
+from rich.console import Group
 from rich.live import Live
 from rich.markup import escape as _rich_escape
 from rich.measure import Measurement
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -56,11 +58,15 @@ from kagan.chat.prompt import (
 from kagan.chat.repl import (
     _TOOLBAR_STATE,
     WAVE_FRAMES,
+    SearchPickerOption,
     _build_prompt_message,
+    _build_prompt_placeholder,
     _console,
     _env_flag_enabled,
     _find_git_root,
     _get_prompt_session,
+    searchable_picker,
+    supports_interactive_picker,
 )
 from kagan.chat.sessions import (
     build_chat_session_list_items,
@@ -84,6 +90,7 @@ from kagan.core import (
     default_db_path,
     get_backend,
     get_system_git_identity,
+    resolve_acp_command,
     resolve_orchestrator_prompt,
 )
 from kagan.core.enums import SessionEventType
@@ -483,31 +490,76 @@ class ChatController:
                 _console.print(f"[red]Unknown session selector: {query}[/red]")
                 return False
         else:
-            table = Table(box=None, show_header=False, pad_edge=False)
-            table.add_column(justify="right", style="dim", no_wrap=True)
-            table.add_column(no_wrap=True)
-            table.add_column(style="dim", no_wrap=True)
-            table.add_column(style="dim", no_wrap=True)
-            table.add_column(no_wrap=True)
-            for item in items:
-                marker = "[bold cyan]● current[/bold cyan]" if item.is_current else ""
-                table.add_row(
-                    str(item.index),
-                    item.label,
-                    item.agent_backend or "",
-                    item.updated_relative or "",
-                    marker,
-                )
-            _console.print(table)
-            _console.print()
-            _console.print("[dim]/sessions <n> attach · /new create · /delete <n> remove[/dim]")
-            return False
+            if not supports_interactive_picker():
+                self._print_session_list(items)
+                return False
+            selected_id = await searchable_picker(
+                "Select session",
+                [self._build_session_picker_option(item) for item in items],
+            )
+            if selected_id is None:
+                return False
+            selected = sessions_by_id.get(selected_id)
+            if selected is None:
+                return False
 
         should_restart = await self._attach_session(selected, switching=True)
         _console.print(f"[green]Attached session:[/green] {selected_id or selected.get('id')}")
         if not should_restart:
             self._print_restored_messages()
         return should_restart
+
+    def _print_session_list(self, items: list[Any]) -> None:
+        table = Table(box=None, show_header=False, pad_edge=False)
+        table.add_column(justify="right", style="dim", no_wrap=True)
+        table.add_column(no_wrap=True)
+        table.add_column(style="dim", no_wrap=True)
+        table.add_column(style="dim", no_wrap=True)
+        table.add_column(no_wrap=True)
+        for item in items:
+            marker = "[bold cyan]● current[/bold cyan]" if item.is_current else ""
+            table.add_row(
+                str(item.index),
+                item.label,
+                item.agent_backend or "",
+                item.updated_relative or "",
+                marker,
+            )
+        _console.print(table)
+        _console.print()
+        _console.print("[dim]/sessions <n> attach · /new create · /delete <n> remove[/dim]")
+
+    def _build_session_picker_option(self, item: Any) -> SearchPickerOption:
+        meta_parts = [part for part in (item.agent_backend, item.updated_relative) if part]
+        if item.is_current:
+            meta_parts.append("current")
+        return SearchPickerOption(
+            value=item.session_id,
+            label=f"{item.index}. {item.label}",
+            meta=" · ".join(meta_parts),
+        )
+
+    async def _show_agent_picker(self) -> bool:
+        backends = list_registered_agent_backends()
+        if not supports_interactive_picker():
+            for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
+                _console.print(line)
+            return False
+
+        selected_backend = await searchable_picker(
+            "Select agent backend",
+            [
+                SearchPickerOption(
+                    value=backend,
+                    label=f"{index}. {backend}",
+                    meta="current" if backend == self.agent_backend else "",
+                )
+                for index, backend in enumerate(backends, start=1)
+            ],
+        )
+        if selected_backend is None:
+            return False
+        return await self._switch_agent(selected_backend)
 
     async def _create_new_session(self) -> bool:
         created = await create_chat_session(
@@ -731,9 +783,7 @@ class ChatController:
                 "Set a different orchestrator agent or use an ACP-capable backend."
             )
 
-        executable = backend.get("executable")
-        fallback = [executable] if isinstance(executable, str) and executable else []
-        acp_cmd: list[str] = backend.get("acp_command", fallback)
+        acp_cmd = resolve_acp_command(self.agent_backend)
         if not acp_cmd:
             raise AgentError(f"No ACP command configured for backend {self.agent_backend!r}")
 
@@ -963,6 +1013,7 @@ class ChatController:
             ]
             self._is_primed = True
 
+        _TOOLBAR_STATE.context_pct = None
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
@@ -1034,6 +1085,7 @@ class ChatController:
             if usage.used is not None and usage.size is not None and usage.size > 0:
                 used_k = usage.used / 1000
                 size_k = usage.size / 1000
+                _TOOLBAR_STATE.context_pct = usage.used / usage.size
                 if size_k >= 1000:
                     metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
                 else:
@@ -1052,6 +1104,8 @@ class ChatController:
                     )
                 elif pct > 0.6:
                     _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
+        else:
+            _TOOLBAR_STATE.context_pct = None
         await self._persist_session()
 
     async def _event_watcher(self) -> None:
@@ -1074,15 +1128,16 @@ class ChatController:
 
     async def _repl_loop(self) -> None:
         _console.print(
-            "[dim]Type [bold]/help[/bold] for commands, [bold]/flow[/bold] for guided mode, "
-            "[bold]Ctrl-C[/bold] to interrupt, "
-            "[bold]Ctrl-D[/bold] to exit.[/dim]\n"
+            "[dim]Press [bold]/help[/bold] for commands and [bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
         watcher_task = asyncio.create_task(self._event_watcher())
         try:
             while True:
                 try:
-                    line = await _get_prompt_session().prompt_async(_build_prompt_message())
+                    line = await _get_prompt_session().prompt_async(
+                        _build_prompt_message(),
+                        placeholder=_build_prompt_placeholder(),
+                    )
                 except EOFError:
                     break
                 except KeyboardInterrupt:
@@ -1139,9 +1194,7 @@ class ChatController:
             case SlashAction.SHOW_HELP:
                 self._print_help_documentation()
             case SlashAction.SHOW_AGENTS:
-                backends = list_registered_agent_backends()
-                for line in format_agent_backend_list(backends, current_backend=self.agent_backend):
-                    _console.print(line)
+                return await self._show_agent_picker()
             case SlashAction.SWITCH_AGENT:
                 return await self._switch_agent(result.data or result.selected_agent or "")
             case SlashAction.LIST_SESSIONS:
@@ -1172,18 +1225,57 @@ class ChatController:
         for alias, target in aliases.items():
             reverse_aliases.setdefault(target, []).append(alias)
 
-        _console.print("[bold]Commands:[/bold]")
-        table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 1, 0, 0))
-        table.add_column(style="bold cyan", no_wrap=True)
-        table.add_column(style="default")
-        for spec in SLASH_COMMAND_REGISTRY.specs():
-            cmd_aliases = reverse_aliases.get(spec.name, [])
-            alias_str = f" ({', '.join(cmd_aliases)})" if cmd_aliases else ""
-            table.add_row(f"  /{spec.name}{alias_str}", spec.description)
-        _console.print(table)
-        _console.print()
-        _console.print("[dim]Keyboard: Alt-Enter newline · Ctrl-C clear · Ctrl-D exit[/dim]")
-        _console.print("[dim]Docs: https://docs.kagan.sh/[/dim]")
+        spec_by_name = {spec.name: spec for spec in SLASH_COMMAND_REGISTRY.specs()}
+        sections = [
+            ("Global", ["help", "flow", "status", "clear", "exit"]),
+            ("Sessions", ["new", "sessions", "delete"]),
+            ("Workspace", ["project", "agents", "tool"]),
+        ]
+
+        def _label_for(name: str) -> str:
+            parts = [f"/{name}"]
+            for alias in sorted(reverse_aliases.get(name, [])):
+                parts.append(f"/{alias}")
+            return ", ".join(parts)
+
+        blocks: list[object] = []
+        for title, names in sections:
+            table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+            table.add_column(style="bold cyan", no_wrap=True)
+            table.add_column(style="default")
+            for name in names:
+                spec = spec_by_name.get(name)
+                if spec is None:
+                    continue
+                table.add_row(_label_for(name), spec.description)
+            blocks.append(Text(title, style="bold"))
+            blocks.append(table)
+
+        keyboard = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+        keyboard.add_column(style="bold cyan", no_wrap=True)
+        keyboard.add_column(style="default")
+        keyboard.add_row("Ctrl-J / Alt-Enter", "Insert a newline")
+        keyboard.add_row("Ctrl-C", "Clear the current input")
+        keyboard.add_row("Ctrl-D", "Exit the chat session")
+
+        blocks.extend(
+            [
+                Text("Keyboard", style="bold"),
+                keyboard,
+                Text("Type a request, / for commands, or ? for shortcuts", style="dim"),
+                Text("Docs: https://docs.kagan.sh/", style="dim"),
+            ]
+        )
+
+        _console.print(
+            Panel(
+                Group(*blocks),
+                title="Help Guide",
+                border_style="green",
+                padding=(1, 2),
+                expand=False,
+            )
+        )
 
     def _print_status_panel(self) -> None:
         session_label = self._session_title or self._chat_session_id or "none"

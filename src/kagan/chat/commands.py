@@ -373,6 +373,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         handler=flow_cmd.handler,
     )
     registry.register_alias("q", "exit")
+    registry.register_alias("quit", "exit")
     registry.register_alias("?", "help")
     registry.register_alias("s", "sessions")
     registry.register_alias("a", "agents")

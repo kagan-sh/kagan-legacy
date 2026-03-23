@@ -1,0 +1,106 @@
+name: Prompt Evaluation
+
+on:
+  pull_request:
+    paths:
+      - "src/kagan/core/_prompts.py"
+      - "evals/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  models: read
+
+jobs:
+  eval:
+    if: >-
+      github.actor == 'aorumbayev' ||
+      github.actor == 'kagan-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.BOT_ID }}
+          private-key: ${{ secrets.BOT_SK }}
+
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: uv sync --frozen --dev
+
+      - name: Generate prompt files and resolved config
+        id: generate
+        continue-on-error: true
+        run: uv run poe eval-generate
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Run promptfoo evaluation
+        id: promptfoo
+        if: steps.generate.outcome == 'success'
+        continue-on-error: true
+        run: >-
+          npx promptfoo@latest eval
+          -c evals/promptfooconfig.resolved.yaml
+          -o evals/results.json
+          --no-progress-bar
+          --max-concurrency 1
+          --delay 6500
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Summarize prompt evaluation
+        if: always()
+        run: |
+          echo "## Prompt Evaluation" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.generate.outcome }}" != "success" ]; then
+            echo "::warning::Prompt eval setup failed; workflow is advisory and will not block merges."
+            echo "- Setup: failed" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${{ steps.promptfoo.outcome }}" != "success" ]; then
+            echo "::warning::Promptfoo run failed; workflow is advisory and will not block merges."
+            echo "- Setup: passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Promptfoo execution: failed" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f evals/results.json ]; then
+              failures=$(jq '.results.stats.failures // 0' evals/results.json)
+              errors=$(jq '.results.stats.errors // 0' evals/results.json)
+              echo "- Failures: $failures" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Errors: $errors" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          failures=$(jq '.results.stats.failures // 0' evals/results.json)
+          errors=$(jq '.results.stats.errors // 0' evals/results.json)
+          echo "- Setup: passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Promptfoo execution: passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Failures: $failures" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Errors: $errors" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failures" -gt 0 ] || [ "$errors" -gt 0 ]; then
+            echo "::warning::Prompt evaluation reported failures or errors; workflow is advisory and will not block merges."
+          fi
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-eval-results
+          path: evals/results.json
+          retention-days: 30

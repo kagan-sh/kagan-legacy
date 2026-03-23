@@ -128,12 +128,14 @@ async def test_enter_on_detail_tab_does_not_switch_tab(review_board: KaganDriver
     async with app.run_test() as pilot:
         await pilot.pause()
         app.push_screen(TaskScreen(task_id=task.id))
-        # Wait for async on_mount to complete and select initial tab
-        for _ in range(10):
+        # Wait for async on_mount + call_after_refresh to select review tab
+        for _ in range(20):
             await pilot.pause()
             ts = next((s for s in reversed(app.screen_stack) if isinstance(s, TaskScreen)), None)
             if ts is not None and ts._task_model is not None:
-                break
+                tabs = ts.query_one("#ts-tabs", TabbedContent)
+                if tabs.active == "review":
+                    break
 
         # Press Enter (primary_action) — should trigger approve flow, not switch tab
         await pilot.press("enter")

@@ -127,7 +127,6 @@ class TaskScreen(Screen[None]):
         self._reviewer_session_id: str | None = None
         self._pending_reviewer_session_id = False
         self._user_switched_tab = False
-        self._last_seen_status: TaskStatus | None = None
 
     @property
     def kagan_app(self) -> KaganApp:
@@ -1162,12 +1161,7 @@ class TaskScreen(Screen[None]):
     def _maybe_auto_switch_to_review(self) -> None:
         if self._user_switched_tab:
             return
-        if self._task_model is None:
-            return
-        current = self._task_model.status
-        previous = self._last_seen_status
-        self._last_seen_status = current
-        if previous is not None and previous is not current and current is TaskStatus.REVIEW:
+        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
             with contextlib.suppress(NoMatches):
                 tabs = self.query_one("#ts-tabs", TabbedContent)
                 if getattr(tabs, "active", "") != "review":
@@ -1678,22 +1672,10 @@ class TaskScreen(Screen[None]):
         return "overview"
 
     def _select_initial_tab(self) -> None:
-        if self._task_model is not None:
-            self._last_seen_status = self._task_model.status
-        tab_id = "review" if (
-            self._task_model is not None
-            and self._task_model.status is TaskStatus.REVIEW
-        ) else "overview"
-        with contextlib.suppress(NoMatches):
-            tabs = self.query_one("#ts-tabs", TabbedContent)
-            tabs.active = tab_id
-            self.call_after_refresh(lambda: self._ensure_tab(tab_id))
-
-    def _ensure_tab(self, tab_id: str) -> None:
-        with contextlib.suppress(NoMatches):
-            tabs = self.query_one("#ts-tabs", TabbedContent)
-            if tabs.active != tab_id:
-                tabs.active = tab_id
+        if self._task_model is not None and self._task_model.status is TaskStatus.REVIEW:
+            self.query_one("#ts-tabs", TabbedContent).active = "review"
+        else:
+            self.query_one("#ts-tabs", TabbedContent).active = "overview"
 
     def _configure_overlay_chat(
         self,

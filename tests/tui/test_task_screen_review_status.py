@@ -58,11 +58,12 @@ async def test_review_stream_source_prefers_reviewer_for_review_tasks(board: Kag
         await pilot.pause()
 
         app.push_screen(TaskScreen(task_id=task.id))
-        await pilot.pause()
-        await pilot.pause()
-        await pilot.pause()
+        for _ in range(10):
+            await pilot.pause()
+            tabs = app.screen.query_one("#ts-tabs", TabbedContent)
+            if tabs.active == "review":
+                break
 
-        tabs = app.screen.query_one("#ts-tabs", TabbedContent)
         source = str(app.screen.query_one("#ts-detail-stream-source", Static).content)
 
         assert tabs.active == "review"

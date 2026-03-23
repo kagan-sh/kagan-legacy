@@ -47,7 +47,7 @@ def export(prompt_type: str, output: str | None, model: str, output_format: str)
     import asyncio
 
     from kagan.cli._bootstrap import make_client
-    from kagan.core._prompt_export import export_prompt_text, export_prompt_yml, write_prompt_yml
+    from kagan.core._prompt_export import export_prompt_text, export_prompt_yml, write_prompt_file
 
     settings: dict[str, str] = {}
     try:
@@ -64,5 +64,5 @@ def export(prompt_type: str, output: str | None, model: str, output_format: str)
     if output is None:
         sys.stdout.write(content)
     else:
-        dest = write_prompt_yml(content, Path(output))
+        dest = write_prompt_file(content, Path(output))
         click.echo(f"Wrote {dest}")

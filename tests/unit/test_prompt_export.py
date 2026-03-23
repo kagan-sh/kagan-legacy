@@ -6,7 +6,12 @@ import pytest
 
 from pathlib import Path
 
-from kagan.core._prompt_export import PROMPT_TYPES, export_prompt_text, export_prompt_yml, write_prompt_yml
+from kagan.core._prompt_export import (
+    PROMPT_TYPES,
+    export_prompt_text,
+    export_prompt_yml,
+    write_prompt_file,
+)
 
 
 # Use empty settings dict — prompt resolution works with defaults
@@ -73,21 +78,21 @@ class TestExportPromptYml:
         assert len(result) > 100
 
 
-class TestWritePromptYml:
-    """Tests for write_prompt_yml()."""
+class TestWritePromptFile:
+    """Tests for write_prompt_file()."""
 
     @pytest.mark.unit
     def test_writes_file(self, tmp_path: Path) -> None:
         content = "name: test\nmodel: test\n"
         dest = tmp_path / "sub" / "test.prompt.yml"
-        result = write_prompt_yml(content, dest)
+        result = write_prompt_file(content, dest)
         assert result == dest
         assert dest.read_text() == content
 
     @pytest.mark.unit
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         dest = tmp_path / "deep" / "nested" / "dir" / "prompt.yml"
-        write_prompt_yml("content", dest)
+        write_prompt_file("content", dest)
         assert dest.exists()
 
 
@@ -129,6 +134,11 @@ class TestExportPromptText:
     def test_model_with_special_chars_is_quoted(self) -> None:
         result = export_prompt_yml("orchestrator", _EMPTY_SETTINGS, model="my-model: v2 # test")
         assert 'model: "my-model: v2 # test"' in result
+
+    @pytest.mark.unit
+    def test_model_with_backslash_escapes_in_double_quoted_yaml(self) -> None:
+        result = export_prompt_yml("orchestrator", _EMPTY_SETTINGS, model=r"github:my\model")
+        assert 'model: "github:my\\\\model"' in result
 
     @pytest.mark.unit
     def test_text_differs_from_yml(self) -> None:

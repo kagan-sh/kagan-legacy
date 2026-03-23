@@ -67,8 +67,8 @@ def export_prompt_text(
     return _resolve(prompt_type, settings, task=task, task_id=task_id, project_path=project_path)
 
 
-def write_prompt_yml(content: str, output_path: Path) -> Path:
-    """Write .prompt.yml content to *output_path* and return the path."""
+def write_prompt_file(content: str, output_path: Path) -> Path:
+    """Write exported prompt content to *output_path* and return the path."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
     logger.debug("Wrote prompt file to {}", output_path)
@@ -101,7 +101,7 @@ def _resolve(
     return resolve_review_prompt(task_id or "TASK_ID_PLACEHOLDER", settings, project_path)
 
 
-_YAML_MUST_QUOTE = frozenset(':#{}[]&*?|>=!%@`"\'')
+_YAML_MUST_QUOTE = frozenset(":#{}[]&*?|>=!%@`\"'")
 
 
 def _yaml_quote(value: str) -> str:
@@ -111,7 +111,7 @@ def _yaml_quote(value: str) -> str:
     plain scalars. We only quote when truly ambiguous characters appear.
     """
     if _YAML_MUST_QUOTE.intersection(value):
-        escaped = value.replace('"', '\\"')
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return value
 

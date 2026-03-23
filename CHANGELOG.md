@@ -13,6 +13,21 @@
 
 
 
+## v0.12.1-beta.2 (2026-03-23)
+
+
+
+
+### chores
+
+- **deps**: Bump typescript from 5.9.3 to 6.0.2 in /packages/web
+  ([#60](https://github.com/kagan-sh/kagan/pull/60),
+  [`c7099aa`](https://github.com/kagan-sh/kagan/commit/c7099aace754e8f775b0d0409fb8cd113cbcf7fb))
+
+
+
+
+
 ## v0.12.1-beta.1 (2026-03-23)
 
 

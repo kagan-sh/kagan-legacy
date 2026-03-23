@@ -35,6 +35,12 @@ class SessionKillResult(TypedDict):
     killed: bool
 
 
+def _attached_session_or_none(session: Any) -> Any:
+    if session is None or session.launcher is None:
+        return None
+    return session
+
+
 async def _get_latest_session(client: Any, task_id: str) -> Any:
     return await client.tasks.sessions.get_latest(task_id)
 
@@ -47,12 +53,12 @@ async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
     except NotFoundError:
         return {"exists": False, "task_id": task_id}
 
-    session = await client.tasks.sessions.get_latest(task_id)
-    has_attached_session = (
-        session is not None
-        and session.launcher is not None
-        and session.status in {SessionStatus.PENDING, SessionStatus.RUNNING}
-    )
+    # Assumes get_latest returns None rather than NotFoundError when no sessions exist.
+    session = _attached_session_or_none(await client.tasks.sessions.get_latest(task_id))
+    has_attached_session = session is not None and session.status in {
+        SessionStatus.PENDING,
+        SessionStatus.RUNNING,
+    }
     return {"exists": has_attached_session, "task_id": task_id}
 
 
@@ -80,7 +86,7 @@ async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
 
 async def _handle_get(client: Any, task_id: str) -> SessionGetResult:
     task = await client.tasks.get(task_id)
-    session = await client.tasks.sessions.get_latest(task_id)
+    session = _attached_session_or_none(await client.tasks.sessions.get_latest(task_id))
     return {
         "task_id": task_id,
         "task_status": task.status.value,

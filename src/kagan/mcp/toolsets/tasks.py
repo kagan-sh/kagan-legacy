@@ -177,6 +177,10 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
 
 @mcp_error_boundary
 async def _task_list(ctx: Context, status: str | None = None) -> dict:
+    """List tasks, optionally filtered by status.
+
+    Use this to inspect project state before planning or mutating work.
+    """
     app = get_context(ctx)
     status_enum = TaskStatus(status) if status else None
     tasks = await app.client.tasks.list(status=status_enum)
@@ -198,6 +202,10 @@ async def _task_create(
     agent_backend: str | None = None,
     launcher: str | None = None,
 ) -> dict:
+    """Create a task on the active board.
+
+    Include acceptance criteria when you want downstream review to stay concrete.
+    """
     app = get_context(ctx)
     priority_enum = parse_priority(priority)
     task = await app.client.tasks.create(
@@ -228,6 +236,10 @@ async def _task_update(
     launcher: str | None = None,
     status: str | None = None,
 ) -> dict:
+    """Update task fields or transition task status.
+
+    Check the verification payload to confirm the requested changes were applied.
+    """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     priority_enum = parse_priority(priority) if priority is not None else None
@@ -261,6 +273,10 @@ async def _task_update(
 
 @mcp_error_boundary
 async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) -> dict:
+    """Append a timestamped reasoning note to a task scratchpad.
+
+    Use this for durable agent notes, not for status changes.
+    """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     await app.client.tasks.add_note(resolved_task_id, note)
@@ -269,6 +285,7 @@ async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) ->
 
 @mcp_error_boundary
 async def _task_search(ctx: Context, query: str) -> dict:
+    """Search tasks by free-text query within the active project."""
     app = get_context(ctx)
     tasks = await app.client.tasks.search(query)
     return {"tasks": [_task_to_dict(t) for t in tasks]}
@@ -284,6 +301,10 @@ async def _task_events(
     max_payload_bytes: int = 16384,
     max_total_bytes: int = 262144,
 ) -> dict:
+    """Fetch paginated execution events for a task.
+
+    Use payload flags to inspect logs while keeping responses bounded for agent context.
+    """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     safe_limit = _clamp_int(limit, minimum=1, maximum=200)
@@ -362,6 +383,10 @@ async def _tasks_wait(
     wait_for_status: list[str] | str | None = None,
     resolve_when_any: bool = False,
 ) -> dict:
+    """Wait for tasks to reach completion or target statuses.
+
+    Use this to gate dependent work or synchronize concurrent agents.
+    """
     app = get_context(ctx)
     resolved_task_ids = _resolve_task_ids(ctx, task_ids)
     statuses = _parse_wait_for_task_statuses(wait_for_status)
@@ -438,12 +463,14 @@ async def _tasks_wait(
 
 @mcp_error_boundary
 async def _task_counts(ctx: Context) -> dict:
+    """Return task counts grouped by board status."""
     app = get_context(ctx)
     return await app.client.tasks.counts()
 
 
 @mcp_error_boundary
 async def _task_delete(ctx: Context, task_id: str) -> dict:
+    """Delete a task permanently."""
     app = get_context(ctx)
     await app.client.tasks.delete(task_id)
     return {"task_id": task_id, "deleted": True}

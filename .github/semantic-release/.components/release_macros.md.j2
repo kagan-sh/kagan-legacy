@@ -8,14 +8,15 @@
 
 {% macro format_commit_summary(commit) -%}
 {% if commit.error is undefined %}
-{% set summary = capitalize_first(commit.descriptions[0] | safe) %}
+{% set description = commit.descriptions[0] if commit.descriptions else "" %}
+{% set summary = capitalize_first(description | safe) %}
 {% if commit.scope %}{% set summary = "**%s**: %s" | format(commit.scope, summary) %}{% endif %}
 {% set links = [] %}
 {% if commit.linked_merge_request != "" %}
 {% set _ = links.append(format_link(commit.linked_merge_request | pull_request_url, commit.linked_merge_request)) %}
 {% endif %}
 {% set _ = links.append(format_link(commit.hexsha | commit_hash_url, "`%s`" | format(commit.short_hash))) %}
-{{ summary }}{% if links %} ({{ links | join(", ") }}){% endif %}
+{% if summary %}{{ summary }}{% if links %} ({{ links | join(", ") }}){% endif %}{% endif %}
 {% else %}
 {{ (commit.commit.message | string).split("\n", maxsplit=1)[0] }}
 {% endif %}
@@ -39,7 +40,8 @@
 {% if type_ != "unknown" and (not hide_internal_types or type_ not in hidden_types) %}
 {% set lines = [] %}
 {% for commit in commits | rejectattr("error", "defined") | sort(attribute="descriptions.0") %}
-{% set _ = lines.append(("- %s" | format(format_commit_summary(commit))) | autofit_text_width(100, 2)) %}
+{% set summary = format_commit_summary(commit) | trim %}
+{% if summary %}{% set _ = lines.append(("- %s" | format(summary)) | autofit_text_width(100, 2)) %}{% endif %}
 {% endfor %}
 {% if lines %}
 
@@ -53,7 +55,8 @@
 {% set breaking = [] %}
 {% for type_, commits in elements | dictsort %}
 {% for commit in commits | rejectattr("error", "defined") | selectattr("breaking_descriptions.0") | list %}
-{% set _ = breaking.append(("- %s" | format(format_notice(commit, "breaking_descriptions"))) | autofit_text_width(100, 2)) %}
+{% set notice = format_notice(commit, "breaking_descriptions") | trim %}
+{% if notice %}{% set _ = breaking.append(("- %s" | format(notice)) | autofit_text_width(100, 2)) %}{% endif %}
 {% endfor %}
 {% endfor %}
 {% if breaking %}
@@ -66,7 +69,8 @@
 {% set notices = [] %}
 {% for type_, commits in elements | dictsort %}
 {% for commit in commits | rejectattr("error", "defined") | selectattr("release_notices.0") | list %}
-{% set _ = notices.append(("- %s" | format(format_notice(commit, "release_notices"))) | autofit_text_width(100, 2)) %}
+{% set notice = format_notice(commit, "release_notices") | trim %}
+{% if notice %}{% set _ = notices.append(("- %s" | format(notice)) | autofit_text_width(100, 2)) %}{% endif %}
 {% endfor %}
 {% endfor %}
 {% if notices %}

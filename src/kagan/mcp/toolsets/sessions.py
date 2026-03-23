@@ -6,6 +6,7 @@ from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import resolve_default_agent_backend, resolve_launcher
+from kagan.core.enums import SessionStatus
 from kagan.core.errors import KaganError, SessionError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
@@ -42,8 +43,14 @@ async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
     from kagan.core.errors import NotFoundError
 
     try:
-        task = await client.tasks.get(task_id)
-        return {"exists": task is not None, "task_id": task_id}
+        await client.tasks.get(task_id)
+        session = await client.tasks.sessions.get_latest(task_id)
+        has_attached_session = (
+            session is not None
+            and session.launcher is not None
+            and session.status in {SessionStatus.PENDING, SessionStatus.RUNNING}
+        )
+        return {"exists": has_attached_session, "task_id": task_id}
     except NotFoundError:
         return {"exists": False, "task_id": task_id}
 

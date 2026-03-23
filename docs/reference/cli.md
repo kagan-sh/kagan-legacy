@@ -119,7 +119,7 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 | Tier       | Scope                                                                                                                  |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Read-only operations (task_get, task_list, etc.)                                                                       |
-| `default`  | Read + write (`task_create`, `task_update`, `task_add_note`, `run_start`, `run_update`, `run_cancel`, `review_decide`) |
+| `default`  | Read + write (`task_create`, `task_update`, `task_add_note`, `run_start`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `run_cancel`, `review_approve`, `review_reject`, `review_merge`, `review_rebase`) |
 | `admin`    | Default + destructive (task_delete, settings, plugin sync)                                                             |
 
 ```bash

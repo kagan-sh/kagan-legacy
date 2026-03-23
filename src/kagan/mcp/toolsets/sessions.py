@@ -1,13 +1,13 @@
 """kagan.mcp.toolsets.sessions — Session lifecycle MCP tools."""
 
-from enum import StrEnum
 from typing import Any, TypedDict, cast
 
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import resolve_default_agent_backend, resolve_launcher
-from kagan.core.errors import KaganError, SessionError, ValidationError
+from kagan.core.enums import SessionStatus
+from kagan.core.errors import KaganError, SessionError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
 from kagan.mcp.toolsets import mcp_error_boundary
@@ -25,7 +25,9 @@ class SessionCreateResult(TypedDict):
 
 class SessionGetResult(TypedDict):
     task_id: str
-    status: str
+    task_status: str
+    session_id: str | None
+    session_status: str | None
 
 
 class SessionKillResult(TypedDict):
@@ -33,39 +35,31 @@ class SessionKillResult(TypedDict):
     killed: bool
 
 
+def _attached_session_or_none(session: Any) -> Any:
+    if session is None or session.launcher is None:
+        return None
+    return session
+
+
 async def _get_latest_session(client: Any, task_id: str) -> Any:
     return await client.tasks.sessions.get_latest(task_id)
-
-
-class SessionAction(StrEnum):
-    EXISTS = "exists"
-    CREATE = "create"
-    GET = "get"
-    KILL = "kill"
-    DETACH = "detach"
-
-
-_SESSION_ACTIONS = frozenset(item.value for item in SessionAction)
-
-
-def _parse_session_action(action: str) -> SessionAction:
-    try:
-        return SessionAction(action)
-    except ValueError as exc:
-        raise ValidationError(
-            "Unknown run_update action",
-            f"{action!r}. Must be one of {sorted(_SESSION_ACTIONS)}",
-        ) from exc
 
 
 async def _handle_exists(client: Any, task_id: str) -> SessionExistsResult:
     from kagan.core.errors import NotFoundError
 
     try:
-        task = await client.tasks.get(task_id)
-        return {"exists": task is not None, "task_id": task_id}
+        await client.tasks.get(task_id)
     except NotFoundError:
         return {"exists": False, "task_id": task_id}
+
+    # Assumes get_latest returns None rather than NotFoundError when no sessions exist.
+    session = _attached_session_or_none(await client.tasks.sessions.get_latest(task_id))
+    has_attached_session = session is not None and session.status in {
+        SessionStatus.PENDING,
+        SessionStatus.RUNNING,
+    }
+    return {"exists": has_attached_session, "task_id": task_id}
 
 
 async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
@@ -92,7 +86,13 @@ async def _handle_create(client: Any, task_id: str) -> SessionCreateResult:
 
 async def _handle_get(client: Any, task_id: str) -> SessionGetResult:
     task = await client.tasks.get(task_id)
-    return {"task_id": task_id, "status": str(task.status)}
+    session = _attached_session_or_none(await client.tasks.sessions.get_latest(task_id))
+    return {
+        "task_id": task_id,
+        "task_status": task.status.value,
+        "session_id": session.id if session is not None else None,
+        "session_status": (session.status.value if session is not None else None),
+    }
 
 
 async def _handle_kill(client: Any, task_id: str) -> SessionKillResult:
@@ -206,25 +206,39 @@ async def _run_summary(ctx: Context, task_ids: list[str] | None = None) -> dict:
     return {"rows": rows}
 
 
-async def _run_update(action: str, task_id: str, ctx: Context) -> dict[str, Any]:
+@mcp_error_boundary
+async def _run_exists(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Check whether a task has an interactive session."""
     app = get_context(ctx)
-    return await _run_update_core(action, task_id, app.client)
+    return cast("dict[str, Any]", await _handle_exists(app.client, task_id))
 
 
 @mcp_error_boundary
-async def _run_update_core(action: str, task_id: str, client: Any) -> dict[str, Any]:
-    parsed = _parse_session_action(action)
-    if parsed is SessionAction.EXISTS:
-        return cast("dict[str, Any]", await _handle_exists(client, task_id))
-    if parsed is SessionAction.CREATE:
-        return cast("dict[str, Any]", await _handle_create(client, task_id))
-    if parsed is SessionAction.GET:
-        return cast("dict[str, Any]", await _handle_get(client, task_id))
-    if parsed is SessionAction.KILL:
-        return cast("dict[str, Any]", await _handle_kill(client, task_id))
-    if parsed is SessionAction.DETACH:
-        return cast("dict[str, Any]", await client.tasks.detach(task_id))
-    raise ValidationError("Unknown run_update action", repr(parsed.value))
+async def _run_create(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Start an interactive session for a task."""
+    app = get_context(ctx)
+    return cast("dict[str, Any]", await _handle_create(app.client, task_id))
+
+
+@mcp_error_boundary
+async def _run_get(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Get the latest task and session status for a task."""
+    app = get_context(ctx)
+    return cast("dict[str, Any]", await _handle_get(app.client, task_id))
+
+
+@mcp_error_boundary
+async def _run_kill(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Cancel a task run by task id."""
+    app = get_context(ctx)
+    return cast("dict[str, Any]", await _handle_kill(app.client, task_id))
+
+
+@mcp_error_boundary
+async def _run_detach(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Detach from an interactive session and update task state."""
+    app = get_context(ctx)
+    return cast("dict[str, Any]", await app.client.tasks.detach(task_id))
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
@@ -233,7 +247,11 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("run_start", _run_start),
         ("run_summary", _run_summary),
         ("run_cancel", _run_cancel),
-        ("run_update", _run_update),
+        ("run_exists", _run_exists),
+        ("run_create", _run_create),
+        ("run_get", _run_get),
+        ("run_kill", _run_kill),
+        ("run_detach", _run_detach),
     ]
     for name, fn in _tools:
         if is_tool_allowed(name, opts):

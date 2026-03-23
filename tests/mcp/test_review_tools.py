@@ -1,4 +1,4 @@
-"""Behavioral tests for review_decide MCP tool.
+"""Behavioral tests for explicit review MCP tools.
 
 Tests exercise tool behavior through MCP protocol (ClientSession.call_tool),
 not by importing production internals. All assertions are on observable
@@ -157,48 +157,57 @@ async def _tool_names_for(opts: ServerOptions) -> set[str]:
 
 
 async def test_review_apply_visible_on_default_server(mcp_board: ClientSession) -> None:
-    """Default server must expose review_apply."""
+    """Default server must expose explicit review tools."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "review_decide" in names
+    assert "review_approve" in names
+    assert "review_reject" in names
+    assert "review_merge" in names
+    assert "review_rebase" in names
     assert "review_continue_rebase" in names
     assert "review_abort_rebase" in names
     assert "review_conflicts" in names
 
 
 async def test_review_apply_visible_on_readonly_server() -> None:
-    """review_decide is a default-tier tool and must NOT be visible on readonly server."""
+    """Explicit review tools must NOT be visible on readonly server."""
     names = await _tool_names_for(ServerOptions(readonly=True))
-    assert "review_decide" not in names
+    assert "review_approve" not in names
+    assert "review_reject" not in names
+    assert "review_merge" not in names
+    assert "review_rebase" not in names
     assert "review_continue_rebase" not in names
     assert "review_abort_rebase" not in names
     assert "review_conflicts" in names
 
 
 async def test_review_apply_visible_on_admin_server() -> None:
-    """review_decide must be visible on admin server (admin >= default)."""
+    """Explicit review tools must be visible on admin server."""
     names = await _tool_names_for(ServerOptions(admin=True))
-    assert "review_decide" in names
+    assert "review_approve" in names
+    assert "review_reject" in names
+    assert "review_merge" in names
+    assert "review_rebase" in names
 
 
 # ---------------------------------------------------------------------------
-# review_decide — approve action
+# review_approve
 # ---------------------------------------------------------------------------
 
 
 async def test_review_apply_approve_returns_task_id(mcp_board: ClientSession) -> None:
-    """review_decide with action=approve must return a dict with task_id."""
+    """review_approve must return a dict with task_id."""
     task_id = await _create_review_task_with_ac(mcp_board, "review approve 1")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "approve"})
+    result = await mcp_board.call_tool("review_approve", {"task_id": task_id})
     assert not result.isError
     payload = _text(result)
     assert payload.get("task_id") == task_id
 
 
 async def test_review_apply_approve_returns_action(mcp_board: ClientSession) -> None:
-    """review_decide with action=approve must echo back the action."""
+    """review_approve must echo back the action."""
     task_id = await _create_review_task_with_ac(mcp_board, "review approve 2")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "approve"})
+    result = await mcp_board.call_tool("review_approve", {"task_id": task_id})
     assert not result.isError
     payload = _text(result)
     assert payload.get("action") == "approve"
@@ -207,9 +216,9 @@ async def test_review_apply_approve_returns_action(mcp_board: ClientSession) -> 
 async def test_review_apply_approve_blocked_without_acceptance_criteria(
     mcp_board: ClientSession,
 ) -> None:
-    """review_decide approve on a task without AC must return blocked."""
+    """review_approve on a task without AC must return blocked."""
     task_id = await _create_review_task(mcp_board, "review approve no ac")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "approve"})
+    result = await mcp_board.call_tool("review_approve", {"task_id": task_id})
     assert not result.isError
     payload = _text(result)
     assert payload.get("action") == "blocked"
@@ -218,16 +227,15 @@ async def test_review_apply_approve_blocked_without_acceptance_criteria(
 
 
 # ---------------------------------------------------------------------------
-# review_decide — reject action
+# review_reject
 # ---------------------------------------------------------------------------
 
 
 async def test_review_apply_reject_returns_task_id(mcp_board: ClientSession) -> None:
-    """review_decide with action=reject must return a dict with task_id."""
+    """review_reject must return a dict with task_id."""
     task_id = await _create_review_task(mcp_board, "review reject 1")
     result = await mcp_board.call_tool(
-        "review_decide",
-        {"task_id": task_id, "action": "reject", "feedback": "Needs more work"},
+        "review_reject", {"task_id": task_id, "feedback": "Needs more work"}
     )
     assert not result.isError
     payload = _text(result)
@@ -235,11 +243,10 @@ async def test_review_apply_reject_returns_task_id(mcp_board: ClientSession) -> 
 
 
 async def test_review_apply_reject_echoes_feedback(mcp_board: ClientSession) -> None:
-    """review_decide with action=reject must echo back the feedback."""
+    """review_reject must echo back the feedback."""
     task_id = await _create_review_task(mcp_board, "review reject 2")
     result = await mcp_board.call_tool(
-        "review_decide",
-        {"task_id": task_id, "action": "reject", "feedback": "Fix the tests"},
+        "review_reject", {"task_id": task_id, "feedback": "Fix the tests"}
     )
     assert not result.isError
     payload = _text(result)
@@ -247,37 +254,37 @@ async def test_review_apply_reject_echoes_feedback(mcp_board: ClientSession) -> 
 
 
 async def test_review_apply_reject_without_feedback(mcp_board: ClientSession) -> None:
-    """review_decide with action=reject and no feedback must return an error."""
+    """review_reject without feedback must return an error."""
     task_id = await _create_review_task(mcp_board, "review reject missing feedback")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "reject"})
+    result = await mcp_board.call_tool("review_reject", {"task_id": task_id})
     assert result.isError
 
 
 # ---------------------------------------------------------------------------
-# review_decide — merge action
+# review_merge
 # ---------------------------------------------------------------------------
 
 
 async def test_review_apply_merge_returns_task_id(mcp_board: ClientSession) -> None:
-    """review_decide with action=merge returns an error without workspace setup."""
+    """review_merge returns an error without workspace setup."""
     task_id = await _create_review_task_with_ac(mcp_board, "review merge")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "merge"})
+    result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert result.isError
 
 
 async def test_review_apply_merge_returns_action(mcp_board: ClientSession) -> None:
-    """review_decide merge error mentions missing workspace context."""
+    """review_merge error mentions missing workspace context."""
     task_id = await _create_review_task_with_ac(mcp_board, "review merge action")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "merge"})
+    result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert result.isError
 
 
 async def test_review_apply_merge_blocked_without_acceptance_criteria(
     mcp_board: ClientSession,
 ) -> None:
-    """review_decide merge on a task without AC must return blocked."""
+    """review_merge on a task without AC must return blocked."""
     task_id = await _create_review_task(mcp_board, "review merge no ac")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "merge"})
+    result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert not result.isError
     payload = _text(result)
     assert payload.get("action") == "blocked"
@@ -285,21 +292,21 @@ async def test_review_apply_merge_blocked_without_acceptance_criteria(
 
 
 # ---------------------------------------------------------------------------
-# review_decide — rebase action
+# review_rebase
 # ---------------------------------------------------------------------------
 
 
 async def test_review_apply_rebase_returns_task_id(mcp_board: ClientSession) -> None:
-    """review_decide with action=rebase returns an error without workspace setup."""
+    """review_rebase returns an error without workspace setup."""
     task_id = await _create_review_task(mcp_board, "review rebase")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "rebase"})
+    result = await mcp_board.call_tool("review_rebase", {"task_id": task_id})
     assert result.isError
 
 
 async def test_review_apply_rebase_returns_action(mcp_board: ClientSession) -> None:
-    """review_decide rebase error mentions missing workspace context."""
+    """review_rebase error mentions missing workspace context."""
     task_id = await _create_review_task(mcp_board, "review rebase action")
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "rebase"})
+    result = await mcp_board.call_tool("review_rebase", {"task_id": task_id})
     assert result.isError
 
 
@@ -332,24 +339,21 @@ async def test_review_abort_conflicts_is_noop_without_workspace(mcp_board: Clien
 
 
 # ---------------------------------------------------------------------------
-# review_decide — invalid action
+# Legacy multiplexed tool
 # ---------------------------------------------------------------------------
 
 
-async def test_review_apply_invalid_action_returns_error(mcp_board: ClientSession) -> None:
-    """review_decide with an unknown action must return an error."""
-    result = await mcp_board.call_tool(
-        "review_decide", {"task_id": "task-rev-10", "action": "bogus"}
-    )
-    assert result.isError
+async def test_review_apply_legacy_tool_is_hidden(mcp_board: ClientSession) -> None:
+    """review_decide must no longer be exposed."""
+    result = await mcp_board.list_tools()
+    names = {t.name for t in result.tools}
+    assert "review_decide" not in names
 
 
 async def test_core_review_apply_returns_error_when_core_review_service_unavailable(
     mcp_board_with_core: ClientSession,
 ) -> None:
-    result = await mcp_board_with_core.call_tool(
-        "review_decide", {"task_id": "task-rev-core-1", "action": "approve"}
-    )
+    result = await mcp_board_with_core.call_tool("review_approve", {"task_id": "task-rev-core-1"})
     assert result.isError
 
 
@@ -368,7 +372,7 @@ async def test_review_apply_merge_requires_approval_when_setting_enabled(
         file_name="needs_approval.py",
     )
 
-    result = await mcp_board.call_tool("review_decide", {"task_id": task_id, "action": "merge"})
+    result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert result.isError
 
     task = await core_client.tasks.get(task_id)
@@ -391,15 +395,10 @@ async def test_review_apply_merge_succeeds_after_approve_when_setting_enabled(
         file_name="approved_merge.py",
     )
 
-    approve_result = await mcp_board.call_tool(
-        "review_decide",
-        {"task_id": task_id, "action": "approve"},
-    )
+    approve_result = await mcp_board.call_tool("review_approve", {"task_id": task_id})
     assert not approve_result.isError
 
-    merge_result = await mcp_board.call_tool(
-        "review_decide", {"task_id": task_id, "action": "merge"}
-    )
+    merge_result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert not merge_result.isError
     payload = _text(merge_result)
     assert payload.get("task_id") == task_id
@@ -414,7 +413,7 @@ async def test_review_merge_conflict_returns_structured_conflict_response(
     mcp_board_with_core_client: tuple[ClientSession, Any],
     tmp_path: Path,
 ) -> None:
-    """review_decide merge on a conflicting branch returns structured conflict dict."""
+    """review_merge on a conflicting branch returns structured conflict dict."""
     mcp_board, core_client = mcp_board_with_core_client
 
     # Set up a merge-ready task (commits file on worktree branch)
@@ -435,16 +434,11 @@ async def test_review_merge_conflict_returns_structured_conflict_response(
     )
 
     # Approve first (required for merge with acceptance criteria)
-    approve_result = await mcp_board.call_tool(
-        "review_decide",
-        {"task_id": task_id, "action": "approve"},
-    )
+    approve_result = await mcp_board.call_tool("review_approve", {"task_id": task_id})
     assert not approve_result.isError
 
     # Attempt merge — should return structured conflict response, not error
-    merge_result = await mcp_board.call_tool(
-        "review_decide", {"task_id": task_id, "action": "merge"}
-    )
+    merge_result = await mcp_board.call_tool("review_merge", {"task_id": task_id})
     assert not merge_result.isError
     payload = _text(merge_result)
     assert payload["status"] == "conflict"

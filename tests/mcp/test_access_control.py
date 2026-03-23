@@ -79,7 +79,10 @@ async def test_worker_hides_mutating_tools() -> None:
     assert "project_create" not in names
     assert "task_update" not in names
     assert "run_start" not in names
-    assert "review_decide" not in names
+    assert "review_approve" not in names
+    assert "review_reject" not in names
+    assert "review_merge" not in names
+    assert "review_rebase" not in names
 
 
 async def test_worker_exposes_read_tools() -> None:
@@ -90,7 +93,11 @@ async def test_worker_exposes_read_tools() -> None:
     assert "task_events" in names
     assert "task_counts" in names
     assert "tasks_wait" in names
-    assert "run_update" in names
+    assert "run_exists" in names
+    assert "run_create" in names
+    assert "run_get" in names
+    assert "run_kill" in names
+    assert "run_detach" in names
     assert "run_summary" in names
     assert "settings_get" in names
     assert "review_conflicts" in names
@@ -120,7 +127,10 @@ async def test_reviewer_has_verdict_tools() -> None:
 
 async def test_reviewer_cannot_decide_or_start() -> None:
     names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
-    assert "review_decide" not in names
+    assert "review_approve" not in names
+    assert "review_reject" not in names
+    assert "review_merge" not in names
+    assert "review_rebase" not in names
     assert "run_start" not in names
     assert "task_create" not in names
     assert "task_delete" not in names
@@ -139,7 +149,10 @@ async def test_orchestrator_gets_all_tools() -> None:
     assert "task_update" in names
     assert "run_start" in names
     assert "run_cancel" in names
-    assert "review_decide" in names
+    assert "review_approve" in names
+    assert "review_reject" in names
+    assert "review_merge" in names
+    assert "review_rebase" in names
     assert "project_create" in names
     assert "project_delete" in names
     assert "settings_set" in names
@@ -201,7 +214,11 @@ _WORKER_TOOLS = [
     "tasks_wait",
     "task_counts",
     "task_add_note",
-    "run_update",
+    "run_exists",
+    "run_create",
+    "run_get",
+    "run_kill",
+    "run_detach",
     "run_summary",
     "settings_get",
     "review_conflicts",
@@ -238,7 +255,10 @@ _ORCHESTRATOR_ONLY_TOOLS = [
     "task_delete",
     "run_start",
     "run_cancel",
-    "review_decide",
+    "review_approve",
+    "review_reject",
+    "review_merge",
+    "review_rebase",
     "review_continue_rebase",
     "review_abort_rebase",
     "project_create",

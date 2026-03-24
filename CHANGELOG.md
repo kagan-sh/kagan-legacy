@@ -13,6 +13,45 @@
 
 
 
+## v0.12.2-beta.1 (2026-03-24)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+- **core,tui**: Eliminate redundant DB lookup in project activation
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+- **core**: Suppress stdout during DB migrations to prevent MCP JSON-RPC corruption
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+
+
+
+
+
+
+
+
+
+
+### refactoring
+
+- **core**: Address Greptile review comments on PR #66
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+
+
+
+
 ## v0.12.1 (2026-03-23)
 
 

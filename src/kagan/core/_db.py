@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import sys
+from io import StringIO
 from pathlib import Path
 
 from alembic import command
@@ -49,11 +51,23 @@ def _normalize_revision_state(config: Config, connection: Connection) -> None:
     )
 
 
-def _run_alembic_upgrade(database_url: str, connection: Connection | None = None) -> None:
-    config = _make_alembic_config(database_url, connection)
+def _suppress_stdout_during_migrations(
+    config: Config, connection: Connection | None, database_url: str
+) -> None:
+    """Run migrations with stdout suppressed to prevent JSON-RPC stream corruption."""
     if connection is not None:
         _normalize_revision_state(config, connection)
-    command.upgrade(config, "head")
+    old_stdout = sys.stdout
+    sys.stdout = StringIO()
+    try:
+        command.upgrade(config, "head")
+    finally:
+        sys.stdout = old_stdout
+
+
+def _run_alembic_upgrade(database_url: str, connection: Connection | None = None) -> None:
+    config = _make_alembic_config(database_url, connection)
+    _suppress_stdout_during_migrations(config, connection, database_url)
 
 
 def _ensure_workspace_fk_compat(connection: Connection) -> None:
@@ -115,9 +129,15 @@ def create_db_engine(db_path: str | Path | None = None) -> Engine:
             _run_alembic_upgrade(url, connection)
             _ensure_workspace_fk_compat(connection)
     else:
-        with engine.begin() as connection:
-            config = _make_alembic_config(url, connection)
-            _normalize_revision_state(config, connection)
+        # Suppress stdout during migrations to prevent JSON-RPC stream corruption
+        old_stdout = sys.stdout
+        sys.stdout = StringIO()
+        try:
+            with engine.begin() as connection:
+                config = _make_alembic_config(url, connection)
+                _normalize_revision_state(config, connection)
+        finally:
+            sys.stdout = old_stdout
         _run_alembic_upgrade(url)
         with engine.begin() as connection:
             _ensure_workspace_fk_compat(connection)

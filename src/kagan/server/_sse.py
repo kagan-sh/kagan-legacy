@@ -38,14 +38,15 @@ async def _poll_db_changes(
 
     Board events are in-memory per-process — when an agent running in a
     separate process creates or updates a task, the in-memory queues on
-    *this* server never see it.  Periodic DB polling bridges the gap.
+    *this* server never see it. Periodic DB polling bridges the gap.
     """
-    # Seed snapshot so we only emit *changes*, not the whole board.
+    known: dict[str, str] = {}
+
     try:
         snapshot = await tasks.list()
-        known: dict[str, str] = {t.id: t.updated_at.isoformat() for t in snapshot}
+        known = {t.id: t.updated_at.isoformat() for t in snapshot}
     except Exception:
-        known = {}
+        logger.warning("SSE poll: initial snapshot failed", exc_info=True)
 
     try:
         while True:
@@ -53,6 +54,7 @@ async def _poll_db_changes(
             try:
                 snapshot = await tasks.list()
             except Exception:
+                logger.warning("SSE poll: failed to list tasks", exc_info=True)
                 continue
 
             current = {t.id: t.updated_at.isoformat() for t in snapshot}
@@ -66,8 +68,9 @@ async def _poll_db_changes(
             known = current
     except asyncio.CancelledError:
         raise
-    except (ConnectionError, RuntimeError, OSError, KaganError):
-        logger.debug("SSE DB poll failed", exc_info=True)
+    except Exception:
+        logger.exception("SSE poll: unrecoverable error")
+        raise
 
 
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:

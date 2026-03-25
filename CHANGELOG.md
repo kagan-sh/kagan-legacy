@@ -13,6 +13,60 @@
 
 
 
+## v0.12.2-beta.2 (2026-03-25)
+
+
+
+
+### bug fixes
+
+- **server**: Add DB polling to SSE stream for cross-process task updates
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+- **tui**: Add defensive handling in onboarding form
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+- **core,tui**: Eliminate redundant DB lookup in project activation
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+- **server**: SSE stream misses cross-process task updates
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+- **core**: Suppress stdout during DB migrations to prevent MCP JSON-RPC corruption
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### refactoring
+
+- **core**: Address Greptile review comments on PR #66
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+- Address Greptile review — Zen of Python compliance
+  ([#67](https://github.com/kagan-sh/kagan/pull/67),
+  [`3f31516`](https://github.com/kagan-sh/kagan/commit/3f315165cad165c54fbedb436ccf386e17c98762))
+
+
+
+
+
 ## v0.12.2-beta.1 (2026-03-24)
 
 

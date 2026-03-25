@@ -19,13 +19,58 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
 
+    from kagan.core._tasks import Tasks
     from kagan.core.models import SessionEvent
 
 _SSE_KEEPALIVE_SECONDS = 25.0
+_DB_POLL_SECONDS = 2.0
 
 
 def _event_to_wire(event: SessionEvent) -> dict[str, Any]:
     return EventResponse.model_validate(event).model_dump(mode="json")
+
+
+async def _poll_db_changes(
+    tasks: Tasks,
+    queue: asyncio.Queue[dict[str, Any]],
+) -> None:
+    """Detect task mutations from external processes (MCP agents, CLI).
+
+    Board events are in-memory per-process — when an agent running in a
+    separate process creates or updates a task, the in-memory queues on
+    *this* server never see it. Periodic DB polling bridges the gap.
+    """
+    known: dict[str, str] = {}
+
+    try:
+        snapshot = await tasks.list()
+        known = {t.id: t.updated_at.isoformat() for t in snapshot}
+    except Exception:
+        logger.warning("SSE poll: initial snapshot failed", exc_info=True)
+
+    try:
+        while True:
+            await asyncio.sleep(_DB_POLL_SECONDS)
+            try:
+                snapshot = await tasks.list()
+            except Exception:
+                logger.warning("SSE poll: failed to list tasks", exc_info=True)
+                continue
+
+            current = {t.id: t.updated_at.isoformat() for t in snapshot}
+            changed = {tid for tid, ts in current.items() if known.get(tid) != ts}
+            deleted = known.keys() - current.keys()
+
+            for task_id in changed | deleted:
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait({"type": "TASK_UPDATED", "task_id": task_id})
+
+            known = current
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("SSE poll: unrecoverable error")
+        raise
 
 
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
@@ -70,8 +115,12 @@ async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
         except (ConnectionError, RuntimeError, OSError, KaganError):
             logger.debug("SSE board event stream failed", exc_info=True)
 
+    async def _poll_db_for_external_changes() -> None:
+        await _poll_db_changes(ctx.client.tasks, queue)
+
     session_task = asyncio.create_task(_forward_session_events())
     board_task = asyncio.create_task(_forward_board_events())
+    poll_task = asyncio.create_task(_poll_db_for_external_changes())
 
     try:
         while True:
@@ -86,7 +135,8 @@ async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
     finally:
         session_task.cancel()
         board_task.cancel()
-        await asyncio.gather(session_task, board_task, return_exceptions=True)
+        poll_task.cancel()
+        await asyncio.gather(session_task, board_task, poll_task, return_exceptions=True)
 
 
 def sse_response(generator: AsyncIterator[str]) -> StreamingResponse:

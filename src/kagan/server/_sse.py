@@ -40,12 +40,12 @@ async def _poll_db_changes(
     separate process creates or updates a task, the in-memory queues on
     *this* server never see it. Periodic DB polling bridges the gap.
     """
-    known: dict[str, str] = {}
-
+    # Seed snapshot so we only emit changes, not the whole board.
     try:
         snapshot = await tasks.list()
-        known = {t.id: t.updated_at.isoformat() for t in snapshot}
+        known: dict[str, str] = {t.id: t.updated_at.isoformat() for t in snapshot}
     except Exception:
+        known = {}
         logger.warning("SSE poll: initial snapshot failed", exc_info=True)
 
     try:
@@ -68,9 +68,8 @@ async def _poll_db_changes(
             known = current
     except asyncio.CancelledError:
         raise
-    except Exception:
-        logger.exception("SSE poll: unrecoverable error")
-        raise
+    except (ConnectionError, RuntimeError, OSError, KaganError):
+        logger.debug("SSE DB poll failed", exc_info=True)
 
 
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:

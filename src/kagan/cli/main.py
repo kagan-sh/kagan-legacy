@@ -214,6 +214,7 @@ def _register_commands() -> None:
     from kagan.cli.list_projects import list_projects
     from kagan.cli.mcp import mcp
     from kagan.cli.plugins import plugins
+    from kagan.cli.prompt_inject import cli as prompt_inject
     from kagan.cli.prompts import prompts
     from kagan.cli.reset import reset
     from kagan.cli.serve import serve
@@ -234,6 +235,7 @@ def _register_commands() -> None:
     cli.add_command(tools)
     cli.add_command(prompts)
     cli.add_command(web)
+    cli.add_command(prompt_inject, name="prompt-inject")
     if _plugins_cli_enabled():
         cli.add_command(plugins)
 

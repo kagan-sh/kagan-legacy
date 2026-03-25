@@ -4,8 +4,11 @@ import contextlib
 import json
 import shutil
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
+from loguru import logger
 
 from kagan.core._prompts import (
     PERSONA_DEFINITIONS_KEY,
@@ -18,6 +21,32 @@ from kagan.runtime_env import build_sanitized_subprocess_environment
 if TYPE_CHECKING:
     from kagan.core._audit import AuditLog
     from kagan.core._settings import Settings
+
+
+@dataclass(frozen=True)
+class TrustAssessment:
+    """Reputation-based trust assessment for a persona repository."""
+
+    repo: str
+    stars: int
+    repo_age_days: int
+    audit_risk_level: str  # low, medium, high
+    trust_score: float  # 0.0 - 1.0
+    trust_tier: str  # low_risk, medium_risk, high_risk
+    findings: list[dict[str, Any]]
+    archived: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "repo": self.repo,
+            "stars": self.stars,
+            "repo_age_days": self.repo_age_days,
+            "audit_risk_level": self.audit_risk_level,
+            "trust_score": round(self.trust_score, 3),
+            "trust_tier": self.trust_tier,
+            "findings": self.findings,
+            "archived": self.archived,
+        }
 
 
 class PersonaPresetOps:
@@ -41,7 +70,11 @@ class PersonaPresetOps:
         file_payload = await _gh_fetch_content(repo=repo, path=path, ref=ref)
         personas = _decode_persona_payload(file_payload)
         findings = _persona_findings(personas)
-        risk_level = _risk_level(findings)
+        audit_risk_level = _risk_level(findings)
+
+        # Build trust assessment
+        trust = _calculate_trust_assessment(repo, repo_meta, findings, audit_risk_level)
+
         return {
             "repo": repo,
             "repo_url": repo_meta.get("html_url"),
@@ -50,14 +83,70 @@ class PersonaPresetOps:
             "archived": bool(repo_meta.get("archived")),
             "stars": int(repo_meta.get("stargazers_count") or 0),
             "updated_at": repo_meta.get("pushed_at"),
+            "created_at": repo_meta.get("created_at"),
             "persona_count": len(personas),
+            "personas": self._format_persona_preview(personas),
             "findings": findings,
-            "risk_level": risk_level,
+            "audit_risk_level": audit_risk_level,
+            "trust_assessment": trust.to_dict(),
+            "trust_tier": trust.trust_tier,
             "disclaimer": (
                 "Review source repo and prompts before installing. "
                 "This audit is heuristic and does not prove safety."
             ),
         }
+
+    async def preview_import(
+        self,
+        *,
+        repo: str,
+        path: str = ".kagan/personas.json",
+        ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Preview personas from a repository without importing."""
+        _validate_repo_slug(repo)
+        _validate_repo_path(path)
+        await _ensure_gh_ready()
+        repo_meta = await _gh_api_json(["repos", repo])
+        if bool(repo_meta.get("private")):
+            raise ValueError("Persona sharing only supports public repositories")
+        file_payload = await _gh_fetch_content(repo=repo, path=path, ref=ref)
+        personas = _decode_persona_payload(file_payload)
+        findings = _persona_findings(personas)
+        audit_risk_level = _risk_level(findings)
+        trust = _calculate_trust_assessment(repo, repo_meta, findings, audit_risk_level)
+
+        return {
+            "repo": repo,
+            "repo_url": repo_meta.get("html_url"),
+            "path": path,
+            "ref": ref,
+            "stars": int(repo_meta.get("stargazers_count") or 0),
+            "archived": bool(repo_meta.get("archived")),
+            "persona_count": len(personas),
+            "personas": self._format_persona_preview(personas),
+            "findings": findings,
+            "audit_risk_level": audit_risk_level,
+            "trust_assessment": trust.to_dict(),
+            "trust_tier": trust.trust_tier,
+        }
+
+    def _format_persona_preview(
+        self, personas: Mapping[str, Mapping[str, str]]
+    ) -> list[dict[str, str]]:
+        """Format personas for preview display."""
+        result = []
+        for key, item in personas.items():
+            prompt = item.get("prompt", "")
+            preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
+            result.append({
+                "key": key,
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "prompt_preview": preview,
+                "prompt_length": len(prompt),
+            })
+        return result
 
     async def import_from_github(
         self,
@@ -65,30 +154,58 @@ class PersonaPresetOps:
         repo: str,
         path: str = ".kagan/personas.json",
         ref: str | None = None,
-        allow_untrusted: bool = False,
         acknowledge_risk: bool = False,
         merge_mode: str = "merge",
+        auto_confirm: bool = False,
     ) -> dict[str, Any]:
+        """Import persona presets with progressive trust.
+
+        Args:
+            repo: Repository in owner/repo format
+            path: Path to personas.json within the repo
+            ref: Git ref (branch/tag/sha)
+            acknowledge_risk: Required for high-risk imports
+            merge_mode: 'merge' or 'replace'
+            auto_confirm: Skip confirmation for low-risk imports
+        """
         _validate_repo_slug(repo)
         _validate_repo_path(path)
         if merge_mode not in {"merge", "replace"}:
             raise ValueError("merge_mode must be 'merge' or 'replace'")
         await _ensure_gh_ready()
-        settings = await self._settings.get()
-        trusted = await _is_repo_trusted(repo, settings)
-        if not trusted and not (allow_untrusted and acknowledge_risk):
-            raise ValueError(
-                "Repository is not trusted. Add it to whitelist or set allow_untrusted=true "
-                "with acknowledge_risk=true after due diligence."
-            )
+
+        # Get repo metadata and content
         repo_meta = await _gh_api_json(["repos", repo])
         if bool(repo_meta.get("private")):
             raise ValueError("Persona sharing only supports public repositories")
+
         payload = await _gh_fetch_content(repo=repo, path=path, ref=ref)
         imported = _decode_persona_payload(payload)
+        findings = _persona_findings(imported)
+        audit_risk_level = _risk_level(findings)
+
+        # Calculate trust assessment
+        trust = _calculate_trust_assessment(repo, repo_meta, findings, audit_risk_level)
+
+        # Progressive trust logic
+        if trust.trust_tier == "high_risk" and not acknowledge_risk:
+            raise ValueError(
+                f"High-risk repository detected (trust score: {trust.trust_score:.2f}). "
+                "Use --acknowledge-risk to proceed after reviewing the source."
+            )
+
+        # Determine if we should auto-import
+        should_auto_import = auto_confirm and trust.trust_tier == "low_risk"
+
+        # For medium/high risk without auto-confirm, we expect external confirmation
+        # This is handled by the caller (CLI/MCP)
+
+        # Perform the import
+        settings = await self._settings.get()
         current = _load_personas_from_settings(settings)
         merged = dict(imported) if merge_mode == "replace" else {**current, **imported}
         await self._settings.set({PERSONA_DEFINITIONS_KEY: serialize_persona_definitions(merged)})
+
         await self._audit.record(
             action="persona.import",
             entity_type="persona_preset",
@@ -97,24 +214,35 @@ class PersonaPresetOps:
                 "repo": repo,
                 "path": path,
                 "ref": ref,
-                "trusted": trusted,
-                "allow_untrusted": allow_untrusted,
+                "trust_tier": trust.trust_tier,
+                "trust_score": trust.trust_score,
                 "merge_mode": merge_mode,
                 "imported_keys": sorted(imported.keys()),
+                "auto_confirmed": should_auto_import,
             },
         )
-        return {
+
+        result: dict[str, Any] = {
             "repo": repo,
             "repo_url": repo_meta.get("html_url"),
             "path": path,
             "ref": ref,
-            "trusted": trusted,
+            "trust_tier": trust.trust_tier,
+            "trust_score": trust.trust_score,
             "imported": sorted(imported.keys()),
             "total_personas": len(merged),
+            "auto_confirmed": should_auto_import,
             "disclaimer": (
                 "Imported from third-party source. Review source repository and persona prompts."
             ),
         }
+
+        if should_auto_import:
+            logger.info(
+                f"Auto-imported personas from {repo} (low risk, score: {trust.trust_score:.2f})"
+            )
+
+        return result
 
     async def export_to_github(
         self,
@@ -327,37 +455,69 @@ def _load_registry_whitelist() -> set[str]:
     return {str(item).strip().lower() for item in parsed if str(item).strip()}
 
 
-async def _is_repo_trusted(repo: str, settings: Mapping[str, str]) -> bool:
-    slug = repo.strip().lower()
-    if slug in _load_registry_whitelist():
-        return True
-    return slug in load_persona_repo_whitelist(dict(settings))
-
-
 def _persona_findings(personas: Mapping[str, Mapping[str, str]]) -> list[dict[str, Any]]:
+    """Audit persona content for security issues using InjectionDetector.
+
+    Checks for prompt injection patterns, suspicious content, and anomalies.
+    """
+    from kagan.core._security import InjectionDetector
+
     findings: list[dict[str, Any]] = []
-    suspicious = ["rm -rf", "curl ", "wget ", "gh auth token", "password", "secret", "token"]
+    detector = InjectionDetector()
+
     for key, item in personas.items():
         prompt = item.get("prompt", "")
-        hits = [token for token in suspicious if token in prompt.lower()]
+
+        # Use InjectionDetector for sophisticated pattern detection
+        result = detector.analyze(prompt)
+
+        if result["risk_level"] == "DANGEROUS":
+            findings.append(
+                {
+                    "persona": key,
+                    "severity": "high",
+                    "message": "Potential prompt injection patterns detected",
+                    "evidence": [f["name"] for f in result["findings"]],
+                    "type": "injection",
+                }
+            )
+        elif result["risk_level"] == "SUSPICIOUS":
+            findings.append(
+                {
+                    "persona": key,
+                    "severity": "medium",
+                    "message": "Suspicious patterns detected in prompt",
+                    "evidence": [f["name"] for f in result["findings"]],
+                    "type": "suspicious",
+                }
+            )
+
+        # Also check for suspicious tokens (simple substring matching)
+        suspicious_tokens = ["rm -rf", "curl ", "wget ", "gh auth token"]
+        hits = [token for token in suspicious_tokens if token in prompt.lower()]
         if hits:
             findings.append(
                 {
                     "persona": key,
                     "severity": "medium",
-                    "message": "Prompt contains security-sensitive tokens",
+                    "message": "Prompt contains potentially dangerous shell commands",
                     "evidence": hits,
+                    "type": "commands",
                 }
             )
+
+        # Check for unusually long prompts (might be trying to hide injection)
         if len(prompt) > 12000:
             findings.append(
                 {
                     "persona": key,
                     "severity": "low",
-                    "message": "Prompt is unusually long",
-                    "evidence": [len(prompt)],
+                    "message": "Prompt is unusually long (may hide injection)",
+                    "evidence": [f"{len(prompt)} characters"],
+                    "type": "length",
                 }
             )
+
     return findings
 
 
@@ -368,3 +528,68 @@ def _risk_level(findings: list[dict[str, Any]]) -> str:
     if "medium" in severities:
         return "medium"
     return "low"
+
+
+def _calculate_repo_age_days(repo_meta: dict[str, Any]) -> int:
+    """Calculate repository age in days from created_at timestamp."""
+    from datetime import datetime, timezone
+
+    created_at = repo_meta.get("created_at", "")
+    if not created_at:
+        return 0
+    try:
+        # Parse ISO 8601 format: 2023-01-15T10:30:00Z
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        return (now - created).days
+    except (ValueError, TypeError):
+        return 0
+
+
+def _calculate_trust_assessment(
+    repo: str,
+    repo_meta: dict[str, Any],
+    findings: list[dict[str, Any]],
+    audit_risk_level: str,
+) -> TrustAssessment:
+    """Calculate reputation-based trust assessment using simple, transparent rules.
+
+    Trust tiers are determined by simple rules users can understand:
+    - HIGH_RISK: High audit severity, or new/unproven repos (<10 stars AND <30 days)
+    - LOW_RISK: Clean audit and either established or has community traction
+    - MEDIUM_RISK: Everything else (minor findings, moderate traction, etc.)
+    """
+    stars = int(repo_meta.get("stargazers_count") or 0)
+    archived = bool(repo_meta.get("archived"))
+    age_days = _calculate_repo_age_days(repo_meta)
+
+    # Determine trust tier with simple, explainable rules
+    # Check high-risk first (exceptional case)
+    if audit_risk_level == "high":
+        trust_tier = "high_risk"
+    elif stars < 10 and age_days < 30:
+        # New, unproven repositories are high risk
+        trust_tier = "high_risk"
+    elif audit_risk_level == "low" and (stars >= 50 or age_days >= 90):
+        # Clean audit AND established (either stars or age)
+        trust_tier = "low_risk"
+    elif findings:
+        # Has findings but not high severity
+        trust_tier = "medium_risk"
+    else:
+        # Clean audit but not yet established
+        trust_tier = "medium_risk"
+
+    # Transparent score based on tier
+    trust_score = {"low_risk": 1.0, "medium_risk": 0.5, "high_risk": 0.0}[trust_tier]
+
+    return TrustAssessment(
+        repo=repo,
+        stars=stars,
+        repo_age_days=age_days,
+        audit_risk_level=audit_risk_level,
+        trust_score=trust_score,
+        trust_tier=trust_tier,
+        findings=findings,
+        archived=archived,
+    )

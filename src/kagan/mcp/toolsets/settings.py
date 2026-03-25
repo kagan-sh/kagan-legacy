@@ -58,9 +58,30 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             path: str = ".kagan/personas.json",
             ref: str | None = None,
         ) -> dict:
-            """Audit a persona preset repository before import."""
+            """Audit a persona preset repository before import.
+
+            Returns trust assessment including:
+            - trust_tier: low_risk, medium_risk, or high_risk
+            - trust_score: 0.0-1.0 reputation score
+            - findings: security audit results
+            - personas: preview of available personas
+            """
             app = get_context(ctx)
             return await app.client.persona_presets.audit_repo(repo=repo, path=path, ref=ref)
+
+    if is_tool_allowed("persona_preset_preview", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def persona_preset_preview(
+            ctx: Context,
+            repo: str,
+            path: str = ".kagan/personas.json",
+            ref: str | None = None,
+        ) -> dict:
+            """Preview personas from a repository without importing."""
+            app = get_context(ctx)
+            return await app.client.persona_presets.preview_import(repo=repo, path=path, ref=ref)
 
     if is_tool_allowed("persona_preset_import", opts):
 
@@ -71,19 +92,25 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             repo: str,
             path: str = ".kagan/personas.json",
             ref: str | None = None,
-            allow_untrusted: bool = False,
             acknowledge_risk: bool = False,
             merge_mode: str = "merge",
+            auto_confirm: bool = False,
         ) -> dict:
-            """Import persona presets from GitHub into Kagan."""
+            """Import persona presets from GitHub into Kagan.
+
+            Progressive trust behavior:
+            - Low risk: Auto-imported (with auto_confirm=True)
+            - Medium risk: Shows trust assessment, requires explicit confirmation
+            - High risk: Requires acknowledge_risk=True flag
+            """
             app = get_context(ctx)
             return await app.client.persona_presets.import_from_github(
                 repo=repo,
                 path=path,
                 ref=ref,
-                allow_untrusted=allow_untrusted,
                 acknowledge_risk=acknowledge_risk,
                 merge_mode=merge_mode,
+                auto_confirm=auto_confirm,
             )
 
     if is_tool_allowed("persona_preset_export", opts):

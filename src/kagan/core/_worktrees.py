@@ -1,11 +1,13 @@
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
+from platformdirs import user_state_dir
 from sqlalchemy import Engine
 from sqlmodel import select
 
@@ -20,6 +22,10 @@ if TYPE_CHECKING:
     from kagan.core.client import KaganCore
 
 
+# Regex for valid task ID format (UUID-like)
+_TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
 def _normalize_base_ref_strategy(value: str | None) -> BranchRefStrategy:
     """Validate and normalize a raw strategy setting to a known enum value."""
     if value is None:
@@ -32,18 +38,62 @@ def _normalize_base_ref_strategy(value: str | None) -> BranchRefStrategy:
 
 
 def _worktree_base_dir() -> Path:
+    """Get the base directory for worktrees."""
     override = os.environ.get("KAGAN_WORKTREE_BASE")
     if override:
         return Path(override)
-    from platformdirs import user_state_dir
-
     return Path(user_state_dir("kagan", "kagan")) / "worktrees"
+
+
+def _resolve_worktree_path(task_id: str) -> Path:
+    """Resolve task_id to a safe worktree path, preventing path traversal.
+
+    Args:
+        task_id: Task identifier to validate and resolve.
+
+    Returns:
+        Resolved Path within the worktree base directory.
+
+    Raises:
+        ValueError: If task_id contains path traversal attempts or invalid characters.
+        WorktreeError: If resolved path would escape the base directory.
+    """
+    # Validate task_id format - only alphanumeric, underscore, hyphen
+    if not _TASK_ID_PATTERN.match(task_id):
+        raise ValueError(
+            f"Invalid task_id format: {task_id!r}. "
+            "Task IDs must contain only letters, numbers, underscores, and hyphens."
+        )
+
+    # Block explicit path traversal attempts (defense in depth)
+    if ".." in task_id:
+        raise ValueError(f"Path traversal detected in task_id: {task_id!r}")
+
+    base = _worktree_base_dir().resolve()
+    worktree = (base / task_id).resolve()
+
+    # Ensure the resolved path is within the base directory
+    try:
+        worktree.relative_to(base)
+    except ValueError as exc:
+        logger.warning("Worktree path escapes base directory", task_id=task_id, worktree=str(worktree))
+        raise WorktreeError(f"Worktree path escapes base directory: {task_id}") from exc
+
+    return worktree
 
 
 class Worktrees:
     def __init__(self, engine: Engine, client: "KaganCore") -> None:
         self._engine = engine
         self._client = client
+
+    @staticmethod
+    def _resolve_worktree_path(task_id: str) -> Path:
+        """Resolve task_id to a safe worktree path, preventing path traversal.
+
+        This is a static wrapper around the module-level function for testability.
+        """
+        return _resolve_worktree_path(task_id)
 
     async def create(self, task_id: str) -> Worktree:
         task = await self._client.tasks.get(task_id)
@@ -80,7 +130,7 @@ class Worktrees:
             strategy=strategy,
             refresh_remote=True,
         )
-        worktree_path = _worktree_base_dir() / task_id
+        worktree_path = _resolve_worktree_path(task_id)
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
         await git.worktree_add(

@@ -46,6 +46,13 @@ from kagan.core._prompts import (
     resolve_task_prompt,
     serialize_persona_definitions,
 )
+from kagan.core._security import (
+    AttackVector,
+    InjectionDetector,
+    PayloadLibrary,
+    PayloadTemplate,
+    scan_text_for_injection,
+)
 from kagan.core.client import DBWatcher, KaganCore
 from kagan.core.enums import (
     BranchRefStrategy,
@@ -83,19 +90,24 @@ from kagan.core.models import (
 
 __all__ = [
     "ADDITIONAL_INSTRUCTIONS_KEY",
+    "AttackVector",
     "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
     "CODEX_BACKEND",
     "DEFAULT_ORCHESTRATOR_PROMPT",
     "GEMINI_CLI_BACKEND",
+    "InjectionDetector",
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
     "KIMI_CLI_BACKEND",
     "OPENCODE_BACKEND",
+    "PayloadLibrary",
+    "PayloadTemplate",
     "PERSONA_DEFINITIONS_KEY",
     "PERSONA_USER_WHITELIST_KEY",
     "PLANNING_DEPTH_KEY",
     "REVIEW_STRICTNESS_KEY",
+    "scan_text_for_injection",
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",

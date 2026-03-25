@@ -1,0 +1,285 @@
+{
+  "name": "kagan-vscode",
+  "displayName": "Kagan",
+  "description": "AI-powered Kanban board for orchestrating coding agents",
+  "version": "0.1.0",
+  "publisher": "kagan",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kagan",
+          "title": "Kagan",
+          "icon": "media/kagan.svg"
+        }
+      ]
+    },
+    "views": {
+      "kagan": [
+        {
+          "id": "kagan.board",
+          "name": "Board"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "kagan.connect",
+        "title": "Connect to Server",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.disconnect",
+        "title": "Disconnect",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.board.refresh",
+        "title": "Refresh Board",
+        "category": "Kagan",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kagan.task.create",
+        "title": "Create Task",
+        "category": "Kagan",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kagan.task.run",
+        "title": "Run Task",
+        "category": "Kagan",
+        "icon": "$(play)"
+      },
+      {
+        "command": "kagan.task.cancel",
+        "title": "Cancel Task",
+        "category": "Kagan",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "kagan.task.open",
+        "title": "Open Task",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.task.delete",
+        "title": "Delete Task",
+        "category": "Kagan",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kagan.task.move",
+        "title": "Move Task to Column",
+        "category": "Kagan"
+      },
+      {
+        "command": "kagan.task.edit",
+        "title": "Edit Task",
+        "category": "Kagan",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kagan.task.diff",
+        "title": "View Task Diff",
+        "category": "Kagan",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "kagan.review.approve",
+        "title": "Approve",
+        "category": "Kagan Review",
+        "icon": "$(check)"
+      },
+      {
+        "command": "kagan.review.reject",
+        "title": "Reject",
+        "category": "Kagan Review",
+        "icon": "$(close)"
+      },
+      {
+        "command": "kagan.review.merge",
+        "title": "Merge",
+        "category": "Kagan Review",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "kagan.events.show",
+        "title": "Show Agent Output",
+        "category": "Kagan",
+        "icon": "$(output)"
+      },
+      {
+        "command": "kagan.terminal.attach",
+        "title": "Attach to Agent Terminal",
+        "category": "Kagan",
+        "icon": "$(terminal)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kagan.board.refresh",
+          "when": "view == kagan.board",
+          "group": "navigation"
+        },
+        {
+          "command": "kagan.task.create",
+          "when": "view == kagan.board",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "kagan.task.run",
+          "when": "view == kagan.board && viewItem =~ /^task\\.(BACKLOG|IN_PROGRESS)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "kagan.task.cancel",
+          "when": "view == kagan.board && viewItem == task.IN_PROGRESS",
+          "group": "inline@2"
+        },
+        {
+          "command": "kagan.task.diff",
+          "when": "view == kagan.board && viewItem =~ /^task\\.(REVIEW|DONE)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "kagan.task.edit",
+          "when": "view == kagan.board && viewItem =~ /^task\\./",
+          "group": "1_modification"
+        },
+        {
+          "command": "kagan.task.move",
+          "when": "view == kagan.board && viewItem =~ /^task\\./",
+          "group": "1_modification"
+        },
+        {
+          "command": "kagan.task.delete",
+          "when": "view == kagan.board && viewItem =~ /^task\\./",
+          "group": "9_delete"
+        },
+        {
+          "command": "kagan.review.approve",
+          "when": "view == kagan.board && viewItem == task.REVIEW",
+          "group": "2_review@1"
+        },
+        {
+          "command": "kagan.review.reject",
+          "when": "view == kagan.board && viewItem == task.REVIEW",
+          "group": "2_review@2"
+        },
+        {
+          "command": "kagan.review.merge",
+          "when": "view == kagan.board && viewItem == task.REVIEW",
+          "group": "2_review@3"
+        },
+        {
+          "command": "kagan.events.show",
+          "when": "view == kagan.board && viewItem =~ /^task\\.(IN_PROGRESS|REVIEW|DONE)$/",
+          "group": "3_observe"
+        },
+        {
+          "command": "kagan.terminal.attach",
+          "when": "view == kagan.board && viewItem == task.IN_PROGRESS",
+          "group": "3_observe"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kagan.connect"
+        },
+        {
+          "command": "kagan.disconnect",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.board.refresh",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.task.create",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.events.show",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.terminal.attach",
+          "when": "kagan.connected"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "kagan.board",
+        "contents": "Not connected to Kagan server.\n[Connect](command:kagan.connect)",
+        "when": "!kagan.connected"
+      }
+    ],
+    "configuration": {
+      "title": "Kagan",
+      "properties": {
+        "kagan.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8765",
+          "description": "Kagan server URL"
+        },
+        "kagan.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to server on startup"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "npm run check-types && node esbuild.js",
+    "check-types": "tsc --noEmit",
+    "check-types:test": "tsc --noEmit -p tsconfig.test.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run",
+    "test:integration": "npm run compile && npm run build:test && vscode-test",
+    "test:e2e": "npm run compile && wdio run ./test/wdio.conf.ts",
+    "test:check": "npm run check-types && npm run check-types:test && npm run test:unit",
+    "vscode:prepublish": "npm run package",
+    "package": "npm run check-types && node esbuild.js --production"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@wdio/cli": "^8.46.0",
+    "@wdio/globals": "^8.46.0",
+    "@wdio/local-runner": "^8.46.0",
+    "@wdio/mocha-framework": "^8.46.0",
+    "@wdio/spec-reporter": "^8.43.0",
+    "esbuild": "^0.25.0",
+    "mocha": "^11.7.5",
+    "npm-run-all": "^4.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1",
+    "webdriverio": "^8.46.0",
+    "wdio-vscode-service": "^6.1.4"
+  }
+}

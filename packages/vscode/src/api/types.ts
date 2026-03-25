@@ -1,0 +1,200 @@
+export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
+export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type ReviewVerdictState = "PASS" | "FAIL";
+export type LauncherBackend =
+  | "tmux"
+  | "nvim"
+  | "vscode"
+  | "cursor"
+  | "windsurf"
+  | "kiro"
+  | "antigravity";
+
+export type EventType =
+  | "OUTPUT_CHUNK"
+  | "AGENT_STATUS"
+  | "TOOL_CALL_START"
+  | "TOOL_CALL_UPDATE"
+  | "AGENT_COMPLETED"
+  | "AGENT_FAILED"
+  | "PLAN_UPDATE"
+  | "TASK_STATUS_CHANGED"
+  | "MERGE_COMPLETED"
+  | "MERGE_FAILED"
+  | "CRITERION_VERDICT"
+  | "AUTO_REVIEW_STARTED";
+
+export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
+
+export const PRIORITY_ICONS: Record<Priority, string> = {
+  LOW: "arrow-down",
+  MEDIUM: "dash",
+  HIGH: "arrow-up",
+  CRITICAL: "flame",
+};
+
+export const STATUS_ICONS: Record<TaskStatus, string> = {
+  BACKLOG: "inbox",
+  IN_PROGRESS: "play-circle",
+  REVIEW: "eye",
+  DONE: "check",
+};
+
+export interface ActiveSession {
+  id: string;
+  status: SessionStatus | string;
+  launcher: string | null;
+  agent_backend: string;
+  started_at: string;
+  context_window_used: number | null;
+  context_window_size: number | null;
+  cost_amount: number | null;
+  cost_currency: string | null;
+}
+
+export interface ReviewVerdict {
+  criterion_index: number;
+  verdict: ReviewVerdictState;
+  reason: string;
+}
+
+export interface WireTask {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: Priority;
+  base_branch: string | null;
+  acceptance_criteria: string[];
+  agent_backend: string | null;
+  launcher: string | null;
+  review_approved: boolean;
+  review_verdicts: ReviewVerdict[];
+  updated_at: string | null;
+  last_event_at: string | null;
+  has_workspace: boolean;
+  review_running: boolean;
+  active_session: ActiveSession | null;
+}
+
+export interface WireEvent {
+  id: string;
+  session_id: string | null;
+  type: EventType | string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface WireTaskSession {
+  id: string;
+  launcher: string | null;
+  status: SessionStatus | string;
+  agent_backend: string;
+  started_at: string;
+}
+
+export interface WireProject {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface WireRepository {
+  id: string;
+  project_id: string;
+  name: string;
+  path: string;
+  default_branch: string;
+  selected: boolean;
+}
+
+export interface DiffFile {
+  path: string;
+  status: string;
+  insertions: number;
+  deletions: number;
+}
+
+export interface DiffStats {
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface TaskWorktree {
+  path: string;
+  branch: string;
+}
+
+export interface TaskWorktreeResponse {
+  task_id: string;
+  worktree: TaskWorktree | null;
+}
+
+export interface ReviewStatusResponse {
+  task_id: string;
+  status: TaskStatus | string;
+  review_approved: boolean;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  priority?: Priority;
+  base_branch?: string;
+  acceptance_criteria?: string[];
+  agent_backend?: string;
+  launcher?: string;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  priority?: Priority;
+  base_branch?: string;
+  acceptance_criteria?: string[];
+  agent_backend?: string;
+  launcher?: string | null;
+}
+
+export interface RunTaskInput {
+  agent_backend?: string;
+  launcher?: string;
+  persona?: string;
+}
+
+export interface ReviewDecisionInput {
+  action: "approve" | "reject" | "merge" | "rebase";
+  feedback?: string;
+}
+
+export interface ReviewDecisionResponse {
+  action: ReviewDecisionInput["action"];
+  task?: WireTask;
+  task_id?: string;
+}
+
+export interface SettingsResponse {
+  [key: string]: string | undefined;
+}
+
+export interface WireEnvelope<T> {
+  ok: boolean;
+  data: T | null;
+  error: string | null;
+  error_code: string | null;
+}
+
+export interface SSETaskUpdated {
+  type: "TASK_UPDATED";
+  task_id: string;
+}
+
+export interface SSESessionEvent {
+  type: "SESSION_EVENT";
+  task_id: string;
+  event: WireEvent;
+}
+
+export type SSEMessage = SSETaskUpdated | SSESessionEvent;

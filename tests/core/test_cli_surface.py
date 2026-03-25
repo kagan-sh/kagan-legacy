@@ -37,7 +37,6 @@ def test_help_surface_contains_commands(tmp_path: Path) -> None:
     assert "mcp" in result.output
     assert "reset" in result.output
     assert "tools" in result.output
-    assert "prompts" in result.output
     assert "tui" in result.output
     assert "update" in result.output
     assert "--skip-update-check" not in result.output
@@ -203,6 +202,15 @@ def test_tools_enhance_full_flow_outputs_refined_result(
     assert expected in result.output
 
 
+def test_tools_help_lists_prompts_subcommand(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["tools", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "enhance" in result.output
+    assert "prompts" in result.output
+
+
 @pytest.mark.parametrize("source_mode", ["prompt", "file"])
 def test_tools_enhance_full_flow_falls_back_to_original_on_short_agent_result(
     monkeypatch,
@@ -334,18 +342,18 @@ def test_sanitize_startup_environment_removes_macos_malloc_keys(monkeypatch) -> 
     assert os.environ.get("__XPC_MALLOCSTACKLOGGING") is None
 
 
-def test_prompts_help_lists_export_subcommand(tmp_path: Path) -> None:
+def test_tools_prompts_help_lists_export_subcommand(tmp_path: Path) -> None:
     runner = CliRunner()
-    result = runner.invoke(cli, ["prompts", "--help"], env=_runner_env(tmp_path))
+    result = runner.invoke(cli, ["tools", "prompts", "--help"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
     assert "export" in result.output
 
 
-def test_prompts_export_writes_valid_yml_to_stdout(tmp_path: Path) -> None:
+def test_tools_prompts_export_writes_valid_yml_to_stdout(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["prompts", "export", "--type", "orchestrator"], env=_runner_env(tmp_path)
+        cli, ["tools", "prompts", "export", "--type", "orchestrator"], env=_runner_env(tmp_path)
     )
 
     assert result.exit_code == 0
@@ -354,12 +362,12 @@ def test_prompts_export_writes_valid_yml_to_stdout(tmp_path: Path) -> None:
     assert "messages:" in result.output
 
 
-def test_prompts_export_writes_file(tmp_path: Path) -> None:
+def test_tools_prompts_export_writes_file(tmp_path: Path) -> None:
     dest = tmp_path / "out.prompt.yml"
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["prompts", "export", "--type", "review", "-o", str(dest)],
+        ["tools", "prompts", "export", "--type", "review", "-o", str(dest)],
         env=_runner_env(tmp_path),
     )
 
@@ -368,11 +376,11 @@ def test_prompts_export_writes_file(tmp_path: Path) -> None:
     assert "kagan-review" in dest.read_text()
 
 
-def test_prompts_export_text_format_outputs_raw_prompt(tmp_path: Path) -> None:
+def test_tools_prompts_export_text_format_outputs_raw_prompt(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["prompts", "export", "--type", "orchestrator", "--format", "text"],
+        ["tools", "prompts", "export", "--type", "orchestrator", "--format", "text"],
         env=_runner_env(tmp_path),
     )
 
@@ -382,3 +390,11 @@ def test_prompts_export_text_format_outputs_raw_prompt(tmp_path: Path) -> None:
     assert "messages:" not in result.output
     # But SHOULD have actual prompt content
     assert "kagan" in result.output.lower()
+
+
+def test_root_cli_no_longer_exposes_prompt_commands(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["prompts", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 2
+    assert "No such command 'prompts'" in result.output

@@ -75,8 +75,8 @@ Export resolved prompts and benchmark them with [promptfoo](https://promptfoo.de
 ### Export
 
 ```bash
-kagan prompts export --type orchestrator --format text > prompt.txt
-kagan prompts export --type orchestrator -o orchestrator.prompt.yml
+kagan tools prompts export --type orchestrator --format text > prompt.txt
+kagan tools prompts export --type orchestrator -o orchestrator.prompt.yml
 ```
 
 Types: `orchestrator`, `execution`, `review`. Formats: `yml` (GitHub Models `.prompt.yml`) or `text` (raw).

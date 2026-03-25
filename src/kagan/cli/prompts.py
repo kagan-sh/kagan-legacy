@@ -123,10 +123,10 @@ def import_personas(
     - High risk: Requires --acknowledge-risk flag
 
     Examples:
-        kagan prompts persona import owner/repo
-        kagan prompts persona import owner/repo -y
-        kagan prompts persona import owner/repo --preview
-        kagan prompts persona import owner/repo --acknowledge-risk
+        kagan tools prompts persona import owner/repo
+        kagan tools prompts persona import owner/repo -y
+        kagan tools prompts persona import owner/repo --preview
+        kagan tools prompts persona import owner/repo --acknowledge-risk
     """
     from kagan.cli._bootstrap import make_client, run_async
 
@@ -334,7 +334,7 @@ def export_personas(repo: str, path: str, branch: str | None, commit_message: st
     """Export local persona presets to GitHub.
 
     Example:
-        kagan prompts persona export owner/repo
+        kagan tools prompts persona export owner/repo
     """
     from kagan.cli._bootstrap import make_client, run_async
 
@@ -362,7 +362,7 @@ def audit_personas(repo: str, path: str, ref: str | None) -> None:
     """Audit a persona preset repository without importing.
 
     Example:
-        kagan prompts persona audit owner/repo
+        kagan tools prompts persona audit owner/repo
     """
     from kagan.cli._bootstrap import make_client, run_async
 
@@ -415,7 +415,7 @@ def trust_persona_repo(repo: str) -> None:
     """Add a repository to your persona preset trust list.
 
     Example:
-        kagan prompts persona trust owner/repo
+        kagan tools prompts persona trust owner/repo
     """
     from kagan.cli._bootstrap import make_client, run_async
 
@@ -439,7 +439,7 @@ def untrust_persona_repo(repo: str) -> None:
     """Remove a repository from your persona preset trust list.
 
     Example:
-        kagan prompts persona untrust owner/repo
+        kagan tools prompts persona untrust owner/repo
     """
     from kagan.cli._bootstrap import make_client, run_async
 

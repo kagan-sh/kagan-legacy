@@ -21,7 +21,7 @@ tags:
 | `plugins` | Plugin management (requires opt-in, see below)   |
 | `reset`   | Remove local state                               |
 | `serve`   | Run HTTP API server (no web UI)                  |
-| `tools`   | Stateless utilities                              |
+| `tools`   | Stateless utilities and advanced prompt tooling  |
 | `tui`     | Run TUI explicitly                               |
 | `update`  | Check/install updates                            |
 | `web`     | Start API server with bundled web UI             |
@@ -205,6 +205,7 @@ ______________________________________________________________________
 | Subcommand | Description                  |
 | ---------- | ---------------------------- |
 | `enhance`  | Enhance prompts for AI tools |
+| `prompts`  | Export resolved prompts      |
 
 ### `kagan tools enhance`
 
@@ -217,6 +218,17 @@ Rewrites a prompt for clarity and actionability using an AI backend.
 | `--agent NAME` | Refinement agent backend (auto-detects if omitted)                       |
 | `-t, --tool`   | Legacy shorthand: `claude` or `opencode` (cannot combine with `--agent`) |
 | `-f, --file`   | Read prompt from file                                                    |
+
+### `kagan tools prompts export`
+
+| Option          | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| `--type`        | `orchestrator`, `execution`, or `review`                 |
+| `--output, -o`  | Output path; prints to stdout when omitted               |
+| `--format`      | `yml` or `text` output format                            |
+| `--model`       | Model ID written into the `.prompt.yml` header           |
+
+This is advanced tooling for prompt export and evaluation workflows. Persona management remains under `kagan tools prompts persona ...`.
 
 ______________________________________________________________________
 

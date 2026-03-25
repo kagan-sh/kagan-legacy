@@ -115,7 +115,7 @@ Before importing any persona preset, follow these steps:
 
 ```bash
 # 1. Audit the repository first
-kagan prompts persona audit owner/repo
+kagan tools prompts persona audit owner/repo
 
 # 2. Review the output:
 #    - Check trust_score and trust_tier
@@ -175,10 +175,10 @@ You can also maintain your own whitelist:
 
 ```bash
 # Add a repository to your personal whitelist
-kagan prompts persona whitelist add owner/repo
+kagan tools prompts persona whitelist add owner/repo
 
 # View your whitelist
-kagan prompts persona whitelist list
+kagan tools prompts persona whitelist list
 ```
 
 ---
@@ -334,10 +334,10 @@ Always audit persona presets before importing:
 
 ```bash
 # Audit first
-kagan prompts persona audit owner/repo
+kagan tools prompts persona audit owner/repo
 
 # Only import if trust_tier is acceptable
-kagan prompts persona import owner/repo --auto-confirm  # Only for low_risk
+kagan tools prompts persona import owner/repo --auto-confirm  # Only for low_risk
 ```
 
 #### 2. Use Specific Git References
@@ -346,10 +346,10 @@ When importing presets, pin to a specific commit or tag:
 
 ```bash
 # Pin to a specific commit
-kagan prompts persona import owner/repo --ref abc123def
+kagan tools prompts persona import owner/repo --ref abc123def
 
 # Pin to a release tag
-kagan prompts persona import owner/repo --ref v1.2.3
+kagan tools prompts persona import owner/repo --ref v1.2.3
 ```
 
 This protects against the repository owner changing the content after you've reviewed it.
@@ -360,7 +360,7 @@ Before using an imported persona, read its full prompt:
 
 ```bash
 # List all personas
-kagan prompts persona list
+kagan tools prompts persona list
 
 # The prompt content is shown in the TUI when selecting a persona
 ```

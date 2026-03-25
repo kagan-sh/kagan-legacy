@@ -61,7 +61,7 @@ kagan/
 - **Type annotations**: All public functions typed; pyrefly for typechecking (not mypy)
 - **MCP annotations**: TC001/TC002/TC003 suppressed in `src/kagan/mcp/` — MCP evaluates annotations at runtime
 - **Prompt resolution**: Three-layer pipeline in `core/_prompts.py` — dotfile override → code defaults + behavioral settings → additional instructions
-- **Settings keys**: Behavioral controls (`review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
+- **Settings keys**: Behavioral controls (`default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -112,20 +112,17 @@ uv run poe snapshot-update # Update TUI snapshot tests
 | server | `docs/internal/architecture/server.md` | `docs/internal/features/server.md` |
 | web    | `docs/internal/architecture/web.md`    | `docs/internal/features/web.md`    |
 
+Web deep dives:
+
+- Architecture: `docs/internal/architecture/web.md`
+- Features: `docs/internal/features/web.md`
+
 ## TypeScript / Web Checks
 
 ```bash
-uv run poe web-test          # Vitest unit tests
-uv run poe web-typecheck     # TypeScript type checking
-uv run poe web-build         # Build React bundle
-uv run poe web-check         # All web checks (typecheck + test)
-```
-
-## Prompt Evaluation
-
-```bash
-uv run poe eval              # Generate prompts + run promptfoo suite
-uv run poe eval-view         # Open results in browser
+cd packages/web && pnpm exec vitest run
+cd packages/web && pnpm exec playwright test   # requires running server (`kagan web`)
+cd packages/web && pnpm run build
 ```
 
 ## Module Pitfalls

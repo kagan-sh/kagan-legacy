@@ -40,3 +40,6 @@ export const deleteTaskDialogTaskIdAtom = atom<string | null>(null);
 export const dialogOpenCountAtom = atom(0);
 
 export const isAnyDialogOpenAtom = atom((get) => get(dialogOpenCountAtom) > 0);
+
+/** Currently selected orchestrator session in workspace view. */
+export const workspaceSessionIdAtom = atom<string | null>(null);

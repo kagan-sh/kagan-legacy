@@ -12,11 +12,20 @@ interface HeaderBarProps {
   onOpenHelp?: () => void;
   onToggleAIPanel?: () => void;
   onToggleFullscreen?: () => void;
+  aiPanelAvailable?: boolean;
   aiPanelOpen?: boolean;
   aiPanelFullscreen?: boolean;
 }
 
-export function HeaderBar({ onOpenCommandPalette, onOpenHelp, onToggleAIPanel, onToggleFullscreen, aiPanelOpen, aiPanelFullscreen }: HeaderBarProps) {
+export function HeaderBar({
+  onOpenCommandPalette,
+  onOpenHelp,
+  onToggleAIPanel,
+  onToggleFullscreen,
+  aiPanelAvailable = true,
+  aiPanelOpen,
+  aiPanelFullscreen,
+}: HeaderBarProps) {
   const taskCounts = useAtomValue(taskCountsAtom);
   const sseConnected = useAtomValue(sseConnectedAtom);
 
@@ -52,23 +61,25 @@ export function HeaderBar({ onOpenCommandPalette, onOpenHelp, onToggleAIPanel, o
               K
             </span>
           </Button>
-          <Button
-            type="button"
-            variant={aiPanelOpen ? 'default' : 'outline'}
-            size="sm"
-            onClick={onToggleAIPanel}
-            className={aiPanelOpen ? 'px-3' : 'px-3 text-[var(--muted-foreground)]'}
-            aria-label="Toggle AI Panel"
-            aria-pressed={aiPanelOpen}
-          >
-            <BotMessageSquare className="size-4" />
-            AI
-            <span className="ml-1 inline-flex items-center gap-1 bg-black/20 px-2 py-0.5 font-code text-[10px] uppercase tracking-[0.16em]">
-              <Command className="size-3" />
-              I
-            </span>
-          </Button>
-          {aiPanelOpen && (
+          {aiPanelAvailable ? (
+            <Button
+              type="button"
+              variant={aiPanelOpen ? 'default' : 'outline'}
+              size="sm"
+              onClick={onToggleAIPanel}
+              className={aiPanelOpen ? 'px-3' : 'px-3 text-[var(--muted-foreground)]'}
+              aria-label="Toggle AI Panel"
+              aria-pressed={aiPanelOpen}
+            >
+              <BotMessageSquare className="size-4" />
+              AI
+              <span className="ml-1 inline-flex items-center gap-1 bg-black/20 px-2 py-0.5 font-code text-[10px] uppercase tracking-[0.16em]">
+                <Command className="size-3" />
+                I
+              </span>
+            </Button>
+          ) : null}
+          {aiPanelAvailable && aiPanelOpen ? (
             <Button
               type="button"
               variant={aiPanelFullscreen ? 'default' : 'outline'}
@@ -80,7 +91,7 @@ export function HeaderBar({ onOpenCommandPalette, onOpenHelp, onToggleAIPanel, o
             >
               <Maximize2 className="size-4" />
             </Button>
-          )}
+          ) : null}
           <Button
             type="button"
             variant="outline"

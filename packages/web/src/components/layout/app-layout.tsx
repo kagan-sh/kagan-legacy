@@ -114,6 +114,7 @@ function AppLayout() {
         if (sessionMatch) return sessionMatch[1];
         return null;
     }, [location.pathname]);
+    const workspaceRoute = location.pathname.startsWith("/workspace");
 
     const closeChatRail = () => {
         setRailMode("none");
@@ -137,6 +138,7 @@ function AppLayout() {
     };
 
     const toggleAIPanel = useCallback(async () => {
+        if (workspaceRoute) return;
         const railOpen =
             railMode !== "none" && Boolean(railTaskId || railChatSessionId);
         const hasTask = Boolean(currentTaskId ?? railTaskId);
@@ -187,6 +189,7 @@ function AppLayout() {
         setRailMode,
         setRailTaskId,
         setSessionPickerOpen,
+        workspaceRoute,
     ]);
 
     useEffect(() => {
@@ -300,6 +303,7 @@ function AppLayout() {
                 lowerKey === "i"
             ) {
                 event.preventDefault();
+                if (workspaceRoute) return;
                 if (
                     railOpen &&
                     (railMode === "chat-right" || railMode === "chat-bottom")
@@ -394,6 +398,21 @@ function AppLayout() {
 
             if (isMobile || dialogOpen) return;
 
+            // Cmd/Ctrl+Shift+W — Toggle between board and workspace
+            if (
+                (event.metaKey || event.ctrlKey) &&
+                event.shiftKey &&
+                lowerKey === "w"
+            ) {
+                event.preventDefault();
+                const isWorkspace =
+                    location.pathname.startsWith("/workspace");
+                navigateRef.current(
+                    isWorkspace ? "/board" : "/workspace",
+                );
+                return;
+            }
+
             // Esc — close chat rail (interrupt-first: chat-input-bar stops propagation when busy)
             if (event.key === "Escape" && railOpen) {
                 event.preventDefault();
@@ -416,6 +435,7 @@ function AppLayout() {
         setHelpOverlayOpen,
         setChatRailLayout,
         setSessionPickerOpen,
+        workspaceRoute,
     ]);
 
     if (!projectChecked) {
@@ -453,17 +473,23 @@ function AppLayout() {
                             }}
                             onToggleAIPanel={toggleAIPanel}
                             onToggleFullscreen={() => {
+                                if (workspaceRoute) return;
                                 if (railMode === "chat-fullscreen") {
                                     setChatRailLayout(lastDockModeRef.current);
                                 } else if (railMode !== "none") {
                                     setChatRailLayout("chat-fullscreen");
                                 }
                             }}
+                            aiPanelAvailable={!workspaceRoute}
                             aiPanelOpen={
+                                !workspaceRoute &&
                                 railMode !== "none" &&
                                 Boolean(railTaskId || railChatSessionId)
                             }
-                            aiPanelFullscreen={railMode === "chat-fullscreen"}
+                            aiPanelFullscreen={
+                                !workspaceRoute &&
+                                railMode === "chat-fullscreen"
+                            }
                         />
                     )}
 
@@ -473,7 +499,8 @@ function AppLayout() {
                                 id="main-content"
                                 className={cn(
                                     "min-h-0 min-w-0 flex-1 overflow-y-auto bg-[color:var(--surface-0)] pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0",
-                                    railMode === "chat-fullscreen" &&
+                                    !workspaceRoute &&
+                                        railMode === "chat-fullscreen" &&
                                         "overflow-hidden",
                                 )}
                             >
@@ -481,6 +508,7 @@ function AppLayout() {
                             </main>
 
                             {!isMobile &&
+                            !workspaceRoute &&
                             railMode === "chat-right" &&
                             (railTaskId || railChatSessionId) ? (
                                 <div
@@ -522,6 +550,7 @@ function AppLayout() {
                         </div>
 
                         {!isMobile &&
+                        !workspaceRoute &&
                         railMode === "chat-bottom" &&
                         (railTaskId || railChatSessionId) ? (
                             <div
@@ -563,10 +592,11 @@ function AppLayout() {
                     </div>
                 </div>
 
-                {isMobile && <MobileTabs onToggleAIPanel={toggleAIPanel} />}
+                {isMobile && <MobileTabs />}
             </div>
 
             {isMobile &&
+            !workspaceRoute &&
             railMode !== "none" &&
             (railTaskId || railChatSessionId) ? (
                 <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--surface-0)]">
@@ -593,6 +623,7 @@ function AppLayout() {
             ) : null}
 
             {!isMobile &&
+            !workspaceRoute &&
             railMode === "chat-fullscreen" &&
             (railTaskId || railChatSessionId) ? (
                 <div className="glass-surface pointer-events-none fixed inset-0 z-40 hidden p-4 lg:block">

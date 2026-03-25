@@ -20,7 +20,7 @@ Every task is just a task. When you launch it, choose one of two actions:
 
 ## Start a managed run
 
-`n` → create task → `s` to start → follow progress in the task or session views → REVIEW → approve/merge.
+`n` → create task → `s` to start → follow progress from the task screen or the TUI AI panel → REVIEW → approve/merge.
 
 The agent runs in the background. Use follow-ups, notes, and review to steer iterations after launch.
 

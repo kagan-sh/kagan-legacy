@@ -1,20 +1,17 @@
 import { NavLink } from 'react-router';
 import { useSetAtom } from 'jotai';
-import { BotMessageSquare, HelpCircle, LayoutDashboard, MessageSquare, Settings } from 'lucide-react';
+import { HelpCircle, LayoutDashboard, MessageSquare, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { helpOverlayOpenAtom, sessionPickerOpenAtom } from '@/lib/atoms/ui';
 import { Button } from '@/components/ui/button';
 
-interface MobileTabsProps {
-  onToggleAIPanel?: () => void;
-}
-
 const TABS = [
   { to: '/board', icon: LayoutDashboard, label: 'Board' },
+  { to: '/workspace', icon: MessageSquareText, label: 'Workspace' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ] as const;
 
-export function MobileTabs({ onToggleAIPanel }: MobileTabsProps) {
+export function MobileTabs() {
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
   const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
 
@@ -38,16 +35,6 @@ export function MobileTabs({ onToggleAIPanel }: MobileTabsProps) {
             <span>{label}</span>
           </NavLink>
         ))}
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onToggleAIPanel}
-          className="min-h-14 flex-col gap-1 rounded-none px-1 py-2.5 text-[11px] font-medium text-[var(--muted-foreground)]"
-          aria-label="Toggle AI chat"
-        >
-          <BotMessageSquare className="size-4" />
-          <span>AI Chat</span>
-        </Button>
         <Button
           type="button"
           variant="ghost"

@@ -28,6 +28,8 @@ uvx kagan
 
 - [:material-chat: **Chat orchestrator**](guides/chat.md)
 
+- [:material-monitor-dashboard: **Web dashboard**](guides/web-dashboard.md)
+
 - :material-cellphone-link:{ .lg .middle } **Remote access**
 
   Manage your board from a phone or browser on your network.
@@ -81,6 +83,7 @@ ______________________________________________________________________
 | Work across multiple repos       | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo) |
 | Import tasks from GitHub         | [Import from GitHub](guides/github.md)                   |
 | Extend with plugins              | [Plugins](reference/plugins.md) (early stage)            |
+| Use the web dashboard            | [Web dashboard](guides/web-dashboard.md)                 |
 | Control board from phone/browser | [Remote access](guides/remote-access.md)                 |
 | Fix a known issue                | [Troubleshooting](troubleshooting.md)                    |
 | All CLI flags                    | [CLI reference](reference/cli.md)                        |

@@ -128,6 +128,7 @@ class ChatPanel(Vertical):
         self._overlay_split_key = "Ctrl+I"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
         self._overlay_close_key = "Esc"
+        self._status_hint_override: str | None = None
         self._state_only_updates = 0
 
     @contextlib.contextmanager
@@ -333,6 +334,11 @@ class ChatPanel(Vertical):
         self._overlay_split_key = split.strip() or self._overlay_split_key
         self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
         self._overlay_close_key = close.strip() or self._overlay_close_key
+        self._refresh_status()
+
+    def set_status_hint_override(self, hint: str | None) -> None:
+        normalized = hint.strip() if isinstance(hint, str) else ""
+        self._status_hint_override = normalized or None
         self._refresh_status()
 
     def set_first_boot(self, enabled: bool = True) -> None:
@@ -1277,6 +1283,14 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def _refresh_status(self) -> None:
+        if self._status_hint_override:
+            status_bar = self._status_bar()
+            if status_bar is None:
+                return
+            status_bar.update_status(self._runtime_status)
+            status_bar.update_hint(self._status_hint_override)
+            return
+
         input_disabled = self._input_widget().disabled
         split_key = self._overlay_split_key
         fullscreen_key = self._overlay_fullscreen_key

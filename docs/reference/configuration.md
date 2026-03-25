@@ -139,6 +139,25 @@ discovery = [..., "my_company.kagan_plugins.my_plugin:MyPlugin"]
 
 ## Environment variables passed into interactive sessions
 
+## Web dashboard settings
+
+The web dashboard at `/settings` offers a categorized settings UI that reads and writes the same key-value store as `config.toml`. Changes made in the web UI take effect immediately and are visible in the TUI Settings modal, and vice versa.
+
+| Category        | Controls                                                                      |
+| --------------- | ----------------------------------------------------------------------------- |
+| Preferences     | Default agent backend, theme (system / dark / light)                          |
+| Personalization | Custom instructions appended to every agent prompt, dotfile override status   |
+| Shortcuts       | Keyboard shortcut reference                                                   |
+| Automation      | Auto review, require review approval, serialize merges                        |
+| Orchestration   | Auto-confirm single tasks, review strictness, planning depth                  |
+| Git             | Identity mode (managed / system / custom), base branch, worktree strategy     |
+| Environment     | Interactive launcher, restore last workspace, show attach guidance            |
+| Models          | Default model hints for Claude-family and OpenAI-family agents                |
+| Connection      | Server URL, mode, SSE status, version                                         |
+| System Checks   | Preflight checks with pass/warn/fail status and fix hints                     |
+
+The settings page uses a left sidebar for category navigation. Toggle rows save immediately on change; text fields save on blur or explicit Save button.
+
 ## Prompt override files
 
 Place Markdown files in `.kagan/prompts/` at the root of your project repository to fully replace the built-in prompts:

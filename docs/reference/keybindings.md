@@ -13,11 +13,24 @@ Press `?` any time to open context-aware help for the current screen.
 | Key                   | Action                   |
 | --------------------- | ------------------------ |
 | ++question++ / ++f1++ | Open help                |
-| ++ctrl+i++            | Toggle AI Panel          |
 | ++ctrl+o++            | Open project selector    |
 | ++ctrl+r++            | Open repository selector |
 | ++ctrl+comma++        | Open settings            |
 | ++ctrl+q++            | Quit                     |
+
+## Web Dashboard
+
+These shortcuts apply in the web dashboard (`kagan web`).
+
+| Key                       | Action                                    |
+| ------------------------- | ----------------------------------------- |
+| ++cmd+shift+w++           | Toggle Board / Workspace view             |
+| ++cmd+shift+p++           | Open command palette                      |
+| ++cmd+i++                 | Cycle AI panel on Board / Task routes     |
+| ++cmd+shift+f++           | Toggle AI panel fullscreen off-workspace  |
+| ++cmd+shift+k++           | Open session switcher                     |
+| ++question++ / ++f1++     | Open help overlay                         |
+| ++escape++                | Close AI panel off-workspace or dismiss overlay |
 
 ## Kanban Board
 
@@ -25,6 +38,7 @@ Press `?` any time to open context-aware help for the current screen.
 | -------------------------------- | -------------------- |
 | ++n++                            | New task             |
 | ++enter++                        | Open task            |
+| ++w++                            | Switch to Workspace  |
 | ++a++                            | Attach interactive run |
 | ++space++                        | Cycle AI split       |
 | ++p++                            | Peek task            |
@@ -42,9 +56,26 @@ Press `?` any time to open context-aware help for the current screen.
 | ++esc++                          | Close AI Panel       |
 | ++b++                            | Set branch           |
 
+`Enter` is two-step on the TUI board: first press opens the inspector for the selected card; press `Enter` again to open the full task screen.
+
 Press `Ctrl+I` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
 
 Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
+
+## Workspace
+
+| Key            | Action                    |
+| -------------- | ------------------------- |
+| ++enter++      | Open highlighted session  |
+| ++n++          | Start new session         |
+| ++x++          | Delete highlighted session |
+| ++slash++      | Focus session search      |
+| ++ctrl+i++     | Focus chat input          |
+| ++ctrl+k++     | Session Switcher          |
+| ++w++          | Return to Kanban          |
+| ++esc++        | Step back: clear search or leave chat, then return to Kanban from the sidebar |
+
+The TUI Workspace is orchestrator-first: the left sidebar is the session list, and the main pane is the full chat surface. Focus enters on the sidebar by default so list actions stay predictable; use `Ctrl+I` to move into chat input.
 
 ## Task Screen
 
@@ -58,7 +89,6 @@ Rare actions like GitHub import, repo sync, and AI review are available via Quic
 | ++x++         | Reject             |
 | ++m++         | Merge              |
 | ++b++         | Rebase             |
-| ++space++     | Cycle AI split     |
 | ++ctrl+f++    | Fullscreen AI chat |
 | ++ctrl+i++    | Toggle AI Panel    |
 | ++ctrl+k++    | Session Switcher   |

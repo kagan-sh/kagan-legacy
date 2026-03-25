@@ -29,6 +29,19 @@ ______________________________________________________________________
 - advisory WIP warnings from resolved workflow settings
 - richer task cards with review state, acceptance-criteria count, last activity, workspace state, and live session telemetry
 - desktop right rail supports task inspection and related chat preview
+- `Cmd/Ctrl+Shift+W` toggles to the conversation-first workspace view
+
+______________________________________________________________________
+
+## 3a. Workspace View
+
+- conversation-first alternative to the kanban board, accessible via `/workspace` or `Cmd/Ctrl+Shift+W`
+- left sidebar lists orchestrator conversations only; task streams are not separate primary navigation in this route
+- sidebar search filters across conversation labels and configured backends
+- selecting a conversation opens `OrchestratorChatPanel` full-width as the main workspace surface
+- first visit bootstraps a blank orchestrator session automatically if none exist
+- the workspace route suppresses the global AI rail so users do not get two competing chat surfaces
+- session labels and backend changes propagate back into the sidebar after turns complete or metadata changes
 
 ______________________________________________________________________
 

@@ -30,6 +30,7 @@ packages/web/src/
 ├── routes.tsx
 ├── pages/
 │   ├── board-page.tsx
+│   ├── workspace-page.tsx      # orchestrator-first workspace (session sidebar + conversation surface)
 │   ├── task-detail-page.tsx    # unified task workspace (Overview, Changes, Review tabs)
 │   ├── session-page.tsx        # legacy redirect target for /session/:taskId
 │   ├── chat-page.tsx
@@ -42,6 +43,7 @@ packages/web/src/
 │   ├── session/
 │   ├── settings/
 │   ├── shared/
+│   ├── workspace/
 │   └── ui/
 └── lib/
     ├── api/
@@ -82,6 +84,10 @@ ______________________________________________________________________
 - `task-commits-panel.tsx` -- commit history panel for a task workspace
 - `chat-overlay-empty-state.tsx` -- empty state for the chat overlay when no session is active
 
+### `workspace/`
+
+- `workspace-sidebar.tsx` -- orchestrator session list with search, create, and delete actions
+
 ______________________________________________________________________
 
 ## Hooks
@@ -119,6 +125,7 @@ ______________________________________________________________________
 ## Routing
 
 - `/board` -- kanban board and inspector/AI Panel rails
+- `/workspace` -- orchestrator-first workspace with session sidebar and full-width conversation surface
 - `/task/:id` -- unified task workspace with 3 tabs: **Overview**, **Changes**, **Review**
 - `/task/:id?lane=worker|reviewer` -- deep-link that auto-opens the ChatSidePanel overlay for live streaming
 - `/session/:taskId` -- legacy redirect to `/task/:id?lane=worker`
@@ -127,6 +134,8 @@ ______________________________________________________________________
 - `/welcome` -- onboarding/project setup page
 
 Global overlays in app layout include Session Switcher (`Cmd/Ctrl+Shift+K`) and Help (`?`/`F1`).
+
+`Cmd/Ctrl+Shift+W` toggles between `/board` and `/workspace`. On `/workspace`, the route itself is the orchestrator surface, so the app-level AI rail stays hidden.
 
 The app is SPA-only and configured through `src/routes.tsx`.
 
@@ -157,7 +166,7 @@ ______________________________________________________________________
   - connects to `GET /api/events/stream` for board + session events
   - auto-reconnects with exponential backoff (1s → 30s)
   - dispatches `SESSION_EVENT` via `CustomEvent('kagan:session-event')` for component-level subscription
-- **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally and passes `disableSend` to `ChatInputBar`
+- **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally, syncs session summary changes back to `/workspace`, and passes `disableSend` to `ChatInputBar`
 - **Commands** (run, cancel, follow-up, interrupt) use REST endpoints via `apiClient`
 
 Bundled web mode talks to the same local server instance that serves the SPA. It does not perform QR pairing or token auth.

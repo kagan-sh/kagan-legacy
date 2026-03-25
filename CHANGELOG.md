@@ -13,6 +13,105 @@
 
 
 
+## v0.12.2-beta.1 (2026-03-24)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+- **core,tui**: Eliminate redundant DB lookup in project activation
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+- **core**: Suppress stdout during DB migrations to prevent MCP JSON-RPC corruption
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+
+
+
+
+
+
+
+
+
+
+### refactoring
+
+- **core**: Address Greptile review comments on PR #66
+  ([#66](https://github.com/kagan-sh/kagan/pull/66),
+  [`a5e08bb`](https://github.com/kagan-sh/kagan/commit/a5e08bb2759843d8549d5dfd974b27a7d0f3ceb4))
+
+
+
+
+
+## v0.12.1 (2026-03-23)
+
+
+
+
+
+
+
+## v0.12.1-beta.5 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+- **core,tui**: Eliminate redundant DB lookup and handle race condition
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+- **core,tui**: Eliminate redundant DB lookup in project activation
+  ([#65](https://github.com/kagan-sh/kagan/pull/65),
+  [`c86beb0`](https://github.com/kagan-sh/kagan/commit/c86beb01d8dfcb25159e05b7001d92f39b274476))
+
+
+
+
+
+## v0.12.1-beta.4 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **tui**: Add defensive handling in onboarding form
+  ([#64](https://github.com/kagan-sh/kagan/pull/64),
+  [`b71b625`](https://github.com/kagan-sh/kagan/commit/b71b6252569bb9756ad4e81e9e60ef2b43e3ee6e))
+
+
+
+
+
+## v0.12.1-beta.3 (2026-03-23)
+
+
+
+
+### bug fixes
+
+- **deps**: Pin httpx to stable versions <1.0 ([#63](https://github.com/kagan-sh/kagan/pull/63),
+  [`7b5b6e8`](https://github.com/kagan-sh/kagan/commit/7b5b6e8323bd2479d05ed6082ca8107ac4dddbfc))
+
+
+
+
+
 ## v0.12.1-beta.2 (2026-03-23)
 
 

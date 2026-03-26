@@ -208,8 +208,7 @@ Vitest conventions:
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 
 ```bash
-cd packages/web
-npx vitest run
+pnpm run web:test
 ```
 
 Playwright conventions:
@@ -220,8 +219,7 @@ Playwright conventions:
 - Keep E2E suites small and resilient; avoid brittle selectors tied to styling
 
 ```bash
-cd packages/web
-npx playwright test
+pnpm run web:test:e2e
 ```
 
 Relationship to Python tests:
@@ -273,10 +271,9 @@ keeps the extension honest while keeping tests deterministic.
 Commands:
 
 ```bash
-cd packages/vscode
-npm run test:unit
-npm run test:integration
-npm run test:e2e
+pnpm run vscode:test:unit
+pnpm run vscode:test:integration
+pnpm run vscode:test:e2e
 ```
 
 Root shortcuts:

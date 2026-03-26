@@ -13,6 +13,7 @@ import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/revie
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
 import { StatusBar } from "./status/bar.js";
 import type { SSEMessage } from "./api/types.js";
+import { LocalServerSupervisor } from "./server/supervisor.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = vscode.workspace.getConfiguration("kagan");
@@ -26,6 +27,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const reviewProvider = new ReviewCommentProvider();
   const terminalProvider = new AgentTerminalProvider(client);
   const statusBar = new StatusBar();
+  const serverLog = vscode.window.createOutputChannel("Kagan Server");
+  const serverSupervisor = new LocalServerSupervisor(serverLog);
 
   const boardView = vscode.window.createTreeView("kagan.board", {
     treeDataProvider: boardProvider,
@@ -42,7 +45,15 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const connectCommand = vscode.commands.registerCommand("kagan.connect", async () => {
-    await connect(client, sse, boardProvider, statusBar);
+    await connect(
+      client,
+      sse,
+      boardProvider,
+      statusBar,
+      serverLog,
+      serverSupervisor,
+      getServerLaunchSettings(),
+    );
   });
 
   const disconnectCommand = vscode.commands.registerCommand("kagan.disconnect", async () => {
@@ -114,13 +125,31 @@ export function activate(context: vscode.ExtensionContext): void {
     outputProvider,
     reviewProvider,
     statusBar,
+    serverLog,
+    serverSupervisor,
   );
 
   statusBar.showDisconnected();
   void vscode.commands.executeCommand("setContext", "kagan.connected", false);
 
   if (config.get<boolean>("autoConnect", true)) {
-    void connect(client, sse, boardProvider, statusBar);
+    void connect(
+      client,
+      sse,
+      boardProvider,
+      statusBar,
+      serverLog,
+      serverSupervisor,
+      getServerLaunchSettings(),
+    );
+  }
+
+  function getServerLaunchSettings(): { autoStartServer: boolean; serverCommand: string } {
+    const nextConfig = vscode.workspace.getConfiguration("kagan");
+    return {
+      autoStartServer: nextConfig.get<boolean>("autoStartServer", true),
+      serverCommand: nextConfig.get<string>("serverCommand", "kagan").trim() || "kagan",
+    };
   }
 }
 
@@ -133,11 +162,21 @@ async function connect(
   sse: SSEStream,
   boardProvider: BoardTreeProvider,
   statusBar: StatusBar,
+  serverLog: vscode.OutputChannel,
+  serverSupervisor: LocalServerSupervisor,
+  launchSettings: {
+    autoStartServer: boolean;
+    serverCommand: string;
+  },
 ): Promise<void> {
   statusBar.showConnecting();
 
   try {
-    const reachable = await client.ping();
+    let reachable = await client.ping();
+    if (!reachable && launchSettings.autoStartServer) {
+      await serverSupervisor.ensureRunning(client, launchSettings.serverCommand);
+      reachable = await client.ping();
+    }
     if (!reachable) {
       throw new Error("Cannot reach Kagan server");
     }
@@ -146,7 +185,10 @@ async function connect(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     statusBar.showError(message);
-    void vscode.window.showErrorMessage(message);
+    const choice = await vscode.window.showErrorMessage(message, "Show Server Log");
+    if (choice === "Show Server Log") {
+      serverLog.show(true);
+    }
     await vscode.commands.executeCommand("setContext", "kagan.connected", false);
     return;
   }

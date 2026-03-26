@@ -242,25 +242,36 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically connect to server on startup"
+        },
+        "kagan.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start `kagan web --no-open` when serverUrl points to localhost and no Kagan server is running"
+        },
+        "kagan.serverCommand": {
+          "type": "string",
+          "default": "kagan",
+          "description": "Command used to start the local Kagan server automatically; the extension runs `<command> web --no-open`"
         }
       }
     }
   },
   "scripts": {
-    "compile": "npm run check-types && node esbuild.js",
+    "compile": "pnpm run check-types && node esbuild.js",
     "check-types": "tsc --noEmit",
     "check-types:test": "tsc --noEmit -p tsconfig.test.json",
     "build:test": "tsc -p tsconfig.test.json",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "test": "npm run test:unit && npm run test:integration",
+    "test": "pnpm run test:unit && pnpm run test:integration",
     "test:unit": "vitest run",
-    "test:integration": "npm run compile && npm run build:test && vscode-test",
-    "test:e2e": "npm run compile && wdio run ./test/wdio.conf.ts",
-    "test:check": "npm run check-types && npm run check-types:test && npm run test:unit",
-    "vscode:prepublish": "npm run package",
-    "package": "npm run check-types && node esbuild.js --production"
+    "test:integration": "pnpm run compile && pnpm run build:test && vscode-test",
+    "test:e2e": "pnpm run compile && wdio run ./test/wdio.conf.ts",
+    "test:check": "pnpm run check-types && pnpm run check-types:test && pnpm run test:unit",
+    "vscode:prepublish": "pnpm run package",
+    "package": "pnpm run check-types && node esbuild.js --production",
+    "vsix": "pnpm exec vsce package --allow-missing-repository"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -268,6 +279,7 @@
     "@types/vscode": "^1.96.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
     "@wdio/cli": "^8.46.0",
     "@wdio/globals": "^8.46.0",
     "@wdio/local-runner": "^8.46.0",
@@ -279,7 +291,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1",
-    "webdriverio": "^8.46.0",
-    "wdio-vscode-service": "^6.1.4"
+    "wdio-vscode-service": "^6.1.4",
+    "webdriverio": "^8.46.0"
   }
 }

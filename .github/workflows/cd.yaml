@@ -78,8 +78,8 @@ jobs:
         with:
           version: 10
 
-      - name: Install web dependencies
-        run: pnpm install --prefix packages/web
+      - name: Install JavaScript workspace dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build bundled web UI
         run: uv run poe web-build

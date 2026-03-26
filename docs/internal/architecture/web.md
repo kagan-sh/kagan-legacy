@@ -177,4 +177,4 @@ ______________________________________________________________________
 
 - **Vitest** for component, hook, and atom tests
 - **Playwright** for task flow, navigation, board, and chat E2E coverage
-- **TypeScript build** via `pnpm run typecheck` and `pnpm run build`
+- **TypeScript build** via the root pnpm workspace scripts: `pnpm run web:typecheck` and `pnpm run web:build`

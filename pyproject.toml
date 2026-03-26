@@ -252,7 +252,7 @@ cmd = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
 [tool.poe.tasks.web-build]
 help = "Build React web bundle and copy into the Python package for 'kagan web'"
 sequence = [
-  { shell = "cd packages/web && pnpm run build" },
+  { shell = "pnpm run web:build" },
   { shell = "rm -rf src/kagan/server/_web_static/* && cp -R packages/web/dist/* src/kagan/server/_web_static/ && touch src/kagan/server/_web_static/.gitkeep" },
 ]
 
@@ -280,15 +280,15 @@ cd packages/web && pnpm exec concurrently \\
 
 [tool.poe.tasks.web-typecheck]
 help = "Run TypeScript type checking on the web package"
-shell = "cd packages/web && pnpm exec tsc --noEmit"
+shell = "pnpm run web:typecheck"
 
 [tool.poe.tasks.web-lint]
 help = "Run ESLint on the web package"
-shell = "cd packages/web && pnpm run lint 2>/dev/null || true"
+shell = "pnpm --filter kagan-web run lint 2>/dev/null || true"
 
 [tool.poe.tasks.web-test]
 help = "Run Vitest unit tests on the web package"
-shell = "cd packages/web && pnpm exec vitest run"
+shell = "pnpm run web:test"
 
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"
@@ -296,19 +296,19 @@ sequence = ["web-typecheck", "web-test"]
 
 [tool.poe.tasks.vscode-typecheck]
 help = "Run TypeScript type checking on the VS Code extension package"
-shell = "cd packages/vscode && npm run check-types && npm run check-types:test"
+shell = "pnpm run vscode:typecheck"
 
 [tool.poe.tasks.vscode-test-unit]
 help = "Run Vitest unit tests on the VS Code extension package"
-shell = "cd packages/vscode && npm run test:unit"
+shell = "pnpm run vscode:test:unit"
 
 [tool.poe.tasks.vscode-test-integration]
 help = "Run extension-host integration tests on the VS Code extension package"
-shell = "cd packages/vscode && npm run test:integration"
+shell = "pnpm run vscode:test:integration"
 
 [tool.poe.tasks.vscode-test-e2e]
 help = "Run WDIO smoke tests against a real VS Code instance"
-shell = "cd packages/vscode && npm run test:e2e"
+shell = "pnpm run vscode:test:e2e"
 
 [tool.poe.tasks.vscode-check]
 help = "Run typecheck and fast tests on the VS Code extension package"

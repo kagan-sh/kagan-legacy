@@ -11,19 +11,19 @@ The app is built as a static SPA with Vite and served by the Python server at ru
 
 ## Local Development
 
+Run these from the repository root:
+
 ```bash
-cd packages/web
 pnpm install
-pnpm run dev
+pnpm run web:dev
 ```
 
 ## Quality Checks
 
 ```bash
-cd packages/web
-pnpm run typecheck
-pnpm run test
-pnpm run build
+pnpm run web:typecheck
+pnpm run web:test
+pnpm run web:build
 ```
 
 ## Bundle For Python Server

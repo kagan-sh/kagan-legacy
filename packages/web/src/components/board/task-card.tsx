@@ -6,6 +6,8 @@ import {
     ListChecks,
     Pencil,
     Play,
+    Square,
+    Terminal,
     Trash2,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
@@ -30,6 +32,8 @@ interface TaskCardProps {
     onEditTask?: (task: WireTask) => void;
     onDeleteTask?: (task: WireTask) => void;
     onStartAgent?: (task: WireTask) => void;
+    onStopAgent?: (task: WireTask) => void;
+    onAttachTask?: (task: WireTask) => void;
     isSelected?: boolean;
 }
 
@@ -164,6 +168,8 @@ export function TaskCard({
     onEditTask,
     onDeleteTask,
     onStartAgent,
+    onStopAgent,
+    onAttachTask,
     isSelected = false,
 }: TaskCardProps) {
     const navigate = useNavigate();
@@ -277,10 +283,23 @@ export function TaskCard({
                     <Pencil />
                     Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onStartAgent?.(task)}>
-                    <Play />
-                    Start Agent
-                </DropdownMenuItem>
+                {task.active_session ? (
+                    <DropdownMenuItem onSelect={() => onStopAgent?.(task)}>
+                        <Square />
+                        Stop Agent
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem onSelect={() => onStartAgent?.(task)}>
+                        <Play />
+                        Start Agent
+                    </DropdownMenuItem>
+                )}
+                {task.status !== "DONE" ? (
+                    <DropdownMenuItem onSelect={() => onAttachTask?.(task)}>
+                        <Terminal />
+                        Attach
+                    </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     variant="destructive"

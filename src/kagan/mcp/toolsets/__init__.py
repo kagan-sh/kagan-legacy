@@ -11,23 +11,15 @@ from kagan.core.errors import KaganError
 from kagan.mcp.server import ServerOptions, get_context
 
 
-def _sanitize_params(kwargs: dict[str, Any], max_length: int = 200) -> dict[str, Any]:
+def _sanitize_params(kwargs: dict[str, Any], max_length: int = 200) -> dict[str, str]:
     """Sanitize tool parameters for audit logging (truncate large values)."""
-    sanitized = {}
+    sanitized: dict[str, str] = {}
     for key, value in kwargs.items():
-        if isinstance(value, str):
-            if len(value) > max_length:
-                sanitized[key] = f"{value[:max_length]}..."
-            else:
-                sanitized[key] = value
-        elif isinstance(value, (list, dict)):
-            serialized = str(value)
-            if len(serialized) > max_length:
-                sanitized[key] = f"{serialized[:max_length]}..."
-            else:
-                sanitized[key] = value
+        serialized = str(value)
+        if len(serialized) > max_length:
+            sanitized[key] = f"{serialized[:max_length]}..."
         else:
-            sanitized[key] = value
+            sanitized[key] = serialized
     return sanitized
 
 

@@ -69,7 +69,7 @@ async def _poll_db_changes(
     except asyncio.CancelledError:
         raise
     except (ConnectionError, RuntimeError, OSError, KaganError):
-        logger.debug("SSE DB poll failed", exc_info=True)
+        logger.warning("SSE DB poll stopped due to error", exc_info=True)
 
 
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:

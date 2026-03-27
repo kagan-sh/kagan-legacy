@@ -100,7 +100,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
 
             Progressive trust behavior:
             - Low risk: Auto-imported (with auto_confirm=True)
-            - Medium risk: Shows trust assessment, requires explicit confirmation
+            - Medium risk: Imported; trust assessment returned for review
             - High risk: Requires acknowledge_risk=True flag
             """
             app = get_context(ctx)

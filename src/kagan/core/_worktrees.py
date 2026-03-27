@@ -65,10 +65,6 @@ def _resolve_worktree_path(task_id: str) -> Path:
             "Task IDs must contain only letters, numbers, underscores, and hyphens."
         )
 
-    # Block explicit path traversal attempts (defense in depth)
-    if ".." in task_id:
-        raise ValueError(f"Path traversal detected in task_id: {task_id!r}")
-
     base = _worktree_base_dir().resolve()
     worktree = (base / task_id).resolve()
 

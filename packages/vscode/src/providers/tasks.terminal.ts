@@ -28,7 +28,7 @@ export class AgentTerminalProvider {
         cwd: worktreePath ?? undefined,
       });
       terminal.show();
-      terminal.sendText(`tmux attach-session -t ${sessionName}`, true);
+      terminal.sendText(`tmux attach-session -t '${sessionName}'`, true);
       return;
     }
 

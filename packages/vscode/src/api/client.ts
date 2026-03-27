@@ -10,6 +10,7 @@ import type {
   TaskStatus,
   TaskWorktreeResponse,
   UpdateTaskInput,
+  WireChatSession,
   WireEnvelope,
   WireEvent,
   WireProject,
@@ -158,6 +159,44 @@ export class KaganClient {
 
   getSettings(): Promise<SettingsResponse> {
     return this.get<SettingsResponse>("/api/settings");
+  }
+
+  // ── Orchestrator chat ──────────────────────────────────────────────────
+
+  getChatSessions(): Promise<WireChatSession[]> {
+    return this.get<WireChatSession[]>("/api/chat/sessions");
+  }
+
+  createChatSession(label?: string, agentBackend?: string): Promise<WireChatSession> {
+    return this.post<WireChatSession>("/api/chat/sessions", {
+      label: label ?? null,
+      agent_backend: agentBackend ?? null,
+    });
+  }
+
+  /** POST to chat stream endpoint and return the raw SSE Response for streaming. */
+  async chatStream(
+    sessionId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const response = await fetch(`${this.baseUrl}/api/chat/${sessionId}/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ text }),
+      signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new ApiError(response.status, `Chat stream failed: ${response.status}`);
+    }
+    return response;
+  }
+
+  async interruptChat(sessionId: string): Promise<void> {
+    await this.post<Record<string, unknown>>(`/api/chat/${sessionId}/interrupt`, {});
   }
 
   async ping(): Promise<boolean> {

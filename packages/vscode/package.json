@@ -13,9 +13,29 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "workspaceContains:.kagan/attach_context.json"
   ],
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "kagan.agent",
+        "fullName": "Kagan",
+        "name": "kagan",
+        "description": "Chat with the Kagan orchestrator, watch tasks, and check board status",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "watch",
+            "description": "Stream a task's live agent output"
+          },
+          {
+            "name": "status",
+            "description": "Show board status and running tasks"
+          }
+        ]
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -125,6 +145,12 @@
         "title": "Attach to Agent Terminal",
         "category": "Kagan",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "kagan.chat.open",
+        "title": "Open in Chat",
+        "category": "Kagan",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -150,6 +176,11 @@
           "command": "kagan.task.cancel",
           "when": "view == kagan.board && viewItem == task.IN_PROGRESS",
           "group": "inline@2"
+        },
+        {
+          "command": "kagan.chat.open",
+          "when": "view == kagan.board && viewItem =~ /^task\\.(IN_PROGRESS|REVIEW)$/",
+          "group": "inline@3"
         },
         {
           "command": "kagan.task.diff",
@@ -220,6 +251,10 @@
         {
           "command": "kagan.terminal.attach",
           "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.chat.open",
+          "when": "kagan.connected"
         }
       ]
     },
@@ -252,6 +287,11 @@
           "type": "string",
           "default": "kagan",
           "description": "Command used to start the local Kagan server automatically; the extension runs `<command> web --no-open`"
+        },
+        "kagan.autoWatchOnAttach": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the Chat panel and stream task output when the IDE is opened via Attach to Task"
         }
       }
     }

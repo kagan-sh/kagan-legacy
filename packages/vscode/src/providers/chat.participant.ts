@@ -1,0 +1,456 @@
+// @kagan chat participant — orchestrator chat, task watching, and board
+// status inside the native VS Code Chat panel.
+
+import * as vscode from "vscode";
+import type { KaganClient } from "../api/client.js";
+import type { SSEStream } from "../api/sse.js";
+import { EVENT_TYPE, SSE_TYPE } from "../api/types.js";
+import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
+
+// ── ACP payload helpers ────────────────────────────────────────────────────
+
+function acpPayload(p: Record<string, unknown>): Record<string, unknown> {
+  const nested = p.acp;
+  return typeof nested === "object" && nested !== null
+    ? (nested as Record<string, unknown>)
+    : {};
+}
+
+function formatToolName(raw: string): string {
+  if (raw.startsWith("toolu_") || raw.startsWith("call_")) return "tool call";
+  if (raw.includes("__")) {
+    const parts = raw.split("__");
+    if ((parts[0] === "mcp" || parts[0] === "functions") && parts.length >= 3) {
+      return parts.slice(1).join(" / ");
+    }
+    return parts.join(" / ");
+  }
+  return raw.replaceAll("_", " ");
+}
+
+function extractToolTitle(p: Record<string, unknown>): string {
+  const acp = acpPayload(p);
+  return formatToolName(
+    String(acp.toolName ?? acp.name ?? acp.title ?? p.tool_name ?? p.title ?? "tool call"),
+  );
+}
+
+// ── Registration ───────────────────────────────────────────────────────────
+
+/** Active orchestrator session ID, persisted across chat turns. */
+let activeChatSessionId: string | null = null;
+
+export function registerChatParticipant(
+  context: vscode.ExtensionContext,
+  client: KaganClient,
+  sse: SSEStream,
+): void {
+  const participant = vscode.chat.createChatParticipant(
+    "kagan.agent",
+    (request, chatCtx, stream, token) =>
+      handleRequest(client, sse, request, chatCtx, stream, token),
+  );
+
+  participant.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "kagan.svg");
+
+  // Command to open chat pre-filled for a specific task.
+  // Accepts either a raw string or a board tree item { kind: "task", task: WireTask }.
+  const openChat = vscode.commands.registerCommand("kagan.chat.open", (arg?: unknown) => {
+    let query = "@kagan";
+    if (typeof arg === "string") {
+      query = `@kagan /watch ${arg}`;
+    } else if (typeof arg === "object" && arg !== null && "kind" in arg) {
+      const item = arg as { kind: string; task?: { title?: string } };
+      if (item.kind === "task" && item.task?.title) {
+        query = `@kagan /watch ${item.task.title}`;
+      }
+    }
+    vscode.commands.executeCommand("workbench.action.chat.open", { query });
+  });
+
+  context.subscriptions.push(participant, openChat);
+}
+
+// ── Request handler ────────────────────────────────────────────────────────
+
+async function handleRequest(
+  client: KaganClient,
+  sse: SSEStream,
+  request: vscode.ChatRequest,
+  chatCtx: vscode.ChatContext,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  switch (request.command) {
+    case "status":
+      await handleStatus(client, stream);
+      return;
+    case "watch":
+      await handleWatch(client, sse, request.prompt, stream, token);
+      return;
+    default:
+      // Default: orchestrator chat — send the message to the Kagan orchestrator
+      await handleChat(client, request.prompt, chatCtx, stream, token);
+  }
+}
+
+// ── /status ────────────────────────────────────────────────────────────────
+
+async function handleStatus(
+  client: KaganClient,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  const counts = await client.getTaskCounts();
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+
+  stream.markdown(`**Board** -- ${total} task${total === 1 ? "" : "s"}\n\n`);
+  stream.markdown(`| Column | Count |\n|--------|-------|\n`);
+  for (const col of ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"]) {
+    stream.markdown(`| ${col} | ${counts[col] ?? 0} |\n`);
+  }
+
+  const running = await client.getTasks("IN_PROGRESS" as TaskStatus);
+  if (running.length > 0) {
+    stream.markdown("\n**Running:**\n\n");
+    for (const task of running) {
+      const agent = task.active_session?.agent_backend ?? task.agent_backend ?? "?";
+      stream.markdown(`- **${task.title}** -- ${agent}\n`);
+    }
+  }
+
+  stream.button({ command: "kagan.board.refresh", title: "Refresh Board" });
+}
+
+// ── default: orchestrator chat ─────────────────────────────────────────────
+
+async function handleChat(
+  client: KaganClient,
+  prompt: string,
+  chatCtx: vscode.ChatContext,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  const text = prompt.trim();
+  if (!text) {
+    await handleStatus(client, stream);
+    return;
+  }
+
+  // Reuse session across turns, create one if needed
+  if (!activeChatSessionId || isNewConversation(chatCtx)) {
+    stream.progress("Starting orchestrator session...");
+    const session = await client.createChatSession();
+    activeChatSessionId = session.id;
+  }
+
+  stream.progress("Thinking...");
+
+  const abort = new AbortController();
+  token.onCancellationRequested(() => abort.abort());
+
+  try {
+    const response = await client.chatStream(activeChatSessionId, text, abort.signal);
+    await streamChatResponse(response, stream, abort.signal);
+  } catch (err) {
+    if (abort.signal.aborted) return;
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`\n\n**Error:** ${message}\n`);
+    // Session may be stale — clear it so next turn creates a fresh one
+    activeChatSessionId = null;
+  }
+}
+
+async function streamChatResponse(
+  response: Response,
+  stream: vscode.ChatResponseStream,
+  signal: AbortSignal,
+): Promise<void> {
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += value;
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop()!;
+
+      for (const part of parts) {
+        const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        let event: ChatStreamEvent;
+        try {
+          event = JSON.parse(dataLine.slice(6)) as ChatStreamEvent;
+        } catch {
+          continue;
+        }
+
+        switch (event.t) {
+          case "CHAT_CHUNK":
+            stream.markdown(event.content);
+            break;
+          case "CHAT_TOOL_START":
+            stream.markdown(`\n\n\`${formatToolName(event.tool)}\`\n\n`);
+            break;
+          case "CHAT_TOOL_PROGRESS":
+            // Quiet — tool completion will show in output
+            break;
+          case "CHAT_DONE":
+            return;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/** Detect a fresh conversation (no prior turns from @kagan). */
+function isNewConversation(chatCtx: vscode.ChatContext): boolean {
+  return chatCtx.history.length === 0;
+}
+
+// ── /watch ─────────────────────────────────────────────────────────────────
+
+async function handleWatch(
+  client: KaganClient,
+  sse: SSEStream,
+  prompt: string,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  const task = await pickTask(client, prompt);
+  if (!task) {
+    stream.markdown("No tasks found.");
+    stream.button({ command: "kagan.task.create", title: "Create Task" });
+    return;
+  }
+
+  stream.markdown(`**${task.title}** -- ${task.status}\n\n`);
+
+  if (task.status === "IN_PROGRESS") {
+    // Show brief tail of recent output, then stream live
+    const events = await client.getTaskEvents(task.id, { limit: 10, tail: true });
+    if (events.length > 0) {
+      renderHistory(events, stream);
+      stream.markdown("\n\n---\n\n");
+    }
+    stream.progress("Streaming live...");
+    await streamLive(task.id, sse, stream, token);
+  } else {
+    // For non-running tasks, show last 15 meaningful events
+    const events = await client.getTaskEvents(task.id, { limit: 15, tail: true });
+    renderHistory(events, stream);
+  }
+
+  const latest = await safeGetTask(client, task.id);
+  renderActions(latest ?? task, stream);
+}
+
+// ── Task resolution ────────────────────────────────────────────────────────
+
+async function pickTask(client: KaganClient, prompt: string): Promise<WireTask | undefined> {
+  const trimmed = prompt.trim();
+
+  if (trimmed) {
+    const all = await client.getTasks();
+    const match = all.find(
+      (t) =>
+        t.title.toLowerCase().includes(trimmed.toLowerCase()) ||
+        t.id.startsWith(trimmed),
+    );
+    if (match) return match;
+  }
+
+  const running = await client.getTasks("IN_PROGRESS" as TaskStatus);
+  if (running.length > 0) return running[0];
+
+  const review = await client.getTasks("REVIEW" as TaskStatus);
+  if (review.length > 0) return review[0];
+
+  const all = await client.getTasks();
+  return all[0];
+}
+
+// ── Historical event rendering ─────────────────────────────────────────────
+
+function renderHistory(events: WireEvent[], stream: vscode.ChatResponseStream): void {
+  let textBuf = "";
+  let lastThought = false;
+
+  const flushText = () => {
+    if (!textBuf) return;
+    stream.markdown(textBuf);
+    textBuf = "";
+  };
+
+  for (const event of events) {
+    const p = event.payload ?? {};
+
+    switch (event.type) {
+      case EVENT_TYPE.OUTPUT_CHUNK: {
+        const text = String(p.text ?? "");
+        if (!text) break;
+        const thought = Boolean(p.thought);
+        if (textBuf && thought !== lastThought) flushText();
+        if (thought && !lastThought) textBuf += "\n\n> *Thinking:* ";
+        textBuf += text;
+        lastThought = thought;
+        break;
+      }
+      case EVENT_TYPE.TOOL_CALL_START: {
+        flushText();
+        stream.markdown(`\n\n\`${extractToolTitle(p)}\`\n\n`);
+        break;
+      }
+      case EVENT_TYPE.TOOL_CALL_UPDATE:
+        break;
+      case EVENT_TYPE.TASK_STATUS_CHANGED: {
+        flushText();
+        stream.markdown(`\n\n---\n*${p.from} \u2192 ${p.to}*\n\n`);
+        break;
+      }
+      case EVENT_TYPE.AGENT_COMPLETED: {
+        flushText();
+        stream.markdown("\n\n---\n**Agent completed**\n\n");
+        break;
+      }
+      case EVENT_TYPE.AGENT_FAILED: {
+        flushText();
+        stream.markdown(`\n\n---\n**Agent failed:** ${p.error ?? "unknown error"}\n\n`);
+        break;
+      }
+      case EVENT_TYPE.PLAN_UPDATE: {
+        flushText();
+        stream.markdown("\n\n`Plan updated`\n\n");
+        break;
+      }
+      case EVENT_TYPE.AUTO_REVIEW_STARTED: {
+        flushText();
+        stream.markdown("\n\n`Auto-review started`\n\n");
+        break;
+      }
+      case EVENT_TYPE.CRITERION_VERDICT: {
+        flushText();
+        const mark = String(p.verdict ?? "") === "PASS" ? "PASS" : "FAIL";
+        stream.markdown(`\n- **[${mark}]** ${p.reason ?? ""}\n`);
+        break;
+      }
+      case EVENT_TYPE.MERGE_COMPLETED: {
+        flushText();
+        stream.markdown("\n\n---\n**Merge completed**\n\n");
+        break;
+      }
+      case EVENT_TYPE.MERGE_FAILED: {
+        flushText();
+        stream.markdown(`\n\n---\n**Merge failed:** ${p.error ?? "unknown"}\n\n`);
+        break;
+      }
+      case EVENT_TYPE.AGENT_STATUS:
+        break;
+    }
+  }
+
+  flushText();
+}
+
+// ── Live SSE streaming ─────────────────────────────────────────────────────
+
+function streamLive(
+  taskId: string,
+  sse: SSEStream,
+  stream: vscode.ChatResponseStream,
+  token: vscode.CancellationToken,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      subscription.dispose();
+      resolve();
+    };
+
+    const subscription = sse.onMessage((msg: SSEMessage) => {
+      if (msg.type !== SSE_TYPE.SESSION_EVENT) return;
+      if (msg.task_id !== taskId) return;
+
+      const event = msg.event;
+      const p = event.payload ?? {};
+
+      switch (event.type) {
+        case EVENT_TYPE.OUTPUT_CHUNK: {
+          const text = String(p.text ?? "");
+          if (text) stream.markdown(text);
+          break;
+        }
+        case EVENT_TYPE.TOOL_CALL_START:
+          stream.markdown(`\n\n\`${extractToolTitle(p)}\`\n\n`);
+          break;
+        case EVENT_TYPE.TOOL_CALL_UPDATE:
+          break;
+        case EVENT_TYPE.TASK_STATUS_CHANGED:
+          stream.markdown(`\n\n---\n*${p.from} \u2192 ${p.to}*\n\n`);
+          break;
+        case EVENT_TYPE.AGENT_COMPLETED:
+          stream.markdown("\n\n---\n**Agent completed**\n\n");
+          done();
+          break;
+        case EVENT_TYPE.AGENT_FAILED:
+          stream.markdown(`\n\n---\n**Agent failed:** ${p.error ?? "unknown error"}\n\n`);
+          done();
+          break;
+        case EVENT_TYPE.PLAN_UPDATE:
+          stream.markdown("\n\n`Plan updated`\n\n");
+          break;
+        case EVENT_TYPE.AUTO_REVIEW_STARTED:
+          stream.markdown("\n\n`Auto-review started`\n\n");
+          break;
+        case EVENT_TYPE.CRITERION_VERDICT: {
+          const mark = String(p.verdict ?? "") === "PASS" ? "PASS" : "FAIL";
+          stream.markdown(`\n- **[${mark}]** ${p.reason ?? ""}\n`);
+          break;
+        }
+        case EVENT_TYPE.MERGE_COMPLETED:
+          stream.markdown("\n\n---\n**Merge completed**\n\n");
+          done();
+          break;
+        case EVENT_TYPE.MERGE_FAILED:
+          stream.markdown(`\n\n---\n**Merge failed:** ${p.error ?? "unknown"}\n\n`);
+          done();
+          break;
+        case EVENT_TYPE.AGENT_STATUS:
+          break;
+      }
+    });
+
+    token.onCancellationRequested(done);
+  });
+}
+
+// ── Action buttons ─────────────────────────────────────────────────────────
+
+function renderActions(task: WireTask, stream: vscode.ChatResponseStream): void {
+  if (task.status === "REVIEW") {
+    stream.button({ command: "kagan.task.diff", title: "View Diff", arguments: [{ kind: "task", task }] });
+    stream.button({ command: "kagan.review.approve", title: "Approve", arguments: [{ kind: "task", task }] });
+    stream.button({ command: "kagan.review.reject", title: "Reject", arguments: [{ kind: "task", task }] });
+    stream.button({ command: "kagan.review.merge", title: "Merge", arguments: [{ kind: "task", task }] });
+  } else if (task.status === "BACKLOG") {
+    stream.button({ command: "kagan.task.run", title: "Run Task", arguments: [{ kind: "task", task }] });
+  } else if (task.status === "DONE") {
+    stream.button({ command: "kagan.task.diff", title: "View Diff", arguments: [{ kind: "task", task }] });
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+async function safeGetTask(client: KaganClient, taskId: string): Promise<WireTask | undefined> {
+  try {
+    return await client.getTask(taskId);
+  } catch {
+    return undefined;
+  }
+}

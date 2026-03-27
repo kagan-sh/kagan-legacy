@@ -10,6 +10,7 @@ discover kagan's MCP server scoped to the session.
 
 import asyncio
 import errno
+import json
 import shlex
 import subprocess
 import sys
@@ -98,6 +99,15 @@ async def _write_startup_prompt(worktree_path: Path, startup_prompt: str) -> Pat
     return prompt_path
 
 
+async def _write_attach_context(worktree_path: Path, task_id: str, session_id: str) -> None:
+    """Write attach context so IDE extensions can auto-open the task."""
+    bundle_dir = worktree_path / ".kagan"
+    await asyncio.to_thread(bundle_dir.mkdir, parents=True, exist_ok=True)
+    context_path = bundle_dir / "attach_context.json"
+    content = json.dumps({"task_id": task_id, "session_id": session_id}, indent=2)
+    await asyncio.to_thread(context_path.write_text, content, "utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Subprocess helpers
 # ---------------------------------------------------------------------------
@@ -154,6 +164,7 @@ async def launch_tmux(
     agent_backend: str | None = None,
     db_path: str = "",
     startup_prompt: str | None = None,
+    task_id: str | None = None,
 ) -> None:
     if sys.platform == "win32":
         raise AgentError(
@@ -165,6 +176,8 @@ async def launch_tmux(
         await _write_mcp_json(worktree_path, session_id, db_path)
     if startup_prompt and startup_prompt.strip():
         await _write_startup_prompt(worktree_path, startup_prompt)
+    if task_id:
+        await _write_attach_context(worktree_path, task_id, session_id)
 
     session_name = f"kagan-{session_id.replace(':', '-')}"
 
@@ -207,6 +220,10 @@ async def launch_ide(
     if startup_prompt and startup_prompt.strip():
         prompt_path = await _write_startup_prompt(worktree_path, startup_prompt)
 
+    task_id = _kwargs.get("task_id")
+    if task_id:
+        await _write_attach_context(worktree_path, task_id, session_id)
+
     cmd = build_ide_command(
         ide=ide,
         worktree_path=str(worktree_path),
@@ -229,6 +246,10 @@ async def launch_neovim(
         await _write_mcp_json(worktree_path, session_id, db_path)
     if startup_prompt and startup_prompt.strip():
         await _write_startup_prompt(worktree_path, startup_prompt)
+
+    task_id = _kwargs.get("task_id")
+    if task_id:
+        await _write_attach_context(worktree_path, task_id, session_id)
     logger.debug("Neovim preparation complete")
 
 

@@ -7,6 +7,7 @@ import {
   TASK_COLUMNS,
   PRIORITY_ICONS,
   STATUS_ICONS,
+  SSE_TYPE,
   type WireTask,
   type TaskStatus,
   type SSEMessage,
@@ -52,7 +53,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
   }
 
   onSSE(msg: SSEMessage): void {
-    if (msg.type === "TASK_UPDATED" || msg.type === "SESSION_EVENT") this.refresh();
+    if (msg.type === SSE_TYPE.TASK_UPDATED || msg.type === SSE_TYPE.SESSION_EVENT) this.refresh();
   }
 
   // ── TreeDataProvider ────────────────────────────────────────────────────

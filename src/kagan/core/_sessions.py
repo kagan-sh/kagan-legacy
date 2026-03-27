@@ -448,6 +448,7 @@ class Sessions:
             "agent_backend": agent_backend,
             "db_path": db_path_str,
             "startup_prompt": startup_prompt,
+            "task_id": task_id,
         }
         if ide is not None:
             launch_kwargs["ide"] = ide

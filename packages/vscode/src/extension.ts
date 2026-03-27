@@ -11,8 +11,9 @@ import {
 } from "./providers/tasks.scm.js";
 import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/review.comments.js";
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
+import { registerChatParticipant } from "./providers/chat.participant.js";
 import { StatusBar } from "./status/bar.js";
-import type { SSEMessage } from "./api/types.js";
+import { SSE_TYPE, type SSEMessage } from "./api/types.js";
 import { LocalServerSupervisor } from "./server/supervisor.js";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -76,12 +77,13 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalProvider,
   );
   registerReviewCommands(context, client, boardProvider, reviewProvider);
+  registerChatParticipant(context, client, sse);
 
   const messageSubscription = sse.onMessage((message: SSEMessage) => {
     boardProvider.onSSE(message);
     outputProvider.onSSE(message);
 
-    if (message.type === "TASK_UPDATED") {
+    if (message.type === SSE_TYPE.TASK_UPDATED) {
       void refreshCounts(client, statusBar);
     }
   });
@@ -143,6 +145,8 @@ export function activate(context: vscode.ExtensionContext): void {
       getServerLaunchSettings(),
     );
   }
+
+  void detectAttachContext(client, sse);
 
   function getServerLaunchSettings(): { autoStartServer: boolean; serverCommand: string } {
     const nextConfig = vscode.workspace.getConfiguration("kagan");
@@ -215,4 +219,51 @@ async function refreshCounts(client: KaganClient, statusBar: StatusBar): Promise
     const message = error instanceof Error ? error.message : String(error);
     statusBar.showError(message);
   }
+}
+
+async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise<void> {
+  const config = vscode.workspace.getConfiguration("kagan");
+  if (!config.get<boolean>("autoWatchOnAttach", true)) return;
+
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return;
+
+  const contextUri = vscode.Uri.joinPath(folders[0].uri, ".kagan", "attach_context.json");
+
+  try {
+    await vscode.workspace.fs.stat(contextUri);
+  } catch {
+    return;
+  }
+
+  let context: { task_id?: string; session_id?: string };
+  try {
+    const raw = await vscode.workspace.fs.readFile(contextUri);
+    context = JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    return;
+  }
+
+  if (!context.task_id) return;
+
+  const taskId = context.task_id;
+
+  // Wait for SSE connection before checking task state
+  await new Promise<void>((resolve) => {
+    const disposable = sse.onConnected((connected) => {
+      if (connected) {
+        disposable.dispose();
+        resolve();
+      }
+    });
+  });
+
+  try {
+    const task = await client.getTask(taskId);
+    if (task.status !== "IN_PROGRESS") return;
+  } catch {
+    return;
+  }
+
+  await vscode.commands.executeCommand("kagan.chat.open", taskId);
 }

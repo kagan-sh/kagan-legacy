@@ -11,19 +11,29 @@ export type LauncherBackend =
   | "kiro"
   | "antigravity";
 
-export type EventType =
-  | "OUTPUT_CHUNK"
-  | "AGENT_STATUS"
-  | "TOOL_CALL_START"
-  | "TOOL_CALL_UPDATE"
-  | "AGENT_COMPLETED"
-  | "AGENT_FAILED"
-  | "PLAN_UPDATE"
-  | "TASK_STATUS_CHANGED"
-  | "MERGE_COMPLETED"
-  | "MERGE_FAILED"
-  | "CRITERION_VERDICT"
-  | "AUTO_REVIEW_STARTED";
+export const EVENT_TYPE = {
+  OUTPUT_CHUNK: "OUTPUT_CHUNK",
+  AGENT_STATUS: "AGENT_STATUS",
+  TOOL_CALL_START: "TOOL_CALL_START",
+  TOOL_CALL_UPDATE: "TOOL_CALL_UPDATE",
+  AGENT_COMPLETED: "AGENT_COMPLETED",
+  AGENT_FAILED: "AGENT_FAILED",
+  PLAN_UPDATE: "PLAN_UPDATE",
+  TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
+  MERGE_COMPLETED: "MERGE_COMPLETED",
+  MERGE_FAILED: "MERGE_FAILED",
+  CRITERION_VERDICT: "CRITERION_VERDICT",
+  AUTO_REVIEW_STARTED: "AUTO_REVIEW_STARTED",
+} as const;
+
+export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
+
+export const SSE_TYPE = {
+  TASK_UPDATED: "TASK_UPDATED",
+  SESSION_EVENT: "SESSION_EVENT",
+} as const;
+
+export type SSEType = (typeof SSE_TYPE)[keyof typeof SSE_TYPE];
 
 export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
 
@@ -179,6 +189,44 @@ export interface SettingsResponse {
   [key: string]: string | undefined;
 }
 
+// ── Chat / Orchestrator ───────────────────────────────────────────────────
+
+export interface WireChatSession {
+  id: string;
+  label: string | null;
+  agent_backend: string;
+  source: string;
+  created_at: string;
+}
+
+export interface ChatStreamChunk {
+  t: "CHAT_CHUNK";
+  content: string;
+  thought?: boolean;
+}
+
+export interface ChatStreamToolStart {
+  t: "CHAT_TOOL_START";
+  tool: string;
+}
+
+export interface ChatStreamToolProgress {
+  t: "CHAT_TOOL_PROGRESS";
+  tool: string;
+  status: string | null;
+}
+
+export interface ChatStreamDone {
+  t: "CHAT_DONE";
+  full_response: string;
+}
+
+export type ChatStreamEvent =
+  | ChatStreamChunk
+  | ChatStreamToolStart
+  | ChatStreamToolProgress
+  | ChatStreamDone;
+
 export interface WireEnvelope<T> {
   ok: boolean;
   data: T | null;
@@ -187,12 +235,12 @@ export interface WireEnvelope<T> {
 }
 
 export interface SSETaskUpdated {
-  type: "TASK_UPDATED";
+  type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;
 }
 
 export interface SSESessionEvent {
-  type: "SESSION_EVENT";
+  type: typeof SSE_TYPE.SESSION_EVENT;
   task_id: string;
   event: WireEvent;
 }

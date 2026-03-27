@@ -134,7 +134,7 @@ class PersonaPresetOps:
 
     def _format_persona_preview(
         self, personas: Mapping[str, Mapping[str, str]]
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, str | int]]:
         """Format personas for preview display."""
         result = []
         for key, item in personas.items():

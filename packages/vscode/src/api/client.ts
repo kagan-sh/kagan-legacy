@@ -30,9 +30,30 @@ export class ApiError extends Error {
   }
 }
 
+export interface KaganClientConfig {
+  baseUrl: string;
+  protocol?: "http" | "https";
+  token?: string;
+}
+
 export class KaganClient {
-  constructor(private baseUrl: string) {
+  private token: string | undefined;
+
+  constructor(
+    private baseUrl: string,
+    private protocol: "http" | "https" = "http",
+    token?: string,
+  ) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
+    this.token = token;
+  }
+
+  /**
+   * Create a KaganClient from a config object.
+   * Enables clean separation of protocol/auth concerns.
+   */
+  static fromConfig(config: KaganClientConfig): KaganClient {
+    return new KaganClient(config.baseUrl, config.protocol ?? "http", config.token);
   }
 
   getBaseUrl(): string {
@@ -41,6 +62,22 @@ export class KaganClient {
 
   setBaseUrl(url: string): void {
     this.baseUrl = normalizeBaseUrl(url);
+  }
+
+  setToken(token: string | undefined): void {
+    this.token = token;
+  }
+
+  setProtocol(protocol: "http" | "https"): void {
+    this.protocol = protocol;
+  }
+
+  /**
+   * Get the full URL with protocol prefix.
+   * Always uses configured protocol — never auto-upgrades to HTTPS.
+   */
+  private getFullUrl(path: string): string {
+    return `${this.protocol}://${this.baseUrl}${path}`;
   }
 
   getTasks(status?: TaskStatus): Promise<WireTask[]> {
@@ -180,11 +217,12 @@ export class KaganClient {
     text: string,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const response = await fetch(`${this.baseUrl}/api/chat/${sessionId}/stream`, {
+    const response = await fetch(this.getFullUrl(`/api/chat/${sessionId}/stream`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
+        ...this.getAuthHeaders(),
       },
       body: JSON.stringify({ text }),
       signal,
@@ -197,8 +235,11 @@ export class KaganClient {
 
   async ping(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`, {
-        headers: { Accept: "application/json" },
+      const response = await fetch(this.getFullUrl("/health"), {
+        headers: {
+          Accept: "application/json",
+          ...this.getAuthHeaders(),
+        },
       });
       return response.ok;
     } catch {
@@ -226,12 +267,18 @@ export class KaganClient {
     return this.request<T>("DELETE", path);
   }
 
+  private getAuthHeaders(): Record<string, string> {
+    if (!this.token) return {};
+    return { Authorization: `Bearer ${this.token}` };
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetch(this.getFullUrl(path), {
       method,
       headers: {
         Accept: "application/json",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...this.getAuthHeaders(),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -304,5 +351,5 @@ function describeHttpFailure(input: {
     return rawDetail;
   }
 
-  return `Server at ${input.baseUrl} does not look like a Kagan API (${rawDetail}). Check kagan.serverUrl.`;
+  return `Server at ${input.baseUrl} does not look like a Kagan API (${rawDetail}). Check kagan.serverUrl and kagan.protocol.`;
 }

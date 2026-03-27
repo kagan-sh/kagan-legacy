@@ -8,6 +8,8 @@ export class SSEStream implements vscode.Disposable {
   private controller: AbortController | null = null;
   private reconnectDelay = 1000;
   private disposed = false;
+  private protocol: "http" | "https" = "http";
+  private token: string | undefined;
 
   private readonly _onMessage = new vscode.EventEmitter<SSEMessage>();
   readonly onMessage = this._onMessage.event;
@@ -19,6 +21,23 @@ export class SSEStream implements vscode.Disposable {
 
   setBaseUrl(url: string): void {
     this.baseUrl = url.replace(/\/+$/, "");
+  }
+
+  setProtocol(protocol: "http" | "https"): void {
+    this.protocol = protocol;
+  }
+
+  setToken(token: string | undefined): void {
+    this.token = token;
+  }
+
+  private getFullUrl(path: string): string {
+    return `${this.protocol}://${this.baseUrl}${path}`;
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    if (!this.token) return {};
+    return { Authorization: `Bearer ${this.token}` };
   }
 
   start(): void {
@@ -49,8 +68,11 @@ export class SSEStream implements vscode.Disposable {
     const { signal } = this.controller;
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/events/stream`, {
-        headers: { Accept: "text/event-stream" },
+      const response = await fetch(this.getFullUrl("/api/events/stream"), {
+        headers: {
+          Accept: "text/event-stream",
+          ...this.getAuthHeaders(),
+        },
         signal,
       });
 

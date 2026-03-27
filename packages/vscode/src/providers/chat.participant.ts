@@ -5,35 +5,8 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
 import { EVENT_TYPE, SSE_TYPE } from "../api/types.js";
+import { extractToolTitle, formatToolName } from "../api/event-helpers.js";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
-
-// ── ACP payload helpers ────────────────────────────────────────────────────
-
-function acpPayload(p: Record<string, unknown>): Record<string, unknown> {
-  const nested = p.acp;
-  return typeof nested === "object" && nested !== null
-    ? (nested as Record<string, unknown>)
-    : {};
-}
-
-function formatToolName(raw: string): string {
-  if (raw.startsWith("toolu_") || raw.startsWith("call_")) return "tool call";
-  if (raw.includes("__")) {
-    const parts = raw.split("__");
-    if ((parts[0] === "mcp" || parts[0] === "functions") && parts.length >= 3) {
-      return parts.slice(1).join(" / ");
-    }
-    return parts.join(" / ");
-  }
-  return raw.replaceAll("_", " ");
-}
-
-function extractToolTitle(p: Record<string, unknown>): string {
-  const acp = acpPayload(p);
-  return formatToolName(
-    String(acp.toolName ?? acp.name ?? acp.title ?? p.tool_name ?? p.title ?? "tool call"),
-  );
-}
 
 // ── Registration ───────────────────────────────────────────────────────────
 

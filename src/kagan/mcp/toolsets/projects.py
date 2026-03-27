@@ -2,6 +2,7 @@
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from kagan.core.errors import NotFoundError
 from kagan.mcp._policy import is_tool_allowed
 from kagan.mcp.server import ServerOptions, get_context
 from kagan.mcp.toolsets import mcp_error_boundary
@@ -41,7 +42,7 @@ async def _project_set_repo_default_branch(
 
     repos = await app.client.projects.repos(project_id)
     if not any(repo.id == repo_id for repo in repos):
-        raise ValueError(f"Repo not found: {repo_id}")
+        raise NotFoundError("repo", repo_id)
 
     await app.client.projects.set_repo_default_branch(project_id, repo_id, branch)
     return {"project_id": project_id, "repo_id": repo_id, "branch": branch}

@@ -53,7 +53,8 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
   }
 
   onSSE(msg: SSEMessage): void {
-    if (msg.type === SSE_TYPE.TASK_UPDATED || msg.type === SSE_TYPE.SESSION_EVENT) this.refresh();
+    // Only refresh on TASK_UPDATED — SESSION_EVENT is internal agent output (no tree change).
+    if (msg.type === SSE_TYPE.TASK_UPDATED) this.refresh();
   }
 
   // ── TreeDataProvider ────────────────────────────────────────────────────

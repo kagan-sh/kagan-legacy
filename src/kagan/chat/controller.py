@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import os
 import shutil
-import signal
 import sys
 import time
 from collections.abc import AsyncIterator, Callable
@@ -18,9 +17,6 @@ import click
 from acp.schema import (
     AgentMessageChunk,
     AgentThoughtChunk,
-    ClientCapabilities,
-    Implementation,
-    McpServerStdio,
     ToolCallProgress,
     ToolCallStart,
     UsageUpdate,
@@ -34,11 +30,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from kagan.chat._handshake import execute_handshake
+from kagan.chat._signals import install_sigint_handler, restore_sigint_handler
+from kagan.chat._streaming import OutputFlushManager, ResponseChunkBuffer
 from kagan.chat._title import generate_session_title
 from kagan.chat.acp import (
-    _ACP_CLIENT_NAME,
-    _ACP_CLIENT_TITLE,
-    _ACP_CLIENT_VERSION,
     _ACP_STDIO_BUFFER_LIMIT_BYTES,
     _acp_handshake_timeout_seconds,
 )
@@ -95,8 +91,6 @@ from kagan.core import (
 )
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError, KaganError
-
-_STREAM_FLUSH_INTERVAL_SECONDS = 1 / 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,51 +173,20 @@ class _OrchestratorACPClient(ACPClientBase):
         self._streaming = False
         self._show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
         self._tool_runs = ToolRunTracker()
-        self._response_chunks: list[str] = []
-        self._pending_output_chunks: list[str] = []
-        self._last_output_flush = float("-inf")
-        self._flush_handle: asyncio.TimerHandle | None = None
+        self._response_chunks = ResponseChunkBuffer()
+        self._output_flusher = OutputFlushManager(_console)
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
         self.last_usage: Any = None
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
-        self._cancel_flush_timer()
-        self._response_chunks = []
-        self._pending_output_chunks = []
-        self._last_output_flush = float("-inf")
+        self._output_flusher.shutdown()
+        self._response_chunks.clear()
+        self._output_flusher.clear()
         self._tool_runs.start_turn()
         self._first_update_notified = False
         self._on_first_update = on_first_update
         self.last_usage = None
-
-    def _flush_pending_output(self, *, force: bool = False) -> None:
-        self._cancel_flush_timer()
-        if not self._pending_output_chunks:
-            return
-        now = time.monotonic()
-        if not force and now - self._last_output_flush < _STREAM_FLUSH_INTERVAL_SECONDS:
-            remaining = _STREAM_FLUSH_INTERVAL_SECONDS - (now - self._last_output_flush)
-            try:
-                loop = asyncio.get_running_loop()
-                self._flush_handle = loop.call_later(remaining, self._do_deferred_flush)
-            except RuntimeError:
-                pass
-            return
-        merged = "".join(self._pending_output_chunks)
-        self._pending_output_chunks = []
-        _console.print(merged, end="", highlight=False, markup=False)
-        _console.file.flush()
-        self._last_output_flush = now
-
-    def _cancel_flush_timer(self) -> None:
-        if self._flush_handle is not None:
-            self._flush_handle.cancel()
-            self._flush_handle = None
-
-    def _do_deferred_flush(self) -> None:
-        self._flush_handle = None
-        self._flush_pending_output(force=True)
 
     def _notify_first_update(self) -> None:
         if self._first_update_notified:
@@ -234,9 +197,8 @@ class _OrchestratorACPClient(ACPClientBase):
         self._on_first_update()
 
     def finish_turn(self) -> str:
-        self._flush_pending_output(force=True)
-        response = "".join(self._response_chunks).strip()
-        self._response_chunks = []
+        self._output_flusher.flush(force=True)
+        response = self._response_chunks.get_all().strip()
         return response
 
     def tool_report(self, query: str | None) -> tuple[str, bool]:
@@ -251,8 +213,8 @@ class _OrchestratorACPClient(ACPClientBase):
                     self._streaming = True
                     self._notify_first_update()
                     self._response_chunks.append(text)
-                    self._pending_output_chunks.append(text)
-                    self._flush_pending_output()
+                    self._output_flusher.queue_chunk(text)
+                    self._output_flusher.flush()
         elif isinstance(update, AgentThoughtChunk):
             if self._show_thoughts:
                 content = getattr(update, "content", None)
@@ -260,12 +222,12 @@ class _OrchestratorACPClient(ACPClientBase):
                     text = getattr(content, "text", "") or ""
                     if text:
                         self._notify_first_update()
-                        self._flush_pending_output(force=True)
+                        self._output_flusher.flush(force=True)
                         _console.print(f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False)
                         _console.file.flush()
         elif isinstance(update, ToolCallStart):
             self._notify_first_update()
-            self._flush_pending_output(force=True)
+            self._output_flusher.flush(force=True)
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)
             if self._tool_runs.status_for(tool_key) != "started":
@@ -280,7 +242,7 @@ class _OrchestratorACPClient(ACPClientBase):
                 _console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
         elif isinstance(update, ToolCallProgress):
             self._notify_first_update()
-            self._flush_pending_output(force=True)
+            self._output_flusher.flush(force=True)
             status = getattr(update, "status", None)
             title = getattr(update, "title", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)
@@ -846,47 +808,6 @@ class ChatController:
 
         self._acp_client = _OrchestratorACPClient()
 
-        async def _handshake(conn_inner):
-            timeout_s = _acp_handshake_timeout_seconds(self.agent_backend)
-            client_caps = ClientCapabilities(terminal=False)
-            await asyncio.wait_for(
-                conn_inner.initialize(
-                    protocol_version=acp.PROTOCOL_VERSION,
-                    client_capabilities=client_caps,
-                    client_info=Implementation(
-                        name=_ACP_CLIENT_NAME,
-                        title=_ACP_CLIENT_TITLE,
-                        version=_ACP_CLIENT_VERSION,
-                    ),
-                ),
-                timeout=timeout_s,
-            )
-            logger.info("ACP initialize completed")
-            mcp_server = McpServerStdio(
-                name="kagan",
-                command="kagan",
-                args=[
-                    "mcp",
-                    "--session-id",
-                    session_id,
-                    "--db",
-                    db_path,
-                    "--admin",
-                    *(
-                        ["--project-id", self.client.active_project_id]
-                        if self.client.active_project_id
-                        else []
-                    ),
-                ],
-                env=[],
-            )
-            sess = await asyncio.wait_for(
-                conn_inner.new_session(cwd=str(cwd), mcp_servers=[mcp_server]),
-                timeout=timeout_s,
-            )
-            self._acp_session_id = sess.session_id
-            logger.info("ACP session created session_id={}", self._acp_session_id)
-
         try:
             async with acp.spawn_agent_process(
                 self._acp_client,
@@ -905,7 +826,17 @@ class ChatController:
                 async def _do_handshake():
                     nonlocal handshake_error
                     try:
-                        await _handshake(conn)
+                        acp_session_id, error = await execute_handshake(
+                            conn,
+                            self.agent_backend,
+                            session_id,
+                            self.client.active_project_id,
+                            cwd,
+                        )
+                        if error is not None:
+                            handshake_error = error
+                        else:
+                            self._acp_session_id = acp_session_id
                     except (
                         TimeoutError,
                         acp.RequestError,
@@ -1028,13 +959,8 @@ class ChatController:
                 ),
                 name="chat-prompt",
             )
-            original_sigint = signal.getsignal(signal.SIGINT)
-            loop = asyncio.get_running_loop()
+            original_sigint = install_sigint_handler(prompt_task)
             try:
-                signal.signal(
-                    signal.SIGINT,
-                    lambda *_: loop.call_soon_threadsafe(prompt_task.cancel),
-                )
                 await prompt_task
             except asyncio.CancelledError:
                 interrupted = True
@@ -1047,7 +973,7 @@ class ChatController:
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
                 return
             finally:
-                signal.signal(signal.SIGINT, original_sigint)
+                restore_sigint_handler(original_sigint)
 
         assistant_reply = ""
         if self._acp_client is not None:

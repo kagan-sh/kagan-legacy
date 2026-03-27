@@ -18,8 +18,14 @@ import { LocalServerSupervisor } from "./server/supervisor.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = vscode.workspace.getConfiguration("kagan");
-  const client = new KaganClient(config.get<string>("serverUrl", "http://localhost:8765"));
+  const serverUrl = config.get<string>("serverUrl", "localhost:8765").replace(/^(https?:\/\/)/, "");
+  const protocol = config.get<"http" | "https">("protocol", "http");
+  const token = config.get<string>("authToken", "");
+
+  const client = new KaganClient(serverUrl, protocol, token || undefined);
   const sse = new SSEStream(client.getBaseUrl());
+  sse.setProtocol(protocol);
+  if (token) sse.setToken(token);
   const boardProvider = new BoardTreeProvider(client);
   const scmProvider = new TaskScmProvider(client);
   const diffProvider = new KaganDiffContentProvider(client);
@@ -100,16 +106,27 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const configSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
-    if (!event.affectsConfiguration("kagan.serverUrl")) {
+    if (
+      !event.affectsConfiguration("kagan.serverUrl") &&
+      !event.affectsConfiguration("kagan.protocol") &&
+      !event.affectsConfiguration("kagan.authToken")
+    ) {
       return;
     }
 
-    const nextUrl = vscode.workspace.getConfiguration("kagan").get<string>(
-      "serverUrl",
-      "http://localhost:8765",
-    );
+    const cfg = vscode.workspace.getConfiguration("kagan");
+    const nextUrl = cfg.get<string>("serverUrl", "localhost:8765").replace(/^(https?:\/\/)/, "");
+    const nextProtocol = cfg.get<"http" | "https">("protocol", "http");
+    const nextToken = cfg.get<string>("authToken", "");
+
     client.setBaseUrl(nextUrl);
+    client.setProtocol(nextProtocol);
+    client.setToken(nextToken || undefined);
+
     sse.setBaseUrl(nextUrl);
+    sse.setProtocol(nextProtocol);
+    sse.setToken(nextToken || undefined);
+
     sse.stop();
     sse.start();
   });

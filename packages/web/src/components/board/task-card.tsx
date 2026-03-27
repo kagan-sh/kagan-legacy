@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
     CheckCheck,
@@ -159,7 +159,7 @@ export function TaskCardOverlayPreview({
     );
 }
 
-export function TaskCard({
+function TaskCardImpl({
     task,
     className,
     onInspectTask,
@@ -312,3 +312,25 @@ export function TaskCard({
         </DropdownMenu>
     );
 }
+
+function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
+    return (
+        prevProps.task.id === nextProps.task.id &&
+        prevProps.task.status === nextProps.task.status &&
+        prevProps.task.title === nextProps.task.title &&
+        prevProps.task.priority === nextProps.task.priority &&
+        prevProps.isSelected === nextProps.isSelected &&
+        prevProps.onSelectTask === nextProps.onSelectTask &&
+        prevProps.onOpenTask === nextProps.onOpenTask &&
+        prevProps.onEditTask === nextProps.onEditTask &&
+        prevProps.onDeleteTask === nextProps.onDeleteTask &&
+        prevProps.onStartAgent === nextProps.onStartAgent &&
+        prevProps.onStopAgent === nextProps.onStopAgent &&
+        prevProps.onAttachTask === nextProps.onAttachTask &&
+        prevProps.onInspectTask === nextProps.onInspectTask &&
+        prevProps.className === nextProps.className
+    );
+}
+
+export const TaskCard = memo(TaskCardImpl, areEqual);
+TaskCard.displayName = "TaskCard";

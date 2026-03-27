@@ -20,26 +20,44 @@ class TaskDetailPane(Widget):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="ts-overview-scroll"):
-            yield Static("", id="ts-overview-meta", classes="ts-detail-meta-line")
+            meta = Static("", id="ts-overview-meta", classes="ts-detail-meta-line")
+            meta.tooltip = "Task ID, status, and priority"
+            yield meta
 
             with Vertical(id="ts-resume-context-section"):
-                yield Static("Resume Context", classes="ts-section-label")
-                yield Static(
+                ctx_label = Static("Resume Context", classes="ts-section-label")
+                ctx_label.tooltip = "Task execution resume notes and context"
+                yield ctx_label
+                ctx_body = Static(
                     "",
                     id="ts-resume-context",
                     classes="ts-section-body ts-resume-context-body",
                     markup=False,
                 )
+                ctx_body.tooltip = "Notes from previous execution sessions"
+                yield ctx_body
 
-            yield Static("Description", classes="ts-section-label")
-            yield Static("", id="ts-overview-description", classes="ts-section-body", markup=False)
+            desc_label = Static("Description", classes="ts-section-label")
+            desc_label.tooltip = "Task description section"
+            yield desc_label
+            desc_body = Static("", id="ts-overview-description", classes="ts-section-body", markup=False)
+            desc_body.tooltip = "Full task description and context"
+            yield desc_body
 
-            yield Static("Acceptance Criteria", classes="ts-section-label")
-            yield Static("", id="ts-overview-criteria", classes="ts-section-body", markup=False)
+            criteria_label = Static("Acceptance Criteria", classes="ts-section-label")
+            criteria_label.tooltip = "Task acceptance criteria section"
+            yield criteria_label
+            criteria_body = Static("", id="ts-overview-criteria", classes="ts-section-body", markup=False)
+            criteria_body.tooltip = "List of criteria that must be met for task completion"
+            yield criteria_body
 
             with Horizontal(id="ts-overview-fields"):
-                yield Static("", id="ts-overview-base-branch", classes="ts-detail-meta")
-                yield Static("", id="ts-overview-agent-backend", classes="ts-detail-meta")
+                branch = Static("", id="ts-overview-base-branch", classes="ts-detail-meta")
+                branch.tooltip = "Base branch for task execution"
+                yield branch
+                backend = Static("", id="ts-overview-agent-backend", classes="ts-detail-meta")
+                backend.tooltip = "AI agent backend for task execution"
+                yield backend
 
     def watch_task_data(self, task: Task | None) -> None:
         self._render_overview(task)

@@ -270,8 +270,20 @@
       "properties": {
         "kagan.serverUrl": {
           "type": "string",
-          "default": "http://localhost:8765",
-          "description": "Kagan server URL"
+          "default": "localhost:8765",
+          "description": "Kagan server host:port (protocol is controlled separately via kagan.protocol)"
+        },
+        "kagan.protocol": {
+          "type": "string",
+          "enum": ["http", "https"],
+          "default": "http",
+          "description": "Protocol for connecting to Kagan server (http or https)"
+        },
+        "kagan.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Bearer token for authentication to Kagan server (sent as Authorization: Bearer <token>)",
+          "markdownDescription": "Bearer token for authentication to Kagan server (sent as `Authorization: Bearer <token>`)"
         },
         "kagan.autoConnect": {
           "type": "boolean",

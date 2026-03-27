@@ -40,12 +40,14 @@ class SearchPresets(Widget):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="presets-row"):
-            for index, (label_template, _query, count_key) in enumerate(_PRESETS):
-                yield Static(
+            for index, (label_template, query, count_key) in enumerate(_PRESETS):
+                pill = Static(
                     label_template.format(n=self._count_for(count_key)),
                     id=f"preset-pill-{index}",
                     classes="preset-pill",
                 )
+                pill.tooltip = f"Filter by: {query}"
+                yield pill
 
     def set_counts(self, status_counts: dict[str, int], high_priority_count: int) -> None:
         self._status_counts = dict(status_counts)
@@ -124,13 +126,21 @@ class SearchBar(Widget):
     def compose(self) -> ComposeResult:
         yield SearchPresets(id="search-presets")
         with Horizontal(classes="search-row"):
-            yield Static("/", id="search-shortcut", classes="search-shortcut")
-            yield Input(
+            shortcut_widget = Static("/", id="search-shortcut", classes="search-shortcut")
+            shortcut_widget.tooltip = "Press / to activate search"
+            yield shortcut_widget
+            search_input = Input(
                 placeholder="Search tasks  @status:review  @priority:high  @sort:recent",
                 id="search-input",
             )
-            yield Static("", id="search-meta", classes="search-meta")
-            yield Static("/ search", id="search-clear", classes="search-clear")
+            search_input.tooltip = "Search tasks by title, status, or priority. Use @status:review, @priority:high, @sort:recent"
+            yield search_input
+            meta_widget = Static("", id="search-meta", classes="search-meta")
+            meta_widget.tooltip = "Current filter results and active filters"
+            yield meta_widget
+            clear_widget = Static("/ search", id="search-clear", classes="search-clear")
+            clear_widget.tooltip = "Press / to close search, Ctrl+A to select all"
+            yield clear_widget
 
     def on_mount(self) -> None:
         with contextlib.suppress(NoMatches):

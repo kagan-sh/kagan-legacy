@@ -2,7 +2,7 @@ import { Provider } from 'jotai';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router';
-import { useAtom, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { Toaster } from 'sonner';
 import { isAuthenticatedAtom, isAuthLoadingAtom, hydrateAuthAtom } from '@/lib/atoms/auth';
 import { resolvedThemeAtom, initThemeAtom } from '@/lib/atoms/theme';
@@ -10,9 +10,9 @@ import { store } from '@/lib/atoms/store';
 import { Spinner } from '@/components/ui/spinner';
 
 function AppShell() {
-  const [isAuthenticated] = useAtom(isAuthenticatedAtom);
-  const [isLoading] = useAtom(isAuthLoadingAtom);
-  const [resolvedTheme] = useAtom(resolvedThemeAtom);
+  const isAuthenticated = useAtomValue(isAuthenticatedAtom);
+  const isLoading = useAtomValue(isAuthLoadingAtom);
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const hydrateAuth = useSetAtom(hydrateAuthAtom);
   const initTheme = useSetAtom(initThemeAtom);
   const navigate = useNavigate();

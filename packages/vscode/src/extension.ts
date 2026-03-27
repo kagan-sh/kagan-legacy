@@ -110,6 +110,8 @@ export function activate(context: vscode.ExtensionContext): void {
     );
     client.setBaseUrl(nextUrl);
     sse.setBaseUrl(nextUrl);
+    sse.stop();
+    sse.start();
   });
 
   context.subscriptions.push(
@@ -240,7 +242,8 @@ async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise
   try {
     const raw = await vscode.workspace.fs.readFile(contextUri);
     context = JSON.parse(new TextDecoder().decode(raw));
-  } catch {
+  } catch (error) {
+    console.warn("[kagan] Failed to read attach context:", error);
     return;
   }
 
@@ -248,15 +251,17 @@ async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise
 
   const taskId = context.task_id;
 
-  // Wait for SSE connection before checking task state
-  await new Promise<void>((resolve) => {
-    const disposable = sse.onConnected((connected) => {
-      if (connected) {
-        disposable.dispose();
-        resolve();
-      }
-    });
-  });
+  // Wait for SSE connection (with timeout) before checking task state
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      const disposable = sse.onConnected((connected) => {
+        if (connected) { disposable.dispose(); resolve(); }
+      });
+    }),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error("SSE connection timeout")), 10_000),
+    ),
+  ]).catch(() => {});
 
   try {
     const task = await client.getTask(taskId);

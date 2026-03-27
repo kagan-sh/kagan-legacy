@@ -39,6 +39,21 @@ function extractToolTitle(p: Record<string, unknown>): string {
 
 /** Active orchestrator session ID, persisted across chat turns. */
 let activeChatSessionId: string | null = null;
+let sessionCreating: Promise<string> | null = null;
+
+async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatContext): Promise<string> {
+  if (activeChatSessionId && !isNewConversation(chatCtx)) return activeChatSessionId;
+  if (sessionCreating) return sessionCreating;
+
+  sessionCreating = client.createChatSession()
+    .then((session) => {
+      activeChatSessionId = session.id;
+      return session.id;
+    })
+    .finally(() => { sessionCreating = null; });
+
+  return sessionCreating;
+}
 
 export function registerChatParticipant(
   context: vscode.ExtensionContext,
@@ -136,12 +151,8 @@ async function handleChat(
     return;
   }
 
-  // Reuse session across turns, create one if needed
-  if (!activeChatSessionId || isNewConversation(chatCtx)) {
-    stream.progress("Starting orchestrator session...");
-    const session = await client.createChatSession();
-    activeChatSessionId = session.id;
-  }
+  stream.progress("Starting orchestrator session...");
+  activeChatSessionId = await getOrCreateSession(client, chatCtx);
 
   stream.progress("Thinking...");
 

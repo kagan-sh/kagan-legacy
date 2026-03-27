@@ -66,12 +66,15 @@ export class KaganDiffContentProvider implements vscode.TextDocumentContentProvi
       return "";
     }
 
-    const diff = await this.client.getDiffRaw(taskId);
-    if (!filePath) {
-      return diff;
+    try {
+      const diff = await this.client.getDiffRaw(taskId);
+      if (!filePath) {
+        return diff;
+      }
+      return extractPatchForFile(diff, filePath);
+    } catch {
+      return `// Failed to load diff for ${filePath ?? taskId}`;
     }
-
-    return extractPatchForFile(diff, filePath);
   }
 }
 

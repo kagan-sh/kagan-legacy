@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAtomValue } from 'jotai';
 import { DiffEditor, Editor } from '@monaco-editor/react';
+import { resolvedThemeAtom } from '@/lib/atoms/theme';
 import { AlignJustify, Columns2, ChevronDown, ChevronRight, FileCode, FileEdit, FileMinus, FilePlus, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiClient, ApiError } from '@/lib/api/client';
@@ -56,10 +58,8 @@ export function DiffViewer({ taskId, taskStatus, className }: DiffViewerProps) {
     return parsedFiles.find((file) => file.path === selectedPath) ?? null;
   }, [parsedFiles, selectedPath]);
 
-  const monacoTheme =
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-      ? 'vs-dark'
-      : 'vs';
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const monacoTheme = resolvedTheme === 'dark' ? 'vs-dark' : 'vs';
 
   useEffect(() => {
     const savedMode = loadDiffViewMode();

@@ -38,17 +38,17 @@ ______________________________________________________________________
 
 All commands are available via the Command Palette (`Cmd+Shift+P`) and right-click context menus.
 
-| Command             | Scope       | Description                        |
-| ------------------- | ----------- | ---------------------------------- |
-| Create Task         | Board       | Title, description, priority       |
-| Run Task            | Backlog     | Starts an agent session            |
-| Cancel Task         | In Progress | Stops the running agent            |
-| Edit Task           | Any         | Update title, description, priority|
-| Move Task           | Any         | Change column                      |
-| Delete Task         | Any         | Permanent delete (confirmation)    |
-| View Diff           | Review/Done | Opens SCM diff view                |
-| Show Agent Output   | Any         | Opens diagnostic log channel       |
-| Attach Terminal     | In Progress | Opens agent terminal               |
+| Command           | Scope       | Description                         |
+| ----------------- | ----------- | ----------------------------------- |
+| Create Task       | Board       | Title, description, priority        |
+| Run Task          | Backlog     | Starts an agent session             |
+| Cancel Task       | In Progress | Stops the running agent             |
+| Edit Task         | Any         | Update title, description, priority |
+| Move Task         | Any         | Change column                       |
+| Delete Task       | Any         | Permanent delete (confirmation)     |
+| View Diff         | Review/Done | Opens SCM diff view                 |
+| Show Agent Output | Any         | Opens diagnostic log channel        |
+| Attach Terminal   | In Progress | Opens agent terminal                |
 
 ______________________________________________________________________
 
@@ -102,10 +102,10 @@ ______________________________________________________________________
 
 ## Settings
 
-| Setting                    | Default                  | Description                              |
-| -------------------------- | ------------------------ | ---------------------------------------- |
-| `kagan.serverUrl`          | `http://localhost:8765`  | Kagan server URL                         |
-| `kagan.autoConnect`        | `true`                   | Connect on startup                       |
-| `kagan.autoStartServer`    | `true`                   | Start local server if none is running    |
-| `kagan.serverCommand`      | `kagan`                  | CLI command for local auto-start         |
-| `kagan.autoWatchOnAttach`  | `true`                   | Auto-open Chat on attach                 |
+| Setting                   | Default                 | Description                           |
+| ------------------------- | ----------------------- | ------------------------------------- |
+| `kagan.serverUrl`         | `http://localhost:8765` | Kagan server URL                      |
+| `kagan.autoConnect`       | `true`                  | Connect on startup                    |
+| `kagan.autoStartServer`   | `true`                  | Start local server if none is running |
+| `kagan.serverCommand`     | `kagan`                 | CLI command for local auto-start      |
+| `kagan.autoWatchOnAttach` | `true`                  | Auto-open Chat on attach              |

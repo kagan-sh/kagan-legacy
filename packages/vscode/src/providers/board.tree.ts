@@ -160,6 +160,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
       }
       return tasks;
     } catch {
+      vscode.window.showErrorMessage("Kagan: Failed to load tasks");
       return [];
     }
   }
@@ -171,6 +172,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
       this.tasksByStatus.set(status, sorted);
       return sorted;
     } catch {
+      vscode.window.showErrorMessage("Kagan: Failed to load tasks");
       return [];
     }
   }

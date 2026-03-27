@@ -195,10 +195,6 @@ export class KaganClient {
     return response;
   }
 
-  async interruptChat(sessionId: string): Promise<void> {
-    await this.post<Record<string, unknown>>(`/api/chat/${sessionId}/interrupt`, {});
-  }
-
   async ping(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {

@@ -109,6 +109,9 @@ function buildCommentBody(verdict: ReviewVerdict): vscode.MarkdownString {
   return new vscode.MarkdownString(`${icon} ${verdict.reason}`);
 }
 
+/** Header lines before criteria: title, blank, status, priority, approved, blank, heading, blank */
+const CRITERIA_START_LINE = 8;
+
 function criterionLine(index: number): number {
-  return 8 + index;
+  return CRITERIA_START_LINE + index;
 }

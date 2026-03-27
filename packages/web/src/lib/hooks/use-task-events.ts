@@ -222,7 +222,7 @@ export function useTaskEvents(
                 }
                 setHasMore(olderEvents.length >= LOAD_EARLIER_BATCH);
             })
-            .catch(() => undefined)
+            .catch((err) => console.error('Failed to load earlier events:', err))
             .finally(() => setLoadingMore(false));
     }, [taskId, loadingMore, sessionId]);
 

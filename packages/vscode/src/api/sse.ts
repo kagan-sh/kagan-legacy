@@ -64,24 +64,28 @@ export class SSEStream implements vscode.Disposable {
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffer = "";
 
-      while (!this.disposed) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (!this.disposed) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += value;
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop()!;
+          buffer += value;
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop()!;
 
-        for (const part of parts) {
-          const dataLine = part.split("\n").find((line) => line.startsWith("data: "));
-          if (!dataLine) continue;
-          try {
-            const message = JSON.parse(dataLine.slice(6)) as SSEMessage;
-            this._onMessage.fire(message);
-          } catch {
-            // Malformed JSON — skip silently (keepalives, etc.)
+          for (const part of parts) {
+            const dataLine = part.split("\n").find((line) => line.startsWith("data: "));
+            if (!dataLine) continue;
+            try {
+              const message = JSON.parse(dataLine.slice(6)) as SSEMessage;
+              this._onMessage.fire(message);
+            } catch {
+              // Malformed JSON — skip silently (keepalives, etc.)
+            }
           }
         }
+      } finally {
+        await reader.cancel().catch(() => {});
       }
     } catch (err) {
       if (signal.aborted) return; // Intentional disconnect

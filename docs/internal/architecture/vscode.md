@@ -53,15 +53,15 @@ ______________________________________________________________________
 
 Each Kagan concern maps to a specific VS Code API:
 
-| Concern        | VS Code API                 | Provider                  |
-| -------------- | --------------------------- | ------------------------- |
-| Agent output   | Chat Participant            | `chat.participant.ts`     |
-| Kanban board   | TreeView                    | `board.tree.ts`           |
-| Task diffs     | TextDocumentContentProvider | `tasks.scm.ts`            |
-| Review verdicts| Comments Controller         | `review.comments.ts`      |
-| Agent terminal | Terminal API                | `tasks.terminal.ts`       |
-| Diagnostics    | OutputChannel               | `events.output.ts`        |
-| Connection     | StatusBarItem               | `bar.ts`                  |
+| Concern         | VS Code API                 | Provider              |
+| --------------- | --------------------------- | --------------------- |
+| Agent output    | Chat Participant            | `chat.participant.ts` |
+| Kanban board    | TreeView                    | `board.tree.ts`       |
+| Task diffs      | TextDocumentContentProvider | `tasks.scm.ts`        |
+| Review verdicts | Comments Controller         | `review.comments.ts`  |
+| Agent terminal  | Terminal API                | `tasks.terminal.ts`   |
+| Diagnostics     | OutputChannel               | `events.output.ts`    |
+| Connection      | StatusBarItem               | `bar.ts`              |
 
 ______________________________________________________________________
 
@@ -86,21 +86,21 @@ ______________________________________________________________________
 
 Registered as `kagan.agent` with `isSticky: true`. Three modes:
 
-| Command     | Behavior                                                             |
-| ----------- | -------------------------------------------------------------------- |
-| *(default)* | Orchestrator chat -- proxies messages to `POST /api/chat/{id}/stream`|
-| `/watch`    | Stream task agent output via SSE                                     |
-| `/status`   | Board summary table + running task list                              |
+| Command     | Behavior                                                              |
+| ----------- | --------------------------------------------------------------------- |
+| *(default)* | Orchestrator chat -- proxies messages to `POST /api/chat/{id}/stream` |
+| `/watch`    | Stream task agent output via SSE                                      |
+| `/status`   | Board summary table + running task list                               |
 
 **Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets the session.
 
 **Watch pipeline:**
 
 1. Fetch tail of recent events via `GET /api/tasks/{id}/events?tail=1&limit=10`
-2. Coalesce OUTPUT_CHUNK tokens into flowing markdown
-3. Render tool calls as inline code, status changes as rules
-4. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
-5. Append action buttons based on final task state
+1. Coalesce OUTPUT_CHUNK tokens into flowing markdown
+1. Render tool calls as inline code, status changes as rules
+1. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
+1. Append action buttons based on final task state
 
 **`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel pre-filled with `@kagan /watch <task>`.
 
@@ -129,10 +129,10 @@ When the IDE is opened via "Attach to Task" (from TUI, web, or CLI), the server 
 On activation, `detectAttachContext()` in `extension.ts`:
 
 1. Checks `kagan.autoWatchOnAttach` setting (default `true`)
-2. Looks for `.kagan/attach_context.json` in the workspace root
-3. Waits for SSE connection to establish
-4. Verifies the task is still `IN_PROGRESS` via the API
-5. Executes `kagan.chat.open` with the task ID, opening the Chat panel
+1. Looks for `.kagan/attach_context.json` in the workspace root
+1. Waits for SSE connection to establish
+1. Verifies the task is still `IN_PROGRESS` via the API
+1. Executes `kagan.chat.open` with the task ID, opening the Chat panel
 
 This works for all IDE launchers (vscode, cursor, windsurf, kiro, antigravity) since they all open the same worktree containing the context file. The extension also registers `workspaceContains:.kagan/attach_context.json` as an activation event for faster startup in the attach case.
 
@@ -145,9 +145,9 @@ ______________________________________________________________________
 `LocalServerSupervisor` manages the local server lifecycle:
 
 1. Check if `serverUrl` is localhost
-2. If nothing responds to `/health`, spawn `<serverCommand> web --no-open`
-3. Poll `/health` every 250ms for up to 12 seconds
-4. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
+1. If nothing responds to `/health`, spawn `<serverCommand> web --no-open`
+1. Poll `/health` every 250ms for up to 12 seconds
+1. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
 
 ______________________________________________________________________
 
@@ -155,11 +155,11 @@ ______________________________________________________________________
 
 Three-layer split (see `docs/internal/testing.md` for conventions):
 
-| Layer       | Tool                                 | Scope                          |
-| ----------- | ------------------------------------ | ------------------------------ |
-| Unit        | Vitest                               | Pure helpers, API edge cases   |
-| Integration | `@vscode/test-cli` + test-electron   | Extension host, commands, docs |
-| E2E         | WDIO + `wdio-vscode-service`         | Real VS Code UI smoke          |
+| Layer       | Tool                               | Scope                          |
+| ----------- | ---------------------------------- | ------------------------------ |
+| Unit        | Vitest                             | Pure helpers, API edge cases   |
+| Integration | `@vscode/test-cli` + test-electron | Extension host, commands, docs |
+| E2E         | WDIO + `wdio-vscode-service`       | Real VS Code UI smoke          |
 
 ```bash
 pnpm run test:unit

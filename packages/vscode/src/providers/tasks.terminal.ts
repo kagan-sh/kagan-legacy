@@ -9,7 +9,7 @@ export class AgentTerminalProvider {
 
   async attachToTask(task: WireTask): Promise<void> {
     if (!task.active_session) {
-      vscode.window.showErrorMessage(`Task "${task.title}" has no active session.`);
+      await vscode.window.showErrorMessage(`Task "${task.title}" has no active session.`);
       return;
     }
 
@@ -55,7 +55,7 @@ export class AgentTerminalProvider {
     }
 
     if (!worktreePath) {
-      vscode.window.showWarningMessage(`Task "${task.title}" has no worktree yet.`);
+      await vscode.window.showWarningMessage(`Task "${task.title}" has no worktree yet.`);
       return;
     }
 

@@ -48,6 +48,11 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
             await app.client.settings.set({key: value})
             return {"section": section, "key": key, "value": value}
 
+    _register_persona_tools(mcp, opts)
+
+
+def _register_persona_tools(mcp: FastMCP, opts: ServerOptions) -> None:
+    """Register persona preset domain tools on mcp, filtered by opts."""
     if is_tool_allowed("persona_preset_audit", opts):
 
         @mcp.tool()

@@ -40,14 +40,24 @@ class TaskDetailPane(Widget):
             desc_label = Static("Description", classes="ts-section-label")
             desc_label.tooltip = "Task description section"
             yield desc_label
-            desc_body = Static("", id="ts-overview-description", classes="ts-section-body", markup=False)
+            desc_body = Static(
+                "",
+                id="ts-overview-description",
+                classes="ts-section-body",
+                markup=False,
+            )
             desc_body.tooltip = "Full task description and context"
             yield desc_body
 
             criteria_label = Static("Acceptance Criteria", classes="ts-section-label")
             criteria_label.tooltip = "Task acceptance criteria section"
             yield criteria_label
-            criteria_body = Static("", id="ts-overview-criteria", classes="ts-section-body", markup=False)
+            criteria_body = Static(
+                "",
+                id="ts-overview-criteria",
+                classes="ts-section-body",
+                markup=False,
+            )
             criteria_body.tooltip = "List of criteria that must be met for task completion"
             yield criteria_body
 

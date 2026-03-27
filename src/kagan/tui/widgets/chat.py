@@ -207,7 +207,10 @@ class ChatPanel(Vertical):
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
-                            chat_input.tooltip = "AI chat input. Type your request or use /flow for guided planning. Press Esc to interrupt"
+                            chat_input.tooltip = (
+                                "AI chat input. Type your request or use"
+                                " /flow for guided planning. Press Esc to interrupt"
+                            )
                             yield chat_input
                         badge = Static(
                             "Orchestrator",
@@ -218,8 +221,14 @@ class ChatPanel(Vertical):
                         yield badge
                 with Horizontal(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
-                        mode_badge = Static("Docked", id="chat-overlay-mode-badge", classes="mode-docked")
-                        mode_badge.tooltip = "Chat panel mode: Docked or Expanded (Ctrl+I to toggle)"
+                        mode_badge = Static(
+                            "Docked",
+                            id="chat-overlay-mode-badge",
+                            classes="mode-docked",
+                        )
+                        mode_badge.tooltip = (
+                            "Chat panel mode: Docked or Expanded (Ctrl+I to toggle)"
+                        )
                         yield mode_badge
                         session_indicator = Static(
                             "●",

@@ -14,7 +14,7 @@ from kagan.chat.acp import (
     _ACP_CLIENT_VERSION,
     _acp_handshake_timeout_seconds,
 )
-from kagan.core import build_mcp_manifest, default_db_path
+from kagan.core import default_db_path
 
 
 async def execute_handshake(
@@ -67,11 +67,7 @@ async def execute_handshake(
             "--db",
             db_path,
             "--admin",
-            *(
-                ["--project-id", project_id]
-                if project_id
-                else []
-            ),
+            *(["--project-id", project_id] if project_id else []),
         ],
         env=[],
     )

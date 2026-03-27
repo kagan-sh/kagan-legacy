@@ -133,7 +133,10 @@ class SearchBar(Widget):
                 placeholder="Search tasks  @status:review  @priority:high  @sort:recent",
                 id="search-input",
             )
-            search_input.tooltip = "Search tasks by title, status, or priority. Use @status:review, @priority:high, @sort:recent"
+            search_input.tooltip = (
+                "Search tasks by title, status, or priority."
+                " Use @status:review, @priority:high, @sort:recent"
+            )
             yield search_input
             meta_widget = Static("", id="search-meta", classes="search-meta")
             meta_widget.tooltip = "Current filter results and active filters"

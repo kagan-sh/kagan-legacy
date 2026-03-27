@@ -78,7 +78,12 @@ class TaskInspector(Widget):
             criteria_label = Static("Acceptance Criteria", classes="inspector-section-label")
             criteria_label.tooltip = "Task acceptance criteria section"
             yield criteria_label
-            criteria = Static("", id="inspector-criteria", classes="inspector-criteria", markup=False)
+            criteria = Static(
+                "",
+                id="inspector-criteria",
+                classes="inspector-criteria",
+                markup=False,
+            )
             criteria.tooltip = "List of acceptance criteria for task completion"
             yield criteria
             message = Static("", id="inspector-message", classes="inspector-message")

@@ -6,12 +6,12 @@ ______________________________________________________________________
 
 ## References
 
-| Package            | Repo                                                                                            | Use                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **ACP SDK**        | [anthropics/agent-client-protocol](https://github.com/anthropics/agent-client-protocol)         | Streaming agent output, tool calls, bidirectional communication.   |
-| **Prompt Toolkit** | [prompt-toolkit/python-prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) | REPL input with history, completion, editing.                      |
-| **Rich**           | [Textualize/rich](https://github.com/Textualize/rich)                                           | Console output, markdown rendering, syntax highlighting.           |
-| **Loguru**         | [Delgan/loguru](https://github.com/Delgan/loguru)                                               | Structured logging (config in core).                               |
+| Package            | Repo                                                                                            | Use                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **ACP SDK**        | [anthropics/agent-client-protocol](https://github.com/anthropics/agent-client-protocol)         | Streaming agent output, tool calls, bidirectional communication. |
+| **Prompt Toolkit** | [prompt-toolkit/python-prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) | REPL input with history, completion, editing.                    |
+| **Rich**           | [Textualize/rich](https://github.com/Textualize/rich)                                           | Console output, markdown rendering, syntax highlighting.         |
+| **Loguru**         | [Delgan/loguru](https://github.com/Delgan/loguru)                                               | Structured logging (config in core).                             |
 
 ______________________________________________________________________
 
@@ -82,20 +82,20 @@ class SlashCommandSpec:
     orchestrator_only: bool = False
 ```
 
-| Command     | Description                                         |
-| ----------- | --------------------------------------------------- |
-| `/help`     | List available commands                             |
-| `/agents`   | List and switch agent backends                      |
-| `/sessions` | List, attach, or delete chat sessions               |
-| `/tool`     | Inspect recent tool calls by ID                     |
-| `/clear`    | Clear the current session                           |
-| `/new`      | Start a new chat session                            |
-| `/session`  | Show current session details                        |
-| `/status`   | Show current project, session, and agent            |
-| `/project`  | Show or switch active project                       |
-| `/delete`   | Delete a chat session by number or ID               |
-| `/flow`     | Show guided Plan → Execute → Orchestrate flow       |
-| `/exit`     | Exit the REPL                                       |
+| Command     | Description                                   |
+| ----------- | --------------------------------------------- |
+| `/help`     | List available commands                       |
+| `/agents`   | List and switch agent backends                |
+| `/sessions` | List, attach, or delete chat sessions         |
+| `/tool`     | Inspect recent tool calls by ID               |
+| `/clear`    | Clear the current session                     |
+| `/new`      | Start a new chat session                      |
+| `/session`  | Show current session details                  |
+| `/status`   | Show current project, session, and agent      |
+| `/project`  | Show or switch active project                 |
+| `/delete`   | Delete a chat session by number or ID         |
+| `/flow`     | Show guided Plan → Execute → Orchestrate flow |
+| `/exit`     | Exit the REPL                                 |
 
 Aliases: `q→exit`, `?→help`, `s→sessions`, `a→agents`, `f→flow`, `p→project`.
 
@@ -168,10 +168,10 @@ ______________________________________________________________________
 
 ## Session Scoping
 
-| Scope                | Settings Key                   |
-| -------------------- | ------------------------------ |
-| Task-scoped          | `chat_scope_state_{session_id}`|
-| Project orchestrator | `chat_sessions_v1`             |
+| Scope                | Settings Key                    |
+| -------------------- | ------------------------------- |
+| Task-scoped          | `chat_scope_state_{session_id}` |
+| Project orchestrator | `chat_sessions_v1`              |
 
 ### Cross-Surface Visibility
 
@@ -190,10 +190,10 @@ ______________________________________________________________________
 
 ## What This Architecture Does NOT Have
 
-| Omitted                   | Why                                                    |
-| ------------------------- | ------------------------------------------------------ |
-| Separate chat database    | Sessions in core `settings` table — one source of truth|
-| SSE / HTTP transport      | REPL is local; STDIO + ACP is sufficient               |
-| ChatSession domain model  | Session is a dict in settings, not an entity           |
-| Message class hierarchy   | Messages are dicts (role, content)                     |
-| Multi-turn context window | Orchestrator manages context via ACP session           |
+| Omitted                   | Why                                                     |
+| ------------------------- | ------------------------------------------------------- |
+| Separate chat database    | Sessions in core `settings` table — one source of truth |
+| SSE / HTTP transport      | REPL is local; STDIO + ACP is sufficient                |
+| ChatSession domain model  | Session is a dict in settings, not an entity            |
+| Message class hierarchy   | Messages are dicts (role, content)                      |
+| Multi-turn context window | Orchestrator manages context via ACP session            |

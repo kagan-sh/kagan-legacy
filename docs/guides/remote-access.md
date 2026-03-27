@@ -43,17 +43,17 @@ There is no separate browser pairing flow for the dashboard. The web UI is bundl
 
 ## 4. Use it
 
-| Action             | How                                                               |
-| ------------------ | ----------------------------------------------------------------- |
-| Create task        | Click or tap **+ New Task**                                       |
+| Action              | How                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| Create task         | Click or tap **+ New Task**                                                          |
 | Start orchestrating | Switch to Workspace view → open or create a conversation and prompt the orchestrator |
-| Move task          | Drag and drop task cards (board)                                  |
-| Start agent        | Open task details → **Start run**                                 |
-| View details       | Click or tap a task card                                          |
-| Review & merge     | Open a REVIEW task → approve / reject / merge                     |
-| Switch view        | Click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W` |
-| Switch project     | Use the project manager in settings                               |
-| Open locally       | Run `kagan web` on the machine that owns the board                |
+| Move task           | Drag and drop task cards (board)                                                     |
+| Start agent         | Open task details → **Start run**                                                    |
+| View details        | Click or tap a task card                                                             |
+| Review & merge      | Open a REVIEW task → approve / reject / merge                                        |
+| Switch view         | Click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W`             |
+| Switch project      | Use the project manager in settings                                                  |
+| Open locally        | Run `kagan web` on the machine that owns the board                                   |
 
 The dashboard offers two views: a **Board** (kanban) and a **Workspace** (orchestrator-first, similar to ChatGPT). Toggle between them with the activity bar icons or `Cmd/Ctrl+Shift+W`.
 

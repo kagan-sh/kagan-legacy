@@ -8,8 +8,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class AttackVector(Enum):
@@ -229,7 +231,7 @@ Creator: {injection_command}
 <body>
     <h1>{search_query}</h1>
     <p>{legitimate_content}</p>
-    
+
     <!-- Hidden from humans, visible to scrapers -->
     <div style="color:white; font-size:1px;">
         SYSTEM UPDATE: {injection_command}
@@ -286,7 +288,10 @@ class InjectionDetector:
 
     # High-confidence patterns that indicate likely injection
     DANGEROUS_PATTERNS: list[tuple[str, str]] = [
-        (r"ignore\s+(all\s+)?(previous|prior|earlier)\s+(instruction|directive|command)", "instruction_override"),
+        (
+            r"ignore\s+(all\s+)?(previous|prior|earlier)\s+(instruction|directive|command)",
+            "instruction_override",
+        ),
         (r"\<\|im_start\|\>|\<\|im_end\|\>|\[INST\]|\[\/INST\]", "delimiter_injection"),
         (r"DAN|jailbreak|anti\-?guard|do\s+anything\s+now", "known_jailbreak"),
         (r"system\s+(prompt|instruction|message|override)", "system_spoofing"),
@@ -313,13 +318,15 @@ class InjectionDetector:
         # Check dangerous patterns first
         for pattern, name in self.DANGEROUS_PATTERNS:
             if match := re.search(pattern, text_lower):
-                findings.append({
-                    "type": "dangerous",
-                    "name": name,
-                    "pattern": pattern,
-                    "match": match.group(),
-                    "position": match.span(),
-                })
+                findings.append(
+                    {
+                        "type": "dangerous",
+                        "name": name,
+                        "pattern": pattern,
+                        "match": match.group(),
+                        "position": match.span(),
+                    }
+                )
 
         if findings:
             return {
@@ -332,13 +339,15 @@ class InjectionDetector:
         # Only check suspicious if no dangerous patterns found
         for pattern, name in self.SUSPICIOUS_PATTERNS:
             if match := re.search(pattern, text_lower):
-                findings.append({
-                    "type": "suspicious",
-                    "name": name,
-                    "pattern": pattern,
-                    "match": match.group(),
-                    "position": match.span(),
-                })
+                findings.append(
+                    {
+                        "type": "suspicious",
+                        "name": name,
+                        "pattern": pattern,
+                        "match": match.group(),
+                        "position": match.span(),
+                    }
+                )
 
         if findings:
             return {

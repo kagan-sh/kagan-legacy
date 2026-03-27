@@ -135,9 +135,7 @@ def import_personas(
         try:
             if preview:
                 # Preview mode - just show what would be imported
-                result = await client.persona_presets.preview_import(
-                    repo=repo, path=path, ref=ref
-                )
+                result = await client.persona_presets.preview_import(repo=repo, path=path, ref=ref)
                 _display_preview(result)
                 return
 
@@ -255,8 +253,7 @@ def _display_preview(result: dict[str, Any]) -> None:
 
     for i, p in enumerate(personas, 1):
         click.echo(
-            f"  {i}. {click.style(p.get('name', 'Unknown'), bold=True)} "
-            f"({p.get('key', '')})"
+            f"  {i}. {click.style(p.get('name', 'Unknown'), bold=True)} ({p.get('key', '')})"
         )
         if p.get("description"):
             click.echo(f"     {p.get('description')}")
@@ -308,8 +305,7 @@ def _confirm_import(repo: str, personas: list[dict[str, Any]], default: bool = T
             click.echo()
             for p in personas:
                 click.echo(
-                    f"  {click.style(p.get('name', 'Unknown'), bold=True)} "
-                    f"({p.get('key', '')})"
+                    f"  {click.style(p.get('name', 'Unknown'), bold=True)} ({p.get('key', '')})"
                 )
                 if p.get("description"):
                     click.echo(f"    Description: {p.get('description')}")

@@ -140,10 +140,10 @@ async def test_build_agent_environment_strips_macos_malloc_stack_logging_env(
     assert env["KAGAN_MCP_CMD"] == "kagan mcp"
 
 
-async def test_build_agent_environment_keeps_malloc_stack_logging_env_off_macos(
+async def test_build_agent_environment_strips_malloc_stack_logging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("kagan.core._agent.sys.platform", "linux")
+    """Non-essential env vars like MallocStackLogging are excluded by the allowlist."""
     env = build_agent_environment(
         session_id="session-1",
         task_id=None,
@@ -154,5 +154,5 @@ async def test_build_agent_environment_keeps_malloc_stack_logging_env_off_macos(
         },
     )
 
-    assert env["MallocStackLogging"] == "1"
-    assert env["MallocStackLoggingNoCompact"] == "1"
+    assert "MallocStackLogging" not in env
+    assert "MallocStackLoggingNoCompact" not in env

@@ -49,31 +49,31 @@ src/kagan/cli/
 
 ## Commands
 
-| Command      | Purpose                                           | Notes                                      |
-| ------------ | ------------------------------------------------- | ------------------------------------------ |
-| `tui`        | Launch Textual interface                          | Default when no subcommand given           |
-| `chat`       | Interactive REPL or single-shot (`--prompt`)      | Sessions persist automatically             |
-| `doctor`     | System health checks                              | Sync only, no async boundary needed        |
-| `projects`   | List projects                                     | Thin wrapper around core                   |
-| `mcp`        | Start MCP STDIO server                            | Blocks on STDIO; `--readonly`, `--admin`   |
-| `reset`      | Reset database/state                              | `--force` to skip confirmation             |
-| `update`     | Self-update via pipx/pip                          | `--check-only`, `--prerelease`             |
-| `tools`      | LLM tool utilities                                | Subgroup: `enhance`                        |
-| `plugins`    | Plugin management                                 | Subgroup: `sync`, `list`, `check`          |
-| `import`     | Import from external sources                      | Subgroup: `github`                         |
-| `serve`      | Start HTTP API server                             | Blocks until stopped                       |
-| `web`        | Start server + open browser                       | Convenience wrapper around `serve`         |
+| Command    | Purpose                                      | Notes                                    |
+| ---------- | -------------------------------------------- | ---------------------------------------- |
+| `tui`      | Launch Textual interface                     | Default when no subcommand given         |
+| `chat`     | Interactive REPL or single-shot (`--prompt`) | Sessions persist automatically           |
+| `doctor`   | System health checks                         | Sync only, no async boundary needed      |
+| `projects` | List projects                                | Thin wrapper around core                 |
+| `mcp`      | Start MCP STDIO server                       | Blocks on STDIO; `--readonly`, `--admin` |
+| `reset`    | Reset database/state                         | `--force` to skip confirmation           |
+| `update`   | Self-update via pipx/pip                     | `--check-only`, `--prerelease`           |
+| `tools`    | LLM tool utilities                           | Subgroup: `enhance`                      |
+| `plugins`  | Plugin management                            | Subgroup: `sync`, `list`, `check`        |
+| `import`   | Import from external sources                 | Subgroup: `github`                       |
+| `serve`    | Start HTTP API server                        | Blocks until stopped                     |
+| `web`      | Start server + open browser                  | Convenience wrapper around `serve`       |
 
 ## The Async Bridge (`_bootstrap.py`)
 
 Core is async; Click callbacks are sync. `_bootstrap.py` bridges the gap:
 
-| Helper                          | Purpose                                           |
-| ------------------------------- | ------------------------------------------------- |
-| `make_client(db_path=None)`     | Create a `KaganCore` instance per command         |
-| `run_async(coro)`               | Sync → async via `asyncio.run()`                  |
-| `maybe_check_for_updates()`     | Silent PyPI version check                         |
-| `check_and_install_update(...)` | Detect install method, fetch, install             |
+| Helper                          | Purpose                                   |
+| ------------------------------- | ----------------------------------------- |
+| `make_client(db_path=None)`     | Create a `KaganCore` instance per command |
+| `run_async(coro)`               | Sync → async via `asyncio.run()`          |
+| `maybe_check_for_updates()`     | Silent PyPI version check                 |
+| `check_and_install_update(...)` | Detect install method, fetch, install     |
 
 No Click imports. No shared state. Pure utility.
 
@@ -87,9 +87,10 @@ No Click imports. No shared state. Pure utility.
 | `click.Abort`          | 1         | Ctrl-C / EOF                    |
 
 Strategy:
+
 1. **Parameter conflicts** → `click.UsageError`
-2. **Domain errors** → `click.ClickException(msg)`
-3. **Unexpected errors** → caught by `_CLIGroup.invoke`, logged, surfaced as `ClickException`
+1. **Domain errors** → `click.ClickException(msg)`
+1. **Unexpected errors** → caught by `_CLIGroup.invoke`, logged, surfaced as `ClickException`
 
 ## State Flow
 
@@ -125,11 +126,11 @@ One carve-out: `tests/core/test_cli_surface.py` validates help text, exit codes,
 
 ## What This Architecture Does NOT Have
 
-| Omitted                  | Why                                                  |
-| ------------------------ | ---------------------------------------------------- |
-| Daemon / `kagan core`    | Core is an in-process SDK. No process management.    |
-| Typer                    | Adds indirection without earning it.                 |
-| `commands/` subdirectory | Flat is better than nested.                          |
-| Base command class       | Each command is a function. No inheritance.          |
-| `ctx.obj` state passing  | Commands are independent. No hidden coupling.        |
-| Custom help formatting   | Click's default is good enough.                      |
+| Omitted                  | Why                                               |
+| ------------------------ | ------------------------------------------------- |
+| Daemon / `kagan core`    | Core is an in-process SDK. No process management. |
+| Typer                    | Adds indirection without earning it.              |
+| `commands/` subdirectory | Flat is better than nested.                       |
+| Base command class       | Each command is a function. No inheritance.       |
+| `ctx.obj` state passing  | Commands are independent. No hidden coupling.     |
+| Custom help formatting   | Click's default is good enough.                   |

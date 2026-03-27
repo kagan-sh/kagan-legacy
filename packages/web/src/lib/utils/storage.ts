@@ -54,4 +54,3 @@ export function loadWebOnboardingTutorialSeen(): boolean {
   if (storage === null) return false;
   return storage.getItem(WEB_ONBOARDING_TUTORIAL_SEEN_KEY) === '1';
 }
-

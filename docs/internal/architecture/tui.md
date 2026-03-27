@@ -7,9 +7,9 @@ ______________________________________________________________________
 
 ## References
 
-| Package     | Repo                                                        | Use                                                       |
-| ----------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers |
+| Package     | Repo                                                        | Use                                                          |
+| ----------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers   |
 | **Loguru**  | [Delgan/loguru](https://github.com/Delgan/loguru)           | Structured logging. Config in core — see `core.md` § Logging |
 
 ______________________________________________________________________
@@ -165,15 +165,15 @@ ______________________________________________________________________
 
 ### Reactive Declarations
 
-| Owner               | Name           | Type                        | Purpose                      |
-| ------------------- | -------------- | --------------------------- | ---------------------------- |
-| `KaganApp`          | `project`      | `reactive[Project \| None]` | Active project               |
-| `KanbanScreen`      | `tasks`        | `reactive[list[Task]]`      | Board tasks                  |
-| `KanbanScreen`      | `selected`     | `var[str \| None]`          | Selected task ID             |
-| `KanbanScreen`      | `filter_text`  | `var[str]`                  | Search filter                |
-| `KanbanScreen`      | `chat_visible` | `var[bool]`                 | AI Panel open state          |
-| `WorkspaceScreen`   | `session_items`| `list[ChatSessionListItem]` | Orchestrator session sidebar |
-| `SessionDashboard`  | `session`      | `reactive[Session \| None]` | Active execution run         |
+| Owner              | Name            | Type                        | Purpose                      |
+| ------------------ | --------------- | --------------------------- | ---------------------------- |
+| `KaganApp`         | `project`       | `reactive[Project \| None]` | Active project               |
+| `KanbanScreen`     | `tasks`         | `reactive[list[Task]]`      | Board tasks                  |
+| `KanbanScreen`     | `selected`      | `var[str \| None]`          | Selected task ID             |
+| `KanbanScreen`     | `filter_text`   | `var[str]`                  | Search filter                |
+| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | AI Panel open state          |
+| `WorkspaceScreen`  | `session_items` | `list[ChatSessionListItem]` | Orchestrator session sidebar |
+| `SessionDashboard` | `session`       | `reactive[Session \| None]` | Active execution run         |
 
 WorkspaceScreen keeps navigation state intentionally simple:
 
@@ -188,12 +188,12 @@ WorkspaceScreen keeps navigation state intentionally simple:
 
 ### Watch Methods
 
-| Owner              | Watches        | Effect                           |
-| ------------------ | -------------- | -------------------------------- |
-| `KanbanScreen`     | `tasks`        | Refreshes BoardView columns      |
-| `KanbanScreen`     | `chat_visible` | Toggles ChatPanel CSS class      |
-| `KanbanScreen`     | `filter_text`  | Filters `_all_tasks`             |
-| `SessionDashboard` | `session`      | Updates header status badge      |
+| Owner              | Watches        | Effect                      |
+| ------------------ | -------------- | --------------------------- |
+| `KanbanScreen`     | `tasks`        | Refreshes BoardView columns |
+| `KanbanScreen`     | `chat_visible` | Toggles ChatPanel CSS class |
+| `KanbanScreen`     | `filter_text`  | Filters `_all_tasks`        |
+| `SessionDashboard` | `session`      | Updates header status badge |
 
 ______________________________________________________________________
 
@@ -238,8 +238,8 @@ ______________________________________________________________________
 Three TCSS layers, ascending specificity:
 
 1. **Widget `DEFAULT_CSS`** — scoped to widget class, lowest specificity
-2. **`app.tcss`** — global variables, base layout, theme
-3. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed
+1. **`app.tcss`** — global variables, base layout, theme
+1. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed
 
 ```text
 styles/
@@ -335,6 +335,7 @@ ______________________________________________________________________
 See `docs/internal/testing.md` for the full testing guide.
 
 TUI-specific:
+
 - Use `app.run_test()` with `Pilot`, not manual event loops
 - Use targeted waits (`wait_for_screen`, `pilot.pause()`), never `wait_for_workers()`
 

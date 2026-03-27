@@ -10,19 +10,21 @@ import sys
 from collections.abc import Mapping, MutableMapping
 
 # Essential environment variables that should always be preserved in subprocesses
-_ESSENTIAL_ENV: frozenset[str] = frozenset({
-    "PATH",
-    "HOME",
-    "USER",
-    "SHELL",
-    "PWD",
-    "LANG",
-    "LC_ALL",
-    "TERM",
-    "EDITOR",
-    "SSH_AUTH_SOCK",
-    "GIT_CONFIG_GLOBAL",
-})
+_ESSENTIAL_ENV: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "PWD",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "EDITOR",
+        "SSH_AUTH_SOCK",
+        "GIT_CONFIG_GLOBAL",
+    }
+)
 
 # Sensitive patterns that should be stripped from environment variables
 # These match anywhere in the variable name (case-insensitive)
@@ -161,9 +163,7 @@ def build_sanitized_subprocess_environment(
         Sanitized environment dictionary safe for subprocess execution.
 
     Example:
-        >>> env = build_sanitized_subprocess_environment(
-        ...     allow_extra={"MY_VAR": "value"}
-        ... )
+        >>> env = build_sanitized_subprocess_environment(allow_extra={"MY_VAR": "value"})
         >>> # env contains only essential vars + MY_VAR, no secrets
     """
     source_env = base_env if base_env is not None else os.environ

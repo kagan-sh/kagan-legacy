@@ -2,7 +2,7 @@
 
 This document describes the security-related functions and classes available in the Kagan codebase for runtime environment sanitization, git reference validation, worktree path security, and persona trust assessment.
 
----
+______________________________________________________________________
 
 ## Runtime Environment
 
@@ -22,9 +22,9 @@ def build_sanitized_subprocess_environment(
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `base_env` | `Mapping[str, str] \| None` | Base environment to sanitize. Defaults to `os.environ` if not provided. |
+| Parameter     | Type                        | Description                                                                                 |
+| ------------- | --------------------------- | ------------------------------------------------------------------------------------------- |
+| `base_env`    | `Mapping[str, str] \| None` | Base environment to sanitize. Defaults to `os.environ` if not provided.                     |
 | `allow_extra` | `Mapping[str, str] \| None` | Additional environment variables to allow (name → value). These bypass all security checks. |
 
 #### Return Value
@@ -49,11 +49,7 @@ import subprocess
 sanitized_env = build_sanitized_subprocess_environment()
 
 # Use in subprocess
-subprocess.run(
-    ["git", "status"],
-    env=sanitized_env,
-    capture_output=True
-)
+subprocess.run(["git", "status"], env=sanitized_env, capture_output=True)
 ```
 
 **With additional allowed variables:**
@@ -78,7 +74,7 @@ minimal_env = {"PATH": "/usr/bin", "HOME": "/home/user"}
 sanitized = build_sanitized_subprocess_environment(base_env=minimal_env)
 ```
 
----
+______________________________________________________________________
 
 ## Git Reference Validation
 
@@ -94,13 +90,14 @@ async def validate_ref_name(name: str) -> bool
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `name` | `str` | The git reference name to validate (e.g., branch name, tag). |
+| Parameter | Type  | Description                                                  |
+| --------- | ----- | ------------------------------------------------------------ |
+| `name`    | `str` | The git reference name to validate (e.g., branch name, tag). |
 
 #### Return Value
 
 Returns `bool`:
+
 - `True` if the reference name is valid and safe
 - `False` if the name is invalid, empty, or potentially malicious
 
@@ -109,10 +106,10 @@ Returns `bool`:
 The function performs the following security checks:
 
 1. **Empty check**: Empty strings are rejected
-2. **Option injection**: Names starting with `-` are rejected (prevents `git checkout --some-option` attacks)
-3. **Directory traversal**: Names containing `..` are rejected
-4. **Reflog syntax**: Names containing `@{` are rejected (prevents reflog injection)
-5. **Canonical validation**: Uses `git check-ref-format --branch` for final validation
+1. **Option injection**: Names starting with `-` are rejected (prevents `git checkout --some-option` attacks)
+1. **Directory traversal**: Names containing `..` are rejected
+1. **Reflog syntax**: Names containing `@{` are rejected (prevents reflog injection)
+1. **Canonical validation**: Uses `git check-ref-format --branch` for final validation
 
 #### Examples
 
@@ -122,17 +119,19 @@ The function performs the following security checks:
 import asyncio
 from kagan.core import git
 
+
 async def check_branch():
     # Valid branch names
     assert await git.validate_ref_name("feature/new-thing") is True
     assert await git.validate_ref_name("main") is True
     assert await git.validate_ref_name("v1.0.0") is True
-    
+
     # Invalid/malicious names
     assert await git.validate_ref_name("--force") is False  # Option injection
     assert await git.validate_ref_name("../etc/passwd") is False  # Traversal
     assert await git.validate_ref_name("@{-1}") is False  # Reflog injection
     assert await git.validate_ref_name("") is False  # Empty
+
 
 asyncio.run(check_branch())
 ```
@@ -144,12 +143,12 @@ async def safe_checkout(repo_path: Path, branch_name: str):
     # Always validate before using in git commands
     if not await git.validate_ref_name(branch_name):
         raise ValueError(f"Invalid branch name: {branch_name}")
-    
+
     # Now safe to use in git operations
     await git.worktree_add(repo.path, "/path/to/wt", branch=branch_name, base="main")
 ```
 
----
+______________________________________________________________________
 
 ## Worktree Path Security
 
@@ -166,32 +165,33 @@ def _resolve_worktree_path(task_id: str) -> Path
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter | Type  | Description                                                         |
+| --------- | ----- | ------------------------------------------------------------------- |
 | `task_id` | `str` | The task identifier to resolve. Must be a valid UUID format string. |
 
 #### Return Value
 
 Returns a `pathlib.Path` that is:
+
 - Absolute and normalized (no `..` or `.` components)
 - Within the configured worktree base directory
 - Named with the valid UUID task ID
 
 #### Exceptions
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception         | Condition                                                                       |
+| ----------------- | ------------------------------------------------------------------------------- |
 | `ValidationError` | Task ID is not a valid UUID format, contains special characters, or is too long |
-| `WorktreeError` | Resolved path would escape the base directory (path traversal detected) |
-| `TypeError` | Task ID is not a string (e.g., `None`, `int`) |
+| `WorktreeError`   | Resolved path would escape the base directory (path traversal detected)         |
+| `TypeError`       | Task ID is not a string (e.g., `None`, `int`)                                   |
 
 #### Validation Rules
 
 1. **UUID format**: Must match `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
-2. **Path traversal**: Rejects `..`, `/`, `\`, encoded traversal sequences
-3. **Special characters**: Rejects shell metacharacters, wildcards (`*`, `?`), quotes
-4. **Length limit**: Rejects IDs exceeding reasonable length (prevents buffer issues)
-5. **Control characters**: Rejects null bytes, control characters, Unicode escapes
+1. **Path traversal**: Rejects `..`, `/`, `\`, encoded traversal sequences
+1. **Special characters**: Rejects shell metacharacters, wildcards (`*`, `?`), quotes
+1. **Length limit**: Rejects IDs exceeding reasonable length (prevents buffer issues)
+1. **Control characters**: Rejects null bytes, control characters, Unicode escapes
 
 #### Examples
 
@@ -234,6 +234,7 @@ except (ValidationError, WorktreeError) as e:
 ```python
 from pathlib import Path
 
+
 def is_path_within_base(path: Path, base: Path) -> bool:
     """Check if resolved path stays within base directory."""
     try:
@@ -242,13 +243,14 @@ def is_path_within_base(path: Path, base: Path) -> bool:
     except ValueError:
         return False
 
+
 # Usage
 base_dir = Path("/home/user/.local/state/kagan/worktrees")
 resolved = Worktrees._resolve_worktree_path("550e8400-e29b-41d4-a716-446655440000")
 assert is_path_within_base(resolved, base_dir)
 ```
 
----
+______________________________________________________________________
 
 ## Persona Trust Assessment
 
@@ -261,44 +263,46 @@ A frozen dataclass representing the reputation-based trust assessment of a perso
 ```python
 @dataclass(frozen=True)
 class TrustAssessment:
-    repo: str                    # Repository identifier (owner/repo format)
-    stars: int                   # GitHub star count
-    repo_age_days: int           # Repository age in days
-    audit_risk_level: str        # "low", "medium", or "high"
-    trust_score: float           # Calculated score from 0.0 to 1.0
-    trust_tier: str              # "low_risk", "medium_risk", or "high_risk"
+    repo: str  # Repository identifier (owner/repo format)
+    stars: int  # GitHub star count
+    repo_age_days: int  # Repository age in days
+    audit_risk_level: str  # "low", "medium", or "high"
+    trust_score: float  # Calculated score from 0.0 to 1.0
+    trust_tier: str  # "low_risk", "medium_risk", or "high_risk"
     findings: list[dict[str, Any]]  # Security audit findings
-    archived: bool               # Whether the repository is archived
+    archived: bool  # Whether the repository is archived
 ```
 
 #### Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `repo` | `str` | Full repository name in `owner/repo` format |
-| `stars` | `int` | Number of GitHub stars (social proof metric) |
-| `repo_age_days` | `int` | Days since repository creation |
-| `audit_risk_level` | `str` | Security audit level: `"low"`, `"medium"`, or `"high"` |
-| `trust_score` | `float` | Composite score from `0.0` (untrusted) to `1.0` (highly trusted) |
-| `trust_tier` | `str` | Risk classification: `"low_risk"`, `"medium_risk"`, or `"high_risk"` |
-| `findings` | `list[dict[str, Any]]` | List of security findings with severity, message, and evidence |
-| `archived` | `bool` | Whether the GitHub repository is archived |
+| Field              | Type                   | Description                                                          |
+| ------------------ | ---------------------- | -------------------------------------------------------------------- |
+| `repo`             | `str`                  | Full repository name in `owner/repo` format                          |
+| `stars`            | `int`                  | Number of GitHub stars (social proof metric)                         |
+| `repo_age_days`    | `int`                  | Days since repository creation                                       |
+| `audit_risk_level` | `str`                  | Security audit level: `"low"`, `"medium"`, or `"high"`               |
+| `trust_score`      | `float`                | Composite score from `0.0` (untrusted) to `1.0` (highly trusted)     |
+| `trust_tier`       | `str`                  | Risk classification: `"low_risk"`, `"medium_risk"`, or `"high_risk"` |
+| `findings`         | `list[dict[str, Any]]` | List of security findings with severity, message, and evidence       |
+| `archived`         | `bool`                 | Whether the GitHub repository is archived                            |
 
 #### Trust Score Calculation
 
 The trust score is calculated using weighted factors:
 
-| Factor | Weight | Calculation |
-|--------|--------|-------------|
-| **Audit Score** | 50% | `1.0` (low risk), `0.5` (medium), `0.0` (high) |
-| **Star Score** | 30% | Sigmoid curve: 0 stars=0.3, 10=0.5, 100=0.7, 1000+=0.9 |
-| **Age Score** | 20% | Sigmoid curve: <30 days=0.3, 30-90=0.5, 90-365=0.7, 365+=0.9 |
+| Factor          | Weight | Calculation                                                   |
+| --------------- | ------ | ------------------------------------------------------------- |
+| **Audit Score** | 50%    | `1.0` (low risk), `0.5` (medium), `0.0` (high)                |
+| **Star Score**  | 30%    | Sigmoid curve: 0 stars=0.3, 10=0.5, 100=0.7, 1000+=0.9        |
+| **Age Score**   | 20%    | Sigmoid curve: \<30 days=0.3, 30-90=0.5, 90-365=0.7, 365+=0.9 |
 
 **Archived repository penalty:**
+
 - Age score reduced by 0.2
 - Star score reduced by 0.1
 
 **Trust tier thresholds:**
+
 - `low_risk`: `trust_score >= 0.7` AND `audit_risk_level == "low"`
 - `high_risk`: `trust_score < 0.4` OR `audit_risk_level == "high"`
 - `medium_risk`: All other cases
@@ -328,7 +332,7 @@ assessment = TrustAssessment(
     trust_score=0.75,
     trust_tier="low_risk",
     findings=[],
-    archived=False
+    archived=False,
 )
 
 # Check trust tier before import
@@ -363,7 +367,7 @@ new_repo = TrustAssessment(
     trust_score=0.42,  # Lower due to age and audit findings
     trust_tier="medium_risk",
     findings=[{"severity": "medium", "message": "Suspicious tokens in prompt"}],
-    archived=False
+    archived=False,
 )
 
 # Example: Established, popular repo
@@ -375,11 +379,11 @@ established = TrustAssessment(
     trust_score=0.91,  # High due to stars, age, and clean audit
     trust_tier="low_risk",
     findings=[],
-    archived=False
+    archived=False,
 )
 ```
 
----
+______________________________________________________________________
 
 ## Persona Repository Audit
 
@@ -401,11 +405,11 @@ async def audit_repo(
 
 #### Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `repo` | `str` | *required* | Repository in `owner/repo` format |
-| `path` | `str` | `".kagan/personas.json"` | Path to the personas file within the repo |
-| `ref` | `str \| None` | `None` | Git ref (branch, tag, or SHA). Uses default branch if `None`. |
+| Parameter | Type          | Default                  | Description                                                   |
+| --------- | ------------- | ------------------------ | ------------------------------------------------------------- |
+| `repo`    | `str`         | *required*               | Repository in `owner/repo` format                             |
+| `path`    | `str`         | `".kagan/personas.json"` | Path to the personas file within the repo                     |
+| `ref`     | `str \| None` | `None`                   | Git ref (branch, tag, or SHA). Uses default branch if `None`. |
 
 #### Return Value
 
@@ -413,21 +417,21 @@ Returns a `dict[str, Any]` with the following structure:
 
 ```python
 {
-    "repo": str,                    # Repository name (owner/repo)
-    "repo_url": str,                # HTML URL to the repository
-    "path": str,                    # Path to personas file
-    "ref": str | None,              # Git ref used
-    "archived": bool,               # Whether repo is archived
-    "stars": int,                   # GitHub star count
-    "updated_at": str,              # Last push timestamp (ISO 8601)
-    "created_at": str,              # Creation timestamp (ISO 8601)
-    "persona_count": int,           # Number of personas in file
-    "personas": list[dict],         # Preview of each persona (see below)
-    "findings": list[dict],         # Security audit findings
-    "audit_risk_level": str,        # "low", "medium", or "high"
-    "trust_assessment": dict,       # TrustAssessment as dictionary
-    "trust_tier": str,              # "low_risk", "medium_risk", "high_risk"
-    "disclaimer": str,              # Safety disclaimer message
+    "repo": str,  # Repository name (owner/repo)
+    "repo_url": str,  # HTML URL to the repository
+    "path": str,  # Path to personas file
+    "ref": str | None,  # Git ref used
+    "archived": bool,  # Whether repo is archived
+    "stars": int,  # GitHub star count
+    "updated_at": str,  # Last push timestamp (ISO 8601)
+    "created_at": str,  # Creation timestamp (ISO 8601)
+    "persona_count": int,  # Number of personas in file
+    "personas": list[dict],  # Preview of each persona (see below)
+    "findings": list[dict],  # Security audit findings
+    "audit_risk_level": str,  # "low", "medium", or "high"
+    "trust_assessment": dict,  # TrustAssessment as dictionary
+    "trust_tier": str,  # "low_risk", "medium_risk", "high_risk"
+    "disclaimer": str,  # Safety disclaimer message
 }
 ```
 
@@ -435,11 +439,11 @@ Returns a `dict[str, Any]` with the following structure:
 
 ```python
 {
-    "key": str,              # Persona identifier
-    "name": str,             # Display name
-    "description": str,      # Description
-    "prompt_preview": str,   # First 200 chars of prompt (truncated)
-    "prompt_length": int,    # Total prompt character count
+    "key": str,  # Persona identifier
+    "name": str,  # Display name
+    "description": str,  # Description
+    "prompt_preview": str,  # First 200 chars of prompt (truncated)
+    "prompt_length": int,  # Total prompt character count
 }
 ```
 
@@ -447,31 +451,31 @@ Returns a `dict[str, Any]` with the following structure:
 
 ```python
 {
-    "persona": str,          # Persona key where issue was found
-    "severity": str,         # "low", "medium", or "high"
-    "message": str,          # Description of the issue
-    "evidence": list,        # Supporting evidence (tokens found, etc.)
+    "persona": str,  # Persona key where issue was found
+    "severity": str,  # "low", "medium", or "high"
+    "message": str,  # Description of the issue
+    "evidence": list,  # Supporting evidence (tokens found, etc.)
 }
 ```
 
 #### Exceptions
 
-| Exception | Condition |
-|-----------|-----------|
-| `ValueError` | Invalid repo format, private repository, unsafe path, or GitHub API error |
-| `RuntimeError` | GitHub CLI (`gh`) not installed or not authenticated |
+| Exception      | Condition                                                                 |
+| -------------- | ------------------------------------------------------------------------- |
+| `ValueError`   | Invalid repo format, private repository, unsafe path, or GitHub API error |
+| `RuntimeError` | GitHub CLI (`gh`) not installed or not authenticated                      |
 
 #### Audit Findings
 
 The following patterns trigger security findings:
 
-| Pattern | Severity | Description |
-|---------|----------|-------------|
-| `rm -rf` | medium | Destructive command in prompt |
-| `curl `, `wget ` | medium | Network download in prompt |
-| `gh auth token` | medium | Token extraction attempt |
-| `password`, `secret`, `token` | medium | Credential-related keywords |
-| Prompt > 12000 chars | low | Unusually long prompt |
+| Pattern                       | Severity | Description                   |
+| ----------------------------- | -------- | ----------------------------- |
+| `rm -rf`                      | medium   | Destructive command in prompt |
+| `curl `, `wget `              | medium   | Network download in prompt    |
+| `gh auth token`               | medium   | Token extraction attempt      |
+| `password`, `secret`, `token` | medium   | Credential-related keywords   |
+| Prompt > 12000 chars          | low      | Unusually long prompt         |
 
 #### Examples
 
@@ -481,24 +485,26 @@ The following patterns trigger security findings:
 import asyncio
 from kagan.core._persona import PersonaPresetOps
 
+
 async def audit_example():
     # Initialize with settings and audit log
     ops = PersonaPresetOps(settings_ops, audit_log)
-    
+
     # Audit a public repository
     result = await ops.audit_repo(repo="kagan/personas")
-    
+
     print(f"Repository: {result['repo']}")
     print(f"Stars: {result['stars']}")
     print(f"Trust tier: {result['trust_tier']}")
     print(f"Trust score: {result['trust_assessment']['trust_score']}")
-    
-    if result['findings']:
+
+    if result["findings"]:
         print("\nSecurity findings:")
-        for finding in result['findings']:
+        for finding in result["findings"]:
             print(f"  - [{finding['severity']}] {finding['message']}")
-    
-    return result['trust_tier'] == 'low_risk'
+
+    return result["trust_tier"] == "low_risk"
+
 
 asyncio.run(audit_example())
 ```
@@ -508,24 +514,25 @@ asyncio.run(audit_example())
 ```python
 async def audit_specific_version():
     ops = PersonaPresetOps(settings_ops, audit_log)
-    
+
     # Audit specific branch
     result = await ops.audit_repo(
         repo="myorg/personas",
         path="custom/path/personas.json",
-        ref="develop"  # or tag "v1.0.0" or commit SHA
+        ref="develop",  # or tag "v1.0.0" or commit SHA
     )
-    
-    trust = result['trust_assessment']
+
+    trust = result["trust_assessment"]
     print(f"Auditing {result['repo']}@{result['ref']}")
     print(f"Risk level: {result['audit_risk_level']}")
     print(f"Trust score: {trust['trust_score']:.2f}")
-    
+
     # Check for high-risk content
-    if result['audit_risk_level'] == 'high':
+    if result["audit_risk_level"] == "high":
         print("WARNING: High-risk repository detected!")
-        for finding in result['findings']:
+        for finding in result["findings"]:
             print(f"  - {finding['persona']}: {finding['message']}")
+
 
 asyncio.run(audit_specific_version())
 ```
@@ -535,37 +542,35 @@ asyncio.run(audit_specific_version())
 ```python
 async def import_with_trust_check():
     ops = PersonaPresetOps(settings_ops, audit_log)
-    
+
     # First, audit the repository
     audit = await ops.audit_repo(repo="some-user/personas")
-    
-    trust_tier = audit['trust_tier']
-    trust_score = audit['trust_assessment']['trust_score']
-    
+
+    trust_tier = audit["trust_tier"]
+    trust_score = audit["trust_assessment"]["trust_score"]
+
     # Decide action based on trust tier
-    if trust_tier == 'low_risk':
+    if trust_tier == "low_risk":
         # Safe to auto-import
-        result = await ops.import_from_github(
-            repo="some-user/personas",
-            auto_confirm=True
-        )
+        result = await ops.import_from_github(repo="some-user/personas", auto_confirm=True)
         print(f"Auto-imported {result['imported']}")
-        
-    elif trust_tier == 'medium_risk':
+
+    elif trust_tier == "medium_risk":
         # Show findings to user, ask for confirmation
         print(f"Medium risk (score: {trust_score:.2f})")
-        print("Findings:", audit['findings'])
+        print("Findings:", audit["findings"])
         # Prompt user for confirmation...
-        
+
     else:  # high_risk
         # Require explicit acknowledgment
         print(f"HIGH RISK (score: {trust_score:.2f})")
         print("Manual review required. Use --acknowledge-risk to proceed.")
 
+
 asyncio.run(import_with_trust_check())
 ```
 
----
+______________________________________________________________________
 
 ## Security Considerations
 

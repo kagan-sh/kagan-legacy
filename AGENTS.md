@@ -24,6 +24,7 @@ kagan/
 │   ├── integrations/    # GitHub integration
 │   └── plugins/         # Plugin system (entry-point based)
 ├── packages/
+│   ├── vscode/          # VS Code extension: chat participant, tree view, SCM, reviews
 │   ├── web/             # React 19 + jotai + Tailwind CSS 4 web dashboard (SPA)
 │   └── wire/            # (removed — TS types now generated from response models)
 ├── tests/               # pytest: core/, tui/, mcp/, server/, unit/, helpers/
@@ -44,9 +45,11 @@ kagan/
 | Modify task lifecycle | `src/kagan/core/_transitions.py`                          | State machine for task status                                                     |
 | Add agent backend     | `src/kagan/core/_agent.py`                                | AGENT_BACKENDS registry dict                                                      |
 | Add DB migration      | `alembic -c alembic.ini revision --autogenerate -m "msg"` | Via `poe db-migration-generate`                                                   |
-| Wire protocol change  | `src/kagan/server/responses.py`                            | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
+| Wire protocol change  | `src/kagan/server/responses.py`                           | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
 | Web UI feature        | `packages/web/src/`                                       | React 19 + jotai + Tailwind CSS 4                                                 |
 | API endpoint          | `src/kagan/server/_routes.py`                             | Starlette routes via FastMCP                                                      |
+| VS Code feature       | `packages/vscode/src/providers/`                          | One provider per VS Code API surface                                              |
+| VS Code command       | `packages/vscode/src/commands/`                           | Register in `extension.ts`                                                        |
 | Modify prompt system  | `src/kagan/core/_prompts.py`                              | Three-layer resolution: dotfile → defaults + behavioral → additional instructions |
 
 ## CONVENTIONS
@@ -111,11 +114,7 @@ uv run poe snapshot-update # Update TUI snapshot tests
 | tui    | `docs/internal/architecture/tui.md`    | `docs/internal/features/tui.md`    |
 | server | `docs/internal/architecture/server.md` | `docs/internal/features/server.md` |
 | web    | `docs/internal/architecture/web.md`    | `docs/internal/features/web.md`    |
-
-Web deep dives:
-
-- Architecture: `docs/internal/architecture/web.md`
-- Features: `docs/internal/features/web.md`
+| vscode | `docs/internal/architecture/vscode.md` | `docs/internal/features/vscode.md` |
 
 ## TypeScript / Web Checks
 
@@ -123,6 +122,15 @@ Web deep dives:
 cd packages/web && pnpm exec vitest run
 cd packages/web && pnpm exec playwright test   # requires running server (`kagan web`)
 cd packages/web && pnpm run build
+```
+
+## TypeScript / VS Code Extension Checks
+
+```bash
+cd packages/vscode && pnpm run check-types
+cd packages/vscode && pnpm run test:unit
+cd packages/vscode && pnpm run test:integration
+cd packages/vscode && pnpm run test:e2e
 ```
 
 ## Module Pitfalls
@@ -133,6 +141,13 @@ cd packages/web && pnpm run build
 - Do not add global styles outside `src/app.css`; keep overrides inside component `<style>` blocks.
 - Use `@/` path alias for imports (maps to `src/`).
 - State management via jotai atoms — no class-based stores.
+
+### vscode
+
+- Event type strings come from `EVENT_TYPE` / `SSE_TYPE` consts in `api/types.ts` — never hand-type event strings.
+- ACP payloads nest tool data under `payload.acp` — use `acpPayload()` helpers, not direct field access.
+- All HTTP calls go through `KaganClient` — no raw `fetch` in providers.
+- One provider per VS Code API surface — do not mix concerns.
 
 ## NOTES
 

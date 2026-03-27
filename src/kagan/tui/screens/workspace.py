@@ -601,8 +601,7 @@ class WorkspaceScreen(Screen[None]):
 
         if widget is search:
             footer = (
-                "Type to filter · "
-                f"{board_key} board · Esc clear"
+                f"Type to filter · {board_key} board · Esc clear"
                 if search.value
                 else f"Type to filter · {open_key} open · Esc list"
             )
@@ -617,9 +616,7 @@ class WorkspaceScreen(Screen[None]):
                 f"{search_key} filter · {chat_key} chat · {board_key} board"
             )
 
-        self.query_one("#workspace-footer", Static).update(
-            footer
-        )
+        self.query_one("#workspace-footer", Static).update(footer)
 
     def _on_settings_dismissed(self, _result: None) -> None:
         from kagan.tui.app import KaganApp

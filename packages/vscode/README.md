@@ -1,35 +1,51 @@
 # Kagan VS Code Extension
 
-Native VS Code client for Kagan.
+Native VS Code client for Kagan. Board, agent output, diffs, reviews -- all through platform-native APIs.
 
-## Connection Behavior
+## Quick Start
 
-The extension connects to `kagan.serverUrl` on activation.
+1. Install the extension (`.vsix` or marketplace).
+1. The extension auto-connects to `http://localhost:8765` and auto-starts the server if needed.
+1. Open the Chat panel (`Cmd+Shift+I`) and type `@kagan` to watch agent output.
 
-For local development, the default behavior is:
+## Features
 
-- auto-connect on startup
-- if `kagan.serverUrl` points at `localhost`, `127.0.0.1`, or `::1` and nothing is listening,
-  the extension automatically starts `kagan web --no-open`
-- if your CLI is installed under a different name or path, set `kagan.serverCommand`
+| Feature         | VS Code Surface  | How to access                              |
+| --------------- | ---------------- | ------------------------------------------ |
+| Orchestrator    | Chat Participant | `Cmd+Shift+I` then `@kagan <message>`      |
+| Watch task      | Chat Participant | `@kagan /watch` or chat icon on task       |
+| Board status    | Chat Participant | `@kagan /status`                           |
+| Kanban board    | Sidebar TreeView | Click the Kagan icon in the activity bar   |
+| Task diffs      | SCM diff editor  | Right-click task > View Diff               |
+| Review verdicts | Comments         | Open a task in Review status               |
+| Agent terminal  | Terminal         | Right-click running task > Attach Terminal |
+| Diagnostic log  | Output Channel   | Command: Show Agent Output                 |
+
+## Connection
+
+- **Auto-connect** on startup (disable with `kagan.autoConnect: false`).
+- **Auto-start** local server when `serverUrl` is localhost and nothing is listening.
+- **Status bar** shows connection state and task counts.
 
 The extension does not auto-start remote servers.
 
 ## Settings
 
-- `kagan.serverUrl`: base URL of the Kagan server
-- `kagan.autoConnect`: connect automatically on activation
-- `kagan.autoStartServer`: auto-start a local Kagan server when `serverUrl` is local
-- `kagan.serverCommand`: command used for local auto-start; the extension runs
-  `<command> web --no-open`
+| Setting                   | Default                 | Description                |
+| ------------------------- | ----------------------- | -------------------------- |
+| `kagan.serverUrl`         | `http://localhost:8765` | Kagan server URL           |
+| `kagan.autoConnect`       | `true`                  | Connect on activation      |
+| `kagan.autoStartServer`   | `true`                  | Auto-start local server    |
+| `kagan.serverCommand`     | `kagan`                 | CLI command for auto-start |
+| `kagan.autoWatchOnAttach` | `true`                  | Auto-open Chat on attach   |
 
-## Quality Checks
-
-Run these from the repository root:
+## Development
 
 ```bash
-pnpm run vscode:typecheck
-pnpm run vscode:test:unit
-pnpm run vscode:test:integration
-pnpm run vscode:test:e2e
+pnpm run compile        # Type-check + bundle
+pnpm run watch          # Dev mode (esbuild + tsc watch)
+pnpm run test:unit      # Vitest
+pnpm run test:integration # Extension host tests
+pnpm run test:e2e       # WDIO real VS Code
+pnpm run vsix           # Package .vsix
 ```

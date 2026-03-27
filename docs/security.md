@@ -8,7 +8,7 @@ icon: material/shield-check
 
 This document describes Kagan's security model, trust boundaries, and safe usage practices. It explains how the system protects your data and what you should know to use Kagan safely.
 
----
+______________________________________________________________________
 
 ## 1. Security Overview
 
@@ -16,14 +16,14 @@ This document describes Kagan's security model, trust boundaries, and safe usage
 
 Kagan is designed with a **defense-in-depth** approach that assumes:
 
-| Threat | Mitigation |
-|--------|------------|
-| Malicious persona presets | Progressive trust scoring + mandatory audit before import |
-| Environment credential leaks | Subprocess environment sanitization (allowlist-based) |
-| Path traversal attacks | Path validation on all file operations |
-| Git ref injection | Ref name validation before git operations |
-| Prompt injection | Input validation + prompt structure enforcement |
-| Privilege escalation | Role-based access control (RBAC) for MCP tools |
+| Threat                       | Mitigation                                                |
+| ---------------------------- | --------------------------------------------------------- |
+| Malicious persona presets    | Progressive trust scoring + mandatory audit before import |
+| Environment credential leaks | Subprocess environment sanitization (allowlist-based)     |
+| Path traversal attacks       | Path validation on all file operations                    |
+| Git ref injection            | Ref name validation before git operations                 |
+| Prompt injection             | Input validation + prompt structure enforcement           |
+| Privilege escalation         | Role-based access control (RBAC) for MCP tools            |
 
 ### Trust Boundaries
 
@@ -60,7 +60,7 @@ Kagan is designed with a **defense-in-depth** approach that assumes:
 - **Agent processes are isolated** — Each agent runs in a sanitized subprocess environment without access to sensitive credentials
 - **Persona presets are untrusted by default** — All imported presets undergo automated security auditing before you can use them
 
----
+______________________________________________________________________
 
 ## 2. Persona Preset Security
 
@@ -72,19 +72,21 @@ Kagan uses a **reputation-based trust assessment** when you import persona prese
 
 When you audit or import a persona preset, Kagan calculates a **trust score** (0.0 to 1.0) based on three factors:
 
-| Factor | Weight | What It Measures |
-|--------|--------|------------------|
-| **Security Audit** | 50% | Presence of suspicious patterns in prompts |
-| **GitHub Stars** | 30% | Social proof and community adoption |
-| **Repository Age** | 20% | Longevity indicates stability |
+| Factor             | Weight | What It Measures                           |
+| ------------------ | ------ | ------------------------------------------ |
+| **Security Audit** | 50%    | Presence of suspicious patterns in prompts |
+| **GitHub Stars**   | 30%    | Social proof and community adoption        |
+| **Repository Age** | 20%    | Longevity indicates stability              |
 
 **Star Score Formula:**
+
 - 0 stars = 0.3 base score
 - 10 stars = 0.5
 - 100 stars = 0.7
 - 1000+ stars = 0.9
 
 **Age Score Formula:**
+
 - < 30 days = 0.3 (new, higher risk)
 - 30-90 days = 0.5
 - 90-365 days = 0.7
@@ -94,20 +96,20 @@ When you audit or import a persona preset, Kagan calculates a **trust score** (0
 
 Based on the combined trust score, repositories are classified into three tiers:
 
-| Tier | Score Range | Behavior |
-|------|-------------|----------|
-| **Low Risk** | ≥ 0.7 + clean audit | Can auto-import with `--auto-confirm` |
-| **Medium Risk** | 0.4 - 0.7 | Shows audit summary, requires confirmation |
-| **High Risk** | < 0.4 or high audit risk | Requires `--acknowledge-risk` flag |
+| Tier            | Score Range              | Behavior                                   |
+| --------------- | ------------------------ | ------------------------------------------ |
+| **Low Risk**    | ≥ 0.7 + clean audit      | Can auto-import with `--auto-confirm`      |
+| **Medium Risk** | 0.4 - 0.7                | Shows audit summary, requires confirmation |
+| **High Risk**   | < 0.4 or high audit risk | Requires `--acknowledge-risk` flag         |
 
 ### Why a Persona Import Shows "Medium Risk"
 
 A "medium risk" rating typically means one or more of the following:
 
 1. **Security findings detected** — The audit found suspicious tokens in prompts (e.g., `curl`, `rm -rf`, `password`, `secret`)
-2. **Limited GitHub presence** — The repository has few stars (< 100)
-3. **Relatively new** — The repository was created less than 90 days ago
-4. **Archived repository** — The repository is archived (indicates unmaintained code)
+1. **Limited GitHub presence** — The repository has few stars (< 100)
+1. **Relatively new** — The repository was created less than 90 days ago
+1. **Archived repository** — The repository is archived (indicates unmaintained code)
 
 ### How to Evaluate a Persona Preset
 
@@ -181,7 +183,7 @@ kagan tools prompts persona whitelist add owner/repo
 kagan tools prompts persona whitelist list
 ```
 
----
+______________________________________________________________________
 
 ## 3. Environment Sanitization
 
@@ -202,24 +204,25 @@ These variables are required for basic system operation and git functionality.
 
 Any variable matching these patterns is **automatically removed**:
 
-| Pattern | Examples of Stripped Variables |
-|---------|-------------------------------|
-| `TOKEN` | `GITHUB_TOKEN`, `API_TOKEN` |
-| `KEY` | `AWS_ACCESS_KEY`, `SECRET_KEY` |
-| `SECRET` | `DATABASE_SECRET`, `APP_SECRET` |
-| `PASSWORD` | `DB_PASSWORD`, `USER_PASSWORD` |
-| `AWS_` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
-| `AZURE_` | `AZURE_CLIENT_SECRET` |
-| `GCP_` | `GCP_SERVICE_ACCOUNT_KEY` |
-| `OPENAI_` | `OPENAI_API_KEY` |
-| `ANTHROPIC_` | `ANTHROPIC_API_KEY` |
-| `GITHUB_` | `GITHUB_TOKEN` |
-| `LD_PRELOAD` | Library injection attacks |
-| `DYLD_INSERT_LIBRARIES` | macOS library injection |
+| Pattern                 | Examples of Stripped Variables               |
+| ----------------------- | -------------------------------------------- |
+| `TOKEN`                 | `GITHUB_TOKEN`, `API_TOKEN`                  |
+| `KEY`                   | `AWS_ACCESS_KEY`, `SECRET_KEY`               |
+| `SECRET`                | `DATABASE_SECRET`, `APP_SECRET`              |
+| `PASSWORD`              | `DB_PASSWORD`, `USER_PASSWORD`               |
+| `AWS_`                  | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| `AZURE_`                | `AZURE_CLIENT_SECRET`                        |
+| `GCP_`                  | `GCP_SERVICE_ACCOUNT_KEY`                    |
+| `OPENAI_`               | `OPENAI_API_KEY`                             |
+| `ANTHROPIC_`            | `ANTHROPIC_API_KEY`                          |
+| `GITHUB_`               | `GITHUB_TOKEN`                               |
+| `LD_PRELOAD`            | Library injection attacks                    |
+| `DYLD_INSERT_LIBRARIES` | macOS library injection                      |
 
 ### Python-Specific Variables (Stripped)
 
 All variables starting with `PYTHON` are removed to prevent:
+
 - `PYTHONPATH` hijacking
 - `PYTHONHOME` manipulation
 - Version-specific behavior changes
@@ -261,12 +264,10 @@ KAGAN_MCP_SERVER_NAME=kagan
 You can explicitly allow additional variables using the `allow_extra` parameter in the API, but this is primarily for internal use:
 
 ```python
-env = build_sanitized_subprocess_environment(
-    allow_extra={"MY_CUSTOM_VAR": "safe_value"}
-)
+env = build_sanitized_subprocess_environment(allow_extra={"MY_CUSTOM_VAR": "safe_value"})
 ```
 
----
+______________________________________________________________________
 
 ## 4. Input Validation
 
@@ -275,13 +276,15 @@ env = build_sanitized_subprocess_environment(
 Git branch names are validated to prevent option injection and path traversal:
 
 **Rejected patterns:**
+
 - Names starting with `-` (option injection: `-help`)
 - Names containing `..` (directory traversal)
 - Names containing `@{` (reflog syntax injection)
 
 **Validation process:**
+
 1. Quick regex checks for dangerous patterns
-2. Delegation to `git check-ref-format --branch` for canonical validation
+1. Delegation to `git check-ref-format --branch` for canonical validation
 
 ```python
 # This will fail validation
@@ -307,11 +310,11 @@ configs/team/personas.json     # ✅ OK
 
 Settings values are validated against allowed enums:
 
-| Setting | Allowed Values |
-|---------|---------------|
+| Setting             | Allowed Values                  |
+| ------------------- | ------------------------------- |
 | `review_strictness` | `strict`, `balanced`, `relaxed` |
-| `planning_depth` | `always`, `multi_task`, `never` |
-| `doctor_verbosity` | `tldr`, `short`, `technical` |
+| `planning_depth`    | `always`, `multi_task`, `never` |
+| `doctor_verbosity`  | `tldr`, `short`, `technical`    |
 
 ### Request Body Validation
 
@@ -322,7 +325,7 @@ All API requests use Pydantic models for strict validation:
 - Length limits for strings (e.g., follow-up text limited to 20,000 chars)
 - Empty string rejection for required fields
 
----
+______________________________________________________________________
 
 ## 5. Security Best Practices for Users
 
@@ -366,6 +369,7 @@ kagan tools prompts persona list
 ```
 
 **Red flags to watch for:**
+
 - Instructions to execute shell commands
 - Requests to access files outside the project directory
 - Instructions to share credentials or secrets
@@ -396,6 +400,7 @@ kagan audit list --limit 20
 ```
 
 Look for:
+
 - Unexpected persona imports
 - Settings changes you didn't make
 - Task deletions
@@ -437,7 +442,7 @@ require_review_approval = true
 max_concurrent_agents = 2
 ```
 
----
+______________________________________________________________________
 
 ## 6. Reporting Security Issues
 
@@ -460,9 +465,9 @@ If you discover a security vulnerability in Kagan, please report it responsibly:
 We follow responsible disclosure practices:
 
 1. **Report privately** — Send details to security@kagan.sh
-2. **Allow time for remediation** — We aim to respond within 48 hours and patch within 7 days
-3. **Coordinate disclosure** — We'll work with you to publicly disclose the issue after a fix is released
-4. **Credit researchers** — We publicly acknowledge security researchers who report valid vulnerabilities
+1. **Allow time for remediation** — We aim to respond within 48 hours and patch within 7 days
+1. **Coordinate disclosure** — We'll work with you to publicly disclose the issue after a fix is released
+1. **Credit researchers** — We publicly acknowledge security researchers who report valid vulnerabilities
 
 ### What to Include
 
@@ -483,7 +488,7 @@ The following are generally out of scope for security reports:
 - Physical security issues
 - Issues affecting outdated versions (please test on the latest release)
 
----
+______________________________________________________________________
 
 ## 7. Security Audit History
 
@@ -491,13 +496,13 @@ The following are generally out of scope for security reports:
 
 Kagan underwent a security audit prior to its initial release. Key findings and mitigations:
 
-| Finding | Severity | Status | Mitigation |
-|---------|----------|--------|------------|
-| Path traversal in worktree operations | High | ✅ Fixed | Added path validation and `resolve()` normalization |
-| Environment credential leakage | Medium | ✅ Fixed | Implemented allowlist-based env sanitization |
-| Git ref injection | Medium | ✅ Fixed | Added ref name validation with `git check-ref-format` |
-| Prompt injection via persona presets | Medium | ✅ Mitigated | Implemented automated persona auditing |
-| Missing audit trail | Low | ✅ Fixed | Added comprehensive audit logging |
+| Finding                               | Severity | Status       | Mitigation                                            |
+| ------------------------------------- | -------- | ------------ | ----------------------------------------------------- |
+| Path traversal in worktree operations | High     | ✅ Fixed     | Added path validation and `resolve()` normalization   |
+| Environment credential leakage        | Medium   | ✅ Fixed     | Implemented allowlist-based env sanitization          |
+| Git ref injection                     | Medium   | ✅ Fixed     | Added ref name validation with `git check-ref-format` |
+| Prompt injection via persona presets  | Medium   | ✅ Mitigated | Implemented automated persona auditing                |
+| Missing audit trail                   | Low      | ✅ Fixed     | Added comprehensive audit logging                     |
 
 ### Ongoing Security Measures
 
@@ -512,36 +517,37 @@ All security-relevant actions are logged:
 
 ```python
 {
-  "action": "persona.import",           # What happened
-  "entity_type": "persona_preset",      # What was affected
-  "entity_id": "owner/repo",            # Identifier
-  "detail": {                           # Additional context
-    "trust_tier": "medium_risk",
-    "trust_score": 0.65,
-    "imported_keys": ["analyst", "dev"],
-    "auto_confirmed": false
-  },
-  "created_at": "2024-01-15T10:30:00Z"
+    "action": "persona.import",  # What happened
+    "entity_type": "persona_preset",  # What was affected
+    "entity_id": "owner/repo",  # Identifier
+    "detail": {  # Additional context
+        "trust_tier": "medium_risk",
+        "trust_score": 0.65,
+        "imported_keys": ["analyst", "dev"],
+        "auto_confirmed": false,
+    },
+    "created_at": "2024-01-15T10:30:00Z",
 }
 ```
 
 **Logged actions include:**
+
 - `persona.import` — Preset import with trust metadata
 - `persona.export` — Preset export
 - `persona.whitelist.add/remove` — Whitelist modifications
 - `task.create/update/delete` — Task mutations
 - `settings.set` — Configuration changes
 
----
+______________________________________________________________________
 
 ## Summary
 
 Kagan's security model prioritizes:
 
 1. **Zero-trust for external content** — All persona presets are audited before use
-2. **Defense in depth** — Multiple layers of validation and sanitization
-3. **Transparency** — Audit logs for all security-relevant actions
-4. **User control** — You decide what to trust and when
+1. **Defense in depth** — Multiple layers of validation and sanitization
+1. **Transparency** — Audit logs for all security-relevant actions
+1. **User control** — You decide what to trust and when
 
 By following the best practices in this document, you can use Kagan confidently while maintaining a strong security posture.
 

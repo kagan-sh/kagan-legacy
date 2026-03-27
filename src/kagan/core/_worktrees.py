@@ -76,7 +76,9 @@ def _resolve_worktree_path(task_id: str) -> Path:
     try:
         worktree.relative_to(base)
     except ValueError as exc:
-        logger.warning("Worktree path escapes base directory", task_id=task_id, worktree=str(worktree))
+        logger.warning(
+            "Worktree path escapes base directory", task_id=task_id, worktree=str(worktree)
+        )
         raise WorktreeError(f"Worktree path escapes base directory: {task_id}") from exc
 
     return worktree

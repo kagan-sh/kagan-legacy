@@ -135,7 +135,7 @@ class KaganApp(App[None]):
         # Use set_active_project to avoid redundant DB lookup
         # since we already have the full Project object
         await self.core.projects.set_active_project(project)
-        
+
         self.project = project
         settings = await self.core.settings.get()
         selected_repo_id = settings.get(self._repo_setting_key(project.id)) or None

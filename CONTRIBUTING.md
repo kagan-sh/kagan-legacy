@@ -2,12 +2,12 @@
 
 ## Prerequisites
 
-| Tool | Install | Why |
-|------|---------|-----|
-| Python 3.12+ | [python.org](https://www.python.org/downloads/) | Runtime |
-| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | Package manager + task runner |
-| Git | system package manager | Version control |
-| Node 18+ / pnpm | [nodejs.org](https://nodejs.org) — only if touching `packages/web/` | Web dashboard |
+| Tool                             | Install                                                             | Why                           |
+| -------------------------------- | ------------------------------------------------------------------- | ----------------------------- |
+| Python 3.12+                     | [python.org](https://www.python.org/downloads/)                     | Runtime                       |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh`                  | Package manager + task runner |
+| Git                              | system package manager                                              | Version control               |
+| Node 18+ / pnpm                  | [nodejs.org](https://nodejs.org) — only if touching `packages/web/` | Web dashboard                 |
 
 `uv run poe` is the single entry point for all dev commands. [Poe the Poet](https://poethepoet.naez.com/) is installed automatically by `uv sync`.
 
@@ -35,23 +35,23 @@ Run `uv run poe --help` for the full task list.
 
 ## Where to look
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Add CLI command | `src/kagan/cli/` | Click group, lazy-loaded |
-| Add MCP tool | `src/kagan/mcp/toolsets/` | One file per domain |
-| Add TUI screen | `src/kagan/tui/screens/` | Register in app.py |
-| Add agent backend | `src/kagan/core/_agent.py` | Dict entry in AGENT_BACKENDS |
-| Web UI feature | `packages/web/src/` | React 19 + jotai + Tailwind 4 |
-| Modify prompts | `src/kagan/core/_prompts.py` | Run `uv run poe eval` after |
+| Task              | Location                     | Notes                         |
+| ----------------- | ---------------------------- | ----------------------------- |
+| Add CLI command   | `src/kagan/cli/`             | Click group, lazy-loaded      |
+| Add MCP tool      | `src/kagan/mcp/toolsets/`    | One file per domain           |
+| Add TUI screen    | `src/kagan/tui/screens/`     | Register in app.py            |
+| Add agent backend | `src/kagan/core/_agent.py`   | Dict entry in AGENT_BACKENDS  |
+| Web UI feature    | `packages/web/src/`          | React 19 + jotai + Tailwind 4 |
+| Modify prompts    | `src/kagan/core/_prompts.py` | Run `uv run poe eval` after   |
 
 ## Internal docs
 
 Rich architecture and feature docs live in `docs/internal/` (not published to the docs site). Start here:
 
 1. **[`docs/internal/README.md`](docs/internal/README.md)** — reading order
-2. **[`docs/internal/testing.md`](docs/internal/testing.md)** — test philosophy, DSL, patterns
-3. **`docs/internal/architecture/*.md`** — per-module implementation guides
-4. **`docs/internal/features/*.md`** — per-module behavioral specs (map 1:1 to test files)
+1. **[`docs/internal/testing.md`](docs/internal/testing.md)** — test philosophy, DSL, patterns
+1. **`docs/internal/architecture/*.md`** — per-module implementation guides
+1. **`docs/internal/features/*.md`** — per-module behavioral specs (map 1:1 to test files)
 
 ## Commit conventions
 
@@ -90,8 +90,8 @@ See [`packages/web/README.md`](packages/web/README.md) for frontend-specific det
 If you modify `src/kagan/core/_prompts.py`:
 
 1. Run `uv run poe eval` to benchmark against the eval suite
-2. Update `evals/promptfooconfig.yaml` if adding new prompt behaviors
-3. CI runs the eval automatically on PRs touching prompt files
+1. Update `evals/promptfooconfig.yaml` if adding new prompt behaviors
+1. CI runs the eval automatically on PRs touching prompt files
 
 ## Pre-commit hooks
 

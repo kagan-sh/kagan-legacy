@@ -17,11 +17,11 @@ kagan web --host 0.0.0.0    # LAN access
 
 The left-edge activity bar has three icons:
 
-| Icon           | Route        | Purpose                              |
-| -------------- | ------------ | ------------------------------------ |
-| Board          | `/board`     | Kanban board with drag-and-drop      |
-| Workspace      | `/workspace` | Orchestrator-first conversation view |
-| Settings       | `/settings`  | Categorized settings with sidebar    |
+| Icon      | Route        | Purpose                              |
+| --------- | ------------ | ------------------------------------ |
+| Board     | `/board`     | Kanban board with drag-and-drop      |
+| Workspace | `/workspace` | Orchestrator-first conversation view |
+| Settings  | `/settings`  | Categorized settings with sidebar    |
 
 Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
@@ -54,15 +54,15 @@ Changes save immediately for toggles and dropdowns. Text fields save on blur or 
 
 ## Keyboard shortcuts
 
-| Key                   | Action                                  |
-| --------------------- | --------------------------------------- |
-| `Cmd/Ctrl+Shift+W`   | Toggle Board / Workspace                |
-| `Cmd/Ctrl+Shift+P`   | Command palette                         |
-| `Cmd/Ctrl+I`         | Cycle AI panel on Board / Task routes   |
-| `Cmd/Ctrl+Shift+F`   | Toggle AI panel fullscreen off-workspace |
-| `Cmd/Ctrl+Shift+K`   | Session switcher                        |
-| `?` / `F1`           | Help overlay                            |
-| `Esc`                | Close AI panel off-workspace or dismiss overlay |
+| Key                | Action                                          |
+| ------------------ | ----------------------------------------------- |
+| `Cmd/Ctrl+Shift+W` | Toggle Board / Workspace                        |
+| `Cmd/Ctrl+Shift+P` | Command palette                                 |
+| `Cmd/Ctrl+I`       | Cycle AI panel on Board / Task routes           |
+| `Cmd/Ctrl+Shift+F` | Toggle AI panel fullscreen off-workspace        |
+| `Cmd/Ctrl+Shift+K` | Session switcher                                |
+| `?` / `F1`         | Help overlay                                    |
+| `Esc`              | Close AI panel off-workspace or dismiss overlay |
 
 Full list: [Keybindings reference](../reference/keybindings.md#web-dashboard)
 

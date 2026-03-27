@@ -93,32 +93,32 @@ ______________________________________________________________________
 
 ### Kanban
 
-| Key                | Action               |
-| ------------------ | -------------------- |
-| `n`                | New task |
-| `Enter`            | Open task flow       |
-| `w`                | Switch to workspace  |
+| Key                | Action                                               |
+| ------------------ | ---------------------------------------------------- |
+| `n`                | New task                                             |
+| `Enter`            | Open task flow                                       |
+| `w`                | Switch to workspace                                  |
 | `a`                | Attach interactive run (stops managed run if active) |
-| `Space`            | Cycle AI split       |
-| `p`                | Peek                 |
-| `e`                | Edit                 |
-| `x`                | Delete (confirm)     |
-| `s` / `Shift+S`    | Start managed run / stop active run |
-| `Shift+Left/Right` | Move task            |
-| `/`                | Search               |
+| `Space`            | Cycle AI split                                       |
+| `p`                | Peek                                                 |
+| `e`                | Edit                                                 |
+| `x`                | Delete (confirm)                                     |
+| `s` / `Shift+S`    | Start managed run / stop active run                  |
+| `Shift+Left/Right` | Move task                                            |
+| `/`                | Search                                               |
 
 ### Workspace
 
-| Key        | Action                    |
-| ---------- | ------------------------- |
-| `Enter`    | Open highlighted session  |
-| `n`        | New session               |
-| `x`        | Delete selected session   |
-| `/`        | Focus search              |
-| `Ctrl+I`   | Focus chat input          |
-| `Ctrl+K`   | Session Switcher          |
-| `w`        | Return to board           |
-| `Esc`      | Step back: clear search, then leave chat, then return to board |
+| Key      | Action                                                         |
+| -------- | -------------------------------------------------------------- |
+| `Enter`  | Open highlighted session                                       |
+| `n`      | New session                                                    |
+| `x`      | Delete selected session                                        |
+| `/`      | Focus search                                                   |
+| `Ctrl+I` | Focus chat input                                               |
+| `Ctrl+K` | Session Switcher                                               |
+| `w`      | Return to board                                                |
+| `Esc`    | Step back: clear search, then leave chat, then return to board |
 
 ### Task Screen
 

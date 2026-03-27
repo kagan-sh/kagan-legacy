@@ -5,6 +5,7 @@ import json
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -139,13 +140,15 @@ class PersonaPresetOps:
         for key, item in personas.items():
             prompt = item.get("prompt", "")
             preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
-            result.append({
-                "key": key,
-                "name": item.get("name", ""),
-                "description": item.get("description", ""),
-                "prompt_preview": preview,
-                "prompt_length": len(prompt),
-            })
+            result.append(
+                {
+                    "key": key,
+                    "name": item.get("name", ""),
+                    "description": item.get("description", ""),
+                    "prompt_preview": preview,
+                    "prompt_length": len(prompt),
+                }
+            )
         return result
 
     async def import_from_github(
@@ -532,7 +535,7 @@ def _risk_level(findings: list[dict[str, Any]]) -> str:
 
 def _calculate_repo_age_days(repo_meta: dict[str, Any]) -> int:
     """Calculate repository age in days from created_at timestamp."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     created_at = repo_meta.get("created_at", "")
     if not created_at:
@@ -540,7 +543,7 @@ def _calculate_repo_age_days(repo_meta: dict[str, Any]) -> int:
     try:
         # Parse ISO 8601 format: 2023-01-15T10:30:00Z
         created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (now - created).days
     except (ValueError, TypeError):
         return 0

@@ -139,10 +139,11 @@ class TestWorktreeAddValidation:
     @pytest.mark.asyncio
     async def test_calls_worktree_add_when_valid(self) -> None:
         """worktree_add should proceed when both branch and base are valid."""
-        with patch("kagan.core.git.validate_ref_name") as mock_validate, \
-             patch("kagan.core.git._run_git") as mock_run_git, \
-             patch("pathlib.Path.mkdir") as mock_mkdir:
-
+        with (
+            patch("kagan.core.git.validate_ref_name") as mock_validate,
+            patch("kagan.core.git._run_git") as mock_run_git,
+            patch("pathlib.Path.mkdir") as mock_mkdir,
+        ):
             mock_validate.return_value = True
             mock_run_git.return_value = ("", "")
 

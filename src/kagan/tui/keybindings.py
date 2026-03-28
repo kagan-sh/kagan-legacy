@@ -129,6 +129,7 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("enter", "send_message", "Send"),
     Binding("shift+enter", "insert_newline", "Newline", key_display="Shift+Enter"),
     Binding("tab", "accept_completion", "Complete"),
+    Binding("ctrl+p", "open_file_picker", "Files", key_display="Ctrl+P"),
     Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
     Binding("escape", "dismiss", "Stop / Edit", key_display="Esc"),
     Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
@@ -388,6 +389,7 @@ class FooterBuilder:
         return [
             ("Enter", "send"),
             ("Shift+Enter", "newline"),
+            ("Ctrl+P", "files"),
             ("Ctrl+K", "sessions"),
             ("Esc", "stop / edit"),
         ]

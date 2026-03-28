@@ -1,8 +1,9 @@
 import pytest
 
 from kagan.core._agent import (
-    AGENT_BACKENDS,
     AgentError,
+    BackendCapability,
+    BackendSpec,
     build_agent_environment,
     spawn_agent_via_acp,
 )
@@ -87,13 +88,13 @@ async def test_spawn_agent_acp_rejects_non_acp_backends(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    AGENT_BACKENDS["test-non-acp"] = {
-        "executable": "example",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": False,
-    }
+    spec = BackendSpec(
+        name="test-non-acp",
+        executable="example",
+        acp_command=("example", "acp"),
+        capabilities=frozenset(),
+    )
+    monkeypatch.setattr("kagan.core._agent.get_backend_spec", lambda _name: spec)
 
     async def _fake_create_subprocess_exec(*cmd, **kwargs):
         del cmd, kwargs
@@ -104,19 +105,78 @@ async def test_spawn_agent_acp_rejects_non_acp_backends(
         _fake_create_subprocess_exec,
     )
 
-    try:
-        with pytest.raises(AgentError, match="does not support ACP execution"):
-            await spawn_agent_via_acp(
-                "test-non-acp",
-                tmp_path,
-                "ignored",
-                session_id="session-1",
-                task_id="task-1",
-                db_path=str(tmp_path / "kagan.db"),
-                on_session_update=lambda *_: None,
-            )
-    finally:
-        AGENT_BACKENDS.pop("test-non-acp", None)
+    with pytest.raises(AgentError, match="does not support ACP execution"):
+        await spawn_agent_via_acp(
+            "test-non-acp",
+            tmp_path,
+            "ignored",
+            session_id="session-1",
+            task_id="task-1",
+            db_path=str(tmp_path / "kagan.db"),
+            on_session_update=lambda *_: None,
+        )
+
+
+async def test_spawn_agent_acp_uses_typed_capability_over_legacy_supports_flag(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = BackendSpec(
+        name="typed-acp",
+        executable="typed-acp",
+        acp_command=("typed-acp", "acp"),
+        capabilities=frozenset({BackendCapability.ACP_STREAMING}),
+    )
+    legacy_entry = {
+        "executable": "typed-acp",
+        "prompt_flag": "-p",
+        "workdir_flag": None,
+        "env_vars": {},
+        "supports_acp": False,
+        "acp_command": ["typed-acp", "acp"],
+        "acp_args": [],
+    }
+
+    monkeypatch.setattr("kagan.core._agent.get_backend_spec", lambda _name: spec)
+    monkeypatch.setattr("kagan.core._agent.get_backend", lambda _name: legacy_entry)
+    monkeypatch.setattr("kagan.core._agent.shutil.which", lambda _exe: "/usr/bin/typed-acp")
+
+    captured: dict[str, list[str]] = {}
+
+    class _FakeProc:
+        pid = 4242
+        stdin = object()
+        stdout = object()
+        stderr = object()
+
+    async def _fake_create_subprocess_exec(*cmd, **kwargs):
+        del kwargs
+        captured["cmd"] = [str(part) for part in cmd]
+        return _FakeProc()
+
+    async def _fake_run_acp_session(*, process, client, worktree_path, prompt, mcp_manifest):
+        del process, client, worktree_path, prompt, mcp_manifest
+        return None
+
+    monkeypatch.setattr(
+        "kagan.core._agent.asyncio.create_subprocess_exec",
+        _fake_create_subprocess_exec,
+    )
+    monkeypatch.setattr("kagan.core._acp.run_acp_session", _fake_run_acp_session)
+
+    pid, reader_task = await spawn_agent_via_acp(
+        "typed-acp",
+        tmp_path,
+        "hello",
+        session_id="session-1",
+        task_id="task-1",
+        db_path=str(tmp_path / "kagan.db"),
+        on_session_update=lambda *_: None,
+    )
+    await reader_task
+
+    assert pid == 4242
+    assert captured["cmd"] == ["typed-acp", "acp"]
 
 
 async def test_build_agent_environment_strips_macos_malloc_stack_logging_env(

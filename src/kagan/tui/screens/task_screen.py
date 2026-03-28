@@ -611,6 +611,15 @@ class TaskScreen(Screen[None]):
         panel = self._overlay_panel()
         self._open_overlay_session_picker(panel, initial_query=message.initial_query)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        sender_id = self._sender_id(message)
+        if sender_id and sender_id != "ts-chat-overlay":
+            return
+
+        panel = self._overlay_panel()
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(self, message: ChatPanel.AgentPickerRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":

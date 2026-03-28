@@ -15,6 +15,7 @@ def test_resolve_acp_command_uses_typed_backend_spec(monkeypatch: pytest.MonkeyP
         name="typed-backend",
         executable="typed-backend",
         acp_command=("typed-backend", "acp"),
+        supports_acp=False,
         capabilities=frozenset({BackendCapability.ACP_STREAMING}),
     )
     monkeypatch.setattr(chat_acp, "get_backend_spec", lambda _name: spec)
@@ -24,6 +25,22 @@ def test_resolve_acp_command_uses_typed_backend_spec(monkeypatch: pytest.MonkeyP
         "typed-backend",
         ["acp"],
     )
+
+
+def test_resolve_acp_command_rejects_backends_without_typed_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = BackendSpec(
+        name="typed-backend",
+        executable="typed-backend",
+        acp_command=("typed-backend", "acp"),
+        supports_acp=True,
+        capabilities=frozenset(),
+    )
+    monkeypatch.setattr(chat_acp, "get_backend_spec", lambda _name: spec)
+
+    with pytest.raises(RuntimeError, match="does not support ACP"):
+        chat_acp._resolve_acp_command_for_backend("typed-backend")
 
 
 @pytest.mark.asyncio
@@ -36,6 +53,7 @@ async def test_run_orchestrator_turn_uses_backend_spec_env_vars(
         executable="typed-backend",
         acp_command=("typed-backend", "acp"),
         env_vars={"TYPED_BACKEND_FLAG": "enabled"},
+        supports_acp=False,
         capabilities=frozenset({BackendCapability.ACP_STREAMING}),
     )
     monkeypatch.setattr(chat_acp, "get_backend_spec", lambda _name: spec)

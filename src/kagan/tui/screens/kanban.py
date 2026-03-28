@@ -1629,6 +1629,14 @@ class KanbanScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        panel = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
+        if not isinstance(panel, ChatPanel):
+            panel = self.query_one(ChatPanel)
+
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(
         self, _message: ChatPanel.AgentPickerRequested
     ) -> None:

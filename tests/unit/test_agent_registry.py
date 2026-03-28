@@ -69,7 +69,9 @@ def test_list_backend_specs_matches_legacy_registry_keys() -> None:
     assert set(specs) == set(AGENT_BACKENDS)
     for name, spec in specs.items():
         assert spec.name == name
-        assert spec.to_legacy_config() == AGENT_BACKENDS[name]
+        legacy = spec.to_legacy_config()
+        assert legacy == AGENT_BACKENDS[name]
+        assert legacy["supports_acp"] == (BackendCapability.ACP_STREAMING in spec.capabilities)
 
 
 def test_kimi_cli_supports_acp_mode() -> None:

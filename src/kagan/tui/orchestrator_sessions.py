@@ -34,6 +34,13 @@ class TuiOrchestratorSessionStore:
         self._sessions_by_key: dict[str, dict[str, Any]] = {}
         self._active_key: str | None = None
 
+    def _current_project_id(self) -> str | None:
+        project_id = getattr(self._client, "active_project_id", None)
+        if not isinstance(project_id, str):
+            return None
+        normalized = project_id.strip()
+        return normalized or None
+
     async def ensure_loaded(self) -> None:
         if self._loaded:
             return
@@ -48,6 +55,7 @@ class TuiOrchestratorSessionStore:
                     self._client,
                     source=_TUI_ORCHESTRATOR_SOURCE,
                     label="TUI session",
+                    project_id=self._current_project_id(),
                 )
                 sessions.append(selected)
 
@@ -84,6 +92,7 @@ class TuiOrchestratorSessionStore:
             source=_TUI_ORCHESTRATOR_SOURCE,
             label="TUI session",
             agent_backend=agent_backend,
+            project_id=self._current_project_id(),
         )
         key = self._session_key(str(created.get("id") or ""))
         self._sessions_by_key[key] = created
@@ -121,6 +130,7 @@ class TuiOrchestratorSessionStore:
             "agent_backend": agent_backend or session.get("agent_backend"),
             "orchestrator_history": [[role, content] for role, content in history],
             "messages_rendered": [line for line in rendered_messages if line.strip()],
+            "project_id": self._current_project_id() or session.get("project_id"),
         }
         await save_chat_session(self._client, normalized)
         self._sessions_by_key[self._active_key] = normalized
@@ -185,6 +195,7 @@ class TuiOrchestratorSessionStore:
                 source=_TUI_ORCHESTRATOR_SOURCE,
                 label="TUI session",
                 agent_backend=preserved_backend,
+                project_id=self._current_project_id(),
             )
             next_key = self._session_key(str(created.get("id") or ""))
             self._sessions_by_key[next_key] = created

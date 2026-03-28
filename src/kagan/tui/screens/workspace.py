@@ -263,6 +263,11 @@ class WorkspaceScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        panel = self.query_one(ChatPanel)
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(
         self, _message: ChatPanel.AgentPickerRequested
     ) -> None:

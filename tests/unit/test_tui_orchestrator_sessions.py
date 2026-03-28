@@ -1,9 +1,23 @@
+from importlib import util
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
 from kagan.chat.sessions import get_chat_session, save_chat_session
-from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
+
+
+def _load_tui_orchestrator_sessions_module() -> Any:
+    module_path = Path(__file__).resolve().parents[2] / "src/kagan/tui/orchestrator_sessions.py"
+    spec = util.spec_from_file_location("test_tui_orchestrator_sessions_module", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+TuiOrchestratorSessionStore = _load_tui_orchestrator_sessions_module().TuiOrchestratorSessionStore
 
 pytestmark = [pytest.mark.unit]
 
@@ -20,8 +34,9 @@ class _FakeSettingsOps:
 
 
 class _FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, *, active_project_id: str | None = None) -> None:
         self.settings = _FakeSettingsOps()
+        self.active_project_id = active_project_id
 
 
 @pytest.mark.asyncio
@@ -63,7 +78,7 @@ async def test_store_uses_explicit_startup_session_id_when_present() -> None:
 
 @pytest.mark.asyncio
 async def test_store_persists_active_history_and_backend() -> None:
-    client = _FakeClient()
+    client = _FakeClient(active_project_id="project-123")
     store = TuiOrchestratorSessionStore(cast("Any", client))
     await store.ensure_loaded()
     active_id = store.current_session_id()
@@ -79,6 +94,7 @@ async def test_store_persists_active_history_and_backend() -> None:
     assert persisted is not None
     assert persisted.get("agent_backend") == "claude-code"
     assert persisted.get("orchestrator_history") == [["user", "plan"], ["assistant", "execute"]]
+    assert persisted.get("project_id") == "project-123"
 
 
 @pytest.mark.asyncio

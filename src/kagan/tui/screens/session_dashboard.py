@@ -310,6 +310,15 @@ class SessionDashboardScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
+        if getattr(sender, "id", "") != "dashboard-chat-overlay":
+            return
+
+        panel = self.query_one("#dashboard-chat-overlay", ChatPanel)
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(self, message: ChatPanel.AgentPickerRequested) -> None:
         sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
         if getattr(sender, "id", "") != "dashboard-chat-overlay":

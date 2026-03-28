@@ -6,12 +6,17 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
-from textual.widgets import OptionList, Static
+from textual.widgets import Button, OptionList, Static
 
+from kagan.chat.sessions import get_chat_session
 from kagan.core.errors import KaganError, SessionError
 from kagan.core.models import Project
 from kagan.tui.keybindings import WELCOME_BINDINGS, get_key_for_action
 from kagan.tui.screens.confirm import ConfirmModal
+from kagan.tui.screens.session_resume_modal import (
+    RecentSessionSelection,
+    SessionResumeModal,
+)
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.widgets.hint_bar import KeybindingHint
 
@@ -76,6 +81,7 @@ class WelcomeScreen(Screen[None]):
             yield Static("Recent Projects", id="recent-header")
             yield Static("Loading projects…", id="projects-loading")
             yield OptionList(id="project-list")
+            yield Button("Resume recent session", id="welcome-resume-session")
             yield Static(
                 "Welcome to Kagan! Create your first project to get started.",
                 id="first-launch-welcome",
@@ -199,6 +205,15 @@ class WelcomeScreen(Screen[None]):
 
     def action_settings(self) -> None:
         self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
+
+    @on(Button.Pressed, "#welcome-resume-session")
+    def _on_resume_recent_session_pressed(self, _: Button.Pressed) -> None:
+        self.app.push_screen(SessionResumeModal(), callback=self._on_recent_session_selected)
+
+    def _on_recent_session_selected(self, selection: RecentSessionSelection | None) -> None:
+        if selection is None:
+            return
+        self.run_worker(self._resume_recent_session(selection), exit_on_error=False)
 
     def _on_settings_dismissed(self, _result: None) -> None:
         from kagan.tui.app import KaganApp
@@ -330,6 +345,21 @@ class WelcomeScreen(Screen[None]):
                 initial_repo_path=self._cwd_path if self._cwd_is_git_repo else None,
             )
         )
+
+    async def _resume_recent_session(self, selection: RecentSessionSelection) -> None:
+        try:
+            project = await self.kagan_app.core.projects.get(selection.project_id)
+            session = await get_chat_session(self.kagan_app.core, selection.session_id)
+            if session is None:
+                raise KaganError("Selected session is no longer available.")
+            await self.kagan_app.activate_project(project)
+            await self.kagan_app.orchestrator_sessions.switch(
+                f"orchestrator:{selection.session_id}"
+            )
+        except KaganError as exc:
+            self.app.notify(f"Unable to resume session: {exc}", severity="error")
+            return
+        self.app.switch_screen("kanban-screen")
 
     async def action_delete_project(self) -> None:
         project = self._get_selected_project()

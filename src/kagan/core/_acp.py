@@ -49,8 +49,10 @@ from kagan.core._agent import (
     CODEX_BACKEND,
     GEMINI_CLI_BACKEND,
     OPENCODE_BACKEND,
+    get_backend_spec,
 )
 from kagan.core.enums import SessionEventType
+from kagan.core.errors import AgentError
 
 _ACP_STARTUP_TIMEOUT_ENV_KEY = "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS"
 _ACP_HANDSHAKE_TIMEOUT_ENV_KEY = "KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS"
@@ -167,6 +169,13 @@ def _default_acp_timeout_seconds(agent_backend: str) -> float:
     return _ACP_TIMEOUT_DEFAULT_SECONDS
 
 
+def _backend_auth_hint(agent_backend: str) -> str | None:
+    try:
+        return get_backend_spec(agent_backend).auth_hint
+    except AgentError:
+        return None
+
+
 def acp_handshake_timeout_seconds(agent_backend: str) -> float:
     configured = _configured_acp_timeout_seconds(
         _ACP_HANDSHAKE_TIMEOUT_ENV_KEY,
@@ -207,10 +216,6 @@ def _infer_backend_name_from_process(process: asyncio.subprocess.Process) -> str
     return "agent"
 
 
-def _is_claude_backend(agent_backend: str) -> bool:
-    return agent_backend == CLAUDE_CODE_BACKEND
-
-
 def friendly_acp_error_message(*, error: object, agent_backend: str, during: str) -> str:
     raw = str(error).strip() or "Unknown agent error"
     lowered = raw.lower()
@@ -243,16 +248,9 @@ def friendly_acp_error_message(*, error: object, agent_backend: str, during: str
         or "invalid api key" in lowered
         or "401" in lowered
     ):
-        auth_hint = (
-            "Re-authenticate (for example, run `claude`) and verify credentials."
-            if _is_claude_backend(agent_backend)
-            else (
-                "Re-authenticate with the selected backend CLI and verify credentials. "
-                "For Codex, run `codex` or set `OPENAI_API_KEY` first."
-                if agent_backend == CODEX_BACKEND
-                else "Re-authenticate with the selected backend CLI and verify credentials."
-            )
-        )
+        auth_hint = _backend_auth_hint(agent_backend)
+        if auth_hint is None:
+            auth_hint = "Re-authenticate with the selected backend CLI and verify credentials."
         return f"{prefix} Authentication failed. {auth_hint}"
     if (
         "enotfound" in lowered

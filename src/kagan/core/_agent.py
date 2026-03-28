@@ -108,7 +108,7 @@ class BackendSpec:
             "prompt_flag": self.prompt_flag,
             "workdir_flag": self.workdir_flag,
             "env_vars": dict(self.env_vars),
-            "supports_acp": self.supports_acp,
+            "supports_acp": self.has_capability(BackendCapability.ACP_STREAMING),
             "acp_command": list(self.acp_command),
             "acp_args": list(self.acp_args),
         }
@@ -624,8 +624,8 @@ async def spawn_agent_via_acp(
 ) -> tuple[int, asyncio.Task]:
     """Spawn an ACP-capable agent with owned stdio and start ACP loop task."""
     logger.info("Spawning ACP agent backend={}", backend_name)
-    entry = get_backend(backend_name)
-    if not entry.get("supports_acp", False):
+    spec = get_backend_spec(backend_name)
+    if not spec.has_capability(BackendCapability.ACP_STREAMING):
         raise AgentError(f"Agent backend {backend_name!r} does not support ACP execution.")
 
     cmd, _env, kwargs, mcp_content = await _prepare_spawn(
@@ -641,9 +641,8 @@ async def spawn_agent_via_acp(
     acp_cmd = resolve_acp_command(backend_name)
     if acp_cmd:
         cmd = list(acp_cmd)
-    acp_args = entry.get("acp_args")
-    if isinstance(acp_args, list) and acp_args:
-        cmd.extend(str(arg) for arg in acp_args)
+    if spec.acp_args:
+        cmd.extend(spec.acp_args)
 
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
@@ -655,7 +654,7 @@ async def spawn_agent_via_acp(
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, **cast("Any", kwargs))
     except (FileNotFoundError, PermissionError) as exc:
-        attempted = cmd[0] if cmd else entry["executable"]
+        attempted = cmd[0] if cmd else spec.executable
         logger.error("Failed to spawn ACP agent backend={}: {}", backend_name, exc)
         raise AgentError(
             f"Failed to spawn ACP agent {backend_name!r} ({attempted!r}): {exc}"

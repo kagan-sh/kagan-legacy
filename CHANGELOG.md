@@ -13,6 +13,20 @@
 
 
 
+## v0.13.0-beta.3 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Sync vscode version with pypi, add to semantic-release version_variables
+  ([`8528ea9`](https://github.com/kagan-sh/kagan/commit/8528ea93585844bde92a4bcb55410cffb54f9f2d))
+
+
+
+
+
 ## v0.13.0-beta.2 (2026-03-28)
 
 

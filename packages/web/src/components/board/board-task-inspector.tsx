@@ -104,13 +104,13 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
               </Button>
               <Button size="sm" variant="ghost" className=" text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={onOpenTask}>
                 <ArrowUpRight className="size-4" />
-                Open task workspace
+                Open task
               </Button>
             </>
           ) : (
             <Button size="sm" className="cta-glow" onClick={onOpenTask}>
               <ArrowUpRight className="size-4" />
-              Open task workspace
+              Open task
             </Button>
           )}
           {onEdit ? (

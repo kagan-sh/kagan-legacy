@@ -321,7 +321,7 @@ export function Component() {
                         onClick={handleOpenTaskChat}
                     >
                         <MessageSquare className="size-4" />
-                        Watch task workspace
+                        Open chat
                     </Button>
                     <Select
                         value=""

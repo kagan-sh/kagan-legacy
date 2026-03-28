@@ -7,8 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  * E2E test isolation strategy:
  *
  * 1. A fresh temp directory with a throwaway SQLite DB is created per run.
- * 2. `kagan web --db <temp>/kagan.db --no-open --port 8766` starts a sandboxed
- *    server that serves the bundled SPA with auth skipped (web_ui mode).
+ * 2. `uv run poe web-build && uv run kagan web --db <temp>/kagan.db --no-open --port 8766`
+ *    refreshes the bundled SPA and starts a sandboxed server with auth skipped
+ *    (`web_ui` mode).
  * 3. Tests hit ONLY the sandboxed server — zero production data contact.
  * 4. The temp directory is cleaned up by global-teardown.ts.
  *
@@ -41,7 +42,7 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: `kagan web --db "${dbPath}" --no-open --port ${E2E_PORT}`,
+          command: `uv run poe web-build && uv run kagan web --db "${dbPath}" --no-open --port ${E2E_PORT}`,
           port: E2E_PORT,
           reuseExistingServer: false,
           timeout: 30_000,

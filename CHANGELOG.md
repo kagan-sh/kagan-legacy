@@ -13,6 +13,38 @@
 
 
 
+## v0.13.1-beta.6 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **vscode**: Replace SVG with PNG in README (marketplace restriction)
+  ([`fbe6ace`](https://github.com/kagan-sh/kagan/commit/fbe6ace5d7f1d7fc48faf35353234fba92587a3e))
+
+- **vscode**: Use hero SVG in README, regenerate colored icon from logo-dark
+  ([`c402951`](https://github.com/kagan-sh/kagan/commit/c40295126fedaf0fa0753b0c9cfd36cae462eadb))
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **vscode**: Bump to 0.2.1 [skip ci]
+  ([`012050e`](https://github.com/kagan-sh/kagan/commit/012050e7928e1d652ab26d9f057b400cc9d89877))
+
+
+
+
+
 ## v0.13.1-beta.5 (2026-03-28)
 
 

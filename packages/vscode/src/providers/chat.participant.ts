@@ -7,6 +7,7 @@ import type { SSEStream } from "../api/sse.js";
 import { SSE_TYPE } from "../api/types.js";
 import { formatToolName, renderEvent } from "../api/event-rendering.js";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
+import { pickReusableChatSessionId } from "./chat.participant.helpers.js";
 
 // ── Registration ───────────────────────────────────────────────────────────
 
@@ -20,17 +21,11 @@ async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatConte
 
   sessionCreating = (async () => {
     const settings = await client.getSettings().catch(() => ({} as Record<string, string | undefined>));
-    const globalSessionId = settings.chat_last_active_session?.trim();
-    if (globalSessionId) {
-      activeChatSessionId = globalSessionId;
-      return globalSessionId;
-    }
-
     const sessions = await client.getChatSessions().catch(() => []);
-    const latest = sessions[0]?.id?.trim();
-    if (latest) {
-      activeChatSessionId = latest;
-      return latest;
+    const reusableSessionId = pickReusableChatSessionId(settings.chat_last_active_session, sessions);
+    if (reusableSessionId) {
+      activeChatSessionId = reusableSessionId;
+      return reusableSessionId;
     }
 
     const session = await client.createChatSession(undefined, undefined, "vscode");

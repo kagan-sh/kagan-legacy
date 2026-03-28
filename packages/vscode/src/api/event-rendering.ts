@@ -48,7 +48,7 @@ function acpPayload(payload: Record<string, unknown>): Record<string, unknown> {
  *
  * - `mcp__kagan__task_get` -> `kagan / task_get`
  * - `toolu_abc` / `call_abc` -> `tool call`
- * - `functions__name` -> `name`
+ * - `functions__name` -> `functions / name`
  * - `snake_case` -> `snake case`
  */
 export function formatToolName(raw: string): string {

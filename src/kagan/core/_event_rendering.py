@@ -71,7 +71,7 @@ def _format_tool_name(raw: str) -> str:
 
     - ``mcp__kagan__task_get`` -> ``kagan / task_get``
     - ``toolu_abc`` / ``call_abc`` -> ``tool call``
-    - ``functions__name`` -> ``name``
+    - ``functions__name`` -> ``functions / name``
     - ``snake_case`` -> ``snake case``
     """
     if raw.startswith("toolu_") or raw.startswith("call_"):

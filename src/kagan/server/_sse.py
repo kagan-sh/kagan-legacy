@@ -33,6 +33,97 @@ def _event_to_wire(event: SessionEvent) -> dict[str, Any]:
     return EventResponse.model_validate(event).model_dump(mode="json")
 
 
+def _queue_put_lossy(queue: asyncio.Queue[dict[str, Any]], data: dict[str, Any]) -> None:
+    try:
+        queue.put_nowait(data)
+    except asyncio.QueueFull:
+        with contextlib.suppress(asyncio.QueueEmpty):
+            queue.get_nowait()
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(data)
+
+
+def _queue_put_best_effort(queue: asyncio.Queue[dict[str, Any]], data: dict[str, Any]) -> None:
+    with contextlib.suppress(asyncio.QueueFull):
+        queue.put_nowait(data)
+
+
+async def _wait_for_server_ctx(mcp: FastMCP) -> Any | None:
+    ctx = get_server_context(mcp)
+    for _ in range(60):
+        if ctx is not None:
+            return ctx
+        await asyncio.sleep(0.5)
+        ctx = get_server_context(mcp)
+    return None
+
+
+async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    try:
+        async for event in ctx.client.tasks.events.stream_all(replay=False):
+            _queue_put_lossy(
+                queue,
+                {
+                    "type": "SESSION_EVENT",
+                    "task_id": str(event.task_id),
+                    "event": _event_to_wire(event),
+                },
+            )
+    except asyncio.CancelledError:
+        raise
+    except (ConnectionError, RuntimeError, OSError, KaganError):
+        logger.debug("SSE session event stream failed", exc_info=True)
+
+
+async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    try:
+        async for event in ctx.client.tasks.events.stream_board():
+            _queue_put_best_effort(queue, {"type": "TASK_UPDATED", "task_id": event.task_id})
+    except asyncio.CancelledError:
+        raise
+    except (ConnectionError, RuntimeError, OSError, KaganError):
+        logger.debug("SSE board event stream failed", exc_info=True)
+
+
+def _bus_message_to_sse_data(msg: BusMessage) -> dict[str, Any] | None:
+    if msg.event == BusEvent.SETTINGS_CHANGED:
+        return {"type": "SETTINGS_CHANGED", "keys": msg.payload.get("keys", [])}
+    if msg.event == BusEvent.TASK_DELETED:
+        return {"type": "TASK_DELETED", "task_id": msg.entity_id}
+    if msg.event in (BusEvent.TASK_CREATED, BusEvent.TASK_UPDATED):
+        return {"type": "TASK_UPDATED", "task_id": msg.entity_id}
+    return None
+
+
+async def _forward_bus_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    bus_queue = await ctx.client.event_bus.subscribe()
+    try:
+        while True:
+            msg: BusMessage = await bus_queue.get()
+            data = _bus_message_to_sse_data(msg)
+            if data is not None:
+                _queue_put_best_effort(queue, data)
+    except asyncio.CancelledError:
+        raise
+    except (ConnectionError, RuntimeError, OSError, KaganError):
+        logger.debug("SSE bus event forwarder failed", exc_info=True)
+    finally:
+        await ctx.client.event_bus.unsubscribe(bus_queue)
+
+
+async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIterator[str]:
+    while True:
+        try:
+            data = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
+            yield f"data: {json.dumps(data)}\n\n"
+        except TimeoutError:
+            yield ": keepalive\n\n"
+
+
+async def _poll_db_for_external_changes(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    await _poll_db_changes(ctx.client.tasks, queue)
+
+
 async def _poll_db_changes(
     tasks: Tasks,
     queue: asyncio.Queue[dict[str, Any]],
@@ -80,105 +171,27 @@ async def _poll_db_changes(
 
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
     """Yield SSE-formatted events from the global event stream + board changes."""
-    ctx = get_server_context(mcp)
-    _wait_iters = 0
-    while ctx is None:
-        if _wait_iters >= 60:
-            return
-        await asyncio.sleep(0.5)
-        _wait_iters += 1
-        ctx = get_server_context(mcp)
+    ctx = await _wait_for_server_ctx(mcp)
+    if ctx is None:
+        return
 
-    # Create a merged stream: session events + board task updates
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=500)
-
-    async def _forward_session_events() -> None:
-        try:
-            async for event in ctx.client.tasks.events.stream_all(replay=False):
-                data = {
-                    "type": "SESSION_EVENT",
-                    "task_id": str(event.task_id),
-                    "event": _event_to_wire(event),
-                }
-                try:
-                    queue.put_nowait(data)
-                except asyncio.QueueFull:
-                    # Drop oldest non-critical event
-                    with contextlib.suppress(asyncio.QueueEmpty):
-                        queue.get_nowait()
-                    with contextlib.suppress(asyncio.QueueFull):
-                        queue.put_nowait(data)
-        except asyncio.CancelledError:
-            raise
-        except (ConnectionError, RuntimeError, OSError, KaganError):
-            logger.debug("SSE session event stream failed", exc_info=True)
-
-    async def _forward_board_events() -> None:
-        try:
-            async for event in ctx.client.tasks.events.stream_board():
-                data = {"type": "TASK_UPDATED", "task_id": event.task_id}
-                with contextlib.suppress(asyncio.QueueFull):
-                    queue.put_nowait(data)
-        except asyncio.CancelledError:
-            raise
-        except (ConnectionError, RuntimeError, OSError, KaganError):
-            logger.debug("SSE board event stream failed", exc_info=True)
-
-    async def _forward_bus_events() -> None:
-        bus_queue = await ctx.client.event_bus.subscribe()
-        try:
-            while True:
-                msg: BusMessage = await bus_queue.get()
-                if msg.event in (
-                    BusEvent.TASK_CREATED,
-                    BusEvent.TASK_UPDATED,
-                    BusEvent.TASK_DELETED,
-                ):
-                    wire_type = {
-                        BusEvent.TASK_CREATED: "TASK_UPDATED",
-                        BusEvent.TASK_UPDATED: "TASK_UPDATED",
-                        BusEvent.TASK_DELETED: "TASK_DELETED",
-                    }[msg.event]
-                    data = {"type": wire_type, "task_id": msg.entity_id}
-                    with contextlib.suppress(asyncio.QueueFull):
-                        queue.put_nowait(data)
-                elif msg.event == BusEvent.SETTINGS_CHANGED:
-                    data = {"type": "SETTINGS_CHANGED", "keys": msg.payload.get("keys", [])}
-                    with contextlib.suppress(asyncio.QueueFull):
-                        queue.put_nowait(data)
-        except asyncio.CancelledError:
-            raise
-        except (ConnectionError, RuntimeError, OSError, KaganError):
-            logger.debug("SSE bus event forwarder failed", exc_info=True)
-        finally:
-            await ctx.client.event_bus.unsubscribe(bus_queue)
-
-    # Safety-net fallback: polls the DB for cross-process mutations
-    # that the in-memory event bus cannot observe.
-    async def _poll_db_for_external_changes() -> None:
-        await _poll_db_changes(ctx.client.tasks, queue)
-
-    session_task = asyncio.create_task(_forward_session_events())
-    board_task = asyncio.create_task(_forward_board_events())
-    bus_task = asyncio.create_task(_forward_bus_events())
-    poll_task = asyncio.create_task(_poll_db_for_external_changes())
+    tasks = (
+        asyncio.create_task(_forward_session_events(ctx, queue)),
+        asyncio.create_task(_forward_board_events(ctx, queue)),
+        asyncio.create_task(_forward_bus_events(ctx, queue)),
+        asyncio.create_task(_poll_db_for_external_changes(ctx, queue)),
+    )
 
     try:
-        while True:
-            try:
-                data = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
-                yield f"data: {json.dumps(data)}\n\n"
-            except TimeoutError:
-                # Send keepalive comment to prevent proxy/browser timeouts
-                yield ": keepalive\n\n"
+        async for payload in _yield_sse_payloads(queue):
+            yield payload
     except asyncio.CancelledError:
         pass
     finally:
-        session_task.cancel()
-        board_task.cancel()
-        bus_task.cancel()
-        poll_task.cancel()
-        await asyncio.gather(session_task, board_task, bus_task, poll_task, return_exceptions=True)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def sse_response(generator: AsyncIterator[str]) -> StreamingResponse:

@@ -29,6 +29,12 @@ kagan
 
 Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -> REVIEW -> DONE).
 
+## Optional: use VS Code
+
+If you want Kagan inside your editor, install the VS Code extension from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode) or [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode).
+
+Full guide: [VS Code extension](guides/vscode-extension.md)
+
 ## 3. Create a task
 
 `n` -> title + description -> `Ctrl+S` save. Task appears in BACKLOG.

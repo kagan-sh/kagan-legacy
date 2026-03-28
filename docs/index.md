@@ -24,6 +24,8 @@ uvx kagan
 
 - [:material-server-network: **Run from your editor**](guides/mcp-setup.md)
 
+- [:material-microsoft-visual-studio-code: **VS Code extension**](guides/vscode-extension.md)
+
 - [:material-source-branch: **Review before merge**](concepts/task-lifecycle.md)
 
 - [:material-chat: **Chat orchestrator**](guides/chat.md)
@@ -75,6 +77,7 @@ ______________________________________________________________________
 | Goal                             | Page                                                       |
 | -------------------------------- | ---------------------------------------------------------- |
 | First run in under 5 minutes     | [Quickstart](quickstart.md)                                |
+| Install the VS Code extension    | [VS Code extension](guides/vscode-extension.md)            |
 | Understand the task flow         | [Task lifecycle](concepts/task-lifecycle.md)               |
 | Understand start vs attach       | [Managed vs interactive](guides/managed-vs-interactive.md) |
 | Use chat REPL or TUI overlay     | [Chat guide](guides/chat.md)                               |

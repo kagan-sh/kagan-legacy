@@ -117,6 +117,7 @@ plugins:
           separator: '[\s\-\.]+'
     - tags
     - social:
+          enabled: !ENV [MKDOCS_SOCIAL_ENABLED, false]
           cards_layout_options:
               background_color: "#020202"
               color: "#E8E4DC"
@@ -165,6 +166,7 @@ nav:
     - Guides:
           - Managed runs & interactive attach: guides/managed-vs-interactive.md
           - Chat & REPL: guides/chat.md
+          - VS Code extension: guides/vscode-extension.md
           - ACP session lifecycle: guides/acp-session-lifecycle.md
           - MCP setup: guides/mcp-setup.md
           - Web dashboard: guides/web-dashboard.md
@@ -174,6 +176,8 @@ nav:
     - Reference:
           - CLI: reference/cli.md
           - Configuration: reference/configuration.md
+          - Security: security.md
+          - Security API: api/security.md
           - Keybindings: reference/keybindings.md
           - MCP tools: reference/mcp-tools.md
           - Plugins: reference/plugins.md

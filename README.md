@@ -14,6 +14,8 @@
 </p>
 
 <p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/kagan.kagan-vscode?label=VS%20Marketplace&style=flat" alt="VS Marketplace"></a>
+  <a href="https://open-vsx.org/extension/kagan/kagan-vscode"><img src="https://img.shields.io/open-vsx/v/kagan/kagan-vscode?label=Open%20VSX&style=flat" alt="Open VSX"></a>
   <a href="https://snyk.io/test/github/kagan-sh/kagan?targetFile=pyproject.toml"><img src="https://snyk.io/test/github/kagan-sh/kagan/badge.svg?targetFile=pyproject.toml&style=flat" alt="Snyk"></a>
   <a href="https://glama.ai/mcp/servers/kagan-sh/kagan"><img src="https://glama.ai/mcp/servers/kagan-sh/kagan/badges/score.svg" alt="Glama"></a>
 </p>
@@ -23,6 +25,8 @@
 <h3 align="center">
   <a href="https://docs.kagan.sh/">Docs</a> ·
   <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> ·
+  <a href="https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode">VS Code Extension</a> ·
+  <a href="https://open-vsx.org/extension/kagan/kagan-vscode">Open VSX</a> ·
   <a href="https://docs.kagan.sh/guides/mcp-setup/">MCP Setup</a> ·
   <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>

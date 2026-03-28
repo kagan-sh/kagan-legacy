@@ -13,6 +13,20 @@
 
 
 
+## v0.13.1-beta.2 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Make vscode publish fully manual with version input and target selection
+  ([`3535d93`](https://github.com/kagan-sh/kagan/commit/3535d9344dbfeec69f3a3cdc9f3a11e8c9c4013a))
+
+
+
+
+
 ## v0.13.1-beta.1 (2026-03-28)
 
 

@@ -55,16 +55,25 @@ jobs:
         if: env.VSCE_PAT != ''
         working-directory: packages/vscode
         run: |
+          FLAGS="--packagePath $(ls *.vsix) --allow-missing-repository"
           if [[ "${{ inputs.pre-release }}" == "true" ]]; then
-            pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository --pre-release
-          else
-            pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository
+            FLAGS="$FLAGS --pre-release"
           fi
+          pnpm exec vsce publish $FLAGS || {
+            if [[ $? -eq 1 ]] && pnpm exec vsce show kagan.kagan-vscode --json 2>/dev/null | grep -q "$(node -p 'require("./package.json").version')"; then
+              echo "::warning::Version already exists on VS Code Marketplace — skipping."
+            else
+              exit 1
+            fi
+          }
 
       - name: Publish to Open VSX
         if: inputs.pre-release != true && env.OPEN_VSIX_TOKEN != ''
         working-directory: packages/vscode
-        run: pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
+        run: |
+          pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN" || {
+            echo "::warning::Open VSX publish failed (version may already exist) — skipping."
+          }
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4

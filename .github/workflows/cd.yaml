@@ -125,6 +125,8 @@ jobs:
     needs: release
     if: needs.release.outputs.released == 'true'
     uses: ./.github/workflows/publish-vscode.yaml
+    with:
+      pre-release: ${{ inputs.production_release != true }}
     secrets:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OPEN_VSIX_TOKEN: ${{ secrets.OPEN_VSIX_TOKEN }}

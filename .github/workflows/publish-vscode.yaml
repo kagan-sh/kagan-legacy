@@ -2,12 +2,24 @@ name: Publish VS Code Extension
 
 on:
   workflow_call:
+    inputs:
+      pre-release:
+        description: "Publish as pre-release (beta)"
+        type: boolean
+        required: false
+        default: false
     secrets:
       VSCE_PAT:
         required: false
       OPEN_VSIX_TOKEN:
         required: false
   workflow_dispatch:
+    inputs:
+      pre-release:
+        description: "Publish as pre-release (beta)"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish:
@@ -29,17 +41,27 @@ jobs:
 
       - name: Package VSIX
         working-directory: packages/vscode
-        run: pnpm exec vsce package --allow-missing-repository --no-dependencies
+        run: |
+          if [[ "${{ inputs.pre-release }}" == "true" ]]; then
+            pnpm exec vsce package --allow-missing-repository --no-dependencies --pre-release
+          else
+            pnpm exec vsce package --allow-missing-repository --no-dependencies
+          fi
 
       - name: Publish to VS Code Marketplace
         if: ${{ secrets.VSCE_PAT != '' }}
         working-directory: packages/vscode
-        run: pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository
+        run: |
+          if [[ "${{ inputs.pre-release }}" == "true" ]]; then
+            pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository --pre-release
+          else
+            pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository
+          fi
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
-        if: ${{ secrets.OPEN_VSIX_TOKEN != '' }}
+        if: ${{ inputs.pre-release != true && secrets.OPEN_VSIX_TOKEN != '' }}
         working-directory: packages/vscode
         run: pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
         env:

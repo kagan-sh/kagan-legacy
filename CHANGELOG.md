@@ -13,6 +13,20 @@
 
 
 
+## v0.13.1-beta.5 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **vscode**: Regenerate icon as 8-bit RGBA, use absolute URL in README
+  ([`42a65e5`](https://github.com/kagan-sh/kagan/commit/42a65e5b2c4adbb9564acd4457a5c4f0dc495af9))
+
+
+
+
+
 ## v0.13.1-beta.4 (2026-03-28)
 
 

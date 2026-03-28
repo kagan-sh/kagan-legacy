@@ -13,6 +13,76 @@
 
 
 
+## v0.13.1-beta.4 (2026-03-28)
+
+
+
+
+### chores
+
+- **deps**: Bump @types/node from 20.19.37 to 25.5.0 in /packages/vscode
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump @vitejs/plugin-react from 4.4.1 to 6.0.1 in /packages/web
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump @wdio/globals from 8.46.0 to 9.27.0 in /packages/vscode
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump @wdio/mocha-framework from 8.46.0 to 9.27.0 in /packages/vscode
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump actions/cache from 4 to 5 ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump actions/configure-pages from 5 to 6
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump actions/deploy-pages from 4 to 5 ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump actions/setup-python from 5 to 6 ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump esbuild from 0.25.12 to 0.27.4 in /packages/vscode
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump jsdom from 26.1.0 to 29.0.1 in /packages/web
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump the npm_and_yarn group in /packages/web with 2 updates
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump vite from 6.3.5 to 8.0.3 in /packages/web
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Bump vitest from 4.1.1 to 4.1.2 in /packages/vscode
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Consolidate all dependabot updates ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Update pnpm-lock.yaml ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+- **deps**: Upgrade all wdio packages to v9 for consistency
+  ([#83](https://github.com/kagan-sh/kagan/pull/83),
+  [`713291a`](https://github.com/kagan-sh/kagan/commit/713291a750bf3b7793af6d4d39f70c0654122324))
+
+
+
+
+
 ## v0.13.1-beta.3 (2026-03-28)
 
 

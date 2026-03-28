@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="media/kagan-icon.png" width="128" alt="Kagan" />
+  <img src="https://raw.githubusercontent.com/kagan-sh/kagan/main/packages/vscode/media/kagan-icon.png" width="128" alt="Kagan" />
   <h1>Kagan for VS Code</h1>
   <p>AI-powered Kanban board for orchestrating coding agents on your codebase</p>
 

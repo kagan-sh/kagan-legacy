@@ -60,6 +60,7 @@ export class KaganApiClient {
   private _bundledWeb: boolean = false;
 
   constructor(baseUrl = '') {
+    baseUrl = baseUrl.replace(/\/+$/, '');
     this.baseUrl = baseUrl;
   }
 
@@ -121,7 +122,10 @@ export class KaganApiClient {
     }
 
     // Unwrap envelope — data lives inside .data
-    return (envelope?.data as T) ?? ({} as T);
+    if (envelope?.data === undefined || envelope?.data === null) {
+      throw new ApiError(response.status, 'Response missing data');
+    }
+    return envelope.data as T;
   }
 
   /**

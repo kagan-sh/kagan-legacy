@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { Bot, ChevronRight, MessageSquare, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import type { WireChatSessionSummary } from '@/lib/api/types';
@@ -11,6 +11,7 @@ import {
   rightRailModeAtom,
   rightRailTaskIdAtom,
   sessionPickerOpenAtom,
+  workspaceSessionIdAtom,
 } from '@/lib/atoms/ui';
 import {
   CommandDialog,
@@ -25,11 +26,13 @@ import { cn } from '@/lib/utils';
 
 export function SessionPicker() {
   const navigate = useNavigate();
+  const location = useLocation();
   const boardTasks = useAtomValue(tasksAtom);
   const [open, setOpen] = useAtom(sessionPickerOpenAtom);
   const setRailMode = useSetAtom(rightRailModeAtom);
   const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
+  const setWorkspaceSessionId = useSetAtom(workspaceSessionIdAtom);
 
   const [loading, setLoading] = useState(false);
   const [chatSessions, setChatSessions] = useState<WireChatSessionSummary[]>([]);
@@ -85,10 +88,16 @@ export function SessionPicker() {
       setOpen(false);
       setRailTaskId(null);
       setRailChatSessionId(sessionId);
-      setRailMode('chat-right');
-      navigate('/board');
+      if (location.pathname.startsWith('/workspace')) {
+        setRailMode('none');
+        setWorkspaceSessionId(sessionId);
+        navigate('/workspace');
+      } else {
+        setRailMode('chat-right');
+        navigate('/board');
+      }
     },
-    [navigate, setOpen, setRailChatSessionId, setRailMode, setRailTaskId],
+    [location.pathname, navigate, setOpen, setRailChatSessionId, setRailMode, setRailTaskId, setWorkspaceSessionId],
   );
 
   const openTaskLane = useCallback(

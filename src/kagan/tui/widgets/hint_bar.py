@@ -99,14 +99,28 @@ class KanbanHintBar(Widget):
 
     def compose(self):
         with Horizontal(classes="hint-bar-row hint-bar-nav"):
-            yield Static("", id="hint-nav-left", classes="hint-nav-left")
-            yield Static("", id="hint-nav-center", classes="hint-nav-center")
-            yield Static("", id="hint-nav-right", classes="hint-nav-right")
-            yield GlobalShortcutsStrip(id="hint-nav-global", classes="hint-nav-global")
+            nav_left = Static("", id="hint-nav-left", classes="hint-nav-left")
+            nav_left.tooltip = "Left navigation (use arrow keys)"
+            yield nav_left
+            nav_center = Static("", id="hint-nav-center", classes="hint-nav-center")
+            nav_center.tooltip = "Current mode"
+            yield nav_center
+            nav_right = Static("", id="hint-nav-right", classes="hint-nav-right")
+            nav_right.tooltip = "Right navigation (use arrow keys)"
+            yield nav_right
+            global_strip = GlobalShortcutsStrip(id="hint-nav-global", classes="hint-nav-global")
+            global_strip.tooltip = "Global keyboard shortcuts"
+            yield global_strip
         with Horizontal(classes="hint-bar-row hint-bar-actions"):
-            yield Static("", id="hint-actions-left", classes="hint-actions-left")
-            yield Static("", id="hint-actions", classes="hint-actions")
-            yield Static("", id="hint-global", classes="hint-global")
+            actions_left = Static("", id="hint-actions-left", classes="hint-actions-left")
+            actions_left.tooltip = "Primary action hint"
+            yield actions_left
+            actions_main = Static("", id="hint-actions", classes="hint-actions")
+            actions_main.tooltip = "Additional action hints"
+            yield actions_main
+            hint_global = Static("", id="hint-global", classes="hint-global")
+            hint_global.tooltip = "General hints and tips"
+            yield hint_global
 
     def watch_has_card(self, has_card: bool) -> None:
         self.set_class(has_card, "card-focused")

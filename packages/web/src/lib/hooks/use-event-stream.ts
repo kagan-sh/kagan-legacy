@@ -152,14 +152,12 @@ export function useEventStream() {
     }
   }, [projectVersion, fetchTasks]);
 
-  // Recover from browser tab backgrounding
+  // Recover from browser tab backgrounding — only fetch if SSE is disconnected
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      fetchTasks();
-      // If disconnected, force reconnect
       if (!abortRef.current || abortRef.current.signal.aborted) {
-        // The reconnect timer will handle it
+        fetchTasks();
       }
     };
     document.addEventListener('visibilitychange', onVisible);

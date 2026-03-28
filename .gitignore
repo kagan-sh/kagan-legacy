@@ -17,6 +17,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+node_modules/
 lib/
 !packages/web/src/lib/
 lib64/

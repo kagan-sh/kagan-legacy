@@ -46,6 +46,13 @@ from kagan.core._prompts import (
     resolve_task_prompt,
     serialize_persona_definitions,
 )
+from kagan.core._security import (
+    AttackVector,
+    InjectionDetector,
+    PayloadLibrary,
+    PayloadTemplate,
+    scan_text_for_injection,
+)
 from kagan.core.client import DBWatcher, KaganCore
 from kagan.core.enums import (
     BranchRefStrategy,
@@ -99,17 +106,21 @@ __all__ = [
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
+    "AttackVector",
     "AuditEntry",
     "BranchRefStrategy",
     "CheckStatus",
     "ConfigurationError",
     "DBWatcher",
+    "InjectionDetector",
     "InvalidTransitionError",
     "KaganCore",
     "KaganError",
     "MergeConflictError",
     "MultiRepoUnsupportedError",
     "NotFoundError",
+    "PayloadLibrary",
+    "PayloadTemplate",
     "PreflightCheckResult",
     "PreflightError",
     "Priority",
@@ -145,5 +156,6 @@ __all__ = [
     "resolve_orchestrator_prompt",
     "resolve_review_prompt",
     "resolve_task_prompt",
+    "scan_text_for_injection",
     "serialize_persona_definitions",
 ]

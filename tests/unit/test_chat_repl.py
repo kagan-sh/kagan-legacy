@@ -2,9 +2,9 @@ import pytest
 
 from kagan.chat.repl import (
     SearchPickerOption,
-    _cancel_search_picker,
     _bottom_toolbar,
     _build_prompt_style_rules,
+    _cancel_search_picker,
     _history_cycle_target,
     _picker_move_completion,
     _picker_submit_value,

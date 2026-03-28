@@ -31,7 +31,7 @@ def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
     app = get_context(ctx)
     if app.bound_task_id is not None:
         return app.bound_task_id
-    raise ValueError("task_id is required unless the server is session-bound")
+    raise ValidationError("task_id", "required unless the server is session-bound")
 
 
 def _resolve_task_ids(ctx: Context, task_ids: list[str] | None) -> list[str]:

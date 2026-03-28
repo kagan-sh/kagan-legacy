@@ -214,7 +214,6 @@ def _register_commands() -> None:
     from kagan.cli.list_projects import list_projects
     from kagan.cli.mcp import mcp
     from kagan.cli.plugins import plugins
-    from kagan.cli.prompts import prompts
     from kagan.cli.reset import reset
     from kagan.cli.serve import serve
     from kagan.cli.tools import tools
@@ -232,7 +231,6 @@ def _register_commands() -> None:
     cli.add_command(reset)
     cli.add_command(update)
     cli.add_command(tools)
-    cli.add_command(prompts)
     cli.add_command(web)
     if _plugins_cli_enabled():
         cli.add_command(plugins)

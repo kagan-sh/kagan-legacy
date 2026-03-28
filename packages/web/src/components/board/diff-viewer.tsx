@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { DiffEditor, Editor } from '@monaco-editor/react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useAtomValue } from 'jotai';
+import { resolvedThemeAtom } from '@/lib/atoms/theme';
 import { AlignJustify, Columns2, ChevronDown, ChevronRight, FileCode, FileEdit, FileMinus, FilePlus, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiClient, ApiError } from '@/lib/api/client';
@@ -21,6 +22,26 @@ const FILE_STATUS_ICON: Record<string, typeof FileCode> = {
   modified: FileEdit,
   deleted: FileMinus,
 };
+
+const LazyDiffEditor = lazy(() =>
+  import('@monaco-editor/react').then(module => ({ default: module.DiffEditor }))
+);
+
+const LazyEditor = lazy(() =>
+  import('@monaco-editor/react').then(module => ({ default: module.Editor }))
+);
+
+const EditorLoadingFallback = () => (
+  <div className="h-[28rem] w-full bg-[var(--muted)] animate-pulse flex items-center justify-center">
+    <span className="text-sm text-[var(--muted-foreground)]">Loading editor...</span>
+  </div>
+);
+
+const EditorLoadingFallbackFullscreen = () => (
+  <div className="w-full h-full bg-[var(--muted)] animate-pulse flex items-center justify-center">
+    <span className="text-sm text-[var(--muted-foreground)]">Loading editor...</span>
+  </div>
+);
 
 type DiffViewMode = DiffViewModePreference;
 
@@ -56,10 +77,8 @@ export function DiffViewer({ taskId, taskStatus, className }: DiffViewerProps) {
     return parsedFiles.find((file) => file.path === selectedPath) ?? null;
   }, [parsedFiles, selectedPath]);
 
-  const monacoTheme =
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-      ? 'vs-dark'
-      : 'vs';
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const monacoTheme = resolvedTheme === 'dark' ? 'vs-dark' : 'vs';
 
   useEffect(() => {
     const savedMode = loadDiffViewMode();
@@ -234,56 +253,60 @@ export function DiffViewer({ taskId, taskStatus, className }: DiffViewerProps) {
           </ul>
 
           <div className="overflow-hidden border border-[color:var(--border-subtle)] shadow-[var(--soft-shadow)]">
-            {selectedParsedFile ? (
-              <DiffEditor
-                height="28rem"
-                language={languageFromPath(selectedParsedFile.path)}
-                original={selectedParsedFile.original}
-                modified={selectedParsedFile.modified}
-                theme={monacoTheme}
-                options={{
-                  readOnly: true,
-                  renderSideBySide: viewMode === 'split',
-                  minimap: { enabled: false },
-                  lineNumbersMinChars: 3,
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'off',
-                }}
-              />
-            ) : (
-              <Editor
-                height="28rem"
-                language="diff"
-                value={diffText}
-                theme={monacoTheme}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'off',
-                }}
-              />
-            )}
+            <Suspense fallback={<EditorLoadingFallback />}>
+              {selectedParsedFile ? (
+                <LazyDiffEditor
+                  height="28rem"
+                  language={languageFromPath(selectedParsedFile.path)}
+                  original={selectedParsedFile.original}
+                  modified={selectedParsedFile.modified}
+                  theme={monacoTheme}
+                  options={{
+                    readOnly: true,
+                    renderSideBySide: viewMode === 'split',
+                    minimap: { enabled: false },
+                    lineNumbersMinChars: 3,
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'off',
+                  }}
+                />
+              ) : (
+                <LazyEditor
+                  height="28rem"
+                  language="diff"
+                  value={diffText}
+                  theme={monacoTheme}
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'off',
+                  }}
+                />
+              )}
+            </Suspense>
           </div>
         </div>
       )}
 
       {expanded && files.length === 0 && diffText && (
         <div className="mt-3 overflow-hidden border border-[color:var(--border-subtle)] shadow-[var(--soft-shadow)]">
-          <Editor
-            height="28rem"
-            language="diff"
-            value={diffText}
-            theme={monacoTheme}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              wordWrap: 'off',
-            }}
-          />
+          <Suspense fallback={<EditorLoadingFallback />}>
+            <LazyEditor
+              height="28rem"
+              language="diff"
+              value={diffText}
+              theme={monacoTheme}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'off',
+              }}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -338,37 +361,39 @@ export function DiffViewer({ taskId, taskStatus, className }: DiffViewerProps) {
               })}
             </ul>
             <div className="min-h-0 overflow-hidden">
-              {selectedParsedFile ? (
-                <DiffEditor
-                  height="100%"
-                  language={languageFromPath(selectedParsedFile.path)}
-                  original={selectedParsedFile.original}
-                  modified={selectedParsedFile.modified}
-                  theme={monacoTheme}
-                  options={{
-                    readOnly: true,
-                    renderSideBySide: viewMode === 'split',
-                    minimap: { enabled: false },
-                    lineNumbersMinChars: 3,
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'off',
-                  }}
-                />
-              ) : diffText ? (
-                <Editor
-                  height="100%"
-                  language="diff"
-                  value={diffText}
-                  theme={monacoTheme}
-                  options={{
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'off',
-                  }}
-                />
-              ) : null}
+              <Suspense fallback={<EditorLoadingFallbackFullscreen />}>
+                {selectedParsedFile ? (
+                  <LazyDiffEditor
+                    height="100%"
+                    language={languageFromPath(selectedParsedFile.path)}
+                    original={selectedParsedFile.original}
+                    modified={selectedParsedFile.modified}
+                    theme={monacoTheme}
+                    options={{
+                      readOnly: true,
+                      renderSideBySide: viewMode === 'split',
+                      minimap: { enabled: false },
+                      lineNumbersMinChars: 3,
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'off',
+                    }}
+                  />
+                ) : diffText ? (
+                  <LazyEditor
+                    height="100%"
+                    language="diff"
+                    value={diffText}
+                    theme={monacoTheme}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'off',
+                    }}
+                  />
+                ) : null}
+              </Suspense>
             </div>
           </div>
         </DialogContent>

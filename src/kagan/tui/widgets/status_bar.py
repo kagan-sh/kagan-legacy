@@ -56,8 +56,12 @@ class StatusBar(Horizontal):
         self._work_started_at: float | None = None
 
     def compose(self) -> ComposeResult:
-        yield Static("", classes="status-left", id="chat-overlay-status-left")
-        yield Static("", classes="status-right", id="chat-overlay-status-right")
+        left_widget = Static("", classes="status-left", id="chat-overlay-status-left")
+        left_widget.tooltip = "Agent status and execution progress"
+        yield left_widget
+        right_widget = Static("", classes="status-right", id="chat-overlay-status-right")
+        right_widget.tooltip = "Current action or hint (Press Esc to interrupt)"
+        yield right_widget
 
     def on_mount(self) -> None:
         self._update_display()

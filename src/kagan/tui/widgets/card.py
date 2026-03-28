@@ -265,32 +265,45 @@ class TaskCard(Widget):
 
     def compose(self) -> ComposeResult:
         self._rail_label = Static("▌", classes="card-rail task-card-rail rail-normal")
+        self._rail_label.tooltip = "Task status indicator"
         self._indicator_label = Static("", classes="card-indicator task-card-indicator")
+        self._indicator_label.tooltip = "Task execution state"
         self._title_label = Static("", classes="card-title task-card-title")
+        self._title_label.tooltip = "Task title (press Enter to open)"
         self._id_label = Static("", classes="card-id task-card-id")
         self._id_label.display = False
+        self._id_label.tooltip = "Task identifier"
         self._desc_label = Static("", classes="card-desc task-card-desc")
+        self._desc_label.tooltip = "Task description"
         self._elapsed_label = Static("", classes="card-elapsed task-card-elapsed")
         self._elapsed_label.display = False
+        self._elapsed_label.tooltip = "Time since last update"
         self._status_label = Static("", classes="")
+        self._status_label.tooltip = "Current task status and session info"
         self._backend_label = Static(
             "", classes="card-badge card-badge-backend task-card-badge-backend"
         )
         self._backend_label.display = False
+        self._backend_label.tooltip = "Agent backend"
         self._branch_label = Static("", classes="card-badge card-branch task-card-branch")
         self._branch_label.display = False
+        self._branch_label.tooltip = "Git branch"
         self._issue_label = Static(
             "", classes="card-badge card-badge-gh card-badge-gh-issue task-card-badge-gh-issue"
         )
         self._issue_label.display = False
+        self._issue_label.tooltip = "GitHub issue reference"
         self._pr_label = Static(
             "", classes="card-badge card-badge-gh card-badge-gh-pr task-card-badge-gh-pr"
         )
         self._pr_label.display = False
+        self._pr_label.tooltip = "GitHub pull request reference"
         self._type_label = Static("", classes="card-badge card-badge-type task-card-badge-type")
+        self._type_label.tooltip = "Task type classification"
         self._priority_label = Static(
             "", classes="card-badge card-badge-priority task-card-badge-priority"
         )
+        self._priority_label.tooltip = "Priority level"
 
         self._desc_row = Horizontal(classes="card-row task-card-row")
         self._badge_row = Horizontal(
@@ -326,13 +339,16 @@ class TaskCard(Widget):
 
     def on_mount(self) -> None:
         self.set_class(self.selected, "-selected")
+        self._update_aria_label()
         self._render_task()
 
     def watch_task_data(self, _task: _TaskData | None) -> None:
+        self._update_aria_label()
         self._render_task()
 
     def watch_selected(self, selected: bool) -> None:
         self.set_class(selected, "-selected")
+        self._update_aria_label()
         self._render_task()
 
     # ------------------------------------------------------------------
@@ -346,6 +362,18 @@ class TaskCard(Widget):
             and self._desc_row is not None
             and self._badge_row is not None
         )
+
+    def _update_aria_label(self) -> None:
+        """Update ARIA label to reflect task state for screen readers."""
+        task = self.task_data
+        if task is None:
+            self.tooltip = None
+            return
+
+        status_text, _status_css = self._status_line(task)
+        priority_text = _priority_label(task.priority)
+        label = f"Task: {task.title}, Status: {status_text}, Priority: {priority_text}"
+        self.tooltip = label
 
     def _render_task(self) -> None:
         task = self.task_data

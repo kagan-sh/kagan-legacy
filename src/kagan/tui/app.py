@@ -24,6 +24,7 @@ from kagan.tui.screens.settings import SettingsModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_screen import TaskScreen
 from kagan.tui.screens.welcome import WelcomeScreen
+from kagan.tui.screens.workspace import WorkspaceScreen
 from kagan.tui.textual_compat import (
     apply_textual_compat_workarounds,
     install_asyncio_subprocess_exception_filter,
@@ -46,6 +47,7 @@ class KaganApp(App[None]):
         "styles/chat.tcss",
         "styles/session_dashboard.tcss",
         "styles/task_screen.tcss",
+        "styles/workspace.tcss",
     ]
 
     SCREENS = {
@@ -58,6 +60,7 @@ class KaganApp(App[None]):
         "setup-flow": OnboardingFlow,
         "help-modal": HelpModal,
         "task-screen": TaskScreen,
+        "workspace-screen": WorkspaceScreen,
     }
 
     def __init__(
@@ -132,7 +135,7 @@ class KaganApp(App[None]):
         # Use set_active_project to avoid redundant DB lookup
         # since we already have the full Project object
         await self.core.projects.set_active_project(project)
-        
+
         self.project = project
         settings = await self.core.settings.get()
         selected_repo_id = settings.get(self._repo_setting_key(project.id)) or None
@@ -232,9 +235,11 @@ class KaganApp(App[None]):
         await self._open_repo_picker()
 
     def action_open_settings(self) -> None:
-        screen = self._kanban_screen()
-        if screen is not None:
-            screen.action_open_settings()
+        handler = getattr(self.screen, "action_open_settings", None)
+        if callable(handler):
+            result: Any = handler()
+            if inspect.isawaitable(result):
+                self.run_worker(result, exit_on_error=False)
 
     async def action_open_orchestrator_chat(self) -> None:
         handler = getattr(self.screen, "action_open_orchestrator_chat", None)

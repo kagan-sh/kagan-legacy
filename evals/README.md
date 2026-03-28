@@ -13,11 +13,11 @@ uv run poe eval-view     # open results in browser
 
 12 tests, 12 API calls. Each test brings its own system prompt via `vars` — no prompt × test matrix.
 
-| Prompt | Tests | Covers |
-|--------|-------|--------|
-| Orchestrator | 5 | identity + decomposition, clarification, safety, injection, structured planning |
-| Review | 3 | protocol + tool calls, per-criterion verdicts, no-criteria edge case |
-| Execution | 4 | commit checklist, scope enforcement, coordination, injection defense |
+| Prompt       | Tests | Covers                                                                          |
+| ------------ | ----- | ------------------------------------------------------------------------------- |
+| Orchestrator | 5     | identity + decomposition, clarification, safety, injection, structured planning |
+| Review       | 3     | protocol + tool calls, per-criterion verdicts, no-criteria edge case            |
+| Execution    | 4     | commit checklist, scope enforcement, coordination, injection defense            |
 
 All assertions are deterministic (`icontains`, `not-icontains`). Zero LLM-judge cost.
 

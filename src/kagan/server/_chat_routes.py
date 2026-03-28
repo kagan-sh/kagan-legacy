@@ -271,7 +271,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             ctx, operation="Chat session creation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         body = await request.json()
         if not isinstance(body, dict):
             body = {}
@@ -305,7 +305,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         session_id = cast("str", request.path_params["session_id"])
         session = await get_chat_session(ctx.client, session_id)
         if session is None:
@@ -327,7 +327,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             ctx, operation="Chat session deletion", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         session_id = cast("str", request.path_params["session_id"])
         deleted = await delete_chat_session(ctx.client, session_id)
         if not deleted:

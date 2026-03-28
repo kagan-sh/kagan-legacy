@@ -36,6 +36,7 @@ __all__ = [
     "TOOL_CALL_VIEW_BINDINGS",
     "USER_INPUT_BINDINGS",
     "WELCOME_BINDINGS",
+    "WORKSPACE_BINDINGS",
     "FooterBuilder",
     "get_global_shortcut_help_rows",
     "get_help_rows_for_actions",
@@ -55,6 +56,7 @@ APP_BINDINGS: list[BindingType] = [
 KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
     Binding("enter", "open_task", "Open"),
+    Binding("w", "toggle_workspace", "Workspace"),
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
     Binding("y", "copy_task_id", "Copy ID"),
@@ -109,6 +111,17 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
     Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
+    Binding("escape", "back", "Back"),
+]
+
+WORKSPACE_BINDINGS: list[BindingType] = [
+    Binding("enter", "open_session", "Open"),
+    Binding("n", "new_session", "New"),
+    Binding("x", "delete_session", "Delete"),
+    Binding("slash", "focus_search", "Search", key_display="/"),
+    Binding("ctrl+i", "focus_chat", "Chat", key_display="Ctrl+I"),
+    Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
+    Binding("w", "toggle_board", "Board"),
     Binding("escape", "back", "Back"),
 ]
 

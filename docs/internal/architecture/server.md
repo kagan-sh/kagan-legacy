@@ -6,11 +6,11 @@ ______________________________________________________________________
 
 ## References
 
-| Package       | Use                                                           |
-| ------------- | ------------------------------------------------------------- |
-| **FastMCP**   | MCP framework providing `custom_route()` for REST endpoints.  |
-| **Starlette** | Underlying ASGI framework; `StreamingResponse` powers SSE.    |
-| **Pydantic**  | Response models in `kagan.server.responses`.                  |
+| Package       | Use                                                          |
+| ------------- | ------------------------------------------------------------ |
+| **FastMCP**   | MCP framework providing `custom_route()` for REST endpoints. |
+| **Starlette** | Underlying ASGI framework; `StreamingResponse` powers SSE.   |
+| **Pydantic**  | Response models in `kagan.server.responses`.                 |
 
 ______________________________________________________________________
 
@@ -73,40 +73,40 @@ ______________________________________________________________________
 
 All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: string }`.
 
-| Endpoint                            | Method | Description                           |
-| ----------------------------------- | ------ | ------------------------------------- |
-| `/health`                           | GET    | Service health check                  |
-| `/api/tasks`                        | GET    | List tasks (optional `status` filter) |
-| `/api/tasks`                        | POST   | Create a new task                     |
-| `/api/tasks/counts`                 | GET    | Get task counts grouped by status     |
-| `/api/tasks/{id}`                   | GET    | Get task details                      |
-| `/api/tasks/{id}`                   | PATCH  | Update task properties                |
-| `/api/tasks/{id}`                   | DELETE | Delete a task (Admin tier)            |
-| `/api/tasks/{id}/status`            | POST   | Transition task to new status         |
-| `/api/tasks/{id}/events`            | GET    | Get event history for a task          |
-| `/api/tasks/{id}/review`            | GET    | Get review status for a task          |
-| `/api/tasks/{id}/review/decide`     | POST   | Approve, Reject, or Merge a task      |
-| `/api/tasks/{id}/review/conflicts`  | GET    | Get merge conflicts for a task        |
-| `/api/tasks/{id}/diff`              | GET    | Get diff statistics                   |
-| `/api/tasks/{id}/diff/raw`          | GET    | Raw unified diff                      |
-| `/api/tasks/{id}/diff/files`        | GET    | Changed files list                    |
-| `/api/tasks/{id}/worktree`          | GET    | Worktree metadata                     |
-| `/api/tasks/{id}/commits`           | GET    | Commit history                        |
-| `/api/projects`                     | GET    | List all projects                     |
-| `/api/projects`                     | POST   | Create a new project (Admin tier)     |
-| `/api/projects/{id}/activate`       | POST   | Set project as active                 |
-| `/api/projects/{id}`                | DELETE | Delete a project (Admin tier)         |
-| `/api/settings`                     | GET    | Get current server settings           |
-| `/api/preflight`                    | GET    | Run preflight checks                  |
-| `/api/chat/sessions`                | POST   | Create a new chat session             |
-| `/api/chat/sessions`                | GET    | List chat sessions                    |
-| `/api/chat/sessions/{id}`           | GET    | Get chat session details              |
-| `/api/chat/sessions/{id}`           | DELETE | Delete a chat session                 |
-| `/api/chat/sessions/{id}`           | DELETE | Delete a chat session                 |
-| `/api/chat/agents`                  | GET    | List available agent backends         |
-| `/api/plugins`                      | GET    | List installed plugins                |
-| `/api/plugins/{name}/preflight`     | GET    | Run plugin preflight checks           |
-| `/api/plugins/{name}/import`        | POST   | Import tasks from plugin              |
+| Endpoint                           | Method | Description                           |
+| ---------------------------------- | ------ | ------------------------------------- |
+| `/health`                          | GET    | Service health check                  |
+| `/api/tasks`                       | GET    | List tasks (optional `status` filter) |
+| `/api/tasks`                       | POST   | Create a new task                     |
+| `/api/tasks/counts`                | GET    | Get task counts grouped by status     |
+| `/api/tasks/{id}`                  | GET    | Get task details                      |
+| `/api/tasks/{id}`                  | PATCH  | Update task properties                |
+| `/api/tasks/{id}`                  | DELETE | Delete a task (Admin tier)            |
+| `/api/tasks/{id}/status`           | POST   | Transition task to new status         |
+| `/api/tasks/{id}/events`           | GET    | Get event history for a task          |
+| `/api/tasks/{id}/review`           | GET    | Get review status for a task          |
+| `/api/tasks/{id}/review/decide`    | POST   | Approve, Reject, or Merge a task      |
+| `/api/tasks/{id}/review/conflicts` | GET    | Get merge conflicts for a task        |
+| `/api/tasks/{id}/diff`             | GET    | Get diff statistics                   |
+| `/api/tasks/{id}/diff/raw`         | GET    | Raw unified diff                      |
+| `/api/tasks/{id}/diff/files`       | GET    | Changed files list                    |
+| `/api/tasks/{id}/worktree`         | GET    | Worktree metadata                     |
+| `/api/tasks/{id}/commits`          | GET    | Commit history                        |
+| `/api/projects`                    | GET    | List all projects                     |
+| `/api/projects`                    | POST   | Create a new project (Admin tier)     |
+| `/api/projects/{id}/activate`      | POST   | Set project as active                 |
+| `/api/projects/{id}`               | DELETE | Delete a project (Admin tier)         |
+| `/api/settings`                    | GET    | Get current server settings           |
+| `/api/preflight`                   | GET    | Run preflight checks                  |
+| `/api/chat/sessions`               | POST   | Create a new chat session             |
+| `/api/chat/sessions`               | GET    | List chat sessions                    |
+| `/api/chat/sessions/{id}`          | GET    | Get chat session details              |
+| `/api/chat/sessions/{id}`          | DELETE | Delete a chat session                 |
+| `/api/chat/sessions/{id}`          | DELETE | Delete a chat session                 |
+| `/api/chat/agents`                 | GET    | List available agent backends         |
+| `/api/plugins`                     | GET    | List installed plugins                |
+| `/api/plugins/{name}/preflight`    | GET    | Run plugin preflight checks           |
+| `/api/plugins/{name}/import`       | POST   | Import tasks from plugin              |
 
 ______________________________________________________________________
 
@@ -118,10 +118,10 @@ Two SSE endpoints handle real-time server→client communication:
 
 Persistent SSE connection. Streams two event types:
 
-| `type` field     | Payload              | Description                          |
-| ---------------- | -------------------- | ------------------------------------ |
-| `TASK_UPDATED`   | `{ task_id }`        | A task was created, updated, or deleted |
-| `SESSION_EVENT`  | `{ task_id, event }` | Agent session event (output, tool call, status change, etc.) |
+| `type` field    | Payload              | Description                                                  |
+| --------------- | -------------------- | ------------------------------------------------------------ |
+| `TASK_UPDATED`  | `{ task_id }`        | A task was created, updated, or deleted                      |
+| `SESSION_EVENT` | `{ task_id, event }` | Agent session event (output, tool call, status change, etc.) |
 
 Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
 
@@ -129,23 +129,23 @@ Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
 
 Per-turn SSE connection. Streams chunks for a single chat turn:
 
-| `t` field              | Payload                      | Description                |
-| ---------------------- | ---------------------------- | -------------------------- |
-| `CHAT_CHUNK`           | `{ content, thought? }`      | Agent text streaming chunk |
-| `CHAT_TOOL_START`      | `{ tool }`                   | Tool call initiated        |
-| `CHAT_TOOL_PROGRESS`   | `{ tool, status }`           | Tool call status update    |
-| `CHAT_DONE`            | `{ full_response }`          | Turn completed             |
-| `CHAT_ERROR`           | `{ error }`                  | Turn error                 |
-| `CHAT_SESSION_UPDATED` | `{ session_id, label }`      | Title generated            |
+| `t` field              | Payload                 | Description                |
+| ---------------------- | ----------------------- | -------------------------- |
+| `CHAT_CHUNK`           | `{ content, thought? }` | Agent text streaming chunk |
+| `CHAT_TOOL_START`      | `{ tool }`              | Tool call initiated        |
+| `CHAT_TOOL_PROGRESS`   | `{ tool, status }`      | Tool call status update    |
+| `CHAT_DONE`            | `{ full_response }`     | Turn completed             |
+| `CHAT_ERROR`           | `{ error }`             | Turn error                 |
+| `CHAT_SESSION_UPDATED` | `{ session_id, label }` | Title generated            |
 
 ### REST Commands (replace former WS messages)
 
-| Endpoint                                | Replaces         | Description                     |
-| --------------------------------------- | ---------------- | ------------------------------- |
-| `POST /api/tasks/{id}/run`              | WS `RUN_START`   | Start an agent execution        |
-| `POST /api/tasks/{id}/cancel`           | WS `RUN_CANCEL`  | Cancel a running agent          |
-| `POST /api/tasks/{id}/follow-up`        | WS `TASK_FOLLOW_UP` | Cancel + restart with new text |
-| `POST /api/chat/{id}/interrupt`         | WS `CHAT_INTERRUPT` | Interrupt a running chat turn  |
+| Endpoint                         | Replaces            | Description                    |
+| -------------------------------- | ------------------- | ------------------------------ |
+| `POST /api/tasks/{id}/run`       | WS `RUN_START`      | Start an agent execution       |
+| `POST /api/tasks/{id}/cancel`    | WS `RUN_CANCEL`     | Cancel a running agent         |
+| `POST /api/tasks/{id}/follow-up` | WS `TASK_FOLLOW_UP` | Cancel + restart with new text |
+| `POST /api/chat/{id}/interrupt`  | WS `CHAT_INTERRUPT` | Interrupt a running chat turn  |
 
 ______________________________________________________________________
 

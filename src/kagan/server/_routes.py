@@ -159,7 +159,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Task creation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         body = await parse_body(request, CreateTaskRequest)
         task = await ctx.client.tasks.create(
             body.title,
@@ -196,7 +196,7 @@ def register_routes(mcp: FastMCP) -> None:
     async def update_task(request: Request, *, ctx: Any) -> JSONResponse:
         forbidden = _require_access(ctx, operation="Task updates", minimum_tier=AccessTier.STANDARD)
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskRequest)
         update_args: dict[str, Any] = {}
@@ -215,7 +215,7 @@ def register_routes(mcp: FastMCP) -> None:
     async def delete_task(request: Request, *, ctx: Any) -> JSONResponse:
         forbidden = _require_access(ctx, operation="Task deletion", minimum_tier=AccessTier.ADMIN)
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         await ctx.client.tasks.delete(task_id)
         return _ok({"task_id": task_id, "deleted": True})
@@ -228,7 +228,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Task status changes", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskStatusRequest)
         task = await ctx.client.tasks.set_status(task_id, TaskStatus(body.status))
@@ -243,7 +243,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Task execution", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, RunTaskRequest)
         agent_backend = body.agent_backend
@@ -273,7 +273,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Task cancellation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         await ctx.client.tasks.cancel(task_id)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
@@ -288,7 +288,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Attached session detach", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         result = await ctx.client.tasks.detach(task_id)
         return _ok(result)
@@ -374,7 +374,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Project creation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         body = await parse_body(request, CreateProjectRequest)
         project = await ctx.client.projects.create(body.name)
         return _ok(_project_dict(project, active=project.id == ctx.client.active_project_id))
@@ -387,7 +387,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Project activation", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         project_id = cast("str", request.path_params["project_id"])
         await ctx.client.projects.set_active(project_id)
         return _ok({"project_id": project_id, "active": True})
@@ -400,7 +400,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Project deletion", minimum_tier=AccessTier.ADMIN
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         project_id = cast("str", request.path_params["project_id"])
         await ctx.client.projects.delete(project_id)
         return _ok({"project_id": project_id, "deleted": True})
@@ -423,7 +423,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Repository linking", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         project_id = cast("str", request.path_params["project_id"])
         body = await parse_body(request, AddRepoRequest)
         repo = await ctx.client.projects.add_repo(project_id, body.path)
@@ -437,7 +437,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Repository selection", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         project_id = cast("str", request.path_params["project_id"])
         repo_id = cast("str", request.path_params["repo_id"])
         await ctx.client.settings.set({f"ui.selected_repo.{project_id}": repo_id})
@@ -469,7 +469,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Review decisions", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, ReviewDecideRequest)
         action = body.action.lower()
@@ -521,7 +521,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Settings changes", minimum_tier=AccessTier.ADMIN
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         payload = await request.json()
         if not isinstance(payload, dict):
             raise ValueError("Request body must be a JSON object")
@@ -728,7 +728,7 @@ def register_routes(mcp: FastMCP) -> None:
             ctx, operation="Task follow-up messages", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, FollowUpRequest)
 

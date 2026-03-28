@@ -38,6 +38,7 @@ class AgentStatusPanel(Static):
     cost_currency: reactive[str | None] = reactive(None)
 
     def on_mount(self) -> None:
+        self.tooltip = "Agent execution status, elapsed time, context usage, and cost"
         self._refresh_display()
 
     def set_run_info(

@@ -31,12 +31,12 @@ Match symptom text below.
 
 ## Interactive launch / terminal
 
-| Symptom                        | Fix                                                                                                                                       |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| tmux not found                 | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                   |
-| nvim not found                 | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                             |
-| VS Code chat did not auto-open | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then relaunch the interactive session; fallback is `.kagan/start_prompt.md` |
-| Unsupported interactive launcher | Set `attached_launcher = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"` |
+| Symptom                          | Fix                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tmux not found                   | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                           |
+| nvim not found                   | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                                     |
+| VS Code chat did not auto-open   | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then relaunch the interactive session; fallback is `.kagan/start_prompt.md` |
+| Unsupported interactive launcher | Set `attached_launcher = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"`                           |
 
 ## Git
 

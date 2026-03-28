@@ -54,7 +54,7 @@ kagan import github --repo owner/repo
 
 ## Shortcuts
 
-`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split
+`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split · `w` Workspace (TUI) · `Cmd/Ctrl+Shift+W` Workspace (web)
 
 Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in Quick Actions.
 
@@ -69,6 +69,21 @@ kagan chat
 Type `/help` for slash commands, `/sessions` to manage conversations.
 
 [Chat guide](guides/chat.md) · [ACP session lifecycle](guides/acp-session-lifecycle.md)
+
+## TUI navigation
+
+In the TUI board, `Enter` is two-step: the first press opens the inspector for the selected card, and the second press opens the full task screen.
+
+Press `w` to switch from the board to the TUI **Workspace** screen. That view is orchestrator-first: the left sidebar lists orchestrator conversations, `n` starts a new session, `/` filters sessions, `x` deletes the selected session, and `Ctrl+I` jumps focus into the chat input. `Esc` steps back cleanly: from chat to the sidebar, then from the sidebar back to Kanban.
+
+## Workspace view
+
+Kagan now has orchestrator-first workspace views in both clients:
+
+- **TUI:** press `w` from the board to switch into Workspace. Press `w` to return directly, or use `Esc` to step back from search/chat to the sidebar and then back to Kanban.
+- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W`.
+
+In both clients, the conversation itself is the workspace: you navigate between orchestrator sessions, continue planning in-thread, and treat tasks as outputs of that conversation rather than as separate sidebar chat tabs.
 
 ## Remote access
 

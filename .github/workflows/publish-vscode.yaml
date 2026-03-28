@@ -26,6 +26,9 @@ jobs:
     name: Package & Publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OPEN_VSIX_TOKEN: ${{ secrets.OPEN_VSIX_TOKEN }}
     steps:
       - uses: actions/checkout@v6
 
@@ -49,7 +52,7 @@ jobs:
           fi
 
       - name: Publish to VS Code Marketplace
-        if: ${{ secrets.VSCE_PAT != '' }}
+        if: env.VSCE_PAT != ''
         working-directory: packages/vscode
         run: |
           if [[ "${{ inputs.pre-release }}" == "true" ]]; then
@@ -57,15 +60,11 @@ jobs:
           else
             pnpm exec vsce publish --packagePath $(ls *.vsix) --allow-missing-repository
           fi
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
-        if: ${{ inputs.pre-release != true && secrets.OPEN_VSIX_TOKEN != '' }}
+        if: inputs.pre-release != true && env.OPEN_VSIX_TOKEN != ''
         working-directory: packages/vscode
         run: pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
-        env:
-          OPEN_VSIX_TOKEN: ${{ secrets.OPEN_VSIX_TOKEN }}
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4

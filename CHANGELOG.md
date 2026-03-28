@@ -13,6 +13,35 @@
 
 
 
+## v0.13.1-beta.1 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Gracefully skip vscode publish when version already exists
+  ([`f1d6f20`](https://github.com/kagan-sh/kagan/commit/f1d6f20e4d30d3548f761c046b0aa83b9be18a7c))
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **vscode**: Bump to 0.1.1, add LICENSE for marketplace
+  ([`db61057`](https://github.com/kagan-sh/kagan/commit/db6105773cee6fea893b3bac41c045c9bd14c4a2))
+
+
+
+
+
 ## v0.13.0 (2026-03-28)
 
 

@@ -169,11 +169,22 @@ async def _poll_db_changes(
         logger.warning("SSE DB poll stopped due to error", exc_info=True)
 
 
-async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
+async def _sse_event_generator(
+    mcp: FastMCP,
+    client_type: str = "web",
+) -> AsyncIterator[str]:
     """Yield SSE-formatted events from the global event stream + board changes."""
     ctx = await _wait_for_server_ctx(mcp)
     if ctx is None:
         return
+
+    # Auto-register presence for this SSE client
+    import uuid as _uuid
+
+    sse_client_id = _uuid.uuid4().hex[:8]
+    tracker = getattr(ctx, "presence", None)
+    if tracker is not None:
+        tracker.register(sse_client_id, client_type)
 
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=500)
     tasks = (
@@ -189,6 +200,8 @@ async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
     except asyncio.CancelledError:
         pass
     finally:
+        if tracker is not None:
+            tracker.unregister(sse_client_id)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

@@ -215,3 +215,15 @@ export interface FsBrowseResponse {
     path: string;
     entries: FsEntry[];
 }
+
+// ---------------------------------------------------------------------------
+// Client presence
+// ---------------------------------------------------------------------------
+
+export interface ClientPresence {
+    client_id: string;
+    client_type: string;
+    connected_at: number;
+    active_task_id: string | null;
+    user_label: string;
+}

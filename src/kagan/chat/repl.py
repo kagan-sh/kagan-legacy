@@ -67,6 +67,7 @@ class ToolbarState:
     session_label: str = "orchestrator"
     context_pct: float | None = None
     workspace_label: str = ""
+    is_streaming: bool = False
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -91,7 +92,8 @@ _ANSI_REPL_COLORS: Final[dict[str, str]] = {
 
 _BOOT_TIP_COMMAND: Final[str] = "/flow"
 _BOOT_TIP_TEXT: Final[str] = "Walk through Plan -> Execute -> Orchestrate."
-_SHORTCUT_HINT_TEXT: Final[str] = "Ctrl-J newline · Ctrl-C clear · Ctrl-D exit"
+_SHORTCUT_HINT_IDLE: Final[str] = "Ctrl-J newline · Esc cancel · Ctrl-C clear · Ctrl-D exit"
+_SHORTCUT_HINT_STREAMING: Final[str] = "Esc cancel+edit · type to queue"
 
 
 def _supports_truecolor_terminal() -> bool:
@@ -507,7 +509,7 @@ def _bottom_toolbar() -> FormattedText:
         status_right_parts[-1] = f"{_TOOLBAR_STATE.turn_count} msgs"
     status_right = " · ".join(status_right_parts)
 
-    shortcut_left = _SHORTCUT_HINT_TEXT
+    shortcut_left = _SHORTCUT_HINT_STREAMING if _TOOLBAR_STATE.is_streaming else _SHORTCUT_HINT_IDLE
     shortcut_right = f"session: {_TOOLBAR_STATE.session_label}"
     cols = shutil.get_terminal_size().columns
     rule = "─" * max(cols, 1)
@@ -534,11 +536,6 @@ def _build_prompt_message() -> FormattedText:
 
 
 _kb = KeyBindings()
-
-
-@_kb.add("escape", "enter")
-def _alt_enter(event) -> None:
-    event.current_buffer.insert_text("\n")
 
 
 @_kb.add("c-j")

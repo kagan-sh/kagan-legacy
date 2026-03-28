@@ -46,6 +46,7 @@ class _SessionState:
     prompt_history: list[str] = field(default_factory=list)
     history_index: int | None = None
     decision_surface: tuple[str, dict[str, Any]] | None = None
+    last_sent_text: str = ""
 
 
 class ChatPanel(Vertical):
@@ -91,6 +92,14 @@ class ChatPanel(Vertical):
     class InterruptRequested(Message):
         pass
 
+    @dataclass
+    class InterruptCompleted(Message):
+        pass
+
+    @dataclass
+    class EditResendRequested(Message):
+        text: str
+
     _EMPTY_TEXT = "No messages yet"
     _LOGO = """\
 █▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
@@ -123,7 +132,7 @@ class ChatPanel(Vertical):
         self._suspend_session_change_event = False
         self._runtime_status = "ready"
         self._chat_input_disable_depth = 0
-        self._runtime_input_locked = False
+        self._pending_after_interrupt: str | None = None
         self._history_programmatic_update = False
         self._overlay_split_key = "Ctrl+I"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
@@ -203,13 +212,13 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             chat_input = Input(
-                                placeholder=("What's next? Try /flow · Esc to interrupt"),
+                                placeholder=("What's next? Try /flow · Esc to stop & edit"),
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
                             chat_input.tooltip = (
                                 "AI chat input. Type your request or use"
-                                " /flow for guided planning. Press Esc to interrupt"
+                                " /flow for guided planning. Esc to stop & edit"
                             )
                             yield chat_input
                         badge = Static(
@@ -487,10 +496,6 @@ class ChatPanel(Vertical):
 
     def set_runtime_status(self, status: str) -> None:
         self._runtime_status = status.strip().lower() or "ready"
-        lock_input = self._runtime_status in {"thinking", "initializing", "waiting"}
-        if lock_input != self._runtime_input_locked:
-            self._runtime_input_locked = lock_input
-            self._sync_input_enabled_state()
         if self.is_mounted:
             status_bar = self._status_bar()
             if status_bar is not None:
@@ -741,8 +746,15 @@ class ChatPanel(Vertical):
         if self._mention_matches or self._slash_matches:
             self._hide_overlays()
             return
-        # Esc interrupts the active agent instead of closing the panel
         if self._runtime_status in {"thinking", "initializing", "waiting"}:
+            input_widget = self._input_widget()
+            pending = normalize_chat_input(input_widget.value)
+            if pending:
+                self._pending_after_interrupt = pending
+                input_widget.value = ""
+                self._current_state().draft = ""
+            else:
+                self._pending_after_interrupt = None
             self.post_message(ChatPanel.InterruptRequested())
             return
         self._request_close()
@@ -1174,7 +1186,7 @@ class ChatPanel(Vertical):
         except NoMatches:
             return
         visible = self.has_class("visible")
-        locked = self._runtime_input_locked or self._chat_input_disable_depth > 0
+        locked = self._chat_input_disable_depth > 0
         should_disable = (not visible) or locked
         input_widget.disabled = should_disable
         input_widget.can_focus = not should_disable

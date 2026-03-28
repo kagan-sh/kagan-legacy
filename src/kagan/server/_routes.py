@@ -557,6 +557,7 @@ def register_routes(mcp: FastMCP) -> None:
                     "review": str(overrides["review"]) if "review" in overrides else None,
                 },
                 "workflow": {"wip_limits": _parse_wip_limits(settings.get("workflow.wip_limits"))},
+                "chat_last_active_session": settings.get("chat_last_active_session", ""),
             }
         )
 
@@ -716,9 +717,10 @@ def register_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/events/stream", methods=["GET"])
     @require_context(mcp)
-    async def event_stream(_request: Request, *, ctx: Any) -> Response:
+    async def event_stream(request: Request, *, ctx: Any) -> Response:
         """SSE endpoint — streams board + session events to the client."""
-        return sse_response(_sse_event_generator(mcp))
+        client_type = request.query_params.get("client_type", "web")
+        return sse_response(_sse_event_generator(mcp, client_type=client_type))
 
     @mcp.custom_route("/api/tasks/{task_id}/follow-up", methods=["POST"])
     @require_context(mcp)
@@ -752,3 +754,36 @@ def register_routes(mcp: FastMCP) -> None:
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
+
+    # ── Presence ───────────────────────────────────────────────────────────
+
+    @mcp.custom_route("/api/presence", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def get_presence(_request: Request, *, ctx: Any) -> JSONResponse:
+        """List connected clients with recent heartbeats."""
+        tracker = getattr(ctx, "presence", None)
+        if tracker is None:
+            return _ok([])
+        return _ok(tracker.to_wire())
+
+    @mcp.custom_route("/api/presence/heartbeat", methods=["POST"])
+    @require_context(mcp)
+    @handle_errors
+    async def presence_heartbeat(request: Request, *, ctx: Any) -> JSONResponse:
+        """Register or update a client's presence."""
+        tracker = getattr(ctx, "presence", None)
+        if tracker is None:
+            return _ok(None)
+        body = await request.json()
+        client_id = body.get("client_id", "")
+        client_type = body.get("client_type", "")
+        if not client_id or not client_type:
+            return _err("client_id and client_type are required", status=400)
+        tracker.register(
+            client_id=client_id,
+            client_type=client_type,
+            user_label=body.get("user_label", ""),
+            active_task_id=body.get("active_task_id"),
+        )
+        return _ok(None)

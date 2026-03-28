@@ -87,6 +87,11 @@ export function activate(context: vscode.ExtensionContext): void {
   registerSettingsCommands(context, client);
   registerChatParticipant(context, client, sse);
 
+  // Polling fallback: refresh board when SSE is disconnected
+  sse.setPollingFallback(() => {
+    void refreshBoard(client, boardProvider, statusBar);
+  });
+
   const messageSubscription = sse.onMessage((message: SSEMessage) => {
     boardProvider.onSSE(message);
     outputProvider.onSSE(message);

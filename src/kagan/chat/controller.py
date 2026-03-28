@@ -290,6 +290,11 @@ class _OrchestratorACPClient(ACPClientBase):
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 
 
+@dataclass(frozen=True, slots=True)
+class _SendResult:
+    was_cancelled: bool = False
+
+
 class ChatController:
     def __init__(
         self,
@@ -919,10 +924,10 @@ class ChatController:
                 with contextlib.suppress(OSError):
                     mcp_path.unlink()
 
-    async def _send(self, text: str) -> None:
+    async def _send(self, text: str) -> "_SendResult":
         if self._acp_conn is None or self._acp_session_id is None:
             _console.print("[red]No agent connected. Try restarting.[/red]")
-            return
+            return _SendResult()
 
         ctx = self._watcher.drain_context()
         request_text = f"{ctx}\n\n{text}" if ctx else text
@@ -946,6 +951,7 @@ class ChatController:
             self._is_primed = True
 
         _TOOLBAR_STATE.context_pct = None
+        _TOOLBAR_STATE.is_streaming = True
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
@@ -968,13 +974,14 @@ class ChatController:
             except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                 logger.exception("Failed to send prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return
+                return _SendResult()
             except Exception as exc:
                 logger.exception("Unexpected failure while sending prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return
+                return _SendResult()
             finally:
                 restore_sigint_handler(original_sigint)
+                _TOOLBAR_STATE.is_streaming = False
 
         assistant_reply = ""
         if self._acp_client is not None:
@@ -988,7 +995,7 @@ class ChatController:
         if interrupted:
             _console.print("\n[dim]Interrupted.[/dim]")
             await self._persist_session()
-            return
+            return _SendResult(was_cancelled=True)
 
         _console.print()  # newline after streamed output
         self._turn_count += 1
@@ -1034,6 +1041,7 @@ class ChatController:
         else:
             _TOOLBAR_STATE.context_pct = None
         await self._persist_session()
+        return _SendResult()
 
     async def _event_watcher(self) -> None:
         """Background coroutine that prints one-line notifications for task events."""
@@ -1055,21 +1063,26 @@ class ChatController:
 
     async def _repl_loop(self) -> None:
         _console.print(
-            "[dim]Press [bold]/help[/bold] for commands and [bold]Ctrl-D[/bold] to exit.[/dim]\n"
+            "[dim]Press [bold]/help[/bold] for commands, "
+            "[bold]Esc[/bold] to cancel, [bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
         watcher_task = asyncio.create_task(self._event_watcher())
+        _last_sent = ""
+        _prefill = ""
         try:
             while True:
                 try:
                     line = await _get_prompt_session().prompt_async(
                         _build_prompt_message(),
                         placeholder=_build_prompt_placeholder(),
+                        default=_prefill,
                     )
                 except EOFError:
                     break
                 except KeyboardInterrupt:
                     continue
 
+                _prefill = ""
                 stripped = line.strip()
                 if not stripped:
                     continue
@@ -1079,13 +1092,19 @@ class ChatController:
                         break  # /exit or agent switch
                     continue
 
+                _last_sent = stripped
                 try:
-                    await self._send(stripped)
+                    result = await self._send(stripped)
                 except KeyboardInterrupt:
-                    continue  # Safety net — SIGINT handler should handle this in _send()
+                    _prefill = _last_sent
+                    continue
                 except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
+                    continue
+
+                if result.was_cancelled:
+                    _prefill = _last_sent
         finally:
             watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1181,7 +1200,8 @@ class ChatController:
         keyboard = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
         keyboard.add_column(style="bold cyan", no_wrap=True)
         keyboard.add_column(style="default")
-        keyboard.add_row("Ctrl-J / Alt-Enter", "Insert a newline")
+        keyboard.add_row("Esc", "Cancel agent & edit last message")
+        keyboard.add_row("Ctrl-J", "Insert a newline")
         keyboard.add_row("Ctrl-C", "Clear the current input")
         keyboard.add_row("Ctrl-D", "Exit the chat session")
 

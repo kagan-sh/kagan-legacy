@@ -15,6 +15,9 @@ import { pickReusableChatSessionId } from "./chat.participant.helpers.js";
 let activeChatSessionId: string | null = null;
 let sessionCreating: Promise<string> | null = null;
 
+/** Task ID being watched — enables follow-up messages. */
+let watchingTaskId: string | null = null;
+
 async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatContext): Promise<string> {
   if (activeChatSessionId && !isNewConversation(chatCtx)) return activeChatSessionId;
   if (sessionCreating) return sessionCreating;
@@ -87,6 +90,11 @@ async function handleRequest(
       await handleWatch(client, sse, request.prompt, stream, token);
       return;
     default:
+      // If watching a task, send follow-up instead of orchestrator chat
+      if (watchingTaskId && request.prompt.trim()) {
+        await handleFollowUp(client, watchingTaskId, request.prompt.trim(), stream);
+        return;
+      }
       // Default: orchestrator chat — send the message to the Kagan orchestrator
       await handleChat(client, request.prompt, chatCtx, stream, token);
   }
@@ -229,6 +237,7 @@ async function handleWatch(
     return;
   }
 
+  watchingTaskId = task.id;
   stream.markdown(`**${task.title}** -- ${task.status}\n\n`);
 
   if (task.status === "IN_PROGRESS") {
@@ -248,6 +257,25 @@ async function handleWatch(
 
   const latest = await safeGetTask(client, task.id);
   renderActions(latest ?? task, stream);
+}
+
+// ── Follow-up ─────────────────────────────────────────────────────────
+
+async function handleFollowUp(
+  client: KaganClient,
+  taskId: string,
+  text: string,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  try {
+    stream.progress("Sending follow-up...");
+    await client.sendFollowUp(taskId, text);
+    stream.markdown(`> **Follow-up sent** to task \`${taskId}\`:\n> ${text}\n`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`\n\n**Error sending follow-up:** ${message}\n`);
+    watchingTaskId = null;
+  }
 }
 
 // ── Task resolution ────────────────────────────────────────────────────────

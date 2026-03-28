@@ -121,6 +121,10 @@ export class KaganClient {
     return this.post<WireTask>(`/api/tasks/${taskId}/cancel`, {});
   }
 
+  sendFollowUp(taskId: string, text: string): Promise<WireTask> {
+    return this.post<WireTask>(`/api/tasks/${taskId}/follow-up`, { text });
+  }
+
   getTaskCounts(): Promise<Record<string, number>> {
     return this.get<Record<string, number>>("/api/tasks/counts");
   }

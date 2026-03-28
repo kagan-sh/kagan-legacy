@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-import os
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -26,13 +25,15 @@ from kagan.chat.prompt import (
     _format_user_request_block,
 )
 from kagan.core import (
-    CLAUDE_CODE_BACKEND,
-    CODEX_BACKEND,
+    ACP_TIMEOUT_HINT,
     ACPClientBase,
     BackendCapability,
+    acp_handshake_timeout_seconds,
+    acp_process_exit_hint,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
+    friendly_acp_error_message,
     get_backend_spec,
     resolve_orchestrator_prompt,
 )
@@ -42,23 +43,6 @@ _ACP_CLIENT_NAME = "kagan"
 _ACP_CLIENT_TITLE = "Kagan"
 _ACP_CLIENT_VERSION = "0.1.0"
 _ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
-_ACP_TIMEOUT_ENV_KEYS = (
-    "KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS",
-    "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS",
-)
-_ACP_TIMEOUT_CLAUDE_SECONDS = 12.0
-_ACP_TIMEOUT_CODEX_SECONDS = 45.0
-_ACP_TIMEOUT_DEFAULT_SECONDS = 20.0
-_ACP_TIMEOUT_HINT = (
-    "Set KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS "
-    "(or KAGAN_ACP_STARTUP_TIMEOUT_SECONDS) to increase this limit."
-)
-_CODEX_ACP_EACCES_HINT = (
-    "Detected a local npm npx cache permission issue. "
-    "Try `chmod +x ~/.npm/_npx/*/node_modules/"
-    "@zed-industries/codex-acp-darwin-arm64/bin/codex-acp` "
-    "or reset cache with `rm -rf ~/.npm/_npx && npx -y @zed-industries/codex-acp --help`."
-)
 
 
 @dataclass
@@ -75,89 +59,9 @@ class OrchestratorWarmupState:
 _WARMUP_STATE = OrchestratorWarmupState()
 
 
-def _acp_handshake_timeout_seconds(agent_backend: str) -> float:
-    for key in _ACP_TIMEOUT_ENV_KEYS:
-        env_value = os.environ.get(key, "")
-        try:
-            configured = float(env_value) if env_value else 0.0
-        except ValueError:
-            configured = 0.0
-        if configured > 0.0:
-            return configured
-    if agent_backend == CLAUDE_CODE_BACKEND:
-        return _ACP_TIMEOUT_CLAUDE_SECONDS
-    if agent_backend == CODEX_BACKEND:
-        return _ACP_TIMEOUT_CODEX_SECONDS
-    return _ACP_TIMEOUT_DEFAULT_SECONDS
-
-
-def _is_claude_backend(agent_backend: str) -> bool:
-    return agent_backend == CLAUDE_CODE_BACKEND
-
-
-def _acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
-    lowered = details.lower()
-    if agent_backend == CODEX_BACKEND and "eacces" in lowered and "codex-acp" in lowered:
-        return _CODEX_ACP_EACCES_HINT
-    if "eacces" in lowered or "permission denied" in lowered:
-        return "Detected a local permission issue while launching the backend executable."
-    return None
-
-
-def _friendly_acp_error_message(*, error: object, agent_backend: str, during: str) -> str:
-    raw = str(error).strip() or "Unknown agent error"
-    lowered = raw.lower()
-    prefix = f"{agent_backend} initialization failed during {during}."
-
-    if (
-        "rate limit" in lowered
-        or "rate_limit" in lowered
-        or "429" in lowered
-        or "too many requests" in lowered
-    ):
-        return (
-            f"{prefix} Rate limit reached. Wait for reset or check billing/subscription. "
-            "Try again in a few minutes."
-        )
-    if (
-        "subscription" in lowered
-        or "usage limit" in lowered
-        or "quota" in lowered
-        or "budget" in lowered
-        or "active subscription required" in lowered
-    ):
-        return (
-            f"{prefix} Account usage/subscription limit reached. "
-            "Review your provider plan and billing limits."
-        )
-    if (
-        "authentication" in lowered
-        or "unauthorized" in lowered
-        or "invalid api key" in lowered
-        or "401" in lowered
-    ):
-        auth_hint = (
-            "Re-authenticate (for example, run `claude login`) and verify credentials."
-            if _is_claude_backend(agent_backend)
-            else "Re-authenticate with the selected backend CLI and verify credentials."
-        )
-        return f"{prefix} Authentication failed. {auth_hint}"
-    if (
-        "enotfound" in lowered
-        or "econnrefused" in lowered
-        or "etimedout" in lowered
-        or "fetch failed" in lowered
-        or "network" in lowered
-        or "tls" in lowered
-        or "certificate" in lowered
-    ):
-        return (
-            f"{prefix} Network connectivity issue to provider services. "
-            "Check connection, VPN/proxy, then retry."
-        )
-    if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
-        return f"{prefix} The provider service is overloaded right now. Retry shortly."
-    return f"{prefix} {raw}"
+_acp_handshake_timeout_seconds = acp_handshake_timeout_seconds
+_acp_process_exit_hint = acp_process_exit_hint
+_friendly_acp_error_message = friendly_acp_error_message
 
 
 class _CaptureACPClient(ACPClientBase):
@@ -318,7 +222,7 @@ async def run_orchestrator_turn(
                 timeout_message = (
                     f"{agent_backend} initialization timed out after {timeout_s:.0f}s "
                     "during ACP initialize. "
-                    f"{_ACP_TIMEOUT_HINT}"
+                    f"{ACP_TIMEOUT_HINT}"
                 )
                 raise AgentError(timeout_message) from exc
 
@@ -366,7 +270,7 @@ async def run_orchestrator_turn(
                 timeout_message = (
                     f"{agent_backend} initialization timed out after {timeout_s:.0f}s "
                     "during ACP session creation. "
-                    f"{_ACP_TIMEOUT_HINT}"
+                    f"{ACP_TIMEOUT_HINT}"
                 )
                 raise AgentError(timeout_message) from exc
 

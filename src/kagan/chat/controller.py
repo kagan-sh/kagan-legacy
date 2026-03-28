@@ -36,7 +36,6 @@ from kagan.chat._streaming import OutputFlushManager, ResponseChunkBuffer
 from kagan.chat._title import generate_session_title
 from kagan.chat.acp import (
     _ACP_STDIO_BUFFER_LIMIT_BYTES,
-    _acp_handshake_timeout_seconds,
 )
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.chat.commands import (
@@ -77,11 +76,13 @@ from kagan.chat.sessions import (
 )
 from kagan.chat.tool_runs import ToolRunTracker
 from kagan.core import (
+    ACP_TIMEOUT_HINT,
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
     ACPClientBase,
     BackendCapability,
     DBWatcher,
+    acp_handshake_timeout_seconds,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
@@ -872,12 +873,11 @@ class ChatController:
 
                 if handshake_error:
                     if isinstance(handshake_error, TimeoutError):
-                        timeout_s = _acp_handshake_timeout_seconds(self.agent_backend)
+                        timeout_s = acp_handshake_timeout_seconds(self.agent_backend)
                         _console.print(
                             "[red]"
                             f"ACP handshake timed out after {timeout_s:.0f}s. "
-                            "Set KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS "
-                            "(or KAGAN_ACP_STARTUP_TIMEOUT_SECONDS) to increase this limit."
+                            f"{ACP_TIMEOUT_HINT}"
                             "[/red]"
                         )
                     else:

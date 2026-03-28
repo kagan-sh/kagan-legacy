@@ -8,13 +8,8 @@ import acp
 from acp.schema import ClientCapabilities, Implementation, McpServerStdio
 from loguru import logger
 
-from kagan.chat.acp import (
-    _ACP_CLIENT_NAME,
-    _ACP_CLIENT_TITLE,
-    _ACP_CLIENT_VERSION,
-    _acp_handshake_timeout_seconds,
-)
-from kagan.core import default_db_path
+from kagan.chat.acp import _ACP_CLIENT_NAME, _ACP_CLIENT_TITLE, _ACP_CLIENT_VERSION
+from kagan.core import acp_handshake_timeout_seconds, default_db_path
 
 
 async def execute_handshake(
@@ -36,7 +31,7 @@ async def execute_handshake(
     Returns:
         Tuple of (acp_session_id, error). If error is not None, acp_session_id is empty.
     """
-    timeout_s = _acp_handshake_timeout_seconds(agent_backend)
+    timeout_s = acp_handshake_timeout_seconds(agent_backend)
     client_caps = ClientCapabilities(terminal=False)
 
     try:

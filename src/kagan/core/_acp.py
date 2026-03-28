@@ -52,14 +52,12 @@ from kagan.core._agent import (
 )
 from kagan.core.enums import SessionEventType
 
-_ACP_TIMEOUT_ENV_KEYS = (
-    "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS",
-    "KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS",
-)
+_ACP_STARTUP_TIMEOUT_ENV_KEY = "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS"
+_ACP_HANDSHAKE_TIMEOUT_ENV_KEY = "KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS"
 _ACP_TIMEOUT_CLAUDE_SECONDS = 12.0
 _ACP_TIMEOUT_CODEX_SECONDS = 45.0
 _ACP_TIMEOUT_DEFAULT_SECONDS = 20.0
-_ACP_TIMEOUT_HINT = (
+ACP_TIMEOUT_HINT = (
     "Set KAGAN_ACP_STARTUP_TIMEOUT_SECONDS "
     "(or KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS) to increase this limit."
 )
@@ -149,8 +147,8 @@ class ACPClientBase(acp.Client):
         self._conn = conn
 
 
-def _acp_startup_timeout_seconds(agent_backend: str) -> float:
-    for key in _ACP_TIMEOUT_ENV_KEYS:
+def _configured_acp_timeout_seconds(*keys: str) -> float | None:
+    for key in keys:
         env_value = os.environ.get(key, "")
         try:
             configured = float(env_value) if env_value else 0.0
@@ -158,11 +156,39 @@ def _acp_startup_timeout_seconds(agent_backend: str) -> float:
             configured = 0.0
         if configured > 0.0:
             return configured
+    return None
+
+
+def _default_acp_timeout_seconds(agent_backend: str) -> float:
     if agent_backend == CLAUDE_CODE_BACKEND:
         return _ACP_TIMEOUT_CLAUDE_SECONDS
     if agent_backend == CODEX_BACKEND:
         return _ACP_TIMEOUT_CODEX_SECONDS
     return _ACP_TIMEOUT_DEFAULT_SECONDS
+
+
+def acp_handshake_timeout_seconds(agent_backend: str) -> float:
+    configured = _configured_acp_timeout_seconds(
+        _ACP_HANDSHAKE_TIMEOUT_ENV_KEY,
+        _ACP_STARTUP_TIMEOUT_ENV_KEY,
+    )
+    if configured is not None:
+        return configured
+    return _default_acp_timeout_seconds(agent_backend)
+
+
+def acp_startup_timeout_seconds(agent_backend: str) -> float:
+    configured = _configured_acp_timeout_seconds(
+        _ACP_STARTUP_TIMEOUT_ENV_KEY,
+        _ACP_HANDSHAKE_TIMEOUT_ENV_KEY,
+    )
+    if configured is not None:
+        return configured
+    return _default_acp_timeout_seconds(agent_backend)
+
+
+def _acp_startup_timeout_seconds(agent_backend: str) -> float:
+    return acp_startup_timeout_seconds(agent_backend)
 
 
 def _infer_backend_name_from_process(process: asyncio.subprocess.Process) -> str:
@@ -185,7 +211,7 @@ def _is_claude_backend(agent_backend: str) -> bool:
     return agent_backend == CLAUDE_CODE_BACKEND
 
 
-def _friendly_startup_error_message(*, error: object, agent_backend: str, during: str) -> str:
+def friendly_acp_error_message(*, error: object, agent_backend: str, during: str) -> str:
     raw = str(error).strip() or "Unknown agent error"
     lowered = raw.lower()
     prefix = f"{agent_backend} initialization failed during {during}."
@@ -218,9 +244,14 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
         or "401" in lowered
     ):
         auth_hint = (
-            "Re-authenticate (for example, run `claude login`) and verify credentials."
+            "Re-authenticate (for example, run `claude`) and verify credentials."
             if _is_claude_backend(agent_backend)
-            else "Re-authenticate with the selected backend CLI and verify credentials."
+            else (
+                "Re-authenticate with the selected backend CLI and verify credentials. "
+                "For Codex, run `codex` or set `OPENAI_API_KEY` first."
+                if agent_backend == CODEX_BACKEND
+                else "Re-authenticate with the selected backend CLI and verify credentials."
+            )
         )
         return f"{prefix} Authentication failed. {auth_hint}"
     if (
@@ -239,6 +270,14 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
     if "overloaded" in lowered or "529" in lowered or "service unavailable" in lowered:
         return f"{prefix} The provider service is overloaded right now. Retry shortly."
     return f"{prefix} {raw}"
+
+
+def _friendly_startup_error_message(*, error: object, agent_backend: str, during: str) -> str:
+    return friendly_acp_error_message(
+        error=error,
+        agent_backend=agent_backend,
+        during=during,
+    )
 
 
 class KaganACPClient(ACPClientBase):
@@ -371,13 +410,17 @@ def _build_mcp_server_from_manifest(mcp_manifest: str) -> McpServerStdio:
     return McpServerStdio(name=name, command=command, args=args, env=env)
 
 
-def _acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
+def acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
     lowered = details.lower()
     if agent_backend == CODEX_BACKEND and "eacces" in lowered and "codex-acp" in lowered:
         return _CODEX_ACP_EACCES_HINT
     if "eacces" in lowered or "permission denied" in lowered:
         return "Detected a local permission issue while launching the backend executable."
     return None
+
+
+def _acp_process_exit_hint(*, agent_backend: str, details: str) -> str | None:
+    return acp_process_exit_hint(agent_backend=agent_backend, details=details)
 
 
 async def _acp_process_exit_message(
@@ -395,7 +438,7 @@ async def _acp_process_exit_message(
     if details:
         compact = " ".join(line.strip() for line in details.splitlines() if line.strip())
         message = f"{message} {compact[:500]}"
-        hint = _acp_process_exit_hint(agent_backend=agent_backend, details=details)
+        hint = acp_process_exit_hint(agent_backend=agent_backend, details=details)
         if hint:
             message = f"{message} {hint}"
     return message
@@ -433,7 +476,7 @@ async def run_acp_session(
             timeout_message = (
                 f"{resolved_backend} initialization timed out after {timeout_s:.0f}s "
                 "during ACP initialize. "
-                f"{_ACP_TIMEOUT_HINT}"
+                f"{ACP_TIMEOUT_HINT}"
             )
             raise RuntimeError(timeout_message) from exc
         mcp_server = await asyncio.to_thread(_build_mcp_server_from_manifest, mcp_manifest)
@@ -453,7 +496,7 @@ async def run_acp_session(
             timeout_message = (
                 f"{resolved_backend} initialization timed out after {timeout_s:.0f}s "
                 "during ACP session creation. "
-                f"{_ACP_TIMEOUT_HINT}"
+                f"{ACP_TIMEOUT_HINT}"
             )
             raise RuntimeError(timeout_message) from exc
         await conn.prompt(session_id=session.session_id, prompt=[acp.text_block(prompt)])
@@ -474,7 +517,7 @@ async def run_acp_session(
             with contextlib.suppress(ProcessLookupError):
                 await process.wait()
         raise RuntimeError(
-            _friendly_startup_error_message(
+            friendly_acp_error_message(
                 error=exc,
                 agent_backend=resolved_backend,
                 during="ACP startup",

@@ -10,7 +10,14 @@ from kagan.core._logging import configure_logging as _configure_logging
 
 _configure_logging()
 
-from kagan.core._acp import ACPClientBase
+from kagan.core._acp import (
+    ACP_TIMEOUT_HINT,
+    ACPClientBase,
+    acp_handshake_timeout_seconds,
+    acp_process_exit_hint,
+    acp_startup_timeout_seconds,
+    friendly_acp_error_message,
+)
 from kagan.core._agent import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
@@ -96,6 +103,7 @@ from kagan.core.models import (
 )
 
 __all__ = [
+    "ACP_TIMEOUT_HINT",
     "ADDITIONAL_INSTRUCTIONS_KEY",
     "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
@@ -151,11 +159,15 @@ __all__ = [
     "ValidationError",
     "Worktree",
     "WorktreeError",
+    "acp_handshake_timeout_seconds",
+    "acp_process_exit_hint",
+    "acp_startup_timeout_seconds",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
     "default_db_path",
     "detect_dotfile_overrides",
+    "friendly_acp_error_message",
     "get_backend",
     "get_backend_spec",
     "get_system_git_identity",

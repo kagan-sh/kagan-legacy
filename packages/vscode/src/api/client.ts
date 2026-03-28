@@ -57,6 +57,10 @@ export class KaganClient {
   }
 
   getBaseUrl(): string {
+    return `${this.protocol}://${this.baseUrl}`;
+  }
+
+  getHostPort(): string {
     return this.baseUrl;
   }
 

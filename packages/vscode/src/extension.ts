@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const token = config.get<string>("authToken", "");
 
   const client = new KaganClient(serverUrl, protocol, token || undefined);
-  const sse = new SSEStream(client.getBaseUrl());
+  const sse = new SSEStream(client.getHostPort());
   sse.setProtocol(protocol);
   if (token) sse.setToken(token);
   const boardProvider = new BoardTreeProvider(client);

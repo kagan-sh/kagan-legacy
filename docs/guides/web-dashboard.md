@@ -6,7 +6,7 @@ icon: material/monitor-dashboard
 
 # Web Dashboard
 
-The web dashboard is a React SPA bundled into the `kagan web` command. It provides the same task lifecycle as the TUI, accessible from any browser on your network.
+The web dashboard is a React SPA bundled into the `kagan web` command. It is the remote companion surface for the same task lifecycle that the TUI drives locally.
 
 ```bash
 kagan web                    # localhost only
@@ -27,11 +27,11 @@ Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
 ## Board view
 
-Four-lane kanban: BACKLOG, IN_PROGRESS, REVIEW, DONE. Drag cards between lanes, click to inspect, double-click to open the full task detail page. The right rail hosts an AI panel (toggle with `Cmd/Ctrl+I`) for orchestrator or task-scoped chat.
+Four-lane kanban: BACKLOG, IN_PROGRESS, REVIEW, DONE. This is the main operator view in the browser. Drag cards between lanes, click to inspect, double-click to open the full task detail page. The right rail hosts an AI panel (toggle with `Cmd/Ctrl+I`) for orchestrator or task-scoped chat.
 
 ## Workspace view
 
-A conversation-first alternative to the board, modeled after ChatGPT / Codex Desktop.
+A conversation-first companion to the board, modeled after ChatGPT / Codex Desktop.
 
 ### Layout
 

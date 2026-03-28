@@ -12,11 +12,13 @@ tags:
 Kagan exposes its full task lifecycle over MCP. Any editor or CLI that speaks the protocol becomes a first-class client -- no TUI required.
 
 !!! note "Using the native VS Code extension?"
-    If you want the Kagan sidebar, `@kagan` chat participant, native diffs, and reviews inside VS Code, install the extension instead of adding `.vscode/mcp.json`.
+If you want the Kagan sidebar, `@kagan` chat participant, native diffs, and reviews inside VS Code, install the extension instead of adding `.vscode/mcp.json`.
 
-    - [VS Code extension guide](vscode-extension.md)
-    - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
-    - [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
+```
+- [VS Code extension guide](vscode-extension.md)
+- [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
+- [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
+```
 
 **Prerequisites:** Kagan installed, client supports MCP stdio.
 
@@ -62,11 +64,11 @@ ______________________________________________________________________
 
 Prefer `--role` when configuring MCP clients:
 
-| Role             | When to use it                                                |
-| ---------------- | ------------------------------------------------------------- |
-| `WORKER`         | Task-scoped coding agents that should stay within one task    |
-| `REVIEWER`       | Review-only agents that should inspect and give verdicts      |
-| `ORCHESTRATOR`   | Full project control for planning, task creation, and routing |
+| Role           | When to use it                                                |
+| -------------- | ------------------------------------------------------------- |
+| `WORKER`       | Task-scoped coding agents that should stay within one task    |
+| `REVIEWER`     | Review-only agents that should inspect and give verdicts      |
+| `ORCHESTRATOR` | Full project control for planning, task creation, and routing |
 
 Compatibility flags still work:
 

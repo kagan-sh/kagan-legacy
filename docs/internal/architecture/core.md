@@ -2,15 +2,16 @@
 
 ## Context
 
-`kagan.core` is an in-process SDK that frontends (TUI, CLI, MCP server) use to manage a kanban
-board and run AI coding agents. `KaganCore` owns the DB, enforces the task lifecycle,
-provisions git worktrees, spawns agents, and streams progress back to callers.
+`kagan.core` is an in-process SDK that frontends use to manage a kanban board and run AI coding
+agents. `KaganCore` owns the DB, enforces the task lifecycle, provisions git worktrees, spawns
+agents, and streams progress back to callers.
 
 **The fundamental abstraction is a Task.** A Task is a kanban ticket. When started, it gets an
 isolated worktree and an agent session. Managed runs execute autonomously as detached processes that
-survive client exit. Interactive launches open an editor/terminal for collaborative work. Kagan is
-**agent-agnostic** — it supports any CLI-based coding agent through a backend registry. Agents report
-progress back via kagan's MCP server.
+survive client exit. Interactive launches open an editor or terminal for collaborative work.
+Kagan is backend-agnostic, but the contract is capability-based: `codex` and `claude-code` are the
+reference backends that exercise the shared launch, stream, and review paths. Other CLI-based
+coding agents remain supported when they conform to the same interface.
 
 ## Design Principles
 
@@ -25,7 +26,7 @@ There should be one obvious way to do it.
 1. **SQLModel for models + DB** — one class is both validation model and table definition
 1. **Unified Session** — one `Session` model; interactive launches identified by launcher metadata
 1. **Core owns execution** — backend launch, agent spawning, worktree provisioning all live in core
-1. **Agent-agnostic** — any CLI coding agent works via backend registry with ACP or MCP paths
+1. **Capability-based backends** — vendor names are data; launch behavior follows declared capabilities
 1. **DB is the durable buffer** — ACP and MCP paths write to the same table; clients reconnect seamlessly
 1. **Async public API** — Textual is async, MCP is async, agent spawning is async
 1. **Reactive event streaming** — `task.events.stream()` uses `asyncio.Event` signaling, not polling
@@ -94,6 +95,19 @@ stored in the `Repository` table and loaded when a project is opened.
 | MCP      | Lifespan context creates client at startup              |
 
 One obvious way: `KaganCore()`. No factories, no DI frameworks.
+
+## Surface Hierarchy
+
+Kagan has one core model and three primary shells:
+
+| Surface | Role                                                                            |
+| ------- | ------------------------------------------------------------------------------- |
+| TUI     | Primary operator surface for creating tasks, running agents, and reviewing work |
+| Web     | Remote companion surface for supervising the same workflow from another device  |
+| VS Code | Embedded companion surface for watching, attaching, and reviewing in-editor     |
+
+The CLI remains the lowest-friction entry point for setup and automation. MCP is a transport and
+tool surface for external clients, not a separate product model.
 
 ## Data Models
 

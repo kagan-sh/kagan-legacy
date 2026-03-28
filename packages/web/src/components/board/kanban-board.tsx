@@ -402,7 +402,7 @@ export function KanbanBoard() {
             {boardMetrics.running} live
           </span>
           <span className="font-code text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
-            {boardMetrics.readyForReview} review
+            {boardMetrics.readyForReview} ready for review
           </span>
 
           <div className="relative min-w-[7rem]">
@@ -436,7 +436,7 @@ export function KanbanBoard() {
           {showBoardEmpty ? (
             <ActionEmptyState
               title="Start your first task"
-              description="Create a task, then Start or Attach when you're ready."
+              description="Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session."
               icon={<Plus className="size-6" />}
               action={(
                 <Button onClick={openCreateDialog} className="cta-glow">

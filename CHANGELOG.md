@@ -13,6 +13,59 @@
 
 
 
+## v0.13.0-beta.2 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Publish vscode betas as pre-release, Open VSX only on prod
+  ([`0197c62`](https://github.com/kagan-sh/kagan/commit/0197c62959251a68f18c4d7cb6dbaec9eea5ef3b))
+
+- **cd**: Use env context instead of secrets in step-level if conditions
+  ([`00deded`](https://github.com/kagan-sh/kagan/commit/00dededdda06666ff4fbbde2801ccc4282c4276d))
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **cd**: VS Code extension publishing to Marketplace and Open VSX
+  ([`0197c62`](https://github.com/kagan-sh/kagan/commit/0197c62959251a68f18c4d7cb6dbaec9eea5ef3b))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### features
+
+- **vscode**: Add marketplace metadata, icon, README, and changelog
+  ([`0197c62`](https://github.com/kagan-sh/kagan/commit/0197c62959251a68f18c4d7cb6dbaec9eea5ef3b))
+
+- **cd**: Add VS Code extension publishing to Marketplace and Open VSX
+  ([`0197c62`](https://github.com/kagan-sh/kagan/commit/0197c62959251a68f18c4d7cb6dbaec9eea5ef3b))
+
+
+
+
+
 ## v0.13.0-beta.1 (2026-03-28)
 
 

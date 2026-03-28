@@ -12,7 +12,7 @@ describe("getLocalServerTarget", () => {
   it("builds a launch command for localhost URLs", () => {
     expect(getLocalServerTarget("http://localhost:8765", "kagan")).toEqual({
       command: "kagan",
-      args: ["web", "--host", "127.0.0.1", "--port", "8765", "--no-open"],
+      args: ["serve", "--host", "127.0.0.1", "--port", "8765"],
       displayHost: "localhost",
       port: "8765",
     });
@@ -40,7 +40,7 @@ describe("LocalServerSupervisor", () => {
     await expect(supervisor.ensureRunning(client, "kagan")).resolves.toBe(true);
     expect(spawn).toHaveBeenCalledWith(
       "kagan",
-      ["web", "--host", "127.0.0.1", "--port", "8765", "--no-open"],
+      ["serve", "--host", "127.0.0.1", "--port", "8765"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
   });

@@ -169,7 +169,7 @@ export function getLocalServerTarget(
   const port = url.port || "80";
   return {
     command,
-    args: ["web", "--host", host, "--port", port, "--no-open"],
+    args: ["serve", "--host", host, "--port", port],
     displayHost: url.hostname,
     port,
   };

@@ -13,6 +13,20 @@
 
 
 
+## v0.13.0-beta.4 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Decouple vscode version from pypi — independent lifecycles
+  ([`74c8b66`](https://github.com/kagan-sh/kagan/commit/74c8b6669652598dfbfb51dfc98520b78a7cdc51))
+
+
+
+
+
 ## v0.13.0-beta.3 (2026-03-28)
 
 

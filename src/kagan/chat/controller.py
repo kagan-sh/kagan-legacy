@@ -80,11 +80,12 @@ from kagan.core import (
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
     ACPClientBase,
+    BackendCapability,
     DBWatcher,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
-    get_backend,
+    get_backend_spec,
     get_system_git_identity,
     resolve_acp_command,
     resolve_orchestrator_prompt,
@@ -738,8 +739,8 @@ class ChatController:
             return False
 
     def _resolve_acp_command(self) -> tuple[str, list[str]]:
-        backend = get_backend(self.agent_backend)
-        if not backend.get("supports_acp", True):
+        backend = get_backend_spec(self.agent_backend)
+        if not backend.has_capability(BackendCapability.ACP_STREAMING):
             raise AgentError(
                 f"Agent backend {self.agent_backend!r} does not support ACP. "
                 "Set a different orchestrator agent or use an ACP-capable backend."
@@ -799,11 +800,11 @@ class ChatController:
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
         logger.debug("Wrote .mcp.json with admin access at {}", mcp_path)
 
-        backend = get_backend(self.agent_backend)
+        backend = get_backend_spec(self.agent_backend)
         env = build_agent_environment(
             session_id=session_id,
             task_id=None,
-            backend_env_vars=backend.get("env_vars", {}),
+            backend_env_vars=backend.env_vars,
         )
 
         self._acp_client = _OrchestratorACPClient()

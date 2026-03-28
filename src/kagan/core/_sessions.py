@@ -14,7 +14,8 @@ from sqlmodel import desc, select
 
 from kagan.core import git
 from kagan.core._agent import (
-    get_backend,
+    BackendCapability,
+    get_backend_spec,
     resolve_default_agent_backend,
     spawn_agent,
     spawn_agent_via_acp,
@@ -395,12 +396,12 @@ class Sessions:
             persona_prompt: str | None = None
             if persona:
                 persona_prompt = get_persona_prompt(persona, settings_dict)
-                if persona_prompt and persona_prompt.strip():
-                    prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
+            if persona_prompt and persona_prompt.strip():
+                prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
             db_path_str = str(self._db_path or default_db_path())
-            entry = get_backend(agent_backend)
+            backend_spec = get_backend_spec(agent_backend)
 
-            if entry.get("supports_acp"):
+            if backend_spec.has_capability(BackendCapability.ACP_STREAMING):
                 pid, reader_task = await spawn_agent_via_acp(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -435,12 +436,9 @@ class Sessions:
 
         launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
-        backend_entry = get_backend(agent_backend)
-        backend_executable = backend_entry.get("executable")
-        if not backend_executable:
-            raise AgentError(f"agent backend {agent_backend!r} has no executable configured")
+        backend_spec = get_backend_spec(agent_backend)
         startup_prompt = _build_attached_startup_prompt(task)
-        agent_cmd = str(backend_executable)
+        agent_cmd = backend_spec.executable
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
             "session_id": session_obj.id,

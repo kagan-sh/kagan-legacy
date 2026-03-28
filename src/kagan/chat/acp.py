@@ -29,11 +29,11 @@ from kagan.core import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
     ACPClientBase,
+    BackendCapability,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
-    get_backend,
-    resolve_acp_command,
+    get_backend_spec,
     resolve_orchestrator_prompt,
 )
 from kagan.core.errors import AgentError
@@ -197,7 +197,14 @@ class _CaptureACPClient(ACPClientBase):
 
 
 def _resolve_acp_command_for_backend(agent_backend: str) -> tuple[str, list[str]]:
-    acp_cmd = resolve_acp_command(agent_backend)
+    spec = get_backend_spec(agent_backend)
+    if not spec.has_capability(BackendCapability.ACP_STREAMING):
+        raise RuntimeError(
+            f"Agent backend {agent_backend!r} does not support ACP. "
+            "Set a different orchestrator agent or use an ACP-capable backend."
+        )
+
+    acp_cmd = list(spec.acp_command) or ([spec.executable] if spec.executable else [])
     if not acp_cmd:
         raise RuntimeError(f"No ACP command configured for backend {agent_backend!r}")
 
@@ -268,11 +275,11 @@ async def run_orchestrator_turn(
         )
         await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
 
-    backend = get_backend(agent_backend)
+    backend = get_backend_spec(agent_backend)
     env = build_agent_environment(
         session_id=session_id,
         task_id=None,
-        backend_env_vars=backend.get("env_vars", {}),
+        backend_env_vars=backend.env_vars,
     )
 
     capture_client = _CaptureACPClient(on_update=on_update)

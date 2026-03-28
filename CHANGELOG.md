@@ -13,6 +13,20 @@
 
 
 
+## v0.13.0-beta.5 (2026-03-28)
+
+
+
+
+### chores
+
+- **ci**: Warn when extension source changes without version bump
+  ([`609ead1`](https://github.com/kagan-sh/kagan/commit/609ead1f5160a8e4bd4499d08da4cc0cfa040108))
+
+
+
+
+
 ## v0.13.0-beta.4 (2026-03-28)
 
 

@@ -11,6 +11,7 @@ from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.task_screen import TaskScreen
 from kagan.tui.screens.welcome import WelcomeScreen
+from kagan.tui.screens.workspace import WorkspaceScreen
 
 __all__ = [
     "AgentPickerModal",
@@ -26,4 +27,5 @@ __all__ = [
     "TaskEditorModal",
     "TaskScreen",
     "WelcomeScreen",
+    "WorkspaceScreen",
 ]

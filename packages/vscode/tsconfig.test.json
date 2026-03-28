@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "moduleResolution": "Node16",
+    "outDir": ".vscode-test-build",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "vscode", "mocha"]
+  },
+  "include": ["test/helpers/**/*.ts", "test/integration/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".vscode-test-build"]
+}

@@ -101,37 +101,47 @@ class TaskEditor(Vertical):
         with VerticalScroll(classes="task-form"):
             yield Label("Quick Setup", classes="task-section-label")
             yield Label("Title", classes="task-label")
-            yield Input(value=self._initial_title, id="task-title", classes="task-input")
+            title_input = Input(value=self._initial_title, id="task-title", classes="task-input")
+            title_input.tooltip = "Task title (required, max 200 characters)"
+            yield title_input
             yield Static("", id="task-title-error", classes="task-field-error")
-            yield Checkbox(
+            show_advanced_checkbox = Checkbox(
                 "Show advanced options",
                 value=self._show_advanced,
                 id="task-show-advanced",
                 classes="task-checkbox",
             )
+            show_advanced_checkbox.tooltip = "Toggle advanced options (Ctrl+.)"
+            yield show_advanced_checkbox
             yield Label("Description", classes="task-label")
-            yield TextArea(
+            description_area = TextArea(
                 self._initial_description,
                 id="task-description",
                 classes="task-textarea",
             )
+            description_area.tooltip = "Task description and context"
+            yield description_area
             yield Label("Priority", classes="task-label")
-            yield Select[int](
+            priority_select = Select[int](
                 options=_PRIORITY_OPTIONS,
                 value=int(self._initial_priority),
                 id="task-priority",
                 allow_blank=False,
                 classes="task-select",
             )
+            priority_select.tooltip = "Priority level: Low, Medium, High, or Critical"
+            yield priority_select
             with Vertical(id="task-advanced-fields", classes="task-advanced-fields"):
                 yield Label("Acceptance Criteria", classes="task-label")
-                yield TextArea(
+                criteria_area = TextArea(
                     self._initial_acceptance_criteria,
                     id="task-acceptance-criteria",
                     classes="task-textarea",
                 )
+                criteria_area.tooltip = "List of acceptance criteria (one per line)"
+                yield criteria_area
                 yield Label("Agent backend", classes="task-label")
-                yield Select[str](
+                backend_select = Select[str](
                     options=[
                         ("Use project default", ""),
                         *((name, name) for name in self._available_agent_backends),
@@ -141,21 +151,27 @@ class TaskEditor(Vertical):
                     allow_blank=False,
                     classes="task-select",
                 )
+                backend_select.tooltip = "AI agent backend for task execution"
+                yield backend_select
                 yield Label("Interactive launcher", classes="task-label")
-                yield Select[str](
+                launcher_select = Select[str](
                     options=self._launcher_options,
                     value=self._initial_launcher,
                     id="task-launcher",
                     allow_blank=False,
                     classes="task-select",
                 )
+                launcher_select.tooltip = "Interactive editor for manual task execution"
+                yield launcher_select
                 yield Label("Base branch", classes="task-label")
-                yield Input(
+                branch_input = Input(
                     value=self._initial_base_branch,
                     placeholder="main",
                     id="task-base-branch",
                     classes="task-input",
                 )
+                branch_input.tooltip = "Git branch to base task on (default: project default)"
+                yield branch_input
         if self._editing:
             yield Static(
                 "Auto-saved  ·  [bold]Ctrl+.[/] advanced  "

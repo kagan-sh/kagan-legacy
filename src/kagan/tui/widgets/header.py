@@ -44,22 +44,40 @@ class KaganHeader(Horizontal):
     plugin_badges_text: reactive[str] = reactive("")
 
     def compose(self) -> ComposeResult:
-        yield Static(LOGO_SMALL, id="header-logo", classes="header-logo")
-        yield Static("", id="header-project", classes="header-title")
-        yield Static("", id="header-repo", classes="header-repo")
+        logo = Static(LOGO_SMALL, id="header-logo", classes="header-logo")
+        logo.tooltip = "Kagan - AI-powered Kanban TUI"
+        yield logo
+        project = Static("", id="header-project", classes="header-title")
+        project.tooltip = "Current project"
+        yield project
+        repo = Static("", id="header-repo", classes="header-repo")
+        repo.tooltip = "Repository name"
+        yield repo
         yield Static("", classes="header-spacer")
 
-        yield Static("", id="header-github-status", classes="header-github-status")
+        gh_status = Static("", id="header-github-status", classes="header-github-status")
+        gh_status.tooltip = "GitHub connection status"
+        yield gh_status
         yield Static(HEADER_SEPARATOR, id="sep-github", classes="header-separator")
-        yield Static("", id="header-branch", classes="header-branch")
+        branch = Static("", id="header-branch", classes="header-branch")
+        branch.tooltip = "Current Git branch"
+        yield branch
         yield Static(HEADER_SEPARATOR, id="sep-branch", classes="header-separator")
-        yield Static("", id="header-sessions", classes="header-sessions")
+        sessions = Static("", id="header-sessions", classes="header-sessions")
+        sessions.tooltip = "Active agent sessions"
+        yield sessions
         yield Static(HEADER_SEPARATOR, id="sep-sessions", classes="header-separator")
-        yield Static("", id="header-agent", classes="header-agent")
+        agent = Static("", id="header-agent", classes="header-agent")
+        agent.tooltip = "Current AI agent backend"
+        yield agent
         yield Static(HEADER_SEPARATOR, id="sep-agent", classes="header-separator")
-        yield Static("", id="header-stats", classes="header-stats")
+        stats = Static("", id="header-stats", classes="header-stats")
+        stats.tooltip = "Task statistics (active, in review, completed)"
+        yield stats
         yield Static(HEADER_SEPARATOR, id="sep-stats", classes="header-separator")
-        yield Static("? help", id="header-help", classes="header-branch")
+        help_widget = Static("? help", id="header-help", classes="header-branch")
+        help_widget.tooltip = "Press ? to open help (keyboard shortcuts)"
+        yield help_widget
 
     def on_mount(self) -> None:
         self._render_project()

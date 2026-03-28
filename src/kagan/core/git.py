@@ -96,6 +96,36 @@ async def _run_git_result(
     return rc, stdout, stderr
 
 
+async def validate_ref_name(name: str) -> bool:
+    """Validate a git reference name for safety.
+
+    Performs quick checks to prevent option injection and other attacks,
+    then delegates to 'git check-ref-format' for canonical validation.
+
+    Rejects:
+        - Names starting with "-" (option injection)
+        - Names containing ".." (directory traversal)
+        - Names containing "@{" (reflog syntax)
+
+    Returns True if valid, False otherwise.
+    """
+    if not name:
+        return False
+    if name.startswith("-"):
+        return False
+    if ".." in name:
+        return False
+    if "@{" in name:
+        return False
+    # Use git's canonical validator with --branch for branch name validation.
+    # Run with check=False since we expect non-zero exit for invalid refs.
+    try:
+        await _run_git("check-ref-format", "--branch", name, cwd=Path.cwd(), check=True)
+        return True
+    except WorktreeError:
+        return False
+
+
 async def worktree_add(
     repo_path: str | Path,
     worktree_path: str | Path,
@@ -104,6 +134,20 @@ async def worktree_add(
     base: str = "main",
 ) -> None:
     """Create a new git worktree at worktree_path on a new branch from base."""
+    # Validate branch and base parameters to prevent option injection
+    if not await validate_ref_name(branch):
+        raise WorktreeError(
+            f"Invalid branch name '{branch}'. "
+            "Branch names must be valid git references and cannot start with '-', "
+            "contain '..', or contain '@{'"
+        )
+    if not await validate_ref_name(base):
+        raise WorktreeError(
+            f"Invalid base reference '{base}'. "
+            "Base references must be valid git references and cannot start with '-', "
+            "contain '..', or contain '@{'"
+        )
+
     repo = Path(repo_path)
     wt = Path(worktree_path)
     wt.parent.mkdir(parents=True, exist_ok=True)
@@ -749,6 +793,7 @@ __all__ = [
     "prune_kagan_branches",
     "rebase",
     "resolve_worktree_base",
+    "validate_ref_name",
     "worktree_add",
     "worktree_list",
     "worktree_remove",

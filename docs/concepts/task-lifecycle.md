@@ -24,12 +24,12 @@ stateDiagram-v2
 
 ## Statuses
 
-| Status          | Meaning                                     |
-| --------------- | ------------------------------------------- |
-| **BACKLOG**     | Planned but not started                     |
+| Status          | Meaning                                        |
+| --------------- | ---------------------------------------------- |
+| **BACKLOG**     | Planned but not started                        |
 | **IN_PROGRESS** | Managed run active or interactive session open |
-| **REVIEW**      | Work complete, awaiting human review        |
-| **DONE**        | Reviewed and merged                         |
+| **REVIEW**      | Work complete, awaiting human review           |
+| **DONE**        | Reviewed and merged                            |
 
 Moving between columns is constrained. You can drag tasks left or right within the allowed transitions above — but **REVIEW → DONE requires a merge**. No shortcut.
 
@@ -56,10 +56,10 @@ your-repo/
 
 Each task is just a task. When you launch it, choose between a managed run or an interactive launcher handoff.
 
-| Style | Who drives  | Where it happens                                       |
-| ----- | ----------- | ------------------------------------------------------ |
-| Managed run | Agent | Background process; follow progress in the task or session views |
-| Interactive launch | You + agent | tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, etc. |
+| Style              | Who drives  | Where it happens                                                                       |
+| ------------------ | ----------- | -------------------------------------------------------------------------------------- |
+| Managed run        | Agent       | Background process; follow progress in the task screen, TUI AI panel, or web dashboard |
+| Interactive launch | You + agent | tmux, Neovim, VS Code, Cursor, Windsurf, Kiro, etc.                                    |
 
 Attach can interrupt a managed run at any time — Kagan stops the background agent and hands control to you in an interactive session.
 

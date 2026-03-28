@@ -13,7 +13,9 @@ export const hydrateAuthAtom = atom(null, async (_get, set) => {
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
     return;
-  } catch {}
+  } catch (error) {
+    console.error('Auth health check failed:', error);
+  }
 
   set(isAuthenticatedAtom, false);
   set(isAuthLoadingAtom, false);
@@ -27,8 +29,8 @@ export const retryHealthCheckAtom = atom(null, async (_get, set) => {
     set(isAuthenticatedAtom, true);
     set(isAuthLoadingAtom, false);
     return true;
-  } catch {
-    // Still not reachable
+  } catch (error) {
+    console.error('Auth health check failed:', error);
   }
   set(isAuthLoadingAtom, false);
   return false;

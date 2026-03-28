@@ -128,6 +128,7 @@ class ChatPanel(Vertical):
         self._overlay_split_key = "Ctrl+I"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
         self._overlay_close_key = "Esc"
+        self._status_hint_override: str | None = None
         self._state_only_updates = 0
 
     @contextlib.contextmanager
@@ -201,34 +202,57 @@ class ChatPanel(Vertical):
                 ):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
-                            yield Input(
+                            chat_input = Input(
                                 placeholder=("What's next? Try /flow · Esc to interrupt"),
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
-                        yield Static(
+                            chat_input.tooltip = (
+                                "AI chat input. Type your request or use"
+                                " /flow for guided planning. Press Esc to interrupt"
+                            )
+                            yield chat_input
+                        badge = Static(
                             "Orchestrator",
                             id="chat-overlay-session-badge",
                             classes="session-badge session-kind-orchestrator",
                         )
+                        badge.tooltip = "Current session kind (Orchestrator/Agent)"
+                        yield badge
                 with Horizontal(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
-                        yield Static("Docked", id="chat-overlay-mode-badge", classes="mode-docked")
-                        yield Static(
+                        mode_badge = Static(
+                            "Docked",
+                            id="chat-overlay-mode-badge",
+                            classes="mode-docked",
+                        )
+                        mode_badge.tooltip = (
+                            "Chat panel mode: Docked or Expanded (Ctrl+I to toggle)"
+                        )
+                        yield mode_badge
+                        session_indicator = Static(
                             "●",
                             id="chat-overlay-session-indicator",
                             classes="session-kind-orchestrator",
                         )
-                        yield Static("Orchestrator", id="chat-overlay-session-current")
+                        session_indicator.tooltip = "Session status indicator"
+                        yield session_indicator
+                        session_label = Static("Orchestrator", id="chat-overlay-session-current")
+                        session_label.tooltip = "Current active session"
+                        yield session_label
                     with Horizontal(id="chat-overlay-session-toggle"):
-                        yield Static("Session", id="chat-overlay-session-toggle-label")
-                        yield Select[str](
+                        toggle_label = Static("Session", id="chat-overlay-session-toggle-label")
+                        toggle_label.tooltip = "Switch between active sessions"
+                        yield toggle_label
+                        session_select = Select[str](
                             options=self._session_options,
                             value=self._selected_session_key,
                             id="chat-overlay-session-select",
                             allow_blank=False,
                             compact=True,
                         )
+                        session_select.tooltip = "Select a different session to work with"
+                        yield session_select
 
             with Vertical(classes="slash-complete", id="slash-complete"):
                 yield OptionList(id="slash-options")
@@ -333,6 +357,11 @@ class ChatPanel(Vertical):
         self._overlay_split_key = split.strip() or self._overlay_split_key
         self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
         self._overlay_close_key = close.strip() or self._overlay_close_key
+        self._refresh_status()
+
+    def set_status_hint_override(self, hint: str | None) -> None:
+        normalized = hint.strip() if isinstance(hint, str) else ""
+        self._status_hint_override = normalized or None
         self._refresh_status()
 
     def set_first_boot(self, enabled: bool = True) -> None:
@@ -1277,6 +1306,14 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def _refresh_status(self) -> None:
+        if self._status_hint_override:
+            status_bar = self._status_bar()
+            if status_bar is None:
+                return
+            status_bar.update_status(self._runtime_status)
+            status_bar.update_hint(self._status_hint_override)
+            return
+
         input_disabled = self._input_widget().disabled
         split_key = self._overlay_split_key
         fullscreen_key = self._overlay_fullscreen_key

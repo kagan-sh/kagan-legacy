@@ -14,6 +14,7 @@ import { PluginImportDialog } from "@/components/board/plugin-import-dialog";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { useOrchestratorSession } from "@/lib/hooks/use-orchestrator-session";
 import { apiClient } from "@/lib/api/client";
 import {
     fetchTasksAtom,
@@ -44,6 +45,7 @@ function AppLayout() {
     const isMobile = useIsMobile();
     const location = useLocation();
     const navigate = useNavigate();
+    const { createOrGetSession } = useOrchestratorSession();
     const [, setCommandOpen] = useAtom(commandPaletteOpenAtom);
     const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
@@ -114,6 +116,7 @@ function AppLayout() {
         if (sessionMatch) return sessionMatch[1];
         return null;
     }, [location.pathname]);
+    const workspaceRoute = location.pathname.startsWith("/workspace");
 
     const closeChatRail = () => {
         setRailMode("none");
@@ -137,6 +140,7 @@ function AppLayout() {
     };
 
     const toggleAIPanel = useCallback(async () => {
+        if (workspaceRoute) return;
         const railOpen =
             railMode !== "none" && Boolean(railTaskId || railChatSessionId);
         const hasTask = Boolean(currentTaskId ?? railTaskId);
@@ -157,26 +161,19 @@ function AppLayout() {
         } else {
             try {
                 const sessions = await apiClient.getChatSessions();
-                const orch = sessions
-                    .filter((s) =>
-                        ["orchestrator", "web"].includes(
-                            s.source.toLowerCase(),
-                        ),
-                    )
-                    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-                const sid =
-                    orch.length > 0
-                        ? orch[0]!.id
-                        : (await apiClient.createChatSession({})).id;
-                setRailTaskId(null);
-                setRailChatSessionId(sid);
-                setRailMode("chat-right");
+                const sessionId = await createOrGetSession(sessions);
+                if (sessionId) {
+                    setRailTaskId(null);
+                    setRailChatSessionId(sessionId);
+                    setRailMode("chat-right");
+                }
             } catch {
                 setSessionPickerOpen(true);
             }
         }
     }, [
         closeChatRail,
+        createOrGetSession,
         currentTaskId,
         openChatRail,
         railChatSessionId,
@@ -187,6 +184,7 @@ function AppLayout() {
         setRailMode,
         setRailTaskId,
         setSessionPickerOpen,
+        workspaceRoute,
     ]);
 
     useEffect(() => {
@@ -207,23 +205,12 @@ function AppLayout() {
         void (async () => {
             try {
                 const sessions = await apiClient.getChatSessions();
-                const orchestratorSessions = sessions
-                    .filter((s) =>
-                        ["orchestrator", "web"].includes(
-                            s.source.toLowerCase(),
-                        ),
-                    )
-                    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-                let sessionId: string;
-                if (orchestratorSessions.length > 0) {
-                    sessionId = orchestratorSessions[0]!.id;
-                } else {
-                    const created = await apiClient.createChatSession({});
-                    sessionId = created.id;
+                const sessionId = await createOrGetSession(sessions);
+                if (sessionId) {
+                    setRailTaskId(null);
+                    setRailChatSessionId(sessionId);
+                    setRailMode("chat-right");
                 }
-                setRailTaskId(null);
-                setRailChatSessionId(sessionId);
-                setRailMode("chat-right");
             } catch {
                 // Silently fail — user can open manually
             }
@@ -248,11 +235,13 @@ function AppLayout() {
         // Always create a fresh session for the new project context
         void (async () => {
             try {
-                const created = await apiClient.createChatSession({});
-                setRailTaskId(null);
-                setRailChatSessionId(created.id);
-                if (railMode === "none") {
-                    setRailMode("chat-right");
+                const sessionId = await createOrGetSession([]);
+                if (sessionId) {
+                    setRailTaskId(null);
+                    setRailChatSessionId(sessionId);
+                    if (railMode === "none") {
+                        setRailMode("chat-right");
+                    }
                 }
             } catch {
                 // Best-effort — user can manually switch via Session Switcher
@@ -300,6 +289,7 @@ function AppLayout() {
                 lowerKey === "i"
             ) {
                 event.preventDefault();
+                if (workspaceRoute) return;
                 if (
                     railOpen &&
                     (railMode === "chat-right" || railMode === "chat-bottom")
@@ -319,26 +309,12 @@ function AppLayout() {
                     void (async () => {
                         try {
                             const sessions = await apiClient.getChatSessions();
-                            const orch = sessions
-                                .filter((s) =>
-                                    ["orchestrator", "web"].includes(
-                                        s.source.toLowerCase(),
-                                    ),
-                                )
-                                .sort((a, b) =>
-                                    b.updated_at.localeCompare(a.updated_at),
-                                );
-                            let sid: string;
-                            if (orch.length > 0) {
-                                sid = orch[0]!.id;
-                            } else {
-                                const created =
-                                    await apiClient.createChatSession({});
-                                sid = created.id;
+                            const sessionId = await createOrGetSession(sessions);
+                            if (sessionId) {
+                                setRailTaskId(null);
+                                setRailChatSessionId(sessionId);
+                                setRailMode("chat-right");
                             }
-                            setRailTaskId(null);
-                            setRailChatSessionId(sid);
-                            setRailMode("chat-right");
                         } catch {
                             // Fallback: open session picker on error
                             setSessionPickerOpen(true);
@@ -394,6 +370,21 @@ function AppLayout() {
 
             if (isMobile || dialogOpen) return;
 
+            // Cmd/Ctrl+Shift+W — Toggle between board and workspace
+            if (
+                (event.metaKey || event.ctrlKey) &&
+                event.shiftKey &&
+                lowerKey === "w"
+            ) {
+                event.preventDefault();
+                const isWorkspace =
+                    location.pathname.startsWith("/workspace");
+                navigateRef.current(
+                    isWorkspace ? "/board" : "/workspace",
+                );
+                return;
+            }
+
             // Esc — close chat rail (interrupt-first: chat-input-bar stops propagation when busy)
             if (event.key === "Escape" && railOpen) {
                 event.preventDefault();
@@ -416,6 +407,7 @@ function AppLayout() {
         setHelpOverlayOpen,
         setChatRailLayout,
         setSessionPickerOpen,
+        workspaceRoute,
     ]);
 
     if (!projectChecked) {
@@ -453,17 +445,23 @@ function AppLayout() {
                             }}
                             onToggleAIPanel={toggleAIPanel}
                             onToggleFullscreen={() => {
+                                if (workspaceRoute) return;
                                 if (railMode === "chat-fullscreen") {
                                     setChatRailLayout(lastDockModeRef.current);
                                 } else if (railMode !== "none") {
                                     setChatRailLayout("chat-fullscreen");
                                 }
                             }}
+                            aiPanelAvailable={!workspaceRoute}
                             aiPanelOpen={
+                                !workspaceRoute &&
                                 railMode !== "none" &&
                                 Boolean(railTaskId || railChatSessionId)
                             }
-                            aiPanelFullscreen={railMode === "chat-fullscreen"}
+                            aiPanelFullscreen={
+                                !workspaceRoute &&
+                                railMode === "chat-fullscreen"
+                            }
                         />
                     )}
 
@@ -473,7 +471,8 @@ function AppLayout() {
                                 id="main-content"
                                 className={cn(
                                     "min-h-0 min-w-0 flex-1 overflow-y-auto bg-[color:var(--surface-0)] pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0",
-                                    railMode === "chat-fullscreen" &&
+                                    !workspaceRoute &&
+                                        railMode === "chat-fullscreen" &&
                                         "overflow-hidden",
                                 )}
                             >
@@ -481,6 +480,7 @@ function AppLayout() {
                             </main>
 
                             {!isMobile &&
+                            !workspaceRoute &&
                             railMode === "chat-right" &&
                             (railTaskId || railChatSessionId) ? (
                                 <div
@@ -522,6 +522,7 @@ function AppLayout() {
                         </div>
 
                         {!isMobile &&
+                        !workspaceRoute &&
                         railMode === "chat-bottom" &&
                         (railTaskId || railChatSessionId) ? (
                             <div
@@ -563,10 +564,11 @@ function AppLayout() {
                     </div>
                 </div>
 
-                {isMobile && <MobileTabs onToggleAIPanel={toggleAIPanel} />}
+                {isMobile && <MobileTabs />}
             </div>
 
             {isMobile &&
+            !workspaceRoute &&
             railMode !== "none" &&
             (railTaskId || railChatSessionId) ? (
                 <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--surface-0)]">
@@ -593,6 +595,7 @@ function AppLayout() {
             ) : null}
 
             {!isMobile &&
+            !workspaceRoute &&
             railMode === "chat-fullscreen" &&
             (railTaskId || railChatSessionId) ? (
                 <div className="glass-surface pointer-events-none fixed inset-0 z-40 hidden p-4 lg:block">

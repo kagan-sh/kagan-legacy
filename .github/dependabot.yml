@@ -30,6 +30,11 @@ updates:
           - "minor"
           - "patch"
 
+  - package-ecosystem: "npm"
+    directory: "/packages/vscode"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

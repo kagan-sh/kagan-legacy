@@ -66,7 +66,7 @@ class Projects:
 
     async def set_active_project(self, project: Project) -> None:
         """Set the active project from an already-loaded Project object.
-        
+
         Use this when the project was just retrieved from list() or create()
         to avoid redundant database lookups. Trusts the object is valid.
         """

@@ -209,19 +209,26 @@ jobs:
 
           uv run pytest tests/tui/snapshot/ -n auto -v
 
-  test-web:
+  test-vscode:
     if: github.event_name == 'pull_request'
-    needs: [lint, fast-gate]
+    needs: [fast-gate]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: packages/web
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
-          version: 9
+          node-version: 22
+      - run: cd packages/vscode && pnpm install --frozen-lockfile && pnpm run test:unit
+
+  test-web:
+    needs: [lint, fast-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -229,7 +236,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('packages/web/pnpm-lock.yaml') }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - uses: astral-sh/setup-uv@v7
         with:
@@ -239,11 +246,11 @@ jobs:
       - run: uv tool install --editable --force .
         working-directory: ${{ github.workspace }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm run web:test
       - run: uv run poe web-build
         working-directory: ${{ github.workspace }}
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - run: pnpm --filter kagan-web exec playwright install --with-deps chromium
+      - run: pnpm run web:test:e2e
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

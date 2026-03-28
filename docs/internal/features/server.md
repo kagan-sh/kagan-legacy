@@ -86,10 +86,10 @@ curl -N http://localhost:8765/api/events/stream
 
 Event types pushed by the server:
 
-| `type` field     | Description                                       |
-| ---------------- | ------------------------------------------------- |
-| `TASK_UPDATED`   | A task was created, updated, or deleted            |
-| `SESSION_EVENT`  | Agent session event (output, tool call, status)    |
+| `type` field    | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `TASK_UPDATED`  | A task was created, updated, or deleted         |
+| `SESSION_EVENT` | Agent session event (output, tool call, status) |
 
 Keepalive comments (`: keepalive`) are sent every 25 seconds.
 

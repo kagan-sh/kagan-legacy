@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
     CheckCheck,
@@ -6,6 +6,8 @@ import {
     ListChecks,
     Pencil,
     Play,
+    Square,
+    Terminal,
     Trash2,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
@@ -30,6 +32,8 @@ interface TaskCardProps {
     onEditTask?: (task: WireTask) => void;
     onDeleteTask?: (task: WireTask) => void;
     onStartAgent?: (task: WireTask) => void;
+    onStopAgent?: (task: WireTask) => void;
+    onAttachTask?: (task: WireTask) => void;
     isSelected?: boolean;
 }
 
@@ -155,7 +159,7 @@ export function TaskCardOverlayPreview({
     );
 }
 
-export function TaskCard({
+function TaskCardImpl({
     task,
     className,
     onInspectTask,
@@ -164,6 +168,8 @@ export function TaskCard({
     onEditTask,
     onDeleteTask,
     onStartAgent,
+    onStopAgent,
+    onAttachTask,
     isSelected = false,
 }: TaskCardProps) {
     const navigate = useNavigate();
@@ -277,10 +283,23 @@ export function TaskCard({
                     <Pencil />
                     Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onStartAgent?.(task)}>
-                    <Play />
-                    Start Agent
-                </DropdownMenuItem>
+                {task.active_session ? (
+                    <DropdownMenuItem onSelect={() => onStopAgent?.(task)}>
+                        <Square />
+                        Stop Agent
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem onSelect={() => onStartAgent?.(task)}>
+                        <Play />
+                        Start Agent
+                    </DropdownMenuItem>
+                )}
+                {task.status !== "DONE" ? (
+                    <DropdownMenuItem onSelect={() => onAttachTask?.(task)}>
+                        <Terminal />
+                        Attach
+                    </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     variant="destructive"
@@ -293,3 +312,28 @@ export function TaskCard({
         </DropdownMenu>
     );
 }
+
+function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
+    return (
+        prevProps.task.id === nextProps.task.id &&
+        prevProps.task.status === nextProps.task.status &&
+        prevProps.task.title === nextProps.task.title &&
+        prevProps.task.priority === nextProps.task.priority &&
+        prevProps.task.active_session?.id === nextProps.task.active_session?.id &&
+        prevProps.task.last_event_at === nextProps.task.last_event_at &&
+        prevProps.task.review_approved === nextProps.task.review_approved &&
+        prevProps.isSelected === nextProps.isSelected &&
+        prevProps.onSelectTask === nextProps.onSelectTask &&
+        prevProps.onOpenTask === nextProps.onOpenTask &&
+        prevProps.onEditTask === nextProps.onEditTask &&
+        prevProps.onDeleteTask === nextProps.onDeleteTask &&
+        prevProps.onStartAgent === nextProps.onStartAgent &&
+        prevProps.onStopAgent === nextProps.onStopAgent &&
+        prevProps.onAttachTask === nextProps.onAttachTask &&
+        prevProps.onInspectTask === nextProps.onInspectTask &&
+        prevProps.className === nextProps.className
+    );
+}
+
+export const TaskCard = memo(TaskCardImpl, areEqual);
+TaskCard.displayName = "TaskCard";

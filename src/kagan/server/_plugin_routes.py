@@ -110,7 +110,7 @@ def register_plugin_routes(mcp: FastMCP) -> None:
         name = cast("str", request.path_params["name"])
         forbidden = _require_access(ctx, operation="Plugin imports", minimum_tier=AccessTier.ADMIN)
         if forbidden is not None:
-            return cast("JSONResponse", forbidden)
+            return forbidden
         payload = await request.json()
         body = payload if isinstance(payload, dict) else {}
 

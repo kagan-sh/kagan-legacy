@@ -9,7 +9,6 @@ import {
     MessageSquare,
     MoveRight,
     Pencil,
-    Terminal,
     XCircle,
 } from "lucide-react";
 import { useSetAtom } from "jotai";
@@ -27,10 +26,6 @@ import {
     getAllowedTaskTransitions,
 } from "@/lib/utils/constants";
 import { useTaskEvents } from "@/lib/hooks/use-task-events";
-import {
-    openInEditor,
-    launcherDisplayName,
-} from "@/lib/utils/editor-links";
 import {
     ActionEmptyState,
     InspectorSection,
@@ -61,14 +56,7 @@ import { EditTaskDialog } from "@/components/board/edit-task-dialog";
 import { TaskDeleteDialog } from "@/components/board/task-delete-dialog";
 import { TaskSidebar } from "@/components/board/task-sidebar";
 import { isEditableTarget, hasOpenOverlay } from "@/lib/utils/dom";
-import { normalizeLauncher, quoteShell } from "@/lib/utils";
-
 export type WorkspaceTab = "overview" | "changes" | "review";
-
-
-function tmuxSessionName(sessionId: string): string {
-    return `kagan-${sessionId.replaceAll(":", "-")}`;
-}
 
 export function defaultTabForTask(task: WireTask): WorkspaceTab {
     if (task.status === "BACKLOG") return "overview";
@@ -204,68 +192,6 @@ export function Component() {
         setRailMode("chat-right");
     }, [setRailChatSessionId, setRailMode, setRailTaskId, task]);
 
-    const handleAttachAttachedSession = useCallback(async () => {
-        if (!displayTask) return;
-        if (!displayTask.active_session?.launcher) {
-            toast.error("No interactive session to attach");
-            return;
-        }
-        const launcher = normalizeLauncher(
-            displayTask.active_session.launcher ??
-                displayTask.launcher ??
-                attachedLauncher ??
-                "vscode",
-        );
-        const activeSessionId = displayTask.active_session?.id ?? null;
-
-        if (launcher === "tmux") {
-            if (!activeSessionId) {
-                toast.error("No active session to attach");
-                return;
-            }
-            const command = `tmux attach-session -t ${tmuxSessionName(activeSessionId)}`;
-            try {
-                await navigator.clipboard.writeText(command);
-                toast.success("tmux attach command copied to clipboard");
-            } catch {
-                toast.info(`Run: ${command}`);
-            }
-            return;
-        }
-
-        if (launcher === "nvim") {
-            if (!worktreePath) {
-                toast.error("Worktree path not available");
-                return;
-            }
-            const command = `cd ${quoteShell(worktreePath)} && nvim .kagan/start_prompt.md`;
-            try {
-                await navigator.clipboard.writeText(command);
-                toast.success("Neovim command copied to clipboard");
-            } catch {
-                toast.info(`Run: ${command}`);
-            }
-            return;
-        }
-
-        if (!worktreePath) {
-            toast.error("Worktree path not available");
-            return;
-        }
-
-        const opened = openInEditor(launcher, worktreePath);
-        if (opened) {
-            toast.success(`Opening ${launcherDisplayName(launcher)}...`);
-        } else {
-            toast.info(`Open ${launcherDisplayName(launcher)} manually`);
-        }
-    }, [
-        displayTask?.active_session?.id,
-        displayTask?.launcher,
-        attachedLauncher,
-        worktreePath,
-    ]);
-
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (editOpen || deleteOpen || hasOpenOverlay()) {
@@ -397,19 +323,6 @@ export function Component() {
                         <MessageSquare className="size-4" />
                         Open chat
                     </Button>
-                    {displayTask.active_session?.launcher &&
-                    displayTask.status === "IN_PROGRESS" ? (
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                                void handleAttachAttachedSession();
-                            }}
-                        >
-                            <Terminal className="size-4" />
-                            Attach session
-                        </Button>
-                    ) : null}
                     <Select
                         value=""
                         onValueChange={(value) =>

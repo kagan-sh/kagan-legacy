@@ -364,17 +364,15 @@ export function AgentControl({
                               ? "Detach"
                               : "Stop"}
                     </Button>
-                    {hasInteractiveSession ? (
-                        <Button
-                            variant="secondary"
-                            size={buttonSize}
-                            onClick={handleAttach}
-                            disabled={!sseConnected || isBusy}
-                        >
-                            <Terminal className="size-3" />
-                            Attach
-                        </Button>
-                    ) : null}
+                    <Button
+                        variant="secondary"
+                        size={buttonSize}
+                        onClick={handleAttach}
+                        disabled={!sseConnected || isBusy}
+                    >
+                        <Terminal className="size-3" />
+                        Attach
+                    </Button>
                     {isRunning && (
                         <span className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
                             <Clock className="size-3" />

@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from kagan.cli.prompts import prompts
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 TOOL_CHOICES = ("claude", "opencode")
@@ -263,11 +264,15 @@ def _run_refinement(prompt_text: str, backend_name: str) -> str:
         "Examples:\n"
         "  kagan tools enhance 'fix the login bug'\n"
         "  kagan tools enhance --file prompt.txt\n"
-        "  kagan tools enhance --agent claude 'add dark mode'"
+        "  kagan tools enhance --agent claude 'add dark mode'\n"
+        "  kagan tools prompts export --type orchestrator --format text"
     ),
 )
 def tools() -> None:
     return
+
+
+tools.add_command(prompts)
 
 
 @tools.command(name="enhance")

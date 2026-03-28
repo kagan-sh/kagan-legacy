@@ -7,9 +7,9 @@ ______________________________________________________________________
 
 ## References
 
-| Package     | Repo                                                        | Use                                                       |
-| ----------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers |
+| Package     | Repo                                                        | Use                                                          |
+| ----------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| **Textual** | [Textualize/textual](https://github.com/Textualize/textual) | TUI framework: App, Screen, Widget, reactive, CSS, workers   |
 | **Loguru**  | [Delgan/loguru](https://github.com/Delgan/loguru)           | Structured logging. Config in core — see `core.md` § Logging |
 
 ______________________________________________________________________
@@ -71,11 +71,15 @@ KaganApp (Textual App)
 │   ├── ChatPanel            # Docked / fullscreen AI Panel
 │   └── PeekOverlay          # Task preview on P
 │
+├── WorkspaceScreen          # Orchestrator-first workspace with session sidebar + full chat surface
+│   ├── Session sidebar      # Searchable orchestrator conversation list
+│   └── ChatPanel            # Full-width main conversation surface
+│
 ├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
 │
-├── TaskScreen               # Pushed from kanban for idle / past tasks and REVIEW surveys
+├── TaskScreen               # Primary task detail screen pushed from kanban after inspector-open
 │
-├── SessionDashboardScreen   # Pushed from kanban for running managed tasks
+├── SessionDashboardScreen   # Dedicated run-monitoring screen retained in the codebase but not on the default kanban navigation path
 │   ├── AgentStatusPanel     # Backend, status, elapsed, run ID, PID
 │   ├── PersonaPipelineMap   # Horizontal persona sequence with current step
 │   ├── LiveOutputPanel      # Latest agent output + tool calls (auto-scroll)
@@ -104,12 +108,15 @@ KaganApp (Textual App)
 ```text
 WelcomeScreen ──select project──→ KanbanScreen (switch)
 KanbanScreen  ──Enter───────────→ TaskInspector (in-place)
-KanbanScreen  ──Enter on task───→ TaskScreen or attach flow (push)
+KanbanScreen  ──Enter again────→ TaskScreen or attach flow (push)
+KanbanScreen  ──w───────────────→ WorkspaceScreen (switch)
+WorkspaceScreen ──w────────────→ KanbanScreen (switch)
+WorkspaceScreen ──Esc──────────→ sidebar-first back flow, then KanbanScreen (switch)
 KanbanScreen  ──Ctrl+R──────────→ RepoPickerModal (push)
-Any screen    ──Escape──────────→ close overlay, then pop
+Any modal/overlay ──Escape─────→ close overlay, then pop
 ```
 
-9 screens are registered in `SCREENS` lazy-loading dict; modals are instantiated directly via `push_screen()`.
+10 screens are registered in `SCREENS` lazy-loading dict; modals are instantiated directly via `push_screen()`.
 
 ______________________________________________________________________
 
@@ -140,6 +147,16 @@ SessionDashboardScreen
 │       └── DiffView         # Unified diff
 ├── ChatPanel                # Overlay (hidden by default)
 └── HintBar                  # Contextual keybinding hints
+
+WorkspaceScreen
+├── KaganHeader
+├── Vertical (workspace-sidebar; default focus target)
+│   ├── Input                # Session search
+│   └── OptionList           # Orchestrator sessions
+├── Vertical (workspace-main)
+│   ├── Workspace header     # Active conversation title + compact guidance
+│   └── ChatPanel            # Main conversation surface (always visible; explicit focus via Ctrl+I or session open)
+└── Footer hint row          # Workspace-specific navigation hints
 ```
 
 ______________________________________________________________________
@@ -148,14 +165,21 @@ ______________________________________________________________________
 
 ### Reactive Declarations
 
-| Owner               | Name           | Type                        | Purpose                      |
-| ------------------- | -------------- | --------------------------- | ---------------------------- |
-| `KaganApp`          | `project`      | `reactive[Project \| None]` | Active project               |
-| `KanbanScreen`      | `tasks`        | `reactive[list[Task]]`      | Board tasks                  |
-| `KanbanScreen`      | `selected`     | `var[str \| None]`          | Selected task ID             |
-| `KanbanScreen`      | `filter_text`  | `var[str]`                  | Search filter                |
-| `KanbanScreen`      | `chat_visible` | `var[bool]`                 | AI Panel open state          |
-| `SessionDashboard`  | `session`      | `reactive[Session \| None]` | Active execution run         |
+| Owner              | Name            | Type                        | Purpose                      |
+| ------------------ | --------------- | --------------------------- | ---------------------------- |
+| `KaganApp`         | `project`       | `reactive[Project \| None]` | Active project               |
+| `KanbanScreen`     | `tasks`         | `reactive[list[Task]]`      | Board tasks                  |
+| `KanbanScreen`     | `selected`      | `var[str \| None]`          | Selected task ID             |
+| `KanbanScreen`     | `filter_text`   | `var[str]`                  | Search filter                |
+| `KanbanScreen`     | `chat_visible`  | `var[bool]`                 | AI Panel open state          |
+| `WorkspaceScreen`  | `session_items` | `list[ChatSessionListItem]` | Orchestrator session sidebar |
+| `SessionDashboard` | `session`       | `reactive[Session \| None]` | Active execution run         |
+
+WorkspaceScreen keeps navigation state intentionally simple:
+
+- Sidebar focus is the entry point and safe default after screen switches
+- `Ctrl+I` is the explicit handoff into chat input
+- `Esc` unwinds focus in layers instead of jumping straight out of the screen
 
 ### Data Flow Direction
 
@@ -164,12 +188,12 @@ ______________________________________________________________________
 
 ### Watch Methods
 
-| Owner              | Watches        | Effect                           |
-| ------------------ | -------------- | -------------------------------- |
-| `KanbanScreen`     | `tasks`        | Refreshes BoardView columns      |
-| `KanbanScreen`     | `chat_visible` | Toggles ChatPanel CSS class      |
-| `KanbanScreen`     | `filter_text`  | Filters `_all_tasks`             |
-| `SessionDashboard` | `session`      | Updates header status badge      |
+| Owner              | Watches        | Effect                      |
+| ------------------ | -------------- | --------------------------- |
+| `KanbanScreen`     | `tasks`        | Refreshes BoardView columns |
+| `KanbanScreen`     | `chat_visible` | Toggles ChatPanel CSS class |
+| `KanbanScreen`     | `filter_text`  | Filters `_all_tasks`        |
+| `SessionDashboard` | `session`      | Updates header status badge |
 
 ______________________________________________________________________
 
@@ -214,8 +238,8 @@ ______________________________________________________________________
 Three TCSS layers, ascending specificity:
 
 1. **Widget `DEFAULT_CSS`** — scoped to widget class, lowest specificity
-2. **`app.tcss`** — global variables, base layout, theme
-3. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed
+1. **`app.tcss`** — global variables, base layout, theme
+1. **Screen-specific** (`kanban.tcss`, `chat.tcss`) — highest, only where needed
 
 ```text
 styles/
@@ -223,7 +247,8 @@ styles/
 ├── kanban.tcss           # board columns, card styles
 ├── chat.tcss             # AI Panel, messages, input
 ├── task_screen.tcss      # task screen layout
-└── session_dashboard.tcss # dashboard layout + panels
+├── session_dashboard.tcss # dashboard layout + panels
+└── workspace.tcss        # workspace layout + session sidebar
 ```
 
 Visibility toggles use CSS classes (e.g., `.chat-hidden`, `.peek-visible`). Responsive breakpoints stack columns vertically below 80 columns.
@@ -250,6 +275,7 @@ src/kagan/tui/
 │   ├── setup.py             # OnboardingFlow (modal)
 │   ├── kanban.py            # KanbanScreen
 │   ├── kanban_chat.py       # KanbanChatScreen
+│   ├── workspace.py         # WorkspaceScreen
 │   ├── task_screen.py       # TaskScreen
 │   ├── session_dashboard.py # SessionDashboardScreen
 │   ├── review_no_criteria.py
@@ -296,7 +322,8 @@ src/kagan/tui/
     ├── kanban.tcss
     ├── chat.tcss
     ├── task_screen.tcss
-    └── session_dashboard.tcss
+    ├── session_dashboard.tcss
+    └── workspace.tcss
 ```
 
 ~58 files, ~17K LOC. Each file has one clear responsibility.
@@ -308,6 +335,7 @@ ______________________________________________________________________
 See `docs/internal/testing.md` for the full testing guide.
 
 TUI-specific:
+
 - Use `app.run_test()` with `Pilot`, not manual event loops
 - Use targeted waits (`wait_for_screen`, `pilot.pause()`), never `wait_for_workers()`
 

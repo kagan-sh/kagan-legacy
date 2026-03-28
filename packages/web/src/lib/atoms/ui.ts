@@ -36,7 +36,18 @@ export const editTaskDialogTaskIdAtom = atom<string | null>(null);
 /** Delete task dialog task ID (used by command palette; null = closed). */
 export const deleteTaskDialogTaskIdAtom = atom<string | null>(null);
 
-/** Track whether any dialog/modal is open to pause background refetches. */
-export const dialogOpenCountAtom = atom(0);
+/** Currently selected orchestrator session in workspace view. */
+export const workspaceSessionIdAtom = atom<string | null>(null);
 
-export const isAnyDialogOpenAtom = atom((get) => get(dialogOpenCountAtom) > 0);
+/** Derived atom: true if any dialog/overlay is open. */
+export const isAnyDialogOpenAtom = atom((get) => {
+  return (
+    get(commandPaletteOpenAtom) ||
+    get(sessionPickerOpenAtom) ||
+    get(helpOverlayOpenAtom) ||
+    get(pluginImportOpenAtom) ||
+    get(createTaskDialogOpenAtom) ||
+    get(editTaskDialogTaskIdAtom) !== null ||
+    get(deleteTaskDialogTaskIdAtom) !== null
+  );
+});

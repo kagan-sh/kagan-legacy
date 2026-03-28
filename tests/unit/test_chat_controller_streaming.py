@@ -106,15 +106,15 @@ async def test_deferred_flush_fires_after_cadence_interval(
 
     # Only "a" has been flushed so far
     assert len(fake_console.calls) == 1
-    assert client._flush_handle is not None
+    assert client._output_flusher._flush_handle is not None
 
     # Simulate the timer firing
-    client._do_deferred_flush()
+    client._output_flusher._do_deferred_flush()
 
     printed = [str(args[0]) for args, _kwargs in fake_console.calls]
     assert printed == ["a", "b"]
     assert fake_console.file.flush_count == 2
-    assert client._flush_handle is None
+    assert client._output_flusher._flush_handle is None
 
 
 async def test_flush_timer_cancelled_on_start_turn(
@@ -136,9 +136,9 @@ async def test_flush_timer_cancelled_on_start_turn(
     await client.session_update("session-1", _message_chunk("a"))  # flush
     await client.session_update("session-1", _message_chunk("b"))  # buffer + schedule
 
-    assert client._flush_handle is not None
+    assert client._output_flusher._flush_handle is not None
 
     # Starting a new turn cancels the timer and clears buffers
     client.start_turn()
-    assert client._flush_handle is None
-    assert client._pending_output_chunks == []
+    assert client._output_flusher._flush_handle is None
+    assert client._output_flusher._pending_chunks == []

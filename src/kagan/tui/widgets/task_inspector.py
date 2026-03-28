@@ -58,17 +58,40 @@ class TaskInspector(Widget):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="inspector-scroll", classes="inspector-scroll"):
-            yield Static("Task Inspector", classes="inspector-title")
-            yield Static("", id="inspector-head", classes="inspector-head")
-            yield Static("", id="inspector-meta", classes="inspector-meta")
-            yield Static("Description", classes="inspector-section-label")
-            yield Static(
+            title = Static("Task Inspector", classes="inspector-title")
+            title.tooltip = "Detailed task information and metadata"
+            yield title
+            head = Static("", id="inspector-head", classes="inspector-head")
+            head.tooltip = "Task title and ID"
+            yield head
+            meta = Static("", id="inspector-meta", classes="inspector-meta")
+            meta.tooltip = "Task metadata (status, priority, backend, branch)"
+            yield meta
+            desc_label = Static("Description", classes="inspector-section-label")
+            desc_label.tooltip = "Task description section"
+            yield desc_label
+            desc = Static(
                 "", id="inspector-description", classes="inspector-description", markup=False
             )
-            yield Static("Acceptance Criteria", classes="inspector-section-label")
-            yield Static("", id="inspector-criteria", classes="inspector-criteria", markup=False)
-            yield Static("", id="inspector-message", classes="inspector-message")
-            yield Static("", id="inspector-actions", classes="inspector-actions")
+            desc.tooltip = "Full task description text"
+            yield desc
+            criteria_label = Static("Acceptance Criteria", classes="inspector-section-label")
+            criteria_label.tooltip = "Task acceptance criteria section"
+            yield criteria_label
+            criteria = Static(
+                "",
+                id="inspector-criteria",
+                classes="inspector-criteria",
+                markup=False,
+            )
+            criteria.tooltip = "List of acceptance criteria for task completion"
+            yield criteria
+            message = Static("", id="inspector-message", classes="inspector-message")
+            message.tooltip = "Status messages and notifications"
+            yield message
+            actions = Static("", id="inspector-actions", classes="inspector-actions")
+            actions.tooltip = "Available task actions"
+            yield actions
 
     def watch_is_open(self, is_open: bool) -> None:
         self.set_class(is_open, "is-open")

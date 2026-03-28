@@ -189,6 +189,16 @@ export interface SettingsResponse {
   [key: string]: string | undefined;
 }
 
+export interface AgentBackend {
+  name: string;
+  available: boolean;
+}
+
+export interface ChatAgentsResponse {
+  backends: AgentBackend[];
+  default: string;
+}
+
 // ── Chat / Orchestrator ───────────────────────────────────────────────────
 
 export interface WireChatSession {

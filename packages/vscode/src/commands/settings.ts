@@ -1,23 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 
-const AGENT_BACKENDS = [
-  "claude-code",
-  "codex",
-  "aider",
-  "goose",
-  "cline",
-  "roo-code",
-  "amp",
-  "gemini-cli",
-  "kilo-code",
-  "copilot-agent",
-  "junie",
-  "trae-agent",
-  "augment-agent",
-  "cursor-agent",
-];
-
 const REVIEW_STRICTNESS_OPTIONS = [
   { label: "Strict", description: "All criteria must pass, detailed review", value: "strict" },
   { label: "Balanced", description: "Default review depth", value: "balanced" },
@@ -37,13 +20,25 @@ export function registerSettingsCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand("kagan.settings.agentBackend", async () => {
       await withErrors("set agent backend", async () => {
-        const current = await client.getSettings();
-        const currentBackend = current.default_agent_backend ?? "claude-code";
+        const chatAgents = await client.getChatAgents();
+        const currentBackend = chatAgents.default;
+        const backends = chatAgents.backends;
+
+        if (backends.length === 0) {
+          vscode.window.showWarningMessage("No agent backends are available on this server.");
+          return;
+        }
 
         const picked = await vscode.window.showQuickPick(
-          AGENT_BACKENDS.map((backend) => ({
-            label: backend,
-            description: backend === currentBackend ? "Current" : undefined,
+          backends.map((backend) => ({
+            label: backend.name,
+            description: backend.name === currentBackend
+              ? backend.available
+                ? "Current"
+                : "Current, unavailable"
+              : backend.available
+                ? undefined
+                : "Unavailable",
           })),
           { placeHolder: `Select default agent backend (current: ${currentBackend})` },
         );

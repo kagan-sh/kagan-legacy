@@ -51,4 +51,44 @@ describe("KaganClient", () => {
       body: undefined,
     });
   });
+
+  it("loads chat agent availability from the server", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            backends: [
+              { name: "claude-code", available: true },
+              { name: "codex", available: false },
+            ],
+            default: "claude-code",
+          },
+          error: null,
+          error_code: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const client = new KaganClient("127.0.0.1:8765");
+
+    await expect(client.getChatAgents()).resolves.toEqual({
+      backends: [
+        { name: "claude-code", available: true },
+        { name: "codex", available: false },
+      ],
+      default: "claude-code",
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith("http://127.0.0.1:8765/api/chat/agents", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      body: undefined,
+    });
+  });
 });

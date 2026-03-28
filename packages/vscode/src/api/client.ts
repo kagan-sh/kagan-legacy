@@ -1,4 +1,5 @@
 import type {
+  ChatAgentsResponse,
   CreateTaskInput,
   DiffFile,
   DiffStats,
@@ -204,6 +205,11 @@ export class KaganClient {
 
   updateSettings(input: SettingsResponse): Promise<SettingsResponse> {
     return this.post<SettingsResponse>("/api/settings", input);
+  }
+
+  /** GET /api/chat/agents */
+  getChatAgents(): Promise<ChatAgentsResponse> {
+    return this.get<ChatAgentsResponse>("/api/chat/agents");
   }
 
   // ── Orchestrator chat ──────────────────────────────────────────────────

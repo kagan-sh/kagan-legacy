@@ -25,13 +25,41 @@ Manage tasks, stream live agent output, review diffs, and merge -- all through n
 | Agent terminal | Terminal | Right-click running task > Attach Terminal |
 | Diagnostic log | Output Channel | Command: Show Agent Output |
 
-## Quick Start
+## Install
 
-1. Install the extension from the Marketplace or Open VSX.
-2. The extension auto-connects to `localhost:8765` and auto-starts the server if needed.
-3. Open the Chat panel and type `@kagan` to start.
+### Visual Studio Marketplace
 
-> **Tip:** Install Kagan with `pip install kagan` or `uv tool install kagan`, then run `kagan serve` to start the API server.
+- Browser: <https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode>
+- CLI:
+
+  ```bash
+  code --install-extension kagan.kagan-vscode
+  ```
+
+### Open VSX
+
+- Browser: <https://open-vsx.org/extension/kagan/kagan-vscode>
+
+Use the Marketplace build for standard VS Code. Use Open VSX for VSCodium and other Open VSX-compatible editors.
+
+## Quick start
+
+1. Install Kagan locally:
+
+   ```bash
+   uv tool install kagan
+   ```
+
+2. Install the extension from the Marketplace or Open VSX.
+3. Open a repository in VS Code.
+4. Open the Chat panel and run `@kagan /status`.
+5. Open the **Kagan** icon in the Activity Bar to access the board.
+
+The extension connects to `http://localhost:8765` by default and auto-starts the local server when `kagan` is available on your `PATH`.
+
+> **Important:** You do not need a `.vscode/mcp.json` file just to use the Kagan extension. MCP setup is a separate integration path for generic MCP clients.
+
+Full docs: <https://docs.kagan.sh/guides/vscode-extension/>
 
 ## Settings
 
@@ -52,6 +80,8 @@ Manage tasks, stream live agent output, review diffs, and merge -- all through n
 
 ## Links
 
-- [Documentation](https://kagan.sh)
+- [Documentation](https://docs.kagan.sh/guides/vscode-extension/)
+- [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
+- [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
 - [GitHub](https://github.com/kagan-sh/kagan)
 - [Issues](https://github.com/kagan-sh/kagan/issues)

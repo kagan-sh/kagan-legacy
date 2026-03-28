@@ -27,6 +27,7 @@ class MessageActionsModal(ModalScreen[str | None]):
             with Vertical(id="message-actions-content"):
                 yield OptionList(
                     Option("Copy", id="copy"),
+                    Option("Edit & Resend", id="edit_resend"),
                     Option("Back", id="back"),
                     id="message-actions-options",
                 )
@@ -51,7 +52,7 @@ class MessageActionsModal(ModalScreen[str | None]):
         if highlighted is None:
             highlighted = 0
 
-        options = ["copy", "back"]
+        options = ["copy", "edit_resend", "back"]
         if highlighted < 0 or highlighted >= len(options):
             self.dismiss(None)
             return

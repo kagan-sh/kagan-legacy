@@ -53,8 +53,13 @@ class UserInputWidget(Horizontal):
 
     def action_open_actions(self) -> None:
         from kagan.tui.screens.message_actions_modal import MessageActionsModal
+        from kagan.tui.widgets.chat import ChatPanel
 
-        self.app.push_screen(MessageActionsModal(self._text))
+        def _handle_result(result: str | None) -> None:
+            if result == "edit_resend":
+                self.post_message(ChatPanel.EditResendRequested(text=self._text))
+
+        self.app.push_screen(MessageActionsModal(self._text), _handle_result)
 
 
 class OutputChunk(Markdown):

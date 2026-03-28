@@ -337,10 +337,17 @@ class SessionDashboardScreen(Screen[None]):
         sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
         if getattr(sender, "id", "") != "dashboard-chat-overlay":
             return
+        panel = self._chat_panel()
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_cancel_run(), exit_on_error=False)
+
+        async def _cancel_and_complete() -> None:
+            await self.action_cancel_run()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_cancel_and_complete(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
         panel = self._chat_panel()

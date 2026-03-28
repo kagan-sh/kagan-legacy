@@ -1664,10 +1664,17 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
 
     def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
+        panel = self.query_one(ChatPanel)
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_stop_agent(), exit_on_error=False)
+
+        async def _stop_and_complete() -> None:
+            await self.action_stop_agent()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_stop_and_complete(), exit_on_error=False)
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
         panel = self.query_one(ChatPanel)

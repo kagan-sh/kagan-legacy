@@ -27,7 +27,7 @@ const SHORTCUTS: ShortcutSection[] = [
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
       { keys: ['Cmd/Ctrl', 'I'], description: 'Toggle AI Panel' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Fullscreen AI Panel' },
-      { keys: ['Esc'], description: 'Stop / dismiss' },
+      { keys: ['Esc'], description: 'Stop agent + edit last message' },
     ],
   },
   {

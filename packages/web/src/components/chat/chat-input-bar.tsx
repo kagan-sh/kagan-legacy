@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type KeyboardEvent, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, type KeyboardEvent, useMemo } from 'react';
 import { Send, Plus, Paperclip, X } from 'lucide-react';
 import { useAtomValue } from 'jotai';
 import { isStreamingAtom } from '@/lib/atoms/chat';
@@ -37,11 +37,15 @@ export interface Attachment {
 interface ChatInputBarProps {
   onSend: (text: string, attachments?: Attachment[]) => void;
   onSlashCommand?: (command: string) => void;
-  onInterrupt?: () => void;
+  onInterrupt?: (opts?: { pendingText: string | null }) => void;
   /** Override the streaming-atom check. When true, send is disabled. */
   disableSend?: boolean;
   placeholder?: string;
   className?: string;
+  /** Pre-fill input text externally (e.g. after interrupt to edit last message). */
+  externalPrefill?: string;
+  /** Called after externalPrefill has been consumed. */
+  onPrefillConsumed?: () => void;
 }
 
 export function ChatInputBar({
@@ -51,6 +55,8 @@ export function ChatInputBar({
   disableSend,
   placeholder,
   className,
+  externalPrefill,
+  onPrefillConsumed,
 }: ChatInputBarProps) {
   const [text, setText] = useState('');
   const [showCommands, setShowCommands] = useState(false);
@@ -62,6 +68,14 @@ export function ChatInputBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isBusy = disableSend ?? isStreaming;
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !isBusy;
+
+  useEffect(() => {
+    if (externalPrefill != null) {
+      setText(externalPrefill);
+      onPrefillConsumed?.();
+      inputRef.current?.focus();
+    }
+  }, [externalPrefill, onPrefillConsumed]);
 
   const filteredCommands = useMemo(() => {
     if (!text.startsWith('/')) return [];
@@ -108,9 +122,10 @@ export function ChatInputBar({
     if (e.key === 'Escape') {
       e.preventDefault();
       if (isBusy) {
-        // Interrupt-first: stop propagation so Esc doesn't close the rail while busy
         e.stopPropagation();
-        onInterrupt?.();
+        const pending = text.trim();
+        onInterrupt?.({ pendingText: pending || null });
+        if (pending) setText('');
       }
       return;
     }
@@ -265,7 +280,6 @@ export function ChatInputBar({
               variant="outline"
               size="icon"
               className="shrink-0 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-              disabled={isBusy}
               aria-label="Add attachment"
             >
               <Plus className="size-4" />
@@ -292,9 +306,8 @@ export function ChatInputBar({
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder ?? 'Type a message or / for commands...'}
-          readOnly={isBusy}
           rows={1}
-          className={cn('min-h-9 flex-1 resize-none py-2', isBusy && 'cursor-not-allowed opacity-80')}
+          className="min-h-9 flex-1 resize-none py-2"
         />
         <Button
           size="icon"
@@ -312,7 +325,7 @@ export function ChatInputBar({
         <TypingIndicator />
         <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
           <kbd className=" border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-1 py-0.5 font-code text-[9px]">esc</kbd>
-          {' '}interrupt
+          {' '}{text.trim() ? 'stop + send' : 'stop + edit'}
         </span>
       </div>
     </div>

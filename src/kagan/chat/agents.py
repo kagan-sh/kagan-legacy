@@ -3,6 +3,8 @@
 from typing import TypedDict
 
 from kagan.core import (
+    AgentError,
+    get_backend_spec,
     list_available_backends,
     list_backend_specs,
     list_backends,
@@ -25,8 +27,17 @@ def list_registered_agent_backends() -> list[str]:
 def format_agent_backend_list(backends: list[str], *, current_backend: str | None) -> list[str]:
     lines = ["Available agent backends:"]
     for index, backend in enumerate(backends, start=1):
-        marker = " ◀ current" if backend == current_backend else ""
-        lines.append(f"  {index:>2}  {backend}{marker}")
+        try:
+            spec = get_backend_spec(backend)
+            label = spec.label()
+            suffixes = ["reference"] if spec.reference else []
+        except AgentError:
+            label = backend
+            suffixes = []
+        if backend == current_backend:
+            suffixes.append("current")
+        suffix = f" [{' · '.join(suffixes)}]" if suffixes else ""
+        lines.append(f"  {index:>2}  {label}{suffix}")
     lines.append("Type `/agents name` or `/agents number` to switch.")
     return lines
 

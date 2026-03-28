@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from kagan.cli.doctor import DoctorCheck
 from kagan.cli._bootstrap import make_client
+from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None

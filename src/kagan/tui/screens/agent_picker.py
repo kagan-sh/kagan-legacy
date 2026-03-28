@@ -62,11 +62,12 @@ class AgentPickerModal(ModalScreen[str | None]):
         option_list.clear_options()
 
         for agent in available:
+            spec = specs.get(agent)
             label = _format_agent_label(
-                agent,
-                current_agent=self._current_agent,
+                spec.label() if spec is not None else agent,
+                is_current=agent == self._current_agent,
                 available=True,
-                reference=specs.get(agent).reference if agent in specs else False,
+                reference=spec.reference if spec is not None else False,
             )
             option_list.add_option(Option(label, id=agent))
 
@@ -74,11 +75,12 @@ class AgentPickerModal(ModalScreen[str | None]):
             self._separator_index = len(available)
             option_list.add_option(Option("[dim]── Not installed ──[/dim]", disabled=True))
             for agent in unavailable:
+                spec = specs.get(agent)
                 label = _format_agent_label(
-                    agent,
-                    current_agent=self._current_agent,
+                    spec.label() if spec is not None else agent,
+                    is_current=agent == self._current_agent,
                     available=False,
-                    reference=specs.get(agent).reference if agent in specs else False,
+                    reference=spec.reference if spec is not None else False,
                 )
                 option_list.add_option(Option(label, id=agent))
 
@@ -126,21 +128,20 @@ class AgentPickerModal(ModalScreen[str | None]):
 
 
 def _format_agent_label(
-    agent: str,
+    label: str,
     *,
-    current_agent: str,
+    is_current: bool,
     available: bool,
     reference: bool,
 ) -> str:
     suffixes: list[str] = []
     if reference:
         suffixes.append("reference")
-    if agent == current_agent:
+    if is_current:
         suffixes.append("current")
     if not available:
         suffixes.append("unavailable")
 
-    label = agent
     if suffixes:
         label = f"{label} ({', '.join(suffixes)})"
     if not available:

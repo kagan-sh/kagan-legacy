@@ -16,6 +16,7 @@ from kagan.core import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
     PreflightCheckResult,
+    get_backend_spec,
     resolve_default_agent_backend,
 )
 from kagan.core.errors import KaganError
@@ -49,7 +50,7 @@ def _parse_zellij_version() -> tuple[int, ...] | None:
 
 
 def _default_agent_backend_name() -> str:
-    return os.environ.get("KAGAN_AGENT_BACKEND", "claude-code")
+    return os.environ.get("KAGAN_AGENT_BACKEND", resolve_default_agent_backend({}))
 
 
 async def _resolve_doctor_backend_name(client: object) -> str:
@@ -72,10 +73,8 @@ async def _resolve_doctor_backend_name(client: object) -> str:
 
 def _agent_executable(backend_name: str) -> str:
     try:
-        from kagan.core import get_backend
-
-        executable = get_backend(backend_name).get("executable")
-        if isinstance(executable, str) and executable:
+        executable = get_backend_spec(backend_name).executable
+        if executable:
             return executable
     except (ImportError, KaganError):
         pass
@@ -94,18 +93,11 @@ def _backend_verify_hint(backend_name: str) -> str:
 
 
 def _reference_backend_guidance(backend_name: str) -> str | None:
-    if backend_name == CLAUDE_CODE_BACKEND:
-        return (
-            "Install with `curl -fsSL https://claude.ai/install.sh | bash`. "
-            "If Claude Code is already installed, run `claude` and follow the login prompts."
-        )
-    if backend_name == CODEX_BACKEND:
-        return (
-            "Install with `npm install -g @openai/codex`. "
-            "If Codex is already installed, run `codex` to sign in with ChatGPT or set"
-            " `OPENAI_API_KEY`, then retry."
-        )
-    return None
+    try:
+        guidance = get_backend_spec(backend_name).guidance_hints()
+    except (ImportError, KaganError):
+        return None
+    return " ".join(guidance) if guidance else None
 
 
 _VERIFY_HINTS: dict[str, str | Callable[[], str]] = {

@@ -52,7 +52,7 @@ def _build_agent_backend_options() -> list[tuple[str, str]]:
     specs = list_backend_specs()
     options: list[tuple[str, str]] = []
     for name, spec in specs.items():
-        label = name
+        label = spec.label()
         suffix: list[str] = []
         if spec.reference:
             suffix.append("reference")

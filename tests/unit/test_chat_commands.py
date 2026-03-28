@@ -14,8 +14,8 @@ from kagan.chat import (
     save_chat_session,
     set_last_session_id,
 )
-from kagan.core import AgentError, BackendSpec
 from kagan.chat.sessions import _clean_generated_title, _format_relative_time
+from kagan.core import AgentError, BackendSpec
 
 pytestmark = [pytest.mark.unit]
 
@@ -32,11 +32,12 @@ def test_format_session_payload_includes_session_descriptor_and_runtime() -> Non
 
 def test_format_agent_backend_list_marks_current_backend() -> None:
     lines = format_agent_backend_list(
-        ["claude-code", "opencode"],
-        current_backend="opencode",
+        ["claude-code", "codex", "opencode"],
+        current_backend="codex",
     )
     assert lines[0] == "Available agent backends:"
-    assert any("opencode ◀ current" in line for line in lines)
+    assert any("Claude Code (claude-code) [reference]" in line for line in lines)
+    assert any("Codex CLI (codex) [reference · current]" in line for line in lines)
 
 
 def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:

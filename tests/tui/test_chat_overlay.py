@@ -344,7 +344,7 @@ async def test_board_orchestrator_message_does_not_fall_back_to_task_chat(
     await driver.teardown()
 
 
-async def test_chat_input_is_disabled_while_orchestrator_reply_is_running(
+async def test_chat_input_stays_writable_during_orchestrator_reply(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -384,7 +384,8 @@ async def test_chat_input_is_disabled_while_orchestrator_reply_is_running(
         await pilot.press("enter")
 
         await asyncio.wait_for(reply_started.wait(), timeout=1)
-        assert input_widget.disabled
+        # Input stays writable during streaming for type-ahead (queued messages)
+        assert not input_widget.disabled
 
         release_reply.set()
         await pilot.pause()

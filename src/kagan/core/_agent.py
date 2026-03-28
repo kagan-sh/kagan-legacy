@@ -87,6 +87,7 @@ class BackendSpec:
 
     name: str
     executable: str
+    display_name: str | None = None
     prompt_flag: str | None = None
     workdir_flag: str | None = None
     env_vars: Mapping[str, str] = field(default_factory=dict)
@@ -96,6 +97,8 @@ class BackendSpec:
     capabilities: frozenset[BackendCapability] = field(default_factory=frozenset)
     aliases: tuple[str, ...] = ()
     reference: bool = False
+    install_hint: str | None = None
+    auth_hint: str | None = None
 
     def to_legacy_config(self) -> AgentBackendConfig:
         """Project the typed spec into the legacy mapping contract."""
@@ -114,6 +117,18 @@ class BackendSpec:
         """Return whether the backend declares *capability*."""
         return capability in self.capabilities
 
+    def label(self) -> str:
+        """Return a human-friendly backend label."""
+        if not self.display_name or self.display_name == self.name:
+            return self.name
+        return f"{self.display_name} ({self.name})"
+
+    def guidance_hints(self) -> tuple[str, ...]:
+        """Return explicit setup hints for this backend."""
+        return tuple(
+            hint for hint in (self.install_hint, self.auth_hint) if isinstance(hint, str) and hint
+        )
+
 
 CLAUDE_CODE_BACKEND: Final = "claude-code"
 CODEX_BACKEND: Final = "codex"
@@ -131,6 +146,7 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
     CLAUDE_CODE_BACKEND: BackendSpec(
         name=CLAUDE_CODE_BACKEND,
         executable="claude",
+        display_name="Claude Code",
         prompt_flag="-p",
         env_vars={"ANTHROPIC_MODEL": ""},
         supports_acp=True,
@@ -145,10 +161,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
         ),
         aliases=("claude",),
         reference=True,
+        install_hint="Install with `curl -fsSL https://claude.ai/install.sh | bash`.",
+        auth_hint="If Claude Code is already installed, run `claude` and follow the login prompts.",
     ),
     CODEX_BACKEND: BackendSpec(
         name=CODEX_BACKEND,
         executable="codex",
+        display_name="Codex CLI",
         prompt_flag="-p",
         supports_acp=True,
         acp_command=("npx", "-y", "@zed-industries/codex-acp"),
@@ -161,6 +180,11 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             }
         ),
         reference=True,
+        install_hint="Install with `npm install -g @openai/codex`.",
+        auth_hint=(
+            "If Codex is already installed, run `codex` to sign in with ChatGPT or set"
+            " `OPENAI_API_KEY`, then retry."
+        ),
     ),
     GEMINI_CLI_BACKEND: BackendSpec(
         name=GEMINI_CLI_BACKEND,

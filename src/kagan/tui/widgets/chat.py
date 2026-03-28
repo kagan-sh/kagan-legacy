@@ -759,6 +759,34 @@ class ChatPanel(Vertical):
             return
         self._request_close()
 
+    def _handle_interrupt_completed(self) -> None:
+        state = self._current_state()
+        input_widget = self._input_widget()
+        if self._pending_after_interrupt is not None:
+            queued = self._pending_after_interrupt
+            self._pending_after_interrupt = None
+            input_widget.value = queued
+            state.draft = queued
+            self.call_later(self._submit_current_input)
+        else:
+            last = state.last_sent_text
+            if last:
+                self._history_programmatic_update = True
+                input_widget.value = last
+                state.draft = last
+        input_widget.focus()
+        self._refresh_status()
+
+    def on_chat_panel_interrupt_completed(self, _: "ChatPanel.InterruptCompleted") -> None:
+        self._handle_interrupt_completed()
+
+    def on_chat_panel_edit_resend_requested(self, event: "ChatPanel.EditResendRequested") -> None:
+        input_widget = self._input_widget()
+        self._history_programmatic_update = True
+        input_widget.value = event.text
+        self._current_state().draft = event.text
+        input_widget.focus()
+
     def action_open_session_picker(self, initial_query: str | None = None) -> None:
         self._request_session_picker(initial_query or "")
 
@@ -797,6 +825,7 @@ class ChatPanel(Vertical):
                 return
 
         self._append_prompt_history(text)
+        self._current_state().last_sent_text = text
 
         handled = await self._handle_slash_command(text)
         if not handled:
@@ -1326,23 +1355,27 @@ class ChatPanel(Vertical):
             status_bar.update_hint(self._status_hint_override)
             return
 
-        input_disabled = self._input_widget().disabled
         split_key = self._overlay_split_key
         fullscreen_key = self._overlay_fullscreen_key
         close_key = self._overlay_close_key
-        if input_disabled:
-            right = "Read-only timeline"
-        elif bool(self._slash_matches or self._mention_matches):
+        is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_active:
+            input_widget = self._input_widget()
+            has_pending = bool(normalize_chat_input(input_widget.value))
+            esc_hint = "Esc stop+send" if has_pending else "Esc stop+edit"
+        else:
+            esc_hint = "Esc close"
+        if bool(self._slash_matches or self._mention_matches):
             right = (
-                "Enter send · Tab complete · Ctrl+J timeline · "
+                f"Enter send · Tab complete · Ctrl+J timeline · "
                 f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
-                f"Ctrl+C clear · Esc interrupt · {close_key} close"
+                f"Ctrl+C clear · {esc_hint} · {close_key} close"
             )
         else:
             right = (
-                "Enter send · Up/Down history · Ctrl+J timeline · "
+                f"Enter send · Up/Down history · Ctrl+J timeline · "
                 f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
-                f"Ctrl+C clear · Esc interrupt · {close_key} close"
+                f"Ctrl+C clear · {esc_hint} · {close_key} close"
             )
         status_bar = self._status_bar()
         if status_bar is None:

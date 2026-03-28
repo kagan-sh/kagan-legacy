@@ -290,8 +290,10 @@ class WorkspaceScreen(Screen[None]):
         self.app.push_screen("agent-picker-modal", callback=_on_agent_selected)
 
     def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
+        panel = self.query_one("#workspace-chat", ChatPanel)
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+        panel.post_message(ChatPanel.InterruptCompleted())
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
         self.action_new_session()

@@ -639,10 +639,17 @@ class TaskScreen(Screen[None]):
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return
+        panel = self._overlay_panel()
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_cancel_run(), exit_on_error=False)
+
+        async def _cancel_and_complete() -> None:
+            await self.action_cancel_run()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_cancel_and_complete(), exit_on_error=False)
 
     async def _send_orchestrator_message(self, text: str) -> None:
         panel = self._overlay_panel()

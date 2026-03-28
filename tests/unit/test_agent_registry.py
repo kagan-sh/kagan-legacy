@@ -50,6 +50,14 @@ def test_backend_specs_expose_reference_backends() -> None:
 
     assert claude.reference is True
     assert codex.reference is True
+    assert claude.display_name == "Claude Code"
+    assert codex.display_name == "Codex CLI"
+    assert claude.install_hint is not None
+    assert codex.install_hint is not None
+    assert claude.auth_hint is not None
+    assert codex.auth_hint is not None
+    assert "claude-code" in claude.label().lower()
+    assert "codex" in codex.label().lower()
     assert BackendCapability.ACP_STREAMING in claude.capabilities
     assert BackendCapability.ACP_STREAMING in codex.capabilities
     assert BackendCapability.TASK_SCOPED_MCP in claude.capabilities

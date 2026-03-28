@@ -164,7 +164,7 @@ def _surface_chooser_available() -> bool:
 
 
 def _normalize_startup_surface(value: str | None) -> str:
-    if value in _RUNTIME_SURFACES:
+    if isinstance(value, str) and value in _RUNTIME_SURFACES:
         return value
     if value == "ask":
         return value

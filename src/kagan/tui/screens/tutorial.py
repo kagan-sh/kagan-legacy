@@ -21,11 +21,13 @@ class TutorialOverlay(Widget):
         TutorialStep("Move", "Use h j k l or arrows to move between cards."),
         TutorialStep(
             "Inspect",
-            "Press Enter to inspect the selected task. Press Enter again to open the full task screen.",
+            "Press Enter to inspect the selected task. "
+            "Press Enter again to open the full task screen.",
         ),
         TutorialStep(
             "Create",
-            "Press n to create a task. Start (s) to run it in the background or attach (a) to open it in your editor or terminal.",
+            "Press n to create a task. Start (s) to run it in the background "
+            "or attach (a) to open it in your editor or terminal.",
         ),
         TutorialStep("Help", "Press ? or F1 for full help."),
     )

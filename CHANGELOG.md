@@ -13,6 +13,35 @@
 
 
 
+## v0.13.1-beta.3 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Create Open VSX namespace before publish
+  ([`3a5fc13`](https://github.com/kagan-sh/kagan/commit/3a5fc13d4abdf7508f5958b7885f91381885ef68))
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **vscode**: Bump to 0.2.0 [skip ci]
+  ([`5f3fe85`](https://github.com/kagan-sh/kagan/commit/5f3fe85d30269180f33f07e7df56ef4a26631464))
+
+
+
+
+
 ## v0.13.1-beta.2 (2026-03-28)
 
 

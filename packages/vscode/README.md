@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/kagan-sh/kagan/main/packages/vscode/media/kagan-icon.png" width="128" alt="Kagan" />
-  <h1>Kagan for VS Code</h1>
+  <a href="https://github.com/kagan-sh/kagan"><img src="https://raw.githubusercontent.com/kagan-sh/kagan/main/.github/assets/hero-dark.svg" width="60%" alt="Kagan" /></a>
   <p>AI-powered Kanban board for orchestrating coding agents on your codebase</p>
 
   <a href="https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/kagan.kagan-vscode?label=Marketplace&color=0a0a0a&style=flat" alt="VS Marketplace" /></a>

@@ -16,6 +16,7 @@ from kagan.core.models import Task
 CHAT_SESSIONS_SETTING_KEY = "chat_sessions_v1"
 CHAT_SCOPE_PREFIX = "chat_scope_state_"
 CHAT_LAST_SESSION_PREFIX = "chat_last_session_"
+CHAT_LAST_ACTIVE_SESSION_KEY = "chat_last_active_session"
 MAX_STORED_SESSIONS = 30
 MAX_STORED_MESSAGES = 300
 MAX_STORED_HISTORY = 120
@@ -314,7 +315,12 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
     sessions = await list_chat_sessions(client)
     merged = [item for item in sessions if item.get("id") != normalized["id"]]
     merged.append(normalized)
-    await client.settings.set({CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(merged)})
+    await client.settings.set(
+        {
+            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(merged),
+            CHAT_LAST_ACTIVE_SESSION_KEY: normalized["id"],
+        }
+    )
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:
@@ -325,24 +331,44 @@ async def delete_chat_session(client: Any, session_id: str) -> bool:
     filtered = [s for s in sessions if s.get("id") != normalized_id]
     if len(filtered) == len(sessions):
         return False
-    await client.settings.set({CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(filtered)})
+    await client.settings.set(
+        {
+            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(filtered),
+            CHAT_LAST_ACTIVE_SESSION_KEY: str(filtered[0].get("id") or "") if filtered else "",
+        }
+    )
     return True
 
 
-async def get_last_session_id(client: Any, *, scope: str) -> str | None:
+async def get_last_active_session_id(client: Any) -> str | None:
     settings = await client.settings.get()
-    value = settings.get(f"{CHAT_LAST_SESSION_PREFIX}{scope}")
+    value = settings.get(CHAT_LAST_ACTIVE_SESSION_KEY)
     if value is None:
         return None
     normalized = value.strip()
     return normalized or None
 
 
+async def get_last_session_id(client: Any, *, scope: str) -> str | None:
+    settings = await client.settings.get()
+    value = settings.get(f"{CHAT_LAST_SESSION_PREFIX}{scope}")
+    if value is not None:
+        normalized = value.strip()
+        if normalized:
+            return normalized
+    return await get_last_active_session_id(client)
+
+
 async def set_last_session_id(client: Any, *, scope: str, session_id: str) -> None:
     normalized = session_id.strip()
     if not normalized:
         return
-    await client.settings.set({f"{CHAT_LAST_SESSION_PREFIX}{scope}": normalized})
+    await client.settings.set(
+        {
+            f"{CHAT_LAST_SESSION_PREFIX}{scope}": normalized,
+            CHAT_LAST_ACTIVE_SESSION_KEY: normalized,
+        }
+    )
 
 
 async def get_scope_state(client: Any, *, scope: str) -> dict[str, Any]:

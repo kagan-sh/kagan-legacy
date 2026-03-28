@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { KaganClient } from "./api/client.js";
 import { SSEStream } from "./api/sse.js";
 import { registerReviewCommands } from "./commands/review.js";
+import { registerSettingsCommands } from "./commands/settings.js";
 import { registerTaskCommands } from "./commands/tasks.js";
 import { BoardTreeProvider } from "./providers/board.tree.js";
 import { AgentOutputProvider } from "./providers/events.output.js";
@@ -83,6 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalProvider,
   );
   registerReviewCommands(context, client, boardProvider, reviewProvider);
+  registerSettingsCommands(context, client);
   registerChatParticipant(context, client, sse);
 
   const messageSubscription = sse.onMessage((message: SSEMessage) => {

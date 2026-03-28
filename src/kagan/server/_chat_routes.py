@@ -277,10 +277,11 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             body = {}
         agent_backend = cast("str | None", body.get("agent_backend"))
         label = cast("str | None", body.get("label"))
+        source = str(body.get("source") or "web").strip() or "web"
         project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
         session = await create_chat_session(
             ctx.client,
-            source="web",
+            source=source,
             label=label,
             agent_backend=agent_backend,
             project_id=project_id,

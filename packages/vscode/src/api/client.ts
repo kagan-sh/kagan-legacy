@@ -202,16 +202,25 @@ export class KaganClient {
     return this.get<SettingsResponse>("/api/settings");
   }
 
+  updateSettings(input: SettingsResponse): Promise<SettingsResponse> {
+    return this.post<SettingsResponse>("/api/settings", input);
+  }
+
   // ── Orchestrator chat ──────────────────────────────────────────────────
 
   getChatSessions(): Promise<WireChatSession[]> {
     return this.get<WireChatSession[]>("/api/chat/sessions");
   }
 
-  createChatSession(label?: string, agentBackend?: string): Promise<WireChatSession> {
+  createChatSession(
+    label?: string,
+    agentBackend?: string,
+    source: string = "vscode",
+  ): Promise<WireChatSession> {
     return this.post<WireChatSession>("/api/chat/sessions", {
       label: label ?? null,
       agent_backend: agentBackend ?? null,
+      source,
     });
   }
 

@@ -17,6 +17,7 @@ from kagan.core._db_helpers import (
     _delete_task_children,
     _utc_now,
 )
+from kagan.core._event_bus import BusEvent, BusMessage
 from kagan.core._events import BoardEvent, Events
 from kagan.core._sessions import DetachResult, Sessions
 from kagan.core._transitions import validate_move
@@ -45,7 +46,11 @@ class Tasks:
         self._active_project_id: str | None = None
         self._client = client
         self._db_path = db_path
-        self.events = Events(engine, signals)
+        self.events = Events(
+            engine,
+            signals,
+            event_bus=client.event_bus if client is not None else None,
+        )
         self.sessions = Sessions(
             engine,
             self.events,
@@ -165,6 +170,10 @@ class Tasks:
                 status=created.status.value,
             )
         )
+        if self._client is not None:
+            await self._client.event_bus.publish(
+                BusMessage(BusEvent.TASK_CREATED, entity_id=created.id)
+            )
         return created
 
     def _clear_stale_active_project(self, project_id: str) -> None:
@@ -254,6 +263,10 @@ class Tasks:
                 status=updated.status.value,
             )
         )
+        if self._client is not None:
+            await self._client.event_bus.publish(
+                BusMessage(BusEvent.TASK_UPDATED, entity_id=updated.id)
+            )
         return updated
 
     async def set_status(self, task_id: str, status: TaskStatus) -> Task:
@@ -265,6 +278,14 @@ class Tasks:
             SessionEventType.TASK_STATUS_CHANGED,
             {"from": task.status.value, "to": status.value},
         )
+        if self._client is not None:
+            await self._client.event_bus.publish(
+                BusMessage(
+                    BusEvent.TASK_UPDATED,
+                    entity_id=task_id,
+                    payload={"from": task.status.value, "to": status.value},
+                )
+            )
         return moved
 
     def _set_status(self, task_id: str, status: TaskStatus) -> Task:
@@ -320,6 +341,7 @@ class Tasks:
                 s.delete(task)
 
         await _db_async(self._engine, op, commit=True)
+        await self._client.event_bus.publish(BusMessage(BusEvent.TASK_DELETED, entity_id=task_id))
 
     async def search(self, query: str) -> builtins.list[Task]:
         project_id = self._require_project()

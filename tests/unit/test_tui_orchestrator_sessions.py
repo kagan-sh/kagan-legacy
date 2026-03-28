@@ -79,3 +79,25 @@ async def test_store_persists_active_history_and_backend() -> None:
     assert persisted is not None
     assert persisted.get("agent_backend") == "claude-code"
     assert persisted.get("orchestrator_history") == [["user", "plan"], ["assistant", "execute"]]
+
+
+@pytest.mark.asyncio
+async def test_store_falls_back_to_global_last_active_session() -> None:
+    client = _FakeClient()
+    await save_chat_session(
+        cast("Any", client),
+        {
+            "id": "webabcd1",
+            "label": "Web handoff",
+            "source": "web",
+            "agent_backend": "codex",
+            "orchestrator_history": [["user", "continue"], ["assistant", "ready"]],
+            "messages_rendered": ["You: continue", "Agent: ready"],
+        },
+    )
+
+    store = TuiOrchestratorSessionStore(cast("Any", client))
+    await store.ensure_loaded()
+
+    assert store.active_key() == "orchestrator:webabcd1"
+    assert store.active_history() == [("user", "continue"), ("assistant", "ready")]

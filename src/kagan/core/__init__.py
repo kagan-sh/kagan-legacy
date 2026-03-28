@@ -27,6 +27,7 @@ from kagan.core._agent import (
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
 from kagan.core._db import default_db_path
+from kagan.core._event_bus import BusEvent, BusMessage, EventBus
 from kagan.core._launchers import resolve_launcher
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._prompts import (
@@ -109,9 +110,12 @@ __all__ = [
     "AttackVector",
     "AuditEntry",
     "BranchRefStrategy",
+    "BusEvent",
+    "BusMessage",
     "CheckStatus",
     "ConfigurationError",
     "DBWatcher",
+    "EventBus",
     "InjectionDetector",
     "InvalidTransitionError",
     "KaganCore",

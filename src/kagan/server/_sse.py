@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from starlette.responses import StreamingResponse
 
+from kagan.core._event_bus import BusEvent, BusMessage
 from kagan.core.errors import KaganError
 from kagan.mcp.server import get_server_context
 from kagan.server.responses import EventResponse
@@ -23,7 +24,9 @@ if TYPE_CHECKING:
     from kagan.core.models import SessionEvent
 
 _SSE_KEEPALIVE_SECONDS = 25.0
-_DB_POLL_SECONDS = 2.0
+# Safety-net fallback interval — the event bus delivers most mutations
+# instantly; this poll only catches cross-process writes the bus cannot see.
+_DB_POLL_SECONDS = 10.0
 
 
 def _event_to_wire(event: SessionEvent) -> dict[str, Any]:
@@ -121,11 +124,43 @@ async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
         except (ConnectionError, RuntimeError, OSError, KaganError):
             logger.debug("SSE board event stream failed", exc_info=True)
 
+    async def _forward_bus_events() -> None:
+        bus_queue = await ctx.client.event_bus.subscribe()
+        try:
+            while True:
+                msg: BusMessage = await bus_queue.get()
+                if msg.event in (
+                    BusEvent.TASK_CREATED,
+                    BusEvent.TASK_UPDATED,
+                    BusEvent.TASK_DELETED,
+                ):
+                    wire_type = {
+                        BusEvent.TASK_CREATED: "TASK_UPDATED",
+                        BusEvent.TASK_UPDATED: "TASK_UPDATED",
+                        BusEvent.TASK_DELETED: "TASK_DELETED",
+                    }[msg.event]
+                    data = {"type": wire_type, "task_id": msg.entity_id}
+                    with contextlib.suppress(asyncio.QueueFull):
+                        queue.put_nowait(data)
+                elif msg.event == BusEvent.SETTINGS_CHANGED:
+                    data = {"type": "SETTINGS_CHANGED", "keys": msg.payload.get("keys", [])}
+                    with contextlib.suppress(asyncio.QueueFull):
+                        queue.put_nowait(data)
+        except asyncio.CancelledError:
+            raise
+        except (ConnectionError, RuntimeError, OSError, KaganError):
+            logger.debug("SSE bus event forwarder failed", exc_info=True)
+        finally:
+            await ctx.client.event_bus.unsubscribe(bus_queue)
+
+    # Safety-net fallback: polls the DB for cross-process mutations
+    # that the in-memory event bus cannot observe.
     async def _poll_db_for_external_changes() -> None:
         await _poll_db_changes(ctx.client.tasks, queue)
 
     session_task = asyncio.create_task(_forward_session_events())
     board_task = asyncio.create_task(_forward_board_events())
+    bus_task = asyncio.create_task(_forward_bus_events())
     poll_task = asyncio.create_task(_poll_db_for_external_changes())
 
     try:
@@ -141,8 +176,9 @@ async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
     finally:
         session_task.cancel()
         board_task.cancel()
+        bus_task.cancel()
         poll_task.cancel()
-        await asyncio.gather(session_task, board_task, poll_task, return_exceptions=True)
+        await asyncio.gather(session_task, board_task, bus_task, poll_task, return_exceptions=True)
 
 
 def sse_response(generator: AsyncIterator[str]) -> StreamingResponse:

@@ -194,9 +194,11 @@ export interface SettingsResponse {
 export interface WireChatSession {
   id: string;
   label: string | null;
-  agent_backend: string;
+  agent_backend: string | null;
   source: string;
-  created_at: string;
+  updated_at?: string;
+  message_count?: number;
+  project_id?: string | null;
 }
 
 export interface ChatStreamChunk {

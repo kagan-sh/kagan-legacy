@@ -176,6 +176,21 @@
         "title": "Open in Chat",
         "category": "Kagan",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "kagan.settings.agentBackend",
+        "title": "Set Default Agent Backend",
+        "category": "Kagan Settings"
+      },
+      {
+        "command": "kagan.settings.reviewStrictness",
+        "title": "Set Review Strictness",
+        "category": "Kagan Settings"
+      },
+      {
+        "command": "kagan.settings.planningDepth",
+        "title": "Set Planning Depth",
+        "category": "Kagan Settings"
       }
     ],
     "menus": {
@@ -279,6 +294,18 @@
         },
         {
           "command": "kagan.chat.open",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.settings.agentBackend",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.settings.reviewStrictness",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.settings.planningDepth",
           "when": "kagan.connected"
         }
       ]

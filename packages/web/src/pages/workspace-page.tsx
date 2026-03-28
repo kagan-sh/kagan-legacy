@@ -17,7 +17,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
 function sortOrchestratorSessions(sessions: WireChatSessionSummary[]): WireChatSessionSummary[] {
   return [...sessions]
-    .filter((session) => ['orchestrator', 'web'].includes(session.source.toLowerCase()))
+    .filter((session) => session.source.toLowerCase() !== 'task-session')
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 }
 
@@ -45,14 +45,23 @@ export function Component() {
     setLoading(true);
     setLoadError(null);
     try {
-      const loaded = await apiClient.getChatSessions();
-      setSessions(sortOrchestratorSessions(loaded));
+      const [loaded, settings] = await Promise.all([
+        apiClient.getChatSessions(),
+        apiClient.getSettings().catch(() => ({} as Record<string, string>)),
+      ]);
+      const sorted = sortOrchestratorSessions(loaded);
+      setSessions(sorted);
+
+      const globalActiveSessionId = settings.chat_last_active_session?.trim();
+      if (globalActiveSessionId && sorted.some((session) => session.id === globalActiveSessionId)) {
+        setSelectedSessionId((current) => current ?? globalActiveSessionId);
+      }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Failed to load conversations');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setSelectedSessionId]);
 
   const createSession = useCallback(async () => {
     setCreating(true);

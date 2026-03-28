@@ -1,16 +1,41 @@
 {
   "name": "kagan-vscode",
   "displayName": "Kagan",
-  "description": "AI-powered Kanban board for orchestrating coding agents",
+  "description": "AI-powered Kanban board for orchestrating coding agents — manage tasks, stream agent output, review diffs, and merge from VS Code",
   "version": "0.1.0",
   "publisher": "kagan",
   "license": "MIT",
+  "icon": "media/kagan-icon.png",
+  "homepage": "https://kagan.sh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kagan-sh/kagan",
+    "directory": "packages/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/kagan-sh/kagan/issues"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "SCM Providers",
+    "Chat"
   ],
+  "keywords": [
+    "kanban",
+    "ai",
+    "agents",
+    "claude",
+    "orchestrator",
+    "code-review",
+    "task-management"
+  ],
+  "galleryBanner": {
+    "color": "#0a0a0a",
+    "theme": "dark"
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
@@ -275,7 +300,10 @@
         },
         "kagan.protocol": {
           "type": "string",
-          "enum": ["http", "https"],
+          "enum": [
+            "http",
+            "https"
+          ],
           "default": "http",
           "description": "Protocol for connecting to Kagan server (http or https)"
         },
@@ -298,7 +326,7 @@
         "kagan.serverCommand": {
           "type": "string",
           "default": "kagan",
-          "description": "Command used to start the local Kagan server automatically; the extension runs `<command> web --no-open`"
+          "description": "Command used to start the local Kagan server automatically; the extension runs `<command> serve`"
         },
         "kagan.autoWatchOnAttach": {
           "type": "boolean",
@@ -309,6 +337,7 @@
     }
   },
   "scripts": {
+    "build": "pnpm run check-types && node esbuild.js --production",
     "compile": "pnpm run check-types && node esbuild.js",
     "check-types": "tsc --noEmit",
     "check-types:test": "tsc --noEmit -p tsconfig.test.json",
@@ -340,6 +369,7 @@
     "esbuild": "^0.25.0",
     "mocha": "^11.7.5",
     "npm-run-all": "^4.1.5",
+    "ovsx": "^0.10.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1",

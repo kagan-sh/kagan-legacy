@@ -10,8 +10,8 @@ These tests verify:
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -310,7 +310,7 @@ class TestCalculateRepoAgeDays:
 
     def test_calculates_age_from_iso_timestamp(self) -> None:
         """Correctly calculates age from ISO 8601 timestamp."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=100)).isoformat().replace("+00:00", "Z")
         repo_meta = {"created_at": created_at}
         age = _calculate_repo_age_days(repo_meta)
@@ -339,7 +339,7 @@ class TestCalculateTrustAssessment:
 
     def test_high_trust_high_stars_old_repo_clean_audit(self) -> None:
         """High stars + old repo + clean audit = high trust (low_risk)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 2000,
@@ -357,7 +357,7 @@ class TestCalculateTrustAssessment:
 
     def test_low_trust_low_stars_new_repo_with_findings(self) -> None:
         """Low stars + new repo + high findings = low trust (high_risk)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=10)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 5,
@@ -375,7 +375,7 @@ class TestCalculateTrustAssessment:
 
     def test_high_risk_audit_overrides_other_factors(self) -> None:
         """High audit risk always results in high_risk tier."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 5000,
@@ -390,7 +390,7 @@ class TestCalculateTrustAssessment:
 
     def test_archived_repo_penalty(self) -> None:
         """Archived repos get trust score penalty."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 1000,
@@ -414,7 +414,7 @@ class TestCalculateTrustAssessment:
             (550, 0.8),  # 550 stars = 0.7 + 450/900*0.2 ≈ 0.8
             (1000, 0.9),  # 1000+ stars = 0.9
         ]
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
 
         for stars, expected_star_score in test_cases:
@@ -430,7 +430,7 @@ class TestCalculateTrustAssessment:
 
     def test_age_score_brackets(self) -> None:
         """Age score follows correct brackets."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         test_cases = [
             (0, 0.3),  # 0 days = 0.3
             (15, 0.4),  # 15 days = 0.3 + 0.5*0.2 = 0.4
@@ -454,7 +454,7 @@ class TestCalculateTrustAssessment:
 
     def test_audit_score_values(self) -> None:
         """Audit score is correct for each risk level."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 1000,
@@ -474,7 +474,7 @@ class TestCalculateTrustAssessment:
 
     def test_medium_risk_tier(self) -> None:
         """Medium trust tier for middle scores without high audit risk."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = (now - timedelta(days=60)).isoformat().replace("+00:00", "Z")
         repo_meta = {
             "stargazers_count": 10,  # Low star score
@@ -619,7 +619,7 @@ class TestPersonaPresetOpsAudit:
     @pytest.fixture
     def sample_repo_meta(self) -> dict:
         """Sample GitHub repo metadata."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return {
             "html_url": "https://github.com/owner/repo",
             "stargazers_count": 150,
@@ -760,7 +760,7 @@ class TestPersonaPresetOpsPreview:
     @pytest.fixture
     def sample_repo_meta(self) -> dict:
         """Sample GitHub repo metadata."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return {
             "html_url": "https://github.com/owner/repo",
             "stargazers_count": 150,

@@ -86,6 +86,7 @@ class OutputFlushManager:
             remaining = _STREAM_FLUSH_INTERVAL_SECONDS - (now - self._last_flush)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
                 self._flush_handle = loop.call_later(remaining, self._do_deferred_flush)
             except RuntimeError:

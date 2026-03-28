@@ -5,15 +5,13 @@ to prevent path traversal, shell injection, and directory escaping attacks.
 """
 
 import re
-import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from kagan.core._worktrees import Worktrees
 from kagan.core.errors import ValidationError, WorktreeError
-from kagan.core._worktrees import _worktree_base_dir, Worktrees
-
 
 # Sample valid UUIDs for testing
 VALID_UUIDS = [

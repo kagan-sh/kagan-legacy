@@ -40,6 +40,8 @@ jobs:
     if: ${{ !inputs.docs_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      released: ${{ steps.release.outputs.released }}
     permissions:
       # IMPORTANT: mandatory for trusted publishing and GitHub releases
       id-token: write
@@ -117,6 +119,15 @@ jobs:
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
+
+  publish-vscode:
+    name: Publish VS Code Extension
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    uses: ./.github/workflows/publish-vscode.yaml
+    secrets:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OPEN_VSIX_TOKEN: ${{ secrets.OPEN_VSIX_TOKEN }}
 
   publish-docs:
     name: Publish Documentation

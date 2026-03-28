@@ -51,13 +51,13 @@
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.0.0",
-    "jsdom": "^29.0.1",
-    "shadcn": "^4.1.0",
+    "jsdom": "^28.1.0",
+    "shadcn": "^4.1.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^8.0.3",
     "vite-plugin-pwa": "^1.0.0",
-    "vitest": "^4.1.1",
+    "vitest": "^4.1.2",
     "vitest-axe": "^0.1.0"
   }
 }

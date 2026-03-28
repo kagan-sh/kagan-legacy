@@ -13,6 +13,7 @@ from kagan.core import (
     TaskStatus,
     detect_dotfile_overrides,
     parse_priority,
+    resolve_default_agent_backend,
     resolve_launcher,
 )
 from kagan.core._utils import utc_iso
@@ -249,7 +250,7 @@ def register_routes(mcp: FastMCP) -> None:
         agent_backend = body.agent_backend
         settings = await ctx.client.settings.get()
         if not agent_backend:
-            agent_backend = settings.get("default_agent_backend", "claude-code")
+            agent_backend = resolve_default_agent_backend(settings)
         launcher = None
         ide = None
         if body.launcher and body.launcher.strip():
@@ -731,8 +732,6 @@ def register_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, FollowUpRequest)
-
-        from kagan.core import resolve_default_agent_backend
 
         # Best-effort cancel current run
         try:

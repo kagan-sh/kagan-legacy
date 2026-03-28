@@ -682,9 +682,8 @@ async def run_chat_async(
     session_id: str | None = None,
     agent: str | None = None,
 ) -> str | None:
-    from kagan.chat.agents import resolve_default_agent_backend
     from kagan.chat.controller import ChatController
-    from kagan.core import KaganCore
+    from kagan.core import KaganCore, resolve_default_agent_backend
 
     async with KaganCore() as client:
         backend = agent

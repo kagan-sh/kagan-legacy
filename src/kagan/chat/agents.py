@@ -2,7 +2,14 @@
 
 from typing import TypedDict
 
-from kagan.core import list_available_backends, list_backend_specs, list_backends
+from kagan.core import (
+    list_available_backends,
+    list_backend_specs,
+    list_backends,
+)
+from kagan.core import (
+    resolve_default_agent_backend as _resolve_default_agent_backend,
+)
 
 
 class AgentBackendAvailability(TypedDict):
@@ -83,4 +90,4 @@ def list_backends_with_availability() -> list[AgentBackendAvailability]:
 
 
 def resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or "claude-code"
+    return _resolve_default_agent_backend(settings)

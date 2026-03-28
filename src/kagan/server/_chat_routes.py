@@ -349,7 +349,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             for backend in list_backends_with_availability()
         ]
         settings = await ctx.client.settings.get()
-        default = settings.get("default_agent_backend") or "claude-code"
+        default = resolve_default_agent_backend(settings)
         return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
 
 

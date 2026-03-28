@@ -7,18 +7,28 @@ exercise ONE backend at a time; these tests validate ALL entries at once.
 
 import pytest
 
-from kagan.core._agent import AGENT_BACKENDS, AgentError, get_backend
+from kagan.core._agent import (
+    AGENT_BACKENDS,
+    REFERENCE_BACKENDS,
+    AgentError,
+    BackendCapability,
+    get_backend,
+    get_backend_spec,
+    list_backend_specs,
+)
 
 pytestmark = [pytest.mark.unit]
 
 
 def test_each_backend_has_required_keys_and_nonempty_executable() -> None:
-    required_keys = {"executable", "prompt_flag", "workdir_flag"}
+    required_keys = {"capabilities", "executable", "prompt_flag", "workdir_flag"}
     for name, entry in AGENT_BACKENDS.items():
         missing = required_keys - set(entry)
         assert not missing, f"Backend {name!r} missing keys: {missing}"
         assert isinstance(entry["executable"], str), f"{name}: executable must be str"
         assert entry["executable"], f"{name}: executable must not be empty"
+        assert isinstance(entry["capabilities"], tuple), f"{name}: capabilities must be tuple"
+        assert entry["capabilities"], f"{name}: capabilities must not be empty"
 
 
 def test_get_backend_raises_for_unknown_name() -> None:
@@ -32,6 +42,28 @@ def test_get_backend_accepts_legacy_aliases() -> None:
     assert get_backend("claude") == AGENT_BACKENDS["claude-code"]
 
 
+def test_backend_specs_expose_reference_backends() -> None:
+    assert REFERENCE_BACKENDS == ("claude-code", "codex")
+
+    claude = get_backend_spec("claude")
+    codex = get_backend_spec("codex")
+
+    assert claude.reference is True
+    assert codex.reference is True
+    assert BackendCapability.ACP_STREAMING in claude.capabilities
+    assert BackendCapability.ACP_STREAMING in codex.capabilities
+    assert BackendCapability.TASK_SCOPED_MCP in claude.capabilities
+    assert BackendCapability.TASK_SCOPED_MCP in codex.capabilities
+
+
+def test_list_backend_specs_matches_legacy_registry_keys() -> None:
+    specs = list_backend_specs()
+    assert set(specs) == set(AGENT_BACKENDS)
+    for name, spec in specs.items():
+        assert spec.name == name
+        assert spec.to_legacy_config() == AGENT_BACKENDS[name]
+
+
 def test_kimi_cli_supports_acp_mode() -> None:
     assert AGENT_BACKENDS["kimi-cli"]["supports_acp"] is True
 
@@ -39,6 +71,8 @@ def test_kimi_cli_supports_acp_mode() -> None:
 def test_acp_capable_backends_define_acp_command() -> None:
     for name, entry in AGENT_BACKENDS.items():
         if entry.get("supports_acp"):
+            spec = get_backend_spec(name)
+            assert BackendCapability.ACP_STREAMING in spec.capabilities
             assert isinstance(entry.get("acp_command"), list), (
                 f"{name}: ACP-capable backend must define list acp_command"
             )

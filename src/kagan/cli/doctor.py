@@ -3,15 +3,16 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import click
 from loguru import logger
 
 from kagan.cli._bootstrap import make_client, run_async
-from kagan.core import PreflightCheckResult
+from kagan.core import PreflightCheckResult, resolve_default_agent_backend
 from kagan.core.errors import KaganError
 from kagan.plugins import PluginManager
 from kagan.runtime_env import noisy_env_keys
@@ -42,8 +43,26 @@ def _parse_zellij_version() -> tuple[int, ...] | None:
     return None
 
 
-def _default_agent_backend() -> str:
+def _default_agent_backend_name() -> str:
     return os.environ.get("KAGAN_AGENT_BACKEND", "claude-code")
+
+
+async def _resolve_doctor_backend_name(client: object) -> str:
+    settings_ops = getattr(client, "settings", None)
+    get_settings = cast(
+        "Callable[[], Awaitable[object]] | None",
+        getattr(settings_ops, "get", None),
+    )
+    if callable(get_settings):
+        try:
+            settings = await get_settings()
+            if isinstance(settings, dict):
+                return resolve_default_agent_backend(settings)
+        except (KaganError, RuntimeError, OSError, ValueError):
+            logger.opt(exception=True).debug(
+                "Doctor could not read default agent backend from settings"
+            )
+    return _default_agent_backend_name()
 
 
 def _agent_executable(backend_name: str) -> str:
@@ -62,9 +81,12 @@ def _which_command() -> str:
     return "where" if sys.platform == "win32" else "which"
 
 
+def _backend_verify_hint(backend_name: str) -> str:
+    return f"{_which_command()} {_agent_executable(backend_name)}"
+
+
 _VERIFY_HINTS: dict[str, str | Callable[[], str]] = {
     "git": "git --version",
-    "agent backend": lambda: f"{_which_command()} {_agent_executable(_default_agent_backend())}",
     "tmux": "tmux -V",
     "db": "kagan projects",
     "ide": "echo $TERM_PROGRAM",
@@ -87,18 +109,22 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
     checks: list[DoctorCheck] = []
     client = make_client()
     try:
-        preflight = run_async(
-            client.preflight(agent_backend=_agent_executable(_default_agent_backend()))
-        )
+        default_backend = run_async(_resolve_doctor_backend_name(client))
+        preflight = run_async(client.preflight(agent_backend=_agent_executable(default_backend)))
         for check in preflight:
             name = check.name.replace("_", " ")
+            message = check.message
+            verify_hint = _verify_hint(name)
+            if name == "agent backend":
+                message = f"Default agent backend '{default_backend}': {check.message}"
+                verify_hint = _backend_verify_hint(default_backend)
             checks.append(
                 DoctorCheck(
                     name=name,
                     status=str(check.status),
-                    message=check.message,
+                    message=message,
                     fix_hint=check.fix_hint,
-                    verify_hint=_verify_hint(name),
+                    verify_hint=verify_hint,
                 )
             )
 
@@ -187,8 +213,6 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
             )
 
         try:
-            from kagan.plugins import PluginManager
-
             plugin_manager = PluginManager(client)
             plugin_checks = run_async(_load_and_collect_plugin_checks(plugin_manager))
             for pc in plugin_checks:

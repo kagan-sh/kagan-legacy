@@ -12,7 +12,12 @@ import click
 from loguru import logger
 
 from kagan.cli._bootstrap import make_client, run_async
-from kagan.core import PreflightCheckResult, resolve_default_agent_backend
+from kagan.core import (
+    CLAUDE_CODE_BACKEND,
+    CODEX_BACKEND,
+    PreflightCheckResult,
+    resolve_default_agent_backend,
+)
 from kagan.core.errors import KaganError
 from kagan.plugins import PluginManager
 from kagan.runtime_env import noisy_env_keys
@@ -82,7 +87,25 @@ def _which_command() -> str:
 
 
 def _backend_verify_hint(backend_name: str) -> str:
-    return f"{_which_command()} {_agent_executable(backend_name)}"
+    executable = _agent_executable(backend_name)
+    if backend_name in {CLAUDE_CODE_BACKEND, CODEX_BACKEND}:
+        return f"{executable} --version"
+    return f"{_which_command()} {executable}"
+
+
+def _reference_backend_guidance(backend_name: str) -> str | None:
+    if backend_name == CLAUDE_CODE_BACKEND:
+        return (
+            "Install with `curl -fsSL https://claude.ai/install.sh | bash`. "
+            "If Claude Code is already installed, run `claude` and follow the login prompts."
+        )
+    if backend_name == CODEX_BACKEND:
+        return (
+            "Install with `npm install -g @openai/codex`. "
+            "If Codex is already installed, run `codex` to sign in with ChatGPT or set"
+            " `OPENAI_API_KEY`, then retry."
+        )
+    return None
 
 
 _VERIFY_HINTS: dict[str, str | Callable[[], str]] = {
@@ -118,12 +141,22 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
             if name == "agent backend":
                 message = f"Default agent backend '{default_backend}': {check.message}"
                 verify_hint = _backend_verify_hint(default_backend)
+                reference_guidance = _reference_backend_guidance(default_backend)
+                fix_hint = check.fix_hint
+                if reference_guidance and check.status != "pass":
+                    fix_hint = (
+                        f"{check.fix_hint} {reference_guidance}".strip()
+                        if check.fix_hint
+                        else reference_guidance
+                    )
+            else:
+                fix_hint = check.fix_hint
             checks.append(
                 DoctorCheck(
                     name=name,
                     status=str(check.status),
                     message=message,
-                    fix_hint=check.fix_hint,
+                    fix_hint=fix_hint,
                     verify_hint=verify_hint,
                 )
             )

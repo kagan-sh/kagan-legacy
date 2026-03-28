@@ -237,7 +237,8 @@ class SettingsModal(ModalScreen[None]):
                     "static",
                     text=(
                         "[dim]Appended to every agent prompt — your preferences,\n"
-                        "conventions, and workflow rules.\n\n"
+                        "conventions, and workflow rules for "
+                        "Create -> Start -> Review -> Merge.\n\n"
                         "Examples: 'Use conventional commits' ·\n"
                         "'Always explain tradeoffs first' ·\n"
                         "'Commit messages in Portuguese'[/dim]"
@@ -246,11 +247,15 @@ class SettingsModal(ModalScreen[None]):
                 SettingFieldSpec("static", field_id="settings-dotfile-status"),
                 SettingFieldSpec(
                     "static",
-                    text="[dim]Full prompt overrides -> .kagan/prompts/[/dim]",
+                    text="[dim]Full prompt overrides live in .kagan/prompts/[/dim]",
                 ),
             ),
             "workflow": (
-                SettingFieldSpec("switch", "Enable auto review", "settings-auto-review"),
+                SettingFieldSpec(
+                    "switch",
+                    "Enable auto review",
+                    "settings-auto-review",
+                ),
                 SettingFieldSpec(
                     "switch", "Require approval before merge", "settings-require-review-approval"
                 ),
@@ -311,7 +316,7 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "Interactive launcher",
+                    "Interactive attach launcher",
                     "settings-attached-launcher",
                     options=(
                         ("tmux", "tmux"),
@@ -325,7 +330,7 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "Bare `kagan` startup surface",
+                    "Default `kagan` startup surface",
                     "settings-startup-surface",
                     options=(
                         ("TUI", "tui"),
@@ -335,7 +340,7 @@ class SettingsModal(ModalScreen[None]):
                     ),
                 ),
                 SettingFieldSpec(
-                    "switch", "TUI: open last project on launch", "settings-open-last-project"
+                    "switch", "TUI: reopen last project on launch", "settings-open-last-project"
                 ),
                 SettingFieldSpec(
                     "switch",

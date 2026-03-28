@@ -40,22 +40,30 @@ SetupMode = Literal["onboarding", "new-project", "open-folder"]
 _MODE_COPY: dict[SetupMode, dict[str, str]] = {
     "onboarding": {
         "title": "First-Time Setup",
-        "subtitle": "Choose your defaults and create the first project.",
-        "project_hint": "Pick a name for the project shown on the welcome screen and board.",
-        "repo_hint": "Optional. Link a repository now or add one later from the repo picker.",
+        "subtitle": (
+            "Choose your defaults and create the first project. The default path is "
+            "Create -> Start -> Review -> Merge; attach stays available when you need it."
+        ),
+        "project_hint": "Pick the name shown on Welcome and the Board.",
+        "repo_hint": (
+            "Optional. Link a repository now or add one later; Kagan uses it for "
+            "worktrees and reviews."
+        ),
         "action": "Continue to Kagan",
     },
     "new-project": {
         "title": "New Project",
         "subtitle": "Create a new project and optionally attach a repository.",
         "project_hint": "Required. This is the name used across the TUI.",
-        "repo_hint": "Optional. Leave empty to create the project first and add repos later.",
+        "repo_hint": (
+            "Optional. Leave empty to create the project first and add repositories later."
+        ),
         "action": "Create Project",
     },
     "open-folder": {
         "title": "Open Folder",
         "subtitle": "Open an existing project by repo path or create a project around it.",
-        "project_hint": "Optional. If left empty, Kagan will infer a name from the folder.",
+        "project_hint": "Optional. If left empty, Kagan infers a project name from the folder.",
         "repo_hint": "Required. Existing projects linked to this path open directly.",
         "action": "Open Folder",
     },
@@ -115,9 +123,10 @@ class OnboardingFlow(ModalScreen[None]):
 
                         with Horizontal(classes="setup-field-attached"):
                             with Vertical(classes="setup-field-half"):
-                                yield Label("AI Assistant", classes="form-label")
+                                yield Label("Default agent backend", classes="form-label")
                                 yield Label(
-                                    "Default coding agent.",
+                                    "Used for new tasks on the canonical "
+                                    "Create -> Start -> Review -> Merge path.",
                                     classes="form-hint",
                                 )
                                 yield Select[str](
@@ -128,9 +137,10 @@ class OnboardingFlow(ModalScreen[None]):
                                     compact=True,
                                 )
                             with Vertical(classes="setup-field-half"):
-                                yield Label("Interactive launcher", classes="form-label")
+                                yield Label("Interactive attach launcher", classes="form-label")
                                 yield Label(
-                                    "Default launcher used when you attach an interactive run.",
+                                    "Used only when you attach an interactive run; "
+                                    "managed runs stay the default.",
                                     classes="form-hint",
                                 )
                                 yield Select[str](
@@ -150,7 +160,7 @@ class OnboardingFlow(ModalScreen[None]):
                                 classes="onboarding-auto-review-checkbox",
                             )
                             yield Label(
-                                "Reviews tasks before they enter Review.",
+                                "Automatically moves finished managed runs into Review.",
                                 classes="form-hint auto-review-hint",
                             )
 

@@ -282,12 +282,19 @@ async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise
     ),
   ]).catch(() => {});
 
+  let task: Awaited<ReturnType<KaganClient["getTask"]>>;
   try {
-    const task = await client.getTask(taskId);
+    task = await client.getTask(taskId);
     if (task.status !== "IN_PROGRESS") return;
   } catch {
     return;
   }
 
-  await vscode.commands.executeCommand("kagan.chat.open", taskId);
+  await vscode.commands.executeCommand("kagan.chat.open", {
+    kind: "task",
+    task: {
+      id: task.id,
+      title: task.title,
+    },
+  });
 }

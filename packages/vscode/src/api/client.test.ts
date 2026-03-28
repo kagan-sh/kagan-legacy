@@ -59,8 +59,8 @@ describe("KaganClient", () => {
           ok: true,
           data: {
             backends: [
-              { name: "claude-code", available: true },
-              { name: "codex", available: false },
+              { name: "claude-code", available: true, reference: true },
+              { name: "codex", available: false, reference: true },
             ],
             default: "claude-code",
           },
@@ -78,8 +78,8 @@ describe("KaganClient", () => {
 
     await expect(client.getChatAgents()).resolves.toEqual({
       backends: [
-        { name: "claude-code", available: true },
-        { name: "codex", available: false },
+        { name: "claude-code", available: true, reference: true },
+        { name: "codex", available: false, reference: true },
       ],
       default: "claude-code",
     });

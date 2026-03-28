@@ -6,6 +6,7 @@
 
 import type {
     ActiveSessionResponse,
+    AgentBackendResponse,
     ChatMessageResponse,
     ChatSessionResponse,
     ChatSessionSummaryResponse,
@@ -20,6 +21,8 @@ import type {
 // Re-export generated types under their canonical names
 export type {
     ActiveSessionResponse,
+    AgentBackendResponse,
+    ChatAgentsResponse,
     ChatMessageResponse,
     ChatSessionResponse,
     ChatSessionSummaryResponse,
@@ -45,6 +48,7 @@ export type WireChatMessage = ChatMessageResponse;
 export type WireChatSessionSummary = ChatSessionSummaryResponse;
 export type WireChatSession = ChatSessionResponse;
 export type WireEvent = EventResponse;
+export type AgentBackend = AgentBackendResponse;
 
 /**
  * Generic wrapper for all wire responses.
@@ -83,16 +87,6 @@ export interface CreateTaskInput {
 export interface CreateChatSessionInput {
     agent_backend?: string;
     label?: string;
-}
-
-export interface AgentBackend {
-    name: string;
-    available: boolean;
-}
-
-export interface ChatAgentsResponse {
-    backends: AgentBackend[];
-    default: string;
 }
 
 export interface UpdateTaskInput {

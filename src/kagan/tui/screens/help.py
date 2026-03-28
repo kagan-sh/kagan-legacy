@@ -139,38 +139,38 @@ class HelpModal(ModalScreen[None]):
         return Vertical(
             Static("Quick Start", classes="help-section-title"),
             Static(
-                "From the Welcome screen, press 'n' to create a project or "
-                "'o' to open a folder. Enable 'Open last project on launch' "
-                "in Settings to skip Welcome next time.",
+                "From Welcome, create or open a project, then go to the Board to "
+                "create tasks and follow the canonical Create -> Start -> Review -> Merge flow.",
                 classes="help-paragraph",
             ),
             Static("Creating Tasks", classes="help-section-title"),
             Static(
-                "Press 'n' to create a task. Start a managed run with 's'. "
-                "Use 'a' to attach an interactive run using your launcher preference.",
+                "Press 'n' to create a task. Press 's' to start the default managed run. "
+                "Use 'a' to attach an interactive run when you need live collaboration.",
                 classes="help-paragraph",
             ),
             Static("Kanban Workflow", classes="help-section-title"),
             Static(
                 "BACKLOG → IN_PROGRESS: Select a task and press 's' to start the agent. "
-                "Use 'Shift+←/→' to move tasks between columns manually.",
+                "Use 'a' for an interactive takeover when background execution is not enough.",
                 classes="help-paragraph",
             ),
             Static(
                 "IN_PROGRESS → REVIEW: The agent submits for review when done. "
-                "Open the task (Enter) and use tabs 1/2 (Detail/Diff) to inspect before decision.",
+                "Open the task (Enter) and use tabs 1/2 (Detail/Diff) to inspect "
+                "evidence before deciding.",
                 classes="help-paragraph",
             ),
             Static(
                 "REVIEW → DONE: In the Review tab, press 'a' to approve, 'm' to merge, "
                 "'x' to reject, or 'b' to rebase. If the task has no acceptance criteria, "
-                "a guided modal lets you add criteria, approve manually, or reject.",
+                "the guided modal lets you add criteria before merge.",
                 classes="help-paragraph",
             ),
             Static("AI Review (Advisory)", classes="help-section-title"),
             Static(
                 "Open Quick Actions (Ctrl+Shift+P) and run AI review in the Review stage. "
-                "This is advisory only — it does not approve or merge. "
+                "It adds evidence only — it does not approve or merge. "
                 "You make the final decision with 'a' (approve) and 'm' (merge).",
                 classes="help-paragraph",
             ),
@@ -204,13 +204,12 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("Runs: Managed vs Interactive", classes="help-section-title"),
             Static(
-                "Managed run: Agent works in background. Use this for most tasks.",
+                "Managed run: The default path. Use it for most tasks and reviews.",
                 classes="help-paragraph",
             ),
             Static(
-                "Interactive run (attach): Launches via a launcher "
-                "(tmux, nvim, VS Code, Cursor, etc.) "
-                "so you can work alongside the agent.",
+                "Interactive run (attach): Secondary path. Launches via a launcher "
+                "(tmux, nvim, VS Code, Cursor, etc.) when you want to work alongside the agent.",
                 classes="help-paragraph",
             ),
             Static("Chat Sessions", classes="help-section-title"),
@@ -222,13 +221,13 @@ class HelpModal(ModalScreen[None]):
             ),
             Static("Agent Backends", classes="help-section-title"),
             Static(
-                "Configure default backend in Settings (claude-code, codex, gemini-cli, etc.). "
-                "Change backends from Settings or Quick Actions.",
+                "Configure the default backend in Settings for new tasks. "
+                "Change backends from Settings or Quick Actions when needed.",
                 classes="help-paragraph",
             ),
             Static("Settings Layers", classes="help-section-title"),
             Static(
-                "Settings has typed controls (review strictness, planning depth). "
+                "Settings has typed controls for workflow, review strictness, and planning depth. "
                 "Additional Instructions lets you add free-text rules to every agent prompt. "
                 "For full prompt replacement, place .kagan/prompts/ files in your repo.",
                 classes="help-paragraph",

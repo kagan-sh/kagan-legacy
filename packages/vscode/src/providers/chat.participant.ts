@@ -63,9 +63,9 @@ export function registerChatParticipant(
     if (typeof arg === "string") {
       query = `@kagan /watch ${arg}`;
     } else if (typeof arg === "object" && arg !== null && "kind" in arg) {
-      const item = arg as { kind: string; task?: { title?: string } };
-      if (item.kind === "task" && item.task?.title) {
-        query = `@kagan /watch ${item.task.title}`;
+      const item = arg as { kind: string; task?: { id?: string; title?: string } };
+      if (item.kind === "task" && (item.task?.id || item.task?.title)) {
+        query = `@kagan /watch ${item.task.id ?? item.task.title}`;
       }
     }
     vscode.commands.executeCommand("workbench.action.chat.open", { query });

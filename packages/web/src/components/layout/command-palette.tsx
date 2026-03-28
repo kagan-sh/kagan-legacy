@@ -115,15 +115,15 @@ export function CommandPalette() {
             <CommandGroup heading="Current Task">
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}`)}>
                 <Search className="size-4" />
-                Open task workspace
+                Watch task workspace
               </CommandItem>
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}?lane=worker`)}>
                 <Play className="size-4" />
-                Open worker stream
+                Watch worker stream
               </CommandItem>
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}?lane=reviewer`)}>
                 <ArrowRightLeft className="size-4" />
-                Open reviewer stream
+                Watch reviewer stream
               </CommandItem>
             </CommandGroup>
             <CommandSeparator />

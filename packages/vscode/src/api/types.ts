@@ -189,15 +189,18 @@ export interface SettingsResponse {
   [key: string]: string | undefined;
 }
 
-export interface AgentBackend {
+export interface AgentBackendResponse {
   name: string;
   available: boolean;
+  reference?: boolean;
 }
 
 export interface ChatAgentsResponse {
-  backends: AgentBackend[];
+  backends: AgentBackendResponse[];
   default: string;
 }
+
+export type AgentBackend = AgentBackendResponse;
 
 // ── Chat / Orchestrator ───────────────────────────────────────────────────
 

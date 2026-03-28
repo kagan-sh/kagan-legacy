@@ -65,8 +65,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add packages/vscode/package.json
-          git commit -m "chore(vscode): bump to ${{ inputs.version }} [skip ci]"
-          git push
+          git diff --cached --quiet && echo "Version already at ${{ inputs.version }}" || {
+            git commit -m "chore(vscode): bump to ${{ inputs.version }} [skip ci]"
+            git push
+          }
 
       - name: Install and build
         working-directory: packages/vscode

@@ -94,7 +94,9 @@ jobs:
       - name: Publish to Open VSX
         if: env.OPEN_VSIX_TOKEN != '' && (inputs.target == 'both' || inputs.target == 'openvsx')
         working-directory: packages/vscode
-        run: pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
+        run: |
+          pnpm exec ovsx create-namespace kagan -p "$OPEN_VSIX_TOKEN" 2>/dev/null || true
+          pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4

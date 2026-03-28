@@ -29,23 +29,23 @@ export OPENAI_API_KEY=ghp_your_token_here
 
 Backend-specific additions:
 
-| Backend | Extra env vars |
-| ------- | -------------- |
-| Goose | `GOOSE_PROVIDER=openai GOOSE_MODEL=openai/gpt-4.1` |
-| OpenCode | Select model in OpenCode's own config |
-| Codex | None — base URL + key is sufficient |
+| Backend  | Extra env vars                                     |
+| -------- | -------------------------------------------------- |
+| Goose    | `GOOSE_PROVIDER=openai GOOSE_MODEL=openai/gpt-4.1` |
+| OpenCode | Select model in OpenCode's own config              |
+| Codex    | None — base URL + key is sufficient                |
 
 ## Available models
 
 Model IDs use `publisher/name` format:
 
-| Model ID | Tier | Best for |
-| -------- | ---- | -------- |
-| `openai/gpt-4.1` | high | Complex reasoning, large codebases |
-| `openai/gpt-4.1-mini` | low | Fast general-purpose coding |
-| `mistral-ai/codestral-2501` | low | Code generation |
-| `deepseek/deepseek-r1` | custom | Step-by-step reasoning |
-| `meta/llama-4-scout-17b-16e-instruct` | high | Long-context open-weight |
+| Model ID                              | Tier   | Best for                           |
+| ------------------------------------- | ------ | ---------------------------------- |
+| `openai/gpt-4.1`                      | high   | Complex reasoning, large codebases |
+| `openai/gpt-4.1-mini`                 | low    | Fast general-purpose coding        |
+| `mistral-ai/codestral-2501`           | low    | Code generation                    |
+| `deepseek/deepseek-r1`                | custom | Step-by-step reasoning             |
+| `meta/llama-4-scout-17b-16e-instruct` | high   | Long-context open-weight           |
 
 Full catalog: <https://github.com/marketplace/models>
 
@@ -53,11 +53,11 @@ Full catalog: <https://github.com/marketplace/models>
 
 Limits depend on model tier. Every GitHub account gets:
 
-| Tier | Requests/day | Requests/min | Tokens/request |
-| ---- | ------------ | ------------ | -------------- |
-| Low | 150 | 15 | 8K in / 4K out |
-| High | 50 | 10 | 8K in / 4K out |
-| Embeddings | 150 | 15 | 64K in |
+| Tier       | Requests/day | Requests/min | Tokens/request |
+| ---------- | ------------ | ------------ | -------------- |
+| Low        | 150          | 15           | 8K in / 4K out |
+| High       | 50           | 10           | 8K in / 4K out |
+| Embeddings | 150          | 15           | 64K in         |
 
 Copilot Pro/Business/Enterprise subscribers get higher limits. Pay-as-you-go billing is available for production workloads.
 
@@ -75,8 +75,8 @@ Export resolved prompts and benchmark them with [promptfoo](https://promptfoo.de
 ### Export
 
 ```bash
-kagan prompts export --type orchestrator --format text > prompt.txt
-kagan prompts export --type orchestrator -o orchestrator.prompt.yml
+kagan tools prompts export --type orchestrator --format text > prompt.txt
+kagan tools prompts export --type orchestrator -o orchestrator.prompt.yml
 ```
 
 Types: `orchestrator`, `execution`, `review`. Formats: `yml` (GitHub Models `.prompt.yml`) or `text` (raw).

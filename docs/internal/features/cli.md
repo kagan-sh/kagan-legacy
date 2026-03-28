@@ -119,11 +119,11 @@ Plugin management subgroup.
 - `kagan plugins check [name]` runs preflight checks for one or all plugins
 - Displays PASS/WARN/FAIL per check with fix hints
 
-### `kagan prompts`
+### `kagan tools prompts`
 
 Prompt inspection and export subgroup.
 
-#### `kagan prompts export`
+#### `kagan tools prompts export`
 
 - `--type orchestrator|execution|review` (required): which prompt to resolve and export
 - `--output/-o PATH`: write to file; prints to stdout when omitted

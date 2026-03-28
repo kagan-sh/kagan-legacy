@@ -75,20 +75,26 @@ class BoardColumn(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="column-header kanban-column-header"):
-            yield Static(
+            header_widget = Static(
                 self._header_title(),
                 id=f"header-{self.status.value.lower()}",
                 classes="column-header-text kanban-column-header-text",
             )
-            yield Static(
+            header_widget.tooltip = f"Column: {self._header_label()}"
+            yield header_widget
+            count_widget = Static(
                 "",
                 id=f"count-{self.status.value.lower()}",
                 classes="column-count kanban-column-count",
             )
-        yield ScrollableContainer(
+            count_widget.tooltip = "Task count in this column"
+            yield count_widget
+        content = ScrollableContainer(
             id=f"content-{self.status.value.lower()}",
             classes="column-content kanban-column-content",
         )
+        content.tooltip = f"{self._header_label()} tasks (use arrow keys to navigate)"
+        yield content
 
     def set_tasks(self, tasks: list[_TaskData], selected_task_id: str | None) -> None:
         content = self.query_one(f"#content-{self.status.value.lower()}", ScrollableContainer)
@@ -145,6 +151,16 @@ class BoardColumn(Vertical):
         if self.status == TaskStatus.REVIEW:
             return "◉ REVIEW"
         return "✓ DONE"
+
+    def _header_label(self) -> str:
+        """Return plain text label for accessibility."""
+        if self.status == TaskStatus.BACKLOG:
+            return "Backlog"
+        if self.status == TaskStatus.IN_PROGRESS:
+            return "In Progress"
+        if self.status == TaskStatus.REVIEW:
+            return "Review"
+        return "Done"
 
     def _update_header_count(self, count: int) -> None:
         self.query_one(f"#count-{self.status.value.lower()}", Static).update(f"({count})")

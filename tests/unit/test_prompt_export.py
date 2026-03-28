@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from pathlib import Path
+
+import pytest
 
 from kagan.core._prompt_export import (
     PROMPT_TYPES,
@@ -12,7 +12,6 @@ from kagan.core._prompt_export import (
     export_prompt_yml,
     write_prompt_file,
 )
-
 
 # Use empty settings dict — prompt resolution works with defaults
 _EMPTY_SETTINGS: dict[str, str] = {}

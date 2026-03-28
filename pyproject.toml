@@ -38,7 +38,6 @@ dependencies = [
   "alembic>=1.16.0",
   "click>=8.1.0",
   "cryptography>=46.0",
-  "httpx>=0.27.1,<1.0.0",
   "loguru>=0.7.0",
   "mcp>=1.26.0,<2.0.0",
   "mslex>=1.3.0",
@@ -253,7 +252,7 @@ cmd = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
 [tool.poe.tasks.web-build]
 help = "Build React web bundle and copy into the Python package for 'kagan web'"
 sequence = [
-  { shell = "cd packages/web && pnpm run build" },
+  { shell = "pnpm run web:build" },
   { shell = "rm -rf src/kagan/server/_web_static/* && cp -R packages/web/dist/* src/kagan/server/_web_static/ && touch src/kagan/server/_web_static/.gitkeep" },
 ]
 
@@ -281,27 +280,43 @@ cd packages/web && pnpm exec concurrently \\
 
 [tool.poe.tasks.web-typecheck]
 help = "Run TypeScript type checking on the web package"
-shell = "cd packages/web && pnpm exec tsc --noEmit"
-
-[tool.poe.tasks.web-lint]
-help = "Run ESLint on the web package"
-shell = "cd packages/web && pnpm run lint 2>/dev/null || true"
+shell = "pnpm run web:typecheck"
 
 [tool.poe.tasks.web-test]
 help = "Run Vitest unit tests on the web package"
-shell = "cd packages/web && pnpm exec vitest run"
+shell = "pnpm run web:test"
 
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"
 sequence = ["web-typecheck", "web-test"]
 
+[tool.poe.tasks.vscode-typecheck]
+help = "Run TypeScript type checking on the VS Code extension package"
+shell = "pnpm run vscode:typecheck"
+
+[tool.poe.tasks.vscode-test-unit]
+help = "Run Vitest unit tests on the VS Code extension package"
+shell = "pnpm run vscode:test:unit"
+
+[tool.poe.tasks.vscode-test-integration]
+help = "Run extension-host integration tests on the VS Code extension package"
+shell = "pnpm run vscode:test:integration"
+
+[tool.poe.tasks.vscode-test-e2e]
+help = "Run WDIO smoke tests against a real VS Code instance"
+shell = "pnpm run vscode:test:e2e"
+
+[tool.poe.tasks.vscode-check]
+help = "Run typecheck and fast tests on the VS Code extension package"
+sequence = ["vscode-typecheck", "vscode-test-unit"]
+
 [tool.poe.tasks.test-all]
 help = "Run all tests across the monorepo (Python + web)"
-sequence = ["test", "web-test"]
+sequence = ["test", "web-test", "vscode-test-unit"]
 
 [tool.poe.tasks.check-all]
 help = "Run all checks across the monorepo (Python lint/typecheck/deadcode/test + web typecheck/test)"
-sequence = ["lint", "typecheck", "deadcode", "test", "web-check"]
+sequence = ["lint", "typecheck", "deadcode", "test", "web-check", "vscode-check"]
 
 [tool.poe.tasks.eval-generate]
 help = "Export resolved prompts for the eval suite"

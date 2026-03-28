@@ -12,7 +12,11 @@ import {
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { streamSSE } from "@/lib/api/sse";
-import type { WireChatMessage } from "@/lib/api/types";
+import type {
+    WireChatMessage,
+    WireChatSession,
+    WireChatSessionSummary,
+} from "@/lib/api/types";
 import {
     ChatInputBar,
     type Attachment,
@@ -49,6 +53,20 @@ interface OrchestratorChatPanelProps {
     layout: Exclude<RightRailMode, "none">;
     onSetLayout: (layout: Exclude<RightRailMode, "none">) => void;
     onClose: () => void;
+    surface?: "rail" | "workspace";
+    onSessionUpdated?: (session: WireChatSessionSummary) => void;
+}
+
+function toSessionSummary(session: WireChatSession): WireChatSessionSummary {
+    return {
+        id: session.id,
+        label: session.label,
+        source: session.source,
+        agent_backend: session.agent_backend ?? null,
+        project_id: session.project_id ?? null,
+        updated_at: session.updated_at,
+        message_count: session.message_count,
+    };
 }
 
 export function OrchestratorChatPanel({
@@ -56,6 +74,8 @@ export function OrchestratorChatPanel({
     layout,
     onSetLayout,
     onClose,
+    surface = "rail",
+    onSessionUpdated,
 }: OrchestratorChatPanelProps) {
     const isMobile = useIsMobile();
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
@@ -82,6 +102,7 @@ export function OrchestratorChatPanel({
                         pollRef.current = null;
                         const session = await apiClient.getChatSession(sid);
                         setMessages(session.messages);
+                        onSessionUpdated?.(toSessionSummary(session));
                         setStreamEntries([]);
                         setIsStreaming(false);
                     }
@@ -92,7 +113,7 @@ export function OrchestratorChatPanel({
                 }
             }, 2000);
         },
-        [],
+        [onSessionUpdated],
     );
 
     useEffect(() => {
@@ -115,6 +136,7 @@ export function OrchestratorChatPanel({
                 setMessages(session.messages);
                 setLabel(session.label || "Orchestrator Chat");
                 setAgentBackend(session.agent_backend ?? null);
+                onSessionUpdated?.(toSessionSummary(session));
 
                 // Check if a turn is still running (e.g. after page reload)
                 const turnStatus = await apiClient.getTurnStatus(sessionId);
@@ -148,7 +170,7 @@ export function OrchestratorChatPanel({
         return () => {
             cancelled = true;
         };
-    }, [sessionId, pollForTurnCompletion]);
+    }, [sessionId, pollForTurnCompletion, onSessionUpdated]);
 
     // Fetch active project/repo for context indicator
     useEffect(() => {
@@ -184,10 +206,11 @@ export function OrchestratorChatPanel({
     const switchBackend = useCallback(
         async (backend: string) => {
             try {
-                await apiClient.updateChatSession(sessionId, {
+                const session = await apiClient.updateChatSession(sessionId, {
                     agent_backend: backend,
                 });
-                setAgentBackend(backend);
+                setAgentBackend(session.agent_backend ?? backend);
+                onSessionUpdated?.(toSessionSummary(session));
                 toast.success(`Switched to ${backend}`);
             } catch (error) {
                 toast.error(
@@ -197,7 +220,7 @@ export function OrchestratorChatPanel({
                 );
             }
         },
-        [sessionId],
+        [sessionId, onSessionUpdated],
     );
 
     // Abort controller ref for SSE chat stream
@@ -271,7 +294,10 @@ export function OrchestratorChatPanel({
                 setIsStreaming(false);
                 apiClient
                     .getChatSession(sessionId)
-                    .then((session) => setMessages(session.messages))
+                    .then((session) => {
+                        setMessages(session.messages);
+                        onSessionUpdated?.(toSessionSummary(session));
+                    })
                     .catch(() => {});
             } else if (t === "CHAT_SESSION_UPDATED") {
                 if (typeof data.label === "string") {
@@ -279,7 +305,7 @@ export function OrchestratorChatPanel({
                 }
             }
         },
-        [sessionId],
+        [sessionId, onSessionUpdated],
     );
 
     useEffect(() => {
@@ -452,9 +478,11 @@ export function OrchestratorChatPanel({
             data-chat-layout={layout}
             className={cn(
                 "flex h-full min-h-0 flex-col bg-[color:var(--surface-0)]",
-                layout === "chat-right" &&
+                surface === "rail" &&
+                    layout === "chat-right" &&
                     "border-l border-[color:var(--border-subtle)]",
-                layout === "chat-bottom" &&
+                surface === "rail" &&
+                    layout === "chat-bottom" &&
                     "border-t border-[color:var(--border-subtle)]",
                 layout === "chat-fullscreen" &&
                     "w-full overflow-hidden border border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]/95 shadow-[var(--ambient-shadow)]",
@@ -505,16 +533,18 @@ export function OrchestratorChatPanel({
                     )}
                 </div>
                 <div className="flex items-center gap-1">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-xs"
-                        onClick={() => setSessionPickerOpen(true)}
-                    >
-                        <PanelsTopLeft className="size-3.5" />
-                        Sessions
-                    </Button>
-                    {!isMobile && (
+                    {surface === "rail" ? (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => setSessionPickerOpen(true)}
+                        >
+                            <PanelsTopLeft className="size-3.5" />
+                            Sessions
+                        </Button>
+                    ) : null}
+                    {surface === "rail" && !isMobile ? (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button
@@ -548,15 +578,17 @@ export function OrchestratorChatPanel({
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                    )}
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={onClose}
-                        aria-label="Close chat panel"
-                    >
-                        <X className="size-4" />
-                    </Button>
+                    ) : null}
+                    {surface === "rail" ? (
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={onClose}
+                            aria-label="Close chat panel"
+                        >
+                            <X className="size-4" />
+                        </Button>
+                    ) : null}
                 </div>
             </div>
 
@@ -594,11 +626,11 @@ export function OrchestratorChatPanel({
                 )}
             </div>
 
-            {!isMobile && (
+            {!isMobile && surface === "rail" ? (
                 <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
                     ⌘⇧K sessions · ⌘I toggle · esc stop
                 </div>
-            )}
+            ) : null}
 
             <ChatInputBar
                 onSend={handleSend}

@@ -45,12 +45,17 @@ After every `task_batch_create` call, the orchestrator MUST:
    | 1 | Fix login bug | Default | HIGH | 3 | BACKLOG |
    | 2 | Add dark mode | tmux | MEDIUM | 4 | BACKLOG |
    ```
+
 1. **Explicitly invite edits** with a prompt like:
+
    > "Here are the tasks I created. Would you like to edit any titles,
    > priorities, acceptance criteria, or launcher preferences before I start
    > execution? You can also delete tasks that don't belong."
+
 1. **Wait for user response** before calling `run_start` on any task.
+
 1. **Apply edits** via `task_update` or `task_delete` based on user feedback.
+
 1. **Only then** proceed to execution waves.
 
 This is enforced via the orchestrator system prompt, not application code. The

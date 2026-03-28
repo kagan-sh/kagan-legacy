@@ -1,0 +1,16 @@
+{
+  "name": "kagan-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "web:dev": "pnpm --filter kagan-web run dev",
+    "web:build": "pnpm --filter kagan-web run build",
+    "web:typecheck": "pnpm --filter kagan-web run typecheck",
+    "web:test": "pnpm --filter kagan-web run test",
+    "web:test:e2e": "pnpm --filter kagan-web run test:e2e",
+    "vscode:typecheck": "pnpm --filter kagan-vscode run test:check",
+    "vscode:test:unit": "pnpm --filter kagan-vscode run test:unit",
+    "vscode:test:integration": "pnpm --filter kagan-vscode run test:integration",
+    "vscode:test:e2e": "pnpm --filter kagan-vscode run test:e2e"
+  }
+}

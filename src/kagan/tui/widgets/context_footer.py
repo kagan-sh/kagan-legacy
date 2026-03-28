@@ -50,9 +50,15 @@ class ContextFooter(Horizontal):
     sub_context: reactive[str] = reactive("")
 
     def compose(self):
-        yield Static("", classes="footer-left")
-        yield Static("", classes="footer-center")
-        yield Static("", classes="footer-right")
+        left_widget = Static("", classes="footer-left")
+        left_widget.tooltip = "Primary actions for current context"
+        yield left_widget
+        center_widget = Static("", classes="footer-center")
+        center_widget.tooltip = "Navigation hints and navigation options"
+        yield center_widget
+        right_widget = Static("", classes="footer-right")
+        right_widget.tooltip = "Global keyboard shortcuts (press ? for help)"
+        yield right_widget
 
     def watch_context(self, context: str) -> None:
         self._update_display()

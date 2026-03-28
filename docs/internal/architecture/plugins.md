@@ -6,8 +6,8 @@ ______________________________________________________________________
 
 ## References
 
-| Package                | Use                                                  |
-| ---------------------- | ---------------------------------------------------- |
+| Package                | Use                                                          |
+| ---------------------- | ------------------------------------------------------------ |
 | **importlib.metadata** | Entry-point discovery: `entry_points(group="kagan.plugins")` |
 
 ______________________________________________________________________
@@ -26,12 +26,12 @@ ______________________________________________________________________
 
 1. **Entry-point discovery** — plugins declare `[project.entry-points."kagan.plugins"]` in
    `pyproject.toml`. No registry to maintain.
-2. **ABC hierarchy** — `Plugin` → `ImporterPlugin`. Clear contracts.
-3. **Provenance-aware** — `PluginInfo` carries package, version, source URL, builtin flag.
-4. **Configure before sync** — `configure()` sets options before `sync()`. No constructor args.
-5. **Idempotent sync** — `ImportResult` tracks created/updated/skipped/errors.
-6. **Health checks reuse core** — plugins return `PreflightCheckResult` for doctor rendering.
-7. **Lazy integration** — MCP and CLI import `kagan.plugins` inside function bodies.
+1. **ABC hierarchy** — `Plugin` → `ImporterPlugin`. Clear contracts.
+1. **Provenance-aware** — `PluginInfo` carries package, version, source URL, builtin flag.
+1. **Configure before sync** — `configure()` sets options before `sync()`. No constructor args.
+1. **Idempotent sync** — `ImportResult` tracks created/updated/skipped/errors.
+1. **Health checks reuse core** — plugins return `PreflightCheckResult` for doctor rendering.
+1. **Lazy integration** — MCP and CLI import `kagan.plugins` inside function bodies.
 
 ______________________________________________________________________
 
@@ -70,20 +70,20 @@ ______________________________________________________________________
 
 ## PluginManager
 
-| Method                 | Description                                     |
-| ---------------------- | ----------------------------------------------- |
-| `load()`               | Discover and register all plugins               |
-| `register(plugin)`     | Set up and register a plugin                    |
-| `unregister(name)`     | Tear down and remove                            |
-| `get(name)`            | Get plugin. Raises `PluginError` if missing     |
-| `get_import(name)`     | Get as `ImporterPlugin`. Raises if wrong type   |
-| `get_meta(name)`       | Provenance metadata (`PluginInfo`)              |
-| `is_builtin(name)`     | True if plugin ships with kagan                 |
-| `available`            | Sorted list of registered plugin names          |
-| `community_warnings`   | Warnings emitted during `load()`                |
-| `preflight()`          | Collect health checks from all plugins          |
-| `sync(name, project_id=…)` | Convenience wrapper                         |
-| `teardown_all()`       | Tear down all plugins                           |
+| Method                     | Description                                   |
+| -------------------------- | --------------------------------------------- |
+| `load()`                   | Discover and register all plugins             |
+| `register(plugin)`         | Set up and register a plugin                  |
+| `unregister(name)`         | Tear down and remove                          |
+| `get(name)`                | Get plugin. Raises `PluginError` if missing   |
+| `get_import(name)`         | Get as `ImporterPlugin`. Raises if wrong type |
+| `get_meta(name)`           | Provenance metadata (`PluginInfo`)            |
+| `is_builtin(name)`         | True if plugin ships with kagan               |
+| `available`                | Sorted list of registered plugin names        |
+| `community_warnings`       | Warnings emitted during `load()`              |
+| `preflight()`              | Collect health checks from all plugins        |
+| `sync(name, project_id=…)` | Convenience wrapper                           |
+| `teardown_all()`           | Tear down all plugins                         |
 
 ______________________________________________________________________
 
@@ -146,6 +146,7 @@ Imports GitHub issues as kagan tasks via `gh` CLI. Label conventions auto-map:
 Deleted tasks are re-imported.
 
 **Preflight Checks**:
+
 - `gh_cli` — PASS if `gh` on PATH, else WARN
 - `gh_auth` — PASS if `gh auth token` succeeds, else WARN
 
@@ -154,11 +155,13 @@ ______________________________________________________________________
 ## Integration Points
 
 **CLI** (`kagan.cli.plugins`):
+
 - `kagan plugins sync` — sync from plugin source
 - `kagan plugins list` — list installed plugins
 - `kagan plugins check` — run preflight checks
 
 **MCP** (`kagan.mcp.toolsets.plugins`):
+
 - `plugins_sync` — sync issues (Admin tier)
 - `plugins_preflight` — check prerequisites (Readonly tier)
 
@@ -181,6 +184,7 @@ ______________________________________________________________________
 ## Testing
 
 Tests in `tests/plugins/`:
+
 - `test_plugin_lifecycle.py` — Manager, discovery, errors
 - `test_github_import.py` — sync, skip, re-import, labels
 
@@ -190,10 +194,10 @@ ______________________________________________________________________
 
 ## What This Architecture Does NOT Have
 
-| Omitted              | Why                                              |
-| -------------------- | ------------------------------------------------ |
-| Plugin config files  | `configure()` API + settings table is sufficient |
-| Hot reload           | Discover once per `load()`. Restart required.    |
-| TUI integration      | No UI surface needed yet                         |
-| Plugin marketplace   | Entry points + pip install is sufficient         |
-| Dependency resolution| Each plugin manages own external deps            |
+| Omitted               | Why                                              |
+| --------------------- | ------------------------------------------------ |
+| Plugin config files   | `configure()` API + settings table is sufficient |
+| Hot reload            | Discover once per `load()`. Restart required.    |
+| TUI integration       | No UI surface needed yet                         |
+| Plugin marketplace    | Entry points + pip install is sufficient         |
+| Dependency resolution | Each plugin manages own external deps            |

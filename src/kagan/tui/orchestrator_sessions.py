@@ -4,8 +4,10 @@ from typing import Any
 
 from kagan.chat._title import ensure_session_title, is_default_title
 from kagan.chat.sessions import (
+    ChatSessionListItem,
     build_chat_session_list_items,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
     get_last_session_id,
     list_chat_sessions,
@@ -141,6 +143,65 @@ class TuiOrchestratorSessionStore:
             label = f"{item.label} [{item.session_id}]{backend_tag}"
             options.append((label, self._session_key(item.session_id)))
         return options
+
+    def list_items(self) -> list[ChatSessionListItem]:
+        if not self._sessions_by_key:
+            return []
+        current_id = self.current_session_id()
+        return build_chat_session_list_items(
+            list(self._sessions_by_key.values()),
+            current_session_id=current_id,
+        )
+
+    async def reload(self) -> None:
+        active_session_id = self.current_session_id()
+        self._loaded = False
+        self._sessions_by_key = {}
+        self._active_key = None
+        if active_session_id:
+            self._startup_session_id = active_session_id
+        await self.ensure_loaded()
+
+    async def delete(self, key: str) -> str | None:
+        await self.ensure_loaded()
+        session = self._sessions_by_key.get(key)
+        if session is None:
+            return self._active_key
+
+        session_id = str(session.get("id") or "").strip()
+        preserved_backend = self.agent_backend_for_key(key)
+        if not session_id:
+            return self._active_key
+
+        deleted = await delete_chat_session(self._client, session_id)
+        if not deleted:
+            return self._active_key
+
+        self._sessions_by_key.pop(key, None)
+
+        if not self._sessions_by_key:
+            created = await create_chat_session(
+                self._client,
+                source=_TUI_ORCHESTRATOR_SOURCE,
+                label="TUI session",
+                agent_backend=preserved_backend,
+            )
+            next_key = self._session_key(str(created.get("id") or ""))
+            self._sessions_by_key[next_key] = created
+            self._active_key = next_key
+        elif self._active_key == key:
+            items = build_chat_session_list_items(list(self._sessions_by_key.values()))
+            next_session_id = items[0].session_id if items else ""
+            self._active_key = self._session_key(next_session_id)
+
+        current_session_id = self.current_session_id()
+        if current_session_id:
+            await set_last_session_id(
+                self._client,
+                scope=_TUI_ORCHESTRATOR_SCOPE,
+                session_id=current_session_id,
+            )
+        return self._active_key
 
     def active_key(self) -> str:
         return self._active_key or "orchestrator"

@@ -11,16 +11,16 @@ tags:
 
 Every task is just a task. When you launch it, choose one of two actions:
 
-| When… | Use |
-| --- | --- |
-| Requirements are clear and bounded | Start a managed run |
-| You want to guide the work live | Launch an interactive session |
-| You want background progress and later review | Start a managed run |
-| You want tmux / Neovim / editor handoff | Launch an interactive session |
+| When…                                         | Use                           |
+| --------------------------------------------- | ----------------------------- |
+| Requirements are clear and bounded            | Start a managed run           |
+| You want to guide the work live               | Launch an interactive session |
+| You want background progress and later review | Start a managed run           |
+| You want tmux / Neovim / editor handoff       | Launch an interactive session |
 
 ## Start a managed run
 
-`n` → create task → `s` to start → follow progress in the task or session views → REVIEW → approve/merge.
+`n` → create task → `s` to start → follow progress from the task screen or the TUI AI panel → REVIEW → approve/merge.
 
 The agent runs in the background. Use follow-ups, notes, and review to steer iterations after launch.
 
@@ -43,8 +43,8 @@ as context and asking for first-step acknowledgement.
 You do not edit a task to change its run style. If a managed run is already active and you press `a` (TUI) or click **Attach** (web), Kagan will:
 
 1. Show an instructions modal with a warning that a background agent is running.
-2. On confirmation, **stop the managed run** automatically.
-3. Start the interactive session so you can take over manually.
+1. On confirmation, **stop the managed run** automatically.
+1. Start the interactive session so you can take over manually.
 
 This lets you intervene at any point — if the agent is heading in the wrong direction, attach, cancel it, and continue the work yourself.
 

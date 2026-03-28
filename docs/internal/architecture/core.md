@@ -33,11 +33,11 @@ There should be one obvious way to do it.
 
 ## References
 
-| Package      | Repo                                                                      | Use                                      |
-| ------------ | ------------------------------------------------------------------------- | ---------------------------------------- |
-| **ACP**      | [anthropics/agent-protocol](https://github.com/anthropics/agent-protocol) | Agent Client Protocol for ACP-capable agents |
+| Package      | Repo                                                                      | Use                                            |
+| ------------ | ------------------------------------------------------------------------- | ---------------------------------------------- |
+| **ACP**      | [anthropics/agent-protocol](https://github.com/anthropics/agent-protocol) | Agent Client Protocol for ACP-capable agents   |
 | **SQLModel** | [fastapi/sqlmodel](https://github.com/fastapi/sqlmodel)                   | Models + DB: one class as table and validation |
-| **Loguru**   | [Delgan/loguru](https://github.com/Delgan/loguru)                         | Structured logging                       |
+| **Loguru**   | [Delgan/loguru](https://github.com/Delgan/loguru)                         | Structured logging                             |
 
 ## Module Layout
 
@@ -99,17 +99,17 @@ One obvious way: `KaganCore()`. No factories, no DI frameworks.
 
 ### Tables
 
-| Table            | Key Fields                                                                                         | Purpose                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| **Project**      | id, name, created_at                                                                               | Top-level grouping                       |
-| **Repository**   | id, project_id, path, default_branch                                                               | Git repo linked to project               |
-| **Task**         | id, project_id, title, description, status, priority, base_branch, review_approved, acceptance_criteria, agent_backend, launcher | The core abstraction — a kanban ticket   |
-| **Worktree**     | id, task_id, repo_id, worktree_path, branch_name                                                   | Git worktree for a task                  |
-| **Session**      | id, task_id, agent_backend, status, launcher, pid, input_tokens, output_tokens, cost_amount        | Agent execution record                   |
-| **SessionEvent** | id, task_id, run_id, event_type, payload (JSON), created_at                                        | Agent progress stream                    |
-| **TaskNote**     | id, task_id, content, created_at                                                                   | Timestamped notes on a task              |
-| **Setting**      | key (PK), value                                                                                    | Key-value settings                       |
-| **AuditEntry**   | id, action, entity_type, entity_id, detail (JSON), created_at                                      | Audit trail                              |
+| Table            | Key Fields                                                                                                                       | Purpose                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Project**      | id, name, created_at                                                                                                             | Top-level grouping                     |
+| **Repository**   | id, project_id, path, default_branch                                                                                             | Git repo linked to project             |
+| **Task**         | id, project_id, title, description, status, priority, base_branch, review_approved, acceptance_criteria, agent_backend, launcher | The core abstraction — a kanban ticket |
+| **Worktree**     | id, task_id, repo_id, worktree_path, branch_name                                                                                 | Git worktree for a task                |
+| **Session**      | id, task_id, agent_backend, status, launcher, pid, input_tokens, output_tokens, cost_amount                                      | Agent execution record                 |
+| **SessionEvent** | id, task_id, run_id, event_type, payload (JSON), created_at                                                                      | Agent progress stream                  |
+| **TaskNote**     | id, task_id, content, created_at                                                                                                 | Timestamped notes on a task            |
+| **Setting**      | key (PK), value                                                                                                                  | Key-value settings                     |
+| **AuditEntry**   | id, action, entity_type, entity_id, detail (JSON), created_at                                                                    | Audit trail                            |
 
 ### Done Tasks
 
@@ -119,29 +119,29 @@ Reopening (DONE → BACKLOG) leaves the task without a worktree until the next `
 
 ## Enums
 
-| Enum                  | Values                                                                                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **TaskStatus**        | BACKLOG, IN_PROGRESS, REVIEW, DONE                                                                                                                                              |
-| **SessionStatus**     | PENDING, RUNNING, COMPLETED, FAILED, CANCELLED                                                                                                                                  |
-| **Priority**          | LOW, MEDIUM, HIGH, CRITICAL                                                                                                                                                     |
+| Enum                  | Values                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TaskStatus**        | BACKLOG, IN_PROGRESS, REVIEW, DONE                                                                                                                                               |
+| **SessionStatus**     | PENDING, RUNNING, COMPLETED, FAILED, CANCELLED                                                                                                                                   |
+| **Priority**          | LOW, MEDIUM, HIGH, CRITICAL                                                                                                                                                      |
 | **SessionEventType**  | OUTPUT_CHUNK, AGENT_STATUS, TOOL_CALL_START, TOOL_CALL_UPDATE, AGENT_COMPLETED, AGENT_FAILED, PLAN_UPDATE, TASK_STATUS_CHANGED, MERGE_COMPLETED, MERGE_FAILED, CRITERION_VERDICT |
-| **BranchRefStrategy** | LOCAL, REMOTE, LOCAL_IF_AHEAD                                                                                                                                                   |
+| **BranchRefStrategy** | LOCAL, REMOTE, LOCAL_IF_AHEAD                                                                                                                                                    |
 
 ## Error Hierarchy
 
-| Error                                                   | When                                           |
-| ------------------------------------------------------- | ---------------------------------------------- |
-| **KaganError**                                          | Base for all kagan errors                      |
-| **NotFoundError**                                       | Entity not found                               |
-| **InvalidTransitionError**                              | Illegal status move                            |
-| **WorktreeError**                                       | Git worktree operation failed                  |
-| **MergeConflictError** (extends WorktreeError)          | Merge produced conflicts                       |
-| **AgentError**                                          | Agent spawn or communication failure           |
-| **PreflightError**                                      | Blocking preflight issue prevents operation    |
-| **ValidationError**                                     | Input validation failures                      |
-| **ConfigurationError**                                  | Configuration or state issues                  |
-| **SessionError**                                        | Session operation failures                     |
-| **MultiRepoUnsupportedError** (extends WorktreeError)   | Task execution attempted against multiple repos |
+| Error                                                 | When                                            |
+| ----------------------------------------------------- | ----------------------------------------------- |
+| **KaganError**                                        | Base for all kagan errors                       |
+| **NotFoundError**                                     | Entity not found                                |
+| **InvalidTransitionError**                            | Illegal status move                             |
+| **WorktreeError**                                     | Git worktree operation failed                   |
+| **MergeConflictError** (extends WorktreeError)        | Merge produced conflicts                        |
+| **AgentError**                                        | Agent spawn or communication failure            |
+| **PreflightError**                                    | Blocking preflight issue prevents operation     |
+| **ValidationError**                                   | Input validation failures                       |
+| **ConfigurationError**                                | Configuration or state issues                   |
+| **SessionError**                                      | Session operation failures                      |
+| **MultiRepoUnsupportedError** (extends WorktreeError) | Task execution attempted against multiple repos |
 
 ## Fluent API
 
@@ -170,26 +170,26 @@ Supports async context manager (`async with KaganCore() as client`).
 
 ### Namespace Methods Overview
 
-| Namespace | Key Methods |
-|-----------|-------------|
-| **tasks** | `create()`, `get()`, `list()`, `update()`, `set_status()`, `delete()`, `search()`, `run()`, `cancel()`, `add_note()`, `wait_for_completion()` |
-| **tasks.events** | `list()`, `list_recent()`, `latest()`, `emit()`, `stream()`, `stream_all()`, `stream_board()` |
-| **projects** | `create()`, `get()`, `list()`, `set_active()`, `delete()`, `add_repo()`, `repos()`, `resolve_repo_path()` |
-| **worktrees** | `create()`, `get()`, `diff()`, `diff_stats()`, `cleanup()`, `cleanup_orphans()` |
-| **reviews** | `approve()`, `reject()`, `merge()`, `rebase()`, `abort_rebase()`, `continue_rebase()`, `conflicts()`, `set_criterion_verdict()` |
-| **settings** | `get()`, `set()` |
-| **audit_log** | `list()`, `record()` |
-| **persona_presets** | `audit_repo()`, `import_from_github()`, `export_to_github()`, `list_whitelist()`, `add_to_whitelist()`, `remove_from_whitelist()` |
+| Namespace           | Key Methods                                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **tasks**           | `create()`, `get()`, `list()`, `update()`, `set_status()`, `delete()`, `search()`, `run()`, `cancel()`, `add_note()`, `wait_for_completion()` |
+| **tasks.events**    | `list()`, `list_recent()`, `latest()`, `emit()`, `stream()`, `stream_all()`, `stream_board()`                                                 |
+| **projects**        | `create()`, `get()`, `list()`, `set_active()`, `delete()`, `add_repo()`, `repos()`, `resolve_repo_path()`                                     |
+| **worktrees**       | `create()`, `get()`, `diff()`, `diff_stats()`, `cleanup()`, `cleanup_orphans()`                                                               |
+| **reviews**         | `approve()`, `reject()`, `merge()`, `rebase()`, `abort_rebase()`, `continue_rebase()`, `conflicts()`, `set_criterion_verdict()`               |
+| **settings**        | `get()`, `set()`                                                                                                                              |
+| **audit_log**       | `list()`, `record()`                                                                                                                          |
+| **persona_presets** | `audit_repo()`, `import_from_github()`, `export_to_github()`, `list_whitelist()`, `add_to_whitelist()`, `remove_from_whitelist()`             |
 
 ### Prompt Resolution
 
 Three-layer hierarchy:
 
-| Layer       | Mechanism                           | Effect                                           |
-| ----------- | ----------------------------------- | ------------------------------------------------ |
-| **Layer 0** | Code defaults + behavioral settings | Compiles settings into prompt clauses            |
-| **Layer 1** | `additional_instructions` setting   | Single text field appended to all prompts        |
-| **Layer 2** | `.kagan/prompts/*.md` dotfiles      | Full replacement; bypasses Layers 0 and 1        |
+| Layer       | Mechanism                           | Effect                                    |
+| ----------- | ----------------------------------- | ----------------------------------------- |
+| **Layer 0** | Code defaults + behavioral settings | Compiles settings into prompt clauses     |
+| **Layer 1** | `additional_instructions` setting   | Single text field appended to all prompts |
+| **Layer 2** | `.kagan/prompts/*.md` dotfiles      | Full replacement; bypasses Layers 0 and 1 |
 
 Key functions in `_prompts.py`: `resolve_orchestrator_prompt()`, `resolve_task_prompt()`, `resolve_review_prompt()`.
 
@@ -221,12 +221,12 @@ A task can be executed across multiple sessions with different personas in seque
 
 ### Two Streaming Paths
 
-|               | ACP (managed)                    | MCP (interactive / external)             |
-| ------------- | -------------------------------- | ----------------------------------------- |
-| **When**      | All managed executions           | Interactive launches, IDE hosts          |
-| **Transport** | Direct STDIO JSON-RPC            | Agent spawns kagan MCP as subprocess     |
+|                   | ACP (managed)                     | MCP (interactive / external)         |
+| ----------------- | --------------------------------- | ------------------------------------ |
+| **When**          | All managed executions            | Interactive launches, IDE hosts      |
+| **Transport**     | Direct STDIO JSON-RPC             | Agent spawns kagan MCP as subprocess |
 | **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            |
-| **Process**   | Kagan owns (can terminate)       | Agent runs in external environment       |
+| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   |
 
 **Path A — ACP:** Backends with `supports_acp: True` use piped stdin/stdout. Events flow through `KaganACPClient.session_update()` → `map_acp_update_to_event()` → `Events.emit()`. A repetition guard hashes tool calls and cancels stuck agents (≥4 identical calls in last 10).
 
@@ -295,26 +295,27 @@ Created per-repo via `client._git_for_task()`. Operations: `worktree_add`, `work
 
 Kagan supports any CLI-based coding agent through a backend registry.
 
-| Backend          | CLI Executable | Notes        |
-| ---------------- | -------------- | ------------ |
-| `claude-code`    | `claude`       | Anthropic    |
-| `codex`          | `codex`        | OpenAI       |
-| `gemini-cli`     | `gemini`       | Google       |
-| `kimi-cli`       | `kimi`         | Moonshot     |
-| `github-copilot` | `copilot`      | GitHub       |
-| `goose`          | `goose`        | Block        |
-| `openhands`      | `openhands`    | Open-source  |
-| `opencode`       | `opencode`     | Open-source  |
-| `auggie`         | `auggie`       | Augment      |
-| `amp`            | `amp`          | Sourcegraph  |
-| `docker-cagent`  | `cagent`       | Docker       |
+| Backend          | CLI Executable | Notes          |
+| ---------------- | -------------- | -------------- |
+| `claude-code`    | `claude`       | Anthropic      |
+| `codex`          | `codex`        | OpenAI         |
+| `gemini-cli`     | `gemini`       | Google         |
+| `kimi-cli`       | `kimi`         | Moonshot       |
+| `github-copilot` | `copilot`      | GitHub         |
+| `goose`          | `goose`        | Block          |
+| `openhands`      | `openhands`    | Open-source    |
+| `opencode`       | `opencode`     | Open-source    |
+| `auggie`         | `auggie`       | Augment        |
+| `amp`            | `amp`          | Sourcegraph    |
+| `docker-cagent`  | `cagent`       | Docker         |
 | `stakpak`        | `stakpak`      | Infrastructure |
-| `mistral-vibe`   | `vibe`         | Mistral      |
-| `vt-code`        | `vtcode`       | VT Code      |
+| `mistral-vibe`   | `vibe`         | Mistral        |
+| `vt-code`        | `vtcode`       | VT Code        |
 
 **Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`.
 
 **Launch sequence:**
+
 1. Look up backend in registry → get executable + args template
 1. Write `.mcp.json` into worktree
 1. Set env vars (`KAGAN_TASK_ID`, `KAGAN_SESSION_ID`, `KAGAN_MCP_CMD`, etc.)
@@ -323,11 +324,11 @@ Kagan supports any CLI-based coding agent through a backend registry.
 
 **MCP flag wiring per consumer:**
 
-| Consumer       | `.mcp.json` args                   | Access tier            |
-| -------------- | ---------------------------------- | ---------------------- |
+| Consumer       | `.mcp.json` args                   | Access tier             |
+| -------------- | ---------------------------------- | ----------------------- |
 | Task agent     | `mcp --session-id {id}`            | Standard (read + write) |
-| Orchestrator   | `mcp --admin`                      | Admin (+ destructive)  |
-| Reviewer agent | `mcp --readonly --session-id {id}` | Readonly               |
+| Orchestrator   | `mcp --admin`                      | Admin (+ destructive)   |
+| Reviewer agent | `mcp --readonly --session-id {id}` | Readonly                |
 
 ### `_launchers.py` — Interactive Environment Launchers
 
@@ -386,14 +387,14 @@ Frontend → KaganCore → Launcher (tmux/IDE/nvim)
 
 All packages use [Loguru](https://github.com/Delgan/loguru). One sink, one file, one configuration point.
 
-| Aspect   | Value                                                                                     |
-| -------- | ----------------------------------------------------------------------------------------- |
-| Library  | `loguru.logger` (no stdlib `logging`)                                                     |
-| Sink     | Single file: `$XDG_STATE_HOME/kagan/kagan.log`                                            |
-| Rotation | 10 MB, 3 retained files                                                                   |
-| Format   | `{time:YYYY-MM-DD HH:mm:ss.SSS} \| {level} \| {name}:{function}:{line} \| {message}`      |
-| Levels   | `DEBUG` in dev, `INFO` in production (controlled by `KAGAN_LOG_LEVEL`)                    |
-| Console  | No console sink by default. `--verbose` / `-v` adds stderr sink                           |
+| Aspect   | Value                                                                                |
+| -------- | ------------------------------------------------------------------------------------ |
+| Library  | `loguru.logger` (no stdlib `logging`)                                                |
+| Sink     | Single file: `$XDG_STATE_HOME/kagan/kagan.log`                                       |
+| Rotation | 10 MB, 3 retained files                                                              |
+| Format   | `{time:YYYY-MM-DD HH:mm:ss.SSS} \| {level} \| {name}:{function}:{line} \| {message}` |
+| Levels   | `DEBUG` in dev, `INFO` in production (controlled by `KAGAN_LOG_LEVEL`)               |
+| Console  | No console sink by default. `--verbose` / `-v` adds stderr sink                      |
 
 **Rules:** One `logger.configure()` call in `kagan.core` init. No stdlib logging. Use `logger.bind(task_id=..., session_id=...)` for context. Loguru's `enqueue=True` on the file sink for async safety.
 

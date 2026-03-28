@@ -6,10 +6,10 @@ ______________________________________________________________________
 
 ## References
 
-| Package            | Repo                                                                                  | Use                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Package            | Repo                                                                                  | Use                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **MCP Python SDK** | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) | MCP framework: `MCPServer`, tool registration, lifespan, STDIO transport. |
-| **Loguru**         | [Delgan/loguru](https://github.com/Delgan/loguru)                                     | Structured logging.                                                     |
+| **Loguru**         | [Delgan/loguru](https://github.com/Delgan/loguru)                                     | Structured logging.                                                       |
 
 ______________________________________________________________________
 
@@ -18,7 +18,7 @@ ______________________________________________________________________
 `kagan.mcp` exposes kagan's core SDK as an MCP server for two consumers:
 
 1. **IDE hosts** (Cursor, VS Code, etc.) — manage tasks, review diffs, read project state.
-2. **Interactive-run agents** — discover kagan via `.mcp.json` and report progress to the board.
+1. **Interactive-run agents** — discover kagan via `.mcp.json` and report progress to the board.
 
 Managed executions use ACP (direct STDIO JSON-RPC), not MCP. The `--session-id` flag scopes tool visibility and task context.
 
@@ -32,11 +32,11 @@ There should be one obvious way to do it.
 ```
 
 1. **One `MCPServer` instance** — created with lifespan that owns a `KaganCore`
-2. **Tools are plain functions** — `@mcp.tool()` decorator, type hints drive the schema
-3. **Toolsets group by domain** — one file per domain (tasks, projects, reviews, etc.)
-4. **Access control is a filter** — tools registered once, filtered at registration time
-5. **python-sdk is the framework** — no wrapper abstractions over `MCPServer`
-6. **STDIO transport only** — hosts launch `kagan mcp` as a subprocess
+1. **Tools are plain functions** — `@mcp.tool()` decorator, type hints drive the schema
+1. **Toolsets group by domain** — one file per domain (tasks, projects, reviews, etc.)
+1. **Access control is a filter** — tools registered once, filtered at registration time
+1. **python-sdk is the framework** — no wrapper abstractions over `MCPServer`
+1. **STDIO transport only** — hosts launch `kagan mcp` as a subprocess
 
 ______________________________________________________________________
 
@@ -127,10 +127,10 @@ Each toolset exports `register(mcp, opts)`. Tools use `@mcp.tool()` decorators; 
 ### Tool Design Rules
 
 1. **Type hints drive the schema** — parameters become JSON schema
-2. **Docstrings become descriptions**
-3. **Return dicts** — serialized from domain models
-4. **Raise on error** — domain exceptions are caught and wrapped
-5. **Session-aware defaults** — `task_id` optional when session-bound
+1. **Docstrings become descriptions**
+1. **Return dicts** — serialized from domain models
+1. **Raise on error** — domain exceptions are caught and wrapped
+1. **Session-aware defaults** — `task_id` optional when session-bound
 
 ______________________________________________________________________
 
@@ -138,11 +138,11 @@ ______________________________________________________________________
 
 Access control is a **static filter at registration time**, not runtime middleware. Higher roles include all tools from lower roles.
 
-| Role             | CLI Flag              | Tools Available |
-| ---------------- | --------------------- | --------------- |
+| Role             | CLI Flag              | Tools Available                                      |
+| ---------------- | --------------------- | ---------------------------------------------------- |
 | **WORKER**       | `--role WORKER`       | Board awareness + own-task ops (used by task agents) |
-| **REVIEWER**     | `--role REVIEWER`     | WORKER + review verdict tools |
-| **ORCHESTRATOR** | `--role ORCHESTRATOR` | Everything (default; IDE hosts) |
+| **REVIEWER**     | `--role REVIEWER`     | WORKER + review verdict tools                        |
+| **ORCHESTRATOR** | `--role ORCHESTRATOR` | Everything (default; IDE hosts)                      |
 
 `_policy.py` defines `ROLE_TOOLS: dict[AgentRole, frozenset[str]]`. Core wires `--role WORKER` into `.mcp.json` for spawned agents.
 
@@ -153,8 +153,8 @@ ______________________________________________________________________
 When `--session-id` is provided:
 
 1. Lifespan auto-opens the owning project
-2. `task_id` becomes **optional** — defaults to bound task
-3. Agent doesn't need to discover or pass task IDs
+1. `task_id` becomes **optional** — defaults to bound task
+1. Agent doesn't need to discover or pass task IDs
 
 Agent env: `KAGAN_MCP_CMD=kagan mcp --session-id {id}`
 IDE worktree: `.mcp.json` with matching args
@@ -166,7 +166,7 @@ ______________________________________________________________________
 **ACP is the primary streaming channel** for managed executions. MCP is used for:
 
 1. **Interactive launch** — agent in IDE/tmux/neovim discovers `.mcp.json`, reports progress
-2. **External tools** — IDE hosts browse tasks, orchestrators manage projects
+1. **External tools** — IDE hosts browse tasks, orchestrators manage projects
 
 Both MCP and ACP write to the same SQLite `run_events` table.
 
@@ -176,13 +176,13 @@ ______________________________________________________________________
 
 **Resources** (read-only data endpoints):
 
-| URI                       | Description                 |
-| ------------------------- | --------------------------- |
-| `kagan://ping`            | Health check                |
-| `kagan://settings`        | Current settings snapshot   |
-| `kagan://projects`        | Project list with metadata  |
-| `kagan://tasks/{task_id}` | Task detail (full mode)     |
-| `kagan://runtime`         | Runtime status              |
+| URI                       | Description                |
+| ------------------------- | -------------------------- |
+| `kagan://ping`            | Health check               |
+| `kagan://settings`        | Current settings snapshot  |
+| `kagan://projects`        | Project list with metadata |
+| `kagan://tasks/{task_id}` | Task detail (full mode)    |
+| `kagan://runtime`         | Runtime status             |
 
 **Prompts** (reusable templates):
 
@@ -199,7 +199,7 @@ ______________________________________________________________________
 ## Error Handling
 
 | Exception             | When                            | MCP Result                    |
-| --------------------- | --------------------------------| ----------------------------- |
+| --------------------- | ------------------------------- | ----------------------------- |
 | Tool validation error | Bad input, not found, bad state | `is_error=true`, text content |
 | Core domain error     | InvalidTransitionError, etc.    | Caught, wrapped as tool error |
 | Unexpected exception  | Bug                             | Caught by SDK, error content  |
@@ -215,10 +215,10 @@ ______________________________________________________________________
 
 ## What This Architecture Does NOT Have
 
-| Omitted                        | Why                                                               |
-| ------------------------------ | ----------------------------------------------------------------- |
-| HTTP/SSE transport             | Kagan is local-only. STDIO is simplest. Hosts spawn the process.  |
-| Auth middleware                | Local process, local user. Access control via role flags.         |
-| Tool wrapper/base class        | `@mcp.tool()` is the abstraction.                                 |
-| Runtime role switching         | Rebuild the server for a different role.                          |
-| Custom serialization framework | Standard JSON serialization of model dicts.                       |
+| Omitted                        | Why                                                              |
+| ------------------------------ | ---------------------------------------------------------------- |
+| HTTP/SSE transport             | Kagan is local-only. STDIO is simplest. Hosts spawn the process. |
+| Auth middleware                | Local process, local user. Access control via role flags.        |
+| Tool wrapper/base class        | `@mcp.tool()` is the abstraction.                                |
+| Runtime role switching         | Rebuild the server for a different role.                         |
+| Custom serialization framework | Standard JSON serialization of model dicts.                      |

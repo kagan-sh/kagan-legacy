@@ -40,10 +40,18 @@ class PermissionPrompt(Vertical):
         self._resolved = False
 
     def compose(self) -> ComposeResult:
-        yield Static("⚠ Permission required", classes="permission-header")
-        yield Static(self._text, id="permission-text", classes="permission-tool")
-        yield Static("[a] allow once  ·  [d] deny", classes="permission-controls")
-        yield Static("", id="permission-countdown", classes="permission-timer")
+        header = Static("⚠ Permission required", classes="permission-header")
+        header.tooltip = "Permission request alert"
+        yield header
+        text = Static(self._text, id="permission-text", classes="permission-tool")
+        text.tooltip = "Details of the permission being requested"
+        yield text
+        controls = Static("[a] allow once  ·  [d] deny", classes="permission-controls")
+        controls.tooltip = "Press 'a' to allow or 'd' to deny (keyboard shortcuts)"
+        yield controls
+        countdown = Static("", id="permission-countdown", classes="permission-timer")
+        countdown.tooltip = "Countdown timer for automatic denial"
+        yield countdown
 
     def on_mount(self) -> None:
         self.remaining_seconds = self._timeout_seconds

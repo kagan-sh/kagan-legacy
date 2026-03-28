@@ -208,8 +208,7 @@ Vitest conventions:
 - Prefer behavior assertions (rendered output, grouped state, visible status labels)
 
 ```bash
-cd packages/web
-npx vitest run
+pnpm run web:test
 ```
 
 Playwright conventions:
@@ -220,8 +219,7 @@ Playwright conventions:
 - Keep E2E suites small and resilient; avoid brittle selectors tied to styling
 
 ```bash
-cd packages/web
-npx playwright test
+pnpm run web:test:e2e
 ```
 
 Relationship to Python tests:
@@ -231,6 +229,72 @@ Relationship to Python tests:
 - Both layers are complementary; neither replaces the other
 
 Prioritize web tests in this order: **stores -> components -> E2E smoke flows**.
+
+______________________________________________________________________
+
+## VS Code Extension Tests
+
+The VS Code extension follows a three-layer split. There should be one obvious way to test each
+kind of behavior:
+
+1. **Vitest** for pure helpers and small state-free logic
+1. **`@vscode/test-cli` / `@vscode/test-electron`** for extension-host integration
+1. **WDIO + `wdio-vscode-service`** for real VS Code UI smoke flows
+
+Directory layout:
+
+```text
+packages/vscode/
+├── src/**/*.test.ts                  # Vitest unit tests
+├── test/integration/**/*.test.ts     # Official extension-host tests
+├── test/e2e/**/*.spec.ts             # WDIO real-VSCode smoke tests
+├── test/helpers/                     # Shared fake Kagan server + fixtures
+├── .vscode-test.mjs                  # Official VS Code test runner config
+├── test/wdio.conf.ts                 # WDIO runner config
+├── tsconfig.test.json                # Integration test compile target
+└── test/tsconfig.json                # WDIO type environment
+```
+
+Use each layer for one job only:
+
+- **Vitest** tests pure functions such as URI builders, launcher normalization, diff slicing, and
+  API-client edge behavior. No VS Code instance, no browser, no real workbench.
+- **Integration tests** run inside the Extension Development Host and assert extension behavior via
+  the real `vscode` API: activation, command registration, virtual documents, SCM content
+  providers, and configuration wiring.
+- **WDIO smoke tests** run against a real downloaded VS Code instance and verify the installed
+  extension still works end to end in a dummy editor window.
+
+The fake backend for VS Code tests is a tiny local HTTP/SSE server, not a pile of mocks. That
+keeps the extension honest while keeping tests deterministic.
+
+Commands:
+
+```bash
+pnpm run vscode:test:unit
+pnpm run vscode:test:integration
+pnpm run vscode:test:e2e
+```
+
+Root shortcuts:
+
+```bash
+uv run poe vscode-check
+uv run poe vscode-test-integration
+uv run poe vscode-test-e2e
+```
+
+Conventions:
+
+- Keep **unit tests** in the same namespace as the source file they exercise.
+- Keep **integration tests** behavior-first: pass command arguments, inspect opened documents,
+  assert observable state.
+- Keep **WDIO** small. One or two smoke flows are worth more than a maze of brittle UI selectors.
+- Prefer `browser.executeWorkbench(...)` when the behavior belongs to VS Code itself. Use page
+  objects or raw selectors only when the UI surface is the thing under test.
+- Do not invent a fourth layer. If a test is hard to place, the test is probably badly shaped.
+
+Prioritize VS Code tests in this order: **helpers -> command/provider integration -> one real UI smoke path**.
 
 ______________________________________________________________________
 

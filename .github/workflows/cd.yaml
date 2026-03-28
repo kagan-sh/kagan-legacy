@@ -78,8 +78,8 @@ jobs:
         with:
           version: 10
 
-      - name: Install web dependencies
-        run: pnpm install --prefix packages/web
+      - name: Install JavaScript workspace dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build bundled web UI
         run: uv run poe web-build
@@ -116,7 +116,7 @@ jobs:
 
       - name: Publish to PyPI
         if: steps.release.outputs.released == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
 

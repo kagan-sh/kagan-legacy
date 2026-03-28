@@ -30,55 +30,55 @@ ______________________________________________________________________
 
 ### Core task workflow
 
-| Tool                       | Annotation    | Purpose                                                                           |
-| -------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| `task_get(...)`            | `read-only`   | Read bounded task snapshot (`summary`/`full`) or bounded context (`mode=context`) |
-| `task_list(...)`           | `read-only`   | List tasks with optional filtering and scratchpad inclusion                       |
-| `task_search(...)`         | `read-only`   | Search tasks by query string                                                      |
-| `task_events(...)`         | `read-only`   | Read paginated task execution events (newest-first pages)                        |
-| `task_counts(...)`         | `read-only`   | Get task counts grouped by status                                                 |
-| `tasks_wait(...)`          | `read-only`   | Long-poll task status changes                                                     |
-| `task_create(...)`         | `mutating`    | Create a task                                                                     |
-| `task_batch_create(...)`   | `mutating`    | Create multiple tasks in a single call                                            |
-| `task_update(...)`         | `mutating`    | Apply partial task updates, transitions, and metadata adjustments                 |
-| `task_add_note(...)`       | `mutating`    | Append a timestamped reasoning note to a task's scratchpad                        |
-| `task_delete(...)`         | `destructive` | Delete a task                                                                     |
+| Tool                     | Annotation    | Purpose                                                                           |
+| ------------------------ | ------------- | --------------------------------------------------------------------------------- |
+| `task_get(...)`          | `read-only`   | Read bounded task snapshot (`summary`/`full`) or bounded context (`mode=context`) |
+| `task_list(...)`         | `read-only`   | List tasks with optional filtering and scratchpad inclusion                       |
+| `task_search(...)`       | `read-only`   | Search tasks by query string                                                      |
+| `task_events(...)`       | `read-only`   | Read paginated task execution events (newest-first pages)                         |
+| `task_counts(...)`       | `read-only`   | Get task counts grouped by status                                                 |
+| `tasks_wait(...)`        | `read-only`   | Long-poll task status changes                                                     |
+| `task_create(...)`       | `mutating`    | Create a task                                                                     |
+| `task_batch_create(...)` | `mutating`    | Create multiple tasks in a single call                                            |
+| `task_update(...)`       | `mutating`    | Apply partial task updates, transitions, and metadata adjustments                 |
+| `task_add_note(...)`     | `mutating`    | Append a timestamped reasoning note to a task's scratchpad                        |
+| `task_delete(...)`       | `destructive` | Delete a task                                                                     |
 
 ### Automation & session tools
 
-| Tool               | Annotation  | Purpose                                                                   |
-| ------------------ | ----------- | ------------------------------------------------------------------------- |
-| `run_start(...)`   | `mutating`  | Start a managed run or launch an interactive session for a task           |
-| `run_exists(...)`  | `read-only` | Check whether a task currently has an interactive session                 |
-| `run_create(...)`  | `mutating`  | Provision a workspace and start an interactive session                    |
-| `run_get(...)`     | `read-only` | Read the current interactive session status for a task                    |
-| `run_kill(...)`    | `mutating`  | Cancel a task run by task id                                              |
-| `run_detach(...)`  | `mutating`  | Finalize an interactive session and update task status                    |
-| `run_cancel(...)`  | `mutating`  | Cancel an active session                                                  |
-| `run_summary(...)` | `read-only` | List running sessions + statuses for active tasks                         |
+| Tool               | Annotation  | Purpose                                                         |
+| ------------------ | ----------- | --------------------------------------------------------------- |
+| `run_start(...)`   | `mutating`  | Start a managed run or launch an interactive session for a task |
+| `run_exists(...)`  | `read-only` | Check whether a task currently has an interactive session       |
+| `run_create(...)`  | `mutating`  | Provision a workspace and start an interactive session          |
+| `run_get(...)`     | `read-only` | Read the current interactive session status for a task          |
+| `run_kill(...)`    | `mutating`  | Cancel a task run by task id                                    |
+| `run_detach(...)`  | `mutating`  | Finalize an interactive session and update task status          |
+| `run_cancel(...)`  | `mutating`  | Cancel an active session                                        |
+| `run_summary(...)` | `read-only` | List running sessions + statuses for active tasks               |
 
 ### Project, review, and admin
 
-| Tool                        | Annotation    | Purpose                                                       |
-| --------------------------- | ------------- | ------------------------------------------------------------- |
-| `project_list(...)`         | `read-only`   | List recent projects                                          |
-| `project_set_active(...)`   | `mutating`    | Set active project                                            |
-| `project_create(...)`       | `mutating`    | Create a project                                              |
-| `project_add_repo(...)`     | `mutating`    | Link a repo to a project                                      |
-| `project_delete(...)`       | `destructive` | Delete a project                                              |
-| `repo_list(...)`            | `read-only`   | List repos by project                                         |
-| `review_approve(...)`       | `mutating`    | Record approval for a review-ready task                       |
-| `review_reject(...)`        | `mutating`    | Reject a review-ready task with explicit feedback             |
-| `review_merge(...)`         | `destructive` | Merge an approved task into its base branch                   |
-| `review_rebase(...)`        | `mutating`    | Rebase a task branch onto its base branch                     |
-| `review_conflicts(...)`     | `read-only`   | Get merge conflict details                                    |
-| `review_continue_rebase(...)` | `mutating`  | Continue an interrupted rebase                                |
-| `review_abort_rebase(...)`  | `mutating`    | Abort a rebase operation                                      |
-| `review_set_criterion_verdict(...)` | `mutating` | Set verdict on an acceptance criterion                   |
-| `review_clear_verdicts(...)` | `mutating`   | Clear AI review verdicts                                      |
-| `audit_list(...)`           | `read-only`   | List recent audit events                                      |
-| `settings_get()`            | `read-only`   | Read allowlisted settings                                     |
-| `settings_set(...)`         | `mutating`    | Update allowlisted settings                                   |
+| Tool                                | Annotation    | Purpose                                           |
+| ----------------------------------- | ------------- | ------------------------------------------------- |
+| `project_list(...)`                 | `read-only`   | List recent projects                              |
+| `project_set_active(...)`           | `mutating`    | Set active project                                |
+| `project_create(...)`               | `mutating`    | Create a project                                  |
+| `project_add_repo(...)`             | `mutating`    | Link a repo to a project                          |
+| `project_delete(...)`               | `destructive` | Delete a project                                  |
+| `repo_list(...)`                    | `read-only`   | List repos by project                             |
+| `review_approve(...)`               | `mutating`    | Record approval for a review-ready task           |
+| `review_reject(...)`                | `mutating`    | Reject a review-ready task with explicit feedback |
+| `review_merge(...)`                 | `destructive` | Merge an approved task into its base branch       |
+| `review_rebase(...)`                | `mutating`    | Rebase a task branch onto its base branch         |
+| `review_conflicts(...)`             | `read-only`   | Get merge conflict details                        |
+| `review_continue_rebase(...)`       | `mutating`    | Continue an interrupted rebase                    |
+| `review_abort_rebase(...)`          | `mutating`    | Abort a rebase operation                          |
+| `review_set_criterion_verdict(...)` | `mutating`    | Set verdict on an acceptance criterion            |
+| `review_clear_verdicts(...)`        | `mutating`    | Clear AI review verdicts                          |
+| `audit_list(...)`                   | `read-only`   | List recent audit events                          |
+| `settings_get()`                    | `read-only`   | Read allowlisted settings                         |
+| `settings_set(...)`                 | `mutating`    | Update allowlisted settings                       |
 
 ### Plugin tools (experimental)
 
@@ -89,14 +89,14 @@ ______________________________________________________________________
 
 ### Persona tools
 
-| Tool                                | Annotation    | Purpose                                |
-| ----------------------------------- | ------------- | -------------------------------------- |
-| `persona_preset_audit(...)`         | `read-only`   | Audit persona presets in a repo        |
-| `persona_preset_import(...)`        | `mutating`    | Import persona presets from GitHub     |
-| `persona_preset_export(...)`        | `mutating`    | Export persona presets to GitHub       |
-| `persona_preset_whitelist_list(...)` | `read-only`  | List trusted persona repos            |
-| `persona_preset_whitelist_add(...)`  | `mutating`   | Trust a persona repo                  |
-| `persona_preset_whitelist_remove(...)` | `mutating` | Untrust a persona repo               |
+| Tool                                   | Annotation  | Purpose                            |
+| -------------------------------------- | ----------- | ---------------------------------- |
+| `persona_preset_audit(...)`            | `read-only` | Audit persona presets in a repo    |
+| `persona_preset_import(...)`           | `mutating`  | Import persona presets from GitHub |
+| `persona_preset_export(...)`           | `mutating`  | Export persona presets to GitHub   |
+| `persona_preset_whitelist_list(...)`   | `read-only` | List trusted persona repos         |
+| `persona_preset_whitelist_add(...)`    | `mutating`  | Trust a persona repo               |
+| `persona_preset_whitelist_remove(...)` | `mutating`  | Untrust a persona repo             |
 
 Review semantics:
 
@@ -141,25 +141,25 @@ Use this tool to fetch execution event history for a task, with pagination suppo
 
 ### Parameters
 
-| Parameter           | Type     | Default  | Description                                |
-| ------------------- | -------- | -------- | ------------------------------------------ |
-| `task_id`           | `string` | required | Target task                                |
-| `limit`             | `int`    | `20`     | Events per page (1–200)                    |
-| `offset`            | `int`    | `0`      | Chronological offset                       |
-| `include_payload`   | `bool`   | `false`  | Include full event payloads                |
-| `max_payload_bytes` | `int`    | `16384`  | Max bytes per individual payload (256–128K)|
-| `max_total_bytes`   | `int`    | `262144` | Total byte budget for response (4K–1M)     |
+| Parameter           | Type     | Default  | Description                                 |
+| ------------------- | -------- | -------- | ------------------------------------------- |
+| `task_id`           | `string` | required | Target task                                 |
+| `limit`             | `int`    | `20`     | Events per page (1–200)                     |
+| `offset`            | `int`    | `0`      | Chronological offset                        |
+| `include_payload`   | `bool`   | `false`  | Include full event payloads                 |
+| `max_payload_bytes` | `int`    | `16384`  | Max bytes per individual payload (256–128K) |
+| `max_total_bytes`   | `int`    | `262144` | Total byte budget for response (4K–1M)      |
 
 ### Response fields
 
-| Field                      | Type     | Description                                  |
-| -------------------------- | -------- | -------------------------------------------- |
-| `task_id`                  | `string` | The task these events belong to              |
-| `offset`                   | `int`    | Offset used for this page                    |
-| `limit`                    | `int`    | Limit used for this page                     |
-| `returned`                 | `int`    | Number of events returned                    |
-| `truncated_by_total_bytes` | `bool`   | Whether response was truncated by byte budget|
-| `logs`                     | `list`   | Returned event entries                       |
+| Field                      | Type     | Description                                   |
+| -------------------------- | -------- | --------------------------------------------- |
+| `task_id`                  | `string` | The task these events belong to               |
+| `offset`                   | `int`    | Offset used for this page                     |
+| `limit`                    | `int`    | Limit used for this page                      |
+| `returned`                 | `int`    | Number of events returned                     |
+| `truncated_by_total_bytes` | `bool`   | Whether response was truncated by byte budget |
+| `logs`                     | `list`   | Returned event entries                        |
 
 ______________________________________________________________________
 
@@ -249,12 +249,12 @@ ______________________________________________________________________
 
 ### Parameters
 
-| Parameter       | Type             | Description                                             |
-| --------------- | ---------------- | ------------------------------------------------------- |
-| `task_id`       | `string`         | Target task                                             |
-| `agent_backend` | `string \| null` | Override default agent backend                          |
-| `launcher`      | `string \| null` | Optional launcher for interactive runs                  |
-| `persona`       | `string \| null` | Optional persona name to seed agent conversation        |
+| Parameter       | Type             | Description                                      |
+| --------------- | ---------------- | ------------------------------------------------ |
+| `task_id`       | `string`         | Target task                                      |
+| `agent_backend` | `string \| null` | Override default agent backend                   |
+| `launcher`      | `string \| null` | Optional launcher for interactive runs           |
+| `persona`       | `string \| null` | Optional persona name to seed agent conversation |
 
 ### Response
 
@@ -273,7 +273,7 @@ The attached-run lifecycle now uses one explicit tool per action.
 
 | Tool              | Parameter | Type     | Description                                                |
 | ----------------- | --------- | -------- | ---------------------------------------------------------- |
-| `run_exists(...)` | `task_id` | `string` | Returns `{"exists": bool, "task_id": ...}`             |
+| `run_exists(...)` | `task_id` | `string` | Returns `{"exists": bool, "task_id": ...}`                 |
 | `run_create(...)` | `task_id` | `string` | Provisions a workspace and starts an interactive session   |
 | `run_get(...)`    | `task_id` | `string` | Reads the current interactive session status for the task  |
 | `run_kill(...)`   | `task_id` | `string` | Cancels the task run via `client.tasks.cancel`             |
@@ -338,11 +338,11 @@ Tool visibility is controlled by the MCP server's role tier. `--readonly` maps t
 worker-scoped surface, while the default and `--admin` modes both expose the
 same orchestrator-scoped MCP tool set.
 
-| Tier       | Visible tools                                                                                                                |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Tier       | Visible tools                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
-| `default`  | Orchestrator-scope tools (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management) |
-| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                         |
+| `default`  | Orchestrator-scope tools (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management)                                                                                                 |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                               |
 
 Unregistered tools are invisible to the host — it never knows they exist.
 

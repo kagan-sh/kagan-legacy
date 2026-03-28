@@ -11,20 +11,20 @@ tags:
 
 `kagan` with no subcommand launches the TUI (same as `kagan tui`).
 
-| Command   | Description                                      |
-| --------- | ------------------------------------------------ |
-| `chat`    | Orchestrator REPL / one-shot prompt              |
-| `doctor`  | Environment diagnostics                          |
-| `import`  | Import tasks from external sources               |
-| `list`    | List projects with task counts                   |
-| `mcp`     | Run MCP server (stdio)                           |
-| `plugins` | Plugin management (requires opt-in, see below)   |
-| `reset`   | Remove local state                               |
-| `serve`   | Run HTTP API server (no web UI)                  |
-| `tools`   | Stateless utilities                              |
-| `tui`     | Run TUI explicitly                               |
-| `update`  | Check/install updates                            |
-| `web`     | Start API server with bundled web UI             |
+| Command   | Description                                     |
+| --------- | ----------------------------------------------- |
+| `chat`    | Orchestrator REPL / one-shot prompt             |
+| `doctor`  | Environment diagnostics                         |
+| `import`  | Import tasks from external sources              |
+| `list`    | List projects with task counts                  |
+| `mcp`     | Run MCP server (stdio)                          |
+| `plugins` | Plugin management (requires opt-in, see below)  |
+| `reset`   | Remove local state                              |
+| `serve`   | Run HTTP API server (no web UI)                 |
+| `tools`   | Stateless utilities and advanced prompt tooling |
+| `tui`     | Run TUI explicitly                              |
+| `update`  | Check/install updates                           |
+| `web`     | Start API server with bundled web UI            |
 
 ## Global options
 
@@ -116,11 +116,11 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 
 ### Access tiers
 
-| Tier       | Scope                                                                                                                  |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Tier       | Scope                                                                                                                                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
-| `default`  | Orchestrator-scope access (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management) |
-| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                    |
+| `default`  | Orchestrator-scope access (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management)                                                                                                     |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                    |
 
 ```bash
 kagan mcp --readonly                    # worker-scope access
@@ -156,12 +156,12 @@ ______________________________________________________________________
 
 Starts the HTTP API server for local integrations. REST + SSE endpoints are served from the same local process.
 
-| Option       | Description                            |
-| ------------ | -------------------------------------- |
-| `--host`     | Bind address (default: `127.0.0.1`)    |
-| `--port`     | Bind port (default: `8765`)            |
-| `--readonly` | Read-only access tier                  |
-| `--admin`    | Admin access tier                      |
+| Option       | Description                               |
+| ------------ | ----------------------------------------- |
+| `--host`     | Bind address (default: `127.0.0.1`)       |
+| `--port`     | Bind port (default: `8765`)               |
+| `--readonly` | Read-only access tier                     |
+| `--admin`    | Admin access tier                         |
 | `--tls`      | Enable HTTPS with self-signed certificate |
 
 `--readonly` and `--admin` are mutually exclusive. Use `--host 0.0.0.0` to allow connections from other devices on the network.
@@ -205,6 +205,7 @@ ______________________________________________________________________
 | Subcommand | Description                  |
 | ---------- | ---------------------------- |
 | `enhance`  | Enhance prompts for AI tools |
+| `prompts`  | Export resolved prompts      |
 
 ### `kagan tools enhance`
 
@@ -217,6 +218,17 @@ Rewrites a prompt for clarity and actionability using an AI backend.
 | `--agent NAME` | Refinement agent backend (auto-detects if omitted)                       |
 | `-t, --tool`   | Legacy shorthand: `claude` or `opencode` (cannot combine with `--agent`) |
 | `-f, --file`   | Read prompt from file                                                    |
+
+### `kagan tools prompts export`
+
+| Option         | Description                                    |
+| -------------- | ---------------------------------------------- |
+| `--type`       | `orchestrator`, `execution`, or `review`       |
+| `--output, -o` | Output path; prints to stdout when omitted     |
+| `--format`     | `yml` or `text` output format                  |
+| `--model`      | Model ID written into the `.prompt.yml` header |
+
+This is advanced tooling for prompt export and evaluation workflows. Persona management remains under `kagan tools prompts persona ...`.
 
 ______________________________________________________________________
 

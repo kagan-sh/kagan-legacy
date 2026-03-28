@@ -13,6 +13,20 @@
 
 
 
+## v0.13.1-beta.7 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Skip commit when vscode version already matches
+  ([`185af4a`](https://github.com/kagan-sh/kagan/commit/185af4aa8d0e965bab84e6e2e9519e8dcfae5707))
+
+
+
+
+
 ## v0.13.1-beta.6 (2026-03-28)
 
 

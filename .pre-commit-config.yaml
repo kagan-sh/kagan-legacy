@@ -79,7 +79,7 @@ repos:
 
           - id: wire-drift
             name: wire drift check
-            entry: python scripts/check_wire_drift.py
+            entry: uv run python scripts/check_wire_drift.py
             language: system
             files: ^(src/kagan/server/responses\.py|packages/web/src/lib/api/generated-wire-types\.ts)$
             pass_filenames: false

@@ -19,9 +19,13 @@ class TutorialOverlay(Widget):
 
     STEPS: tuple[TutorialStep, ...] = (
         TutorialStep("Move", "Use h j k l or arrows to move between cards."),
-        TutorialStep("Inspect", "Press Enter to inspect the selected task."),
         TutorialStep(
-            "Create", "Press n to create a task. Start (s) or attach (a) from the inspector."
+            "Inspect",
+            "Press Enter to inspect the selected task. Press Enter again to open the full task screen.",
+        ),
+        TutorialStep(
+            "Create",
+            "Press n to create a task. Start (s) to run it in the background or attach (a) to open it in your editor or terminal.",
         ),
         TutorialStep("Help", "Press ? or F1 for full help."),
     )
@@ -41,9 +45,10 @@ class TutorialOverlay(Widget):
             with Container(classes="tutorial-shortcuts"):
                 yield self._shortcut_row("h j k l / arrows", "Move between cards")
                 yield self._shortcut_row("Enter", "Inspect selected task")
+                yield self._shortcut_row("Enter again", "Open full task screen")
                 yield self._shortcut_row("Shift+Left / Shift+Right", "Move task between columns")
                 yield self._shortcut_row("n", "Create task")
-                yield self._shortcut_row("s / a", "Start managed run / attach interactive")
+                yield self._shortcut_row("s / a", "Run in background / open in editor")
                 yield self._shortcut_row("F2 / Ctrl+Shift+P", "Open Quick Actions")
                 yield self._shortcut_row("Ctrl+O / Ctrl+R", "Projects / Repositories")
                 yield self._shortcut_row("? / F1", "Open full help")

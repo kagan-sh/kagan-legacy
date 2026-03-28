@@ -53,7 +53,7 @@ ______________________________________________________________________
 3. Open a local repository in VS Code.
 4. Open the Chat panel and run `@kagan /status`, or click the **Kagan** icon in the Activity Bar.
 
-The extension connects to `http://localhost:8765` by default and auto-starts a local Kagan server when `kagan` is available on your `PATH`.
+The extension connects to `http://localhost:8765` by default and auto-starts `kagan serve` when `kagan` is available on your `PATH`.
 
 ______________________________________________________________________
 
@@ -109,7 +109,7 @@ ______________________________________________________________________
 ## Troubleshooting
 
 - **Extension cannot connect**: confirm `kagan --version` works in the same shell VS Code inherits
-- **Local server did not auto-start**: run `kagan web --no-open` manually once to confirm the CLI is installed and reachable
+- **Local server did not auto-start**: run `kagan serve` manually once to confirm the CLI is installed and reachable
 - **Remote server requires auth**: set `kagan.serverUrl`, `kagan.protocol`, and `kagan.authToken`
 
 More help: [Troubleshooting](../troubleshooting.md)

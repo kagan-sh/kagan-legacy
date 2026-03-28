@@ -1,12 +1,14 @@
 import importlib.util
 import os
 import subprocess
+from asyncio import run as asyncio_run
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from kagan.cli.doctor import DoctorCheck
+from kagan.cli._bootstrap import make_client
 from kagan.cli.main import _sanitize_startup_environment, cli
 
 _HAS_RICH_CLICK = importlib.util.find_spec("rich_click") is not None
@@ -83,6 +85,177 @@ def test_bare_kagan_delegates_to_tui(monkeypatch, tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert called["value"] is True
+
+
+def _seed_surface_chooser_seen(
+    tmp_path: Path,
+    choice: str = "tui",
+    *,
+    startup_surface: str | None = None,
+) -> None:
+    client = make_client(db_path=tmp_path / "kagan.db")
+    try:
+        asyncio_run(
+            client.settings.set(
+                {
+                    "ui.surface_chooser_seen": "true",
+                    "ui.surface_chooser_last_choice": choice,
+                    "startup_default_surface": startup_surface or choice,
+                }
+            )
+        )
+    finally:
+        client.close()
+
+
+def _seed_project(tmp_path: Path, name: str = "Seed Project") -> None:
+    client = make_client(db_path=tmp_path / "kagan.db")
+    try:
+        asyncio_run(client.projects.create(name))
+    finally:
+        client.close()
+
+
+def test_first_run_shows_surface_chooser_and_persists_choice(monkeypatch, tmp_path: Path) -> None:
+    called = {"value": False}
+
+    def fake_launch(**_kw) -> None:
+        called["value"] = True
+
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr("click.prompt", lambda *args, **kwargs: "tui")
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "First launch - choose where to start" in result.output
+    assert called["value"] is True
+
+    client = make_client(db_path=tmp_path / "kagan.db")
+    try:
+        settings = asyncio_run(client.settings.get())
+    finally:
+        client.close()
+    assert settings["ui.surface_chooser_seen"] == "true"
+    assert settings["ui.surface_chooser_last_choice"] == "tui"
+    assert settings["startup_default_surface"] == "tui"
+
+
+def test_first_run_web_choice_becomes_default_surface(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr("click.prompt", lambda *args, **kwargs: "web")
+    monkeypatch.setattr(
+        "kagan.cli.main._dispatch_surface_choice",
+        lambda _ctx, choice: captured.setdefault("choice", choice),
+    )
+
+    result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert captured["choice"] == "web"
+
+    client = make_client(db_path=tmp_path / "kagan.db")
+    try:
+        settings = asyncio_run(client.settings.get())
+    finally:
+        client.close()
+    assert settings["startup_default_surface"] == "web"
+
+
+def test_surface_chooser_is_skipped_after_choice_saved(monkeypatch, tmp_path: Path) -> None:
+    called = {"value": False}
+
+    def fake_launch(**_kw) -> None:
+        called["value"] = True
+
+    _seed_surface_chooser_seen(tmp_path)
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr(
+        "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
+    )
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+
+    result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert called["value"] is True
+    assert "First launch - choose where to start" not in result.output
+
+
+def test_saved_startup_surface_is_used_for_bare_kagan(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    _seed_surface_chooser_seen(tmp_path, choice="web", startup_surface="web")
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr(
+        "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
+    )
+    monkeypatch.setattr(
+        "kagan.cli.main._dispatch_surface_choice",
+        lambda _ctx, choice: captured.setdefault("choice", choice),
+    )
+
+    result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert captured["choice"] == "web"
+
+
+def test_startup_surface_ask_reopens_surface_chooser(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    _seed_surface_chooser_seen(tmp_path, startup_surface="ask")
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr("click.prompt", lambda *args, **kwargs: "chat")
+    monkeypatch.setattr(
+        "kagan.cli.main._dispatch_surface_choice",
+        lambda _ctx, choice: captured.setdefault("choice", choice),
+    )
+
+    result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "First launch - choose where to start" in result.output
+    assert captured["choice"] == "chat"
+
+
+def test_surface_chooser_is_skipped_when_projects_exist(monkeypatch, tmp_path: Path) -> None:
+    called = {"value": False}
+
+    def fake_launch(**_kw) -> None:
+        called["value"] = True
+
+    _seed_project(tmp_path)
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr(
+        "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
+    )
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+
+    result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert called["value"] is True
+    assert "First launch - choose where to start" not in result.output
+
+
+def test_explicit_subcommand_bypasses_surface_chooser(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
+    monkeypatch.setattr(
+        "click.prompt", lambda *args, **kwargs: pytest.fail("prompt should not run")
+    )
+
+    result = CliRunner().invoke(cli, ["web", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Open the Kagan web UI in your browser." in result.output
 
 
 def test_tui_help_lists_session_attach_flag(tmp_path: Path) -> None:
@@ -166,6 +339,14 @@ def test_mcp_help_includes_access_tier_guidance(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "Agent roles:" in result.output
     assert "--role" in result.output
+
+
+def test_web_help_does_not_mark_admin_as_default(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["web", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "Admin access tier (default: on)" not in result.output
 
 
 @pytest.mark.parametrize("source_mode", ["prompt", "file"])

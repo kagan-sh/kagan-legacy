@@ -22,16 +22,27 @@ kagan --version
 
 ## 2. Launch
 
+Pick one surface and ignore the others for now:
+
+- `kagan` - keyboard-first TUI
+- `kagan web` - browser dashboard
+- VS Code extension - native editor experience
+- `kagan mcp` - MCP clients like Claude Code, Cursor, or OpenCode
+
 ```bash
 cd your-project-directory
 kagan
 ```
+
+On a fresh install with no projects yet, bare `kagan` shows a one-time surface picker so you can choose TUI, web, chat, VS Code, Open VSX, or MCP setup. Runtime picks (`TUI`, `web`, `chat`) become the default for future bare `kagan` launches until you change them in settings.
 
 Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -> REVIEW -> DONE).
 
 ## Optional: use VS Code
 
 If you want Kagan inside your editor, install the VS Code extension from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode) or [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode).
+
+If you install the extension, you do **not** need `.vscode/mcp.json` just to use the Kagan sidebar or `@kagan` chat.
 
 Full guide: [VS Code extension](guides/vscode-extension.md)
 
@@ -41,8 +52,8 @@ Full guide: [VS Code extension](guides/vscode-extension.md)
 
 ## 4. Run it
 
-- **Managed run:** Select task -> `s` to start. Use `Shift+S` to stop.
-- **Interactive launch:** Select task -> `a` to launch in your configured backend.
+- **Run in background:** Select task -> `s` to start. Use `Shift+S` to stop.
+- **Open in editor or terminal:** Select task -> `a` to launch in your configured backend.
 
 [Managed runs and interactive attach](guides/managed-vs-interactive.md)
 

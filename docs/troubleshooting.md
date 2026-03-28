@@ -19,14 +19,14 @@ Match symptom text below.
 
 | Symptom                        | Fix                                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Runtime metadata incomplete    | `kagan core stop` → `start` → `status`                                                                 |
-| `AUTH_STALE_TOKEN`             | Reconnect MCP client; `kagan core stop` → `start`                                                      |
+| Runtime metadata incomplete    | Restart the client, then run `kagan doctor`                                                            |
+| `AUTH_STALE_TOKEN`             | Reconnect MCP client and restart `kagan serve` / `kagan web` if needed                                |
 | `CLIENT_OUTDATED`              | Restart MCP/TUI client session to reload latest runtime                                                |
 | `CLIENT_VERSION_REQUIRED`      | Update/restart MCP/TUI client to send runtime version                                                  |
 | `CLIENT_BUILD_HASH_REQUIRED`   | Update/restart MCP/TUI client to send runtime fingerprint                                              |
-| `Unknown session origin 'tui'` | Close any other running Kagan instance (`kagan core stop`), then relaunch from your intended directory |
+| `Unknown session origin 'tui'` | Close any other running Kagan instance, then relaunch from your intended directory                     |
 | `DISCONNECTED`                 | Run `kagan` first, then `kagan mcp`                                                                    |
-| `START_PENDING`                | Wait a few seconds and check `kagan core status` again                                                 |
+| `START_PENDING`                | Wait a few seconds, then retry or restart `kagan serve` / `kagan web`                                 |
 | Logs cut off mid-output        | Use `task_logs` with `offset` and `limit` to page through; follow `next_offset`                        |
 
 ## Interactive launch / terminal

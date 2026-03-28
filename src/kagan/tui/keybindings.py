@@ -136,6 +136,7 @@ CHAT_BINDINGS: list[BindingType] = [
 
 WELCOME_BINDINGS: list[BindingType] = [
     Binding("enter", "open_selected", "Open"),
+    Binding("c", "create_from_here", "Create Here"),
     Binding("n", "new_project", "New"),
     Binding("o", "open_folder", "Open Folder"),
     Binding("x", "delete_project", "Delete"),
@@ -366,7 +367,13 @@ class FooterBuilder:
 
     @staticmethod
     def welcome() -> list[tuple[str, str]]:
-        return [("Enter", "open"), ("n", "new"), ("o", "folder"), ("Ctrl+,", "settings")]
+        return [
+            ("Enter", "open"),
+            ("c", "create here"),
+            ("n", "new"),
+            ("o", "folder"),
+            ("Ctrl+,", "settings"),
+        ]
 
     @staticmethod
     def settings() -> list[tuple[str, str]]:

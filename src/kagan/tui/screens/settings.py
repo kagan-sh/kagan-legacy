@@ -324,7 +324,18 @@ class SettingsModal(ModalScreen[None]):
                     ),
                 ),
                 SettingFieldSpec(
-                    "switch", "Open last project on launch", "settings-open-last-project"
+                    "select",
+                    "Bare `kagan` startup surface",
+                    "settings-startup-surface",
+                    options=(
+                        ("TUI", "tui"),
+                        ("Web", "web"),
+                        ("Chat", "chat"),
+                        ("Show chooser on next launch", "ask"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "switch", "TUI: open last project on launch", "settings-open-last-project"
                 ),
                 SettingFieldSpec(
                     "switch",
@@ -423,6 +434,13 @@ class SettingsModal(ModalScreen[None]):
             if attached_launcher
             in {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}
             else "tmux"
+        )
+        startup_surface = settings.get("startup_default_surface") or settings.get(
+            "ui.surface_chooser_last_choice", "tui"
+        )
+        startup_surface_select = self.query_one("#settings-startup-surface", Select)
+        startup_surface_select.value = (
+            startup_surface if startup_surface in {"tui", "web", "chat", "ask"} else "tui"
         )
 
         self.query_one("#settings-default-base-branch", Input).value = settings.get(
@@ -686,6 +704,7 @@ class SettingsModal(ModalScreen[None]):
         )
 
         attached_launcher_value = self.query_one("#settings-attached-launcher", Select).value
+        startup_surface_value = self.query_one("#settings-startup-surface", Select).value
         strategy_value = self.query_one("#settings-base-ref-strategy", Select).value
         base_branch = self.query_one("#settings-default-base-branch", Input).value.strip() or "main"
         theme_value = self.query_one("#settings-theme", Select).value
@@ -709,6 +728,7 @@ class SettingsModal(ModalScreen[None]):
         attached_launcher = (
             attached_launcher_value if isinstance(attached_launcher_value, str) else "tmux"
         )
+        startup_surface = startup_surface_value if isinstance(startup_surface_value, str) else "tui"
         strategy = strategy_value if isinstance(strategy_value, str) else "local_if_ahead"
         theme = theme_value if isinstance(theme_value, str) else ""
 
@@ -720,6 +740,7 @@ class SettingsModal(ModalScreen[None]):
         updates: dict[str, str] = {
             "default_agent_backend": default_agent_backend,
             "attached_launcher": attached_launcher,
+            "startup_default_surface": startup_surface,
             "default_base_branch": base_branch,
             "worktree_base_ref_strategy": strategy,
             "theme": theme,

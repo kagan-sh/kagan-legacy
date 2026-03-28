@@ -24,6 +24,8 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         app.screen.query_one("#settings-default-base-branch", Input).value = "develop"
         attached_select = app.screen.query_one("#settings-attached-launcher", Select)
         attached_select.value = "nvim"
+        startup_surface_select = app.screen.query_one("#settings-startup-surface", Select)
+        startup_surface_select.value = "web"
         strategy_select = app.screen.query_one("#settings-base-ref-strategy", Select)
         strategy_select.value = "remote"
         app.screen.query_one("#settings-auto-init-repo", Switch).value = True
@@ -37,6 +39,7 @@ async def test_comma_opens_settings_modal_and_saves(board: KaganDriver) -> None:
         settings = await app.core.settings.get()
         assert settings.get("default_agent_backend") == "kimi-cli"
         assert settings.get("attached_launcher") == "nvim"
+        assert settings.get("startup_default_surface") == "web"
         assert settings.get("default_base_branch") == "develop"
         assert settings.get("worktree_base_ref_strategy") == "remote"
         assert settings.get("auto_init_git_repo") == "true"

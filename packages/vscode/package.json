@@ -348,7 +348,7 @@
         "kagan.autoStartServer": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically start `kagan web --no-open` when serverUrl points to localhost and no Kagan server is running"
+          "description": "Automatically start `kagan serve` when serverUrl points to localhost and no Kagan server is running"
         },
         "kagan.serverCommand": {
           "type": "string",

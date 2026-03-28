@@ -68,7 +68,7 @@ class WelcomeScreen(Screen[None]):
                         )
                     yield Static(self._cwd_path, id="cwd-path")
                     yield Static(
-                        "[bold]Enter[/] create project  [bold]Esc[/] dismiss",
+                        "",
                         classes="modal-action-hint",
                         id="cwd-actions-hint",
                     )
@@ -89,11 +89,13 @@ class WelcomeScreen(Screen[None]):
     async def on_mount(self) -> None:
         await self._reload_projects()
         await self._maybe_hide_cwd_banner()
+        self._update_cwd_banner_hint()
         self._update_keybinding_hints()
 
     async def on_screen_resume(self) -> None:
         await self._reload_projects()
         await self._maybe_hide_cwd_banner()
+        self._update_cwd_banner_hint()
         self._update_keybinding_hints()
 
     async def _maybe_hide_cwd_banner(self) -> None:
@@ -136,12 +138,14 @@ class WelcomeScreen(Screen[None]):
                 ]
             )
             option_list.highlighted = 0
+            self._update_cwd_banner_hint()
             self._update_keybinding_hints()
             return
 
         option_list.display = False
         empty_state.display = not self._suggest_cwd
         first_launch.display = True
+        self._update_cwd_banner_hint()
         self._update_keybinding_hints()
 
     def _project_label(self, project: Project, index: int) -> str:
@@ -154,18 +158,25 @@ class WelcomeScreen(Screen[None]):
     def _update_keybinding_hints(self) -> None:
         hint_widget = self.query_one("#welcome-hint", KeybindingHint)
         escape_label = "back" if self.kagan_app.project is not None else "quit"
-        enter_label = "open"
-        if self._should_enter_create_from_cwd():
-            enter_label = "create"
-        elif not self._projects:
+        if self._projects:
+            enter_label = "open"
+        elif self._cwd_banner_visible():
+            enter_label = "create here"
+        else:
             enter_label = "new project"
-        hint_widget.show_hints(
+        hints = [
+            (get_key_for_action(WELCOME_BINDINGS, "open_selected", "Enter"), enter_label),
+            (
+                get_key_for_action(WELCOME_BINDINGS, "move_selection_down", "Down / j"),
+                "navigate",
+            ),
+        ]
+        if self._cwd_banner_visible():
+            hints.append(
+                (get_key_for_action(WELCOME_BINDINGS, "create_from_here", "c"), "create here")
+            )
+        hints.extend(
             [
-                (get_key_for_action(WELCOME_BINDINGS, "open_selected", "Enter"), enter_label),
-                (
-                    get_key_for_action(WELCOME_BINDINGS, "move_selection_down", "Down / j"),
-                    "navigate",
-                ),
                 (get_key_for_action(WELCOME_BINDINGS, "new_project", "n"), "new"),
                 (get_key_for_action(WELCOME_BINDINGS, "open_folder", "o"), "open folder"),
                 (get_key_for_action(WELCOME_BINDINGS, "delete_project", "x"), "delete"),
@@ -173,6 +184,18 @@ class WelcomeScreen(Screen[None]):
                 (get_key_for_action(WELCOME_BINDINGS, "quit", "Esc"), escape_label),
             ]
         )
+        hint_widget.show_hints(hints)
+
+    def _update_cwd_banner_hint(self) -> None:
+        if not self._cwd_banner_visible():
+            return
+        hint = self.query_one("#cwd-actions-hint", Static)
+        if self._projects:
+            hint.update(
+                "[bold]Enter[/] open selected  [bold]c[/] create project here  [bold]Esc[/] dismiss"
+            )
+            return
+        hint.update("[bold]Enter[/] create project here  [bold]Esc[/] dismiss")
 
     def action_settings(self) -> None:
         self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
@@ -230,9 +253,10 @@ class WelcomeScreen(Screen[None]):
 
     def _dismiss_cwd_banner(self) -> None:
         self.query_one("#cwd-suggestion-banner", Container).display = False
+        self._update_cwd_banner_hint()
 
     async def action_open_selected(self) -> None:
-        if self._should_enter_create_from_cwd():
+        if not self._projects and self._cwd_banner_visible():
             await self._create_project_from_cwd()
             return
         if not self._projects:
@@ -241,16 +265,10 @@ class WelcomeScreen(Screen[None]):
         option_list = self.query_one("#project-list", OptionList)
         await self.action_open_project(str(self._selected_project_index(option_list)))
 
-    def _should_enter_create_from_cwd(self) -> bool:
+    async def action_create_from_here(self) -> None:
         if not self._cwd_banner_visible():
-            return False
-        if not self._projects:
-            return True
-
-        option_list = self.query_one("#project-list", OptionList)
-        selected_project = self._projects[self._selected_project_index(option_list)]
-        selected_repos = self._repos_by_project_id.get(selected_project.id, [])
-        return len(selected_repos) > 0
+            return
+        await self._create_project_from_cwd()
 
     @staticmethod
     def _selected_project_index(option_list: OptionList) -> int:
@@ -379,6 +397,11 @@ class WelcomeScreen(Screen[None]):
             event.prevent_default()
             event.stop()
             self.action_new_project()
+            return
+        if event.key == "c":
+            event.prevent_default()
+            event.stop()
+            await self.action_create_from_here()
             return
         if event.key == "o":
             event.prevent_default()

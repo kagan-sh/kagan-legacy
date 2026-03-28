@@ -10,6 +10,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   MessageSquare,
+  MessageSquareText,
   PanelRight,
   Pencil,
   Play,
@@ -135,10 +136,15 @@ export function CommandPalette() {
             Board
             <CommandShortcut>1</CommandShortcut>
           </CommandItem>
+          <CommandItem onSelect={() => closeAndNavigate('/workspace')}>
+            <MessageSquareText className="size-4" />
+            Workspace
+            <CommandShortcut>2</CommandShortcut>
+          </CommandItem>
           <CommandItem onSelect={() => closeAndNavigate('/settings')}>
             <Settings className="size-4" />
             Settings
-            <CommandShortcut>2</CommandShortcut>
+            <CommandShortcut>3</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 

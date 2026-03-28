@@ -55,7 +55,7 @@ Use the Marketplace build for standard VS Code. Use Open VSX for VSCodium and ot
 4. Open the Chat panel and run `@kagan /status`.
 5. Open the **Kagan** icon in the Activity Bar to access the board.
 
-The extension connects to `http://localhost:8765` by default and auto-starts the local server when `kagan` is available on your `PATH`.
+The extension connects to `http://localhost:8765` by default and auto-starts `kagan serve` when `kagan` is available on your `PATH`.
 
 > **Important:** You do not need a `.vscode/mcp.json` file just to use the Kagan extension. MCP setup is a separate integration path for generic MCP clients.
 

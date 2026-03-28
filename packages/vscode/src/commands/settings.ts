@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
+import type { AgentBackend } from "../api/types.js";
 
 const REVIEW_STRICTNESS_OPTIONS = [
   { label: "Strict", description: "All criteria must pass, detailed review", value: "strict" },
@@ -13,6 +14,33 @@ const PLANNING_DEPTH_OPTIONS = [
   { label: "Never", description: "Skip explicit planning", value: "never" },
 ];
 
+export function sortBackends(backends: AgentBackend[]): AgentBackend[] {
+  return [...backends].sort((a, b) => {
+    if (a.reference !== b.reference) return a.reference ? -1 : 1;
+    if (a.available !== b.available) return a.available ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function describeBackendStatus(
+  backend: AgentBackend,
+  currentBackend: string,
+): string | undefined {
+  const parts: string[] = [];
+
+  if (backend.name === currentBackend) {
+    parts.push("Current");
+  }
+  if (backend.reference) {
+    parts.push("Reference");
+  }
+  if (!backend.available) {
+    parts.push("Unavailable");
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
 export function registerSettingsCommands(
   context: vscode.ExtensionContext,
   client: KaganClient,
@@ -22,7 +50,7 @@ export function registerSettingsCommands(
       await withErrors("set agent backend", async () => {
         const chatAgents = await client.getChatAgents();
         const currentBackend = chatAgents.default;
-        const backends = chatAgents.backends;
+        const backends = sortBackends(chatAgents.backends);
 
         if (backends.length === 0) {
           vscode.window.showWarningMessage("No agent backends are available on this server.");
@@ -32,15 +60,9 @@ export function registerSettingsCommands(
         const picked = await vscode.window.showQuickPick(
           backends.map((backend) => ({
             label: backend.name,
-            description: backend.name === currentBackend
-              ? backend.available
-                ? "Current"
-                : "Current, unavailable"
-              : backend.available
-                ? undefined
-                : "Unavailable",
+            description: describeBackendStatus(backend, currentBackend),
           })),
-          { placeHolder: `Select default agent backend (current: ${currentBackend})` },
+          { placeHolder: `Select default agent backend (reference backends first, current: ${currentBackend})` },
         );
         if (!picked) return;
 

@@ -8,6 +8,8 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Footer, Input, Label, Select, Static
 
+from kagan.chat import resolve_default_agent_backend
+from kagan.core import list_available_backends, list_backend_specs
 from kagan.tui.keybindings import SETUP_FLOW_BINDINGS
 
 if TYPE_CHECKING:
@@ -16,14 +18,6 @@ if TYPE_CHECKING:
 _ONBOARDING_LOGO = """\
 █▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
 █▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
-
-_AGENT_OPTIONS = [
-    ("Claude Code  —  Agentic AI for coding tasks", "claude-code"),
-    ("OpenCode  —  Open-source coding assistant", "opencode"),
-    ("Codex  —  Fast code generation", "codex"),
-    ("Gemini  —  Google coding model", "gemini"),
-    ("Aider  —  Terminal pair coding assistant", "aider"),
-]
 
 _LAUNCHER_OPTIONS = [
     ("tmux", "tmux"),
@@ -36,6 +30,24 @@ _LAUNCHER_OPTIONS = [
 ]
 
 SetupMode = Literal["onboarding", "new-project", "open-folder"]
+
+
+def _build_agent_backend_options() -> list[tuple[str, str]]:
+    availability = list_available_backends()
+    specs = list_backend_specs()
+    options: list[tuple[str, str]] = []
+    for name, spec in specs.items():
+        label = name
+        suffix: list[str] = []
+        if spec.reference:
+            suffix.append("reference")
+        if not availability.get(name, False):
+            suffix.append("unavailable")
+        if suffix:
+            label = f"{label} ({', '.join(suffix)})"
+        options.append((label, name))
+    return options
+
 
 _MODE_COPY: dict[SetupMode, dict[str, str]] = {
     "onboarding": {
@@ -130,8 +142,8 @@ class OnboardingFlow(ModalScreen[None]):
                                     classes="form-hint",
                                 )
                                 yield Select[str](
-                                    options=_AGENT_OPTIONS,
-                                    value="claude-code",
+                                    options=_build_agent_backend_options(),
+                                    value=resolve_default_agent_backend({}),
                                     id="setup-default-agent",
                                     allow_blank=False,
                                     compact=True,
@@ -173,13 +185,12 @@ class OnboardingFlow(ModalScreen[None]):
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()
-        default_agent = settings.get("default_agent_backend")
         agent_select = self.query_one("#setup-default-agent", Select)
-        allowed_agents = {value for _, value in _AGENT_OPTIONS}
-        if isinstance(default_agent, str) and default_agent in allowed_agents:
-            agent_select.value = default_agent
-        else:
-            agent_select.value = "claude-code"
+        allowed_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = resolve_default_agent_backend(settings)
+        if default_agent not in allowed_agents:
+            default_agent = resolve_default_agent_backend({})
+        agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         launcher_select = self.query_one("#setup-attached-launcher", Select)
@@ -226,7 +237,12 @@ class OnboardingFlow(ModalScreen[None]):
             return
 
         selected_agent = self.query_one("#setup-default-agent", Select).value
-        default_agent = selected_agent if isinstance(selected_agent, str) else "claude-code"
+        allowed_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = (
+            selected_agent
+            if isinstance(selected_agent, str) and selected_agent in allowed_agents
+            else resolve_default_agent_backend({})
+        )
         selected_launcher = self.query_one("#setup-attached-launcher", Select).value
         attached_launcher = selected_launcher if isinstance(selected_launcher, str) else "tmux"
         auto_review = self.query_one("#setup-auto-review", Checkbox).value

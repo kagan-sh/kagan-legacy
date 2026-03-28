@@ -9,6 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
@@ -610,12 +611,7 @@ class SessionDashboardScreen(Screen[None]):
             return
 
         settings = await self.kagan_app.core.settings.get()
-        backend = (
-            backend_hint
-            or task.agent_backend
-            or settings.get("default_agent_backend")
-            or "claude-code"
-        )
+        backend = backend_hint or task.agent_backend or resolve_default_agent_backend(settings)
 
         workspace = await self.kagan_app.core.worktrees.get(self._task_id)
         if workspace is None:

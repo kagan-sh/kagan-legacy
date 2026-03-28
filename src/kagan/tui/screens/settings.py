@@ -11,9 +11,11 @@ from textual.theme import BUILTIN_THEMES
 from textual.widgets import Button, Footer, Input, Select, Static, Switch, TextArea
 from textual.widgets._option_list import Option, OptionList
 
-from kagan.chat import list_registered_agent_backends
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import (
     detect_dotfile_overrides,
+    list_available_backends,
+    list_backend_specs,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +43,23 @@ def _build_theme_options() -> list[tuple[str, str]]:
     ]
     for name in sorted(BUILTIN_THEMES):
         label = name.replace("-", " ").title()
+        options.append((label, name))
+    return options
+
+
+def _build_agent_backend_options() -> list[tuple[str, str]]:
+    availability = list_available_backends()
+    specs = list_backend_specs()
+    options: list[tuple[str, str]] = []
+    for name, spec in specs.items():
+        label = name
+        suffix: list[str] = []
+        if spec.reference:
+            suffix.append("reference")
+        if not availability.get(name, False):
+            suffix.append("unavailable")
+        if suffix:
+            label = f"{label} ({', '.join(suffix)})"
         options.append((label, name))
     return options
 
@@ -222,7 +241,7 @@ class SettingsModal(ModalScreen[None]):
                     "select",
                     "Default agent backend",
                     "settings-default-agent",
-                    options_factory=list_registered_agent_backends,
+                    options_factory=_build_agent_backend_options,
                 ),
                 SettingFieldSpec(
                     "select",
@@ -422,15 +441,12 @@ class SettingsModal(ModalScreen[None]):
         )
 
         # --- General ---
-        default_agent = settings.get("default_agent_backend") or "claude-code"
         agent_select = self.query_one("#settings-default-agent", Select)
-        available_agents = list_registered_agent_backends()
-        if default_agent in available_agents:
-            agent_select.value = default_agent
-        elif available_agents:
-            agent_select.value = available_agents[0]
-        else:
-            agent_select.value = "claude-code"
+        available_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = resolve_default_agent_backend(settings)
+        if default_agent not in available_agents:
+            default_agent = resolve_default_agent_backend({})
+        agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         attached_select = self.query_one("#settings-attached-launcher", Select)
@@ -645,10 +661,7 @@ class SettingsModal(ModalScreen[None]):
             raw_options = (
                 field.options_factory() if field.options_factory is not None else field.options
             )
-            if field.field_id == "settings-default-agent":
-                options = [(name, name) for name in cast("list[str]", raw_options)]
-            else:
-                options = list(raw_options)
+            options = list(raw_options)
             return self._select_field(field.label, field.field_id, options)
         if field.kind == "text" and field.field_id is not None:
             return self._text_field(field.label, field.field_id)
@@ -705,7 +718,10 @@ class SettingsModal(ModalScreen[None]):
     async def _save_all_settings(self) -> None:
         agent_backend_value = self.query_one("#settings-default-agent", Select).value
         default_agent_backend = (
-            agent_backend_value if isinstance(agent_backend_value, str) else "claude-code"
+            agent_backend_value
+            if isinstance(agent_backend_value, str)
+            and agent_backend_value in {value for _, value in _build_agent_backend_options()}
+            else resolve_default_agent_backend({})
         )
 
         attached_launcher_value = self.query_one("#settings-attached-launcher", Select).value

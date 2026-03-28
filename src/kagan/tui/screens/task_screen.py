@@ -19,6 +19,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import (
     ChatMode,
@@ -754,7 +755,7 @@ class TaskScreen(Screen[None]):
         if task.agent_backend:
             return task.agent_backend
         settings = await self.kagan_app.core.settings.get()
-        return settings.get("default_agent_backend") or "claude-code"
+        return resolve_default_agent_backend(settings)
 
     async def _hydrate_workspace_panels(self) -> None:
         await hydrate_workspace_panels(

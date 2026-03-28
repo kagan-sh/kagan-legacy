@@ -61,9 +61,12 @@ async def _poll_db_changes(
             changed = {tid for tid, ts in current.items() if known.get(tid) != ts}
             deleted = known.keys() - current.keys()
 
-            for task_id in changed | deleted:
+            for task_id in changed:
                 with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait({"type": "TASK_UPDATED", "task_id": task_id})
+            for task_id in deleted:
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait({"type": "TASK_DELETED", "task_id": task_id})
 
             known = current
     except asyncio.CancelledError:
@@ -75,8 +78,12 @@ async def _poll_db_changes(
 async def _sse_event_generator(mcp: FastMCP) -> AsyncIterator[str]:
     """Yield SSE-formatted events from the global event stream + board changes."""
     ctx = get_server_context(mcp)
+    _wait_iters = 0
     while ctx is None:
+        if _wait_iters >= 60:
+            return
         await asyncio.sleep(0.5)
+        _wait_iters += 1
         ctx = get_server_context(mcp)
 
     # Create a merged stream: session events + board task updates

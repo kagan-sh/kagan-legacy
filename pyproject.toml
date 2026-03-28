@@ -282,10 +282,6 @@ cd packages/web && pnpm exec concurrently \\
 help = "Run TypeScript type checking on the web package"
 shell = "pnpm run web:typecheck"
 
-[tool.poe.tasks.web-lint]
-help = "Run ESLint on the web package"
-shell = "pnpm --filter kagan-web run lint 2>/dev/null || true"
-
 [tool.poe.tasks.web-test]
 help = "Run Vitest unit tests on the web package"
 shell = "pnpm run web:test"

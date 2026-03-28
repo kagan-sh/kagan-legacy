@@ -187,7 +187,7 @@ async function streamChatResponse(
       }
     }
   } finally {
-    reader.releaseLock();
+    await reader.cancel().catch(() => {});
   }
 }
 

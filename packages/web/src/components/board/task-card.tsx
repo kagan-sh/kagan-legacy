@@ -319,6 +319,9 @@ function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
         prevProps.task.status === nextProps.task.status &&
         prevProps.task.title === nextProps.task.title &&
         prevProps.task.priority === nextProps.task.priority &&
+        prevProps.task.active_session?.id === nextProps.task.active_session?.id &&
+        prevProps.task.last_event_at === nextProps.task.last_event_at &&
+        prevProps.task.review_approved === nextProps.task.review_approved &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.onSelectTask === nextProps.onSelectTask &&
         prevProps.onOpenTask === nextProps.onOpenTask &&

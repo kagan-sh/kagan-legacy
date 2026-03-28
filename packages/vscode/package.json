@@ -157,19 +157,19 @@
       "view/title": [
         {
           "command": "kagan.board.refresh",
-          "when": "view == kagan.board",
+          "when": "view == kagan.board && kagan.connected",
           "group": "navigation"
         },
         {
           "command": "kagan.task.create",
-          "when": "view == kagan.board",
+          "when": "view == kagan.board && kagan.connected",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "kagan.task.run",
-          "when": "view == kagan.board && viewItem =~ /^task\\.(BACKLOG|IN_PROGRESS)$/",
+          "when": "view == kagan.board && viewItem =~ /^task\\.BACKLOG$/",
           "group": "inline@1"
         },
         {

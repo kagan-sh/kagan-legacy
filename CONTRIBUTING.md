@@ -16,6 +16,7 @@
 ```bash
 git clone https://github.com/kagan-sh/kagan.git && cd kagan
 uv sync --dev              # install all dependencies
+pre-commit install          # install git hooks
 uv run poe dev-setup       # install CLI + reset DB
 uv run poe check           # lint + typecheck + deadcode + test
 ```

@@ -77,13 +77,6 @@ repos:
             files: ^packages/web/.*\.(ts|tsx)$
             pass_filenames: false
 
-          - id: web-lint
-            name: web lint
-            entry: bash -c 'cd packages/web && pnpm run lint 2>/dev/null || true'
-            language: system
-            files: ^packages/web/.*\.(ts|tsx)$
-            pass_filenames: false
-
           - id: wire-drift
             name: wire drift check
             entry: python scripts/check_wire_drift.py

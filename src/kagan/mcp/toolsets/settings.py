@@ -42,11 +42,11 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
 
         @mcp.tool()
         @mcp_error_boundary
-        async def settings_set(section: str, key: str, value: str, ctx: Context) -> dict:
+        async def settings_set(key: str, value: str, ctx: Context) -> dict:
             """Update one allowlisted setting value."""
             app = get_context(ctx)
             await app.client.settings.set({key: value})
-            return {"section": section, "key": key, "value": value}
+            return {"key": key, "value": value}
 
     _register_persona_tools(mcp, opts)
 

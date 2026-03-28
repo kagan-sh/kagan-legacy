@@ -12,7 +12,7 @@ import type { QueuedPrompt } from "@/components/session/follow-up-queue";
 interface UseTaskEventsOptions {
     /** Initial event fetch limit. Default 400. */
     initialLimit?: number;
-    /** Polling interval in ms. Default 2500. */
+    /** Polling interval in ms. Default 10000. */
     pollInterval?: number;
     /** Filter events to a specific session ID. When changed, events reset and refetch. */
     sessionId?: string | null;
@@ -57,7 +57,7 @@ export function useTaskEvents(
     options?: UseTaskEventsOptions,
 ): UseTaskEventsResult {
     const initialLimit = options?.initialLimit ?? 400;
-    const pollInterval = options?.pollInterval ?? 2500;
+    const pollInterval = options?.pollInterval ?? 10000;
     const sessionId = options?.sessionId ?? undefined;
 
     const [task, setTask] = useState<WireTask | null>(null);

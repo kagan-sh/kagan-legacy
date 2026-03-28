@@ -787,7 +787,8 @@ class Sessions:
                     {"error": str(exc), "error_class": _classify_agent_error(exc)},
                     session_id=session_id,
                 )
-                # No status transition — notify board so cards clear active_session.
+                await asyncio.to_thread(self._set_status, task_id, TaskStatus.BACKLOG)
+                # Notify board so cards clear active_session.
                 self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
             else:
                 await asyncio.to_thread(self._complete_session, session_id)

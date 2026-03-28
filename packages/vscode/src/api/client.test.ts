@@ -15,12 +15,12 @@ describe("KaganClient", () => {
       }),
     );
 
-    const client = new KaganClient("http://127.0.0.1:8765");
+    const client = new KaganClient("127.0.0.1:8765");
 
     await expect(client.createTask({ title: "Ship it" })).rejects.toMatchObject({
       status: 501,
       detail:
-        "Server at http://127.0.0.1:8765 does not look like a Kagan API (Unsupported method ('POST')). Check kagan.serverUrl.",
+        "Server at 127.0.0.1:8765 does not look like a Kagan API (Unsupported method ('POST')). Check kagan.serverUrl and kagan.protocol.",
     });
   });
 
@@ -40,7 +40,7 @@ describe("KaganClient", () => {
       ),
     );
 
-    const client = new KaganClient("http://127.0.0.1:8765");
+    const client = new KaganClient("127.0.0.1:8765");
 
     await expect(client.verifyApi()).resolves.toBeUndefined();
     expect(globalThis.fetch).toHaveBeenCalledWith("http://127.0.0.1:8765/api/settings", {

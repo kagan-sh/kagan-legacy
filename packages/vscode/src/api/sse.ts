@@ -6,6 +6,7 @@ import type { SSEMessage } from "./types.js";
 
 export class SSEStream implements vscode.Disposable {
   private controller: AbortController | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
   private disposed = false;
   private protocol: "http" | "https" = "http";
@@ -46,6 +47,7 @@ export class SSEStream implements vscode.Disposable {
   }
 
   stop(): void {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.controller?.abort();
     this.controller = null;
     this._onConnected.fire(false);
@@ -117,7 +119,7 @@ export class SSEStream implements vscode.Disposable {
     // Reconnect with backoff
     if (!this.disposed && !signal.aborted) {
       this.controller = null;
-      setTimeout(() => this.connect(), this.reconnectDelay);
+      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
     }
   }

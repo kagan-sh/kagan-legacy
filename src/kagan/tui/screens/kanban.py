@@ -569,8 +569,8 @@ class KanbanScreen(Screen[None]):
         return False
 
     def _navigation_hints(self) -> list[tuple[str, str]]:
-        left = get_key_for_action(KANBAN_BINDINGS, "move_backward", default="Shift+Left")
-        right = get_key_for_action(KANBAN_BINDINGS, "move_forward", default="Shift+Right")
+        left = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
+        right = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
         return [
             (left, "move left"),
             (right, "move right"),

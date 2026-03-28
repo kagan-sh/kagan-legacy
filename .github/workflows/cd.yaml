@@ -120,17 +120,6 @@ jobs:
         with:
           verbose: true
 
-  publish-vscode:
-    name: Publish VS Code Extension
-    needs: release
-    if: needs.release.outputs.released == 'true'
-    uses: ./.github/workflows/publish-vscode.yaml
-    with:
-      pre-release: ${{ inputs.production_release != true }}
-    secrets:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      OPEN_VSIX_TOKEN: ${{ secrets.OPEN_VSIX_TOKEN }}
-
   publish-docs:
     name: Publish Documentation
     # Conditionally depend on release job (only when not docs_only mode)

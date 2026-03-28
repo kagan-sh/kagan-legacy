@@ -216,11 +216,25 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: cd packages/vscode && pnpm install --frozen-lockfile && pnpm run test:unit
+      - name: Check extension version bump
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          # Did any extension source files change?
+          if git diff --name-only "$BASE"...HEAD -- 'packages/vscode/src/' | grep -q .; then
+            # Did package.json version change?
+            if git diff "$BASE"...HEAD -- 'packages/vscode/package.json' | grep -q '"version"'; then
+              echo "Extension source changed and version was bumped."
+            else
+              echo "::warning::Extension source files changed but packages/vscode/package.json version was not bumped."
+            fi
+          fi
 
   test-web:
     needs: [lint, fast-gate]

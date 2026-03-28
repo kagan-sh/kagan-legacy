@@ -13,6 +13,35 @@
 
 
 
+## v0.13.0-beta.1 (2026-03-28)
+
+
+
+
+### bug fixes
+
+- **cd**: Remove pnpm version override conflicting with packageManager
+  ([`9ad66f6`](https://github.com/kagan-sh/kagan/commit/9ad66f6660108ded6067a66b5544ca2e8c91ea2a))
+
+
+
+
+
+
+
+
+
+
+
+### features
+
+- VS Code extension, web dashboard refinements, and CI hardening
+  ([`11c1f78`](https://github.com/kagan-sh/kagan/commit/11c1f78372b7895608e4b1e656d2a5de4299e2c9))
+
+
+
+
+
 ## v0.12.2-beta.2 (2026-03-25)
 
 

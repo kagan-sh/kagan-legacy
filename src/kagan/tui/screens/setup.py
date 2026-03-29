@@ -8,6 +8,8 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Footer, Input, Label, Select, Static
 
+from kagan.chat import resolve_default_agent_backend
+from kagan.core import list_available_backends, list_backend_specs
 from kagan.tui.keybindings import SETUP_FLOW_BINDINGS
 
 if TYPE_CHECKING:
@@ -16,14 +18,6 @@ if TYPE_CHECKING:
 _ONBOARDING_LOGO = """\
 █▄▀  ▄▀▄  █▀▀  ▄▀▄  █▄  █
 █▀▄  █▀█  █▄█  █▀█  █ ▀▄█"""
-
-_AGENT_OPTIONS = [
-    ("Claude Code  —  Agentic AI for coding tasks", "claude-code"),
-    ("OpenCode  —  Open-source coding assistant", "opencode"),
-    ("Codex  —  Fast code generation", "codex"),
-    ("Gemini  —  Google coding model", "gemini"),
-    ("Aider  —  Terminal pair coding assistant", "aider"),
-]
 
 _LAUNCHER_OPTIONS = [
     ("tmux", "tmux"),
@@ -37,25 +31,51 @@ _LAUNCHER_OPTIONS = [
 
 SetupMode = Literal["onboarding", "new-project", "open-folder"]
 
+
+def _build_agent_backend_options() -> list[tuple[str, str]]:
+    availability = list_available_backends()
+    specs = list_backend_specs()
+    options: list[tuple[str, str]] = []
+    for name, spec in specs.items():
+        label = spec.label()
+        suffix: list[str] = []
+        if spec.reference:
+            suffix.append("reference")
+        if not availability.get(name, False):
+            suffix.append("unavailable")
+        if suffix:
+            label = f"{label} ({', '.join(suffix)})"
+        options.append((label, name))
+    return options
+
+
 _MODE_COPY: dict[SetupMode, dict[str, str]] = {
     "onboarding": {
         "title": "First-Time Setup",
-        "subtitle": "Choose your defaults and create the first project.",
-        "project_hint": "Pick a name for the project shown on the welcome screen and board.",
-        "repo_hint": "Optional. Link a repository now or add one later from the repo picker.",
+        "subtitle": (
+            "Choose your defaults and create the first project. The default path is "
+            "Create -> Start -> Review -> Merge; attach stays available when you need it."
+        ),
+        "project_hint": "Pick the name shown on Welcome and the Board.",
+        "repo_hint": (
+            "Optional. Link a repository now or add one later; Kagan uses it for "
+            "worktrees and reviews."
+        ),
         "action": "Continue to Kagan",
     },
     "new-project": {
         "title": "New Project",
         "subtitle": "Create a new project and optionally attach a repository.",
         "project_hint": "Required. This is the name used across the TUI.",
-        "repo_hint": "Optional. Leave empty to create the project first and add repos later.",
+        "repo_hint": (
+            "Optional. Leave empty to create the project first and add repositories later."
+        ),
         "action": "Create Project",
     },
     "open-folder": {
         "title": "Open Folder",
         "subtitle": "Open an existing project by repo path or create a project around it.",
-        "project_hint": "Optional. If left empty, Kagan will infer a name from the folder.",
+        "project_hint": "Optional. If left empty, Kagan infers a project name from the folder.",
         "repo_hint": "Required. Existing projects linked to this path open directly.",
         "action": "Open Folder",
     },
@@ -115,22 +135,24 @@ class OnboardingFlow(ModalScreen[None]):
 
                         with Horizontal(classes="setup-field-attached"):
                             with Vertical(classes="setup-field-half"):
-                                yield Label("AI Assistant", classes="form-label")
+                                yield Label("Default agent backend", classes="form-label")
                                 yield Label(
-                                    "Default coding agent.",
+                                    "Used for new tasks on the canonical "
+                                    "Create -> Start -> Review -> Merge path.",
                                     classes="form-hint",
                                 )
                                 yield Select[str](
-                                    options=_AGENT_OPTIONS,
-                                    value="claude-code",
+                                    options=_build_agent_backend_options(),
+                                    value=resolve_default_agent_backend({}),
                                     id="setup-default-agent",
                                     allow_blank=False,
                                     compact=True,
                                 )
                             with Vertical(classes="setup-field-half"):
-                                yield Label("Interactive launcher", classes="form-label")
+                                yield Label("Interactive attach launcher", classes="form-label")
                                 yield Label(
-                                    "Default launcher used when you attach an interactive run.",
+                                    "Used only when you attach an interactive run; "
+                                    "managed runs stay the default.",
                                     classes="form-hint",
                                 )
                                 yield Select[str](
@@ -150,7 +172,7 @@ class OnboardingFlow(ModalScreen[None]):
                                 classes="onboarding-auto-review-checkbox",
                             )
                             yield Label(
-                                "Reviews tasks before they enter Review.",
+                                "Automatically moves finished managed runs into Review.",
                                 classes="form-hint auto-review-hint",
                             )
 
@@ -163,13 +185,12 @@ class OnboardingFlow(ModalScreen[None]):
 
     async def on_mount(self) -> None:
         settings = await self.kagan_app.core.settings.get()
-        default_agent = settings.get("default_agent_backend")
         agent_select = self.query_one("#setup-default-agent", Select)
-        allowed_agents = {value for _, value in _AGENT_OPTIONS}
-        if isinstance(default_agent, str) and default_agent in allowed_agents:
-            agent_select.value = default_agent
-        else:
-            agent_select.value = "claude-code"
+        allowed_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = resolve_default_agent_backend(settings)
+        if default_agent not in allowed_agents:
+            default_agent = resolve_default_agent_backend({})
+        agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         launcher_select = self.query_one("#setup-attached-launcher", Select)
@@ -216,7 +237,12 @@ class OnboardingFlow(ModalScreen[None]):
             return
 
         selected_agent = self.query_one("#setup-default-agent", Select).value
-        default_agent = selected_agent if isinstance(selected_agent, str) else "claude-code"
+        allowed_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = (
+            selected_agent
+            if isinstance(selected_agent, str) and selected_agent in allowed_agents
+            else resolve_default_agent_backend({})
+        )
         selected_launcher = self.query_one("#setup-attached-launcher", Select).value
         attached_launcher = selected_launcher if isinstance(selected_launcher, str) else "tmux"
         auto_review = self.query_one("#setup-auto-review", Checkbox).value

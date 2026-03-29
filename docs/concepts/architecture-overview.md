@@ -87,4 +87,4 @@ State outside repo: `config.toml`, `kagan.db`, core runtime files, worktrees. No
 
 ## Troubleshooting
 
-`kagan core status` when connectivity fails. MCP: use `--readonly` or `--admin` access tiers. [Troubleshooting](../troubleshooting.md) for metadata/token/lock issues.
+Run `kagan doctor` when connectivity fails. MCP: prefer `--role WORKER|REVIEWER|ORCHESTRATOR`; `--readonly` and `--admin` remain compatibility flags. [Troubleshooting](../troubleshooting.md) for metadata/token/lock issues.

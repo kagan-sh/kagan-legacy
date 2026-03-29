@@ -51,6 +51,7 @@ describe('AppLayout', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Quick Actions' });
     expect(within(dialog).getByRole('combobox')).toBeVisible();
     expect(within(dialog).getByRole('option', { name: /^Board/ })).toBeVisible();
+    expect(within(dialog).getByRole('option', { name: /^Workspace/ })).toBeVisible();
     expect(within(dialog).getByRole('option', { name: /^Settings/ })).toBeVisible();
     expect(within(dialog).getByRole('option', { name: /^Session Switcher/ })).toBeVisible();
   });

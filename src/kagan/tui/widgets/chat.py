@@ -1,4 +1,5 @@
 import contextlib
+import shlex
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
@@ -22,6 +23,7 @@ from kagan.chat import (
 )
 from kagan.core.enums import SessionKind
 from kagan.tui.keybindings import CHAT_BINDINGS
+from kagan.tui.screens.file_picker import FilePickerModal
 from kagan.tui.screens.session_picker import (
     SessionPickerGroup,
     SessionPickerModal,
@@ -46,6 +48,7 @@ class _SessionState:
     prompt_history: list[str] = field(default_factory=list)
     history_index: int | None = None
     decision_surface: tuple[str, dict[str, Any]] | None = None
+    last_sent_text: str = ""
 
 
 class ChatPanel(Vertical):
@@ -88,8 +91,24 @@ class ChatPanel(Vertical):
         pass
 
     @dataclass
+    class FilePickerRequested(Message):
+        initial_query: str = ""
+
+    @dataclass
+    class FilePickerSelected(Message):
+        path: str
+
+    @dataclass
     class InterruptRequested(Message):
         pass
+
+    @dataclass
+    class InterruptCompleted(Message):
+        pass
+
+    @dataclass
+    class EditResendRequested(Message):
+        text: str
 
     _EMPTY_TEXT = "No messages yet"
     _LOGO = """\
@@ -123,7 +142,7 @@ class ChatPanel(Vertical):
         self._suspend_session_change_event = False
         self._runtime_status = "ready"
         self._chat_input_disable_depth = 0
-        self._runtime_input_locked = False
+        self._pending_after_interrupt: str | None = None
         self._history_programmatic_update = False
         self._overlay_split_key = "Ctrl+I"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
@@ -203,13 +222,12 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             chat_input = Input(
-                                placeholder=("What's next? Try /flow · Esc to interrupt"),
+                                placeholder="What's next? Try /flow",
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
                             chat_input.tooltip = (
-                                "AI chat input. Type your request or use"
-                                " /flow for guided planning. Press Esc to interrupt"
+                                "AI chat input. Type your request or use /flow for guided planning."
                             )
                             yield chat_input
                         badge = Static(
@@ -353,10 +371,17 @@ class ChatPanel(Vertical):
             for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
 
-    def set_overlay_shortcuts(self, *, split: str, fullscreen: str, close: str = "Esc") -> None:
+    def set_overlay_shortcuts(
+        self,
+        *,
+        split: str,
+        fullscreen: str,
+        close: str | None = None,
+    ) -> None:
         self._overlay_split_key = split.strip() or self._overlay_split_key
         self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
-        self._overlay_close_key = close.strip() or self._overlay_close_key
+        if close is not None:
+            self._overlay_close_key = close.strip() or self._overlay_close_key
         self._refresh_status()
 
     def set_status_hint_override(self, hint: str | None) -> None:
@@ -487,10 +512,6 @@ class ChatPanel(Vertical):
 
     def set_runtime_status(self, status: str) -> None:
         self._runtime_status = status.strip().lower() or "ready"
-        lock_input = self._runtime_status in {"thinking", "initializing", "waiting"}
-        if lock_input != self._runtime_input_locked:
-            self._runtime_input_locked = lock_input
-            self._sync_input_enabled_state()
         if self.is_mounted:
             status_bar = self._status_bar()
             if status_bar is not None:
@@ -516,13 +537,11 @@ class ChatPanel(Vertical):
                 status_bar.turn_count += 1
 
     def handle_interrupt(self) -> bool:
-        """Handle Ctrl+C: clear input text only.
+        """Fallback Ctrl+C handler for when the chat input does not have focus.
 
-        Called by the App-level ``action_help_quit`` override so that the
-        Textual system binding for Ctrl+C is redirected here instead of
-        showing a quit-hint toast.
-
-        Returns True if the clear was handled.
+        Called by ``KaganApp.action_help_quit`` so that the Textual system
+        Ctrl+C binding clears the chat input instead of showing a quit toast.
+        When the input *does* have focus, ``on_key`` handles Ctrl+C directly.
         """
         try:
             input_widget = self._input_widget()
@@ -667,7 +686,7 @@ class ChatPanel(Vertical):
         if event.key == "ctrl+c":
             event.prevent_default()
             event.stop()
-            # Ctrl+C always clears input — Esc interrupts the agent
+            # Ctrl+C clears input — Esc stops agent + edits last message
             if self._input_widget().value:
                 self.action_clear_input()
             return
@@ -741,11 +760,46 @@ class ChatPanel(Vertical):
         if self._mention_matches or self._slash_matches:
             self._hide_overlays()
             return
-        # Esc interrupts the active agent instead of closing the panel
         if self._runtime_status in {"thinking", "initializing", "waiting"}:
+            input_widget = self._input_widget()
+            pending = normalize_chat_input(input_widget.value)
+            if pending:
+                self._pending_after_interrupt = pending
+                input_widget.value = ""
+                self._current_state().draft = ""
+            else:
+                self._pending_after_interrupt = None
             self.post_message(ChatPanel.InterruptRequested())
             return
         self._request_close()
+
+    def _handle_interrupt_completed(self) -> None:
+        state = self._current_state()
+        input_widget = self._input_widget()
+        if self._pending_after_interrupt is not None:
+            queued = self._pending_after_interrupt
+            self._pending_after_interrupt = None
+            input_widget.value = queued
+            state.draft = queued
+            self.call_later(self._submit_current_input)
+        else:
+            last = state.last_sent_text
+            if last:
+                self._history_programmatic_update = True
+                input_widget.value = last
+                state.draft = last
+        input_widget.focus()
+        self._refresh_status()
+
+    def on_chat_panel_interrupt_completed(self, _: "ChatPanel.InterruptCompleted") -> None:
+        self._handle_interrupt_completed()
+
+    def on_chat_panel_edit_resend_requested(self, event: "ChatPanel.EditResendRequested") -> None:
+        input_widget = self._input_widget()
+        self._history_programmatic_update = True
+        input_widget.value = event.text
+        self._current_state().draft = event.text
+        input_widget.focus()
 
     def action_open_session_picker(self, initial_query: str | None = None) -> None:
         self._request_session_picker(initial_query or "")
@@ -756,6 +810,33 @@ class ChatPanel(Vertical):
             active_key=self._selected_session_key,
             initial_query=initial_query,
         )
+
+    def action_open_file_picker(self, initial_query: str | None = None) -> None:
+        self._request_file_picker(initial_query or "")
+
+    def create_file_picker_modal(self, *, initial_query: str = "") -> FilePickerModal:
+        return FilePickerModal(initial_query=initial_query)
+
+    def handle_file_picker_selected(self, selected_path: str | None) -> None:
+        if not selected_path:
+            return
+        self.insert_file_reference(selected_path)
+        self.post_message(self.FilePickerSelected(path=selected_path))
+
+    def _on_file_picker_selected(self, selected_path: str | None) -> None:
+        self.handle_file_picker_selected(selected_path)
+
+    def insert_file_reference(self, relative_path: str) -> None:
+        token = relative_path.strip()
+        if not token:
+            return
+        if any(ch.isspace() for ch in token) or token.startswith("-"):
+            token = shlex.quote(token)
+        input_widget = self._input_widget()
+        input_widget.insert_text_at_cursor(f"{token} ")
+        self._current_state().draft = input_widget.value
+        input_widget.focus()
+        self._sync_completion_overlays(input_widget.value)
 
     async def _submit_current_input(self) -> None:
         input_widget = self._input_widget()
@@ -785,6 +866,7 @@ class ChatPanel(Vertical):
                 return
 
         self._append_prompt_history(text)
+        self._current_state().last_sent_text = text
 
         handled = await self._handle_slash_command(text)
         if not handled:
@@ -863,6 +945,11 @@ class ChatPanel(Vertical):
         if not self.has_class("chat-overlay"):
             return
         self.post_message(self.SessionPickerRequested(initial_query=initial_query))
+
+    def _request_file_picker(self, initial_query: str) -> None:
+        if not self.has_class("chat-overlay"):
+            return
+        self.post_message(self.FilePickerRequested(initial_query=initial_query))
 
     def _show_help_overlay(self) -> None:
         """Focus input with '/' to trigger the existing slash completion overlay."""
@@ -1174,7 +1261,7 @@ class ChatPanel(Vertical):
         except NoMatches:
             return
         visible = self.has_class("visible")
-        locked = self._runtime_input_locked or self._chat_input_disable_depth > 0
+        locked = self._chat_input_disable_depth > 0
         should_disable = (not visible) or locked
         input_widget.disabled = should_disable
         input_widget.can_focus = not should_disable
@@ -1314,23 +1401,27 @@ class ChatPanel(Vertical):
             status_bar.update_hint(self._status_hint_override)
             return
 
-        input_disabled = self._input_widget().disabled
         split_key = self._overlay_split_key
         fullscreen_key = self._overlay_fullscreen_key
         close_key = self._overlay_close_key
-        if input_disabled:
-            right = "Read-only timeline"
-        elif bool(self._slash_matches or self._mention_matches):
+        is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
+        if is_active:
+            input_widget = self._input_widget()
+            has_pending = bool(normalize_chat_input(input_widget.value))
+            esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
+        else:
+            esc_hint = f"{close_key} close"
+        if bool(self._slash_matches or self._mention_matches):
             right = (
-                "Enter send · Tab complete · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
-                f"Ctrl+C clear · Esc interrupt · {close_key} close"
+                f"Enter send · Tab complete · Ctrl+J timeline · "
+                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                f"Ctrl+C clear · {esc_hint}"
             )
         else:
             right = (
-                "Enter send · Up/Down history · Ctrl+J timeline · "
-                f"{split_key} split · {fullscreen_key} full · Ctrl+K sessions · "
-                f"Ctrl+C clear · Esc interrupt · {close_key} close"
+                f"Enter send · Up/Down history · Ctrl+J timeline · "
+                f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
+                f"Ctrl+C clear · {esc_hint}"
             )
         status_bar = self._status_bar()
         if status_bar is None:

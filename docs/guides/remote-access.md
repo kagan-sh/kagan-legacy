@@ -57,6 +57,8 @@ There is no separate browser pairing flow for the dashboard. The web UI is bundl
 
 The dashboard offers two views: a **Board** (kanban) and a **Workspace** (orchestrator-first, similar to ChatGPT). Toggle between them with the activity bar icons or `Cmd/Ctrl+Shift+W`.
 
+If you use the VS Code extension, you do not need MCP config just to get Kagan inside VS Code. MCP is the generic editor/client integration path.
+
 Changes sync in real-time across all connected clients and the TUI.
 
 ______________________________________________________________________

@@ -159,13 +159,18 @@ export function ChatSidePanel({ taskId, layout, onSetLayout, onClose }: ChatSide
 
       {!isMobile && (
         <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-          ⌘⇧K sessions · ⌘I toggle · esc stop
+          ⌘⇧K sessions · ⌘I toggle{isRunning ? " · esc stop & queue" : ""}
         </div>
       )}
 
       {!isInteractiveActive ? (
         <ChatInputBar
           onSend={queuePrompt}
+          onInterrupt={(opts) => {
+            if (opts?.pendingText) {
+              queuePrompt(opts.pendingText);
+            }
+          }}
           disableSend={isRunning}
           placeholder={`Queue a follow-up for the ${lane} agent...`}
         />

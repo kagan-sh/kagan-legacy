@@ -1,5 +1,6 @@
 import type {
   ChatAgentsResponse,
+  ClientPresence,
   CreateChatSessionInput,
   CreateTaskInput,
   DiffFile,
@@ -420,8 +421,27 @@ export class KaganApiClient {
     git_user_email: string;
     dotfile_overrides: Record<string, string | null>;
     workflow: WorkflowResolvedSettings;
+    chat_last_active_session?: string;
   }> {
     return this.request('/api/settings/resolved');
+  }
+
+  /** GET /api/presence — list connected clients. */
+  async getPresence(): Promise<ClientPresence[]> {
+    return this.request<ClientPresence[]>('/api/presence');
+  }
+
+  /** POST /api/presence/heartbeat — refresh presence and optional task focus. */
+  async sendPresenceHeartbeat(input: {
+    client_id: string;
+    client_type: string;
+    active_task_id?: string | null;
+    user_label?: string;
+  }): Promise<void> {
+    await this.request('/api/presence/heartbeat', {
+      method: 'POST',
+      body: input,
+    });
   }
 
   async setSettings(input: Record<string, string>): Promise<Record<string, string>> {

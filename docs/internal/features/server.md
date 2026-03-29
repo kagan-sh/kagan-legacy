@@ -93,6 +93,14 @@ Event types pushed by the server:
 
 Keepalive comments (`: keepalive`) are sent every 25 seconds.
 
+Clients can also publish lightweight presence context:
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"client_id":"web-tab-1","client_type":"web","active_task_id":"task-123"}' \
+     http://localhost:8765/api/presence/heartbeat
+```
+
 ### Managing Runs
 
 Start an agent run via REST:

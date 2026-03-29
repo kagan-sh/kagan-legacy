@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
@@ -37,6 +37,7 @@ class ServerContext:
     bound_session_id: str | None = None
     bound_task_id: str | None = None
     bound_project_id: str | None = None
+    presence: Any | None = None
 
 
 _SERVER_OPTS: dict[int, ServerOptions] = {}

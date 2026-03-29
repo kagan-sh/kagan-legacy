@@ -6,13 +6,18 @@ spawn_agent() writes .mcp.json to the worktree and spawns a detached OS process.
 """
 
 import asyncio
+import contextlib
 import errno
 import functools
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, TypedDict, cast
 
@@ -23,6 +28,37 @@ from kagan.runtime_env import build_sanitized_subprocess_environment
 
 # Registry of spawned processes for cleanup
 _spawned_processes: dict[str, asyncio.subprocess.Process] = {}
+
+# Scheduled timeout handles for agent processes (pid -> TimerHandle)
+_AGENT_TIMEOUTS: dict[int, asyncio.TimerHandle] = {}
+
+_AGENT_TIMEOUT_GRACE_SECONDS: Final[float] = 5.0
+
+
+def _kill_agent(pid: int) -> None:
+    """Send SIGTERM to an agent process, then SIGKILL after a grace period."""
+    logger.warning("Agent pid={} exceeded timeout, sending SIGTERM", pid)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        _AGENT_TIMEOUTS.pop(pid, None)
+        return
+
+    def _force_kill(pid: int) -> None:
+        logger.warning("Agent pid={} did not exit after SIGTERM grace period, sending SIGKILL", pid)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        _AGENT_TIMEOUTS.pop(pid, None)
+
+    try:
+        loop = asyncio.get_running_loop()
+        handle = loop.call_later(_AGENT_TIMEOUT_GRACE_SECONDS, _force_kill, pid)
+        _AGENT_TIMEOUTS[pid] = handle
+    except RuntimeError:
+        # No running loop — best-effort force kill
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        _AGENT_TIMEOUTS.pop(pid, None)
 
 
 async def register_spawned_process(session_id: str, proc: asyncio.subprocess.Process) -> None:
@@ -37,6 +73,11 @@ async def unregister_spawned_process(session_id: str) -> None:
 
 async def cleanup_all_spawned_processes() -> None:
     """Terminate all tracked processes. Called on shutdown."""
+    # Cancel all pending timeout handles
+    for _pid, handle in list(_AGENT_TIMEOUTS.items()):
+        handle.cancel()
+    _AGENT_TIMEOUTS.clear()
+
     for _session_id, proc in list(_spawned_processes.items()):
         if proc.returncode is None:
             try:
@@ -59,6 +100,7 @@ def resolve_default_agent_backend(settings: dict[str, str]) -> str:
 class AgentBackendConfig(TypedDict, total=False):
     """Schema for an agent backend registry entry."""
 
+    capabilities: tuple[str, ...]
     executable: str
     prompt_flag: str | None
     workdir_flag: str | None
@@ -68,157 +110,341 @@ class AgentBackendConfig(TypedDict, total=False):
     acp_args: list[str]
 
 
+class BackendCapability(StrEnum):
+    """Capabilities that backend specs can declare."""
+
+    MANAGED_DETACHED_RUN = "managed_detached_run"
+    ACP_STREAMING = "acp_streaming"
+    PROMPT_ARGUMENT = "prompt_argument"
+    WORKDIR_ARGUMENT = "workdir_argument"
+    TASK_SCOPED_MCP = "task_scoped_mcp"
+
+
+@dataclass(frozen=True, slots=True)
+class BackendSpec:
+    """Typed backend metadata used to derive the legacy registry mapping."""
+
+    name: str
+    executable: str
+    display_name: str | None = None
+    prompt_flag: str | None = None
+    workdir_flag: str | None = None
+    env_vars: Mapping[str, str] = field(default_factory=dict)
+    supports_acp: bool = False
+    acp_command: tuple[str, ...] = ()
+    acp_args: tuple[str, ...] = ()
+    capabilities: frozenset[BackendCapability] = field(default_factory=frozenset)
+    aliases: tuple[str, ...] = ()
+    reference: bool = False
+    install_hint: str | None = None
+    auth_hint: str | None = None
+
+    def to_legacy_config(self) -> AgentBackendConfig:
+        """Project the typed spec into the legacy mapping contract."""
+        return {
+            "capabilities": tuple(sorted(cap.value for cap in self.capabilities)),
+            "executable": self.executable,
+            "prompt_flag": self.prompt_flag,
+            "workdir_flag": self.workdir_flag,
+            "env_vars": dict(self.env_vars),
+            "supports_acp": self.has_capability(BackendCapability.ACP_STREAMING),
+            "acp_command": list(self.acp_command),
+            "acp_args": list(self.acp_args),
+        }
+
+    def has_capability(self, capability: BackendCapability) -> bool:
+        """Return whether the backend declares *capability*."""
+        return capability in self.capabilities
+
+    def label(self) -> str:
+        """Return a human-friendly backend label."""
+        if not self.display_name or self.display_name == self.name:
+            return self.name
+        return f"{self.display_name} ({self.name})"
+
+    def guidance_hints(self) -> tuple[str, ...]:
+        """Return explicit setup hints for this backend."""
+        return tuple(
+            hint for hint in (self.install_hint, self.auth_hint) if isinstance(hint, str) and hint
+        )
+
+
 CLAUDE_CODE_BACKEND: Final = "claude-code"
 CODEX_BACKEND: Final = "codex"
 GEMINI_CLI_BACKEND: Final = "gemini-cli"
 KIMI_CLI_BACKEND: Final = "kimi-cli"
 OPENCODE_BACKEND: Final = "opencode"
 GITHUB_COPILOT_BACKEND: Final = "github-copilot"
+REFERENCE_BACKENDS: Final[tuple[str, ...]] = (CLAUDE_CODE_BACKEND, CODEX_BACKEND)
 
 
 # ---------------------------------------------------------------------------
-# Backend registry
+# Typed backend specs
 # ---------------------------------------------------------------------------
-AGENT_BACKENDS: dict[str, AgentBackendConfig] = {
-    CLAUDE_CODE_BACKEND: {
-        "executable": "claude",
-        "prompt_flag": "-p",
-        "workdir_flag": None,  # uses cwd
-        "env_vars": {"ANTHROPIC_MODEL": ""},
-        "supports_acp": True,
-        "acp_command": ["npx", "claude-code-acp"],
-        "acp_args": [],
-    },
-    CODEX_BACKEND: {
-        "executable": "codex",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["npx", "-y", "@zed-industries/codex-acp"],
-        "acp_args": [],
-    },
-    GEMINI_CLI_BACKEND: {
-        "executable": "gemini",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["gemini", "--experimental-acp"],
-        "acp_args": [],
-    },
-    KIMI_CLI_BACKEND: {
-        "executable": "kimi",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["kimi", "acp"],
-        "acp_args": [],
-    },
-    GITHUB_COPILOT_BACKEND: {
-        "executable": "copilot",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["copilot", "--acp"],
-        "acp_args": [],
-    },
-    "goose": {
-        "executable": "goose",
-        "prompt_flag": "--message",
-        "workdir_flag": None,
-        "env_vars": {"GOOSE_MODEL": ""},
-        "supports_acp": True,
-        "acp_command": ["goose", "acp"],
-        "acp_args": [],
-    },
-    "openhands": {
-        "executable": "openhands",
-        "prompt_flag": "--task",
-        "workdir_flag": "--workspace",
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["openhands", "acp"],
-        "acp_args": [],
-    },
-    OPENCODE_BACKEND: {
-        "executable": "opencode",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["opencode", "acp"],
-        "acp_args": [],
-    },
-    "auggie": {
-        "executable": "auggie",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["auggie", "--acp"],
-        "acp_args": [],
-    },
-    "amp": {
-        "executable": "amp",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["npx", "-y", "amp-acp"],
-        "acp_args": [],
-    },
-    "docker-cagent": {
-        "executable": "cagent",
-        "prompt_flag": "--task",
-        "workdir_flag": "--workdir",
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["cagent", "acp"],
-        "acp_args": [],
-    },
-    "stakpak": {
-        "executable": "stakpak",
-        "prompt_flag": "--task",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["stakpak", "acp"],
-        "acp_args": [],
-    },
-    "mistral-vibe": {
-        "executable": "vibe",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["vibe-acp"],
-        "acp_args": [],
-    },
-    "vt-code": {
-        "executable": "vtcode",
-        "prompt_flag": "-p",
-        "workdir_flag": None,
-        "env_vars": {},
-        "supports_acp": True,
-        "acp_command": ["vtcode", "acp"],
-        "acp_args": [],
-    },
+_BACKEND_SPECS: dict[str, BackendSpec] = {
+    CLAUDE_CODE_BACKEND: BackendSpec(
+        name=CLAUDE_CODE_BACKEND,
+        executable="claude",
+        display_name="Claude Code",
+        prompt_flag="-p",
+        env_vars={"ANTHROPIC_MODEL": ""},
+        supports_acp=True,
+        acp_command=("npx", "claude-code-acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+        aliases=("claude",),
+        reference=True,
+        install_hint="Install with `curl -fsSL https://claude.ai/install.sh | bash`.",
+        auth_hint="If Claude Code is already installed, run `claude` and follow the login prompts.",
+    ),
+    CODEX_BACKEND: BackendSpec(
+        name=CODEX_BACKEND,
+        executable="codex",
+        display_name="Codex CLI",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("npx", "-y", "@zed-industries/codex-acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+        reference=True,
+        install_hint="Install with `npm install -g @openai/codex`.",
+        auth_hint=(
+            "If Codex is already installed, run `codex` to sign in with ChatGPT or set"
+            " `OPENAI_API_KEY`, then retry."
+        ),
+    ),
+    GEMINI_CLI_BACKEND: BackendSpec(
+        name=GEMINI_CLI_BACKEND,
+        executable="gemini",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("gemini", "--experimental-acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+        aliases=("gemini",),
+    ),
+    KIMI_CLI_BACKEND: BackendSpec(
+        name=KIMI_CLI_BACKEND,
+        executable="kimi",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("kimi", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+        aliases=("kimi",),
+    ),
+    GITHUB_COPILOT_BACKEND: BackendSpec(
+        name=GITHUB_COPILOT_BACKEND,
+        executable="copilot",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("copilot", "--acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+        aliases=("copilot",),
+    ),
+    "goose": BackendSpec(
+        name="goose",
+        executable="goose",
+        prompt_flag="--message",
+        env_vars={"GOOSE_MODEL": ""},
+        supports_acp=True,
+        acp_command=("goose", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "openhands": BackendSpec(
+        name="openhands",
+        executable="openhands",
+        prompt_flag="--task",
+        workdir_flag="--workspace",
+        supports_acp=True,
+        acp_command=("openhands", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+                BackendCapability.WORKDIR_ARGUMENT,
+            }
+        ),
+    ),
+    OPENCODE_BACKEND: BackendSpec(
+        name=OPENCODE_BACKEND,
+        executable="opencode",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("opencode", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "auggie": BackendSpec(
+        name="auggie",
+        executable="auggie",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("auggie", "--acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "amp": BackendSpec(
+        name="amp",
+        executable="amp",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("npx", "-y", "amp-acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "docker-cagent": BackendSpec(
+        name="docker-cagent",
+        executable="cagent",
+        prompt_flag="--task",
+        workdir_flag="--workdir",
+        supports_acp=True,
+        acp_command=("cagent", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+                BackendCapability.WORKDIR_ARGUMENT,
+            }
+        ),
+    ),
+    "stakpak": BackendSpec(
+        name="stakpak",
+        executable="stakpak",
+        prompt_flag="--task",
+        supports_acp=True,
+        acp_command=("stakpak", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "mistral-vibe": BackendSpec(
+        name="mistral-vibe",
+        executable="vibe",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("vibe-acp",),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
+    "vt-code": BackendSpec(
+        name="vt-code",
+        executable="vtcode",
+        prompt_flag="-p",
+        supports_acp=True,
+        acp_command=("vtcode", "acp"),
+        capabilities=frozenset(
+            {
+                BackendCapability.ACP_STREAMING,
+                BackendCapability.MANAGED_DETACHED_RUN,
+                BackendCapability.PROMPT_ARGUMENT,
+                BackendCapability.TASK_SCOPED_MCP,
+            }
+        ),
+    ),
 }
 _AGENT_BACKEND_ALIASES: dict[str, str] = {
-    "claude": CLAUDE_CODE_BACKEND,
-    "copilot": GITHUB_COPILOT_BACKEND,
-    "gemini": GEMINI_CLI_BACKEND,
-    "kimi": KIMI_CLI_BACKEND,
+    alias: spec.name for spec in _BACKEND_SPECS.values() for alias in spec.aliases
 }
+
+
+def _build_legacy_backend_registry() -> dict[str, AgentBackendConfig]:
+    return {name: spec.to_legacy_config() for name, spec in _BACKEND_SPECS.items()}
+
+
+AGENT_BACKENDS: dict[str, AgentBackendConfig] = _build_legacy_backend_registry()
 
 
 def normalize_backend_name(name: str) -> str:
     """Normalize user-provided backend names to canonical registry keys."""
     normalized = name.strip().lower()
     return _AGENT_BACKEND_ALIASES.get(normalized, normalized)
+
+
+def get_backend_spec(name: str) -> BackendSpec:
+    """Return the typed backend spec for *name*, raising AgentError if unknown."""
+    resolved = normalize_backend_name(name)
+    try:
+        return _BACKEND_SPECS[resolved]
+    except KeyError:
+        known = ", ".join(sorted(_BACKEND_SPECS))
+        raise AgentError(f"unknown agent backend {name!r}. Known: {known}") from None
+
+
+def list_backend_specs() -> dict[str, BackendSpec]:
+    """Return all registered backend specs."""
+    return dict(_BACKEND_SPECS)
 
 
 def get_backend(name: str) -> AgentBackendConfig:
@@ -387,8 +613,15 @@ async def spawn_agent(
     task_id: str,
     db_path: str,
     project_id: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> int:
-    """Spawn an agent as a detached OS process."""
+    """Spawn an agent as a detached OS process.
+
+    Args:
+        timeout_seconds: Optional execution time limit in seconds.  When set,
+            a timer is scheduled to SIGTERM (then SIGKILL) the process after
+            *timeout_seconds* elapse.  ``None`` means no timeout (default).
+    """
     logger.info("Spawning agent backend={}", backend_name)
     entry = get_backend(backend_name)
     cmd, _env, kwargs, _mcp_content = await _prepare_spawn(
@@ -420,8 +653,81 @@ async def spawn_agent(
         ) from exc
 
     await register_spawned_process(session_id, proc)  # Track for cleanup
-    logger.debug("Agent process started, pid={}", proc.pid)
+
+    # Schedule a timeout kill if requested
+    if timeout_seconds is not None and proc.pid is not None:
+        loop = asyncio.get_running_loop()
+        handle = loop.call_later(timeout_seconds, _kill_agent, proc.pid)
+        _AGENT_TIMEOUTS[proc.pid] = handle
+        logger.debug("Agent process started, pid={}, timeout={}s", proc.pid, timeout_seconds)
+    else:
+        logger.debug("Agent process started, pid={}", proc.pid)
     return proc.pid
+
+
+# ---------------------------------------------------------------------------
+# ACP stream byte-counting guard (CWE-770)
+# ---------------------------------------------------------------------------
+_ACP_PER_MESSAGE_LIMIT: Final[int] = 10 * 1024 * 1024  # 10 MB per JSON-RPC line
+_MAX_CUMULATIVE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB total per session
+
+
+class _ByteCountingStreamReader:
+    """Wrapper around ``asyncio.StreamReader`` that enforces a cumulative byte cap.
+
+    The ACP JSON-RPC read loop (inside the ``acp`` library) calls ``readline()``
+    or ``read()`` on the underlying reader.  This proxy counts every byte
+    returned and terminates the associated process when the cumulative limit is
+    exceeded, preventing unbounded memory growth from a misbehaving agent.
+    """
+
+    def __init__(
+        self,
+        reader: asyncio.StreamReader,
+        process: asyncio.subprocess.Process,
+        cumulative_limit: int = _MAX_CUMULATIVE_BYTES,
+    ) -> None:
+        self._reader = reader
+        self._process = process
+        self._cumulative_bytes = 0
+        self._cumulative_limit = cumulative_limit
+
+    def _track(self, data: bytes) -> bytes:
+        self._cumulative_bytes += len(data)
+        if self._cumulative_bytes > self._cumulative_limit:
+            logger.warning(
+                "ACP stream exceeded cumulative byte limit ({} bytes), terminating pid={}",
+                self._cumulative_bytes,
+                self._process.pid,
+            )
+            self._process.terminate()
+            raise AgentError(
+                f"ACP stream exceeded cumulative byte limit "
+                f"({self._cumulative_limit // (1024 * 1024)} MB)"
+            )
+        return data
+
+    async def readline(self) -> bytes:
+        data = await self._reader.readline()
+        return self._track(data)
+
+    async def readuntil(self, separator: bytes = b"\n") -> bytes:
+        data = await self._reader.readuntil(separator)
+        return self._track(data)
+
+    async def read(self, n: int = -1) -> bytes:
+        data = await self._reader.read(n)
+        return self._track(data)
+
+    async def readexactly(self, n: int) -> bytes:
+        data = await self._reader.readexactly(n)
+        return self._track(data)
+
+    def at_eof(self) -> bool:
+        return self._reader.at_eof()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._reader, name)
 
 
 async def spawn_agent_via_acp(
@@ -437,8 +743,8 @@ async def spawn_agent_via_acp(
 ) -> tuple[int, asyncio.Task]:
     """Spawn an ACP-capable agent with owned stdio and start ACP loop task."""
     logger.info("Spawning ACP agent backend={}", backend_name)
-    entry = get_backend(backend_name)
-    if not entry.get("supports_acp", False):
+    spec = get_backend_spec(backend_name)
+    if not spec.has_capability(BackendCapability.ACP_STREAMING):
         raise AgentError(f"Agent backend {backend_name!r} does not support ACP execution.")
 
     cmd, _env, kwargs, mcp_content = await _prepare_spawn(
@@ -454,21 +760,20 @@ async def spawn_agent_via_acp(
     acp_cmd = resolve_acp_command(backend_name)
     if acp_cmd:
         cmd = list(acp_cmd)
-    acp_args = entry.get("acp_args")
-    if isinstance(acp_args, list) and acp_args:
-        cmd.extend(str(arg) for arg in acp_args)
+    if spec.acp_args:
+        cmd.extend(spec.acp_args)
 
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
     kwargs["stderr"] = asyncio.subprocess.PIPE
-    # Raise the StreamReader pipe limit to 50 MB so large JSON-RPC lines
-    # (e.g. file reads, multimodal payloads) don't hit the default 64 KB cap
-    # and crash the receive loop with ValueError/LimitOverrunError.
-    kwargs["limit"] = 50 * 1024 * 1024
+    # Per-message StreamReader limit: 10 MB (reduced from 50 MB) so large
+    # JSON-RPC lines don't hit the default 64 KB cap while still bounding
+    # per-read memory usage.
+    kwargs["limit"] = _ACP_PER_MESSAGE_LIMIT
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, **cast("Any", kwargs))
     except (FileNotFoundError, PermissionError) as exc:
-        attempted = cmd[0] if cmd else entry["executable"]
+        attempted = cmd[0] if cmd else spec.executable
         logger.error("Failed to spawn ACP agent backend={}: {}", backend_name, exc)
         raise AgentError(
             f"Failed to spawn ACP agent {backend_name!r} ({attempted!r}): {exc}"
@@ -476,6 +781,10 @@ async def spawn_agent_via_acp(
 
     if proc.stdin is None or proc.stdout is None:
         raise AgentError(f"spawned ACP agent {backend_name!r} does not expose stdio pipes")
+
+    # Wrap stdout with cumulative byte-counting guard
+    guarded_stdout = _ByteCountingStreamReader(proc.stdout, proc)
+    proc.stdout = guarded_stdout  # type: ignore[assignment]
 
     from kagan.core._acp import KaganACPClient, run_acp_session
 

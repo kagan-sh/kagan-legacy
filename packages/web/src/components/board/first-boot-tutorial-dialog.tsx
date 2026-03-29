@@ -21,16 +21,16 @@ interface FirstBootTutorialDialogProps {
 
 const STEPS = [
   {
-    title: 'Welcome to the board',
-    description: 'Start a managed run in the background, or attach an interactive run using your launcher preference.',
+    title: 'The canonical flow',
+    description: 'Create -> Start -> Review -> Merge is the default path. Attach stays available for interactive runs, but it is not the first choice.',
   },
   {
-    title: 'Interactive attach',
-    description: 'Interactive runs are best when you want to guide strategy, clarify intent, and iterate quickly.',
+    title: 'Start a managed run',
+    description: 'Use Start when acceptance criteria are clear and you want Kagan to execute toward review.',
   },
   {
-    title: 'Managed runs',
-    description: 'Managed runs are best when scope is clear and you want fast execution throughput.',
+    title: 'Review before merge',
+    description: 'Use the task workspace to inspect the diff, evidence, and verdicts before merging or continuing.',
   },
 ] as const;
 
@@ -85,8 +85,8 @@ export function FirstBootTutorialDialog({
             <CardContent className="space-y-3">
               {stepIndex === 0 ? (
                 <div className="space-y-2 text-sm text-[var(--muted-foreground)]">
-                  <p>Start with Attach when requirements are fluid. Use Start for managed runs when acceptance criteria are stable.</p>
-                  <p>Everything remains reviewable in task detail and diff views before merge.</p>
+                  <p>Create the task, start the run, review the diff and verdicts, then merge when the change is ready.</p>
+                  <p>Attach remains available from the task view when you want to work interactively with the agent.</p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <KbdGroup>
                       <Kbd>Cmd/Ctrl</Kbd>
@@ -106,24 +106,26 @@ export function FirstBootTutorialDialog({
               {stepIndex === 1 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Create a task now. After creation, use Attach to launch an interactive run.
+                    Start is the default path for a task with stable acceptance criteria. Use Attach later if you need to steer the work live.
                   </p>
-                  <Button onClick={onStartAttachedFlow} className="w-full sm:w-auto">
-                    <Users className="size-4" />
-                    Create task for interactive run
-                  </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Button onClick={onStartDetachedFlow} className="w-full sm:w-auto">
+                      <Bot className="size-4" />
+                      Create task for Start
+                    </Button>
+                    <Button variant="ghost" onClick={onStartAttachedFlow} className="w-full sm:w-auto text-[var(--muted-foreground)]">
+                      <Users className="size-4" />
+                      Interactive attach
+                    </Button>
+                  </div>
                 </div>
               ) : null}
 
               {stepIndex === 2 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Create a task now. After creation, use Start to begin a managed run.
+                    The task workspace keeps the diff, evidence, and review verdicts together so merge is the last decision, not the first.
                   </p>
-                  <Button onClick={onStartDetachedFlow} className="w-full sm:w-auto">
-                    <Bot className="size-4" />
-                    Create task for managed run
-                  </Button>
                 </div>
               ) : null}
             </CardContent>

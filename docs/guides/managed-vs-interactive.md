@@ -9,7 +9,7 @@ tags:
 
 # Managed Runs and Interactive Attach
 
-Every task is just a task. When you launch it, choose one of two actions:
+Every task is still just a task. The canonical path is `Create -> Start -> Review -> Merge`; attach is the opt-in path when you need live guidance.
 
 | When…                                         | Use                           |
 | --------------------------------------------- | ----------------------------- |
@@ -22,13 +22,14 @@ Every task is just a task. When you launch it, choose one of two actions:
 
 `n` → create task → `s` to start → follow progress from the task screen or the TUI AI panel → REVIEW → approve/merge.
 
-The agent runs in the background. Use follow-ups, notes, and review to steer iterations after launch.
+This is the default launch mode. The agent runs in the background; use follow-ups, notes, and review to steer iterations after launch.
 
 ## Launch an interactive session
 
 `n` → create task → `a` (or the Attach button in the web UI) → continue in tmux / Neovim / VS Code / Cursor / Windsurf / Kiro / Antigravity.
 
 Kagan prepares the worktree, writes `.kagan/start_prompt.md`, and opens or hands off to your configured launcher. The task itself does not change mode; the session just uses an interactive launcher.
+Use this path when you need to direct the work live. Otherwise, Start is the simpler default.
 
 When `attached_launcher = "nvim"`, Kagan opens `.kagan/start_prompt.md` and attempts to open the first detected Neovim AI chat command:
 `CodeCompanionChat` → `AvanteChat` → `CopilotChat` → `ClaudeCode`.

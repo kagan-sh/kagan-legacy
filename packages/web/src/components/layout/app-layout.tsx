@@ -193,38 +193,6 @@ function AppLayout() {
         }
     }, [railMode]);
 
-    // Auto-open orchestrator chat rail in vertical split on /board (like TUI)
-    const autoOpenedRef = useRef(false);
-    useEffect(() => {
-        if (autoOpenedRef.current) return;
-        if (!projectChecked || isMobile) return;
-        if (!location.pathname.startsWith("/board")) return;
-        if (railMode !== "none") return;
-        autoOpenedRef.current = true;
-
-        void (async () => {
-            try {
-                const sessions = await apiClient.getChatSessions();
-                const sessionId = await createOrGetSession(sessions);
-                if (sessionId) {
-                    setRailTaskId(null);
-                    setRailChatSessionId(sessionId);
-                    setRailMode("chat-right");
-                }
-            } catch {
-                // Silently fail — user can open manually
-            }
-        })();
-    }, [
-        projectChecked,
-        isMobile,
-        location.pathname,
-        railMode,
-        setRailChatSessionId,
-        setRailMode,
-        setRailTaskId,
-    ]);
-
     // On project switch: auto-attach to latest orchestrator session for new project
     const prevProjectVersionRef = useRef(projectVersion);
     useEffect(() => {

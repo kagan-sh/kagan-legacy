@@ -200,7 +200,7 @@ class KanbanScreen(Screen[None]):
     async def on_mount(self) -> None:
         self._refresh_header()
         panel = self.query_one(ChatPanel)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
         await self._load_orchestrator_panel_state(panel)
         panel.set_mode_title("Orchestrator")
@@ -1629,6 +1629,14 @@ class KanbanScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        panel = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
+        if not isinstance(panel, ChatPanel):
+            panel = self.query_one(ChatPanel)
+
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(
         self, _message: ChatPanel.AgentPickerRequested
     ) -> None:
@@ -1664,10 +1672,17 @@ class KanbanScreen(Screen[None]):
         self._sync_layout_state()
 
     def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
+        panel = self.query_one(ChatPanel)
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_stop_agent(), exit_on_error=False)
+
+        async def _stop_and_complete() -> None:
+            await self.action_stop_agent()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_stop_and_complete(), exit_on_error=False)
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
         panel = self.query_one(ChatPanel)

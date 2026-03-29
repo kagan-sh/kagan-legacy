@@ -12,29 +12,43 @@ tags:
 Kagan exposes its full task lifecycle over MCP. Any editor or CLI that speaks the protocol becomes a first-class client -- no TUI required.
 
 !!! note "Using the native VS Code extension?"
-    If you want the Kagan sidebar, `@kagan` chat participant, native diffs, and reviews inside VS Code, install the extension instead of adding `.vscode/mcp.json`.
+If you want the Kagan sidebar, `@kagan` chat participant, native diffs, and reviews inside VS Code, install the extension instead of adding `.vscode/mcp.json`.
 
-    - [VS Code extension guide](vscode-extension.md)
-    - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
-    - [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
+```
+- [VS Code extension guide](vscode-extension.md)
+- [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
+- [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
+```
 
 **Prerequisites:** Kagan installed, client supports MCP stdio.
 
-## 1. Start server
+## 1. Pick the right integration path
 
-```bash
-kagan mcp
-```
+- **Using the Kagan VS Code extension?** Install the extension and skip `.vscode/mcp.json`.
+- **Using Claude Code, Cursor, OpenCode, Codex, or another MCP client?** Add Kagan as an MCP server there.
+
+The MCP client starts `kagan mcp` for you when it connects. You usually do **not** run `kagan mcp` manually first.
 
 ## 2. Add to client
 
-Start with read-only access:
+Start with an explicit role. `WORKER` is the safest default for coding agents; `ORCHESTRATOR` is the full project-control role.
 
 ```bash
-kagan mcp --readonly
+kagan mcp --role WORKER
 ```
 
-Switch to default (read+write) or admin tier only when needed.
+Example for Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "kagan": {
+      "command": "kagan",
+      "args": ["mcp", "--role", "WORKER"]
+    }
+  }
+}
+```
 
 ## 3. Verify
 
@@ -46,28 +60,36 @@ task_logs(task_id, offset, limit)   → if truncated
 
 ______________________________________________________________________
 
-## Access tiers
+## Roles and compatibility flags
 
-Kagan uses three access tiers, controlled by CLI flags:
+Prefer `--role` when configuring MCP clients:
 
-| Tier       | Flag         | Scope                                                              |
-| ---------- | ------------ | ------------------------------------------------------------------ |
-| `readonly` | `--readonly` | Read-only. Inspect tasks, list projects, view logs.                |
-| `default`  | *(no flag)*  | Read + write. Create, update, annotate tasks. Run jobs.            |
-| `admin`    | `--admin`    | Default + destructive. Delete tasks, modify settings, plugin sync. |
+| Role           | When to use it                                                |
+| -------------- | ------------------------------------------------------------- |
+| `WORKER`       | Task-scoped coding agents that should stay within one task    |
+| `REVIEWER`     | Review-only agents that should inspect and give verdicts      |
+| `ORCHESTRATOR` | Full project control for planning, task creation, and routing |
 
-`--readonly` and `--admin` are mutually exclusive.
+Compatibility flags still work:
+
+- `--readonly` narrows the server to the worker-style read-focused surface.
+- `--admin` is currently an alias of the default MCP tool surface.
+- `--readonly` and `--admin` are mutually exclusive.
 
 ```bash
-kagan mcp --readonly                    # read-only auditing
-kagan mcp                               # default read+write
-kagan mcp --admin                       # full admin access
+kagan mcp --role WORKER                 # safest default for agents
+kagan mcp --role REVIEWER               # review verdict tools
+kagan mcp --role ORCHESTRATOR           # full project control
+kagan mcp --readonly                    # compatibility shortcut for read-focused access
+kagan mcp --admin                       # currently same MCP tool surface as default
 kagan mcp --session-id task:abc123      # task-scoped session
 ```
 
 ______________________________________________________________________
 
 ## Editor configs
+
+For fresh setups, add `"--role", "WORKER"` (or the role you want) to the `args` array in these examples.
 
 === "Claude Code"
 
@@ -250,8 +272,8 @@ Path: `~/.augment/mcp.json`
 ```
 ````
 
-!!! tip "Read-only or admin access"
-Add `"--readonly"` or `"--admin"` to the `args` array to change the access tier. For task-scoped sessions, add `"--session-id", "task:abc123"`.
+!!! tip "Roles and compatibility flags"
+Add `"--role", "WORKER"`, `"--role", "REVIEWER"`, or `"--role", "ORCHESTRATOR"` to the `args` array to control tool visibility. `"--readonly"` and `"--admin"` still work as compatibility flags. For task-scoped sessions, add `"--session-id", "task:abc123"`.
 
 ______________________________________________________________________
 

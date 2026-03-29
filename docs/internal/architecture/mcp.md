@@ -21,6 +21,7 @@ ______________________________________________________________________
 1. **Interactive-run agents** — discover kagan via `.mcp.json` and report progress to the board.
 
 Managed executions use ACP (direct STDIO JSON-RPC), not MCP. The `--session-id` flag scopes tool visibility and task context.
+The TUI is the primary operator surface; the web dashboard is the remote companion surface; VS Code is the embedded companion surface.
 
 ______________________________________________________________________
 
@@ -37,6 +38,7 @@ There should be one obvious way to do it.
 1. **Access control is a filter** — tools registered once, filtered at registration time
 1. **python-sdk is the framework** — no wrapper abstractions over `MCPServer`
 1. **STDIO transport only** — hosts launch `kagan mcp` as a subprocess
+1. **Role, not vendor, defines the surface** — WORKER, REVIEWER, and ORCHESTRATOR see different tool sets; backend choice does not change MCP registration
 
 ______________________________________________________________________
 

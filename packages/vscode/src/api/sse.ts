@@ -11,6 +11,9 @@ export class SSEStream implements vscode.Disposable {
   private disposed = false;
   private protocol: "http" | "https" = "http";
   private token: string | undefined;
+  private pollingTimer: ReturnType<typeof setInterval> | null = null;
+  private pollingCallback: (() => void) | null = null;
+  private readonly clientId = globalThis.crypto?.randomUUID?.() ?? `vscode-${Date.now().toString(36)}`;
 
   private readonly _onMessage = new vscode.EventEmitter<SSEMessage>();
   readonly onMessage = this._onMessage.event;
@@ -46,8 +49,14 @@ export class SSEStream implements vscode.Disposable {
     this.connect();
   }
 
+  /** Register a callback to poll when SSE is disconnected (10s interval). */
+  setPollingFallback(callback: () => void): void {
+    this.pollingCallback = callback;
+  }
+
   stop(): void {
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this.stopPolling();
     this.controller?.abort();
     this.controller = null;
     this._onConnected.fire(false);
@@ -60,6 +69,16 @@ export class SSEStream implements vscode.Disposable {
     this._onConnected.dispose();
   }
 
+  private startPolling(): void {
+    if (this.pollingTimer || !this.pollingCallback) return;
+    const cb = this.pollingCallback;
+    this.pollingTimer = setInterval(() => cb(), 10_000);
+  }
+
+  private stopPolling(): void {
+    if (this.pollingTimer) { clearInterval(this.pollingTimer); this.pollingTimer = null; }
+  }
+
   // ── Connection loop ──────────────────────────────────────────────────────
   // "Errors should never pass silently." — reconnect on failure, notify on state change.
 
@@ -70,7 +89,11 @@ export class SSEStream implements vscode.Disposable {
     const { signal } = this.controller;
 
     try {
-      const response = await fetch(this.getFullUrl("/api/events/stream"), {
+      const query = new URLSearchParams({
+        client_type: "vscode",
+        client_id: this.clientId,
+      });
+      const response = await fetch(this.getFullUrl(`/api/events/stream?${query.toString()}`), {
         headers: {
           Accept: "text/event-stream",
           ...this.getAuthHeaders(),
@@ -83,6 +106,7 @@ export class SSEStream implements vscode.Disposable {
       }
 
       this._onConnected.fire(true);
+      this.stopPolling();
       this.reconnectDelay = 1000;
 
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -114,6 +138,7 @@ export class SSEStream implements vscode.Disposable {
     } catch (err) {
       if (signal.aborted) return; // Intentional disconnect
       this._onConnected.fire(false);
+      this.startPolling();
     }
 
     // Reconnect with backoff

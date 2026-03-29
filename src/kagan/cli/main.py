@@ -1,5 +1,6 @@
 import difflib
 import importlib
+import sys
 from importlib.metadata import version
 
 import click
@@ -66,6 +67,15 @@ def _sync_rich_click_groups(root_group: click.Group) -> None:
 _configure_rich_click()
 
 _ISSUES_URL = "https://github.com/kagan-sh/kagan/issues"
+_SURFACE_CHOICES: tuple[tuple[str, str, str], ...] = (
+    ("tui", "TUI", "Keyboard-first kanban board in the terminal"),
+    ("web", "Web", "Browser dashboard with board and workspace views"),
+    ("chat", "Chat", "Standalone terminal chat REPL"),
+    ("vscode", "VS Code", "Install the native VS Code extension"),
+    ("openvsx", "Open VSX", "Install the Open VSX build for VSCodium"),
+    ("mcp", "MCP", "Connect Claude Code, Cursor, OpenCode, and other MCP clients"),
+)
+_RUNTIME_SURFACES = {"tui", "web", "chat"}
 
 
 def _print_crash_footer() -> None:
@@ -143,6 +153,136 @@ def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> 
     ctx.exit()
 
 
+def _flag_enabled(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def _surface_chooser_available() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _normalize_startup_surface(value: str | None) -> str:
+    if isinstance(value, str) and value in _RUNTIME_SURFACES:
+        return value
+    if value == "ask":
+        return value
+    return "tui"
+
+
+def _load_surface_chooser_state() -> tuple[bool, bool, str]:
+    from kagan.cli._bootstrap import make_client, run_async
+
+    client = make_client()
+    try:
+        settings = run_async(client.settings.get())
+        projects = run_async(client.projects.list())
+        chooser_seen = _flag_enabled(settings.get("ui.surface_chooser_seen"), default=False)
+        startup_surface = settings.get("startup_default_surface")
+        if startup_surface is None:
+            startup_surface = settings.get("ui.surface_chooser_last_choice")
+        return bool(projects), chooser_seen, _normalize_startup_surface(startup_surface)
+    except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        logger.debug("Surface chooser state unavailable: {}", exc)
+        return False, True, "tui"
+    finally:
+        client.close()
+
+
+def _save_surface_chooser_choice(choice: str) -> None:
+    from kagan.cli._bootstrap import make_client, run_async
+
+    client = make_client()
+    try:
+        startup_surface = choice if choice in _RUNTIME_SURFACES else "tui"
+        run_async(
+            client.settings.set(
+                {
+                    "ui.surface_chooser_seen": "true",
+                    "ui.surface_chooser_last_choice": choice,
+                    "startup_default_surface": startup_surface,
+                }
+            )
+        )
+    finally:
+        client.close()
+
+
+def _should_show_surface_chooser() -> bool:
+    if not _surface_chooser_available():
+        return False
+    has_projects, chooser_seen, startup_surface = _load_surface_chooser_state()
+    if startup_surface == "ask":
+        return True
+    return not has_projects and not chooser_seen
+
+
+def _resolve_bare_startup_surface() -> str:
+    _has_projects, _chooser_seen, startup_surface = _load_surface_chooser_state()
+    return "tui" if startup_surface == "ask" else startup_surface
+
+
+def _prompt_for_surface_choice() -> str:
+    aliases: dict[str, str] = {}
+    click.echo("\nFirst launch - choose where to start:\n")
+    for index, (key, label, description) in enumerate(_SURFACE_CHOICES, start=1):
+        click.echo(f"  {index}. {label:<8} {description}")
+        aliases[str(index)] = key
+        aliases[key] = key
+    click.echo()
+    while True:
+        raw = click.prompt("Choice", default="1", show_default=True).strip().lower()
+        choice = aliases.get(raw)
+        if choice is not None:
+            return choice
+        click.echo("Please choose 1-6 or a surface name.")
+
+
+def _print_surface_follow_up(choice: str) -> None:
+    if choice == "vscode":
+        click.echo("\nVS Code extension\n")
+        click.echo("  Install: code --install-extension kagan.kagan-vscode")
+        click.echo(
+            "  Marketplace: https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode"
+        )
+        click.echo("  Docs: https://docs.kagan.sh/guides/vscode-extension/")
+        return
+    if choice == "openvsx":
+        click.echo("\nOpen VSX extension\n")
+        click.echo("  Install: https://open-vsx.org/extension/kagan/kagan-vscode")
+        click.echo("  Docs: https://docs.kagan.sh/guides/vscode-extension/")
+        return
+    if choice == "mcp":
+        click.echo("\nMCP setup\n")
+        click.echo("  Start with: kagan mcp --role WORKER")
+        click.echo("  Docs: https://docs.kagan.sh/guides/mcp-setup/")
+
+
+def _dispatch_surface_choice(ctx: click.Context, choice: str) -> None:
+    if choice == "tui":
+        if sys.stdout.isatty():
+            click.echo("ᘚᘛ Kagan - launching TUI. Run 'kagan --help' for all commands.")
+        tui_cmd = cli.commands.get("tui")
+        if tui_cmd is None:
+            raise click.ClickException("TUI command not available")
+        ctx.invoke(tui_cmd)
+        return
+    if choice == "web":
+        web_cmd = cli.commands.get("web")
+        if web_cmd is None:
+            raise click.ClickException("Web command not available")
+        ctx.invoke(web_cmd)
+        return
+    if choice == "chat":
+        chat_cmd = cli.commands.get("chat")
+        if chat_cmd is None:
+            raise click.ClickException("Chat command not available")
+        ctx.invoke(chat_cmd)
+        return
+    _print_surface_follow_up(choice)
+
+
 @click.group(
     cls=_CLIGroup,
     invoke_without_command=True,
@@ -186,14 +326,15 @@ def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
         click.echo(f"hint: kagan {latest} available. Run `kagan update`.")
 
     if ctx.invoked_subcommand is None:
-        import sys
-
-        if sys.stdout.isatty():
-            click.echo("ᘚᘛ Kagan — launching TUI. Run 'kagan --help' for all commands.")
-        tui_cmd = cli.commands.get("tui")
-        if tui_cmd is None:
-            raise click.ClickException("TUI command not available")
-        ctx.invoke(tui_cmd)
+        showing_surface_chooser = _should_show_surface_chooser()
+        choice = (
+            _prompt_for_surface_choice()
+            if showing_surface_chooser
+            else _resolve_bare_startup_surface()
+        )
+        if showing_surface_chooser:
+            _save_surface_chooser_choice(choice)
+        _dispatch_surface_choice(ctx, choice)
 
 
 def _plugins_cli_enabled() -> bool:

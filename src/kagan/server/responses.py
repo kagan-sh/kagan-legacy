@@ -183,6 +183,17 @@ class ChatMessageResponse(BaseModel):
     content: str
 
 
+class AgentBackendResponse(BaseModel):
+    name: str
+    available: bool
+    reference: bool = False
+
+
+class ChatAgentsResponse(BaseModel):
+    backends: list[AgentBackendResponse]
+    default: str
+
+
 class ChatSessionSummaryResponse(BaseModel):
     id: str
     label: str
@@ -208,6 +219,8 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ProjectResponse": ProjectResponse,
     "RepositoryResponse": RepositoryResponse,
     "EventResponse": EventResponse,
+    "AgentBackendResponse": AgentBackendResponse,
+    "ChatAgentsResponse": ChatAgentsResponse,
     "ChatMessageResponse": ChatMessageResponse,
     "ChatSessionSummaryResponse": ChatSessionSummaryResponse,
     "ChatSessionResponse": ChatSessionResponse,

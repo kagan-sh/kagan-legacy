@@ -22,16 +22,28 @@ kagan --version
 
 ## 2. Launch
 
+Start with the TUI unless you specifically want browser or editor-first supervision:
+
+- `kagan` - primary operator surface
+- `kagan web` - remote dashboard
+- VS Code extension - embedded companion surface
+- `kagan mcp` - MCP clients like Claude Code, Cursor, or OpenCode
+
 ```bash
 cd your-project-directory
 kagan
 ```
 
+On a fresh install with no projects yet, bare `kagan` shows a one-time surface picker so you can choose TUI, web, chat, VS Code, Open VSX, or MCP setup. Runtime picks (`TUI`, `web`, `chat`) become the default for future bare `kagan` launches until you change them in settings.
+
 Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -> REVIEW -> DONE).
+The canonical flow is `Create -> Start -> Review -> Merge`; the board is where that flow begins.
 
 ## Optional: use VS Code
 
 If you want Kagan inside your editor, install the VS Code extension from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode) or [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode).
+
+If you install the extension, you do **not** need `.vscode/mcp.json` just to use the Kagan sidebar or `@kagan` chat.
 
 Full guide: [VS Code extension](guides/vscode-extension.md)
 
@@ -41,8 +53,8 @@ Full guide: [VS Code extension](guides/vscode-extension.md)
 
 ## 4. Run it
 
-- **Managed run:** Select task -> `s` to start. Use `Shift+S` to stop.
-- **Interactive launch:** Select task -> `a` to launch in your configured backend.
+- **Run in background:** Select task -> `s` to start. Use `Shift+S` to stop.
+- **Open in editor or terminal:** Select task -> `a` to launch in your configured backend.
 
 [Managed runs and interactive attach](guides/managed-vs-interactive.md)
 
@@ -81,13 +93,14 @@ Type `/help` for slash commands, `/sessions` to manage conversations.
 In the TUI board, `Enter` is two-step: the first press opens the inspector for the selected card, and the second press opens the full task screen.
 
 Press `w` to switch from the board to the TUI **Workspace** screen. That view is orchestrator-first: the left sidebar lists orchestrator conversations, `n` starts a new session, `/` filters sessions, `x` deletes the selected session, and `Ctrl+I` jumps focus into the chat input. `Esc` steps back cleanly: from chat to the sidebar, then from the sidebar back to Kanban.
+The TUI board remains the primary operator surface; Workspace is the conversation companion inside the same client.
 
 ## Workspace view
 
 Kagan now has orchestrator-first workspace views in both clients:
 
 - **TUI:** press `w` from the board to switch into Workspace. Press `w` to return directly, or use `Esc` to step back from search/chat to the sidebar and then back to Kanban.
-- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W`.
+- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W` for remote supervision and planning.
 
 In both clients, the conversation itself is the workspace: you navigate between orchestrator sessions, continue planning in-thread, and treat tasks as outputs of that conversation rather than as separate sidebar chat tabs.
 
@@ -99,7 +112,7 @@ Open the web dashboard from any browser:
 kagan web --host 0.0.0.0
 ```
 
-Open the URL shown in the terminal on any device on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. [Remote access guide](guides/remote-access.md)
+Open the URL shown in the terminal on any device on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. This is the remote companion surface, not a separate control plane. [Remote access guide](guides/remote-access.md)
 
 ## When things break
 

@@ -8,7 +8,7 @@ vi.mock('@/lib/api/client', () => ({
   apiClient: {
     createTask: vi.fn().mockResolvedValue({}),
     getTasks: vi.fn().mockResolvedValue([]),
-    getChatAgents: vi.fn().mockResolvedValue({ backends: [{ name: 'claude-code', available: true }, { name: 'codex', available: true }], default: 'claude-code' }),
+    getChatAgents: vi.fn().mockResolvedValue({ backends: [{ name: 'claude-code', available: true, reference: true }, { name: 'codex', available: true, reference: true }], default: 'claude-code' }),
   },
 }));
 

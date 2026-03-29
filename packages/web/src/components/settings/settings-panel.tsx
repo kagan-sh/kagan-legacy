@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { themeModeAtom, setThemeModeAtom } from '@/lib/atoms/theme';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
@@ -21,6 +22,7 @@ import {
   FieldSet,
 } from '@/components/ui/field';
 import { asBool } from '@/lib/utils';
+import type { AgentBackend } from '@/lib/api/types';
 
 type ThemeMode = 'system' | 'dark' | 'light';
 
@@ -102,7 +104,14 @@ export function SettingsPanel() {
   const [dotfileOverrides, setDotfileOverrides] = useState<Record<string, string | null>>({});
 
   const [loading, setLoading] = useState(true);
-  const [availableBackends, setAvailableBackends] = useState<string[]>([]);
+  const [availableBackends, setAvailableBackends] = useState<AgentBackend[]>([]);
+
+  const sortedBackends = [...availableBackends].sort((a, b) => {
+    if (a.reference !== b.reference) return a.reference ? -1 : 1;
+    if (a.available !== b.available) return a.available ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  const selectedBackend = availableBackends.find((backend) => backend.name === form.default_agent_backend);
 
   const setField = <K extends keyof SettingsFormState>(
     key: K,
@@ -137,7 +146,7 @@ export function SettingsPanel() {
           apiClient.getChatAgents(),
         ]);
 
-        setAvailableBackends(agents.backends.map((b) => b.name));
+        setAvailableBackends(agents.backends);
 
         setResolvedGit({
           name: resolved.git_user_name || '',
@@ -229,19 +238,34 @@ export function SettingsPanel() {
             <FieldLegend variant="label">Essentials</FieldLegend>
             <Field>
               <FieldLabel>Default agent backend</FieldLabel>
-              <FieldDescription>Agent used for new tasks when none is specified.</FieldDescription>
+              <FieldDescription>
+                Agent used for new tasks when none is specified. Reference backends are highlighted first.
+              </FieldDescription>
               <NativeSelect
                 value={form.default_agent_backend}
                 onChange={(event) => saveField('default_agent_backend', event.target.value)}
               >
-                {availableBackends.length > 0 ? (
-                  availableBackends.map((backend) => (
-                    <NativeSelectOption key={backend} value={backend}>{backend}</NativeSelectOption>
+                {sortedBackends.length > 0 ? (
+                  sortedBackends.map((backend) => (
+                    <NativeSelectOption key={backend.name} value={backend.name}>
+                      {backend.name}
+                      {backend.reference ? ' (reference)' : ''}
+                      {!backend.available ? ' (unavailable)' : ''}
+                    </NativeSelectOption>
                   ))
                 ) : (
                   <NativeSelectOption value={form.default_agent_backend}>{form.default_agent_backend}</NativeSelectOption>
                 )}
               </NativeSelect>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                {selectedBackend?.reference && <Badge variant="outline">Reference</Badge>}
+                {selectedBackend && !selectedBackend.available && <Badge variant="secondary">Unavailable</Badge>}
+                {selectedBackend && !selectedBackend.available ? (
+                  <span>Choose an available reference backend if the default cannot start.</span>
+                ) : (
+                  <span>Prefer a reference backend when you want the most supported path.</span>
+                )}
+              </div>
             </Field>
             <Field>
               <FieldLabel>Theme</FieldLabel>

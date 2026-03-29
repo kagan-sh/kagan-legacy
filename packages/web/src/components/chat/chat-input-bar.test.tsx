@@ -55,10 +55,10 @@ describe('ChatInputBar', () => {
     expect(onSend).toHaveBeenCalledWith('hello world', undefined);
   });
 
-  it('disables input while streaming', () => {
+  it('keeps input writable while streaming (type-ahead for queued messages)', () => {
     renderWithProviders(<ChatInputBar onSend={vi.fn()} />, { store: connectedStore(true) });
 
-    expect(screen.getByPlaceholderText('Type a message or / for commands...')).toHaveAttribute('readonly');
+    expect(screen.getByPlaceholderText('Type a message or / for commands...')).not.toHaveAttribute('readonly');
   });
 
   it('clears draft on Ctrl+C when not streaming', async () => {

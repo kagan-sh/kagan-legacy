@@ -164,8 +164,10 @@ ______________________________________________________________________
   - supports `POST` (unlike native `EventSource`), custom headers, `AbortController`
 - **`src/lib/hooks/use-event-stream.ts`**
   - connects to `GET /api/events/stream` for board + session events
+  - passes a stable `client_id` so server-side presence can survive SSE reconnects
   - auto-reconnects with exponential backoff (1s → 30s)
   - dispatches `SESSION_EVENT` via `CustomEvent('kagan:session-event')` for component-level subscription
+  - refreshes `/api/presence` and posts presence heartbeats so task cards can show live watchers
 - **Chat streaming** uses per-turn SSE (`POST /api/chat/{id}/stream`) — `OrchestratorChatPanel` manages streaming state locally, syncs session summary changes back to `/workspace`, and passes `disableSend` to `ChatInputBar`
 - **Commands** (run, cancel, follow-up, interrupt) use REST endpoints via `apiClient`
 

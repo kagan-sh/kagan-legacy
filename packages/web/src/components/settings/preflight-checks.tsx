@@ -1,9 +1,18 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { PreflightCheck, PreflightResponse } from '@/lib/api/types';
+import type { AgentBackend, PreflightCheck, PreflightResponse } from '@/lib/api/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
+function sortBackends(backends: AgentBackend[]): AgentBackend[] {
+  return [...backends].sort((a, b) => {
+    if (a.reference !== b.reference) return a.reference ? -1 : 1;
+    if (a.available !== b.available) return a.available ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 function getStatusIcon(status: string): typeof CheckCircle {
   switch (status) {
@@ -29,15 +38,21 @@ function getStatusColor(status: string): string {
 
 export function PreflightChecks() {
   const [data, setData] = useState<PreflightResponse | null>(null);
+  const [backends, setBackends] = useState<AgentBackend[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
-      const result = await apiClient.getPreflight();
+      const [result, agents] = await Promise.all([
+        apiClient.getPreflight(),
+        apiClient.getChatAgents(),
+      ]);
       setData(result);
+      setBackends(sortBackends(agents.backends));
     } catch {
       setData(null);
+      setBackends([]);
     } finally {
       setLoading(false);
     }
@@ -60,6 +75,21 @@ export function PreflightChecks() {
           <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
+      {!loading && backends.some((backend) => backend.reference) && (
+        <div className="mb-3 space-y-2 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-2)]/50 p-3">
+          <p className="text-xs font-medium text-foreground">Reference backends</p>
+          <div className="flex flex-wrap gap-2">
+            {backends
+              .filter((backend) => backend.reference)
+              .map((backend) => (
+                <Badge key={backend.name} variant={backend.available ? 'outline' : 'secondary'} className="gap-1.5">
+                  {backend.name}
+                  {!backend.available && <span className="text-[10px] uppercase tracking-wide">Unavailable</span>}
+                </Badge>
+              ))}
+          </div>
+        </div>
+      )}
 
       {loading && !data ? (
         <div className="space-y-2">
@@ -68,7 +98,12 @@ export function PreflightChecks() {
           ))}
         </div>
       ) : data ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          {data.checks.some((check) => check.status !== 'pass' && /backend/i.test(check.name)) && backends.some((backend) => backend.reference && backend.available) && (
+            <div className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-2)]/70 p-3 text-xs text-[var(--muted-foreground)]">
+              Try a reference backend first if this check is warning or failing.
+            </div>
+          )}
           {data.checks.map((check: PreflightCheck) => {
             const Icon = getStatusIcon(check.status);
             const color = getStatusColor(check.status);

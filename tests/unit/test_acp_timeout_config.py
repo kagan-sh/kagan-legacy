@@ -2,9 +2,9 @@ import pytest
 
 from kagan.chat.acp import _acp_handshake_timeout_seconds
 from kagan.chat.acp import _acp_process_exit_hint as _chat_exit_hint
-from kagan.core import CODEX_BACKEND
+from kagan.core import CLAUDE_CODE_BACKEND, CODEX_BACKEND
 from kagan.core._acp import _acp_process_exit_hint as _core_exit_hint
-from kagan.core._acp import _acp_startup_timeout_seconds
+from kagan.core._acp import _acp_startup_timeout_seconds, friendly_acp_error_message
 
 pytestmark = [pytest.mark.unit]
 
@@ -49,3 +49,22 @@ def test_acp_exit_hints_cover_generic_permission_denied() -> None:
     details = "permission denied while executing backend"
     assert _chat_exit_hint(agent_backend="gemini-cli", details=details) is not None
     assert _core_exit_hint(agent_backend="gemini-cli", details=details) is not None
+
+
+@pytest.mark.parametrize(
+    ("agent_backend", "expected_hint"),
+    [
+        (CLAUDE_CODE_BACKEND, "run `claude` and follow the login prompts"),
+        (CODEX_BACKEND, "set `OPENAI_API_KEY`"),
+    ],
+)
+def test_friendly_acp_error_message_uses_reference_backend_auth_guidance(
+    agent_backend: str,
+    expected_hint: str,
+) -> None:
+    message = friendly_acp_error_message(
+        error="401 Unauthorized",
+        agent_backend=agent_backend,
+        during="ACP initialize",
+    )
+    assert expected_hint in message

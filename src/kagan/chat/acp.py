@@ -165,7 +165,7 @@ async def run_orchestrator_turn(
         return ""
 
     exe, exe_args = _resolve_acp_command_for_backend(agent_backend)
-    session_id = mcp_session_id or uuid4().hex[:8]
+    session_id = mcp_session_id or uuid4().hex[:16]
     db_path = str(default_db_path())
     resolved_cwd = cwd or Path.cwd()
     mcp_path = resolved_cwd / ".mcp.json"

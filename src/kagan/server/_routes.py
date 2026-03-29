@@ -299,8 +299,14 @@ def register_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def task_events(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
-        limit = int(request.query_params.get("limit", "20"))
-        offset = int(request.query_params.get("offset", "0"))
+        try:
+            limit = min(max(int(request.query_params.get("limit", "20")), 1), 1000)
+        except ValueError:
+            limit = 20
+        try:
+            offset = min(max(int(request.query_params.get("offset", "0")), 0), 100_000)
+        except ValueError:
+            offset = 0
         tail = request.query_params.get("tail", "0") in {"1", "true", "yes"}
         before = request.query_params.get("before") or None
         before_id = request.query_params.get("before_id") or None
@@ -571,8 +577,10 @@ def register_routes(mcp: FastMCP) -> None:
 
         def _list_dir(raw: str) -> dict[str, Any]:
             target = Path(raw).expanduser().resolve()
+            if not target.is_relative_to(Path.home()):
+                raise ValueError("Path outside allowed boundaries")
             if not target.is_dir():
-                raise ValueError(f"Not a directory: {target}")
+                raise ValueError("Invalid path: not a directory")
 
             entries: list[dict[str, Any]] = []
             try:

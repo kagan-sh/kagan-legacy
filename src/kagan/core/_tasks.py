@@ -19,6 +19,7 @@ from kagan.core._db_helpers import (
 )
 from kagan.core._event_bus import BusEvent, BusMessage
 from kagan.core._events import BoardEvent, Events
+from kagan.core._security import scan_text_for_injection
 from kagan.core._sessions import DetachResult, Sessions
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
@@ -126,6 +127,16 @@ class Tasks:
         launcher: str | None = None,
     ) -> Task:
         project_id = self._require_project()
+
+        for field_name, text in [("title", title), ("description", description)]:
+            if text:
+                result = scan_text_for_injection(text)
+                if result["risk_level"] != "SAFE":
+                    logger.warning(
+                        "Potential injection detected in task {}: {}",
+                        field_name,
+                        result["findings"],
+                    )
 
         project_exists = await _db_async(
             self._engine,

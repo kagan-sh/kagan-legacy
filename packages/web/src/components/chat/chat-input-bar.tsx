@@ -325,7 +325,7 @@ export function ChatInputBar({
         <TypingIndicator />
         <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
           <kbd className=" border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-1 py-0.5 font-code text-[9px]">esc</kbd>
-          {' '}{text.trim() ? 'stop + send' : 'stop + edit'}
+          {' '}{text.trim() ? 'stop + send typed' : 'stop & edit last'}
         </span>
       </div>
     </div>

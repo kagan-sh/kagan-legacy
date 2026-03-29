@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import os
+import shlex
 import signal
 import sys
 from collections.abc import Awaitable, Callable
@@ -417,6 +418,8 @@ class Sessions:
                     lambda t: asyncio.create_task(self._handle_acp_done(t, task_id, session_obj.id))
                 )
             else:
+                _raw_timeout = settings_dict.get("agent_timeout_seconds")
+                _timeout = int(_raw_timeout) if _raw_timeout else 3600
                 pid = await spawn_agent(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -425,6 +428,7 @@ class Sessions:
                     task_id=task_id,
                     db_path=db_path_str,
                     project_id=task.project_id,
+                    timeout_seconds=_timeout,
                 )
                 await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
                 asyncio.create_task(
@@ -833,7 +837,7 @@ class Sessions:
 
     async def _should_retry(self, task: Task, session_id: str) -> bool:
         """Run the task's success_command and retry if it fails. Returns True if retrying."""
-        if not task.success_command:
+        if not task.success_command or not task.success_command.strip():
             return False
         if task.max_retries <= 0:
             return False
@@ -852,8 +856,8 @@ class Sessions:
         cwd = Path(ws.worktree_path) if ws else None
         proc: asyncio.subprocess.Process | None = None
         try:
-            proc = await asyncio.create_subprocess_shell(
-                task.success_command,
+            proc = await asyncio.create_subprocess_exec(
+                *shlex.split(task.success_command),
                 cwd=cwd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,

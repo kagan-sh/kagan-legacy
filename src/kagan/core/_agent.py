@@ -6,10 +6,13 @@ spawn_agent() writes .mcp.json to the worktree and spawns a detached OS process.
 """
 
 import asyncio
+import contextlib
 import errno
 import functools
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
@@ -26,6 +29,37 @@ from kagan.runtime_env import build_sanitized_subprocess_environment
 # Registry of spawned processes for cleanup
 _spawned_processes: dict[str, asyncio.subprocess.Process] = {}
 
+# Scheduled timeout handles for agent processes (pid -> TimerHandle)
+_AGENT_TIMEOUTS: dict[int, asyncio.TimerHandle] = {}
+
+_AGENT_TIMEOUT_GRACE_SECONDS: Final[float] = 5.0
+
+
+def _kill_agent(pid: int) -> None:
+    """Send SIGTERM to an agent process, then SIGKILL after a grace period."""
+    logger.warning("Agent pid={} exceeded timeout, sending SIGTERM", pid)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        _AGENT_TIMEOUTS.pop(pid, None)
+        return
+
+    def _force_kill(pid: int) -> None:
+        logger.warning("Agent pid={} did not exit after SIGTERM grace period, sending SIGKILL", pid)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        _AGENT_TIMEOUTS.pop(pid, None)
+
+    try:
+        loop = asyncio.get_running_loop()
+        handle = loop.call_later(_AGENT_TIMEOUT_GRACE_SECONDS, _force_kill, pid)
+        _AGENT_TIMEOUTS[pid] = handle
+    except RuntimeError:
+        # No running loop — best-effort force kill
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        _AGENT_TIMEOUTS.pop(pid, None)
+
 
 async def register_spawned_process(session_id: str, proc: asyncio.subprocess.Process) -> None:
     """Register a spawned process for tracking."""
@@ -39,6 +73,11 @@ async def unregister_spawned_process(session_id: str) -> None:
 
 async def cleanup_all_spawned_processes() -> None:
     """Terminate all tracked processes. Called on shutdown."""
+    # Cancel all pending timeout handles
+    for _pid, handle in list(_AGENT_TIMEOUTS.items()):
+        handle.cancel()
+    _AGENT_TIMEOUTS.clear()
+
     for _session_id, proc in list(_spawned_processes.items()):
         if proc.returncode is None:
             try:
@@ -574,8 +613,15 @@ async def spawn_agent(
     task_id: str,
     db_path: str,
     project_id: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> int:
-    """Spawn an agent as a detached OS process."""
+    """Spawn an agent as a detached OS process.
+
+    Args:
+        timeout_seconds: Optional execution time limit in seconds.  When set,
+            a timer is scheduled to SIGTERM (then SIGKILL) the process after
+            *timeout_seconds* elapse.  ``None`` means no timeout (default).
+    """
     logger.info("Spawning agent backend={}", backend_name)
     entry = get_backend(backend_name)
     cmd, _env, kwargs, _mcp_content = await _prepare_spawn(
@@ -607,8 +653,81 @@ async def spawn_agent(
         ) from exc
 
     await register_spawned_process(session_id, proc)  # Track for cleanup
-    logger.debug("Agent process started, pid={}", proc.pid)
+
+    # Schedule a timeout kill if requested
+    if timeout_seconds is not None and proc.pid is not None:
+        loop = asyncio.get_running_loop()
+        handle = loop.call_later(timeout_seconds, _kill_agent, proc.pid)
+        _AGENT_TIMEOUTS[proc.pid] = handle
+        logger.debug("Agent process started, pid={}, timeout={}s", proc.pid, timeout_seconds)
+    else:
+        logger.debug("Agent process started, pid={}", proc.pid)
     return proc.pid
+
+
+# ---------------------------------------------------------------------------
+# ACP stream byte-counting guard (CWE-770)
+# ---------------------------------------------------------------------------
+_ACP_PER_MESSAGE_LIMIT: Final[int] = 10 * 1024 * 1024  # 10 MB per JSON-RPC line
+_MAX_CUMULATIVE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB total per session
+
+
+class _ByteCountingStreamReader:
+    """Wrapper around ``asyncio.StreamReader`` that enforces a cumulative byte cap.
+
+    The ACP JSON-RPC read loop (inside the ``acp`` library) calls ``readline()``
+    or ``read()`` on the underlying reader.  This proxy counts every byte
+    returned and terminates the associated process when the cumulative limit is
+    exceeded, preventing unbounded memory growth from a misbehaving agent.
+    """
+
+    def __init__(
+        self,
+        reader: asyncio.StreamReader,
+        process: asyncio.subprocess.Process,
+        cumulative_limit: int = _MAX_CUMULATIVE_BYTES,
+    ) -> None:
+        self._reader = reader
+        self._process = process
+        self._cumulative_bytes = 0
+        self._cumulative_limit = cumulative_limit
+
+    def _track(self, data: bytes) -> bytes:
+        self._cumulative_bytes += len(data)
+        if self._cumulative_bytes > self._cumulative_limit:
+            logger.warning(
+                "ACP stream exceeded cumulative byte limit ({} bytes), terminating pid={}",
+                self._cumulative_bytes,
+                self._process.pid,
+            )
+            self._process.terminate()
+            raise AgentError(
+                f"ACP stream exceeded cumulative byte limit "
+                f"({self._cumulative_limit // (1024 * 1024)} MB)"
+            )
+        return data
+
+    async def readline(self) -> bytes:
+        data = await self._reader.readline()
+        return self._track(data)
+
+    async def readuntil(self, separator: bytes = b"\n") -> bytes:
+        data = await self._reader.readuntil(separator)
+        return self._track(data)
+
+    async def read(self, n: int = -1) -> bytes:
+        data = await self._reader.read(n)
+        return self._track(data)
+
+    async def readexactly(self, n: int) -> bytes:
+        data = await self._reader.readexactly(n)
+        return self._track(data)
+
+    def at_eof(self) -> bool:
+        return self._reader.at_eof()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._reader, name)
 
 
 async def spawn_agent_via_acp(
@@ -647,10 +766,10 @@ async def spawn_agent_via_acp(
     kwargs["stdin"] = asyncio.subprocess.PIPE
     kwargs["stdout"] = asyncio.subprocess.PIPE
     kwargs["stderr"] = asyncio.subprocess.PIPE
-    # Raise the StreamReader pipe limit to 50 MB so large JSON-RPC lines
-    # (e.g. file reads, multimodal payloads) don't hit the default 64 KB cap
-    # and crash the receive loop with ValueError/LimitOverrunError.
-    kwargs["limit"] = 50 * 1024 * 1024
+    # Per-message StreamReader limit: 10 MB (reduced from 50 MB) so large
+    # JSON-RPC lines don't hit the default 64 KB cap while still bounding
+    # per-read memory usage.
+    kwargs["limit"] = _ACP_PER_MESSAGE_LIMIT
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, **cast("Any", kwargs))
     except (FileNotFoundError, PermissionError) as exc:
@@ -662,6 +781,10 @@ async def spawn_agent_via_acp(
 
     if proc.stdin is None or proc.stdout is None:
         raise AgentError(f"spawned ACP agent {backend_name!r} does not expose stdio pipes")
+
+    # Wrap stdout with cumulative byte-counting guard
+    guarded_stdout = _ByteCountingStreamReader(proc.stdout, proc)
+    proc.stdout = guarded_stdout  # type: ignore[assignment]
 
     from kagan.core._acp import KaganACPClient, run_acp_session
 

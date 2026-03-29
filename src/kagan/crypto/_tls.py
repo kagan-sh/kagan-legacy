@@ -18,7 +18,9 @@ _STATE_DIR_NAME = "tls"
 def _default_tls_dir() -> Path:
     """Return ``~/.local/state/kagan/tls/``, creating it if needed."""
     tls_dir = Path.home() / ".local" / "state" / "kagan" / _STATE_DIR_NAME
-    tls_dir.mkdir(parents=True, exist_ok=True)
+    tls_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Enforce permissions even if the directory already existed with wrong mode.
+    tls_dir.chmod(0o700)
     return tls_dir
 
 
@@ -79,6 +81,10 @@ def generate_self_signed_cert(
         private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
+            # NoEncryption is acceptable here: this is a localhost-only self-signed
+            # cert whose key is already restricted to owner-only (chmod 0o600) and
+            # lives inside a 0o700 directory. Encrypting it would require an
+            # interactive passphrase, which is impractical for a local dev tool.
             encryption_algorithm=serialization.NoEncryption(),
         )
     )

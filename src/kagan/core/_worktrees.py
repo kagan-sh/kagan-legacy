@@ -66,6 +66,11 @@ def _resolve_worktree_path(task_id: str) -> Path:
         )
 
     base = _worktree_base_dir().resolve()
+
+    # CWE-367: Verify the base directory itself is not a symlink
+    if base.is_symlink():
+        raise WorktreeError(f"Worktree base directory is a symlink, refusing to use it: {base}")
+
     worktree = (base / task_id).resolve()
 
     # Ensure the resolved path is within the base directory
@@ -78,6 +83,19 @@ def _resolve_worktree_path(task_id: str) -> Path:
         raise WorktreeError(f"Worktree path escapes base directory: {task_id}") from exc
 
     return worktree
+
+
+def _check_disk_space(path: Path, min_bytes: int = 100 * 1024 * 1024) -> None:
+    """Require at least `min_bytes` (default 100 MB) free before creating a worktree."""
+    try:
+        usage = shutil.disk_usage(path)
+        if usage.free < min_bytes:
+            raise WorktreeError(
+                f"Insufficient disk space: {usage.free // (1024 * 1024)} MB free, "
+                f"need at least {min_bytes // (1024 * 1024)} MB"
+            )
+    except OSError:
+        pass  # If we can't check, proceed anyway
 
 
 class Worktrees:
@@ -131,12 +149,28 @@ class Worktrees:
         worktree_path = _resolve_worktree_path(task_id)
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # CWE-770: Ensure sufficient disk space before creating worktree
+        _check_disk_space(worktree_path.parent)
+
         await git.worktree_add(
             repo.path,
             worktree_path,
             branch=branch_name,
             base=base,
         )
+
+        # CWE-367: Post-creation TOCTOU re-validation — verify path is still in bounds
+        base_dir = _worktree_base_dir().resolve()
+        actual = worktree_path.resolve()
+        if not actual.is_relative_to(base_dir):
+            logger.warning(
+                "Worktree path escaped base directory after creation",
+                task_id=task_id,
+                actual=str(actual),
+                base=str(base_dir),
+            )
+            await git.worktree_remove(repo.path, worktree_path)
+            raise WorktreeError("Worktree path escaped base directory after creation")
 
         ws = Worktree(
             task_id=task_id,

@@ -200,7 +200,7 @@ class KanbanScreen(Screen[None]):
     async def on_mount(self) -> None:
         self._refresh_header()
         panel = self.query_one(ChatPanel)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
         await self._load_orchestrator_panel_state(panel)
         panel.set_mode_title("Orchestrator")

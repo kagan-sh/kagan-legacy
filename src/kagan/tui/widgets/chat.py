@@ -222,13 +222,12 @@ class ChatPanel(Vertical):
                     with Horizontal(classes="chat-input-with-badge", id="chat-input-with-badge"):
                         with Horizontal(classes="chat-input", id="chat-overlay-input-shell"):
                             chat_input = Input(
-                                placeholder=("What's next? Try /flow · Esc to stop & edit"),
+                                placeholder="What's next? Try /flow",
                                 classes="chat-input-area",
                                 id="chat-overlay-input",
                             )
                             chat_input.tooltip = (
-                                "AI chat input. Type your request or use"
-                                " /flow for guided planning. Esc to stop & edit"
+                                "AI chat input. Type your request or use /flow for guided planning."
                             )
                             yield chat_input
                         badge = Static(
@@ -372,10 +371,17 @@ class ChatPanel(Vertical):
             for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
 
-    def set_overlay_shortcuts(self, *, split: str, fullscreen: str, close: str = "Esc") -> None:
+    def set_overlay_shortcuts(
+        self,
+        *,
+        split: str,
+        fullscreen: str,
+        close: str | None = None,
+    ) -> None:
         self._overlay_split_key = split.strip() or self._overlay_split_key
         self._overlay_fullscreen_key = fullscreen.strip() or self._overlay_fullscreen_key
-        self._overlay_close_key = close.strip() or self._overlay_close_key
+        if close is not None:
+            self._overlay_close_key = close.strip() or self._overlay_close_key
         self._refresh_status()
 
     def set_status_hint_override(self, hint: str | None) -> None:
@@ -1402,20 +1408,20 @@ class ChatPanel(Vertical):
         if is_active:
             input_widget = self._input_widget()
             has_pending = bool(normalize_chat_input(input_widget.value))
-            esc_hint = "Esc stop+send" if has_pending else "Esc stop+edit"
+            esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
         else:
-            esc_hint = "Esc close"
+            esc_hint = f"{close_key} close"
         if bool(self._slash_matches or self._mention_matches):
             right = (
                 f"Enter send · Tab complete · Ctrl+J timeline · "
                 f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint} · {close_key} close"
+                f"Ctrl+C clear · {esc_hint}"
             )
         else:
             right = (
                 f"Enter send · Up/Down history · Ctrl+J timeline · "
                 f"{split_key} split · {fullscreen_key} full · Ctrl+P files · Ctrl+K sessions · "
-                f"Ctrl+C clear · {esc_hint} · {close_key} close"
+                f"Ctrl+C clear · {esc_hint}"
             )
         status_bar = self._status_bar()
         if status_bar is None:

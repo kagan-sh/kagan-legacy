@@ -31,7 +31,7 @@ def build_sanitized_subprocess_environment(
 
 Returns a `dict[str, str]` containing the sanitized environment with:
 
-- Essential variables preserved: `PATH`, `HOME`, `USER`, `SHELL`, `PWD`, `LANG`, `LC_ALL`, `TERM`, `EDITOR`, `SSH_AUTH_SOCK`, `GIT_CONFIG_GLOBAL`
+- Essential variables preserved: `PATH`, `HOME`, `USER`, `SHELL`, `PWD`, `LANG`, `LC_ALL`, `TERM`, `EDITOR`, `SSH_AUTH_SOCK`
 - Sensitive variables stripped: Any key matching patterns like `TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `AWS_*`, `AZURE_*`, `GCP_*`, `OPENAI_*`, `ANTHROPIC_*`, `GITHUB_*`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`
 - Python-specific variables removed: Any key starting with `PYTHON` (e.g., `PYTHONPATH`, `PYTHONHOME`)
 - Platform-specific noisy variables removed (e.g., `MallocStackLogging` on macOS)

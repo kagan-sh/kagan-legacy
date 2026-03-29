@@ -195,7 +195,7 @@ Kagan uses an **allowlist-based approach** to environment variable sanitization.
 
 ```
 PATH, HOME, USER, SHELL, PWD, LANG, LC_ALL, TERM, EDITOR,
-SSH_AUTH_SOCK, GIT_CONFIG_GLOBAL
+SSH_AUTH_SOCK
 ```
 
 These variables are required for basic system operation and git functionality.

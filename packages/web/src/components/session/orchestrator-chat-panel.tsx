@@ -639,7 +639,7 @@ export function OrchestratorChatPanel({
 
             {!isMobile && surface === "rail" ? (
                 <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-                    ⌘⇧K sessions · ⌘I toggle · esc stop+edit
+                    ⌘⇧K sessions · ⌘I toggle{isStreaming ? " · esc stop & edit last" : ""}
                 </div>
             ) : null}
 

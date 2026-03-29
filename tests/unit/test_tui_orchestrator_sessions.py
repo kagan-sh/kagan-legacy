@@ -41,7 +41,7 @@ class _FakeClient:
 
 @pytest.mark.asyncio
 async def test_store_bootstraps_first_session_when_none_exist() -> None:
-    client = _FakeClient()
+    client = _FakeClient(active_project_id="project-123")
     store = TuiOrchestratorSessionStore(cast("Any", client))
 
     await store.ensure_loaded()
@@ -51,11 +51,16 @@ async def test_store_bootstraps_first_session_when_none_exist() -> None:
     assert store.options()
     settings = await client.settings.get()
     assert settings.get("chat_last_session_tui-orchestrator")
+    active_id = store.current_session_id()
+    assert active_id is not None
+    persisted = await get_chat_session(cast("Any", client), active_id)
+    assert persisted is not None
+    assert persisted.get("project_id") == "project-123"
 
 
 @pytest.mark.asyncio
-async def test_store_uses_explicit_startup_session_id_when_present() -> None:
-    client = _FakeClient()
+async def test_store_uses_explicit_startup_session_id_when_present_for_active_project() -> None:
+    client = _FakeClient(active_project_id="project-123")
     await save_chat_session(
         cast("Any", client),
         {
@@ -65,6 +70,7 @@ async def test_store_uses_explicit_startup_session_id_when_present() -> None:
             "agent_backend": "opencode",
             "orchestrator_history": [["user", "hi"], ["assistant", "hello"]],
             "messages_rendered": ["You: hi", "Agent: hello"],
+            "project_id": "project-123",
         },
     )
     store = TuiOrchestratorSessionStore(cast("Any", client), startup_session_id="tuiabcd1")
@@ -98,22 +104,53 @@ async def test_store_persists_active_history_and_backend() -> None:
 
 
 @pytest.mark.asyncio
-async def test_store_falls_back_to_global_last_active_session() -> None:
-    client = _FakeClient()
+async def test_store_ignores_legacy_startup_session_without_project_binding() -> None:
+    client = _FakeClient(active_project_id="project-123")
     await save_chat_session(
         cast("Any", client),
         {
-            "id": "webabcd1",
-            "label": "Web handoff",
+            "id": "legacy01",
+            "label": "Legacy session",
+            "source": "tui-orchestrator",
+            "agent_backend": "codex",
+            "orchestrator_history": [["user", "continue"], ["assistant", "ready"]],
+            "messages_rendered": ["You: continue", "Agent: ready"],
+        },
+    )
+    store = TuiOrchestratorSessionStore(cast("Any", client), startup_session_id="legacy01")
+
+    await store.ensure_loaded()
+
+    active_id = store.current_session_id()
+    assert active_id is not None
+    assert active_id != "legacy01"
+    active_session = await get_chat_session(cast("Any", client), active_id)
+    assert active_session is not None
+    assert active_session.get("project_id") == "project-123"
+
+
+@pytest.mark.asyncio
+async def test_store_does_not_fall_back_to_global_last_active_session() -> None:
+    client = _FakeClient(active_project_id="project-123")
+    await save_chat_session(
+        cast("Any", client),
+        {
+            "id": "legacy02",
+            "label": "Legacy web session",
             "source": "web",
             "agent_backend": "codex",
             "orchestrator_history": [["user", "continue"], ["assistant", "ready"]],
             "messages_rendered": ["You: continue", "Agent: ready"],
         },
     )
+    await client.settings.set({"chat_last_active_session": "legacy02"})
 
     store = TuiOrchestratorSessionStore(cast("Any", client))
     await store.ensure_loaded()
 
-    assert store.active_key() == "orchestrator:webabcd1"
-    assert store.active_history() == [("user", "continue"), ("assistant", "ready")]
+    active_id = store.current_session_id()
+    assert active_id is not None
+    assert active_id != "legacy02"
+    active_session = await get_chat_session(cast("Any", client), active_id)
+    assert active_session is not None
+    assert active_session.get("project_id") == "project-123"

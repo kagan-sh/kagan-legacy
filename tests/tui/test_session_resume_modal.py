@@ -53,3 +53,46 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
         assert app.orchestrator_sessions.current_session_id() == "resume01"
 
     await driver.teardown()
+
+
+async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> None:
+    from kagan.chat.sessions import save_chat_session
+    from kagan.tui import KaganApp
+
+    driver = await KaganDriver.boot(tmp_path)
+    project_id = await driver.create_project("Resume Project")
+    assert driver._ctx is not None
+    await save_chat_session(
+        cast("Any", driver._ctx),
+        {
+            "id": "resume02",
+            "label": "TUI session",
+            "source": "tui-orchestrator",
+            "agent_backend": "codex",
+            "orchestrator_history": [["user", "continue"], ["assistant", "ready"]],
+            "messages_rendered": ["You: continue", "Agent: ready"],
+            "project_id": project_id,
+        },
+    )
+    await save_chat_session(
+        cast("Any", driver._ctx),
+        {
+            "id": "legacy01",
+            "label": "Old session",
+            "source": "tui-orchestrator",
+            "agent_backend": "claude-code",
+            "orchestrator_history": [["user", "old"], ["assistant", "state"]],
+            "messages_rendered": ["You: old", "Agent: state"],
+        },
+    )
+
+    app = KaganApp(db_path=driver.tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.click("#welcome-resume-session")
+        await pilot.pause()
+
+        option_list = app.screen.query_one("#session-resume-options", OptionList)
+        assert option_list.option_count == 1
+
+    await driver.teardown()

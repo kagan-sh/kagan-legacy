@@ -92,8 +92,8 @@ _ANSI_REPL_COLORS: Final[dict[str, str]] = {
 
 _BOOT_TIP_COMMAND: Final[str] = "/flow"
 _BOOT_TIP_TEXT: Final[str] = "Walk through Plan -> Execute -> Orchestrate."
-_SHORTCUT_HINT_IDLE: Final[str] = "Ctrl-J newline · Esc cancel · Ctrl-C clear · Ctrl-D exit"
-_SHORTCUT_HINT_STREAMING: Final[str] = "Esc cancel+edit · type to queue"
+_SHORTCUT_HINT_IDLE: Final[str] = "Ctrl-J newline · Ctrl-C clear · Ctrl-D exit"
+_SHORTCUT_HINT_STREAMING: Final[str] = "Esc stop & edit last · type ahead to queue"
 
 
 def _supports_truecolor_terminal() -> bool:

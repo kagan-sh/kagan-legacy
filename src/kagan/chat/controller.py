@@ -783,7 +783,7 @@ class ChatController:
             _console.print(f"[red]{exc}[/red]")
             return
 
-        session_id = self._mcp_session_id or uuid4().hex[:8]
+        session_id = self._mcp_session_id or uuid4().hex[:16]
         db_path = str(default_db_path())
         mcp_content = build_mcp_manifest(
             session_id=session_id,

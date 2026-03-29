@@ -58,14 +58,51 @@ async def _wait_for_server_ctx(mcp: FastMCP) -> Any | None:
     return None
 
 
+async def _build_project_task_ids(ctx: Any) -> set[str] | None:
+    """Return the set of task IDs belonging to the bound project, or None if unscoped."""
+    project_id = getattr(ctx, "bound_project_id", None)
+    if project_id is None:
+        return None
+    try:
+        tasks = await ctx.client.tasks.list()
+        return {t.id for t in tasks if t.project_id == project_id}
+    except (KaganError, OSError, RuntimeError):
+        logger.debug("SSE: failed to build project task set for filtering")
+        return None
+
+
 async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    # Scope events to the bound project context so that SSE clients only
+    # receive events for tasks they are authorized to see.  The task set is
+    # rebuilt periodically to pick up newly-created tasks.
+    allowed_task_ids = await _build_project_task_ids(ctx)
+
+    events_since_refresh = 0
+    _REFRESH_INTERVAL = 50  # rebuild the allowed set every N events
+
     try:
         async for event in ctx.client.tasks.events.stream_all(replay=False):
+            task_id = str(event.task_id)
+
+            # Refresh the allowed set periodically to capture new tasks
+            events_since_refresh += 1
+            if events_since_refresh >= _REFRESH_INTERVAL:
+                allowed_task_ids = await _build_project_task_ids(ctx)
+                events_since_refresh = 0
+
+            # Filter: skip events for tasks outside the bound project
+            if allowed_task_ids is not None and task_id not in allowed_task_ids:
+                # Task may have been created after last refresh — do one
+                # immediate refresh before dropping the event.
+                allowed_task_ids = await _build_project_task_ids(ctx)
+                if allowed_task_ids is not None and task_id not in allowed_task_ids:
+                    continue
+
             _queue_put_lossy(
                 queue,
                 {
                     "type": "SESSION_EVENT",
-                    "task_id": str(event.task_id),
+                    "task_id": task_id,
                     "event": _event_to_wire(event),
                 },
             )
@@ -76,9 +113,26 @@ async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]
 
 
 async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    # Board events are also scoped to the bound project context.
+    allowed_task_ids = await _build_project_task_ids(ctx)
+    events_since_refresh = 0
+    _REFRESH_INTERVAL = 50
+
     try:
         async for event in ctx.client.tasks.events.stream_board():
-            _queue_put_best_effort(queue, {"type": "TASK_UPDATED", "task_id": event.task_id})
+            task_id = event.task_id
+
+            events_since_refresh += 1
+            if events_since_refresh >= _REFRESH_INTERVAL:
+                allowed_task_ids = await _build_project_task_ids(ctx)
+                events_since_refresh = 0
+
+            if allowed_task_ids is not None and task_id not in allowed_task_ids:
+                allowed_task_ids = await _build_project_task_ids(ctx)
+                if allowed_task_ids is not None and task_id not in allowed_task_ids:
+                    continue
+
+            _queue_put_best_effort(queue, {"type": "TASK_UPDATED", "task_id": task_id})
     except asyncio.CancelledError:
         raise
     except (ConnectionError, RuntimeError, OSError, KaganError):
@@ -96,13 +150,34 @@ def _bus_message_to_sse_data(msg: BusMessage) -> dict[str, Any] | None:
 
 
 async def _forward_bus_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    # Bus events carry entity_id (task_id for task events) — filter by project.
+    allowed_task_ids = await _build_project_task_ids(ctx)
+    events_since_refresh = 0
+    _REFRESH_INTERVAL = 50
+
     bus_queue = await ctx.client.event_bus.subscribe()
     try:
         while True:
             msg: BusMessage = await bus_queue.get()
             data = _bus_message_to_sse_data(msg)
-            if data is not None:
-                _queue_put_best_effort(queue, data)
+            if data is None:
+                continue
+
+            events_since_refresh += 1
+            if events_since_refresh >= _REFRESH_INTERVAL:
+                allowed_task_ids = await _build_project_task_ids(ctx)
+                events_since_refresh = 0
+
+            # Settings events have no task scope — always forward
+            task_id = data.get("task_id")
+            if task_id is not None and allowed_task_ids is not None:
+                if task_id not in allowed_task_ids:
+                    # Refresh once before dropping — task may be newly created
+                    allowed_task_ids = await _build_project_task_ids(ctx)
+                    if allowed_task_ids is not None and task_id not in allowed_task_ids:
+                        continue
+
+            _queue_put_best_effort(queue, data)
     except asyncio.CancelledError:
         raise
     except (ConnectionError, RuntimeError, OSError, KaganError):
@@ -121,23 +196,34 @@ async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIter
 
 
 async def _poll_db_for_external_changes(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
-    await _poll_db_changes(ctx.client.tasks, queue)
+    project_id = getattr(ctx, "bound_project_id", None)
+    await _poll_db_changes(ctx.client.tasks, queue, project_id=project_id)
 
 
 async def _poll_db_changes(
     tasks: Tasks,
     queue: asyncio.Queue[dict[str, Any]],
+    *,
+    project_id: str | None = None,
 ) -> None:
     """Detect task mutations from external processes (MCP agents, CLI).
 
     Board events are in-memory per-process — when an agent running in a
     separate process creates or updates a task, the in-memory queues on
     *this* server never see it. Periodic DB polling bridges the gap.
+
+    When *project_id* is provided, only tasks belonging to that project are
+    tracked — events for other projects are never emitted.
     """
     known: dict[str, str] = {}
 
+    def _scoped(snapshot: list[Any]) -> list[Any]:
+        if project_id is None:
+            return snapshot
+        return [t for t in snapshot if t.project_id == project_id]
+
     try:
-        snapshot = await tasks.list()
+        snapshot = _scoped(await tasks.list())
         known = {t.id: t.updated_at.isoformat() for t in snapshot}
     except Exception:
         logger.warning("SSE poll: initial snapshot failed", exc_info=True)
@@ -146,7 +232,7 @@ async def _poll_db_changes(
         while True:
             await asyncio.sleep(_DB_POLL_SECONDS)
             try:
-                snapshot = await tasks.list()
+                snapshot = _scoped(await tasks.list())
             except Exception:
                 logger.warning("SSE poll: failed to list tasks", exc_info=True)
                 continue
@@ -181,7 +267,7 @@ async def _sse_event_generator(
     # Auto-register presence for this SSE client
     import uuid as _uuid
 
-    sse_client_id = _uuid.uuid4().hex[:8]
+    sse_client_id = _uuid.uuid4().hex[:16]
     tracker = getattr(ctx, "presence", None)
     if tracker is not None:
         tracker.register(sse_client_id, client_type)

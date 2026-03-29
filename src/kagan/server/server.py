@@ -164,6 +164,11 @@ async def serve_http(
         import uvicorn
 
         starlette_app = mcp.streamable_http_app()
+
+        from kagan.server._middleware import install_security_middleware
+
+        install_security_middleware(starlette_app)
+
         config = uvicorn.Config(
             starlette_app,
             host=mcp.settings.host,

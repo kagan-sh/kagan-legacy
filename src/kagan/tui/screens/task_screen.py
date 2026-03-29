@@ -1706,7 +1706,7 @@ class TaskScreen(Screen[None]):
         panel = self._overlay_panel()
         panel.set_visible(visible)
         panel.set_fullscreen(fullscreen)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
 
         if layout_mode is not None:
             self._overlay_layout_mode = layout_mode

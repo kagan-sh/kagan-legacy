@@ -30,6 +30,7 @@ class TuiOrchestratorSessionStore:
         self._client = client
         self._startup_session_id = startup_session_id.strip() if startup_session_id else None
         self._loaded = False
+        self._loaded_project_id: str | None = None
         self._lock = asyncio.Lock()
         self._sessions_by_key: dict[str, dict[str, Any]] = {}
         self._active_key: str | None = None
@@ -42,20 +43,33 @@ class TuiOrchestratorSessionStore:
         return normalized or None
 
     async def ensure_loaded(self) -> None:
-        if self._loaded:
+        current_project_id = self._current_project_id()
+        if self._loaded and self._loaded_project_id == current_project_id:
             return
         async with self._lock:
-            if self._loaded:
+            current_project_id = self._current_project_id()
+            if self._loaded and self._loaded_project_id == current_project_id:
                 return
 
-            sessions = await list_chat_sessions(self._client)
-            selected = await self._resolve_initial_session(sessions)
+            if current_project_id is None:
+                self._sessions_by_key = {}
+                self._active_key = None
+                self._loaded = True
+                self._loaded_project_id = None
+                return
+
+            sessions = await list_chat_sessions(
+                self._client,
+                source=_TUI_ORCHESTRATOR_SOURCE,
+                project_id=current_project_id,
+            )
+            selected = await self._resolve_initial_session(sessions, project_id=current_project_id)
             if selected is None:
                 selected = await create_chat_session(
                     self._client,
                     source=_TUI_ORCHESTRATOR_SOURCE,
                     label="TUI session",
-                    project_id=self._current_project_id(),
+                    project_id=current_project_id,
                 )
                 sessions.append(selected)
 
@@ -71,6 +85,7 @@ class TuiOrchestratorSessionStore:
                 session_id=str(selected.get("id") or ""),
             )
             self._loaded = True
+            self._loaded_project_id = current_project_id
 
     async def switch(self, key: str) -> list[tuple[str, str]]:
         await self.ensure_loaded()
@@ -87,12 +102,15 @@ class TuiOrchestratorSessionStore:
 
     async def create_new(self, *, agent_backend: str | None = None) -> str:
         await self.ensure_loaded()
+        project_id = self._current_project_id()
+        if project_id is None:
+            return self.active_key()
         created = await create_chat_session(
             self._client,
             source=_TUI_ORCHESTRATOR_SOURCE,
             label="TUI session",
             agent_backend=agent_backend,
-            project_id=self._current_project_id(),
+            project_id=project_id,
         )
         key = self._session_key(str(created.get("id") or ""))
         self._sessions_by_key[key] = created
@@ -166,6 +184,7 @@ class TuiOrchestratorSessionStore:
     async def reload(self) -> None:
         active_session_id = self.current_session_id()
         self._loaded = False
+        self._loaded_project_id = None
         self._sessions_by_key = {}
         self._active_key = None
         if active_session_id:
@@ -190,12 +209,16 @@ class TuiOrchestratorSessionStore:
         self._sessions_by_key.pop(key, None)
 
         if not self._sessions_by_key:
+            project_id = self._current_project_id()
+            if project_id is None:
+                self._active_key = None
+                return None
             created = await create_chat_session(
                 self._client,
                 source=_TUI_ORCHESTRATOR_SOURCE,
                 label="TUI session",
                 agent_backend=preserved_backend,
-                project_id=self._current_project_id(),
+                project_id=project_id,
             )
             next_key = self._session_key(str(created.get("id") or ""))
             self._sessions_by_key[next_key] = created
@@ -273,12 +296,15 @@ class TuiOrchestratorSessionStore:
         return None
 
     async def _resolve_initial_session(
-        self, sessions: Sequence[dict[str, Any]]
+        self,
+        sessions: Sequence[dict[str, Any]],
+        *,
+        project_id: str,
     ) -> dict[str, Any] | None:
         if self._startup_session_id:
             explicit = await get_chat_session(self._client, self._startup_session_id)
             self._startup_session_id = None
-            if explicit is not None:
+            if explicit is not None and self._is_project_session(explicit, project_id=project_id):
                 return explicit
 
         last_session_id = await get_last_session_id(self._client, scope=_TUI_ORCHESTRATOR_SCOPE)
@@ -290,6 +316,17 @@ class TuiOrchestratorSessionStore:
         if sessions:
             return sessions[-1]
         return None
+
+    @staticmethod
+    def _is_project_session(session: dict[str, Any], *, project_id: str) -> bool:
+        session_id = str(session.get("id") or "").strip()
+        session_source = str(session.get("source") or "").strip()
+        session_project_id = str(session.get("project_id") or "").strip()
+        return (
+            bool(session_id)
+            and session_source == _TUI_ORCHESTRATOR_SOURCE
+            and session_project_id == project_id
+        )
 
     @staticmethod
     def _session_key(session_id: str) -> str:

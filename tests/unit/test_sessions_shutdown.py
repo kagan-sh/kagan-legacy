@@ -229,6 +229,123 @@ async def test_run_uses_backend_spec_capability_for_detached_launch(
     assert len(created_coroutines) == 1
 
 
+async def test_run_parses_float_timeout_for_non_acp_detached_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _FakeEvents()
+    sessions = Sessions(
+        cast("Any", object()),
+        cast("Any", events),
+        get_task=_stub_get_task,
+        set_status=_stub_set_status,
+        ensure_workspace=_stub_ensure_workspace,
+    )
+
+    task = SimpleNamespace(
+        id="task-timeout",
+        title="Task title",
+        description="Task description",
+        acceptance_criteria=[],
+        project_id="project-1",
+        status=TaskStatus.BACKLOG,
+    )
+    worktree = SimpleNamespace(worktree_path="/tmp/worktree")
+    session_obj = SimpleNamespace(id="session-timeout")
+    spawn_calls: list[dict[str, Any]] = []
+    updated_pids: list[tuple[str, int]] = []
+
+    async def fake_prepare_session(*_args: Any, **_kwargs: Any) -> tuple[Any, Any, Any]:
+        return task, worktree, session_obj
+
+    async def fake_fetch_project_learnings(_self: Any, _project_id: str) -> list[str]:
+        return []
+
+    def fake_get_backend_spec(name: str) -> BackendSpec:
+        return BackendSpec(name=name, executable="codex", supports_acp=False)
+
+    async def fake_spawn_agent(
+        backend_name: str,
+        worktree_path: Any,
+        prompt: str,
+        *,
+        session_id: str,
+        task_id: str,
+        db_path: str,
+        project_id: str | None = None,
+        timeout_seconds: int,
+    ) -> int:
+        del worktree_path, prompt, project_id
+        spawn_calls.append(
+            {
+                "backend_name": backend_name,
+                "session_id": session_id,
+                "task_id": task_id,
+                "db_path": db_path,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return 5150
+
+    def fake_create_task(coro: Any, *, name: str | None = None) -> Any:
+        del name
+        coro.close()
+        return SimpleNamespace()
+
+    async def fake_to_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr("kagan.core._sessions.Sessions._prepare_session", fake_prepare_session)
+    monkeypatch.setattr(
+        "kagan.core._sessions.Sessions._fetch_project_learnings", fake_fetch_project_learnings
+    )
+    monkeypatch.setattr("kagan.core._sessions.get_backend_spec", fake_get_backend_spec)
+    monkeypatch.setattr("kagan.core._sessions.spawn_agent", fake_spawn_agent)
+    monkeypatch.setattr(
+        "kagan.core._sessions.spawn_agent_via_acp",
+        lambda *args, **kwargs: pytest.fail("spawn_agent_via_acp should not be called"),
+    )
+    monkeypatch.setattr("kagan.core._sessions.asyncio.create_task", fake_create_task)
+    monkeypatch.setattr("kagan.core._sessions.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr(
+        "kagan.core._sessions._db_async",
+        lambda *_args, **_kwargs: asyncio.sleep(
+            0,
+            result={
+                "default_agent_backend": "codex",
+                "agent_timeout_seconds": "60.5",
+            },
+        ),
+    )
+    monkeypatch.setattr("kagan.core._sessions.default_db_path", lambda: "/tmp/kagan.db")
+    monkeypatch.setattr(
+        "kagan.core._sessions.resolve_task_prompt", lambda *_args, **_kwargs: "prompt"
+    )
+    monkeypatch.setattr(
+        "kagan.core._sessions.resolve_review_prompt", lambda *_args, **_kwargs: "prompt"
+    )
+    monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
+    monkeypatch.setattr(
+        sessions,
+        "_update_session_pid",
+        lambda session_id, pid: updated_pids.append((session_id, pid)),
+    )
+
+    result = await sessions.run("task-timeout", agent_backend="codex")
+
+    assert result is session_obj
+    assert spawn_calls == [
+        {
+            "backend_name": "codex",
+            "session_id": "session-timeout",
+            "task_id": "task-timeout",
+            "db_path": "/tmp/kagan.db",
+            "timeout_seconds": 60,
+        }
+    ]
+    assert updated_pids == [("session-timeout", 5150)]
+
+
 async def test_run_uses_backend_spec_executable_for_attached_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

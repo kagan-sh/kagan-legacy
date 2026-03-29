@@ -96,6 +96,16 @@ def _is_shutdown_runtime_error(exc: RuntimeError) -> bool:
     return "Executor shutdown has been called" in message or "Event loop is closed" in message
 
 
+def _agent_timeout_seconds(raw: Any) -> int:
+    """Parse the detached-agent timeout setting with a safe default."""
+    if raw in (None, ""):
+        return 3600
+    try:
+        return max(1, int(float(raw)))
+    except (TypeError, ValueError):
+        return 3600
+
+
 def _build_attached_startup_prompt(task: Task) -> str:
     description = (task.description or "").strip()
     criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
@@ -418,7 +428,7 @@ class Sessions:
                 )
             else:
                 _raw_timeout = settings_dict.get("agent_timeout_seconds")
-                _timeout = int(_raw_timeout) if _raw_timeout else 3600
+                _timeout = _agent_timeout_seconds(_raw_timeout)
                 pid = await spawn_agent(
                     agent_backend,
                     Path(ws.worktree_path),

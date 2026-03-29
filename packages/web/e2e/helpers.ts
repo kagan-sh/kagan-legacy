@@ -10,21 +10,15 @@ type WireProject = {
   id: string;
 };
 
+type WireTask = {
+  id: string;
+};
+
 export async function ensureBoardReady(
   page: Page,
   request: APIRequestContext,
 ): Promise<void> {
-  const created = await request.post('/api/projects', {
-    data: { name: `E2E Project ${Date.now()}` },
-  });
-  expect(created.ok()).toBeTruthy();
-  const projectEnvelope = (await created.json()) as WireEnvelope<WireProject>;
-  expect(projectEnvelope.ok).toBeTruthy();
-  const projectId = projectEnvelope.data?.id;
-  expect(projectId).toBeTruthy();
-
-  const activated = await request.post(`/api/projects/${projectId}/activate`, { data: {} });
-  expect(activated.ok()).toBeTruthy();
+  await ensureProjectReady(request);
 
   // Seed one task so the Kanban columns render (board shows empty state otherwise)
   const taskCreated = await request.post('/api/tasks', {
@@ -41,4 +35,36 @@ export async function ensureBoardReady(
   }
   await expect(page.getByRole('heading', { name: 'Backlog', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
+}
+
+export async function ensureProjectReady(
+  request: APIRequestContext,
+): Promise<string> {
+  const created = await request.post('/api/projects', {
+    data: { name: `E2E Project ${Date.now()}` },
+  });
+  expect(created.ok()).toBeTruthy();
+  const projectEnvelope = (await created.json()) as WireEnvelope<WireProject>;
+  expect(projectEnvelope.ok).toBeTruthy();
+  const projectId = projectEnvelope.data?.id;
+  expect(projectId).toBeTruthy();
+
+  const activated = await request.post(`/api/projects/${projectId}/activate`, { data: {} });
+  expect(activated.ok()).toBeTruthy();
+  return projectId;
+}
+
+export async function createTaskViaApi(
+  request: APIRequestContext,
+  title: string,
+): Promise<string> {
+  const created = await request.post('/api/tasks', {
+    data: { title },
+  });
+  expect(created.ok()).toBeTruthy();
+
+  const taskEnvelope = (await created.json()) as WireEnvelope<WireTask>;
+  expect(taskEnvelope.ok).toBeTruthy();
+  expect(taskEnvelope.data?.id).toBeTruthy();
+  return taskEnvelope.data!.id;
 }

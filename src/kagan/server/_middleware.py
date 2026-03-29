@@ -44,16 +44,20 @@ _SECURITY_HEADERS: dict[str, str] = {
 _CORS_ALLOWED_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://localhost:5173",
+    "http://localhost:8765",
+    "http://localhost:8766",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
+    "http://127.0.0.1:8765",
+    "http://127.0.0.1:8766",
 ]
 
 _STATE_CHANGING_METHODS: frozenset[str] = frozenset({"POST", "PATCH", "DELETE"})
 
 # Rate-limit windows (seconds) and thresholds.
 _RATE_WINDOW_SECONDS: int = 60
-_RATE_LIMIT_DEFAULT: int = 100
-_RATE_LIMIT_POST: int = 20
+_RATE_LIMIT_DEFAULT: int = 200
+_RATE_LIMIT_POST: int = 60
 # How often to purge stale entries (seconds).
 _RATE_CLEANUP_INTERVAL: int = 120
 

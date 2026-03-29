@@ -13,6 +13,35 @@
 
 
 
+## v0.14.2-beta.1 (2026-03-29)
+
+
+
+
+### bug fixes
+
+- **deps**: Pin httpx to stable versions <1.0.0
+  ([`12129f1`](https://github.com/kagan-sh/kagan/commit/12129f175e90707baefa24546da7baae44017cac))
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **vscode**: Bump to 0.3.1 [skip ci]
+  ([`1db6a01`](https://github.com/kagan-sh/kagan/commit/1db6a0125eb171ac25c4acff926896da78c38b27))
+
+
+
+
+
 ## v0.14.1 (2026-03-29)
 
 

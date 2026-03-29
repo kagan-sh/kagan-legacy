@@ -13,6 +13,18 @@
 
 
 
+## v0.14.1-beta.1 (2026-03-29)
+
+
+
+
+### bug fixes
+
+- **web**: Defensive handling in timeAgo for null/undefined values
+  ([`2bdfd11`](https://github.com/kagan-sh/kagan/commit/2bdfd11d345a20cf4c3c6be1b2e6f0cf3ffef612))
+
+
+
 
 
 ## v0.14.0-beta.1 (2026-03-29)

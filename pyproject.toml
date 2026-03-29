@@ -38,6 +38,7 @@ dependencies = [
   "alembic>=1.16.0",
   "click>=8.1.0",
   "cryptography>=46.0",
+  # Pinned explicitly despite being a transitive dep of mcp - prevents pre-release breakage (see v0.14.1)
   "httpx>=0.27.0,<1.0.0",
   "loguru>=0.7.0",
   "mcp>=1.26.0,<2.0.0",
@@ -49,6 +50,8 @@ dependencies = [
   "prompt-toolkit>=3.0.0",
   "qrcode>=8.2",
   "rich>=14.0.0",
+  # Explicit dependency - imported directly in 11+ files, not just via sqlmodel
+  "sqlalchemy>=2.0.0",
   "sqlmodel>=0.0.22",
   "textual>=7.0.0,<8.0.0",
   "tomlkit>=0.13.0",

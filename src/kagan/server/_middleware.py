@@ -94,7 +94,10 @@ class SecurityHeadersMiddleware:
 # ---------------------------------------------------------------------------
 
 # Paths that are exempt from CSRF content-type checks.
+# API endpoints are protected by CORS instead (browsers cannot send
+# cross-origin JSON requests without a preflight check).
 _CSRF_EXEMPT_PREFIXES: tuple[str, ...] = (
+    "/api/",  # REST API — CORS-protected, clients always send JSON
     "/mcp",  # MCP protocol endpoints have their own auth
     "/health",
 )

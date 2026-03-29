@@ -13,6 +13,50 @@
 
 
 
+## v0.14.3-beta.1 (2026-03-29)
+
+
+
+
+### chores
+
+- **vscode**: Bump to 0.3.2 [skip ci]
+  ([`75eeed7`](https://github.com/kagan-sh/kagan/commit/75eeed7e9d54230aed1b7fcd020172c69869321c))
+
+
+
+
+
+
+
+
+
+
+
+### documentation
+
+- Fix homepage grid layout
+  ([`1b91adc`](https://github.com/kagan-sh/kagan/commit/1b91adce829b19577fac4bab3c86769ae794e0ba))
+
+
+
+
+
+
+
+
+
+
+
+### refactoring
+
+- **deps**: Make sqlalchemy explicit, document httpx pin
+  ([`cbdc5a6`](https://github.com/kagan-sh/kagan/commit/cbdc5a67dfb3dcc67d6228a8481f7107256c183f))
+
+
+
+
+
 ## v0.14.2 (2026-03-29)
 
 

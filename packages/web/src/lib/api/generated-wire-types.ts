@@ -71,6 +71,17 @@ export interface EventResponse {
   created_at: string;
 }
 
+export interface AgentBackendResponse {
+  name: string;
+  available: boolean;
+  reference?: boolean;
+}
+
+export interface ChatAgentsResponse {
+  backends: AgentBackendResponse[];
+  default: string;
+}
+
 export interface ChatMessageResponse {
   role: string;
   content: string;

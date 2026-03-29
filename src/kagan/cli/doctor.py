@@ -3,15 +3,22 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import click
 from loguru import logger
 
 from kagan.cli._bootstrap import make_client, run_async
-from kagan.core import PreflightCheckResult
+from kagan.core import (
+    CLAUDE_CODE_BACKEND,
+    CODEX_BACKEND,
+    PreflightCheckResult,
+    get_backend_spec,
+    resolve_default_agent_backend,
+)
 from kagan.core.errors import KaganError
 from kagan.plugins import PluginManager
 from kagan.runtime_env import noisy_env_keys
@@ -42,16 +49,32 @@ def _parse_zellij_version() -> tuple[int, ...] | None:
     return None
 
 
-def _default_agent_backend() -> str:
-    return os.environ.get("KAGAN_AGENT_BACKEND", "claude-code")
+def _default_agent_backend_name() -> str:
+    return os.environ.get("KAGAN_AGENT_BACKEND", resolve_default_agent_backend({}))
+
+
+async def _resolve_doctor_backend_name(client: object) -> str:
+    settings_ops = getattr(client, "settings", None)
+    get_settings = cast(
+        "Callable[[], Awaitable[object]] | None",
+        getattr(settings_ops, "get", None),
+    )
+    if callable(get_settings):
+        try:
+            settings = await get_settings()
+            if isinstance(settings, dict):
+                return resolve_default_agent_backend(settings)
+        except (KaganError, RuntimeError, OSError, ValueError):
+            logger.opt(exception=True).debug(
+                "Doctor could not read default agent backend from settings"
+            )
+    return _default_agent_backend_name()
 
 
 def _agent_executable(backend_name: str) -> str:
     try:
-        from kagan.core import get_backend
-
-        executable = get_backend(backend_name).get("executable")
-        if isinstance(executable, str) and executable:
+        executable = get_backend_spec(backend_name).executable
+        if executable:
             return executable
     except (ImportError, KaganError):
         pass
@@ -62,9 +85,23 @@ def _which_command() -> str:
     return "where" if sys.platform == "win32" else "which"
 
 
+def _backend_verify_hint(backend_name: str) -> str:
+    executable = _agent_executable(backend_name)
+    if backend_name in {CLAUDE_CODE_BACKEND, CODEX_BACKEND}:
+        return f"{executable} --version"
+    return f"{_which_command()} {executable}"
+
+
+def _reference_backend_guidance(backend_name: str) -> str | None:
+    try:
+        guidance = get_backend_spec(backend_name).guidance_hints()
+    except (ImportError, KaganError):
+        return None
+    return " ".join(guidance) if guidance else None
+
+
 _VERIFY_HINTS: dict[str, str | Callable[[], str]] = {
     "git": "git --version",
-    "agent backend": lambda: f"{_which_command()} {_agent_executable(_default_agent_backend())}",
     "tmux": "tmux -V",
     "db": "kagan projects",
     "ide": "echo $TERM_PROGRAM",
@@ -87,18 +124,32 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
     checks: list[DoctorCheck] = []
     client = make_client()
     try:
-        preflight = run_async(
-            client.preflight(agent_backend=_agent_executable(_default_agent_backend()))
-        )
+        default_backend = run_async(_resolve_doctor_backend_name(client))
+        preflight = run_async(client.preflight(agent_backend=_agent_executable(default_backend)))
         for check in preflight:
             name = check.name.replace("_", " ")
+            message = check.message
+            verify_hint = _verify_hint(name)
+            if name == "agent backend":
+                message = f"Default agent backend '{default_backend}': {check.message}"
+                verify_hint = _backend_verify_hint(default_backend)
+                reference_guidance = _reference_backend_guidance(default_backend)
+                fix_hint = check.fix_hint
+                if reference_guidance and check.status != "pass":
+                    fix_hint = (
+                        f"{check.fix_hint} {reference_guidance}".strip()
+                        if check.fix_hint
+                        else reference_guidance
+                    )
+            else:
+                fix_hint = check.fix_hint
             checks.append(
                 DoctorCheck(
                     name=name,
                     status=str(check.status),
-                    message=check.message,
-                    fix_hint=check.fix_hint,
-                    verify_hint=_verify_hint(name),
+                    message=message,
+                    fix_hint=fix_hint,
+                    verify_hint=verify_hint,
                 )
             )
 
@@ -187,8 +238,6 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
             )
 
         try:
-            from kagan.plugins import PluginManager
-
             plugin_manager = PluginManager(client)
             plugin_checks = run_async(_load_and_collect_plugin_checks(plugin_manager))
             for pc in plugin_checks:

@@ -291,7 +291,7 @@ async def create_chat_session(
     agent_backend: str | None = None,
     project_id: str | None = None,
 ) -> dict[str, Any]:
-    session_id = uuid4().hex[:8]
+    session_id = uuid4().hex[:16]
     session = {
         "id": session_id,
         "label": (label or f"Session {session_id}").strip(),
@@ -314,7 +314,11 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
     sessions = await list_chat_sessions(client)
     merged = [item for item in sessions if item.get("id") != normalized["id"]]
     merged.append(normalized)
-    await client.settings.set({CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(merged)})
+    await client.settings.set(
+        {
+            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(merged),
+        }
+    )
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:
@@ -325,7 +329,11 @@ async def delete_chat_session(client: Any, session_id: str) -> bool:
     filtered = [s for s in sessions if s.get("id") != normalized_id]
     if len(filtered) == len(sessions):
         return False
-    await client.settings.set({CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(filtered)})
+    await client.settings.set(
+        {
+            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(filtered),
+        }
+    )
     return True
 
 
@@ -342,7 +350,11 @@ async def set_last_session_id(client: Any, *, scope: str, session_id: str) -> No
     normalized = session_id.strip()
     if not normalized:
         return
-    await client.settings.set({f"{CHAT_LAST_SESSION_PREFIX}{scope}": normalized})
+    await client.settings.set(
+        {
+            f"{CHAT_LAST_SESSION_PREFIX}{scope}": normalized,
+        }
+    )
 
 
 async def get_scope_state(client: Any, *, scope: str) -> dict[str, Any]:

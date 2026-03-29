@@ -112,7 +112,7 @@ Starts the MCP server on STDIO. Blocks until the host disconnects.
 | `--role ROLE`                       | Agent role: `WORKER`, `REVIEWER`, or `ORCHESTRATOR`     |
 | `--enable-internal-instrumentation` | Expose diagnostics instrumentation tool                 |
 
-`--readonly` and `--admin` are mutually exclusive. Without either flag, the server runs in default tier (read + write, no destructive operations).
+Prefer `--role` when configuring MCP clients. `--readonly` and `--admin` are compatibility flags; `--admin` currently exposes the same MCP tool surface as the default role-driven server.
 
 ### Access tiers
 
@@ -188,7 +188,7 @@ Starts the bundled web dashboard and opens your browser.
 | `--readonly` | Read-only access tier               |
 | `--admin`    | Admin access tier                   |
 
-`--readonly` and `--admin` are mutually exclusive.
+`--readonly` and `--admin` are mutually exclusive. Without either flag, `kagan web` runs with standard access.
 
 ```bash
 kagan web

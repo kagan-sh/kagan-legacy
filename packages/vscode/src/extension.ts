@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { KaganClient } from "./api/client.js";
 import { SSEStream } from "./api/sse.js";
 import { registerReviewCommands } from "./commands/review.js";
+import { registerSettingsCommands } from "./commands/settings.js";
 import { registerTaskCommands } from "./commands/tasks.js";
 import { BoardTreeProvider } from "./providers/board.tree.js";
 import { AgentOutputProvider } from "./providers/events.output.js";
@@ -83,7 +84,13 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalProvider,
   );
   registerReviewCommands(context, client, boardProvider, reviewProvider);
+  registerSettingsCommands(context, client);
   registerChatParticipant(context, client, sse);
+
+  // Polling fallback: refresh board when SSE is disconnected
+  sse.setPollingFallback(() => {
+    void refreshBoard(client, boardProvider, statusBar);
+  });
 
   const messageSubscription = sse.onMessage((message: SSEMessage) => {
     boardProvider.onSSE(message);
@@ -280,12 +287,19 @@ async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise
     ),
   ]).catch(() => {});
 
+  let task: Awaited<ReturnType<KaganClient["getTask"]>>;
   try {
-    const task = await client.getTask(taskId);
+    task = await client.getTask(taskId);
     if (task.status !== "IN_PROGRESS") return;
   } catch {
     return;
   }
 
-  await vscode.commands.executeCommand("kagan.chat.open", taskId);
+  await vscode.commands.executeCommand("kagan.chat.open", {
+    kind: "task",
+    task: {
+      id: task.id,
+      title: task.title,
+    },
+  });
 }

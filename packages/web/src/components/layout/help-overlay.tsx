@@ -27,7 +27,7 @@ const SHORTCUTS: ShortcutSection[] = [
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
       { keys: ['Cmd/Ctrl', 'I'], description: 'Toggle AI Panel' },
       { keys: ['Cmd/Ctrl', 'Shift', 'F'], description: 'Fullscreen AI Panel' },
-      { keys: ['Esc'], description: 'Stop / dismiss' },
+      { keys: ['Esc'], description: 'Stop agent + edit last message' },
     ],
   },
   {
@@ -44,8 +44,8 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Task & Session',
     rows: [
-      { keys: ['Open Chat'], description: 'Open context-aware task chat rail' },
-      { keys: ['Worker', 'Reviewer'], description: 'Switch task execution lane view' },
+      { keys: ['Open Chat'], description: 'Watch the current task workspace in the chat rail' },
+      { keys: ['Worker', 'Reviewer'], description: 'Switch the current task workspace lane view' },
       { keys: ['Cmd/Ctrl', 'Shift', 'K'], description: 'Switch between sessions' },
     ],
   },
@@ -58,11 +58,11 @@ const FLOWS = [
   },
   {
     title: 'Managed Run Flow',
-    body: 'Create a task and start a managed run in the background, then review changes in the task workspace.',
+    body: 'Create a task and start a managed run in the background, then watch the task workspace for diff, evidence, and verdicts.',
   },
   {
     title: 'Interactive Attach Flow',
-    body: 'Create a task and attach an interactive run to collaborate while preserving task context and review history.',
+    body: 'Create a task and attach an interactive run when you want to work live in the same task workspace.',
   },
   {
     title: 'Orchestrator Control Flow',
@@ -81,7 +81,7 @@ const CONCEPTS = [
   },
   {
     title: 'Runs',
-    body: 'Managed runs optimize throughput; interactive attach optimizes control. Choose based on uncertainty and risk.',
+    body: 'Managed runs optimize throughput; watch keeps you on the task workspace; attach optimizes control. Choose based on uncertainty and risk.',
   },
   {
     title: 'Review Discipline',

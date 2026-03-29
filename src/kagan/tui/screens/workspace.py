@@ -263,6 +263,11 @@ class WorkspaceScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        panel = self.query_one(ChatPanel)
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(
         self, _message: ChatPanel.AgentPickerRequested
     ) -> None:
@@ -290,8 +295,10 @@ class WorkspaceScreen(Screen[None]):
         self.app.push_screen("agent-picker-modal", callback=_on_agent_selected)
 
     def on_chat_panel_interrupt_requested(self, _: ChatPanel.InterruptRequested) -> None:
+        panel = self.query_one("#workspace-chat", ChatPanel)
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+        panel.post_message(ChatPanel.InterruptCompleted())
 
     def on_chat_panel_new_session_requested(self, _: ChatPanel.NewSessionRequested) -> None:
         self.action_new_session()

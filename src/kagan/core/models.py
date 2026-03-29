@@ -12,7 +12,7 @@ from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStat
 
 
 def _new_id() -> str:
-    return uuid4().hex[:8]
+    return uuid4().hex[:16]
 
 
 def _utc_now() -> datetime:

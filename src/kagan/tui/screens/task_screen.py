@@ -19,6 +19,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import (
     ChatMode,
@@ -610,6 +611,15 @@ class TaskScreen(Screen[None]):
         panel = self._overlay_panel()
         self._open_overlay_session_picker(panel, initial_query=message.initial_query)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        sender_id = self._sender_id(message)
+        if sender_id and sender_id != "ts-chat-overlay":
+            return
+
+        panel = self._overlay_panel()
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(self, message: ChatPanel.AgentPickerRequested) -> None:
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
@@ -638,10 +648,17 @@ class TaskScreen(Screen[None]):
         sender_id = self._sender_id(message)
         if sender_id and sender_id != "ts-chat-overlay":
             return
+        panel = self._overlay_panel()
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_cancel_run(), exit_on_error=False)
+
+        async def _cancel_and_complete() -> None:
+            await self.action_cancel_run()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_cancel_and_complete(), exit_on_error=False)
 
     async def _send_orchestrator_message(self, text: str) -> None:
         panel = self._overlay_panel()
@@ -754,7 +771,7 @@ class TaskScreen(Screen[None]):
         if task.agent_backend:
             return task.agent_backend
         settings = await self.kagan_app.core.settings.get()
-        return settings.get("default_agent_backend") or "claude-code"
+        return resolve_default_agent_backend(settings)
 
     async def _hydrate_workspace_panels(self) -> None:
         await hydrate_workspace_panels(
@@ -1689,7 +1706,7 @@ class TaskScreen(Screen[None]):
         panel = self._overlay_panel()
         panel.set_visible(visible)
         panel.set_fullscreen(fullscreen)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F", close="Esc")
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
 
         if layout_mode is not None:
             self._overlay_layout_mode = layout_mode

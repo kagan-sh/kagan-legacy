@@ -9,11 +9,11 @@ from kagan.core import _agent, _launchers
 
 pytestmark = [
     pytest.mark.unit,
-    pytest.mark.asyncio,
     pytest.mark.skipif(sys.platform == "win32", reason="tmux is unavailable on Windows"),
 ]
 
 
+@pytest.mark.asyncio
 async def test_launch_tmux_creates_session_and_sends_command(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -53,6 +53,7 @@ async def test_launch_tmux_creates_session_and_sends_command(
     assert "Implement feature X" in launch_cmd
 
 
+@pytest.mark.asyncio
 async def test_launch_tmux_falls_back_to_agent_cmd_without_backend(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -81,6 +82,7 @@ async def test_launch_tmux_falls_back_to_agent_cmd_without_backend(
     assert launch_cmd == "my-agent"
 
 
+@pytest.mark.asyncio
 async def test_launch_tmux_writes_mcp_json_and_prompt(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -111,6 +113,7 @@ async def test_launch_tmux_writes_mcp_json_and_prompt(
     assert "Test prompt content" in prompt_file.read_text()
 
 
+@pytest.mark.asyncio
 async def test_launch_tmux_does_not_block(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

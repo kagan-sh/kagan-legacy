@@ -36,7 +36,6 @@ from kagan.chat._streaming import OutputFlushManager, ResponseChunkBuffer
 from kagan.chat._title import generate_session_title
 from kagan.chat.acp import (
     _ACP_STDIO_BUFFER_LIMIT_BYTES,
-    _acp_handshake_timeout_seconds,
 )
 from kagan.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.chat.commands import (
@@ -77,14 +76,17 @@ from kagan.chat.sessions import (
 )
 from kagan.chat.tool_runs import ToolRunTracker
 from kagan.core import (
+    ACP_TIMEOUT_HINT,
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
     ACPClientBase,
+    BackendCapability,
     DBWatcher,
+    acp_handshake_timeout_seconds,
     build_agent_environment,
     build_mcp_manifest,
     default_db_path,
-    get_backend,
+    get_backend_spec,
     get_system_git_identity,
     resolve_acp_command,
     resolve_orchestrator_prompt,
@@ -286,6 +288,11 @@ class _OrchestratorACPClient(ACPClientBase):
         from acp.schema import DeniedOutcome
 
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+
+
+@dataclass(frozen=True, slots=True)
+class _SendResult:
+    was_cancelled: bool = False
 
 
 class ChatController:
@@ -738,8 +745,8 @@ class ChatController:
             return False
 
     def _resolve_acp_command(self) -> tuple[str, list[str]]:
-        backend = get_backend(self.agent_backend)
-        if not backend.get("supports_acp", True):
+        backend = get_backend_spec(self.agent_backend)
+        if not backend.has_capability(BackendCapability.ACP_STREAMING):
             raise AgentError(
                 f"Agent backend {self.agent_backend!r} does not support ACP. "
                 "Set a different orchestrator agent or use an ACP-capable backend."
@@ -776,7 +783,7 @@ class ChatController:
             _console.print(f"[red]{exc}[/red]")
             return
 
-        session_id = self._mcp_session_id or uuid4().hex[:8]
+        session_id = self._mcp_session_id or uuid4().hex[:16]
         db_path = str(default_db_path())
         mcp_content = build_mcp_manifest(
             session_id=session_id,
@@ -799,11 +806,11 @@ class ChatController:
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
         logger.debug("Wrote .mcp.json with admin access at {}", mcp_path)
 
-        backend = get_backend(self.agent_backend)
+        backend = get_backend_spec(self.agent_backend)
         env = build_agent_environment(
             session_id=session_id,
             task_id=None,
-            backend_env_vars=backend.get("env_vars", {}),
+            backend_env_vars=backend.env_vars,
         )
 
         self._acp_client = _OrchestratorACPClient()
@@ -871,12 +878,11 @@ class ChatController:
 
                 if handshake_error:
                     if isinstance(handshake_error, TimeoutError):
-                        timeout_s = _acp_handshake_timeout_seconds(self.agent_backend)
+                        timeout_s = acp_handshake_timeout_seconds(self.agent_backend)
                         _console.print(
                             "[red]"
                             f"ACP handshake timed out after {timeout_s:.0f}s. "
-                            "Set KAGAN_ACP_HANDSHAKE_TIMEOUT_SECONDS "
-                            "(or KAGAN_ACP_STARTUP_TIMEOUT_SECONDS) to increase this limit."
+                            f"{ACP_TIMEOUT_HINT}"
                             "[/red]"
                         )
                     else:
@@ -918,10 +924,10 @@ class ChatController:
                 with contextlib.suppress(OSError):
                     mcp_path.unlink()
 
-    async def _send(self, text: str) -> None:
+    async def _send(self, text: str) -> "_SendResult":
         if self._acp_conn is None or self._acp_session_id is None:
             _console.print("[red]No agent connected. Try restarting.[/red]")
-            return
+            return _SendResult()
 
         ctx = self._watcher.drain_context()
         request_text = f"{ctx}\n\n{text}" if ctx else text
@@ -945,6 +951,7 @@ class ChatController:
             self._is_primed = True
 
         _TOOLBAR_STATE.context_pct = None
+        _TOOLBAR_STATE.is_streaming = True
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
@@ -967,13 +974,14 @@ class ChatController:
             except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                 logger.exception("Failed to send prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return
+                return _SendResult()
             except Exception as exc:
                 logger.exception("Unexpected failure while sending prompt to agent")
                 _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return
+                return _SendResult()
             finally:
                 restore_sigint_handler(original_sigint)
+                _TOOLBAR_STATE.is_streaming = False
 
         assistant_reply = ""
         if self._acp_client is not None:
@@ -987,7 +995,7 @@ class ChatController:
         if interrupted:
             _console.print("\n[dim]Interrupted.[/dim]")
             await self._persist_session()
-            return
+            return _SendResult(was_cancelled=True)
 
         _console.print()  # newline after streamed output
         self._turn_count += 1
@@ -1033,6 +1041,7 @@ class ChatController:
         else:
             _TOOLBAR_STATE.context_pct = None
         await self._persist_session()
+        return _SendResult()
 
     async def _event_watcher(self) -> None:
         """Background coroutine that prints one-line notifications for task events."""
@@ -1054,21 +1063,26 @@ class ChatController:
 
     async def _repl_loop(self) -> None:
         _console.print(
-            "[dim]Press [bold]/help[/bold] for commands and [bold]Ctrl-D[/bold] to exit.[/dim]\n"
+            "[dim]Press [bold]/help[/bold] for commands, "
+            "[bold]Esc[/bold] to cancel, [bold]Ctrl-D[/bold] to exit.[/dim]\n"
         )
         watcher_task = asyncio.create_task(self._event_watcher())
+        _last_sent = ""
+        _prefill = ""
         try:
             while True:
                 try:
                     line = await _get_prompt_session().prompt_async(
                         _build_prompt_message(),
                         placeholder=_build_prompt_placeholder(),
+                        default=_prefill,
                     )
                 except EOFError:
                     break
                 except KeyboardInterrupt:
                     continue
 
+                _prefill = ""
                 stripped = line.strip()
                 if not stripped:
                     continue
@@ -1078,13 +1092,19 @@ class ChatController:
                         break  # /exit or agent switch
                     continue
 
+                _last_sent = stripped
                 try:
-                    await self._send(stripped)
+                    result = await self._send(stripped)
                 except KeyboardInterrupt:
-                    continue  # Safety net — SIGINT handler should handle this in _send()
+                    _prefill = _last_sent
+                    continue
                 except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
+                    continue
+
+                if result.was_cancelled:
+                    _prefill = _last_sent
         finally:
             watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1180,7 +1200,8 @@ class ChatController:
         keyboard = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
         keyboard.add_column(style="bold cyan", no_wrap=True)
         keyboard.add_column(style="default")
-        keyboard.add_row("Ctrl-J / Alt-Enter", "Insert a newline")
+        keyboard.add_row("Esc", "Cancel agent & edit last message")
+        keyboard.add_row("Ctrl-J", "Insert a newline")
         keyboard.add_row("Ctrl-C", "Clear the current input")
         keyboard.add_row("Ctrl-D", "Exit the chat session")
 

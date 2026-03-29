@@ -28,6 +28,7 @@ ______________________________________________________________________
 - search plus structured status/mode filters
 - advisory WIP warnings from resolved workflow settings
 - richer task cards with review state, acceptance-criteria count, last activity, workspace state, and live session telemetry
+- task cards can show lightweight watcher counts from live client presence when another web or editor client is actively focused on that task
 - desktop right rail supports task inspection and related chat preview
 - `Cmd/Ctrl+Shift+W` toggles to the conversation-first workspace view
 

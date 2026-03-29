@@ -1,7 +1,23 @@
 """Agent backend listing, selection, and formatting."""
 
-from kagan.core import list_backends
-from kagan.core._agent import list_available_backends
+from typing import TypedDict
+
+from kagan.core import (
+    AgentError,
+    get_backend_spec,
+    list_available_backends,
+    list_backend_specs,
+    list_backends,
+)
+from kagan.core import (
+    resolve_default_agent_backend as _resolve_default_agent_backend,
+)
+
+
+class AgentBackendAvailability(TypedDict):
+    name: str
+    available: bool
+    reference: bool
 
 
 def list_registered_agent_backends() -> list[str]:
@@ -11,8 +27,17 @@ def list_registered_agent_backends() -> list[str]:
 def format_agent_backend_list(backends: list[str], *, current_backend: str | None) -> list[str]:
     lines = ["Available agent backends:"]
     for index, backend in enumerate(backends, start=1):
-        marker = " ◀ current" if backend == current_backend else ""
-        lines.append(f"  {index:>2}  {backend}{marker}")
+        try:
+            spec = get_backend_spec(backend)
+            label = spec.label()
+            suffixes = ["reference"] if spec.reference else []
+        except AgentError:
+            label = backend
+            suffixes = []
+        if backend == current_backend:
+            suffixes.append("current")
+        suffix = f" [{' · '.join(suffixes)}]" if suffixes else ""
+        lines.append(f"  {index:>2}  {label}{suffix}")
     lines.append("Type `/agents name` or `/agents number` to switch.")
     return lines
 
@@ -62,10 +87,18 @@ def format_agent_switching(backend: str) -> str:
     return f"Switching to {backend}..."
 
 
-def list_backends_with_availability() -> list[dict[str, str | bool]]:
+def list_backends_with_availability() -> list[AgentBackendAvailability]:
     availability = list_available_backends()
-    return [{"name": name, "available": avail} for name, avail in availability.items()]
+    specs = list_backend_specs()
+    return [
+        {
+            "name": name,
+            "available": availability.get(name, False),
+            "reference": specs[name].reference,
+        }
+        for name in specs
+    ]
 
 
 def resolve_default_agent_backend(settings: dict[str, str]) -> str:
-    return settings.get("default_agent_backend") or "claude-code"
+    return _resolve_default_agent_backend(settings)

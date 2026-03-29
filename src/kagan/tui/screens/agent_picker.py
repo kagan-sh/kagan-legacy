@@ -7,8 +7,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from kagan.chat import list_registered_agent_backends
-from kagan.core._agent import list_available_backends
+from kagan.chat import list_registered_agent_backends, resolve_default_agent_backend
+from kagan.core import list_available_backends, list_backend_specs
 from kagan.tui.keybindings import AGENT_PICKER_BINDINGS
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ class AgentPickerModal(ModalScreen[str | None]):
     def __init__(self) -> None:
         super().__init__(id="agent-picker-modal")
         self._agents: list[str] = []
-        self._current_agent = "claude-code"
+        self._current_agent = resolve_default_agent_backend({})
         self._separator_index: int | None = None
 
     @property
@@ -48,10 +48,11 @@ class AgentPickerModal(ModalScreen[str | None]):
         settings = await self.kagan_app.core.settings.get()
         configured = settings.get("default_agent_backend")
         normalized_configured = self._BACKEND_ALIASES.get(configured or "", configured)
-        self._current_agent = normalized_configured or "claude-code"
+        self._current_agent = normalized_configured or resolve_default_agent_backend(settings)
 
         all_agents = sorted({self._current_agent, *list_registered_agent_backends()})
         availability = list_available_backends()
+        specs = list_backend_specs()
 
         available = [a for a in all_agents if availability.get(a, True)]
         unavailable = [a for a in all_agents if not availability.get(a, True)]
@@ -61,14 +62,26 @@ class AgentPickerModal(ModalScreen[str | None]):
         option_list.clear_options()
 
         for agent in available:
-            label = f"{agent}{' (current)' if agent == self._current_agent else ''}"
+            spec = specs.get(agent)
+            label = _format_agent_label(
+                spec.label() if spec is not None else agent,
+                is_current=agent == self._current_agent,
+                available=True,
+                reference=spec.reference if spec is not None else False,
+            )
             option_list.add_option(Option(label, id=agent))
 
         if unavailable:
             self._separator_index = len(available)
             option_list.add_option(Option("[dim]── Not installed ──[/dim]", disabled=True))
             for agent in unavailable:
-                label = f"[dim]{agent}{' (current)' if agent == self._current_agent else ''}[/dim]"
+                spec = specs.get(agent)
+                label = _format_agent_label(
+                    spec.label() if spec is not None else agent,
+                    is_current=agent == self._current_agent,
+                    available=False,
+                    reference=spec.reference if spec is not None else False,
+                )
                 option_list.add_option(Option(label, id=agent))
 
         option_list.focus()
@@ -112,3 +125,25 @@ class AgentPickerModal(ModalScreen[str | None]):
 
     async def action_dismiss(self, result: str | None = None) -> None:
         self.dismiss(result)
+
+
+def _format_agent_label(
+    label: str,
+    *,
+    is_current: bool,
+    available: bool,
+    reference: bool,
+) -> str:
+    suffixes: list[str] = []
+    if reference:
+        suffixes.append("reference")
+    if is_current:
+        suffixes.append("current")
+    if not available:
+        suffixes.append("unavailable")
+
+    if suffixes:
+        label = f"{label} ({', '.join(suffixes)})"
+    if not available:
+        label = f"[dim]{label}[/dim]"
+    return label

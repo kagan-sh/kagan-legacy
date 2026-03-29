@@ -76,7 +76,7 @@ async def test_dismissed_cwd_banner_updates_enter_hint_and_action(
         assert app.screen.id == "setup-flow"
 
 
-async def test_enter_prefers_cwd_banner_create_over_recent_project(
+async def test_enter_opens_selected_recent_project_when_cwd_banner_is_visible(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -98,9 +98,42 @@ async def test_enter_prefers_cwd_banner_create_over_recent_project(
         assert app.screen.id == "welcome-screen"
 
         hint_widget = app.screen.query_one("#welcome-hint", KeybindingHint)
-        assert "create" in hint_widget.hints
+        assert "create here" in hint_widget.hints
 
         await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.screen.id == "kanban-screen"
+        assert app.project is not None
+        assert app.project.name == "Project A"
+
+        project_for_b = await app.core.projects.find_by_repo(str(repo_b.resolve()))
+        assert project_for_b is None
+
+    await driver.teardown()
+
+
+async def test_create_here_shortcut_creates_project_from_cwd_when_recent_projects_exist(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from kagan.tui import KaganApp
+
+    driver = await KaganDriver.boot(tmp_path)
+    repo_a = tmp_path / "repo-a"
+    repo_a.mkdir()
+    await driver.create_project("Project A", repo_path=str(repo_a))
+
+    repo_b = tmp_path / "repo-b"
+    repo_b.mkdir()
+    monkeypatch.chdir(repo_b)
+
+    app = KaganApp(db_path=tmp_path / "kagan.db")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.screen.id == "welcome-screen"
+
+        await pilot.press("c")
         await pilot.pause()
         await pilot.pause()
 
@@ -136,7 +169,7 @@ async def test_returning_to_welcome_refreshes_project_list_after_cwd_create(
         await pilot.pause()
         assert app.screen.id == "welcome-screen"
 
-        await pilot.press("enter")
+        await pilot.press("c")
         await pilot.pause()
         await pilot.pause()
         assert app.screen.id == "kanban-screen"

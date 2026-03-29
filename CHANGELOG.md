@@ -9,7 +9,44 @@
 
 <!-- version list -->
 
+## v0.14.0 (2026-03-29)
 
+### Features
+
+- **cli**: First-launch surface picker for improved onboarding — running `kagan` for the first time now shows an interactive picker to choose your preferred interface (TUI, Web, Chat, VS Code, or MCP)
+- **core**: Capability-based backend specification system — Claude Code and Codex are now designated as "reference backends" with first-class support
+- **core**: Reference backend guidance in doctor and preflight — `kagan doctor` now surfaces specific installation and authentication hints when backend checks fail
+- **core**: Shared event rendering protocol — ensures consistent display of agent output across TUI, Web, and VS Code
+- **core**: Real-time presence and task watching — task cards now display watcher counts when multiple clients are viewing
+- **core**: Event bus for cross-client synchronization — broadcasts events across clients for real-time updates
+- **core**: Session resume modal and file picker in TUI
+- **vscode**: Agent backend settings commands — `kagan.settings.agentBackend`, `kagan.settings.reviewStrictness`, `kagan.settings.planningDepth`
+- **vscode**: Shared event rendering implementation for consistent output display
+- **vscode**: SSE polling fallback for disconnected states
+- **vscode**: Follow-up message support in chat
+- **web**: Workspace view in activity bar and command palette
+- **web**: Review snapshot and evidence log with criteria coverage and decision guidance
+- **web**: Type-ahead chat input with interrupt-and-edit
+- **web**: Task presence indicators showing watcher counts
+- **web**: Agent picker with reference backend badges
+
+### Bug Fixes
+
+- **core**: Shell operator support in success_command — commands with `&&`, pipes, redirects now work correctly
+- **core**: Tolerate float timeout settings — fixed crash when agent_timeout_seconds was a float
+- **vscode**: Stable client_id for SSE presence tracking
+- **vscode**: Clear sticky /watch state on new chat
+- **vscode**: Auto-start uses `kagan serve` instead of `kagan web --no-open`
+- **web**: Stable client_id generation for presence tracking
+- **web**: Presence heartbeat mechanism for live watcher counts
+- **server**: Increased rate limits and connection token validation for presence
+
+### Documentation
+
+- Updated quickstart with surface hierarchy and canonical workflow
+- Updated MCP setup guide with role-based access control
+- Updated troubleshooting with `kagan doctor` command
+- Clarified VS Code extension vs MCP guidance
 
 
 

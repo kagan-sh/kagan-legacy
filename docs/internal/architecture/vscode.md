@@ -16,7 +16,7 @@ ______________________________________________________________________
 1. **Thin client** -- workflow logic stays in Python (`kagan.core`); the extension only coordinates API calls and renders state.
 1. **Single integration boundary** -- all server communication flows through `KaganClient` (REST) and `SSEStream` (Server-Sent Events).
 1. **One provider per concern** -- board, agent output, diffs, reviews, and terminal each have a dedicated provider. No god objects.
-1. **Auto-start local server** -- when `serverUrl` points at localhost and nothing is listening, the extension spawns `kagan web --no-open` automatically.
+1. **Auto-start local server** -- when `serverUrl` points at localhost and nothing is listening, the extension spawns `kagan serve` automatically.
 
 ______________________________________________________________________
 
@@ -92,7 +92,7 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 | `/watch`    | Stream task agent output via SSE                                      |
 | `/status`   | Board summary table + running task list                               |
 
-**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets the session.
+**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets both the orchestrator session and any sticky `/watch` follow-up state.
 
 **Watch pipeline:**
 
@@ -101,6 +101,7 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 1. Render tool calls as inline code, status changes as rules
 1. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
 1. Append action buttons based on final task state
+1. Route later plain messages in that same chat conversation to `POST /api/tasks/{id}/follow-up`
 
 **`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel pre-filled with `@kagan /watch <task>`.
 
@@ -145,7 +146,7 @@ ______________________________________________________________________
 `LocalServerSupervisor` manages the local server lifecycle:
 
 1. Check if `serverUrl` is localhost
-1. If nothing responds to `/health`, spawn `<serverCommand> web --no-open`
+1. If nothing responds to `/health`, spawn `<serverCommand> serve`
 1. Poll `/health` every 250ms for up to 12 seconds
 1. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
 

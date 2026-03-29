@@ -13,6 +13,7 @@ import { Panel } from '@/components/shared/workspace';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
+import { extractToolStatus, extractToolTitle } from '@/lib/api/event-rendering';
 
 /** A user follow-up message displayed inline in the event stream. */
 export interface UserFollowUp {
@@ -30,35 +31,11 @@ interface EventStreamProps {
   onLoadEarlier?: () => void;
 }
 
-// ── Tool name / ID extraction (mirrors TUI kanban_chat.py helpers) ───────────
+// ── Tool name / ID extraction (mirrors shared event rendering helpers) ───────
 
 function acpPayload(payload: Record<string, unknown>): Record<string, unknown> {
   const nested = payload.acp;
   return typeof nested === 'object' && nested !== null ? (nested as Record<string, unknown>) : {};
-}
-
-/** Convert raw tool names to human-readable form.
- *  `mcp__kagan__run_wait` -> `kagan / run_wait`
- *  `toolu_01Vzz...` -> `tool call` (fallback for raw IDs)
- */
-function formatToolName(raw: string): string {
-  if (raw.startsWith('toolu_') || raw.startsWith('call_')) return 'tool call';
-  if (raw.includes('__')) {
-    const parts = raw.split('__');
-    if ((parts[0] === 'mcp' || parts[0] === 'functions') && parts.length >= 3) {
-      return parts.slice(1).join(' / ');
-    }
-    return parts.join(' / ');
-  }
-  return raw.replaceAll('_', ' ');
-}
-
-function extractToolTitle(payload: Record<string, unknown>): string {
-  const acp = acpPayload(payload);
-  const raw = String(
-    acp.toolName ?? acp.name ?? acp.title ?? payload.name ?? payload.tool_name ?? payload.title ?? 'tool call',
-  );
-  return formatToolName(raw);
 }
 
 function extractToolId(payload: Record<string, unknown>, eventId: string): string {
@@ -66,11 +43,6 @@ function extractToolId(payload: Record<string, unknown>, eventId: string): strin
   return String(
     acp.toolCallId ?? acp.id ?? payload.tool_id ?? payload.id ?? eventId,
   );
-}
-
-function extractToolStatus(payload: Record<string, unknown>, defaultStatus: string): string {
-  const acp = acpPayload(payload);
-  return String(acp.status ?? payload.status ?? defaultStatus);
 }
 
 /** Extract meaningful content from a tool call payload for display. */

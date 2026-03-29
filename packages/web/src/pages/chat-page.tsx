@@ -132,6 +132,10 @@ export function Component() {
     [id],
   );
 
+  // ── ESC/cancel/edit state ──────────────────────────────────────────────────
+  const [lastSentText, setLastSentText] = useState('');
+  const [editPrefill, setEditPrefill] = useState<string | null>(null);
+
   // ── SSE chat stream abort ref ──────────────────────────────────────────────
   const chatAbortRef = useRef<AbortController | null>(null);
 
@@ -182,6 +186,7 @@ export function Component() {
     (text: string, attachments?: import('@/components/chat/chat-input-bar').Attachment[]) => {
       if (!id) return;
 
+      setLastSentText(text);
       setIsStreaming(true);
 
       const displayText = attachments?.length
@@ -229,13 +234,22 @@ export function Component() {
     [id, setIsStreaming, setMessages, handleSSEMsg, addError],
   );
 
-  const handleInterrupt = useCallback(() => {
-    if (!id || !isStreaming) return;
-    chatAbortRef.current?.abort();
-    fetch(`${apiClient.getBaseUrl()}/api/chat/${id}/interrupt`, { method: 'POST' }).catch(() => {});
-    addNote({ message: 'Interrupted by user.' });
-    setIsStreaming(false);
-  }, [id, isStreaming, addNote, setIsStreaming]);
+  const handleInterrupt = useCallback(
+    (opts?: { pendingText: string | null }) => {
+      if (!id || !isStreaming) return;
+      chatAbortRef.current?.abort();
+      fetch(`${apiClient.getBaseUrl()}/api/chat/${id}/interrupt`, { method: 'POST' }).catch(() => {});
+      addNote({ message: 'Interrupted by user.' });
+      setIsStreaming(false);
+
+      if (opts?.pendingText) {
+        setTimeout(() => handleSend(opts.pendingText!), 50);
+      } else {
+        setEditPrefill(lastSentText);
+      }
+    },
+    [id, isStreaming, addNote, setIsStreaming, lastSentText, handleSend],
+  );
 
   const handleSlashCommand = useCallback(
     (command: string) => {
@@ -343,7 +357,13 @@ export function Component() {
         </div>
 
         <div className="border-t border-[color:var(--border-subtle)] px-5 py-4">
-          <ChatInputBar onSend={handleSend} onSlashCommand={handleSlashCommand} onInterrupt={handleInterrupt} />
+          <ChatInputBar
+            onSend={handleSend}
+            onSlashCommand={handleSlashCommand}
+            onInterrupt={handleInterrupt}
+            externalPrefill={editPrefill ?? undefined}
+            onPrefillConsumed={() => setEditPrefill(null)}
+          />
         </div>
       </div>
     </div>

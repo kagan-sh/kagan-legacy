@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
     CheckCheck,
+    Eye,
     ExternalLink,
     ListChecks,
     Pencil,
@@ -12,9 +13,11 @@ import {
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useAtomValue } from "jotai";
 import { cn } from "@/lib/utils";
 import type { WireTask } from "@/lib/api/types";
 import { parseUtc } from "@/lib/utils/time";
+import { taskWatchersAtom } from "@/lib/atoms/presence";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -75,6 +78,8 @@ function TaskCardBody({
     isSelected?: boolean;
 }) {
     const criteriaCount = task.acceptance_criteria?.length ?? 0;
+    const watcherMap = useAtomValue(taskWatchersAtom);
+    const watchers = watcherMap.get(task.id) ?? [];
 
     return (
         <div className="ml-2 flex min-h-0 flex-col gap-0.5">
@@ -129,6 +134,15 @@ function TaskCardBody({
                             task.last_event_at || task.updated_at,
                         )}
                     </span>
+                    {watchers.length > 0 ? (
+                        <span
+                            className="inline-flex shrink-0 items-center gap-0.5"
+                            title={watchers.map((w) => w.client_type).join(", ")}
+                        >
+                            <Eye className="size-2.5" />
+                            {watchers.length}
+                        </span>
+                    ) : null}
                 </div>
             </div>
         </div>

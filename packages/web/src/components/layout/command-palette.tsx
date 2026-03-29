@@ -10,6 +10,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   MessageSquare,
+  MessageSquareText,
   PanelRight,
   Pencil,
   Play,
@@ -114,15 +115,15 @@ export function CommandPalette() {
             <CommandGroup heading="Current Task">
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}`)}>
                 <Search className="size-4" />
-                Open task workspace
+                Open task
               </CommandItem>
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}?lane=worker`)}>
                 <Play className="size-4" />
-                Open worker stream
+                Watch worker stream
               </CommandItem>
               <CommandItem onSelect={() => closeAndNavigate(`/task/${currentTask.id}?lane=reviewer`)}>
                 <ArrowRightLeft className="size-4" />
-                Open reviewer stream
+                Watch reviewer stream
               </CommandItem>
             </CommandGroup>
             <CommandSeparator />
@@ -135,10 +136,15 @@ export function CommandPalette() {
             Board
             <CommandShortcut>1</CommandShortcut>
           </CommandItem>
+          <CommandItem onSelect={() => closeAndNavigate('/workspace')}>
+            <MessageSquareText className="size-4" />
+            Workspace
+            <CommandShortcut>2</CommandShortcut>
+          </CommandItem>
           <CommandItem onSelect={() => closeAndNavigate('/settings')}>
             <Settings className="size-4" />
             Settings
-            <CommandShortcut>2</CommandShortcut>
+            <CommandShortcut>3</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 

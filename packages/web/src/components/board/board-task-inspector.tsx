@@ -100,7 +100,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
             <>
               <Button size="sm" className="cta-glow" onClick={onOpenStream}>
                 <Activity className="size-4" />
-                Watch stream
+                Watch task stream
               </Button>
               <Button size="sm" variant="ghost" className=" text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={onOpenTask}>
                 <ArrowUpRight className="size-4" />

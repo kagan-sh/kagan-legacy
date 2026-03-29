@@ -29,6 +29,10 @@ ENTRY_POINT_GROUP = "kagan.plugins"
 _BUILTIN_PACKAGE = "kagan"
 _BUILTIN_SOURCE_URL = "https://github.com/kagan-sh/kagan"
 
+# Allowlist of trusted community plugin package names.
+# Community plugins not in this set will emit a security warning on load.
+_TRUSTED_PLUGINS: frozenset[str] = frozenset()
+
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -221,6 +225,14 @@ def discover_plugins() -> dict[str, PluginInfo]:
                     package,
                 )
                 continue
+
+            if not builtin and package.lower() not in _TRUSTED_PLUGINS:
+                logger.warning(
+                    "Loading unverified community plugin {!r} from package {!r} — "
+                    "verify its source before use",
+                    ep.name,
+                    ep.dist.name if ep.dist else "unknown",
+                )
 
             discovered[ep.name] = PluginInfo(
                 name=ep.name,

@@ -9,6 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
@@ -309,6 +310,15 @@ class SessionDashboardScreen(Screen[None]):
 
         self.app.push_screen(modal, callback=_on_select)
 
+    def on_chat_panel_file_picker_requested(self, message: ChatPanel.FilePickerRequested) -> None:
+        sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
+        if getattr(sender, "id", "") != "dashboard-chat-overlay":
+            return
+
+        panel = self.query_one("#dashboard-chat-overlay", ChatPanel)
+        modal = panel.create_file_picker_modal(initial_query=message.initial_query)
+        self.app.push_screen(modal, callback=panel.handle_file_picker_selected)
+
     def on_chat_panel_agent_picker_requested(self, message: ChatPanel.AgentPickerRequested) -> None:
         sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
         if getattr(sender, "id", "") != "dashboard-chat-overlay":
@@ -336,10 +346,17 @@ class SessionDashboardScreen(Screen[None]):
         sender = cast("Any", getattr(message, "control", getattr(message, "sender", None)))
         if getattr(sender, "id", "") != "dashboard-chat-overlay":
             return
+        panel = self._chat_panel()
         if self._chat_message_task is not None and not self._chat_message_task.done():
             self._chat_message_task.cancel()
+            panel.post_message(ChatPanel.InterruptCompleted())
             return
-        self.run_worker(self.action_cancel_run(), exit_on_error=False)
+
+        async def _cancel_and_complete() -> None:
+            await self.action_cancel_run()
+            panel.post_message(ChatPanel.InterruptCompleted())
+
+        self.run_worker(_cancel_and_complete(), exit_on_error=False)
 
     async def action_switch_session(self) -> None:
         panel = self._chat_panel()
@@ -610,12 +627,7 @@ class SessionDashboardScreen(Screen[None]):
             return
 
         settings = await self.kagan_app.core.settings.get()
-        backend = (
-            backend_hint
-            or task.agent_backend
-            or settings.get("default_agent_backend")
-            or "claude-code"
-        )
+        backend = backend_hint or task.agent_backend or resolve_default_agent_backend(settings)
 
         workspace = await self.kagan_app.core.worktrees.get(self._task_id)
         if workspace is None:

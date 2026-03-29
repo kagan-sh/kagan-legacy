@@ -8,6 +8,12 @@ importers:
 
   .: {}
 
+  packages/shared/api-client:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/vscode:
     devDependencies:
       '@types/mocha':

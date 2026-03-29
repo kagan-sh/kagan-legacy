@@ -60,7 +60,6 @@ class DBWatcher:
         self._poll_interval = self._POLL_INTERVAL_MIN
         self._subscription_task: asyncio.Task[None] | None = None
         self._poll_task: asyncio.Task[None] | None = None
-        self._bus_task: asyncio.Task[None] | None = None
         self._change_event = asyncio.Event()
 
     async def initialize(self) -> None:
@@ -82,11 +81,6 @@ class DBWatcher:
                 self._poll_db_loop(),
                 name="db-watcher-poll",
             )
-        if self._bus_task is None or self._bus_task.done():
-            self._bus_task = asyncio.create_task(
-                self._consume_bus_events(),
-                name="db-watcher-bus",
-            )
 
     async def poll(self) -> bool:
         if not self._change_event.is_set():
@@ -99,7 +93,7 @@ class DBWatcher:
         self._change_event.clear()
 
     async def close(self) -> None:
-        for task in (self._subscription_task, self._poll_task, self._bus_task):
+        for task in (self._subscription_task, self._poll_task):
             if task is None:
                 continue
             task.cancel()
@@ -107,7 +101,6 @@ class DBWatcher:
                 await task
         self._subscription_task = None
         self._poll_task = None
-        self._bus_task = None
 
     def drain_context(self) -> str | None:
         if not self._pending and self._dropped_pending_count == 0:
@@ -130,24 +123,6 @@ class DBWatcher:
     async def _consume_events(self) -> None:
         async for event in self._core.tasks.events.stream_board():
             await self._handle_event(event)
-
-    async def _consume_bus_events(self) -> None:
-        from kagan.core._event_bus import BusEvent
-
-        queue = await self._core.event_bus.subscribe()
-        try:
-            while True:
-                message = await queue.get()
-                if message.event not in {
-                    BusEvent.TASK_CREATED,
-                    BusEvent.TASK_UPDATED,
-                    BusEvent.TASK_DELETED,
-                }:
-                    continue
-                current = await self._take_snapshot()
-                self._diff_snapshot(current)
-        finally:
-            await self._core.event_bus.unsubscribe(queue)
 
     async def _poll_db_loop(self) -> None:
         while True:
@@ -305,18 +280,22 @@ class KaganCore:
         self._db_path: Path = resolved
         self._engine = create_db_engine(resolved)
         self._signals: dict[str, asyncio.Event] = {}
+        self._event_bus = EventBus()
 
-        self.event_bus = EventBus()
         self.tasks = Tasks(self._engine, self._signals, client=self, db_path=resolved)
         self.projects = Projects(self._engine, self)
         self.worktrees = Worktrees(self._engine, self)
         self.reviews = Reviews(self._engine, self)
-        self.settings = Settings(self._engine, event_bus=self.event_bus)
+        self.settings = Settings(self._engine)
         self.audit_log = AuditLog(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
 
         self.active_project_id: str | None = None
         logger.info("KaganCore initialized")
+
+    @property
+    def event_bus(self) -> EventBus:
+        return self._event_bus
 
     @property
     def engine(self) -> Any:

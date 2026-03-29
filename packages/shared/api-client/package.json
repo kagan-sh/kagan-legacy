@@ -1,0 +1,30 @@
+{
+  "name": "@kagan/shared-api-client",
+  "version": "0.1.0",
+  "description": "Shared TypeScript API client for Kagan - works in both browser and VS Code extension contexts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "kagan",
+    "api",
+    "client",
+    "typescript"
+  ],
+  "license": "MIT",
+  "private": true
+}

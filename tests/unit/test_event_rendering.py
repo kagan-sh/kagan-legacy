@@ -3,7 +3,6 @@
 import pytest
 
 from kagan.core._event_rendering import (
-    RenderableEvent,
     RenderableKind,
     Severity,
     _acp_payload,

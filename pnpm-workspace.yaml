@@ -1,3 +1,4 @@
 packages:
   - packages/web
   - packages/vscode
+  - packages/shared/api-client

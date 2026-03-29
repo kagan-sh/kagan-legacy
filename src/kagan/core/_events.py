@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from loguru import logger
 from sqlalchemy import Engine, and_, desc, or_
@@ -15,9 +15,6 @@ from sqlmodel import select
 from kagan.core._db_helpers import _add_and_refresh, _db_async
 from kagan.core.enums import SessionEventType, TaskStatus
 from kagan.core.models import SessionEvent
-
-if TYPE_CHECKING:
-    from kagan.core._event_bus import EventBus
 
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
@@ -121,8 +118,7 @@ class Events:
         self,
         engine: Engine,
         signals: dict[str, asyncio.Event],
-        *,
-        event_bus: "EventBus | None" = None,
+        event_bus: Any | None = None,
     ) -> None:
         self._engine = engine
         self._signals = signals
@@ -294,18 +290,6 @@ class Events:
             )
         elif event_type is SessionEventType.AUTO_REVIEW_STARTED:
             self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
-        bus = getattr(self, "_event_bus", None)
-        if bus is not None:
-            from kagan.core._event_bus import BusEvent, BusMessage
-
-            et = event_type.value if hasattr(event_type, "value") else str(event_type)
-            await bus.publish(
-                BusMessage(
-                    BusEvent.SESSION_EVENT,
-                    entity_id=task_id,
-                    payload={"event_type": et, "session_id": session_id},
-                )
-            )
         return event
 
     def publish_board(self, event: BoardEvent) -> None:

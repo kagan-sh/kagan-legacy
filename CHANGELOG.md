@@ -9,6 +9,39 @@
 
 <!-- version list -->
 
+
+
+
+
+## v0.14.0-beta.1 (2026-03-29)
+
+
+
+
+### documentation
+
+- Clarify VS Code extension install paths
+  ([`e31a82f`](https://github.com/kagan-sh/kagan/commit/e31a82f2e14c5566ef3ac2857bd67c8e66a3697b))
+
+
+
+
+
+
+
+
+
+
+
+### features
+
+- Improve cross-client interoperability and onboarding
+  ([`b13bed3`](https://github.com/kagan-sh/kagan/commit/b13bed30afad6b749fd36e41cf8643a670aaf895))
+
+
+
+
+
 ## v0.14.0 (2026-03-29)
 
 ### Features

@@ -25,6 +25,7 @@ Manage tasks, stream live agent output, send follow-ups to a watched task, revie
 | Review verdicts   | Comments panel   | Open a task in Review status               |
 | Agent terminal    | Terminal         | Right-click running task > Attach Terminal |
 | Diagnostic log    | Output Channel   | Command: Show Agent Output                 |
+| Settings commands | Command Palette  | Cmd/Ctrl+Shift+P → type "Kagan"            |
 
 ## Install
 
@@ -77,6 +78,16 @@ Full docs: <https://docs.kagan.sh/guides/vscode-extension/>
 | `kagan.autoStartServer`   | `true`           | Auto-start local server          |
 | `kagan.serverCommand`     | `kagan`          | CLI command for auto-start       |
 | `kagan.autoWatchOnAttach` | `true`           | Auto-stream output on IDE attach |
+
+## Commands
+
+Access settings commands via the Command Palette (Cmd/Ctrl+Shift+P) and type "Kagan":
+
+| Command                     | Description                                          | When to use                                              |
+| --------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
+| `kagan.settings.agentBackend`   | Set the default agent backend (claude-code, codex, etc.) | Switch between agent backends without editing config files |
+| `kagan.settings.reviewStrictness` | Configure review strictness level                    | Adjust how thorough code reviews should be               |
+| `kagan.settings.planningDepth`  | Adjust planning depth for orchestrator sessions      | Control how deeply the orchestrator plans before execution |
 
 ## Requirements
 

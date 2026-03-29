@@ -2,7 +2,7 @@
   "name": "kagan-vscode",
   "displayName": "Kagan",
   "description": "AI-powered Kanban board for orchestrating coding agents — manage tasks, stream agent output, review diffs, and merge from VS Code",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "kagan",
   "license": "MIT",
   "icon": "media/kagan-icon.png",

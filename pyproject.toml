@@ -38,6 +38,7 @@ dependencies = [
   "alembic>=1.16.0",
   "click>=8.1.0",
   "cryptography>=46.0",
+  "httpx>=0.27.0,<1.0.0",
   "loguru>=0.7.0",
   "mcp>=1.26.0,<2.0.0",
   "mslex>=1.3.0",

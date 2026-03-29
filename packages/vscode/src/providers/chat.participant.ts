@@ -4,9 +4,10 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
-import { EVENT_TYPE, SSE_TYPE } from "../api/types.js";
-import { extractToolTitle, formatToolName } from "../api/event-helpers.js";
+import { SSE_TYPE } from "../api/types.js";
+import { formatToolName, renderEvent } from "../api/event-rendering.js";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
+import { pickReusableChatSessionId } from "./chat.participant.helpers.js";
 
 // ── Registration ───────────────────────────────────────────────────────────
 
@@ -14,16 +15,28 @@ import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } fro
 let activeChatSessionId: string | null = null;
 let sessionCreating: Promise<string> | null = null;
 
+/** Task ID being watched — enables follow-up messages. */
+let watchingTaskId: string | null = null;
+
 async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatContext): Promise<string> {
   if (activeChatSessionId && !isNewConversation(chatCtx)) return activeChatSessionId;
   if (sessionCreating) return sessionCreating;
 
-  sessionCreating = client.createChatSession()
-    .then((session) => {
-      activeChatSessionId = session.id;
-      return session.id;
-    })
-    .finally(() => { sessionCreating = null; });
+  sessionCreating = (async () => {
+    const settings = await client.getSettings().catch(() => ({} as Record<string, string | undefined>));
+    const sessions = await client.getChatSessions().catch(() => []);
+    const reusableSessionId = pickReusableChatSessionId(settings.chat_last_active_session, sessions);
+    if (reusableSessionId) {
+      activeChatSessionId = reusableSessionId;
+      return reusableSessionId;
+    }
+
+    const session = await client.createChatSession(undefined, undefined, "vscode");
+    activeChatSessionId = session.id;
+    return session.id;
+  })().finally(() => {
+    sessionCreating = null;
+  });
 
   return sessionCreating;
 }
@@ -48,9 +61,9 @@ export function registerChatParticipant(
     if (typeof arg === "string") {
       query = `@kagan /watch ${arg}`;
     } else if (typeof arg === "object" && arg !== null && "kind" in arg) {
-      const item = arg as { kind: string; task?: { title?: string } };
-      if (item.kind === "task" && item.task?.title) {
-        query = `@kagan /watch ${item.task.title}`;
+      const item = arg as { kind: string; task?: { id?: string; title?: string } };
+      if (item.kind === "task" && (item.task?.id || item.task?.title)) {
+        query = `@kagan /watch ${item.task.id ?? item.task.title}`;
       }
     }
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
@@ -77,6 +90,11 @@ async function handleRequest(
       await handleWatch(client, sse, request.prompt, stream, token);
       return;
     default:
+      // If watching a task, send follow-up instead of orchestrator chat
+      if (watchingTaskId && request.prompt.trim()) {
+        await handleFollowUp(client, watchingTaskId, request.prompt.trim(), stream);
+        return;
+      }
       // Default: orchestrator chat — send the message to the Kagan orchestrator
       await handleChat(client, request.prompt, chatCtx, stream, token);
   }
@@ -196,6 +214,13 @@ function isNewConversation(chatCtx: vscode.ChatContext): boolean {
   return chatCtx.history.length === 0;
 }
 
+function renderHistoryEntry(
+  event: WireEvent,
+): ReturnType<typeof renderEvent> {
+  if (event.type === "AGENT_STATUS") return null;
+  return renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
+}
+
 // ── /watch ─────────────────────────────────────────────────────────────────
 
 async function handleWatch(
@@ -212,6 +237,7 @@ async function handleWatch(
     return;
   }
 
+  watchingTaskId = task.id;
   stream.markdown(`**${task.title}** -- ${task.status}\n\n`);
 
   if (task.status === "IN_PROGRESS") {
@@ -231,6 +257,25 @@ async function handleWatch(
 
   const latest = await safeGetTask(client, task.id);
   renderActions(latest ?? task, stream);
+}
+
+// ── Follow-up ─────────────────────────────────────────────────────────
+
+async function handleFollowUp(
+  client: KaganClient,
+  taskId: string,
+  text: string,
+  stream: vscode.ChatResponseStream,
+): Promise<void> {
+  try {
+    stream.progress("Sending follow-up...");
+    await client.sendFollowUp(taskId, text);
+    stream.markdown(`> **Follow-up sent** to task \`${taskId}\`:\n> ${text}\n`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    stream.markdown(`\n\n**Error sending follow-up:** ${message}\n`);
+    watchingTaskId = null;
+  }
 }
 
 // ── Task resolution ────────────────────────────────────────────────────────
@@ -271,69 +316,56 @@ function renderHistory(events: WireEvent[], stream: vscode.ChatResponseStream): 
   };
 
   for (const event of events) {
-    const p = event.payload ?? {};
+    const rendered = renderHistoryEntry(event);
+    if (!rendered) continue;
 
-    switch (event.type) {
-      case EVENT_TYPE.OUTPUT_CHUNK: {
-        const text = String(p.text ?? "");
-        if (!text) break;
-        const thought = Boolean(p.thought);
+    switch (rendered.kind) {
+      case "text":
+      case "thought": {
+        const text = rendered.body;
+        const thought = rendered.kind === "thought";
         if (textBuf && thought !== lastThought) flushText();
         if (thought && !lastThought) textBuf += "\n\n> *Thinking:* ";
         textBuf += text;
         lastThought = thought;
         break;
       }
-      case EVENT_TYPE.TOOL_CALL_START: {
+      case "tool_start": {
         flushText();
-        stream.markdown(`\n\n\`${extractToolTitle(p)}\`\n\n`);
+        stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
         break;
       }
-      case EVENT_TYPE.TOOL_CALL_UPDATE:
-        break;
-      case EVENT_TYPE.TASK_STATUS_CHANGED: {
+      case "status_change": {
         flushText();
-        stream.markdown(`\n\n---\n*${p.from} \u2192 ${p.to}*\n\n`);
+        stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
         break;
       }
-      case EVENT_TYPE.AGENT_COMPLETED: {
+      case "error": {
         flushText();
-        stream.markdown("\n\n---\n**Agent completed**\n\n");
+        stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
         break;
       }
-      case EVENT_TYPE.AGENT_FAILED: {
+      case "note": {
         flushText();
-        stream.markdown(`\n\n---\n**Agent failed:** ${p.error ?? "unknown error"}\n\n`);
+        stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
         break;
       }
-      case EVENT_TYPE.PLAN_UPDATE: {
+      case "plan": {
         flushText();
-        stream.markdown("\n\n`Plan updated`\n\n");
+        stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
         break;
       }
-      case EVENT_TYPE.AUTO_REVIEW_STARTED: {
+      case "verdict": {
         flushText();
-        stream.markdown("\n\n`Auto-review started`\n\n");
+        stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
         break;
       }
-      case EVENT_TYPE.CRITERION_VERDICT: {
+      case "merge": {
         flushText();
-        const mark = String(p.verdict ?? "") === "PASS" ? "PASS" : "FAIL";
-        stream.markdown(`\n- **[${mark}]** ${p.reason ?? ""}\n`);
+        const suffix = rendered.body ? `: ${rendered.body}` : "";
+        stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
         break;
       }
-      case EVENT_TYPE.MERGE_COMPLETED: {
-        flushText();
-        stream.markdown("\n\n---\n**Merge completed**\n\n");
-        break;
-      }
-      case EVENT_TYPE.MERGE_FAILED: {
-        flushText();
-        stream.markdown(`\n\n---\n**Merge failed:** ${p.error ?? "unknown"}\n\n`);
-        break;
-      }
-      case EVENT_TYPE.AGENT_STATUS:
-        break;
     }
   }
 
@@ -361,52 +393,44 @@ function streamLive(
       if (msg.type !== SSE_TYPE.SESSION_EVENT) return;
       if (msg.task_id !== taskId) return;
 
-      const event = msg.event;
-      const p = event.payload ?? {};
+      const rendered = renderHistoryEntry(msg.event);
+      if (!rendered) return;
 
-      switch (event.type) {
-        case EVENT_TYPE.OUTPUT_CHUNK: {
-          const text = String(p.text ?? "");
-          if (text) stream.markdown(text);
+      switch (rendered.kind) {
+        case "text":
+        case "thought": {
+          if (rendered.body) stream.markdown(rendered.body);
           break;
         }
-        case EVENT_TYPE.TOOL_CALL_START:
-          stream.markdown(`\n\n\`${extractToolTitle(p)}\`\n\n`);
+        case "tool_start":
+          stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
           break;
-        case EVENT_TYPE.TOOL_CALL_UPDATE:
+        case "tool_update":
           break;
-        case EVENT_TYPE.TASK_STATUS_CHANGED:
-          stream.markdown(`\n\n---\n*${p.from} \u2192 ${p.to}*\n\n`);
+        case "status_change":
+          stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
           break;
-        case EVENT_TYPE.AGENT_COMPLETED:
-          stream.markdown("\n\n---\n**Agent completed**\n\n");
+        case "note":
+          stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
+          if (msg.event.type === "AGENT_COMPLETED") done();
+          break;
+        case "error":
+          stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
           done();
           break;
-        case EVENT_TYPE.AGENT_FAILED:
-          stream.markdown(`\n\n---\n**Agent failed:** ${p.error ?? "unknown error"}\n\n`);
-          done();
+        case "plan":
+          stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
           break;
-        case EVENT_TYPE.PLAN_UPDATE:
-          stream.markdown("\n\n`Plan updated`\n\n");
-          break;
-        case EVENT_TYPE.AUTO_REVIEW_STARTED:
-          stream.markdown("\n\n`Auto-review started`\n\n");
-          break;
-        case EVENT_TYPE.CRITERION_VERDICT: {
-          const mark = String(p.verdict ?? "") === "PASS" ? "PASS" : "FAIL";
-          stream.markdown(`\n- **[${mark}]** ${p.reason ?? ""}\n`);
+        case "verdict": {
+          stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
           break;
         }
-        case EVENT_TYPE.MERGE_COMPLETED:
-          stream.markdown("\n\n---\n**Merge completed**\n\n");
+        case "merge": {
+          const suffix = rendered.body ? `: ${rendered.body}` : "";
+          stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
           done();
           break;
-        case EVENT_TYPE.MERGE_FAILED:
-          stream.markdown(`\n\n---\n**Merge failed:** ${p.error ?? "unknown"}\n\n`);
-          done();
-          break;
-        case EVENT_TYPE.AGENT_STATUS:
-          break;
+        }
       }
     });
 

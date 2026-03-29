@@ -22,7 +22,6 @@ _ESSENTIAL_ENV: frozenset[str] = frozenset(
         "TERM",
         "EDITOR",
         "SSH_AUTH_SOCK",
-        "GIT_CONFIG_GLOBAL",
     }
 )
 

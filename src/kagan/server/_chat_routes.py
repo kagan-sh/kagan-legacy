@@ -22,6 +22,8 @@ from kagan.core.errors import KaganError
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
 from kagan.server.responses import (
+    AgentBackendResponse,
+    ChatAgentsResponse,
     ChatMessageResponse,
     ChatSessionResponse,
     ChatSessionSummaryResponse,
@@ -277,10 +279,11 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             body = {}
         agent_backend = cast("str | None", body.get("agent_backend"))
         label = cast("str | None", body.get("label"))
+        source = str(body.get("source") or "web").strip() or "web"
         project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
         session = await create_chat_session(
             ctx.client,
-            source="web",
+            source=source,
             label=label,
             agent_backend=agent_backend,
             project_id=project_id,
@@ -341,10 +344,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         """List available agent backends."""
         from kagan.chat.agents import list_backends_with_availability
 
-        backends = list_backends_with_availability()
+        backends = [
+            AgentBackendResponse.model_validate(backend)
+            for backend in list_backends_with_availability()
+        ]
         settings = await ctx.client.settings.get()
-        default = settings.get("default_agent_backend") or "claude-code"
-        return _ok({"backends": backends, "default": default})
+        default = resolve_default_agent_backend(settings)
+        return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
 
 
 def _register_stream_routes(mcp: FastMCP) -> None:

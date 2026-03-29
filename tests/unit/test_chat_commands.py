@@ -15,6 +15,7 @@ from kagan.chat import (
     set_last_session_id,
 )
 from kagan.chat.sessions import _clean_generated_title, _format_relative_time
+from kagan.core import AgentError, BackendSpec
 
 pytestmark = [pytest.mark.unit]
 
@@ -31,11 +32,24 @@ def test_format_session_payload_includes_session_descriptor_and_runtime() -> Non
 
 def test_format_agent_backend_list_marks_current_backend() -> None:
     lines = format_agent_backend_list(
-        ["claude-code", "opencode"],
-        current_backend="opencode",
+        ["claude-code", "codex", "opencode"],
+        current_backend="codex",
     )
     assert lines[0] == "Available agent backends:"
-    assert any("opencode ◀ current" in line for line in lines)
+    assert any("Claude Code (claude-code) [reference]" in line for line in lines)
+    assert any("Codex CLI (codex) [reference · current]" in line for line in lines)
+
+
+def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:
+    controller = ChatController(cast("Any", _FakeClient()), agent_backend="custom-backend")
+
+    monkeypatch.setattr(
+        "kagan.chat.controller.get_backend_spec",
+        lambda _name: BackendSpec(name="custom-backend", executable="custom-backend"),
+    )
+
+    with pytest.raises(AgentError, match="does not support ACP"):
+        controller._resolve_acp_command()
 
 
 def test_resolve_agent_backend_selection_accepts_index_and_prefix() -> None:

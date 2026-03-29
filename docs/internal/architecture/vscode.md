@@ -16,7 +16,7 @@ ______________________________________________________________________
 1. **Thin client** -- workflow logic stays in Python (`kagan.core`); the extension only coordinates API calls and renders state.
 1. **Single integration boundary** -- all server communication flows through `KaganClient` (REST) and `SSEStream` (Server-Sent Events).
 1. **One provider per concern** -- board, agent output, diffs, reviews, and terminal each have a dedicated provider. No god objects.
-1. **Auto-start local server** -- when `serverUrl` points at localhost and nothing is listening, the extension spawns `kagan web --no-open` automatically.
+1. **Auto-start local server** -- when `serverUrl` points at localhost and nothing is listening, the extension spawns `kagan serve` automatically.
 
 ______________________________________________________________________
 
@@ -145,7 +145,7 @@ ______________________________________________________________________
 `LocalServerSupervisor` manages the local server lifecycle:
 
 1. Check if `serverUrl` is localhost
-1. If nothing responds to `/health`, spawn `<serverCommand> web --no-open`
+1. If nothing responds to `/health`, spawn `<serverCommand> serve`
 1. Poll `/health` every 250ms for up to 12 seconds
 1. Pipe server stdout/stderr to the "Kagan Server" OutputChannel
 

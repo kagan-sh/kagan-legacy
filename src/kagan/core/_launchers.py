@@ -20,7 +20,7 @@ from typing import Any
 
 from loguru import logger
 
-from kagan.core._agent import build_mcp_manifest, get_backend
+from kagan.core._agent import build_mcp_manifest, get_backend_spec
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -56,15 +56,15 @@ def build_neovim_command(*, worktree_path: str) -> list[str]:
 def _build_launch_command(agent_backend: str, startup_prompt: str) -> str | None:
     """Build agent CLI command with startup prompt as argument.
 
-    Uses the AGENT_BACKENDS registry to resolve executable and prompt_flag.
+    Uses the typed backend spec to resolve executable and prompt_flag.
     Returns the full command string, or None if the backend has no prompt_flag.
     """
-    entry = get_backend(agent_backend)
-    executable = entry.get("executable")
+    backend = get_backend_spec(agent_backend)
+    executable = backend.executable
     if not executable:
         return None
 
-    prompt_flag = entry.get("prompt_flag")
+    prompt_flag = backend.prompt_flag
     escaped = shlex.quote(startup_prompt)
 
     if prompt_flag:

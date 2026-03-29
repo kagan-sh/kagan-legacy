@@ -52,6 +52,31 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('KanbanBoard', () => {
+  it('shows canonical first-run guidance on an empty board', async () => {
+    const { apiClient } = await import('@/lib/api/client');
+    vi.mocked(apiClient.getTasks).mockResolvedValue([]);
+    vi.mocked(apiClient.getTaskEvents).mockResolvedValue([]);
+
+    const store = createStore();
+    store.set(boardLoadingAtom, false);
+    store.set(tasksAtom, []);
+
+    const onboardingKey = 'kagan_web_onboarding_tutorial_seen_v1';
+    localStorage.setItem(onboardingKey, '1');
+    try {
+      renderWithProviders(<KanbanBoard />, { store });
+
+      expect(await screen.findByRole('heading', { name: 'Start your first task' })).toBeVisible();
+      expect(
+        screen.getByText(
+          'Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session.',
+        ),
+      ).toBeVisible();
+    } finally {
+      localStorage.removeItem(onboardingKey);
+    }
+  });
+
   it('selects a task on click and opens it on double click', async () => {
     const { apiClient } = await import('@/lib/api/client');
     const task = {

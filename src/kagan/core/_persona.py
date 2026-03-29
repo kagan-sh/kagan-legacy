@@ -342,7 +342,9 @@ def _validate_repo_slug(repo: str) -> None:
 
 def _validate_repo_path(path: str) -> None:
     normalized = path.strip().lstrip("/")
-    if not normalized or normalized.startswith("../") or "/../" in normalized:
+    if not normalized:
+        raise ValueError("path must be a safe repository-relative path")
+    if ".." in Path(normalized).parts:
         raise ValueError("path must be a safe repository-relative path")
 
 

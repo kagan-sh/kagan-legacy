@@ -13,6 +13,7 @@ from kagan.core import (
     TaskStatus,
     detect_dotfile_overrides,
     parse_priority,
+    resolve_default_agent_backend,
     resolve_launcher,
 )
 from kagan.core._utils import utc_iso
@@ -249,7 +250,7 @@ def register_routes(mcp: FastMCP) -> None:
         agent_backend = body.agent_backend
         settings = await ctx.client.settings.get()
         if not agent_backend:
-            agent_backend = settings.get("default_agent_backend", "claude-code")
+            agent_backend = resolve_default_agent_backend(settings)
         launcher = None
         ide = None
         if body.launcher and body.launcher.strip():
@@ -298,8 +299,14 @@ def register_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def task_events(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
-        limit = int(request.query_params.get("limit", "20"))
-        offset = int(request.query_params.get("offset", "0"))
+        try:
+            limit = min(max(int(request.query_params.get("limit", "20")), 1), 1000)
+        except ValueError:
+            limit = 20
+        try:
+            offset = min(max(int(request.query_params.get("offset", "0")), 0), 100_000)
+        except ValueError:
+            offset = 0
         tail = request.query_params.get("tail", "0") in {"1", "true", "yes"}
         before = request.query_params.get("before") or None
         before_id = request.query_params.get("before_id") or None
@@ -556,6 +563,7 @@ def register_routes(mcp: FastMCP) -> None:
                     "review": str(overrides["review"]) if "review" in overrides else None,
                 },
                 "workflow": {"wip_limits": _parse_wip_limits(settings.get("workflow.wip_limits"))},
+                "chat_last_active_session": settings.get("chat_last_active_session", ""),
             }
         )
 
@@ -569,8 +577,10 @@ def register_routes(mcp: FastMCP) -> None:
 
         def _list_dir(raw: str) -> dict[str, Any]:
             target = Path(raw).expanduser().resolve()
+            if not target.is_relative_to(Path.home()):
+                raise ValueError("Path outside allowed boundaries")
             if not target.is_dir():
-                raise ValueError(f"Not a directory: {target}")
+                raise ValueError("Invalid path: not a directory")
 
             entries: list[dict[str, Any]] = []
             try:
@@ -715,9 +725,10 @@ def register_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/events/stream", methods=["GET"])
     @require_context(mcp)
-    async def event_stream(_request: Request, *, ctx: Any) -> Response:
+    async def event_stream(request: Request, *, ctx: Any) -> Response:
         """SSE endpoint — streams board + session events to the client."""
-        return sse_response(_sse_event_generator(mcp))
+        client_type = request.query_params.get("client_type", "web")
+        return sse_response(_sse_event_generator(mcp, client_type=client_type))
 
     @mcp.custom_route("/api/tasks/{task_id}/follow-up", methods=["POST"])
     @require_context(mcp)
@@ -731,8 +742,6 @@ def register_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, FollowUpRequest)
-
-        from kagan.core import resolve_default_agent_backend
 
         # Best-effort cancel current run
         try:
@@ -753,3 +762,36 @@ def register_routes(mcp: FastMCP) -> None:
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
         return _ok(task_to_wire_dict(task, runtime=runtime))
+
+    # ── Presence ───────────────────────────────────────────────────────────
+
+    @mcp.custom_route("/api/presence", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def get_presence(_request: Request, *, ctx: Any) -> JSONResponse:
+        """List connected clients with recent heartbeats."""
+        tracker = getattr(ctx, "presence", None)
+        if tracker is None:
+            return _ok([])
+        return _ok(tracker.to_wire())
+
+    @mcp.custom_route("/api/presence/heartbeat", methods=["POST"])
+    @require_context(mcp)
+    @handle_errors
+    async def presence_heartbeat(request: Request, *, ctx: Any) -> JSONResponse:
+        """Register or update a client's presence."""
+        tracker = getattr(ctx, "presence", None)
+        if tracker is None:
+            return _ok(None)
+        body = await request.json()
+        client_id = body.get("client_id", "")
+        client_type = body.get("client_type", "")
+        if not client_id or not client_type:
+            return _err("client_id and client_type are required", status=400)
+        tracker.register(
+            client_id=client_id,
+            client_type=client_type,
+            user_label=body.get("user_label", ""),
+            active_task_id=body.get("active_task_id"),
+        )
+        return _ok(None)

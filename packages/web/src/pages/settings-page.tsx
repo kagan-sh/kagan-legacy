@@ -22,7 +22,7 @@ export function Component() {
       <div className="flex items-center gap-3 border-b border-[color:var(--border-subtle)] pb-3">
         <h1 className="text-sm font-semibold">Preferences</h1>
         <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-        <span className="text-xs text-[var(--muted-foreground)]">Runtime, identity &amp; orchestration defaults</span>
+        <span className="text-xs text-[var(--muted-foreground)]">Runtime, identity &amp; orchestration defaults with reference backends surfaced first</span>
         <div className="ml-auto">
           <Button
             variant="outline"

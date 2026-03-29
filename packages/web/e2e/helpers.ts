@@ -23,7 +23,7 @@ export async function ensureBoardReady(
   const projectId = projectEnvelope.data?.id;
   expect(projectId).toBeTruthy();
 
-  const activated = await request.post(`/api/projects/${projectId}/activate`);
+  const activated = await request.post(`/api/projects/${projectId}/activate`, { data: {} });
   expect(activated.ok()).toBeTruthy();
 
   // Seed one task so the Kanban columns render (board shows empty state otherwise)

@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import os
+import shlex
 import signal
 import sys
 from collections.abc import Awaitable, Callable
@@ -14,7 +15,8 @@ from sqlmodel import desc, select
 
 from kagan.core import git
 from kagan.core._agent import (
-    get_backend,
+    BackendCapability,
+    get_backend_spec,
     resolve_default_agent_backend,
     spawn_agent,
     spawn_agent_via_acp,
@@ -395,12 +397,12 @@ class Sessions:
             persona_prompt: str | None = None
             if persona:
                 persona_prompt = get_persona_prompt(persona, settings_dict)
-                if persona_prompt and persona_prompt.strip():
-                    prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
+            if persona_prompt and persona_prompt.strip():
+                prompt = f"{build_persona_section(persona_prompt)}\n\n{prompt}"
             db_path_str = str(self._db_path or default_db_path())
-            entry = get_backend(agent_backend)
+            backend_spec = get_backend_spec(agent_backend)
 
-            if entry.get("supports_acp"):
+            if backend_spec.has_capability(BackendCapability.ACP_STREAMING):
                 pid, reader_task = await spawn_agent_via_acp(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -416,6 +418,8 @@ class Sessions:
                     lambda t: asyncio.create_task(self._handle_acp_done(t, task_id, session_obj.id))
                 )
             else:
+                _raw_timeout = settings_dict.get("agent_timeout_seconds")
+                _timeout = int(_raw_timeout) if _raw_timeout else 3600
                 pid = await spawn_agent(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -424,6 +428,7 @@ class Sessions:
                     task_id=task_id,
                     db_path=db_path_str,
                     project_id=task.project_id,
+                    timeout_seconds=_timeout,
                 )
                 await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
                 asyncio.create_task(
@@ -435,12 +440,9 @@ class Sessions:
 
         launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
-        backend_entry = get_backend(agent_backend)
-        backend_executable = backend_entry.get("executable")
-        if not backend_executable:
-            raise AgentError(f"agent backend {agent_backend!r} has no executable configured")
+        backend_spec = get_backend_spec(agent_backend)
         startup_prompt = _build_attached_startup_prompt(task)
-        agent_cmd = str(backend_executable)
+        agent_cmd = backend_spec.executable
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
             "session_id": session_obj.id,
@@ -835,7 +837,7 @@ class Sessions:
 
     async def _should_retry(self, task: Task, session_id: str) -> bool:
         """Run the task's success_command and retry if it fails. Returns True if retrying."""
-        if not task.success_command:
+        if not task.success_command or not task.success_command.strip():
             return False
         if task.max_retries <= 0:
             return False
@@ -854,8 +856,8 @@ class Sessions:
         cwd = Path(ws.worktree_path) if ws else None
         proc: asyncio.subprocess.Process | None = None
         try:
-            proc = await asyncio.create_subprocess_shell(
-                task.success_command,
+            proc = await asyncio.create_subprocess_exec(
+                *shlex.split(task.success_command),
                 cwd=cwd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,

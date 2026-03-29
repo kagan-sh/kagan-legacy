@@ -10,23 +10,37 @@ from kagan.core._logging import configure_logging as _configure_logging
 
 _configure_logging()
 
-from kagan.core._acp import ACPClientBase
+from kagan.core._acp import (
+    ACP_TIMEOUT_HINT,
+    ACPClientBase,
+    acp_handshake_timeout_seconds,
+    acp_process_exit_hint,
+    acp_startup_timeout_seconds,
+    friendly_acp_error_message,
+)
 from kagan.core._agent import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
     GEMINI_CLI_BACKEND,
     KIMI_CLI_BACKEND,
     OPENCODE_BACKEND,
+    REFERENCE_BACKENDS,
     AgentBackendConfig,
+    BackendCapability,
+    BackendSpec,
     build_agent_environment,
     build_mcp_manifest,
     get_backend,
+    get_backend_spec,
+    list_available_backends,
+    list_backend_specs,
     list_backends,
     resolve_acp_command,
     resolve_default_agent_backend,
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
 from kagan.core._db import default_db_path
+from kagan.core._event_bus import BusEvent, BusMessage, EventBus
 from kagan.core._launchers import resolve_launcher
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._prompts import (
@@ -89,6 +103,7 @@ from kagan.core.models import (
 )
 
 __all__ = [
+    "ACP_TIMEOUT_HINT",
     "ADDITIONAL_INSTRUCTIONS_KEY",
     "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
@@ -102,16 +117,22 @@ __all__ = [
     "PERSONA_DEFINITIONS_KEY",
     "PERSONA_USER_WHITELIST_KEY",
     "PLANNING_DEPTH_KEY",
+    "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
     "AttackVector",
     "AuditEntry",
+    "BackendCapability",
+    "BackendSpec",
     "BranchRefStrategy",
+    "BusEvent",
+    "BusMessage",
     "CheckStatus",
     "ConfigurationError",
     "DBWatcher",
+    "EventBus",
     "InjectionDetector",
     "InvalidTransitionError",
     "KaganCore",
@@ -138,14 +159,21 @@ __all__ = [
     "ValidationError",
     "Worktree",
     "WorktreeError",
+    "acp_handshake_timeout_seconds",
+    "acp_process_exit_hint",
+    "acp_startup_timeout_seconds",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
     "default_db_path",
     "detect_dotfile_overrides",
+    "friendly_acp_error_message",
     "get_backend",
+    "get_backend_spec",
     "get_system_git_identity",
     "install_asyncio_subprocess_exception_filter",
+    "list_available_backends",
+    "list_backend_specs",
     "list_backends",
     "load_persona_definitions",
     "parse_priority",

@@ -39,7 +39,7 @@ ______________________________________________________________________
    uv tool install kagan
    ```
 
-2. Install the extension:
+1. Install the extension:
 
    ```bash
    code --install-extension kagan.kagan-vscode
@@ -50,10 +50,11 @@ ______________________________________________________________________
    - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode)
    - [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode)
 
-3. Open a local repository in VS Code.
-4. Open the Chat panel and run `@kagan /status`, or click the **Kagan** icon in the Activity Bar.
+1. Open a local repository in VS Code.
 
-The extension connects to `http://localhost:8765` by default and auto-starts a local Kagan server when `kagan` is available on your `PATH`.
+1. Open the Chat panel and run `@kagan /status`, or click the **Kagan** icon in the Activity Bar.
+
+The extension connects to `http://localhost:8765` by default and auto-starts `kagan serve` when `kagan` is available on your `PATH`.
 
 ______________________________________________________________________
 
@@ -69,9 +70,9 @@ code .
 Then in VS Code:
 
 1. Open the **Chat** panel
-2. Type `@kagan /status`
-3. Open the **Kagan** sidebar from the Activity Bar
-4. Create or run a task
+1. Type `@kagan /status`
+1. Open the **Kagan** sidebar from the Activity Bar
+1. Create or run a task
 
 If the local server is already running, the extension reuses it. If you connect to a remote server, set `kagan.serverUrl` and `kagan.authToken` in VS Code settings.
 
@@ -109,7 +110,7 @@ ______________________________________________________________________
 ## Troubleshooting
 
 - **Extension cannot connect**: confirm `kagan --version` works in the same shell VS Code inherits
-- **Local server did not auto-start**: run `kagan web --no-open` manually once to confirm the CLI is installed and reachable
+- **Local server did not auto-start**: run `kagan serve` manually once to confirm the CLI is installed and reachable
 - **Remote server requires auth**: set `kagan.serverUrl`, `kagan.protocol`, and `kagan.authToken`
 
 More help: [Troubleshooting](../troubleshooting.md)

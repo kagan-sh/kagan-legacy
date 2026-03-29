@@ -11,9 +11,11 @@ from textual.theme import BUILTIN_THEMES
 from textual.widgets import Button, Footer, Input, Select, Static, Switch, TextArea
 from textual.widgets._option_list import Option, OptionList
 
-from kagan.chat import list_registered_agent_backends
+from kagan.chat import resolve_default_agent_backend
 from kagan.core import (
     detect_dotfile_overrides,
+    list_available_backends,
+    list_backend_specs,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +43,23 @@ def _build_theme_options() -> list[tuple[str, str]]:
     ]
     for name in sorted(BUILTIN_THEMES):
         label = name.replace("-", " ").title()
+        options.append((label, name))
+    return options
+
+
+def _build_agent_backend_options() -> list[tuple[str, str]]:
+    availability = list_available_backends()
+    specs = list_backend_specs()
+    options: list[tuple[str, str]] = []
+    for name, spec in specs.items():
+        label = spec.label()
+        suffix: list[str] = []
+        if spec.reference:
+            suffix.append("reference")
+        if not availability.get(name, False):
+            suffix.append("unavailable")
+        if suffix:
+            label = f"{label} ({', '.join(suffix)})"
         options.append((label, name))
     return options
 
@@ -222,7 +241,7 @@ class SettingsModal(ModalScreen[None]):
                     "select",
                     "Default agent backend",
                     "settings-default-agent",
-                    options_factory=list_registered_agent_backends,
+                    options_factory=_build_agent_backend_options,
                 ),
                 SettingFieldSpec(
                     "select",
@@ -237,7 +256,8 @@ class SettingsModal(ModalScreen[None]):
                     "static",
                     text=(
                         "[dim]Appended to every agent prompt — your preferences,\n"
-                        "conventions, and workflow rules.\n\n"
+                        "conventions, and workflow rules for "
+                        "Create -> Start -> Review -> Merge.\n\n"
                         "Examples: 'Use conventional commits' ·\n"
                         "'Always explain tradeoffs first' ·\n"
                         "'Commit messages in Portuguese'[/dim]"
@@ -246,11 +266,15 @@ class SettingsModal(ModalScreen[None]):
                 SettingFieldSpec("static", field_id="settings-dotfile-status"),
                 SettingFieldSpec(
                     "static",
-                    text="[dim]Full prompt overrides -> .kagan/prompts/[/dim]",
+                    text="[dim]Full prompt overrides live in .kagan/prompts/[/dim]",
                 ),
             ),
             "workflow": (
-                SettingFieldSpec("switch", "Enable auto review", "settings-auto-review"),
+                SettingFieldSpec(
+                    "switch",
+                    "Enable auto review",
+                    "settings-auto-review",
+                ),
                 SettingFieldSpec(
                     "switch", "Require approval before merge", "settings-require-review-approval"
                 ),
@@ -311,7 +335,7 @@ class SettingsModal(ModalScreen[None]):
                 ),
                 SettingFieldSpec(
                     "select",
-                    "Interactive launcher",
+                    "Interactive attach launcher",
                     "settings-attached-launcher",
                     options=(
                         ("tmux", "tmux"),
@@ -324,7 +348,18 @@ class SettingsModal(ModalScreen[None]):
                     ),
                 ),
                 SettingFieldSpec(
-                    "switch", "Open last project on launch", "settings-open-last-project"
+                    "select",
+                    "Default `kagan` startup surface",
+                    "settings-startup-surface",
+                    options=(
+                        ("TUI", "tui"),
+                        ("Web", "web"),
+                        ("Chat", "chat"),
+                        ("Show chooser on next launch", "ask"),
+                    ),
+                ),
+                SettingFieldSpec(
+                    "switch", "TUI: reopen last project on launch", "settings-open-last-project"
                 ),
                 SettingFieldSpec(
                     "switch",
@@ -406,15 +441,12 @@ class SettingsModal(ModalScreen[None]):
         )
 
         # --- General ---
-        default_agent = settings.get("default_agent_backend") or "claude-code"
         agent_select = self.query_one("#settings-default-agent", Select)
-        available_agents = list_registered_agent_backends()
-        if default_agent in available_agents:
-            agent_select.value = default_agent
-        elif available_agents:
-            agent_select.value = available_agents[0]
-        else:
-            agent_select.value = "claude-code"
+        available_agents = {value for _, value in _build_agent_backend_options()}
+        default_agent = resolve_default_agent_backend(settings)
+        if default_agent not in available_agents:
+            default_agent = resolve_default_agent_backend({})
+        agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         attached_select = self.query_one("#settings-attached-launcher", Select)
@@ -423,6 +455,13 @@ class SettingsModal(ModalScreen[None]):
             if attached_launcher
             in {"tmux", "nvim", "vscode", "cursor", "windsurf", "kiro", "antigravity"}
             else "tmux"
+        )
+        startup_surface = settings.get("startup_default_surface") or settings.get(
+            "ui.surface_chooser_last_choice", "tui"
+        )
+        startup_surface_select = self.query_one("#settings-startup-surface", Select)
+        startup_surface_select.value = (
+            startup_surface if startup_surface in {"tui", "web", "chat", "ask"} else "tui"
         )
 
         self.query_one("#settings-default-base-branch", Input).value = settings.get(
@@ -622,10 +661,7 @@ class SettingsModal(ModalScreen[None]):
             raw_options = (
                 field.options_factory() if field.options_factory is not None else field.options
             )
-            if field.field_id == "settings-default-agent":
-                options = [(name, name) for name in cast("list[str]", raw_options)]
-            else:
-                options = list(raw_options)
+            options = list(raw_options)
             return self._select_field(field.label, field.field_id, options)
         if field.kind == "text" and field.field_id is not None:
             return self._text_field(field.label, field.field_id)
@@ -682,10 +718,14 @@ class SettingsModal(ModalScreen[None]):
     async def _save_all_settings(self) -> None:
         agent_backend_value = self.query_one("#settings-default-agent", Select).value
         default_agent_backend = (
-            agent_backend_value if isinstance(agent_backend_value, str) else "claude-code"
+            agent_backend_value
+            if isinstance(agent_backend_value, str)
+            and agent_backend_value in {value for _, value in _build_agent_backend_options()}
+            else resolve_default_agent_backend({})
         )
 
         attached_launcher_value = self.query_one("#settings-attached-launcher", Select).value
+        startup_surface_value = self.query_one("#settings-startup-surface", Select).value
         strategy_value = self.query_one("#settings-base-ref-strategy", Select).value
         base_branch = self.query_one("#settings-default-base-branch", Input).value.strip() or "main"
         theme_value = self.query_one("#settings-theme", Select).value
@@ -709,6 +749,7 @@ class SettingsModal(ModalScreen[None]):
         attached_launcher = (
             attached_launcher_value if isinstance(attached_launcher_value, str) else "tmux"
         )
+        startup_surface = startup_surface_value if isinstance(startup_surface_value, str) else "tui"
         strategy = strategy_value if isinstance(strategy_value, str) else "local_if_ahead"
         theme = theme_value if isinstance(theme_value, str) else ""
 
@@ -720,6 +761,7 @@ class SettingsModal(ModalScreen[None]):
         updates: dict[str, str] = {
             "default_agent_backend": default_agent_backend,
             "attached_launcher": attached_launcher,
+            "startup_default_surface": startup_surface,
             "default_base_branch": base_branch,
             "worktree_base_ref_strategy": strategy,
             "theme": theme,

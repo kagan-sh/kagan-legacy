@@ -129,13 +129,15 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("enter", "send_message", "Send"),
     Binding("shift+enter", "insert_newline", "Newline", key_display="Shift+Enter"),
     Binding("tab", "accept_completion", "Complete"),
+    Binding("ctrl+p", "open_file_picker", "Files", key_display="Ctrl+P"),
     Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
-    Binding("escape", "dismiss", "Stop", key_display="Esc"),
+    Binding("escape", "dismiss", "Stop / Edit", key_display="Esc"),
     Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
 ]
 
 WELCOME_BINDINGS: list[BindingType] = [
     Binding("enter", "open_selected", "Open"),
+    Binding("c", "create_from_here", "Create Here"),
     Binding("n", "new_project", "New"),
     Binding("o", "open_folder", "Open Folder"),
     Binding("x", "delete_project", "Delete"),
@@ -366,7 +368,13 @@ class FooterBuilder:
 
     @staticmethod
     def welcome() -> list[tuple[str, str]]:
-        return [("Enter", "open"), ("n", "new"), ("o", "folder"), ("Ctrl+,", "settings")]
+        return [
+            ("Enter", "open"),
+            ("c", "create here"),
+            ("n", "new"),
+            ("o", "folder"),
+            ("Ctrl+,", "settings"),
+        ]
 
     @staticmethod
     def settings() -> list[tuple[str, str]]:
@@ -381,8 +389,9 @@ class FooterBuilder:
         return [
             ("Enter", "send"),
             ("Shift+Enter", "newline"),
+            ("Ctrl+P", "files"),
             ("Ctrl+K", "sessions"),
-            ("Esc", "close"),
+            ("Esc", "stop / edit"),
         ]
 
 

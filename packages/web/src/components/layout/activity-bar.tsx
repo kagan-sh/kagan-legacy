@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router';
-import { LayoutDashboard, Settings } from 'lucide-react';
+import { LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { to: '/board', label: 'Board', icon: LayoutDashboard },
+  { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 

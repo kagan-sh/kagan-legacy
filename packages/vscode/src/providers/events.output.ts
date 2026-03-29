@@ -5,8 +5,8 @@
 
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import { EVENT_TYPE, SSE_TYPE } from "../api/types.js";
-import { extractToolTitle, extractToolStatus } from "../api/event-helpers.js";
+import { SSE_TYPE } from "../api/types.js";
+import { renderEvent } from "../api/event-rendering.js";
 import type { WireEvent, WireTask, SSEMessage } from "../api/types.js";
 
 // ── Output Channel ──────────────────────────────────────────────────────────
@@ -41,99 +41,69 @@ export class AgentOutputProvider implements vscode.Disposable {
   }
 
   private renderEvent(event: WireEvent): void {
-    const p = event.payload ?? {};
+    const rendered = renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
+    if (!rendered) return;
 
-    switch (event.type) {
-      case EVENT_TYPE.OUTPUT_CHUNK: {
-        const text = String(p.text ?? "");
-        if (!text) return;
-        this.channel.append(text);
+    switch (rendered.kind) {
+      case "text":
+      case "thought":
+        if (!rendered.body) return;
+        this.channel.append(rendered.body);
         this.lastWasText = true;
         return;
-      }
 
-      case EVENT_TYPE.TOOL_CALL_START: {
+      case "tool_start":
         this.breakAfterText();
-        this.channel.appendLine(`  > ${extractToolTitle(p)}`);
+        this.channel.appendLine(`  > ${rendered.title}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.TOOL_CALL_UPDATE: {
-        const status = extractToolStatus(p, "done");
-        if (status !== "completed" && status !== "done") {
-          this.breakAfterText();
-          this.channel.appendLine(`  > ${extractToolTitle(p)} -> ${status}`);
-          this.lastWasText = false;
-        }
-        return;
-      }
-
-      case EVENT_TYPE.AGENT_STATUS:
-        return;
-
-      case EVENT_TYPE.TASK_STATUS_CHANGED: {
+      case "tool_update":
         this.breakAfterText();
-        this.channel.appendLine(`[${p.from ?? "?"} -> ${p.to ?? "?"}]`);
+        this.channel.appendLine(`  > ${rendered.title} -> ${rendered.body || "running"}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.AGENT_COMPLETED: {
+      case "status_change":
         this.breakAfterText();
-        this.channel.appendLine("[DONE] Agent completed");
+        this.channel.appendLine(`[${rendered.title}]`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.AGENT_FAILED: {
+      case "note":
         this.breakAfterText();
-        this.channel.appendLine(`[FAIL] ${p.error ?? "Agent failed"}`);
+        this.channel.appendLine(`[NOTE] ${rendered.title}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.PLAN_UPDATE: {
+      case "error":
         this.breakAfterText();
-        this.channel.appendLine("  * Plan updated");
+        this.channel.appendLine(`[FAIL] ${rendered.body || rendered.title}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.MERGE_COMPLETED: {
+      case "plan":
         this.breakAfterText();
-        this.channel.appendLine("[MERGE] Merge completed");
+        this.channel.appendLine(`  * ${rendered.title}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.MERGE_FAILED: {
+      case "merge":
         this.breakAfterText();
-        this.channel.appendLine(`[MERGE] Merge failed: ${p.error ?? "unknown"}`);
+        this.channel.appendLine(`[MERGE] ${rendered.title}${rendered.body ? `: ${rendered.body}` : ""}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.CRITERION_VERDICT: {
+      case "verdict":
         this.breakAfterText();
-        const mark = String(p.verdict ?? "") === "PASS" ? "PASS" : "FAIL";
-        this.channel.appendLine(`  [${mark}] ${p.reason ?? ""}`);
+        this.channel.appendLine(`  [${rendered.title}] ${rendered.body}`);
         this.lastWasText = false;
         return;
-      }
 
-      case EVENT_TYPE.AUTO_REVIEW_STARTED: {
+      default:
         this.breakAfterText();
-        this.channel.appendLine("  * Auto-review started");
+        this.channel.appendLine(`[${rendered.title}] ${rendered.body}`.trim());
         this.lastWasText = false;
-        return;
-      }
-
-      default: {
-        this.breakAfterText();
-        this.channel.appendLine(`[${event.type}] ${JSON.stringify(p)}`);
-        this.lastWasText = false;
-      }
     }
   }
 

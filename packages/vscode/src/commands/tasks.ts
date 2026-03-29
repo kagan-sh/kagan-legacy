@@ -44,11 +44,26 @@ export function registerTaskCommands(
         });
 
         const priority = await pickPriority();
+        const baseBranch = await vscode.window.showInputBox({
+          prompt: "Base branch",
+          placeHolder: "Optional target branch, e.g. main",
+        });
+        const acceptanceCriteria = await vscode.window.showInputBox({
+          prompt: "Acceptance criteria",
+          placeHolder: "Optional; separate multiple items with |",
+        });
+        const agentBackend = await vscode.window.showInputBox({
+          prompt: "Agent backend",
+          placeHolder: "Optional; leave blank to use the default backend",
+        });
 
         await client.createTask({
           title: title.trim(),
           description: description?.trim() || undefined,
           priority: priority ?? undefined,
+          base_branch: baseBranch?.trim() || undefined,
+          acceptance_criteria: parseAcceptanceCriteria(acceptanceCriteria),
+          agent_backend: agentBackend?.trim() || undefined,
         });
         boardProvider.refresh();
       });
@@ -255,6 +270,15 @@ function renderTaskSummary(task: WireTask): string {
     "",
     criteria,
   ].join("\n");
+}
+
+function parseAcceptanceCriteria(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  const items = value
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
 }
 
 async function pickPriority(): Promise<Priority | undefined> {

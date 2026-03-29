@@ -315,8 +315,12 @@ export function OrchestratorChatPanel({
         });
     }, [messages, streamEntries]);
 
+    const [lastSentText, setLastSentText] = useState("");
+    const [editPrefill, setEditPrefill] = useState<string | null>(null);
+
     const handleSend = useCallback(
         (text: string, attachments?: Attachment[]) => {
+            setLastSentText(text);
             setIsStreaming(true);
 
             const displayText = attachments?.length
@@ -382,21 +386,28 @@ export function OrchestratorChatPanel({
         [sessionId, handleChatSSEMessage],
     );
 
-    const handleInterrupt = useCallback(() => {
-        if (!isStreaming) return;
-        // Abort the SSE stream locally
-        chatAbortRef.current?.abort();
-        // Tell the server to cancel the turn
-        fetch(
-            `${apiClient.getBaseUrl()}/api/chat/${sessionId}/interrupt`,
-            { method: "POST" },
-        ).catch(() => {});
-        setStreamEntries((prev) => [
-            ...prev,
-            { kind: "note", message: "Interrupted by user." },
-        ]);
-        setIsStreaming(false);
-    }, [isStreaming, sessionId]);
+    const handleInterrupt = useCallback(
+        (opts?: { pendingText: string | null }) => {
+            if (!isStreaming) return;
+            chatAbortRef.current?.abort();
+            fetch(
+                `${apiClient.getBaseUrl()}/api/chat/${sessionId}/interrupt`,
+                { method: "POST" },
+            ).catch(() => {});
+            setStreamEntries((prev) => [
+                ...prev,
+                { kind: "note", message: "Interrupted by user." },
+            ]);
+            setIsStreaming(false);
+
+            if (opts?.pendingText) {
+                setTimeout(() => handleSend(opts.pendingText!), 50);
+            } else {
+                setEditPrefill(lastSentText);
+            }
+        },
+        [isStreaming, sessionId, lastSentText, handleSend],
+    );
 
     const handleSlashCommand = useCallback(
         (command: string) => {
@@ -628,7 +639,7 @@ export function OrchestratorChatPanel({
 
             {!isMobile && surface === "rail" ? (
                 <div className="border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-center font-code text-[10px] tracking-[0.12em] text-[var(--muted-foreground)]">
-                    ⌘⇧K sessions · ⌘I toggle · esc stop
+                    ⌘⇧K sessions · ⌘I toggle{isStreaming ? " · esc stop & edit last" : ""}
                 </div>
             ) : null}
 
@@ -637,6 +648,8 @@ export function OrchestratorChatPanel({
                 onSlashCommand={handleSlashCommand}
                 onInterrupt={handleInterrupt}
                 disableSend={isStreaming}
+                externalPrefill={editPrefill ?? undefined}
+                onPrefillConsumed={() => setEditPrefill(null)}
             />
         </aside>
     );

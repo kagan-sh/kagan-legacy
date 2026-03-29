@@ -138,7 +138,9 @@ async def serve_http(
         if projects:
             await client.projects.set_active(projects[0].id)
 
-    ctx = ServerContext(client=client, opts=opts.mcp_opts)
+    from kagan.server._presence import PresenceTracker
+
+    ctx = ServerContext(client=client, opts=opts.mcp_opts, presence=PresenceTracker())
     _set_server_context(mcp, ctx)
     # TLS: pass cert/key paths to uvicorn if enabled.
     ssl_certfile: str | None = None
@@ -162,6 +164,11 @@ async def serve_http(
         import uvicorn
 
         starlette_app = mcp.streamable_http_app()
+
+        from kagan.server._middleware import install_security_middleware
+
+        install_security_middleware(starlette_app)
+
         config = uvicorn.Config(
             starlette_app,
             host=mcp.settings.host,

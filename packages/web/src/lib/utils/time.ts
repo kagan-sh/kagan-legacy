@@ -19,8 +19,11 @@ export function parseUtcMs(value: string): number {
 }
 
 /** Human-friendly relative timestamp: "just now", "5m", "3h", "2d". */
-export function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - parseUtc(dateStr).getTime()) / 1000);
+export function timeAgo(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const ms = parseUtc(dateStr).getTime();
+  if (Number.isNaN(ms)) return '';
+  const seconds = Math.floor((Date.now() - ms) / 1000);
   if (seconds < 60) return 'just now';
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;

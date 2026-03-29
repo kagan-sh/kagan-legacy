@@ -13,6 +13,20 @@
 
 
 
+## v0.14.1-beta.2 (2026-03-29)
+
+
+
+
+### bug fixes
+
+- **deps**: Add missing pathspec dependency for file_picker
+  ([`3b4dcc7`](https://github.com/kagan-sh/kagan/commit/3b4dcc7b2b3bc72191877f76201089a757598099))
+
+
+
+
+
 ## v0.14.1-beta.1 (2026-03-29)
 
 

@@ -49,7 +49,7 @@ class Tasks:
         self.events = Events(
             engine,
             signals,
-            event_bus=client.event_bus if client is not None else None,
+            event_bus=None,
         )
         self.sessions = Sessions(
             engine,

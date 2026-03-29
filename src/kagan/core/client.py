@@ -24,7 +24,6 @@ from sqlmodel import SQLModel
 from kagan.core._agent import cleanup_all_spawned_processes
 from kagan.core._audit import AuditLog
 from kagan.core._db import create_db_engine, default_db_path, get_db_version
-from kagan.core._event_bus import EventBus
 from kagan.core._events import BoardEvent, Events
 from kagan.core._persona import PersonaPresetOps
 from kagan.core._preflight import PreflightCheckResult, run_all_checks
@@ -280,8 +279,6 @@ class KaganCore:
         self._db_path: Path = resolved
         self._engine = create_db_engine(resolved)
         self._signals: dict[str, asyncio.Event] = {}
-        self._event_bus = EventBus()
-
         self.tasks = Tasks(self._engine, self._signals, client=self, db_path=resolved)
         self.projects = Projects(self._engine, self)
         self.worktrees = Worktrees(self._engine, self)
@@ -292,10 +289,6 @@ class KaganCore:
 
         self.active_project_id: str | None = None
         logger.info("KaganCore initialized")
-
-    @property
-    def event_bus(self) -> EventBus:
-        return self._event_bus
 
     @property
     def engine(self) -> Any:

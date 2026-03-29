@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from starlette.responses import StreamingResponse
 
-from kagan.core._event_bus import BusEvent, BusMessage
 from kagan.core.errors import KaganError
 from kagan.mcp.server import get_server_context
 from kagan.server.responses import EventResponse
@@ -139,53 +138,6 @@ async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) 
         logger.debug("SSE board event stream failed", exc_info=True)
 
 
-def _bus_message_to_sse_data(msg: BusMessage) -> dict[str, Any] | None:
-    if msg.event == BusEvent.SETTINGS_CHANGED:
-        return {"type": "SETTINGS_CHANGED", "keys": msg.payload.get("keys", [])}
-    if msg.event == BusEvent.TASK_DELETED:
-        return {"type": "TASK_DELETED", "task_id": msg.entity_id}
-    if msg.event in (BusEvent.TASK_CREATED, BusEvent.TASK_UPDATED):
-        return {"type": "TASK_UPDATED", "task_id": msg.entity_id}
-    return None
-
-
-async def _forward_bus_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
-    # Bus events carry entity_id (task_id for task events) — filter by project.
-    allowed_task_ids = await _build_project_task_ids(ctx)
-    events_since_refresh = 0
-    _REFRESH_INTERVAL = 50
-
-    bus_queue = await ctx.client.event_bus.subscribe()
-    try:
-        while True:
-            msg: BusMessage = await bus_queue.get()
-            data = _bus_message_to_sse_data(msg)
-            if data is None:
-                continue
-
-            events_since_refresh += 1
-            if events_since_refresh >= _REFRESH_INTERVAL:
-                allowed_task_ids = await _build_project_task_ids(ctx)
-                events_since_refresh = 0
-
-            # Settings events have no task scope — always forward
-            task_id = data.get("task_id")
-            if task_id is not None and allowed_task_ids is not None:
-                if task_id not in allowed_task_ids:
-                    # Refresh once before dropping — task may be newly created
-                    allowed_task_ids = await _build_project_task_ids(ctx)
-                    if allowed_task_ids is not None and task_id not in allowed_task_ids:
-                        continue
-
-            _queue_put_best_effort(queue, data)
-    except asyncio.CancelledError:
-        raise
-    except (ConnectionError, RuntimeError, OSError, KaganError):
-        logger.debug("SSE bus event forwarder failed", exc_info=True)
-    finally:
-        await ctx.client.event_bus.unsubscribe(bus_queue)
-
-
 async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIterator[str]:
     while True:
         try:
@@ -278,7 +230,6 @@ async def _sse_event_generator(
     tasks = (
         asyncio.create_task(_forward_session_events(ctx, queue)),
         asyncio.create_task(_forward_board_events(ctx, queue)),
-        asyncio.create_task(_forward_bus_events(ctx, queue)),
         asyncio.create_task(_poll_db_for_external_changes(ctx, queue)),
     )
 

@@ -10,6 +10,18 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+MAX_PRESENCE_CLIENT_ID = 128
+MAX_PRESENCE_CLIENT_TYPE = 32
+MAX_PRESENCE_USER_LABEL = 128
+MAX_PRESENCE_TASK_ID = 64
+
+
+def sanitize_presence_text(value: Any, *, max_length: int) -> str:
+    """Normalize small presence payload strings from untrusted clients."""
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:max_length]
+
 
 @dataclass(slots=True)
 class ClientPresence:
@@ -21,6 +33,7 @@ class ClientPresence:
     last_heartbeat: float = field(default_factory=time.time)
     active_task_id: str | None = None
     user_label: str = ""
+    connection_token: str | None = None
 
     def is_alive(self, timeout: float = 60.0) -> bool:
         """Check if presence is still valid (heartbeat within timeout)."""
@@ -39,12 +52,15 @@ class PresenceTracker:
         client_type: str,
         user_label: str = "",
         active_task_id: str | None = None,
+        connection_token: str | None = None,
     ) -> ClientPresence:
         """Register or update a client's presence."""
         if client_id in self._clients:
             presence = self._clients[client_id]
             presence.last_heartbeat = time.time()
             presence.active_task_id = active_task_id
+            presence.client_type = client_type
+            presence.connection_token = connection_token
             if user_label:
                 presence.user_label = user_label
         else:
@@ -53,19 +69,36 @@ class PresenceTracker:
                 client_type=client_type,
                 user_label=user_label,
                 active_task_id=active_task_id,
+                connection_token=connection_token,
             )
             self._clients[client_id] = presence
         return presence
 
-    def heartbeat(self, client_id: str, active_task_id: str | None = None) -> None:
+    def heartbeat(
+        self,
+        client_id: str,
+        active_task_id: str | None = None,
+        connection_token: str | None = None,
+    ) -> None:
         """Update heartbeat timestamp for a client."""
-        if client_id in self._clients:
-            self._clients[client_id].last_heartbeat = time.time()
-            if active_task_id is not None:
-                self._clients[client_id].active_task_id = active_task_id
+        if client_id not in self._clients:
+            return
+        presence = self._clients[client_id]
+        if connection_token is not None and presence.connection_token not in (
+            None,
+            connection_token,
+        ):
+            return
+        presence.last_heartbeat = time.time()
+        if active_task_id is not None:
+            presence.active_task_id = active_task_id
 
-    def unregister(self, client_id: str) -> None:
+    def unregister(self, client_id: str, connection_token: str | None = None) -> None:
         """Remove a client's presence."""
+        if connection_token is not None:
+            presence = self._clients.get(client_id)
+            if presence is None or presence.connection_token not in (None, connection_token):
+                return
         self._clients.pop(client_id, None)
 
     def list_active(self, timeout: float = 60.0) -> list[ClientPresence]:

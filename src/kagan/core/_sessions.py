@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import os
-import shlex
 import signal
 import sys
 from collections.abc import Awaitable, Callable
@@ -848,7 +847,8 @@ class Sessions:
             return False
         current_attempt = session.attempt
 
-        # Run success_command in the task worktree
+        # success_command is authored as a shell command, so preserve shell
+        # operators such as &&, pipes, redirects, and quoted expansions.
         ws = await _db_async(
             self._engine,
             lambda s: s.exec(select(Worktree).where(Worktree.task_id == task.id)).first(),
@@ -856,8 +856,8 @@ class Sessions:
         cwd = Path(ws.worktree_path) if ws else None
         proc: asyncio.subprocess.Process | None = None
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *shlex.split(task.success_command),
+            proc = await asyncio.create_subprocess_shell(
+                task.success_command,
                 cwd=cwd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,

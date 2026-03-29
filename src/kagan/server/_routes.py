@@ -28,6 +28,13 @@ from kagan.server._helpers import (
     require_context,
     task_to_wire_dict,
 )
+from kagan.server._presence import (
+    MAX_PRESENCE_CLIENT_ID,
+    MAX_PRESENCE_CLIENT_TYPE,
+    MAX_PRESENCE_TASK_ID,
+    MAX_PRESENCE_USER_LABEL,
+    sanitize_presence_text,
+)
 from kagan.server._sse import _sse_event_generator, sse_response
 from kagan.server.requests import (
     AddRepoRequest,
@@ -727,8 +734,21 @@ def register_routes(mcp: FastMCP) -> None:
     @require_context(mcp)
     async def event_stream(request: Request, *, ctx: Any) -> Response:
         """SSE endpoint — streams board + session events to the client."""
-        client_type = request.query_params.get("client_type", "web")
-        return sse_response(_sse_event_generator(mcp, client_type=client_type))
+        client_type = (
+            sanitize_presence_text(
+                request.query_params.get("client_type", "web"),
+                max_length=MAX_PRESENCE_CLIENT_TYPE,
+            )
+            or "web"
+        )
+        client_id = (
+            sanitize_presence_text(
+                request.query_params.get("client_id", ""),
+                max_length=MAX_PRESENCE_CLIENT_ID,
+            )
+            or None
+        )
+        return sse_response(_sse_event_generator(mcp, client_type=client_type, client_id=client_id))
 
     @mcp.custom_route("/api/tasks/{task_id}/follow-up", methods=["POST"])
     @require_context(mcp)
@@ -784,14 +804,24 @@ def register_routes(mcp: FastMCP) -> None:
         if tracker is None:
             return _ok(None)
         body = await request.json()
-        client_id = body.get("client_id", "")
-        client_type = body.get("client_type", "")
+        client_id = sanitize_presence_text(body.get("client_id"), max_length=MAX_PRESENCE_CLIENT_ID)
+        client_type = sanitize_presence_text(
+            body.get("client_type"),
+            max_length=MAX_PRESENCE_CLIENT_TYPE,
+        )
         if not client_id or not client_type:
             return _err("client_id and client_type are required", status=400)
         tracker.register(
             client_id=client_id,
             client_type=client_type,
-            user_label=body.get("user_label", ""),
-            active_task_id=body.get("active_task_id"),
+            user_label=sanitize_presence_text(
+                body.get("user_label"),
+                max_length=MAX_PRESENCE_USER_LABEL,
+            ),
+            active_task_id=sanitize_presence_text(
+                body.get("active_task_id"),
+                max_length=MAX_PRESENCE_TASK_ID,
+            )
+            or None,
         )
         return _ok(None)

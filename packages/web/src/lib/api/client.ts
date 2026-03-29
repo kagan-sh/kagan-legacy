@@ -431,6 +431,19 @@ export class KaganApiClient {
     return this.request<ClientPresence[]>('/api/presence');
   }
 
+  /** POST /api/presence/heartbeat — refresh presence and optional task focus. */
+  async sendPresenceHeartbeat(input: {
+    client_id: string;
+    client_type: string;
+    active_task_id?: string | null;
+    user_label?: string;
+  }): Promise<void> {
+    await this.request('/api/presence/heartbeat', {
+      method: 'POST',
+      body: input,
+    });
+  }
+
   async setSettings(input: Record<string, string>): Promise<Record<string, string>> {
     return this.request<Record<string, string>>('/api/settings', {
       method: 'POST',

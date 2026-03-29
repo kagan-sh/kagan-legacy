@@ -258,6 +258,7 @@ async def _poll_db_changes(
 async def _sse_event_generator(
     mcp: FastMCP,
     client_type: str = "web",
+    client_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE-formatted events from the global event stream + board changes."""
     ctx = await _wait_for_server_ctx(mcp)
@@ -267,10 +268,11 @@ async def _sse_event_generator(
     # Auto-register presence for this SSE client
     import uuid as _uuid
 
-    sse_client_id = _uuid.uuid4().hex[:16]
+    connection_token = _uuid.uuid4().hex
+    sse_client_id = client_id or _uuid.uuid4().hex[:16]
     tracker = getattr(ctx, "presence", None)
     if tracker is not None:
-        tracker.register(sse_client_id, client_type)
+        tracker.register(sse_client_id, client_type, connection_token=connection_token)
 
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=500)
     tasks = (
@@ -282,12 +284,14 @@ async def _sse_event_generator(
 
     try:
         async for payload in _yield_sse_payloads(queue):
+            if tracker is not None:
+                tracker.heartbeat(sse_client_id, connection_token=connection_token)
             yield payload
     except asyncio.CancelledError:
         pass
     finally:
         if tracker is not None:
-            tracker.unregister(sse_client_id)
+            tracker.unregister(sse_client_id, connection_token=connection_token)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

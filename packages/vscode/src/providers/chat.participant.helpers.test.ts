@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isTaskSession, pickReusableChatSessionId } from "./chat.participant.helpers.js";
+import {
+  isTaskSession,
+  pickReusableChatSessionId,
+  resetStickyChatStateIfNewConversation,
+} from "./chat.participant.helpers.js";
 
 describe("chat participant helpers", () => {
   it("treats task-session sources as task-scoped", () => {
@@ -33,5 +37,26 @@ describe("chat participant helpers", () => {
     ]);
 
     expect(sessionId).toBeNull();
+  });
+
+  it("clears sticky watch state for a fresh conversation", () => {
+    const nextState = resetStickyChatStateIfNewConversation(
+      { activeChatSessionId: "orch-1", watchingTaskId: "task-1" },
+      { history: [] },
+    );
+
+    expect(nextState).toEqual({
+      activeChatSessionId: null,
+      watchingTaskId: null,
+    });
+  });
+
+  it("preserves sticky watch state when the conversation already has history", () => {
+    const state = { activeChatSessionId: "orch-1", watchingTaskId: "task-1" };
+    const nextState = resetStickyChatStateIfNewConversation(state, {
+      history: [{}],
+    });
+
+    expect(nextState).toEqual(state);
   });
 });

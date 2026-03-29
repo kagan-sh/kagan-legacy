@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createTaskViaApi, ensureBoardReady, ensureProjectReady } from './helpers';
+import { createTaskViaApi, ensureBoardReady } from './helpers';
 
 test.describe('Task Flow', () => {
   test('create task shows in Backlog', async ({ page, request }) => {
@@ -14,7 +14,7 @@ test.describe('Task Flow', () => {
 
   test('task page escape returns to board', async ({ page, request }) => {
     const title = `Task escape ${Date.now()}`;
-    await ensureProjectReady(request);
+    await ensureBoardReady(page, request);
     const taskId = await createTaskViaApi(request, title);
     await page.goto(`/task/${taskId}`);
     await page.waitForLoadState('load');
@@ -27,7 +27,7 @@ test.describe('Task Flow', () => {
 
   test('task page supports chat rail layout controls', async ({ page, request }) => {
     const title = `Task rail ${Date.now()}`;
-    await ensureProjectReady(request);
+    await ensureBoardReady(page, request);
     const taskId = await createTaskViaApi(request, title);
     await page.goto(`/task/${taskId}`);
     await page.waitForLoadState('load');

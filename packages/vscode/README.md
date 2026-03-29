@@ -11,7 +11,7 @@
 
 ______________________________________________________________________
 
-Manage tasks, stream live agent output, review diffs, and merge -- all through native VS Code APIs. Works with 14 agent backends including Claude Code, Cursor, Windsurf, and more.
+Manage tasks, stream live agent output, send follow-ups to a watched task, review diffs, and merge -- all through native VS Code APIs. Works with 14 agent backends including Claude Code, Cursor, Windsurf, and more.
 
 ## Features
 

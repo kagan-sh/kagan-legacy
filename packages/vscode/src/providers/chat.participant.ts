@@ -7,7 +7,7 @@ import type { SSEStream } from "../api/sse.js";
 import { SSE_TYPE } from "../api/types.js";
 import { formatToolName, renderEvent } from "../api/event-rendering.js";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
-import { pickReusableChatSessionId } from "./chat.participant.helpers.js";
+import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 
 // ── Registration ───────────────────────────────────────────────────────────
 
@@ -82,6 +82,11 @@ async function handleRequest(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
+  ({ activeChatSessionId, watchingTaskId } = resetStickyChatStateIfNewConversation(
+    { activeChatSessionId, watchingTaskId },
+    chatCtx,
+  ));
+
   switch (request.command) {
     case "status":
       await handleStatus(client, stream);

@@ -124,6 +124,16 @@ Persistent SSE connection. Streams two event types:
 | `SESSION_EVENT` | `{ task_id, event }` | Agent session event (output, tool call, status change, etc.) |
 
 Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
+Clients may include `client_type` and `client_id` query params so the server can keep presence state alive for the same connected client across SSE reconnects.
+
+### Presence: `GET /api/presence` and `POST /api/presence/heartbeat`
+
+Presence is lightweight and in-memory. SSE registration creates the client record; explicit heartbeats refresh optional task context such as "currently watching task X".
+
+| Endpoint                       | Description                                |
+| ------------------------------ | ------------------------------------------ |
+| `GET /api/presence`            | List live connected clients                |
+| `POST /api/presence/heartbeat` | Refresh presence and optional task context |
 
 ### Chat Streaming: `POST /api/chat/{session_id}/stream`
 

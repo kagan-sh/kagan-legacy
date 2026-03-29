@@ -8,6 +8,7 @@ type WireEnvelope<T> = {
 
 type WireProject = {
   id: string;
+  active?: boolean;
 };
 
 type WireTask = {
@@ -40,6 +41,15 @@ export async function ensureBoardReady(
 export async function ensureProjectReady(
   request: APIRequestContext,
 ): Promise<string> {
+  const listed = await request.get('/api/projects');
+  if (listed.ok()) {
+    const projectsEnvelope = (await listed.json()) as WireEnvelope<WireProject[]>;
+    const activeProjectId = projectsEnvelope.data?.find((project) => project.active)?.id;
+    if (activeProjectId) {
+      return activeProjectId;
+    }
+  }
+
   const created = await request.post('/api/projects', {
     data: { name: `E2E Project ${Date.now()}` },
   });

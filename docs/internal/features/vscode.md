@@ -12,7 +12,7 @@ Open the VS Code Chat panel (`Cmd+Shift+I` or the chat icon in the sidebar), the
 
 **Commands:**
 
-- `@kagan /watch` or `@kagan /watch <task name>` -- Stream a task's live agent output. Shows brief recent history then streams in real-time until the agent completes. For non-running tasks, shows the most recent events.
+- `@kagan /watch` or `@kagan /watch <task name>` -- Stream a task's live agent output. Shows brief recent history then streams in real-time until the agent completes. For non-running tasks, shows the most recent events. Plain follow-up messages in that same chat conversation are sent back to the watched task.
 - `@kagan /status` -- Board summary table + running tasks.
 - `@kagan` with no message -- Shows board status.
 
@@ -20,7 +20,7 @@ Open the VS Code Chat panel (`Cmd+Shift+I` or the chat icon in the sidebar), the
 
 **Action buttons** appear after streaming: Approve, Reject, Merge, View Diff, or Run Task, depending on the task's status.
 
-The participant is `isSticky` -- once selected, follow-up messages stay in the `@kagan` context.
+The participant is `isSticky` -- once selected, follow-up messages stay in the `@kagan` context. Starting a fresh conversation clears both the orchestrator session handle and any watched-task follow-up routing.
 
 ______________________________________________________________________
 

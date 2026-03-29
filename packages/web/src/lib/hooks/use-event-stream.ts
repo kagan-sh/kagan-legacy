@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
+import { useLocation } from 'react-router';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
 import {
@@ -20,6 +21,7 @@ import {
   fetchTasksAtom,
   projectSwitchVersionAtom,
 } from '@/lib/atoms/board';
+import { presenceAtom } from '@/lib/atoms/presence';
 import { isAnyDialogOpenAtom } from '@/lib/atoms/ui';
 import type { WireEvent } from '@/lib/api/types';
 
@@ -30,9 +32,11 @@ interface SSEMessage {
 }
 
 export function useEventStream() {
+  const location = useLocation();
   const setSseConnected = useSetAtom(sseConnectedAtom);
   const setReconnectAttempts = useSetAtom(reconnectAttemptsAtom);
   const setTasks = useSetAtom(tasksAtom);
+  const setPresence = useSetAtom(presenceAtom);
   const fetchTasks = useSetAtom(fetchTasksAtom);
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
   const sseConnected = useAtomValue(sseConnectedAtom);
@@ -42,6 +46,25 @@ export function useEventStream() {
   const abortRef = useRef<AbortController | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const presenceClientIdRef = useRef<string | null>(null);
+
+  if (!presenceClientIdRef.current) {
+    try {
+      const key = 'kagan.web.presence.client_id';
+      const existing = window.sessionStorage.getItem(key);
+      if (existing) {
+        presenceClientIdRef.current = existing;
+      } else {
+        const next = window.crypto?.randomUUID?.() ?? `web-${Date.now().toString(36)}`;
+        window.sessionStorage.setItem(key, next);
+        presenceClientIdRef.current = next;
+      }
+    } catch {
+      presenceClientIdRef.current = `web-${Date.now().toString(36)}`;
+    }
+  }
+
+  const currentTaskId = /^\/task\/([^/?]+)/.exec(location.pathname)?.[1] ?? null;
 
   useEffect(() => {
     const connect = () => {
@@ -57,8 +80,14 @@ export function useEventStream() {
 
           // Initial board fetch on connect
           fetchTasks();
+          apiClient.getPresence().then(setPresence).catch(() => {});
 
-          for await (const msg of streamSSE<SSEMessage>('/api/events/stream', {
+          const query = new URLSearchParams({
+            client_type: 'web',
+            client_id: presenceClientIdRef.current ?? 'web',
+          });
+
+          for await (const msg of streamSSE<SSEMessage>(`/api/events/stream?${query.toString()}`, {
             signal: controller.signal,
           })) {
             // Reset backoff once stream delivers its first message
@@ -134,7 +163,7 @@ export function useEventStream() {
         clearTimeout(reconnectTimerRef.current);
       }
     };
-  }, [setSseConnected, setReconnectAttempts, setTasks, fetchTasks, projectVersion]);
+  }, [setSseConnected, setReconnectAttempts, setTasks, setPresence, fetchTasks, projectVersion]);
 
   // Adaptive polling fallback when SSE is disconnected
   useEffect(() => {
@@ -151,6 +180,42 @@ export function useEventStream() {
       fetchTasks();
     }
   }, [projectVersion, fetchTasks]);
+
+  useEffect(() => {
+    const clientId = presenceClientIdRef.current;
+    if (!clientId) return;
+
+    let cancelled = false;
+    const syncPresence = async () => {
+      try {
+        await apiClient.sendPresenceHeartbeat({
+          client_id: clientId,
+          client_type: 'web',
+          active_task_id: currentTaskId,
+        });
+        const presence = await apiClient.getPresence();
+        if (!cancelled) {
+          setPresence(presence);
+        }
+      } catch {
+        if (!cancelled && !sseConnected) {
+          setPresence([]);
+        }
+      }
+    };
+
+    void syncPresence();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void syncPresence();
+      }
+    }, 25_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentTaskId, sseConnected, setPresence]);
 
   // Recover from browser tab backgrounding — only fetch if SSE is disconnected
   useEffect(() => {

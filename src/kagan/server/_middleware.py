@@ -10,7 +10,6 @@ Provides:
 from __future__ import annotations
 
 import time
-from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -60,8 +59,8 @@ _RATE_LIMITED_PREFIXES: tuple[str, ...] = (
 
 # Rate-limit windows (seconds) and thresholds.
 _RATE_WINDOW_SECONDS: int = 60
-_RATE_LIMIT_DEFAULT: int = 200
-_RATE_LIMIT_POST: int = 60
+_RATE_LIMIT_DEFAULT: int = 1000
+_RATE_LIMIT_POST: int = 1000
 # How often to purge stale entries (seconds).
 _RATE_CLEANUP_INTERVAL: int = 120
 
@@ -180,10 +179,8 @@ class RateLimitMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
-        self._buckets: dict[str, _BucketEntry] = defaultdict(lambda: _BucketEntry(time.monotonic()))
-        self._post_buckets: dict[str, _BucketEntry] = defaultdict(
-            lambda: _BucketEntry(time.monotonic())
-        )
+        self._buckets: dict[str, _BucketEntry] = {}
+        self._post_buckets: dict[str, _BucketEntry] = {}
         self._last_cleanup = time.monotonic()
 
     # -- helpers --

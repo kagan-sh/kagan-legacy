@@ -92,7 +92,7 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 | `/watch`    | Stream task agent output via SSE                                      |
 | `/status`   | Board summary table + running task list                               |
 
-**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets the session.
+**Orchestrator chat** creates a server-side session (`POST /api/chat/sessions`) and streams each turn via SSE. The session ID persists across turns within the same VS Code chat conversation. A new conversation resets both the orchestrator session and any sticky `/watch` follow-up state.
 
 **Watch pipeline:**
 
@@ -101,6 +101,7 @@ Registered as `kagan.agent` with `isSticky: true`. Three modes:
 1. Render tool calls as inline code, status changes as rules
 1. If IN_PROGRESS, subscribe to live SSE until AGENT_COMPLETED/FAILED
 1. Append action buttons based on final task state
+1. Route later plain messages in that same chat conversation to `POST /api/tasks/{id}/follow-up`
 
 **`kagan.chat.open` command** accepts a tree item or string and opens the Chat panel pre-filled with `@kagan /watch <task>`.
 

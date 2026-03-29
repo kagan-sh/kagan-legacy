@@ -13,6 +13,7 @@ export class SSEStream implements vscode.Disposable {
   private token: string | undefined;
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
   private pollingCallback: (() => void) | null = null;
+  private readonly clientId = globalThis.crypto?.randomUUID?.() ?? `vscode-${Date.now().toString(36)}`;
 
   private readonly _onMessage = new vscode.EventEmitter<SSEMessage>();
   readonly onMessage = this._onMessage.event;
@@ -88,7 +89,11 @@ export class SSEStream implements vscode.Disposable {
     const { signal } = this.controller;
 
     try {
-      const response = await fetch(this.getFullUrl("/api/events/stream"), {
+      const query = new URLSearchParams({
+        client_type: "vscode",
+        client_id: this.clientId,
+      });
+      const response = await fetch(this.getFullUrl(`/api/events/stream?${query.toString()}`), {
         headers: {
           Accept: "text/event-stream",
           ...this.getAuthHeaders(),

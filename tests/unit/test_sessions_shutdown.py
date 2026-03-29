@@ -308,3 +308,101 @@ async def test_run_uses_backend_spec_executable_for_attached_launch(
             "task_id": "task-2",
         }
     ]
+
+
+async def test_should_retry_runs_success_command_via_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = _FakeEvents()
+    sessions = Sessions(
+        cast("Any", object()),
+        cast("Any", events),
+        get_task=_stub_get_task,
+        set_status=_stub_set_status,
+        ensure_workspace=_stub_ensure_workspace,
+    )
+
+    task = SimpleNamespace(
+        id="task-retry",
+        success_command="ruff check && pytest -q",
+        max_retries=2,
+        agent_backend="codex",
+    )
+    db_results = iter(
+        [
+            SimpleNamespace(attempt=1, persona="planner"),
+            SimpleNamespace(worktree_path="/tmp/retry-task"),
+            {},
+            None,
+        ]
+    )
+    reruns: list[tuple[str, str | None, str | None]] = []
+    status_updates: list[tuple[str, TaskStatus]] = []
+    shell_call: dict[str, Any] = {}
+
+    async def fake_db_async(*_args: Any, **_kwargs: Any) -> Any:
+        return next(db_results)
+
+    class _FailingProc:
+        returncode = 1
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b"check failed"
+
+        def kill(self) -> None:
+            return None
+
+        async def wait(self) -> None:
+            return None
+
+    async def fake_create_subprocess_shell(command: str, **kwargs: Any) -> _FailingProc:
+        shell_call["command"] = command
+        shell_call["kwargs"] = kwargs
+        return _FailingProc()
+
+    async def fake_run(
+        task_id: str,
+        *,
+        agent_backend: str | None = None,
+        persona: str | None = None,
+    ) -> Any:
+        reruns.append((task_id, agent_backend, persona))
+        return SimpleNamespace(id="session-retry-2")
+
+    def fake_set_status(task_id: str, status: TaskStatus) -> None:
+        status_updates.append((task_id, status))
+
+    async def fake_to_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr("kagan.core._sessions._db_async", fake_db_async)
+    monkeypatch.setattr(
+        "kagan.core._sessions.asyncio.create_subprocess_shell",
+        fake_create_subprocess_shell,
+    )
+    monkeypatch.setattr(
+        "kagan.core._sessions.asyncio.create_subprocess_exec",
+        lambda *_args, **_kwargs: pytest.fail(
+            "create_subprocess_exec should not be used for success_command"
+        ),
+    )
+    monkeypatch.setattr("kagan.core._sessions.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr(sessions, "run", fake_run)
+    monkeypatch.setattr(sessions, "_set_status", fake_set_status)
+
+    should_retry = await sessions._should_retry(task, "session-retry-1")
+
+    assert should_retry is True
+    assert shell_call["command"] == "ruff check && pytest -q"
+    assert shell_call["kwargs"]["cwd"] == Path("/tmp/retry-task")
+    assert status_updates == [("task-retry", TaskStatus.BACKLOG)]
+    assert reruns == [("task-retry", "codex", "planner")]
+    assert events.emitted == [
+        (
+            "task-retry",
+            SessionEventType.TASK_STATUS_CHANGED,
+            {"from": TaskStatus.IN_PROGRESS.value, "to": TaskStatus.BACKLOG.value},
+            "session-retry-1",
+            True,
+        )
+    ]

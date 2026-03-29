@@ -30,13 +30,11 @@ uvx kagan
 
 - [:material-chat: **Chat orchestrator**](guides/chat.md)
 
-- [:material-monitor-dashboard: **Web dashboard**](guides/web-dashboard.md)
+- :material-monitor-dashboard:{ .lg .middle } **Web dashboard**
 
-- :material-cellphone-link:{ .lg .middle } **Remote access**
+  Manage your board from a browser — locally or remotely from any device on your network.
 
-  Manage your board from a phone or browser on your network.
-
-  [:octicons-arrow-right-24: Remote access](guides/remote-access.md)
+  [:octicons-arrow-right-24: Web dashboard](guides/web-dashboard.md)  ·  [:octicons-arrow-right-24: Remote access](guides/remote-access.md)
 
 </div>
 

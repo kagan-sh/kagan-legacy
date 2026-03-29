@@ -1,6 +1,7 @@
 from typing import Any, cast
 
 import pytest
+from tests.helpers.async_utils import wait_for
 from tests.helpers.driver import KaganDriver
 from textual.widgets import Button, OptionList
 
@@ -36,18 +37,18 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
         button = app.screen.query_one("#welcome-resume-session", Button)
         assert "Resume recent session" in str(button.label)
 
-        await pilot.click("#welcome-resume-session")
-        await pilot.pause()
+        button.press()
+        await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
-        assert app.screen.id == "session-resume-modal"
+        await wait_for(
+            lambda: app.screen.query_one("#session-resume-options", OptionList).option_count > 0,
+            pump_delay=0.05,
+        )
         option_list = app.screen.query_one("#session-resume-options", OptionList)
         assert option_list.option_count == 1
 
         await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-
-        assert app.screen.id == "kanban-screen"
+        await wait_for(lambda: app.screen.id == "kanban-screen", pump_delay=0.05)
         assert app.project is not None
         assert app.project.id == project_id
         assert app.orchestrator_sessions.current_session_id() == "resume01"
@@ -89,9 +90,14 @@ async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> 
     app = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.click("#welcome-resume-session")
-        await pilot.pause()
+        button = app.screen.query_one("#welcome-resume-session", Button)
+        button.press()
+        await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
+        await wait_for(
+            lambda: app.screen.query_one("#session-resume-options", OptionList).option_count > 0,
+            pump_delay=0.05,
+        )
         option_list = app.screen.query_one("#session-resume-options", OptionList)
         assert option_list.option_count == 1
 

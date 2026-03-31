@@ -101,7 +101,7 @@ jobs:
           pnpm exec ovsx publish $(ls *.vsix) -p "$OPEN_VSIX_TOKEN"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kagan-vscode-${{ inputs.version }}
           path: packages/vscode/*.vsix

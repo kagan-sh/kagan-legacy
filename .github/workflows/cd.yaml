@@ -108,6 +108,16 @@ jobs:
             echo "released=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Ensure version tag is on main
+        if: steps.release.outputs.released == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # semantic-release creates a version-bump commit and tags it, but if the
+          # push races with other merges the tag can land on a detached branch.
+          # Force-push main so the tagged commit is always reachable.
+          git push origin HEAD:main --force
+
       - name: Publish GitHub Release
         if: steps.release.outputs.released == 'true'
         env:

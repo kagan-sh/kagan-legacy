@@ -1,4 +1,4 @@
-"""Shared fixtures for kagan.mcp tests.
+"""Shared fixtures for kagan.server.mcp tests.
 
 Provides the mcp_board fixture: an in-memory MCP server connected via
 create_client_server_memory_streams, yielding a ClientSession for tool calls.
@@ -11,7 +11,7 @@ import contextlib
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
 
-from kagan.mcp.server import ServerOptions, create_server
+from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
 from tests.helpers.mcp_driver import McpDriver
 

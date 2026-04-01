@@ -11,7 +11,7 @@ from textual.theme import BUILTIN_THEMES
 from textual.widgets import Button, Footer, Input, Select, Static, Switch, TextArea
 from textual.widgets._option_list import Option, OptionList
 
-from kagan.chat import resolve_default_agent_backend
+from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import (
     detect_dotfile_overrides,
     list_available_backends,

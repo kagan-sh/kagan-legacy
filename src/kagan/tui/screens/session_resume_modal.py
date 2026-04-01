@@ -9,7 +9,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from kagan.chat.sessions import build_chat_session_list_items, list_chat_sessions
+from kagan.cli.chat.sessions import build_chat_session_list_items, list_chat_sessions
 from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:

@@ -48,18 +48,19 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 
 | Command     | Description                                                                |
 | ----------- | -------------------------------------------------------------------------- |
-| `/help`     | List available slash commands                                              |
-| `/exit`     | Exit the chat session (REPL only; `Ctrl+D` also works)                     |
-| `/clear`    | Clear the current chat view and start fresh                                |
-| `/new`      | Start a new chat session                                                   |
-| `/session`  | Show current session details (ID, title, agent, message count)             |
-| `/sessions` | List, attach, or delete chat sessions                                      |
-| `/agents`   | List or switch agent backends                                              |
-| `/status`   | Show current project, session, and agent info                              |
-| `/project`  | Show or switch active project                                              |
-| `/delete`   | Delete a chat session by number or ID                                      |
-| `/tool`     | Inspect recent tool calls                                                  |
-| `/flow`     | Show guided Plan → Execute → Orchestrate flow (orchestrator sessions only) |
+| Command     | Alias | Description                                                                |
+| ----------- | ----- | -------------------------------------------------------------------------- |
+| `/help`     | `/?`  | List available slash commands                                              |
+| `/exit`     | `/q`  | Exit the chat session (REPL only; `Ctrl+D` also works)                     |
+| `/clear`    |       | Clear the current chat view and start fresh                                |
+| `/new`      |       | Start a new chat session                                                   |
+| `/sessions` | `/s`  | List, attach, or delete chat sessions                                      |
+| `/agents`   | `/a`  | List or switch agent backends                                              |
+| `/status`   |       | Show current project, session, and agent info                              |
+| `/project`  | `/p`  | Show or switch active project                                              |
+| `/delete`   |       | Delete a chat session by number or ID                                      |
+| `/tool`     |       | Inspect recent tool calls                                                  |
+| `/flow`     | `/f`  | Show guided Plan → Execute → Orchestrate flow (orchestrator sessions only) |
 
 ### `/sessions` usage
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kagan.chat import acp as chat_acp
+from kagan.cli.chat import acp as chat_acp
 from kagan.core import BackendCapability, BackendSpec
 
 pytestmark = [pytest.mark.unit]

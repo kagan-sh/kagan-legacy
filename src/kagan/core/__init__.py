@@ -39,9 +39,23 @@ from kagan.core._agent import (
     resolve_default_agent_backend,
 )
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
+from kagan.core._audit import list_audit, record_audit
 from kagan.core._db import default_db_path
 from kagan.core._launchers import resolve_launcher
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
+from kagan.core._projects import (
+    add_repo,
+    create_project,
+    delete_project,
+    find_project_by_name,
+    find_project_by_repo,
+    get_project,
+    list_projects,
+    list_repos,
+    resolve_repo,
+    resolve_repo_path,
+    set_repo_default_branch,
+)
 from kagan.core._prompts import (
     ADDITIONAL_INSTRUCTIONS_KEY,
     AUTO_CONFIRM_SINGLE_KEY,
@@ -53,11 +67,21 @@ from kagan.core._prompts import (
     build_conflict_resolution_feedback,
     detect_dotfile_overrides,
     load_persona_definitions,
-    prepend_custom_prompt,
     resolve_orchestrator_prompt,
     resolve_review_prompt,
     resolve_task_prompt,
     serialize_persona_definitions,
+)
+from kagan.core._reviews import (
+    abort_rebase,
+    approve_review,
+    clear_review_verdicts,
+    continue_rebase,
+    get_conflicts,
+    merge_task,
+    rebase_task,
+    reject_review,
+    set_criterion_verdict,
 )
 from kagan.core._security import (
     AttackVector,
@@ -65,6 +89,46 @@ from kagan.core._security import (
     PayloadLibrary,
     PayloadTemplate,
     scan_text_for_injection,
+)
+from kagan.core._sessions import (
+    active_session_summaries,
+    complete_session,
+    fail_session,
+    fetch_project_learnings,
+    get_latest_session,
+    get_latest_task_session,
+    has_active_session,
+    list_active_sessions,
+    list_task_sessions,
+    mark_session_running,
+    resolve_session_binding,
+    update_session_pid,
+)
+from kagan.core._settings import get_settings, set_settings
+from kagan.core._tasks import (
+    add_task_note,
+    build_task_context,
+    count_tasks,
+    create_task,
+    delete_task,
+    get_task,
+    list_project_learnings,
+    list_task_notes,
+    list_tasks,
+    search_tasks,
+    set_task_status,
+    set_task_status_sync,
+    task_runtime_summaries,
+    task_runtime_summary,
+    update_task,
+)
+from kagan.core._worktrees import (
+    cleanup_orphan_worktrees,
+    cleanup_worktree,
+    create_worktree,
+    get_worktree,
+    get_worktree_diff,
+    get_worktree_diff_stats,
 )
 from kagan.core.client import DBWatcher, KaganCore
 from kagan.core.enums import (
@@ -102,6 +166,7 @@ from kagan.core.models import (
 )
 
 __all__ = [
+    # ── Constants ──────────────────────────────────────────────────────
     "ACP_TIMEOUT_HINT",
     "ADDITIONAL_INSTRUCTIONS_KEY",
     "AUTO_CONFIRM_SINGLE_KEY",
@@ -118,6 +183,7 @@ __all__ = [
     "PLANNING_DEPTH_KEY",
     "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
+    # ── Classes ────────────────────────────────────────────────────────
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
@@ -155,31 +221,96 @@ __all__ = [
     "ValidationError",
     "Worktree",
     "WorktreeError",
+    # reviews
+    "abort_rebase",
+    # ── Legacy helpers ─────────────────────────────────────────────────
     "acp_handshake_timeout_seconds",
     "acp_process_exit_hint",
     "acp_startup_timeout_seconds",
+    # sessions
+    "active_session_summaries",
+    # projects
+    "add_repo",
+    # tasks
+    "add_task_note",
+    "approve_review",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
+    "build_task_context",
+    # worktrees
+    "cleanup_orphan_worktrees",
+    "cleanup_worktree",
+    "clear_review_verdicts",
+    "complete_session",
+    "continue_rebase",
+    "count_tasks",
+    "create_project",
+    "create_task",
+    "create_worktree",
     "default_db_path",
+    "delete_project",
+    "delete_task",
     "detect_dotfile_overrides",
+    "fail_session",
+    "fetch_project_learnings",
+    "find_project_by_name",
+    "find_project_by_repo",
     "friendly_acp_error_message",
     "get_backend",
     "get_backend_spec",
+    "get_conflicts",
+    "get_latest_session",
+    "get_latest_task_session",
+    "get_project",
+    # settings
+    "get_settings",
     "get_system_git_identity",
+    "get_task",
+    "get_worktree",
+    "get_worktree_diff",
+    "get_worktree_diff_stats",
+    "has_active_session",
     "install_asyncio_subprocess_exception_filter",
+    "list_active_sessions",
+    # ── Module functions (canonical API) ───────────────────────────────
+    # audit
+    "list_audit",
     "list_available_backends",
     "list_backend_specs",
     "list_backends",
+    "list_project_learnings",
+    "list_projects",
+    "list_repos",
+    "list_task_notes",
+    "list_task_sessions",
+    "list_tasks",
     "load_persona_definitions",
+    "mark_session_running",
+    "merge_task",
     "parse_priority",
-    "prepend_custom_prompt",
+    "rebase_task",
+    "record_audit",
+    "reject_review",
     "resolve_acp_command",
     "resolve_default_agent_backend",
     "resolve_launcher",
     "resolve_orchestrator_prompt",
+    "resolve_repo",
+    "resolve_repo_path",
     "resolve_review_prompt",
+    "resolve_session_binding",
     "resolve_task_prompt",
     "scan_text_for_injection",
+    "search_tasks",
     "serialize_persona_definitions",
+    "set_criterion_verdict",
+    "set_repo_default_branch",
+    "set_settings",
+    "set_task_status",
+    "set_task_status_sync",
+    "task_runtime_summaries",
+    "task_runtime_summary",
+    "update_session_pid",
+    "update_task",
 ]

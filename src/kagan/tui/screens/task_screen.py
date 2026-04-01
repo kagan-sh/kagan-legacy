@@ -19,7 +19,7 @@ from textual.widgets import (
     TextArea,
 )
 
-from kagan.chat import resolve_default_agent_backend
+from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import (
     ChatMode,

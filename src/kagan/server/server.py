@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from starlette.responses import JSONResponse
 
-from kagan.mcp.server import ServerContext, ServerOptions, _set_server_context, create_server
 from kagan.server._chat_routes import register_chat_routes
 from kagan.server._plugin_routes import register_plugin_routes
 from kagan.server._routes import register_routes
 from kagan.server._web_ui import register_web_ui
+from kagan.server.mcp.server import ServerContext, ServerOptions, _set_server_context, create_server
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -39,7 +39,7 @@ class ApiServerOptions:
 def create_api_server(opts: ApiServerOptions) -> FastMCP:
     """Create a FastMCP server configured for HTTP transport.
 
-    Delegates to :func:`kagan.mcp.server.create_server` for core MCP setup,
+    Delegates to :func:`kagan.server.mcp.server.create_server` for core MCP setup,
     then layers on routes, auth, and websocket stubs.
 
     Args:
@@ -146,7 +146,7 @@ async def serve_http(
     ssl_certfile: str | None = None
     ssl_keyfile: str | None = None
     if opts.enable_tls:
-        from kagan.crypto import ensure_tls_cert
+        from kagan.server.crypto import ensure_tls_cert
 
         cert_path, key_path = ensure_tls_cert(effective_host)
         ssl_certfile = str(cert_path)

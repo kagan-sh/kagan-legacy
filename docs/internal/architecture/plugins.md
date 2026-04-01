@@ -160,7 +160,7 @@ ______________________________________________________________________
 - `kagan plugins list` — list installed plugins
 - `kagan plugins check` — run preflight checks
 
-**MCP** (`kagan.mcp.toolsets.plugins`):
+**MCP** (`kagan.server.mcp.toolsets.plugins`):
 
 - `plugins_sync` — sync issues (Admin tier)
 - `plugins_preflight` — check prerequisites (Readonly tier)
@@ -174,7 +174,7 @@ ______________________________________________________________________
 ```text
 kagan.plugins ──► kagan.core
 kagan.cli     ──► kagan.plugins  (lazy)
-kagan.mcp     ──► kagan.plugins  (lazy)
+kagan.server.mcp ──► kagan.plugins  (lazy)
 kagan.core    ──✘──► kagan.plugins
 kagan.tui     ──✘──► kagan.plugins
 ```

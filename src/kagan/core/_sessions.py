@@ -1,18 +1,14 @@
 import asyncio
 import contextlib
-import os
-import signal
-import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from acp.schema import ToolCallStart
 from loguru import logger
 from sqlalchemy import Engine
 from sqlmodel import desc, select
 
-from kagan.core import git
 from kagan.core._agent import (
     BackendCapability,
     get_backend_spec,
@@ -20,6 +16,12 @@ from kagan.core._agent import (
     spawn_agent,
     spawn_agent_via_acp,
     unregister_spawned_process,
+)
+from kagan.core._agent_monitor import (
+    evaluate_review_readiness,
+    rebase_if_enabled,
+    ref_strategy,
+    resolve_post_agent_status,
 )
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
@@ -32,139 +34,245 @@ from kagan.core._prompts import (
     resolve_task_prompt,
 )
 from kagan.core._repetition_guard import RepetitionGuard
+from kagan.core._session_helpers import (
+    DetachResult,
+    agent_timeout_seconds,
+    build_attached_startup_prompt,
+    classify_agent_error,
+    is_shutdown_runtime_error,
+    process_exists,
+    terminate_process,
+)
 from kagan.core.enums import (
-    BranchRefStrategy,
     SessionEventType,
     SessionStatus,
     TaskStatus,
 )
 from kagan.core.errors import (
     AgentError,
-    AgentRateLimitError,
-    AgentRepetitionError,
-    AgentTimeoutError,
     ConfigurationError,
     SessionError,
     WorktreeError,
 )
 from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, TaskNote, Worktree
 
-
-class DetachResult(TypedDict):
-    task_id: str
-    status: str
-    ready_for_review: bool
-    pending_changes: bool
-    base_branch: str
+# ---------------------------------------------------------------------------
+# Module-level query functions
+# ---------------------------------------------------------------------------
 
 
-def _terminate_process(pid: int) -> None:
-    if sys.platform == "win32":
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32
-        PROCESS_TERMINATE = 0x0001
-        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-        if handle:
-            kernel32.TerminateProcess(handle, 1)
-            kernel32.CloseHandle(handle)
-    else:
-        os.kill(pid, signal.SIGTERM)
-
-
-def _process_exists(pid: int) -> bool:
-    if sys.platform == "win32":
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32
-        SYNCHRONIZE = 0x00100000
-        handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
-        if handle:
-            kernel32.CloseHandle(handle)
-            return True
-        return False
-    else:
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-
-
-def _is_shutdown_runtime_error(exc: RuntimeError) -> bool:
-    message = str(exc)
-    return "Executor shutdown has been called" in message or "Event loop is closed" in message
-
-
-def _agent_timeout_seconds(raw: Any) -> int:
-    """Parse the detached-agent timeout setting with a safe default."""
-    if raw in (None, ""):
-        return 3600
-    try:
-        return max(1, int(float(raw)))
-    except (TypeError, ValueError):
-        return 3600
-
-
-def _build_attached_startup_prompt(task: Task) -> str:
-    description = (task.description or "").strip()
-    criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
-
-    lines = [
-        f"# Interactive Task: {task.id} — {task.title}",
-        "",
-        "Act as a Senior Developer collaborating on this implementation.",
-        "",
-        "## Task Overview",
-        f"**Title:** {task.title}",
-        "",
-    ]
-    if description:
-        lines.extend([f"**Description:** {description}", ""])
-    if criteria:
-        lines.append("## Acceptance Criteria")
-        lines.extend(f"- {item}" for item in criteria)
-        lines.append("")
-    lines.extend(
-        [
-            "## Important Rules",
-            "- You are in a git worktree, NOT the main repository",
-            "- Only modify files within this worktree",
-            "- COMMIT all changes before finishing (semantic commits: feat:, fix:, docs:, etc.)",
-            "- When complete: commit your work, then call `run_detach`",
-            "- Your tools are available via the connected MCP server (WORKER role)",
-            "",
-            "## Coordination Workflow",
-            "",
-            "Before implementing:",
-            "1. Call `task_list` to check for parallel IN_PROGRESS tasks",
-            "2. Review concurrent tasks to avoid overlapping file modifications",
-            "3. Call `task_events` on related completed tasks to learn from prior work",
-            "",
-            "## Completion",
-            "",
-            "1. Implement and verify against acceptance criteria",
-            "2. Commit with clear WHY-focused message",
-            "3. Call `run_detach` to signal completion",
-        ]
+async def fetch_project_learnings(engine: Engine, project_id: str) -> list[str]:
+    """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
+    stmt = (
+        select(TaskNote)
+        .where(
+            cast("Any", TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id))
+        )
+        .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
+        .order_by(desc(cast("Any", TaskNote.created_at)))
+        .limit(30)
     )
-    return "\n".join(lines).strip() + "\n"
+    notes: list[TaskNote] = await _db_async(engine, lambda s: list(s.exec(stmt).all()))
+    seen: set[str] = set()
+    result: list[str] = []
+    for note in notes:
+        text = note.content.removeprefix("[LEARNING]").strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+            if len(result) >= 20:
+                break
+    return result
 
 
-def _classify_agent_error(exc: BaseException) -> str:
-    """Return a classification string for AGENT_FAILED payloads."""
-    if isinstance(exc, AgentRepetitionError):
-        return "repetition"
-    if isinstance(exc, AgentTimeoutError):
-        return "timeout"
-    if isinstance(exc, AgentRateLimitError):
-        return "rate_limit"
-    msg = str(exc).lower()
-    if "rate limit" in msg or "rate_limit" in msg or "429" in msg:
-        return "rate_limit"
-    if "timeout" in msg or "timed out" in msg:
-        return "timeout"
-    return "unknown"
+async def get_latest_session(engine: Engine, task_id: str) -> Session | None:
+    return await _db_async(
+        engine,
+        lambda s: s.exec(
+            select(Session)
+            .where(Session.task_id == task_id)
+            .order_by(desc(cast("Any", Session.started_at)))
+        ).first(),
+    )
+
+
+async def list_active_sessions(engine: Engine) -> list[Session]:
+    return await _db_async(
+        engine,
+        lambda s: list(
+            s.exec(
+                select(Session).where(
+                    (Session.status == SessionStatus.PENDING)
+                    | (Session.status == SessionStatus.RUNNING)
+                )
+            ).all()
+        ),
+    )
+
+
+async def resolve_session_binding(engine: Engine, session_id: str) -> tuple[str | None, str | None]:
+    def op(s) -> tuple[str | None, str | None]:
+        bound = s.get(Session, session_id)
+        if bound is None:
+            return None, None
+        task = s.get(Task, bound.task_id)
+        return bound.task_id, (task.project_id if task is not None else None)
+
+    return await _db_async(engine, op)
+
+
+async def list_task_sessions(engine: Engine, task_id: str) -> list[Session]:
+    return await _db_async(
+        engine,
+        lambda s: list(
+            s.exec(
+                select(Session)
+                .where(Session.task_id == task_id)
+                .order_by(cast("Any", Session.started_at))
+            ).all()
+        ),
+    )
+
+
+async def get_latest_task_session(engine: Engine, task_id: str) -> Session | None:
+    return await _db_async(
+        engine,
+        lambda s: s.exec(
+            select(Session)
+            .where(Session.task_id == task_id)
+            .order_by(desc(cast("Any", Session.started_at)))
+        ).first(),
+    )
+
+
+async def has_active_session(engine: Engine, task_id: str) -> bool:
+    active_session = await _db_async(
+        engine,
+        lambda s: s.exec(
+            select(Session).where(
+                Session.task_id == task_id,
+                cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+            )
+        ).first(),
+    )
+    return active_session is not None
+
+
+async def active_session_summaries(
+    engine: Engine, task_ids: list[str]
+) -> dict[str, dict[str, Any]]:
+    if not task_ids:
+        return {}
+
+    sessions = await _db_async(
+        engine,
+        lambda s: list(
+            s.exec(
+                select(Session)
+                .where(cast("Any", Session.task_id).in_(task_ids))
+                .order_by(desc(cast("Any", Session.started_at)))
+            ).all()
+        ),
+    )
+
+    summaries: dict[str, dict[str, Any]] = {}
+    active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
+    for session in sessions:
+        existing = summaries.get(session.task_id)
+        is_active = session.status in active_statuses
+
+        if existing is None:
+            summaries[session.task_id] = {
+                "has_history": True,
+                "has_active": is_active,
+                "active_launcher": session.launcher if is_active else None,
+                "latest_launcher": session.launcher,
+            }
+            continue
+
+        active_launcher = existing.get("active_launcher")
+        if active_launcher is None and is_active:
+            active_launcher = session.launcher
+
+        summaries[session.task_id] = {
+            "has_history": True,
+            "has_active": bool(existing.get("has_active")) or is_active,
+            "active_launcher": active_launcher,
+            "latest_launcher": existing.get("latest_launcher"),
+        }
+
+    return summaries
+
+
+# ---------------------------------------------------------------------------
+# Module-level sync DB helpers
+# ---------------------------------------------------------------------------
+
+
+def update_session_pid(engine: Engine, session_id: str, pid: int) -> None:
+    def op(s):
+        obj = s.get(Session, session_id)
+        if obj:
+            obj.pid = pid
+            obj.status = SessionStatus.RUNNING
+            s.add(obj)
+
+    _db_sync(engine, op, commit=True)
+
+
+def mark_session_running(engine: Engine, session_id: str) -> None:
+    def op(s):
+        obj = s.get(Session, session_id)
+        if obj and obj.status == SessionStatus.PENDING:
+            obj.status = SessionStatus.RUNNING
+            s.add(obj)
+
+    _db_sync(engine, op, commit=True)
+
+
+def complete_session(engine: Engine, session_id: str) -> None:
+    def op(s):
+        obj = s.get(Session, session_id)
+        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+            obj.status = SessionStatus.COMPLETED
+            obj.ended_at = _utc_now()
+
+            # Populate context window fields from the latest UsageUpdate event
+            usage_event = s.exec(
+                select(SessionEvent)
+                .where(
+                    SessionEvent.session_id == session_id,
+                    SessionEvent.event_type == SessionEventType.AGENT_STATUS,
+                )
+                .order_by(desc(SessionEvent.created_at))
+            ).first()
+            if usage_event and isinstance(usage_event.payload, dict):
+                usage = usage_event.payload.get("usage")
+                if isinstance(usage, dict):
+                    obj.context_window_used = usage.get("used")
+                    obj.context_window_size = usage.get("size")
+                    obj.cost_amount = usage.get("cost")
+                    obj.cost_currency = usage.get("cost_currency")
+
+            s.add(obj)
+
+    _db_sync(engine, op, commit=True)
+
+
+def fail_session(engine: Engine, session_id: str) -> None:
+    def op(s):
+        obj = s.get(Session, session_id)
+        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+            obj.status = SessionStatus.FAILED
+            obj.ended_at = _utc_now()
+            s.add(obj)
+
+    _db_sync(engine, op, commit=True)
+
+
+# ---------------------------------------------------------------------------
+# Thin class wrapper for backward compatibility
+# ---------------------------------------------------------------------------
 
 
 class Sessions:
@@ -185,152 +293,47 @@ class Sessions:
         self._ensure_workspace = ensure_workspace
         self._db_path: Path | None = db_path
 
+    # -- Query delegates (one-liner wrappers) --------------------------------
+
     async def _fetch_project_learnings(self, project_id: str) -> list[str]:
-        """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
-        stmt = (
-            select(TaskNote)
-            .where(
-                cast("Any", TaskNote.task_id).in_(
-                    select(Task.id).where(Task.project_id == project_id)
-                )
-            )
-            .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
-            .order_by(desc(cast("Any", TaskNote.created_at)))
-            .limit(30)
-        )
-        notes: list[TaskNote] = await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
-        seen: set[str] = set()
-        result: list[str] = []
-        for note in notes:
-            text = note.content.removeprefix("[LEARNING]").strip()
-            if text and text not in seen:
-                seen.add(text)
-                result.append(text)
-                if len(result) >= 20:
-                    break
-        return result
+        return await fetch_project_learnings(self._engine, project_id)
 
     async def get_latest(self, task_id: str) -> Session | None:
-        return await _db_async(
-            self._engine,
-            lambda s: s.exec(
-                select(Session)
-                .where(Session.task_id == task_id)
-                .order_by(desc(cast("Any", Session.started_at)))
-            ).first(),
-        )
+        return await get_latest_session(self._engine, task_id)
 
     async def list_active(self) -> list[Session]:
-        return await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(Session).where(
-                        (Session.status == SessionStatus.PENDING)
-                        | (Session.status == SessionStatus.RUNNING)
-                    )
-                ).all()
-            ),
-        )
+        return await list_active_sessions(self._engine)
 
     async def resolve_binding(self, session_id: str) -> tuple[str | None, str | None]:
-        def op(s) -> tuple[str | None, str | None]:
-            bound = s.get(Session, session_id)
-            if bound is None:
-                return None, None
-            task = s.get(Task, bound.task_id)
-            return bound.task_id, (task.project_id if task is not None else None)
-
-        return await _db_async(self._engine, op)
-
-    async def _ref_strategy(self) -> BranchRefStrategy:
-        """Read the configured branch-ref resolution strategy from settings."""
-        settings = await _db_async(
-            self._engine,
-            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
-        )
-        value = settings.get("worktree_base_ref_strategy", "local_if_ahead")
-        try:
-            return BranchRefStrategy(value)
-        except ValueError:
-            return BranchRefStrategy.LOCAL_IF_AHEAD
+        return await resolve_session_binding(self._engine, session_id)
 
     async def list_for_task(self, task_id: str) -> list[Session]:
-        return await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(Session)
-                    .where(Session.task_id == task_id)
-                    .order_by(cast("Any", Session.started_at))
-                ).all()
-            ),
-        )
+        return await list_task_sessions(self._engine, task_id)
 
     async def get_latest_for_task(self, task_id: str) -> Session | None:
-        return await _db_async(
-            self._engine,
-            lambda s: s.exec(
-                select(Session)
-                .where(Session.task_id == task_id)
-                .order_by(desc(cast("Any", Session.started_at)))
-            ).first(),
-        )
+        return await get_latest_task_session(self._engine, task_id)
 
     async def has_active(self, task_id: str) -> bool:
-        active_session = await _db_async(
-            self._engine,
-            lambda s: s.exec(
-                select(Session).where(
-                    Session.task_id == task_id,
-                    cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
-                )
-            ).first(),
-        )
-        return active_session is not None
+        return await has_active_session(self._engine, task_id)
 
     async def active_session_summaries(self, task_ids: list[str]) -> dict[str, dict[str, Any]]:
-        if not task_ids:
-            return {}
+        return await active_session_summaries(self._engine, task_ids)
 
-        sessions = await _db_async(
-            self._engine,
-            lambda s: list(
-                s.exec(
-                    select(Session)
-                    .where(cast("Any", Session.task_id).in_(task_ids))
-                    .order_by(desc(cast("Any", Session.started_at)))
-                ).all()
-            ),
-        )
+    # -- Sync DB helper delegates -------------------------------------------
 
-        summaries: dict[str, dict[str, Any]] = {}
-        active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
-        for session in sessions:
-            existing = summaries.get(session.task_id)
-            is_active = session.status in active_statuses
+    def _update_session_pid(self, session_id: str, pid: int) -> None:
+        update_session_pid(self._engine, session_id, pid)
 
-            if existing is None:
-                summaries[session.task_id] = {
-                    "has_history": True,
-                    "has_active": is_active,
-                    "active_launcher": session.launcher if is_active else None,
-                    "latest_launcher": session.launcher,
-                }
-                continue
+    def _mark_session_running(self, session_id: str) -> None:
+        mark_session_running(self._engine, session_id)
 
-            active_launcher = existing.get("active_launcher")
-            if active_launcher is None and is_active:
-                active_launcher = session.launcher
+    def _complete_session(self, session_id: str) -> None:
+        complete_session(self._engine, session_id)
 
-            summaries[session.task_id] = {
-                "has_history": True,
-                "has_active": bool(existing.get("has_active")) or is_active,
-                "active_launcher": active_launcher,
-                "latest_launcher": existing.get("latest_launcher"),
-            }
+    def _fail_session(self, session_id: str) -> None:
+        fail_session(self._engine, session_id)
 
-        return summaries
+    # -- Orchestration methods (kept on class) ------------------------------
 
     async def _prepare_session(
         self,
@@ -349,7 +352,7 @@ class Sessions:
             ws = await self._ensure_workspace(task_id)
         else:
             # Rebase existing worktrees against current base branch
-            await self._rebase_if_enabled(task_id)
+            await rebase_if_enabled(task_id, self._engine, self._get_task, self._events)
 
         session_obj = Session(
             task_id=task_id,
@@ -428,7 +431,7 @@ class Sessions:
                 )
             else:
                 _raw_timeout = settings_dict.get("agent_timeout_seconds")
-                _timeout = _agent_timeout_seconds(_raw_timeout)
+                _timeout = agent_timeout_seconds(_raw_timeout)
                 pid = await spawn_agent(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -450,7 +453,7 @@ class Sessions:
         launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
         backend_spec = get_backend_spec(agent_backend)
-        startup_prompt = _build_attached_startup_prompt(task)
+        startup_prompt = build_attached_startup_prompt(task)
         agent_cmd = backend_spec.executable
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
@@ -504,8 +507,8 @@ class Sessions:
         short_id = task_id[:8]
         commit_message = f"chore: finalize attached session changes ({short_id})"
 
-        strategy = await self._ref_strategy()
-        ready_for_review, pending_before, pending_after = await self._evaluate_review_readiness(
+        strategy = await ref_strategy(self._engine)
+        ready_for_review, pending_before, pending_after = await evaluate_review_readiness(
             task_id=task_id,
             worktree=worktree,
             base_branch=base_branch,
@@ -561,7 +564,7 @@ class Sessions:
         )
         if active and active.pid:
             try:
-                _terminate_process(active.pid)
+                terminate_process(active.pid)
             except ProcessLookupError:
                 pass  # Process already exited
             except PermissionError:
@@ -586,7 +589,7 @@ class Sessions:
         if task.status == TaskStatus.IN_PROGRESS:
             # Check if the agent made useful progress before being cancelled;
             # if the worktree has commits, move to REVIEW instead of BACKLOG.
-            next_status = await self._resolve_post_agent_status(task_id)
+            next_status = await resolve_post_agent_status(task_id, self._engine, self._get_task)
             if next_status == task.status:
                 next_status = TaskStatus.BACKLOG
             await asyncio.to_thread(self._set_status, task_id, next_status)
@@ -600,63 +603,6 @@ class Sessions:
             # No status transition, but board cards need to clear active_session.
             self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
         logger.info("Cancelled session for task={}", task_id)
-
-    def _update_session_pid(self, session_id: str, pid: int) -> None:
-        def op(s):
-            obj = s.get(Session, session_id)
-            if obj:
-                obj.pid = pid
-                obj.status = SessionStatus.RUNNING
-                s.add(obj)
-
-        _db_sync(self._engine, op, commit=True)
-
-    def _mark_session_running(self, session_id: str) -> None:
-        def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status == SessionStatus.PENDING:
-                obj.status = SessionStatus.RUNNING
-                s.add(obj)
-
-        _db_sync(self._engine, op, commit=True)
-
-    def _complete_session(self, session_id: str) -> None:
-        def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-                obj.status = SessionStatus.COMPLETED
-                obj.ended_at = _utc_now()
-
-                # Populate context window fields from the latest UsageUpdate event
-                usage_event = s.exec(
-                    select(SessionEvent)
-                    .where(
-                        SessionEvent.session_id == session_id,
-                        SessionEvent.event_type == SessionEventType.AGENT_STATUS,
-                    )
-                    .order_by(desc(SessionEvent.created_at))
-                ).first()
-                if usage_event and isinstance(usage_event.payload, dict):
-                    usage = usage_event.payload.get("usage")
-                    if isinstance(usage, dict):
-                        obj.context_window_used = usage.get("used")
-                        obj.context_window_size = usage.get("size")
-                        obj.cost_amount = usage.get("cost")
-                        obj.cost_currency = usage.get("cost_currency")
-
-                s.add(obj)
-
-        _db_sync(self._engine, op, commit=True)
-
-    def _fail_session(self, session_id: str) -> None:
-        def op(s):
-            obj = s.get(Session, session_id)
-            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-                obj.status = SessionStatus.FAILED
-                obj.ended_at = _utc_now()
-                s.add(obj)
-
-        _db_sync(self._engine, op, commit=True)
 
     def _make_acp_callback(self, task_id: str, session_id: str):
         from kagan.core._acp import map_acp_update_to_event
@@ -701,91 +647,6 @@ class Sessions:
 
         return on_update
 
-    async def _evaluate_review_readiness(
-        self,
-        *,
-        task_id: str,
-        worktree: Path,
-        base_branch: str,
-        commit_message: str,
-        strategy: BranchRefStrategy = BranchRefStrategy.LOCAL_IF_AHEAD,
-    ) -> tuple[bool, bool, bool]:
-        pending_before = False
-        pending_after = False
-
-        try:
-            pending_before = await git.has_pending_changes(worktree)
-        except WorktreeError as exc:
-            logger.warning("Pending-change check failed for task={}: {}", task_id, exc)
-            return False, True, True
-
-        if pending_before:
-            try:
-                await git.commit_all(worktree, commit_message)
-                logger.info("Auto-committed pending changes for task={}", task_id)
-            except WorktreeError as exc:
-                logger.warning("Auto-commit failed for task={}: {}", task_id, exc)
-
-        try:
-            pending_after = await git.has_pending_changes(worktree)
-        except WorktreeError as exc:
-            logger.warning("Post-commit pending check failed for task={}: {}", task_id, exc)
-            pending_after = True
-
-        has_commits = True
-        try:
-            has_commits = await git.has_commits_since(worktree, base_branch, strategy=strategy)
-        except WorktreeError as exc:
-            logger.warning(
-                "Commit check failed for task={}, assuming commits exist: {}",
-                task_id,
-                exc,
-            )
-
-        ready_for_review = has_commits and not pending_after
-        return ready_for_review, pending_before, pending_after
-
-    async def _resolve_post_agent_status(self, task_id: str) -> TaskStatus:
-        ws = await _db_async(
-            self._engine,
-            lambda s: s.exec(select(Worktree).where(Worktree.task_id == task_id)).first(),
-        )
-        if ws is None:
-            logger.debug("No workspace for task={}, falling back to BACKLOG", task_id)
-            return TaskStatus.BACKLOG
-
-        worktree = Path(ws.worktree_path)
-        if not worktree.exists():
-            logger.debug("Worktree missing for task={}, falling back to BACKLOG", task_id)
-            return TaskStatus.BACKLOG
-
-        repo = await _db_async(
-            self._engine,
-            lambda s, repo_id=ws.repo_id: s.get(Repository, repo_id),
-        )
-        base_branch = (await self._get_task(task_id)).base_branch or (
-            repo.default_branch if repo else "main"
-        )
-
-        short_id = task_id[:8]
-        strategy = await self._ref_strategy()
-        ready_for_review, pending_before, pending_after = await self._evaluate_review_readiness(
-            task_id=task_id,
-            worktree=worktree,
-            base_branch=base_branch,
-            commit_message=f"chore: finalize detached run changes ({short_id})",
-            strategy=strategy,
-        )
-        if ready_for_review:
-            return TaskStatus.REVIEW
-
-        if pending_before or pending_after:
-            logger.info("Pending changes remain for task={}, staying IN_PROGRESS", task_id)
-            return TaskStatus.IN_PROGRESS
-
-        logger.info("No commits found for task={}, moving to BACKLOG", task_id)
-        return TaskStatus.BACKLOG
-
     async def _handle_acp_done(self, task: asyncio.Task, task_id: str, session_id: str) -> None:
         try:
             exc = task.exception() if not task.cancelled() else None
@@ -795,7 +656,7 @@ class Sessions:
                 await self._events.emit(
                     task_id,
                     SessionEventType.AGENT_FAILED,
-                    {"error": str(exc), "error_class": _classify_agent_error(exc)},
+                    {"error": str(exc), "error_class": classify_agent_error(exc)},
                     session_id=session_id,
                 )
                 await asyncio.to_thread(self._set_status, task_id, TaskStatus.BACKLOG)
@@ -811,7 +672,9 @@ class Sessions:
 
                 transitioned_to_review = False
                 if db_task.status == TaskStatus.IN_PROGRESS:
-                    next_status = await self._resolve_post_agent_status(task_id)
+                    next_status = await resolve_post_agent_status(
+                        task_id, self._engine, self._get_task
+                    )
                     if next_status != db_task.status:
                         await asyncio.to_thread(self._set_status, task_id, next_status)
                         await self._events.emit(
@@ -834,7 +697,7 @@ class Sessions:
                 if transitioned_to_review:
                     await self._maybe_auto_review(task_id)
         except RuntimeError as exc:
-            if _is_shutdown_runtime_error(exc):
+            if is_shutdown_runtime_error(exc):
                 logger.debug(
                     "Skipping ACP completion handling during shutdown for task={} session={}: {}",
                     task_id,
@@ -938,7 +801,7 @@ class Sessions:
         while True:
             await asyncio.sleep(2.0)
             try:
-                if not _process_exists(pid):
+                if not process_exists(pid):
                     raise ProcessLookupError(pid)
             except ProcessLookupError:
                 await unregister_spawned_process(session_id)
@@ -946,7 +809,9 @@ class Sessions:
                 task = await self._get_task(task_id)
                 transitioned_to_review = False
                 if task.status == TaskStatus.IN_PROGRESS:
-                    next_status = await self._resolve_post_agent_status(task_id)
+                    next_status = await resolve_post_agent_status(
+                        task_id, self._engine, self._get_task
+                    )
                     if next_status != task.status:
                         await asyncio.to_thread(self._set_status, task_id, next_status)
                         await self._events.emit(
@@ -1014,50 +879,20 @@ class Sessions:
                 {"error": f"Auto-review failed: {exc}"},
             )
 
-    async def _rebase_if_enabled(self, task_id: str) -> None:
-        settings = await _db_async(
-            self._engine,
-            lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
-        )
-        # Check if auto-rebase is enabled (default: True for local_if_ahead policy)
-        raw_strategy = settings.get("worktree_base_ref_strategy", "local_if_ahead")
-        try:
-            strategy = BranchRefStrategy(raw_strategy)
-        except ValueError:
-            strategy = BranchRefStrategy.LOCAL_IF_AHEAD
-        if strategy != BranchRefStrategy.LOCAL_IF_AHEAD:
-            return
 
-        ws = await _db_async(
-            self._engine,
-            lambda s: s.exec(select(Worktree).where(Worktree.task_id == task_id)).first(),
-        )
-        if ws is None:
-            return
-
-        task = await self._get_task(task_id)
-        repo = await _db_async(
-            self._engine,
-            lambda s, repo_id=ws.repo_id: s.get(Repository, repo_id),
-        )
-        target_branch = task.base_branch or (repo.default_branch if repo else "main")
-
-        try:
-            await git.rebase(ws.worktree_path, target_branch=target_branch)
-            logger.debug("Rebased task={} onto latest {}", task_id, target_branch)
-        except WorktreeError as exc:
-            # Log but don't fail - let the agent handle conflicts if they occur
-            logger.warning("Rebase failed for task={}: {}", task_id, exc)
-            await self._events.emit(
-                task_id,
-                SessionEventType.PLAN_UPDATE,
-                {
-                    "op": "rebase",
-                    "status": "failed",
-                    "target_branch": target_branch,
-                    "error": str(exc),
-                },
-            )
-
-
-__all__ = ["DetachResult", "Sessions"]
+__all__ = [
+    "DetachResult",
+    "Sessions",
+    "active_session_summaries",
+    "complete_session",
+    "fail_session",
+    "fetch_project_learnings",
+    "get_latest_session",
+    "get_latest_task_session",
+    "has_active_session",
+    "list_active_sessions",
+    "list_task_sessions",
+    "mark_session_running",
+    "resolve_session_binding",
+    "update_session_pid",
+]

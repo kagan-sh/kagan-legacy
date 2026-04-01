@@ -11,7 +11,7 @@ import contextlib
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
 
-from kagan.mcp.server import ServerOptions, create_server
+from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]

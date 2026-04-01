@@ -13,7 +13,7 @@ Consolidated MCP toolset reference for Kagan.
 
 ## Runtime module path
 
-For embedded/runtime integrations, use `kagan.mcp.runtime` as the canonical server module.
+For embedded/runtime integrations, use `kagan.server.mcp.runtime` as the canonical server module.
 
 ## Annotation model
 
@@ -64,9 +64,10 @@ ______________________________________________________________________
 | `project_list(...)`                 | `read-only`   | List recent projects                              |
 | `project_set_active(...)`           | `mutating`    | Set active project                                |
 | `project_create(...)`               | `mutating`    | Create a project                                  |
-| `project_add_repo(...)`             | `mutating`    | Link a repo to a project                          |
-| `project_delete(...)`               | `destructive` | Delete a project                                  |
-| `repo_list(...)`                    | `read-only`   | List repos by project                             |
+| `project_add_repo(...)`                | `mutating`    | Link a repo to a project                          |
+| `project_set_repo_default_branch(...)` | `mutating`    | Set default base branch for a project repo        |
+| `project_delete(...)`                  | `destructive` | Delete a project                                  |
+| `repo_list(...)`                       | `read-only`   | List repos by project                             |
 | `review_approve(...)`               | `mutating`    | Record approval for a review-ready task           |
 | `review_reject(...)`                | `mutating`    | Reject a review-ready task with explicit feedback |
 | `review_merge(...)`                 | `destructive` | Merge an approved task into its base branch       |
@@ -91,6 +92,7 @@ ______________________________________________________________________
 
 | Tool                                   | Annotation  | Purpose                            |
 | -------------------------------------- | ----------- | ---------------------------------- |
+| `persona_preset_preview(...)`          | `read-only` | Preview personas from a repo without importing |
 | `persona_preset_audit(...)`            | `read-only` | Audit persona presets in a repo    |
 | `persona_preset_import(...)`           | `mutating`  | Import persona presets from GitHub |
 | `persona_preset_export(...)`           | `mutating`  | Export persona presets to GitHub   |

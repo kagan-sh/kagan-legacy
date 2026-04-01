@@ -35,8 +35,8 @@ def serve(
     if readonly and admin:
         raise click.UsageError("--readonly and --admin are mutually exclusive")
 
-    from kagan.mcp.server import ServerOptions
     from kagan.server import ApiServerOptions, serve_http
+    from kagan.server.mcp.server import ServerOptions
 
     mcp_opts = ServerOptions(
         readonly=readonly,

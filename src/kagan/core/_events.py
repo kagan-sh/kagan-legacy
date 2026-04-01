@@ -113,6 +113,199 @@ class BoardEvent:
     to_status: str | None = None
 
 
+# ── Module-level functions (canonical API) ─────────────────────────
+
+
+def _parse_cursor_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed.astimezone(UTC).replace(tzinfo=None)
+
+
+async def emit_event(
+    engine: Engine,
+    signals: dict[str, asyncio.Event],
+    task_id: str,
+    event_type: SessionEventType,
+    payload: dict,
+    *,
+    session_id: str | None = None,
+    persist: bool = True,
+) -> SessionEvent:
+    scrubbed_payload = _scrub_secrets(payload)
+    event = SessionEvent(
+        task_id=task_id,
+        session_id=session_id,
+        event_type=event_type,
+        payload=scrubbed_payload,
+    )
+    if persist:
+        await _db_async(engine, lambda s: _add_and_refresh(s, event))
+    if task_id not in signals:
+        signals[task_id] = asyncio.Event()
+    signal = signals[task_id]
+    signal.set()
+    return event
+
+
+async def list_events(
+    engine: Engine,
+    task_id: str,
+    *,
+    offset: int = 0,
+    limit: int = 20,
+    session_id: str | None = None,
+) -> list[SessionEvent]:
+    def _query(s):
+        stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+        if session_id is not None:
+            stmt = stmt.where(SessionEvent.session_id == session_id)
+        stmt = stmt.order_by(cast("Any", SessionEvent.created_at)).offset(offset).limit(limit)
+        return list(s.exec(stmt).all())
+
+    return await _db_async(engine, _query)
+
+
+async def list_events_recent(
+    engine: Engine,
+    task_id: str,
+    *,
+    limit: int = 50,
+    before: str | None = None,
+    before_id: str | None = None,
+    session_id: str | None = None,
+) -> builtins.list[SessionEvent]:
+    bounded = max(limit, 0)
+    if bounded == 0:
+        return []
+
+    cutoff = _parse_cursor_timestamp(before) if before is not None else None
+
+    def _query(s):
+        stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+        if session_id is not None:
+            stmt = stmt.where(SessionEvent.session_id == session_id)
+        if cutoff is not None:
+            if before_id:
+                stmt = stmt.where(
+                    or_(
+                        cast("Any", SessionEvent.created_at) < cutoff,
+                        and_(
+                            cast("Any", SessionEvent.created_at) == cutoff,
+                            cast("Any", SessionEvent.id) < before_id,
+                        ),
+                    )
+                )
+            else:
+                stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+        stmt = stmt.order_by(
+            desc(cast("Any", SessionEvent.created_at)),
+            desc(cast("Any", SessionEvent.id)),
+        ).limit(bounded)
+        return list(s.exec(stmt).all())
+
+    recent = await _db_async(engine, _query)
+    recent.reverse()
+    return recent
+
+
+async def list_events_before(
+    engine: Engine,
+    task_id: str,
+    *,
+    before: str,
+    before_id: str | None = None,
+    limit: int = 50,
+    session_id: str | None = None,
+) -> builtins.list[SessionEvent]:
+    bounded = max(limit, 0)
+    if bounded == 0:
+        return []
+
+    cutoff = _parse_cursor_timestamp(before)
+
+    def _query(s):
+        stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+        if before_id:
+            stmt = stmt.where(
+                or_(
+                    cast("Any", SessionEvent.created_at) < cutoff,
+                    and_(
+                        cast("Any", SessionEvent.created_at) == cutoff,
+                        cast("Any", SessionEvent.id) < before_id,
+                    ),
+                )
+            )
+        else:
+            stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+        if session_id is not None:
+            stmt = stmt.where(SessionEvent.session_id == session_id)
+        stmt = stmt.order_by(
+            desc(cast("Any", SessionEvent.created_at)),
+            desc(cast("Any", SessionEvent.id)),
+        ).limit(bounded)
+        return list(s.exec(stmt).all())
+
+    recent = await _db_async(engine, _query)
+    recent.reverse()
+    return recent
+
+
+async def list_events_after(
+    engine: Engine,
+    task_id: str,
+    *,
+    after_ts: str,
+    after_id: str,
+    limit: int = 50,
+    session_id: str | None = None,
+) -> builtins.list[SessionEvent]:
+    bounded = max(limit, 0)
+    if bounded == 0:
+        return []
+
+    cutoff = _parse_cursor_timestamp(after_ts)
+
+    def _query(s):
+        stmt = select(SessionEvent).where(
+            SessionEvent.task_id == task_id,
+            or_(
+                cast("Any", SessionEvent.created_at) > cutoff,
+                and_(
+                    cast("Any", SessionEvent.created_at) == cutoff,
+                    cast("Any", SessionEvent.id) > after_id,
+                ),
+            ),
+        )
+        if session_id is not None:
+            stmt = stmt.where(SessionEvent.session_id == session_id)
+        stmt = stmt.order_by(
+            cast("Any", SessionEvent.created_at),
+            cast("Any", SessionEvent.id),
+        ).limit(bounded)
+        return list(s.exec(stmt).all())
+
+    return await _db_async(engine, _query)
+
+
+async def latest_event(
+    engine: Engine,
+    task_id: str,
+    *,
+    event_type: SessionEventType | None = None,
+) -> SessionEvent | None:
+    def op(s) -> SessionEvent | None:
+        stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
+        if event_type is not None:
+            stmt = stmt.where(SessionEvent.event_type == event_type)
+        stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at)))
+        return s.exec(stmt).first()
+
+    return await _db_async(engine, op)
+
+
+# ── Class (manages live queues + streaming, delegates DB ops) ──────
+
+
 class Events:
     def __init__(
         self,
@@ -220,8 +413,7 @@ class Events:
 
     @staticmethod
     def _parse_cursor_timestamp(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.astimezone(UTC).replace(tzinfo=None)
+        return _parse_cursor_timestamp(value)
 
     def _enqueue_board_event(
         self, queue: _BoundedEventQueue[BoardEvent], event: BoardEvent
@@ -317,14 +509,9 @@ class Events:
         limit: int = 20,
         session_id: str | None = None,
     ) -> list[SessionEvent]:
-        def _query(s):
-            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
-            if session_id is not None:
-                stmt = stmt.where(SessionEvent.session_id == session_id)
-            stmt = stmt.order_by(cast("Any", SessionEvent.created_at)).offset(offset).limit(limit)
-            return list(s.exec(stmt).all())
-
-        return await _db_async(self._engine, _query)
+        return await list_events(
+            self._engine, task_id, offset=offset, limit=limit, session_id=session_id
+        )
 
     async def list_recent(
         self,
@@ -335,38 +522,14 @@ class Events:
         before_id: str | None = None,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
-        bounded = max(limit, 0)
-        if bounded == 0:
-            return []
-
-        cutoff = self._parse_cursor_timestamp(before) if before is not None else None
-
-        def _query(s):
-            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
-            if session_id is not None:
-                stmt = stmt.where(SessionEvent.session_id == session_id)
-            if cutoff is not None:
-                if before_id:
-                    stmt = stmt.where(
-                        or_(
-                            cast("Any", SessionEvent.created_at) < cutoff,
-                            and_(
-                                cast("Any", SessionEvent.created_at) == cutoff,
-                                cast("Any", SessionEvent.id) < before_id,
-                            ),
-                        )
-                    )
-                else:
-                    stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
-            stmt = stmt.order_by(
-                desc(cast("Any", SessionEvent.created_at)),
-                desc(cast("Any", SessionEvent.id)),
-            ).limit(bounded)
-            return list(s.exec(stmt).all())
-
-        recent = await _db_async(self._engine, _query)
-        recent.reverse()
-        return recent
+        return await list_events_recent(
+            self._engine,
+            task_id,
+            limit=limit,
+            before=before,
+            before_id=before_id,
+            session_id=session_id,
+        )
 
     async def list_before(
         self,
@@ -377,37 +540,14 @@ class Events:
         limit: int = 50,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
-        bounded = max(limit, 0)
-        if bounded == 0:
-            return []
-
-        cutoff = self._parse_cursor_timestamp(before)
-
-        def _query(s):
-            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
-            if before_id:
-                stmt = stmt.where(
-                    or_(
-                        cast("Any", SessionEvent.created_at) < cutoff,
-                        and_(
-                            cast("Any", SessionEvent.created_at) == cutoff,
-                            cast("Any", SessionEvent.id) < before_id,
-                        ),
-                    )
-                )
-            else:
-                stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
-            if session_id is not None:
-                stmt = stmt.where(SessionEvent.session_id == session_id)
-            stmt = stmt.order_by(
-                desc(cast("Any", SessionEvent.created_at)),
-                desc(cast("Any", SessionEvent.id)),
-            ).limit(bounded)
-            return list(s.exec(stmt).all())
-
-        recent = await _db_async(self._engine, _query)
-        recent.reverse()
-        return recent
+        return await list_events_before(
+            self._engine,
+            task_id,
+            before=before,
+            before_id=before_id,
+            limit=limit,
+            session_id=session_id,
+        )
 
     async def list_after(
         self,
@@ -418,32 +558,14 @@ class Events:
         limit: int = 50,
         session_id: str | None = None,
     ) -> builtins.list[SessionEvent]:
-        bounded = max(limit, 0)
-        if bounded == 0:
-            return []
-
-        cutoff = self._parse_cursor_timestamp(after_ts)
-
-        def _query(s):
-            stmt = select(SessionEvent).where(
-                SessionEvent.task_id == task_id,
-                or_(
-                    cast("Any", SessionEvent.created_at) > cutoff,
-                    and_(
-                        cast("Any", SessionEvent.created_at) == cutoff,
-                        cast("Any", SessionEvent.id) > after_id,
-                    ),
-                ),
-            )
-            if session_id is not None:
-                stmt = stmt.where(SessionEvent.session_id == session_id)
-            stmt = stmt.order_by(
-                cast("Any", SessionEvent.created_at),
-                cast("Any", SessionEvent.id),
-            ).limit(bounded)
-            return list(s.exec(stmt).all())
-
-        return await _db_async(self._engine, _query)
+        return await list_events_after(
+            self._engine,
+            task_id,
+            after_ts=after_ts,
+            after_id=after_id,
+            limit=limit,
+            session_id=session_id,
+        )
 
     async def latest(
         self,
@@ -451,14 +573,7 @@ class Events:
         *,
         event_type: SessionEventType | None = None,
     ) -> SessionEvent | None:
-        def op(s) -> SessionEvent | None:
-            stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
-            if event_type is not None:
-                stmt = stmt.where(SessionEvent.event_type == event_type)
-            stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at)))
-            return s.exec(stmt).first()
-
-        return await _db_async(self._engine, op)
+        return await latest_event(self._engine, task_id, event_type=event_type)
 
     async def stream(
         self,
@@ -538,4 +653,13 @@ class Events:
                 self._board_live_queues.remove(queue)
 
 
-__all__ = ["BoardEvent", "Events"]
+__all__ = [
+    "BoardEvent",
+    "Events",
+    "emit_event",
+    "latest_event",
+    "list_events",
+    "list_events_after",
+    "list_events_before",
+    "list_events_recent",
+]

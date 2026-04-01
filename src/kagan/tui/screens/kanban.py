@@ -12,7 +12,7 @@ from textual.reactive import var
 from textual.screen import Screen
 from textual.widgets import Input, Select, Static, TextArea
 
-from kagan.chat import (
+from kagan.cli.chat import (
     resolve_default_agent_backend,
     warm_orchestrator_backend,
 )

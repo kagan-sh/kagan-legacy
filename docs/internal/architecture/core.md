@@ -30,7 +30,7 @@ There should be one obvious way to do it.
 1. **DB is the durable buffer** — ACP and MCP paths write to the same table; clients reconnect seamlessly
 1. **Async public API** — Textual is async, MCP is async, agent spawning is async
 1. **Reactive event streaming** — `task.events.stream()` uses `asyncio.Event` signaling, not polling
-1. **No chat logic** — conversational abstractions live in `kagan.chat`, not here
+1. **No chat logic** — conversational abstractions live in `kagan.cli.chat`, not here
 
 ## References
 
@@ -226,7 +226,7 @@ A task can be executed across multiple sessions with different personas in seque
 - Polls the DB at a configurable interval and compares snapshots
 - Detects: task creation, deletion, status changes, execution mode changes
 - Emits structured change events to registered listeners
-- Used by `kagan.chat` to provide context updates when the board changes
+- Used by `kagan.cli.chat` to provide context updates when the board changes
 - Distinct from `tasks.events.stream()` (streams agent progress for single task)
 
 ## Event Streaming
@@ -427,13 +427,13 @@ On macOS, these defaults apply unless the env vars are explicitly set.
 **Core owns execution** — frontends call `tasks.run()` and optionally supply a launcher.
 They never launch agents, provision worktrees, or write `.mcp.json` directly.
 
-**Core does not own chat** — conversational abstractions live in `kagan.chat`. Both TUI and CLI import it; core never does.
+**Core does not own chat** — conversational abstractions live in `kagan.cli.chat`. Both TUI and CLI import it; core never does.
 
 ```
-kagan.chat ──► kagan.core (agent spawning, event streaming, task ops)
-kagan.tui ──► kagan.chat (ChatSession, slash commands)
-kagan.cli ──► kagan.chat (run_chat for REPL)
-kagan.core ──✘► kagan.chat NEVER
+kagan.cli.chat ──► kagan.core (agent spawning, event streaming, task ops)
+kagan.tui ──► kagan.cli.chat (ChatSession, slash commands)
+kagan.cli ──► kagan.cli.chat (run_chat for REPL)
+kagan.core ──✘► kagan.cli.chat NEVER
 ```
 
 ## Testing

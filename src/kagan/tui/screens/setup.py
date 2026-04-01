@@ -8,7 +8,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Footer, Input, Label, Select, Static
 
-from kagan.chat import resolve_default_agent_backend
+from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import list_available_backends, list_backend_specs
 from kagan.tui.keybindings import SETUP_FLOW_BINDINGS
 

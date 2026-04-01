@@ -77,7 +77,7 @@ TUI and MCP are not special. They should use the same interface as Web and VS Co
 │                         ▼                                                   │
 │              ┌─────────────────────┐                                        │
 │              │   UnifiedClient     │  ← ONE interface for ALL clients       │
-│              │  (kagan.client)     │                                        │
+│              │  (kagan.server.client)     │                                        │
 │              └──────────┬──────────┘                                        │
 │                         │                                                   │
 │       ┌─────────────────┼─────────────────┐                                 │
@@ -141,7 +141,7 @@ def create_client(config: ClientConfig) -> UnifiedClient:
 
 ## 3. New Unified Client Interface
 
-### 3.1 Python Interface (`kagan.client`)
+### 3.1 Python Interface (`kagan.server.client`)
 
 ```python
 """Unified client interface — the ONLY way to access Kagan.
@@ -623,7 +623,7 @@ class EmbeddedServer:
     async def _run_server(self) -> None:
         """Run the actual server."""
         from kagan.server import create_api_server, ApiServerOptions
-        from kagan.mcp.server import ServerOptions
+        from kagan.server.mcp.server import ServerOptions
         
         opts = ApiServerOptions(
             mcp_opts=ServerOptions(db_path=str(self._db_path)),
@@ -665,7 +665,7 @@ class KaganApp(App[None]):
         socket_path = await self._embedded.start()
         
         # Connect via Unix socket (same as any client)
-        from kagan.client import create_client, ClientConfig, Transport
+        from kagan.server.client import create_client, ClientConfig, Transport
         self.client = create_client(ClientConfig(
             transport=Transport.UNIX_SOCKET,
             socket_path=str(socket_path),
@@ -865,7 +865,7 @@ class KaganApp(App[None]):
 **After (clean):**
 ```python
 # src/kagan/tui/app.py
-from kagan.client import create_client, ClientConfig, Transport
+from kagan.server.client import create_client, ClientConfig, Transport
 from kagan.server.embedded import EmbeddedServer
 
 class KaganApp(App[None]):
@@ -938,7 +938,7 @@ def task_get(ctx: Context, task_id: str) -> dict:
 **After (clean) — Option A: MCP uses embedded server:**
 ```python
 # src/kagan/mcp/server.py
-from kagan.client import create_client, ClientConfig, Transport
+from kagan.server.client import create_client, ClientConfig, Transport
 from kagan.server.embedded import EmbeddedServer
 
 @asynccontextmanager
@@ -1096,8 +1096,8 @@ await bus.publish(BusEvent.TASK_CREATED, task_id=task.id)
 
 **New public API:**
 ```python
-# Everything comes from kagan.client:
-from kagan.client import (
+# Everything comes from kagan.server.client:
+from kagan.server.client import (
     UnifiedClient,      # Abstract interface
     HttpClient,         # HTTP transport
     UnixSocketClient,   # Unix socket transport (TUI)
@@ -1112,7 +1112,7 @@ from kagan.client import (
 
 | Before | After |
 |--------|-------|
-| `from kagan.core import KaganCore` | `from kagan.client import UnifiedClient, create_client` |
+| `from kagan.core import KaganCore` | `from kagan.server.client import UnifiedClient, create_client` |
 | `from kagan.core._event_bus import EventBus` | DELETED — use `client.stream_events()` |
 | `self.core.tasks.list()` | `self.client.list_tasks()` |
 | `self.core.projects.create()` | `self.client.create_project()` |

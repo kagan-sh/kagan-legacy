@@ -64,7 +64,7 @@ kagan = "kagan.cli:cli"
 kg = "kagan.cli:cli"
 
 [project.entry-points."kagan.plugins"]
-github = "kagan.plugins._github:GitHubImporter"
+github = "kagan.core.plugins._github:GitHubImporter"
 
 [project.urls]
 Homepage = "https://kagan.sh"
@@ -125,7 +125,7 @@ max-complexity = 20
 "tests/property/*.py" = [
   "E402",
 ] # Hypothesis settings must be configured before imports
-"src/kagan/mcp/**/*.py" = [
+"src/kagan/server/mcp/**/*.py" = [
   "TC001", "TC002", "TC003",
 ] # MCP framework evaluates annotations at runtime via inspect.signature(eval_str=True)
 "src/kagan/server/_routes.py" = [

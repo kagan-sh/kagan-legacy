@@ -11,7 +11,7 @@ from loguru import logger
 from starlette.responses import StreamingResponse
 
 from kagan.core.errors import KaganError
-from kagan.mcp.server import get_server_context
+from kagan.server.mcp.server import get_server_context
 from kagan.server.responses import EventResponse
 
 if TYPE_CHECKING:

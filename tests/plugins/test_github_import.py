@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from kagan.core import KaganCore, Priority
-from kagan.plugins._github import (
+from kagan.core.plugins._github import (
     GitHubImportConfig,
     GitHubImporter,
     GitHubIssue,
@@ -156,9 +156,9 @@ def _make_gh_issues(*issues):
     return result
 
 
-@patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
-@patch("kagan.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_creates_tasks_from_issues(
     _mock_path, _mock_auth, mock_fetch, plugin, client
 ) -> None:
@@ -185,9 +185,9 @@ async def test_sync_creates_tasks_from_issues(
     assert feature_task.launcher is None
 
 
-@patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
-@patch("kagan.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_is_idempotent(_mock_path, _mock_auth, mock_fetch, plugin, client) -> None:
     """Running sync twice with same issues creates tasks only once."""
     issues = _make_gh_issues((1, "Bug report", ["bug"]))
@@ -206,9 +206,9 @@ async def test_sync_is_idempotent(_mock_path, _mock_auth, mock_fetch, plugin, cl
     assert len(tasks) == 1
 
 
-@patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
-@patch("kagan.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_reimports_deleted_tasks(
     _mock_path, _mock_auth, mock_fetch, plugin, client
 ) -> None:
@@ -229,9 +229,9 @@ async def test_sync_reimports_deleted_tasks(
     assert result2.skipped == 0
 
 
-@patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
-@patch("kagan.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_incremental_new_issues(
     _mock_path, _mock_auth, mock_fetch, plugin, client
 ) -> None:
@@ -250,9 +250,9 @@ async def test_sync_incremental_new_issues(
     assert len(tasks) == 2
 
 
-@patch("kagan.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
-@patch("kagan.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_persists_map_in_settings(
     _mock_path, _mock_auth, mock_fetch, plugin, client
 ) -> None:
@@ -273,7 +273,7 @@ async def test_sync_persists_map_in_settings(
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.plugins._github._gh_path", return_value=None)
+@patch("kagan.core.plugins._github._gh_path", return_value=None)
 def test_preflight_warns_gh_missing(_mock_path, plugin) -> None:
     """Preflight warns when gh CLI is not installed."""
     checks = plugin.preflight()
@@ -281,8 +281,8 @@ def test_preflight_warns_gh_missing(_mock_path, plugin) -> None:
     assert any("https://cli.github.com" in c.fix_hint for c in checks)
 
 
-@patch("kagan.plugins._github.subprocess")
-@patch("kagan.plugins._github._gh_path", return_value="/usr/bin/gh")
+@patch("kagan.core.plugins._github.subprocess")
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
 def test_preflight_passes_when_gh_authed(_mock_path, mock_subprocess, plugin) -> None:
     """Preflight passes when gh is installed and authenticated."""
     mock_subprocess.run.return_value.returncode = 0

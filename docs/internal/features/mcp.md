@@ -1,6 +1,6 @@
 # MCP Features
 
-Observable behaviors of `kagan.mcp`. Each section maps to a test file in `tests/mcp/`.
+Observable behaviors of `kagan.server.mcp`. Each section maps to a test file in `tests/mcp/`.
 Implementation details live in `docs/internal/architecture/mcp.md`.
 
 ______________________________________________________________________

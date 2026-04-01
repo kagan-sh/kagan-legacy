@@ -8,7 +8,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, Select, Static
 
 from kagan.core.errors import KaganError
-from kagan.integrations.github import (
+from kagan.core.integrations.github import (
     canonical_repo_slug,
     detect_github_repo_slug_from_origin,
     format_github_setup_message,

@@ -106,7 +106,7 @@ tests/
 │   ├── test_chat_modes.py              # Orchestrator/task chat mode switching
 │   ├── test_session_and_backend.py
 │   ├── test_settings_modal.py          # Settings screen behaviors
-├── mcp/                                 # kagan.mcp (behavioral)
+├── mcp/                                 # kagan.server.mcp (behavioral)
 │   ├── test_task_tools.py
 │   ├── test_session_tools_auto.py
 │   ├── test_session_tools_pair.py

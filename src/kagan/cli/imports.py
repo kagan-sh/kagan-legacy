@@ -3,8 +3,7 @@ from pathlib import Path
 import click
 
 from kagan.cli._bootstrap import make_client, run_async
-from kagan.core.models import Project
-from kagan.integrations.github import (
+from kagan.core.integrations.github import (
     canonical_repo_slug,
     detect_github_repo_slug_from_origin,
     format_github_setup_message,
@@ -13,6 +12,7 @@ from kagan.integrations.github import (
     normalize_github_state,
     sync_github_issues,
 )
+from kagan.core.models import Project
 
 
 @click.group(name="import")

@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from kagan.chat import merge_task_follow_up_description, resolve_default_agent_backend
+from kagan.cli.chat import merge_task_follow_up_description, resolve_default_agent_backend
 from kagan.core.errors import KaganError
 from kagan.core.models import Task
 

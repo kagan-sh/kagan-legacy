@@ -2,7 +2,7 @@
 
 import pytest
 
-from kagan.chat import agents as agents_module
+from kagan.cli.chat import agents as agents_module
 from kagan.server.responses import ChatAgentsResponse
 
 pytestmark = [pytest.mark.unit]

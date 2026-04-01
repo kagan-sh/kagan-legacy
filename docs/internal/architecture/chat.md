@@ -1,4 +1,4 @@
-# Chat Architecture — `kagan.chat`
+# Chat Architecture — `kagan.cli.chat`
 
 *Conversational layer over core: REPL, slash commands, session persistence, ACP streaming.*
 
@@ -17,7 +17,7 @@ ______________________________________________________________________
 
 ## Context
 
-`kagan.chat` provides conversational abstractions over `kagan.core`:
+`kagan.cli.chat` provides conversational abstractions over `kagan.core`:
 
 1. **REPL** — interactive terminal chat with an orchestrator agent
 1. **Slash commands** — structured actions (`/agents`, `/sessions`, `/help`)
@@ -27,10 +27,10 @@ ______________________________________________________________________
 **Dependency direction:**
 
 ```text
-kagan.chat ──► kagan.core   (agent spawning, events, tasks)
-kagan.tui  ──► kagan.chat   (ChatController, slash commands)
-kagan.cli  ──► kagan.chat   (run_chat for REPL)
-kagan.core ──✘► kagan.chat  NEVER
+kagan.cli.chat ──► kagan.core   (agent spawning, events, tasks)
+kagan.tui  ──► kagan.cli.chat   (ChatController, slash commands)
+kagan.cli  ──► kagan.cli.chat   (run_chat for REPL)
+kagan.core ──✘► kagan.cli.chat  NEVER
 ```
 
 ______________________________________________________________________

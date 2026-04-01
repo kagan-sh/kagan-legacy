@@ -22,7 +22,7 @@ ______________________________________________________________________
 
 ## Design Principles
 
-1. **FastMCP as Foundation** — Wraps `create_server()` from `kagan.mcp` and adds custom routes.
+1. **FastMCP as Foundation** — Wraps `create_server()` from `kagan.server.mcp` and adds custom routes.
 1. **Hybrid Transport** — Standard MCP (STDIO) + StreamableHTTP (REST + SSE).
 1. **Stateless REST** — Standard HTTP verbs for commands and resource management.
 1. **SSE for Events** — Server-Sent Events for real-time board and session streaming.
@@ -50,7 +50,7 @@ src/kagan/server/
 
 ### Dependency Direction
 
-`kagan.server` ──► `kagan.mcp` ──► `kagan.core`
+`kagan.server` ──► `kagan.server.mcp` ──► `kagan.core`
 
 - `server` uses `mcp` to build the base server instance.
 - `server` uses `core` (via `get_server_context`) for all business logic.
@@ -62,7 +62,7 @@ ______________________________________________________________________
 
 `server.py` defines `create_api_server(opts)`, which:
 
-1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
+1. Calls `kagan.server.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
 1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
 1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.

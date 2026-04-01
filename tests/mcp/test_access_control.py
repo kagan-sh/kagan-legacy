@@ -1,4 +1,4 @@
-"""Access control behavioral tests for kagan.mcp.
+"""Access control behavioral tests for kagan.server.mcp.
 
 Tests verify role-based access control through MCP protocol behavior:
 observable tool visibility via list_tools() on servers with different AgentRole values.
@@ -13,7 +13,7 @@ import pytest
 from mcp.shared.memory import create_client_server_memory_streams
 
 from kagan.core.enums import AgentRole
-from kagan.mcp.server import ServerOptions, create_server
+from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]

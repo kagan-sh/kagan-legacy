@@ -1,4 +1,4 @@
-# MCP Server Architecture — `kagan.mcp`
+# MCP Server Architecture — `kagan.server.mcp`
 
 *Design principles: python-sdk native, Zen of Python, no cleverness.*
 
@@ -15,7 +15,7 @@ ______________________________________________________________________
 
 ## Context
 
-`kagan.mcp` exposes kagan's core SDK as an MCP server for two consumers:
+`kagan.server.mcp` exposes kagan's core SDK as an MCP server for two consumers:
 
 1. **IDE hosts** (Cursor, VS Code, etc.) — manage tasks, review diffs, read project state.
 1. **Interactive-run agents** — discover kagan via `.mcp.json` and report progress to the board.
@@ -70,7 +70,7 @@ sessions.py settings.py plugins.py
         │ (SDK access)  │
         └───────────────┘
 
-Dependencies: kagan.mcp ──► kagan.core only
+Dependencies: kagan.server.mcp ──► kagan.core only
 ```
 
 ______________________________________________________________________
@@ -78,7 +78,7 @@ ______________________________________________________________________
 ## Package Layout
 
 ```text
-src/kagan/mcp/
+src/kagan/server/mcp/
 ├── __init__.py        # re-export create_server
 ├── server.py          # MCPServer factory, lifespan, STDIO entry point
 ├── _policy.py         # Role-based access control

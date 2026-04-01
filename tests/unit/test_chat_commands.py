@@ -2,7 +2,7 @@ from typing import Any, cast
 
 import pytest
 
-from kagan.chat import (
+from kagan.cli.chat import (
     SLASH_COMMAND_REGISTRY,
     ChatController,
     delete_chat_session,
@@ -14,7 +14,7 @@ from kagan.chat import (
     save_chat_session,
     set_last_session_id,
 )
-from kagan.chat.sessions import _clean_generated_title, _format_relative_time
+from kagan.cli.chat.sessions import _clean_generated_title, _format_relative_time
 from kagan.core import AgentError, BackendSpec
 
 pytestmark = [pytest.mark.unit]
@@ -44,7 +44,7 @@ def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:
     controller = ChatController(cast("Any", _FakeClient()), agent_backend="custom-backend")
 
     monkeypatch.setattr(
-        "kagan.chat.controller.get_backend_spec",
+        "kagan.cli.chat.controller.get_backend_spec",
         lambda _name: BackendSpec(name="custom-backend", executable="custom-backend"),
     )
 
@@ -257,7 +257,7 @@ async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) ->
         if args:
             lines.append(str(args[0]))
 
-    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     should_restart = await controller._open_sessions("cfcee6c1")
@@ -294,9 +294,9 @@ async def test_open_sessions_without_query_uses_picker_selection(monkeypatch) ->
         if args:
             lines.append(str(args[0]))
 
-    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
-    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _pick_session)
-    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+    monkeypatch.setattr("kagan.cli.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.cli.chat.controller.searchable_picker", _pick_session)
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     should_restart = await controller._open_sessions(None)
@@ -324,8 +324,8 @@ async def test_open_sessions_cancelled_picker_keeps_current_session(monkeypatch)
     async def _cancel_picker(_title: str, _options: list[Any]) -> str | None:
         return None
 
-    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
-    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _cancel_picker)
+    monkeypatch.setattr("kagan.cli.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.cli.chat.controller.searchable_picker", _cancel_picker)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     controller._chat_session_id = "current123"
@@ -363,8 +363,8 @@ async def test_open_sessions_noninteractive_falls_back_to_static_list(monkeypatc
         if args:
             printed.append(args[0])
 
-    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: False)
-    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+    monkeypatch.setattr("kagan.cli.chat.controller.supports_interactive_picker", lambda: False)
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     should_restart = await controller._open_sessions(None)
@@ -399,11 +399,11 @@ async def test_handle_slash_agents_without_arg_uses_picker_selection(monkeypatch
         return True
 
     monkeypatch.setattr(
-        "kagan.chat.controller.list_registered_agent_backends",
+        "kagan.cli.chat.controller.list_registered_agent_backends",
         lambda: ["claude-code", "opencode"],
     )
-    monkeypatch.setattr("kagan.chat.controller.supports_interactive_picker", lambda: True)
-    monkeypatch.setattr("kagan.chat.controller.searchable_picker", _pick_agent)
+    monkeypatch.setattr("kagan.cli.chat.controller.supports_interactive_picker", lambda: True)
+    monkeypatch.setattr("kagan.cli.chat.controller.searchable_picker", _pick_agent)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     monkeypatch.setattr(controller, "_switch_agent", _switch_agent)
@@ -452,7 +452,7 @@ async def test_create_new_session_creates_fresh_session(monkeypatch) -> None:
         if args:
             lines.append(str(args[0]))
 
-    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
     should_restart = await controller._create_new_session()
@@ -507,7 +507,7 @@ async def test_resolve_initial_session_uses_task_session_binding(monkeypatch) ->
         }
 
     monkeypatch.setattr(
-        "kagan.chat.controller.resolve_task_session_binding",
+        "kagan.cli.chat.controller.resolve_task_session_binding",
         _fake_resolve_task_session_binding,
     )
 
@@ -559,7 +559,7 @@ async def test_delete_chat_session_removes_session() -> None:
     deleted = await delete_chat_session(client, "del12345")
     assert deleted is True
 
-    from kagan.chat import get_chat_session
+    from kagan.cli.chat import get_chat_session
 
     result = await get_chat_session(client, "del12345")
     assert result is None
@@ -728,7 +728,7 @@ async def test_handle_slash_help_prints_structured_help_documentation(monkeypatc
         if args:
             printed.append(args[0])
 
-    monkeypatch.setattr("kagan.chat.repl._console.print", _capture_print)
+    monkeypatch.setattr("kagan.cli.chat.repl._console.print", _capture_print)
 
     should_exit = await controller._handle_slash("/help")
 

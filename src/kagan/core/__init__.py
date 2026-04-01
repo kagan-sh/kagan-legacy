@@ -166,7 +166,6 @@ from kagan.core.models import (
 )
 
 __all__ = [
-    # ── Constants ──────────────────────────────────────────────────────
     "ACP_TIMEOUT_HINT",
     "ADDITIONAL_INSTRUCTIONS_KEY",
     "AUTO_CONFIRM_SINGLE_KEY",
@@ -183,7 +182,6 @@ __all__ = [
     "PLANNING_DEPTH_KEY",
     "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
-    # ── Classes ────────────────────────────────────────────────────────
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
@@ -221,24 +219,18 @@ __all__ = [
     "ValidationError",
     "Worktree",
     "WorktreeError",
-    # reviews
     "abort_rebase",
-    # ── Legacy helpers ─────────────────────────────────────────────────
     "acp_handshake_timeout_seconds",
     "acp_process_exit_hint",
     "acp_startup_timeout_seconds",
-    # sessions
     "active_session_summaries",
-    # projects
     "add_repo",
-    # tasks
     "add_task_note",
     "approve_review",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
     "build_task_context",
-    # worktrees
     "cleanup_orphan_worktrees",
     "cleanup_worktree",
     "clear_review_verdicts",
@@ -263,7 +255,6 @@ __all__ = [
     "get_latest_session",
     "get_latest_task_session",
     "get_project",
-    # settings
     "get_settings",
     "get_system_git_identity",
     "get_task",
@@ -273,8 +264,6 @@ __all__ = [
     "has_active_session",
     "install_asyncio_subprocess_exception_filter",
     "list_active_sessions",
-    # ── Module functions (canonical API) ───────────────────────────────
-    # audit
     "list_audit",
     "list_available_backends",
     "list_backend_specs",

@@ -114,17 +114,11 @@ async def rebase_if_enabled(
     engine: Engine,
     get_task: Callable[[str], Awaitable[Task]],
     events: Events,
+    *,
+    strategy: BranchRefStrategy | None = None,
 ) -> None:
-    settings = await _db_async(
-        engine,
-        lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()},
-    )
-    # Check if auto-rebase is enabled (default: True for local_if_ahead policy)
-    raw_strategy = settings.get("worktree_base_ref_strategy", "local_if_ahead")
-    try:
-        strategy = BranchRefStrategy(raw_strategy)
-    except ValueError:
-        strategy = BranchRefStrategy.LOCAL_IF_AHEAD
+    if strategy is None:
+        strategy = await ref_strategy(engine)
     if strategy != BranchRefStrategy.LOCAL_IF_AHEAD:
         return
 

@@ -2,8 +2,8 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
-from kagan.chat._title import ensure_session_title, is_default_title
-from kagan.chat.sessions import (
+from kagan.cli.chat._title import ensure_session_title, is_default_title
+from kagan.cli.chat.sessions import (
     ChatSessionListItem,
     build_chat_session_list_items,
     create_chat_session,

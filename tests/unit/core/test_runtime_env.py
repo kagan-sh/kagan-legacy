@@ -274,7 +274,9 @@ class TestSanitizeStartupEnvironment:
         ):
             with patch.object(sys, "platform", "darwin"):
                 removed = sanitize_startup_environment()
-                assert "MallocStackLogging" in removed
+                # Windows uppercases env keys, so compare case-insensitively
+                removed_upper = {k.upper() for k in removed}
+                assert "MALLOCSTACKLOGGING" in removed_upper
                 assert "MallocStackLogging" not in os.environ
 
     def test_preserves_non_noisy_vars(self) -> None:

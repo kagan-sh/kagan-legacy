@@ -1,7 +1,8 @@
 import pytest
 from acp.schema import AgentMessageChunk, TextContentBlock, ToolCallStart
 
-import kagan.chat.controller as chat_controller
+import kagan.cli.chat._chat_acp as chat_acp_module
+import kagan.cli.chat.controller as chat_controller
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -39,8 +40,8 @@ async def test_orchestrator_client_batches_chunk_flushes(
     def _tick() -> float:
         return next(ticks, 1.03)
 
-    monkeypatch.setattr(chat_controller, "_console", fake_console)
-    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module.time, "monotonic", _tick)
 
     client = chat_controller._OrchestratorACPClient()
     client.start_turn()
@@ -66,8 +67,8 @@ async def test_orchestrator_client_flushes_buffer_before_tool_lines(
     def _tick() -> float:
         return next(ticks, 2.02)
 
-    monkeypatch.setattr(chat_controller, "_console", fake_console)
-    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module.time, "monotonic", _tick)
 
     client = chat_controller._OrchestratorACPClient()
     client.start_turn()
@@ -95,8 +96,8 @@ async def test_deferred_flush_fires_after_cadence_interval(
     def _tick() -> float:
         return next(ticks, 1.01)
 
-    monkeypatch.setattr(chat_controller, "_console", fake_console)
-    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module.time, "monotonic", _tick)
 
     client = chat_controller._OrchestratorACPClient()
     client.start_turn()
@@ -127,8 +128,8 @@ async def test_flush_timer_cancelled_on_start_turn(
     def _tick() -> float:
         return next(ticks, 1.01)
 
-    monkeypatch.setattr(chat_controller, "_console", fake_console)
-    monkeypatch.setattr(chat_controller.time, "monotonic", _tick)
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module.time, "monotonic", _tick)
 
     client = chat_controller._OrchestratorACPClient()
     client.start_turn()

@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from kagan.core import KaganCore
-from kagan.plugins import ImporterPlugin, ImportResult, Plugin, PluginError, PluginManager
+from kagan.core.plugins import ImporterPlugin, ImportResult, Plugin, PluginError, PluginManager
 
 pytestmark = [pytest.mark.plugins]
 
@@ -96,7 +96,7 @@ async def test_sync_convenience(manager: PluginManager) -> None:
 async def test_load_includes_builtin_github_without_entry_points(
     manager: PluginManager,
 ) -> None:
-    with patch("kagan.plugins._base.entry_points", return_value=[]):
+    with patch("kagan.core.plugins._base.entry_points", return_value=[]):
         await manager.load()
 
     assert "github" in manager.available

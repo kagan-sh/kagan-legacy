@@ -10,9 +10,9 @@ from starlette.responses import JSONResponse
 
 from kagan.core import TaskStatus
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
-from kagan.mcp.server import get_server_context
 from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.server._envelope import WireEnvelope
+from kagan.server.mcp.server import get_server_context
 from kagan.server.responses import ActiveSessionResponse, TaskResponse
 
 if TYPE_CHECKING:

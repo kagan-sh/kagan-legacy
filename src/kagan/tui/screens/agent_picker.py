@@ -7,7 +7,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from kagan.chat import list_registered_agent_backends, resolve_default_agent_backend
+from kagan.cli.chat import list_registered_agent_backends, resolve_default_agent_backend
 from kagan.core import list_available_backends, list_backend_specs
 from kagan.tui.keybindings import AGENT_PICKER_BINDINGS
 

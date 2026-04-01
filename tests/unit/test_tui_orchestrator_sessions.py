@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from kagan.chat.sessions import get_chat_session, save_chat_session
+from kagan.cli.chat.sessions import get_chat_session, save_chat_session
 
 
 def _load_tui_orchestrator_sessions_module() -> Any:

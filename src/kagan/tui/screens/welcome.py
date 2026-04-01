@@ -8,7 +8,7 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Button, OptionList, Static
 
-from kagan.chat.sessions import get_chat_session
+from kagan.cli.chat.sessions import get_chat_session
 from kagan.core.errors import KaganError, SessionError
 from kagan.core.models import Project
 from kagan.tui.keybindings import WELCOME_BINDINGS, get_key_for_action

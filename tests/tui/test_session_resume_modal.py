@@ -11,7 +11,7 @@ pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
     tmp_path,
 ) -> None:
-    from kagan.chat.sessions import save_chat_session
+    from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
 
     driver = await KaganDriver.boot(tmp_path)
@@ -57,7 +57,7 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
 
 
 async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> None:
-    from kagan.chat.sessions import save_chat_session
+    from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
 
     driver = await KaganDriver.boot(tmp_path)

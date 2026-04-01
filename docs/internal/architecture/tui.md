@@ -49,10 +49,10 @@ Each worker posts Textual messages for events. One pattern: worker pulls `tasks.
 
 ```text
 kagan.tui ──► kagan.core    (KaganCore: task ops, project ops, event streaming)
-kagan.tui ──► kagan.chat    (ChatSession: slash commands, conversation state)
+kagan.tui ──► kagan.cli.chat    (ChatSession: slash commands, conversation state)
 
 kagan.core ──✘──► kagan.tui   NEVER
-kagan.chat ──✘──► kagan.tui   NEVER
+kagan.cli.chat ──✘──► kagan.tui   NEVER
 ```
 
 ______________________________________________________________________
@@ -209,7 +209,7 @@ ______________________________________________________________________
 
 ### ChatSession
 
-`ChatSession` lives in `kagan.chat` (not core or TUI). It wraps core primitives:
+`ChatSession` lives in `kagan.cli.chat` (not core or TUI). It wraps core primitives:
 
 | Member     | Type                | Purpose                                   |
 | ---------- | ------------------- | ----------------------------------------- |

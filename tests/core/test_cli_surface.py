@@ -438,7 +438,7 @@ def test_chat_ctrl_c_exits_one(monkeypatch, tmp_path: Path) -> None:
     def _raise_keyboard_interrupt(*_args, **_kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("kagan.chat.run_chat_async", _raise_keyboard_interrupt)
+    monkeypatch.setattr("kagan.cli.chat.run_chat_async", _raise_keyboard_interrupt)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["chat"], env=_runner_env(tmp_path))

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 import kagan.server._helpers as server_helpers
-from kagan.mcp.server import ServerOptions
 from kagan.server._presence import MAX_PRESENCE_CLIENT_ID, MAX_PRESENCE_USER_LABEL, PresenceTracker
+from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 

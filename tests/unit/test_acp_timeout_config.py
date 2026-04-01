@@ -1,7 +1,7 @@
 import pytest
 
-from kagan.chat.acp import _acp_handshake_timeout_seconds
-from kagan.chat.acp import _acp_process_exit_hint as _chat_exit_hint
+from kagan.cli.chat.acp import _acp_handshake_timeout_seconds
+from kagan.cli.chat.acp import _acp_process_exit_hint as _chat_exit_hint
 from kagan.core import CLAUDE_CODE_BACKEND, CODEX_BACKEND
 from kagan.core._acp import _acp_process_exit_hint as _core_exit_hint
 from kagan.core._acp import _acp_startup_timeout_seconds, friendly_acp_error_message

@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-import kagan.chat.acp as chat_acp
+import kagan.cli.chat.acp as chat_acp
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 

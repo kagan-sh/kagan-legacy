@@ -3,8 +3,8 @@
 import pytest
 
 from kagan.core.enums import AgentRole
-from kagan.mcp._policy import ALL_TOOL_NAMES, ROLE_TOOLS, is_tool_allowed
-from kagan.mcp.server import ServerOptions
+from kagan.server.mcp._policy import ALL_TOOL_NAMES, ROLE_TOOLS, is_tool_allowed
+from kagan.server.mcp.server import ServerOptions
 
 
 @pytest.mark.unit

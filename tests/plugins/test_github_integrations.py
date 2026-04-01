@@ -1,7 +1,7 @@
 import pytest
 
 from kagan.core import CheckStatus, PreflightCheckResult
-from kagan.integrations.github import (
+from kagan.core.integrations.github import (
     canonical_repo_slug,
     format_github_setup_message,
     github_blocking_checks,

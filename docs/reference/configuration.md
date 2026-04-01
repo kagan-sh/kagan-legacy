@@ -14,7 +14,7 @@ icon: material/cog
 | Data            | `KAGAN_DATA_DIR`         |
 | Cache           | `KAGAN_CACHE_DIR`        |
 | Worktree base   | `KAGAN_WORKTREE_BASE`    |
-| Core runtime    | `KAGAN_CORE_RUNTIME_DIR` |
+| Core runtime    | _(derived from data dir)_ |
 | TUI mouse input | `KAGAN_TUI_MOUSE`        |
 
 Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
@@ -23,7 +23,7 @@ Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
 ```toml
 [general]
-default_worker_agent = "claude"
+default_agent_backend = "claude"
 auto_skill_discovery = false
 review_strictness = "balanced"
 additional_instructions = "Use conventional commit format"
@@ -45,7 +45,7 @@ max_concurrent_agents = 3
 | `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`            |
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
-| `default_worker_agent`               | string         | `"claude"`                       | Default worker agent                                                                |
+| `default_agent_backend`              | string         | `"claude"`                       | Default worker agent                                                                |
 | `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
 | `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
 | `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |
@@ -53,60 +53,13 @@ max_concurrent_agents = 3
 | `attached_launcher`                  | string         | `"tmux"` (`"vscode"` on Windows) | Preferred launcher for interactive runs                                             |
 | `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
 | `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
-| `default_model_claude`               | string or null | `null`                           | Optional default model                                                              |
-| `default_model_opencode`             | string or null | `null`                           | Optional default model                                                              |
-| `default_model_codex`                | string or null | `null`                           | Optional default model                                                              |
-| `default_model_gemini`               | string or null | `null`                           | Optional default model                                                              |
-| `default_model_kimi`                 | string or null | `null`                           | Optional default model                                                              |
-| `default_model_copilot`              | string or null | `null`                           | Optional display preference                                                         |
-| `default_model_goose`                | string or null | `null`                           | Optional default model                                                              |
-| `default_model_openhands`            | string or null | `null`                           | Optional default model                                                              |
-| `default_model_auggie`               | string or null | `null`                           | Optional default model                                                              |
-| `default_model_amp`                  | string or null | `null`                           | Optional default model                                                              |
-| `default_model_cagent`               | string or null | `null`                           | Optional default model                                                              |
-| `default_model_stakpak`              | string or null | `null`                           | Optional default model                                                              |
-| `default_model_vibe`                 | string or null | `null`                           | Optional default model                                                              |
-| `default_model_vtcode`               | string or null | `null`                           | Optional default model                                                              |
+| `default_model_claude`               | string or null | `null`                           | Default model for Claude-family agents                                              |
+| `default_model_openai`               | string or null | `null`                           | Default model for OpenAI-family agents                                              |
 | `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                                   |
 | `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                       |
 | `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                    |
 | `tasks_wait_default_timeout_seconds` | integer        | `1800`                           | Default timeout for `tasks_wait` (30 minutes)                                       |
 | `tasks_wait_max_timeout_seconds`     | integer        | `3600`                           | Max allowed timeout for `tasks_wait` (60 minutes)                                   |
-
-## `[agents.<name>]`
-
-Example:
-
-```toml
-[agents.claude]
-identity = "claude.com"
-name = "Claude Code"
-short_name = "claude"
-protocol = "acp"
-active = true
-model_env_var = "ANTHROPIC_MODEL"
-
-[agents.claude.run_command]
-"*" = "npx claude-code-acp"
-
-[agents.claude.interactive_command]
-"*" = "claude"
-```
-
-Fields:
-
-| Key                   | Type    | Notes                                      |
-| --------------------- | ------- | ------------------------------------------ |
-| `identity`            | string  | Unique provider/agent identity             |
-| `name`                | string  | Display name                               |
-| `short_name`          | string  | Compact label                              |
-| `protocol`            | string  | Currently `acp`                            |
-| `active`              | boolean | Enable/disable this agent                  |
-| `model_env_var`       | string  | Env var used for model selection           |
-| `run_command`         | table   | OS-keyed commands for managed runs         |
-| `interactive_command` | table   | OS-keyed commands for interactive launches |
-
-OS keys for command tables: `macos`, `linux`, `windows`, `*`.
 
 ## `[refinement]`
 

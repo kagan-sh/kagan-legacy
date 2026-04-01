@@ -5,7 +5,7 @@ from typing import Any, Literal, cast
 
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
 
-from kagan.chat import (
+from kagan.cli.chat import (
     build_orchestrator_prompt,
     resolve_default_agent_backend,
     run_orchestrator_turn,

@@ -48,7 +48,7 @@ def mcp(
         raise click.UsageError("--readonly and --admin are mutually exclusive")
 
     from kagan.core.enums import AgentRole
-    from kagan.mcp.server import ServerOptions, serve
+    from kagan.server.mcp.server import ServerOptions, serve
 
     resolved_role: AgentRole | None = None
     if role is not None:

@@ -6,7 +6,7 @@ from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
-from kagan.chat import list_registered_agent_backends
+from kagan.cli.chat import list_registered_agent_backends
 from kagan.core.models import Task
 
 if TYPE_CHECKING:

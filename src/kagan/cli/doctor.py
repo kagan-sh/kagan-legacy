@@ -20,7 +20,7 @@ from kagan.core import (
     resolve_default_agent_backend,
 )
 from kagan.core.errors import KaganError
-from kagan.plugins import PluginManager
+from kagan.core.plugins import PluginManager
 from kagan.runtime_env import noisy_env_keys
 
 

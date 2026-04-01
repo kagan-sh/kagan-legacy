@@ -349,7 +349,7 @@ def _register_commands() -> None:
     if getattr(cli, "_commands_registered", False):
         return
 
-    from kagan.cli.chat import chat
+    from kagan.cli.chat_cmd import chat
     from kagan.cli.doctor import doctor
     from kagan.cli.imports import import_cmd
     from kagan.cli.list_projects import list_projects

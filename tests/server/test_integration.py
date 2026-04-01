@@ -8,11 +8,11 @@ from typing import Any, cast
 import pytest
 
 import kagan.server._helpers as server_helpers
-import kagan.server._routes as routes_module
+import kagan.server._task_routes as routes_module
 from kagan.core import Priority, TaskStatus
 from kagan.core import git as git_module
 from kagan.core.models import Task
-from kagan.mcp.server import ServerOptions
+from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 

@@ -1,6 +1,6 @@
 import pytest
 
-from kagan.chat.prompt import (
+from kagan.cli.chat.prompt import (
     _ORCHESTRATOR_SYSTEM_PROMPT,
     _format_user_request_block,
     _runtime_guidance_for_request,

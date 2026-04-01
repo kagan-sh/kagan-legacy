@@ -24,7 +24,7 @@ def sync(plugin_name: str, repo: str, state: str, import_label: str | None) -> N
 
 
 async def _sync(plugin_name: str, repo: str, state: str, import_label: str | None) -> None:
-    from kagan.plugins import PluginManager
+    from kagan.core.plugins import PluginManager
 
     client = make_client()
     try:
@@ -46,7 +46,7 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
             raise click.ClickException(f"Unknown plugin: {plugin_name!r}. Installed: {available}")
 
         owner, repo_name = repo.split("/", 1)
-        from kagan.plugins._github import GitHubImportConfig
+        from kagan.core.plugins._github import GitHubImportConfig
 
         config = GitHubImportConfig(
             owner=owner,
@@ -74,7 +74,7 @@ def list_plugins() -> None:
 
 
 async def _list_plugins() -> None:
-    from kagan.plugins import PluginManager
+    from kagan.core.plugins import PluginManager
 
     client = make_client()
     try:
@@ -107,7 +107,7 @@ def check(plugin_name: str | None) -> None:
 
 
 async def _check_plugins(plugin_name: str | None) -> None:
-    from kagan.plugins import PluginManager
+    from kagan.core.plugins import PluginManager
 
     client = make_client()
     try:

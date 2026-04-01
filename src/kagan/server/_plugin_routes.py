@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from kagan.integrations.github import (
+from kagan.core.integrations.github import (
     canonical_repo_slug,
     detect_github_repo_slug_from_origin,
     normalize_github_state,
 )
-from kagan.plugins import PluginManager
-from kagan.plugins._github import GitHubImportConfig
+from kagan.core.plugins import PluginManager
+from kagan.core.plugins._github import GitHubImportConfig
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
     _err,

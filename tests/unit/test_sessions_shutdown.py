@@ -403,7 +403,7 @@ async def test_run_uses_backend_spec_executable_for_attached_launch(
     monkeypatch.setattr("kagan.core._sessions.get_persona_prompt", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("kagan.core._sessions.build_persona_section", lambda prompt: prompt)
     monkeypatch.setattr(
-        "kagan.core._sessions._build_attached_startup_prompt",
+        "kagan.core._sessions.build_attached_startup_prompt",
         lambda _task: "prompt",
     )
     monkeypatch.setattr(

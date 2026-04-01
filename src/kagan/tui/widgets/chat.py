@@ -13,7 +13,7 @@ from textual.timer import Timer
 from textual.widgets import Input, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
-from kagan.chat import (
+from kagan.cli.chat import (
     SLASH_COMMAND_REGISTRY,
     build_slash_presentation_lines,
     fuzzy_match,
@@ -960,7 +960,7 @@ class ChatPanel(Vertical):
 
     async def _delete_chat_session(self, query: str) -> None:
         """Delete a chat session by number or id."""
-        from kagan.chat.sessions import (
+        from kagan.cli.chat.sessions import (
             build_chat_session_list_items,
             delete_chat_session,
             list_chat_sessions,

@@ -9,7 +9,7 @@ from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
-from kagan.chat import resolve_default_agent_backend
+from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError

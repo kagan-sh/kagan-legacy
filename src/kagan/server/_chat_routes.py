@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 from starlette.responses import StreamingResponse
 
-from kagan.chat.sessions import (
+from kagan.cli.chat.sessions import (
     create_chat_session,
     delete_chat_session,
     get_chat_session,
@@ -136,8 +136,8 @@ async def _run_chat_stream(
     disconnects mid-stream the agent keeps working, persists its response,
     and the frontend can poll ``/turn-status`` to reconnect.
     """
-    from kagan.chat.acp import run_orchestrator_turn
-    from kagan.chat.prompt import build_orchestrator_prompt
+    from kagan.cli.chat.acp import run_orchestrator_turn
+    from kagan.cli.chat.prompt import build_orchestrator_prompt
 
     try:
         prior_history: list[tuple[str, str]] = [
@@ -239,7 +239,7 @@ async def _maybe_generate_title(
     backend: str,
 ) -> None:
     """Best-effort title generation for first-message sessions."""
-    from kagan.chat._title import ensure_session_title
+    from kagan.cli.chat._title import ensure_session_title
 
     try:
         await ensure_session_title(
@@ -342,7 +342,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def list_agents(_request: Request, *, ctx: Any) -> JSONResponse:
         """List available agent backends."""
-        from kagan.chat.agents import list_backends_with_availability
+        from kagan.cli.chat.agents import list_backends_with_availability
 
         backends = [
             AgentBackendResponse.model_validate(backend)

@@ -1,6 +1,6 @@
 import pytest
 
-from kagan.chat.repl import (
+from kagan.cli.chat.repl import (
     SearchPickerOption,
     _bottom_toolbar,
     _build_prompt_style_rules,

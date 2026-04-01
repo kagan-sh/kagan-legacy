@@ -1,4 +1,4 @@
-# Chat Behaviors — `kagan.chat`
+# Chat Behaviors — `kagan.cli.chat`
 
 *Observable behaviors for REPL, slash commands, and orchestrator turns.*
 *Each section maps to test coverage in `tests/unit/test_chat_*` and `tests/tui/test_chat_*`.*

@@ -233,49 +233,44 @@ def _read_dotfile_prompt(path: Path) -> str | None:
         return None
 
 
-def _append_layer_sections(base: str, settings: dict[str, str]) -> str:
-    layers: list[str] = [base.strip()]
-    behavioral = _compile_behavioral_clauses(settings)
-    if behavioral:
-        layers.append(f"## Behavioral Configuration\n\n{behavioral}")
-    additional = settings.get(ADDITIONAL_INSTRUCTIONS_KEY, "").strip()
-    if additional:
-        layers.append(f"## Additional Instructions\n\n{additional}")
-    return "\n\n".join(part for part in layers if part).strip()
+def _apply_settings(base: str, settings: dict[str, str]) -> str:
+    """Append behavioral notes and user instructions to a base prompt."""
+    parts: list[str] = [base.strip()]
 
-
-def _compile_behavioral_clauses(settings: dict[str, str]) -> str:
-    clauses: list[str] = []
-
-    review_strictness = settings.get(REVIEW_STRICTNESS_KEY, "balanced").strip().lower()
-    if review_strictness == "strict":
-        clauses.append(
+    # Behavioral notes derived from settings
+    notes: list[str] = []
+    strictness = settings.get(REVIEW_STRICTNESS_KEY, "balanced").strip().lower()
+    if strictness == "strict":
+        notes.append(
             "- Apply strict review standards: flag code style deviations, missing edge cases, and "
             "incomplete test coverage as blocking issues."
         )
-    elif review_strictness == "relaxed":
-        clauses.append(
+    elif strictness == "relaxed":
+        notes.append(
             "- Focus reviews on correctness and safety only. Accept reasonable implementations "
             "that pass acceptance criteria without demanding perfection."
         )
-
-    planning_depth = settings.get(PLANNING_DEPTH_KEY, "always").strip().lower()
-    if planning_depth == "multi_task":
-        clauses.append(
+    depth = settings.get(PLANNING_DEPTH_KEY, "always").strip().lower()
+    if depth == "multi_task":
+        notes.append(
             "- Only create explicit task plans for multi-task requests. For single tasks, "
             "proceed directly to execution."
         )
-    elif planning_depth == "never":
-        clauses.append("- Skip formal planning. Proceed directly to execution for all requests.")
-
-    auto_confirm = settings.get(AUTO_CONFIRM_SINGLE_KEY, "false").strip().lower()
-    if auto_confirm == "true":
-        clauses.append(
+    elif depth == "never":
+        notes.append("- Skip formal planning. Proceed directly to execution for all requests.")
+    if settings.get(AUTO_CONFIRM_SINGLE_KEY, "false").strip().lower() == "true":
+        notes.append(
             "- For single-task requests, skip the confirmation step and proceed directly to "
             "execution after planning."
         )
+    if notes:
+        parts.append("## Behavioral Configuration\n\n" + "\n".join(notes))
 
-    return "\n".join(clauses)
+    additional = settings.get(ADDITIONAL_INSTRUCTIONS_KEY, "").strip()
+    if additional:
+        parts.append(f"## Additional Instructions\n\n{additional}")
+
+    return "\n\n".join(parts)
 
 
 def detect_dotfile_overrides(project_path: Path | None = None) -> dict[str, Path]:
@@ -300,7 +295,7 @@ def resolve_orchestrator_prompt(settings: dict[str, str], project_path: Path | N
         dotfile_text = _read_dotfile_prompt(override_path)
         if dotfile_text is not None:
             return dotfile_text
-    return _append_layer_sections(DEFAULT_ORCHESTRATOR_PROMPT, settings)
+    return _apply_settings(DEFAULT_ORCHESTRATOR_PROMPT, settings)
 
 
 def _build_detached_run_prompt(task: Any) -> str:
@@ -419,7 +414,7 @@ def resolve_task_prompt(
         parts = [base, "", "PROJECT CONTEXT (from prior tasks):"]
         parts.extend(f"- {item}" for item in learnings)
         base = "\n".join(parts)
-    return _append_layer_sections(base, settings)
+    return _apply_settings(base, settings)
 
 
 def resolve_review_prompt(
@@ -435,7 +430,7 @@ def resolve_review_prompt(
             return dotfile_text
 
     base_prompt = DEFAULT_REVIEW_PROMPT.format_map({"task_id": task_id})
-    return _append_layer_sections(base_prompt, settings)
+    return _apply_settings(base_prompt, settings)
 
 
 # ---------------------------------------------------------------------------
@@ -505,12 +500,6 @@ def get_persona_prompt(persona_key: str, settings: dict[str, str]) -> str | None
     if persona and isinstance(persona.get("prompt"), str):
         return persona["prompt"]
     return None
-
-
-def prepend_custom_prompt(base_prompt: str, custom: str | None) -> str:
-    if not custom or not custom.strip():
-        return base_prompt
-    return f"## Custom Instructions\n\n{custom.strip()}\n\n{base_prompt}"
 
 
 def build_persona_section(persona_prompt: str) -> str:

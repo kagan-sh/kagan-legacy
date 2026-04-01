@@ -128,9 +128,12 @@ max-complexity = 20
 "src/kagan/server/mcp/**/*.py" = [
   "TC001", "TC002", "TC003",
 ] # MCP framework evaluates annotations at runtime via inspect.signature(eval_str=True)
-"src/kagan/server/_routes.py" = [
+"src/kagan/server/_task_routes.py" = [
   "C901",
-]
+] # Route registration nests all handlers inside one function
+"src/kagan/server/_system_routes.py" = [
+  "C901",
+] # Route registration nests all handlers inside one function
 
 [tool.ruff.format]
 docstring-code-format = true

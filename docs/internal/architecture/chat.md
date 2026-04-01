@@ -38,7 +38,7 @@ ______________________________________________________________________
 ## Package Layout
 
 ```text
-src/kagan/chat/
+src/kagan/cli/chat/
 ├── __init__.py        # Public API exports
 ├── _completion.py     # Slash command completion
 ├── _title.py          # Session title generation

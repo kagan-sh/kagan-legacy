@@ -14,15 +14,15 @@ Kagan — AI-powered Kanban TUI (Python 3.12+/Textual) that orchestrates coding 
 kagan/
 ├── src/kagan/           # Python package (core logic, TUI, CLI, MCP, server)
 │   ├── core/            # Domain: DB, models, agents, tasks, sessions, worktrees
+│   │   ├── plugins/     # Plugin system (entry-point based)
+│   │   └── integrations/# GitHub integration
 │   ├── tui/             # Textual TUI: screens/, widgets/, styles/
 │   ├── cli/             # Click CLI surface (entrypoint: `kagan`/`kg`)
-│   ├── mcp/             # MCP server: toolsets/, prompts, resources
-│   ├── server/          # HTTP server: REST API, SSE streaming, auth, web UI
-│   ├── chat/            # CLI chat REPL: ACP streaming, commands, sessions
-│   ├── crypto/          # X25519 key exchange, TLS, tokens, QR
-│   ├── wire/            # (compat shim) Re-exports envelope types
-│   ├── integrations/    # GitHub integration
-│   └── plugins/         # Plugin system (entry-point based)
+│   │   └── chat/        # CLI chat REPL: ACP streaming, commands, sessions
+│   └── server/          # HTTP server: REST API, SSE streaming, auth, web UI
+│       ├── mcp/         # MCP server: toolsets/, prompts, resources
+│       ├── crypto/      # TLS certificate generation
+│       └── client/      # HTTP client wrapper
 ├── packages/
 │   ├── vscode/          # VS Code extension: chat participant, tree view, SCM, reviews
 │   ├── web/             # React 19 + jotai + Tailwind CSS 4 web dashboard (SPA)
@@ -39,7 +39,7 @@ kagan/
 | Task                  | Location                                                  | Notes                                                                             |
 | --------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Add CLI command       | `src/kagan/cli/`                                          | Click group in `main.py`, lazy-loaded modules                                     |
-| Add MCP tool          | `src/kagan/mcp/toolsets/`                                 | One file per domain, use `get_context()`                                          |
+| Add MCP tool          | `src/kagan/server/mcp/toolsets/`                          | One file per domain, use `get_context()`                                          |
 | Add TUI screen        | `src/kagan/tui/screens/`                                  | Register in `app.py` SCREENS dict                                                 |
 | Add TUI widget        | `src/kagan/tui/widgets/`                                  | Follow Textual compose pattern                                                    |
 | Modify task lifecycle | `src/kagan/core/_transitions.py`                          | State machine for task status                                                     |
@@ -62,8 +62,8 @@ kagan/
 - **LOC budget**: 2500 lines max per Python file (enforced via `poe check-loc`)
 - **Complexity cap**: McCabe max-complexity = 20 (ruff C90)
 - **Type annotations**: All public functions typed; pyrefly for typechecking (not mypy)
-- **MCP annotations**: TC001/TC002/TC003 suppressed in `src/kagan/mcp/` — MCP evaluates annotations at runtime
-- **Prompt resolution**: Three-layer pipeline in `core/_prompts.py` — dotfile override → code defaults + behavioral settings → additional instructions
+- **MCP annotations**: TC001/TC002/TC003 suppressed in `src/kagan/server/mcp/` — MCP evaluates annotations at runtime
+- **Prompt resolution**: Dotfile override → base prompt + `_apply_settings()` in `core/_prompts.py`
 - **Settings keys**: Behavioral controls (`default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
 
 ## ANTI-PATTERNS (THIS PROJECT)

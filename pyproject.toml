@@ -381,7 +381,7 @@ allowed_tags = [
   "refactor",
   "test",
 ]
-minor_tags = ["feat"]
+minor_tags = ["feat", "refactor"]
 patch_tags = ["fix", "perf", "chore"]
 
 [tool.semantic_release.publish]

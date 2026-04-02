@@ -13,6 +13,20 @@
 
 
 
+## v0.15.0-beta.5 (2026-04-02)
+
+
+
+
+### features
+
+- Add agent reliability and UX refinements
+  ([`313c45f`](https://github.com/kagan-sh/kagan/commit/313c45f3588ae480df9eae3b0764e3380cb9d24e))
+
+
+
+
+
 ## v0.15.0-beta.4 (2026-04-02)
 
 

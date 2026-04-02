@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from tests.helpers.async_utils import wait_for
 from tests.helpers.driver import KaganDriver
 from textual.screen import Screen
 from textual.widgets import Input, Static
@@ -105,8 +106,12 @@ async def test_chat_file_picker_skips_gitignored_files(tmp_path: Path) -> None:
             from kagan.tui.screens.file_picker import FilePickerModal
 
             assert isinstance(app.screen, FilePickerModal)
-            empty_state = app.screen.query_one("#file-picker-empty", Static)
             count = app.screen.query_one("#file-picker-match-count", Static)
+            await wait_for(
+                lambda: "Loading" not in str(count.render()),
+                pump_delay=0.05,
+            )
+            empty_state = app.screen.query_one("#file-picker-empty", Static)
             assert empty_state.display is True
             assert "No matching files." in str(count.render())
     finally:

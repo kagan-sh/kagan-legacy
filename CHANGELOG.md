@@ -13,6 +13,20 @@
 
 
 
+## v0.15.0-beta.3 (2026-04-02)
+
+
+
+
+### bug fixes
+
+- Eliminate flaky Windows TUI test failures
+  ([`4ec03da`](https://github.com/kagan-sh/kagan/commit/4ec03da32bdf3f346d8eca552e76d76943fb7013))
+
+
+
+
+
 ## v0.15.0-beta.2 (2026-04-02)
 
 

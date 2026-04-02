@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
@@ -69,7 +70,7 @@ class RepetitionHook:
     _events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
     window: int = 20
     threshold: int = 8
-    _recent: list[str] = field(default_factory=list)
+    _recent: deque[str] = field(default_factory=lambda: deque(maxlen=20))
 
     @property
     def name(self) -> str:
@@ -91,8 +92,6 @@ class RepetitionHook:
         key = f"{context.tool_name}:{arg_hash}"
 
         self._recent.append(key)
-        if len(self._recent) > self.window:
-            self._recent.pop(0)
 
         count = sum(1 for k in self._recent if k == key)
         if count >= self.threshold:
@@ -111,8 +110,8 @@ class DangerousCommandHook:
     _events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
     _blocked_patterns: tuple[str, ...] = (
         "rm -rf /",
-        "git push --force",
-        "git push -f",
+        "git push --force ",  # trailing space avoids matching --force-with-lease
+        "git push -f ",
         "git reset --hard",
         "DROP TABLE",
         "DROP DATABASE",

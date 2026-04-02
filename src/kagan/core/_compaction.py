@@ -42,15 +42,19 @@ class ContextCompactor:
         self._last_size = 0
         self._compaction_count = 0
         self._enabled = enabled
+        self._triggered = False
 
     def update_usage(self, used: int, size: int) -> bool:
-        """Update context usage metrics. Returns True if compaction should trigger."""
+        """Update context usage metrics. Returns True on first threshold crossing only."""
         self._last_used = used
         self._last_size = size
         if not self._enabled or size <= 0:
             return False
         ratio = used / size
-        if ratio >= self.threshold:
+        previously_over = self._triggered
+        at_threshold = ratio >= self.threshold
+        self._triggered = at_threshold
+        if at_threshold and not previously_over:
             logger.warning(
                 "Context usage {:.0%} exceeds threshold {:.0%} — compaction recommended",
                 ratio,
@@ -81,3 +85,4 @@ class ContextCompactor:
         self._last_used = 0
         self._last_size = 0
         self._compaction_count = 0
+        self._triggered = False

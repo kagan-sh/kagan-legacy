@@ -83,24 +83,27 @@ async def list_checkpoints(
 
     prefix = f"{_CHECKPOINT_TAG_PREFIX}/{session_id}/"
     try:
-        output = await run_git(["tag", "--list", f"{prefix}*"], cwd=worktree_path)
+        # Single git call: fetch tag name + SHA in one invocation (avoids N+1)
+        output = await run_git(
+            ["tag", "--list", f"{prefix}*", "--format=%(objectname) %(refname:short)"],
+            cwd=worktree_path,
+        )
     except Exception:
         return []
 
     checkpoints: list[Checkpoint] = []
-    for raw_tag in output.strip().splitlines():
-        tag_name = raw_tag.strip()
-        if not tag_name:
+    for line in output.strip().splitlines():
+        line = line.strip()
+        if not line:
             continue
+        parts = line.split(" ", 1)
+        if len(parts) != 2:
+            continue
+        sha, tag_name = parts
         try:
             step_str = tag_name.removeprefix(prefix)
             step_index = int(step_str)
         except ValueError:
-            continue
-
-        try:
-            sha = (await run_git(["rev-parse", tag_name], cwd=worktree_path)).strip()
-        except Exception:
             continue
 
         checkpoints.append(

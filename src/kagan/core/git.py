@@ -765,6 +765,20 @@ async def prune_kagan_branches(repo_path: str | Path) -> list[str]:
     return deleted
 
 
+async def run_git(args: list[str], *, cwd: Path, check: bool = True) -> str:
+    """Run an arbitrary git command and return stdout.
+
+    Thin public wrapper around ``_run_git`` for use by other kagan.core modules
+    that need git operations not covered by the higher-level helpers (e.g. tag
+    management for checkpoint support).
+
+    Raises:
+        WorktreeError: if the git command exits non-zero and *check* is True.
+    """
+    stdout, _ = await _run_git(*args, cwd=cwd, check=check)
+    return stdout
+
+
 __all__ = [
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
@@ -793,6 +807,7 @@ __all__ = [
     "prune_kagan_branches",
     "rebase",
     "resolve_worktree_base",
+    "run_git",
     "validate_ref_name",
     "worktree_add",
     "worktree_list",

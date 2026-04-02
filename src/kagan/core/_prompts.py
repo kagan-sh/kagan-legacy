@@ -414,6 +414,20 @@ def resolve_task_prompt(
         parts = [base, "", "PROJECT CONTEXT (from prior tasks):"]
         parts.extend(f"- {item}" for item in learnings)
         base = "\n".join(parts)
+
+    depth = settings.get(PLANNING_DEPTH_KEY, "always").strip().lower()
+    if depth == "always":
+        from kagan.core._verification import build_verification_prompt_section
+
+        criteria = [
+            item.strip()
+            for item in getattr(task, "acceptance_criteria", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        verification_section = build_verification_prompt_section(criteria)
+        if verification_section:
+            base = base + "\n\n" + verification_section
+
     return _apply_settings(base, settings)
 
 

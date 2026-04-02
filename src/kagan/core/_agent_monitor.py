@@ -85,9 +85,7 @@ async def resolve_post_agent_status(
         engine,
         lambda s, repo_id=ws.repo_id: s.get(Repository, repo_id),
     )
-    base_branch = (await get_task(task_id)).base_branch or (
-        repo.default_branch if repo else "main"
-    )
+    base_branch = (await get_task(task_id)).base_branch or (repo.default_branch if repo else "main")
 
     short_id = task_id[:8]
     strategy = await ref_strategy(engine)

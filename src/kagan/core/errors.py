@@ -82,3 +82,29 @@ class SessionError(KaganError):
     def __init__(self, session_id: str | None, message: str) -> None:
         self.session_id = session_id
         super().__init__(f"Session {session_id}: {message}" if session_id else message)
+
+
+class CompactionError(SessionError):
+    pass
+
+
+class HookError(KaganError):
+    def __init__(self, hook_name: str, message: str) -> None:
+        self.hook_name = hook_name
+        super().__init__(f"Hook {hook_name!r}: {message}")
+
+
+class VerificationError(KaganError):
+    def __init__(self, task_id: str, message: str) -> None:
+        self.task_id = task_id
+        super().__init__(f"Verification failed for task {task_id!r}: {message}")
+
+
+class RewindError(WorktreeError):
+    def __init__(self, task_id: str, message: str) -> None:
+        self.task_id = task_id
+        super().__init__(f"Rewind failed for task {task_id!r}: {message}")
+
+
+class InsightError(KaganError):
+    pass

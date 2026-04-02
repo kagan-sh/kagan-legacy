@@ -358,6 +358,19 @@ async def list_task_notes(engine: Engine, task_id: str) -> builtins.list[TaskNot
     return await _db_async(engine, lambda s: list(s.exec(stmt).all()))
 
 
+async def delete_task_note(engine: Engine, task_id: str, note_id: str) -> bool:
+    """Delete a TaskNote by id. Returns True if found and deleted, False if not found."""
+
+    def op(s) -> bool:
+        note = s.get(TaskNote, note_id)
+        if note is None or note.task_id != task_id:
+            return False
+        s.delete(note)
+        return True
+
+    return await _db_async(engine, op, commit=True)
+
+
 async def list_project_learnings(engine: Engine, project_id: str) -> builtins.list[str]:
     """Return up to 20 unique [LEARNING]-prefixed notes across all tasks in a project.
 
@@ -689,6 +702,9 @@ class Tasks:
     async def list_notes(self, task_id: str) -> builtins.list[TaskNote]:
         return await list_task_notes(self._engine, task_id)
 
+    async def delete_note(self, task_id: str, note_id: str) -> bool:
+        return await delete_task_note(self._engine, task_id, note_id)
+
     async def list_project_learnings(self, project_id: str) -> builtins.list[str]:
         return await list_project_learnings(self._engine, project_id)
 
@@ -700,6 +716,7 @@ __all__ = [
     "count_tasks",
     "create_task",
     "delete_task",
+    "delete_task_note",
     "get_task",
     "list_project_learnings",
     "list_task_notes",

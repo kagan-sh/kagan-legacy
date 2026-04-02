@@ -3,7 +3,16 @@ from typing import Any, cast
 import pytest
 from tests.helpers.async_utils import wait_for
 from tests.helpers.driver import KaganDriver
+from textual.css.query import NoMatches
 from textual.widgets import Button, OptionList
+
+
+def _has_options(app, widget_id: str) -> bool:
+    """Check if an OptionList widget exists and has options, without raising."""
+    try:
+        return app.screen.query_one(f"#{widget_id}", OptionList).option_count > 0
+    except NoMatches:
+        return False
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
@@ -41,7 +50,7 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
         await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
         await wait_for(
-            lambda: app.screen.query_one("#session-resume-options", OptionList).option_count > 0,
+            lambda: _has_options(app, "session-resume-options"),
             pump_delay=0.05,
         )
         option_list = app.screen.query_one("#session-resume-options", OptionList)
@@ -95,7 +104,7 @@ async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> 
         await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
         await wait_for(
-            lambda: app.screen.query_one("#session-resume-options", OptionList).option_count > 0,
+            lambda: _has_options(app, "session-resume-options"),
             pump_delay=0.05,
         )
         option_list = app.screen.query_one("#session-resume-options", OptionList)

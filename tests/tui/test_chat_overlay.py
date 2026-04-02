@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from tests.helpers.async_utils import wait_for
 from tests.helpers.driver import KaganDriver
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
@@ -906,7 +907,10 @@ async def test_orchestrator_sessions_persist_across_tui_restart_and_can_switch_b
 
         input_widget.value = "/new"
         await pilot.press("enter")
-        await pilot.pause()
+        await wait_for(
+            lambda: str(selector.value) != first_key,
+            pump_delay=0.05,
+        )
 
         second_key = str(selector.value)
         assert second_key != first_key

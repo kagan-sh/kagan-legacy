@@ -146,8 +146,11 @@ class StatusBar(Horizontal):
         return f"{symbol} {label}{suffix}"
 
     def _update_display(self) -> None:
-        self.query_one("#chat-overlay-status-left", Static).update(self._build_status_text())
-        right_text = self.hint
-        if not right_text and self.status in WORKING_STATES:
-            right_text = "esc interrupt"
-        self.query_one("#chat-overlay-status-right", Static).update(right_text)
+        try:
+            self.query_one("#chat-overlay-status-left", Static).update(self._build_status_text())
+            right_text = self.hint
+            if not right_text and self.status in WORKING_STATES:
+                right_text = "esc interrupt"
+            self.query_one("#chat-overlay-status-right", Static).update(right_text)
+        except Exception:
+            pass  # Widget not yet composed — on_mount will call us again

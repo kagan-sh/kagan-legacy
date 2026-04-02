@@ -13,6 +13,20 @@
 
 
 
+## v0.15.0-beta.4 (2026-04-02)
+
+
+
+
+### bug fixes
+
+- Wait for file picker loading on Windows before asserting
+  ([`930efd2`](https://github.com/kagan-sh/kagan/commit/930efd2a7645f06c70aa8646fbe0c5d559f088f6))
+
+
+
+
+
 ## v0.15.0-beta.3 (2026-04-02)
 
 

@@ -28,6 +28,14 @@ def test_worker_role_tools() -> None:
         "settings_get",
         "review_conflicts",
         "plugins_preflight",
+        "session_compact",
+        "verify_step",
+        "verification_summary",
+        "checkpoint_create",
+        "checkpoint_list",
+        "session_rewind",
+        "insight_add",
+        "insight_list",
     }
 
 

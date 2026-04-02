@@ -13,6 +13,20 @@
 
 
 
+## v0.15.0-beta.2 (2026-04-02)
+
+
+
+
+### bug fixes
+
+- **ci**: Skip MCP registry publish on prerelease tags
+  ([`5298a5e`](https://github.com/kagan-sh/kagan/commit/5298a5eb05e1ba3aa05e12a4f7ad87608d0dc02d))
+
+
+
+
+
 ## v0.14.3 (2026-03-29)
 
 

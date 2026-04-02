@@ -22,7 +22,7 @@ jobs:
   publish:
     name: Publish to MCP Registry
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')) }}
 
     steps:
       - name: Checkout

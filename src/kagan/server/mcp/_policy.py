@@ -31,6 +31,14 @@ _WORKER_TOOLS = frozenset(
         "settings_get",
         "review_conflicts",
         "plugins_preflight",
+        "verify_step",
+        "verification_summary",
+        "checkpoint_create",
+        "checkpoint_list",
+        "session_rewind",
+        "insight_add",
+        "insight_list",
+        "session_compact",
     }
 )
 
@@ -71,6 +79,7 @@ _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
         "persona_preset_whitelist_list",
         "persona_preset_whitelist_add",
         "persona_preset_whitelist_remove",
+        "insight_remove",
     }
 )
 

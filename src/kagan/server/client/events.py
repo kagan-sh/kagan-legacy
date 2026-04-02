@@ -20,6 +20,7 @@ class Event(BaseModel):
              Consumers should detect gaps (seq_n+1 != seq_n + 1) and resync.
         ts: ISO 8601 timestamp when the event was generated.
     """
+
     seq: int = Field(..., description="Sequence number for ordering and gap detection")
     ts: str = Field(
         default_factory=lambda: datetime.now().isoformat(),
@@ -29,6 +30,7 @@ class Event(BaseModel):
 
 class TaskCreatedEvent(Event):
     """Emitted when a new task is created."""
+
     type: Literal["task_created"] = "task_created"
     task_id: str
     title: str
@@ -38,6 +40,7 @@ class TaskCreatedEvent(Event):
 
 class TaskUpdatedEvent(Event):
     """Emitted when a task is updated (title, status, priority, etc.)."""
+
     type: Literal["task_updated"] = "task_updated"
     task_id: str
     changes: dict[str, Any] = Field(default_factory=dict, description="Changed fields")
@@ -45,12 +48,14 @@ class TaskUpdatedEvent(Event):
 
 class TaskDeletedEvent(Event):
     """Emitted when a task is deleted."""
+
     type: Literal["task_deleted"] = "task_deleted"
     task_id: str
 
 
 class TaskStatusChangedEvent(Event):
     """Emitted when a task moves between columns."""
+
     type: Literal["task_status_changed"] = "task_status_changed"
     task_id: str
     from_status: str
@@ -59,6 +64,7 @@ class TaskStatusChangedEvent(Event):
 
 class SessionStartedEvent(Event):
     """Emitted when an agent session starts on a task."""
+
     type: Literal["session_started"] = "session_started"
     task_id: str
     session_id: str
@@ -67,6 +73,7 @@ class SessionStartedEvent(Event):
 
 class SessionEndedEvent(Event):
     """Emitted when an agent session ends (completed, failed, or cancelled)."""
+
     type: Literal["session_ended"] = "session_ended"
     task_id: str
     session_id: str
@@ -75,6 +82,7 @@ class SessionEndedEvent(Event):
 
 class SessionOutputEvent(Event):
     """Emitted for agent output chunks during a session."""
+
     type: Literal["session_output"] = "session_output"
     task_id: str
     session_id: str | None
@@ -83,6 +91,7 @@ class SessionOutputEvent(Event):
 
 class SettingsChangedEvent(Event):
     """Emitted when settings are modified."""
+
     type: Literal["settings_changed"] = "settings_changed"
     keys: list[str] = Field(default_factory=list, description="Changed setting keys")
 

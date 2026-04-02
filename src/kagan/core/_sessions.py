@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
-from acp.schema import ToolCallStart
+from acp.schema import ToolCallStart, UsageUpdate
 from loguru import logger
 from sqlalchemy import Engine
 from sqlmodel import desc, select
@@ -23,9 +23,11 @@ from kagan.core._agent_monitor import (
     ref_strategy,
     resolve_post_agent_status,
 )
+from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
 from kagan.core._events import BoardEvent, Events
+from kagan.core._hooks import HookAction, HookContext, HookEvent, HookRunner
 from kagan.core._launchers import get_launcher
 from kagan.core._prompts import (
     build_persona_section,
@@ -33,7 +35,6 @@ from kagan.core._prompts import (
     resolve_review_prompt,
     resolve_task_prompt,
 )
-from kagan.core._repetition_guard import RepetitionGuard
 from kagan.core._session_helpers import (
     DetachResult,
     agent_timeout_seconds,
@@ -607,32 +608,58 @@ class Sessions:
     def _make_acp_callback(self, task_id: str, session_id: str):
         from kagan.core._acp import map_acp_update_to_event
 
-        guard = RepetitionGuard()
+        runner = HookRunner().default_hooks()
+        compactor = ContextCompactor()
 
         async def on_update(_acp_session_id: str, update: Any) -> None:
-            # Check for repetitive tool calls before processing
+            # Fire PRE_TOOL hooks before processing tool call starts
             if isinstance(update, ToolCallStart):
                 tool_name = getattr(update, "name", None) or getattr(update, "title", "unknown")
                 arguments = getattr(update, "raw_input", None)
-                if guard.check(tool_name, arguments):
+                hook_ctx = HookContext(
+                    task_id=task_id,
+                    session_id=session_id,
+                    event=HookEvent.PRE_TOOL,
+                    tool_name=tool_name,
+                    tool_arguments=arguments,
+                )
+                hook_result = runner.fire(hook_ctx)
+                if hook_result.action == HookAction.CANCEL_SESSION:
                     logger.warning(
-                        "Repetitive tool calls detected for task={} session={}; cancelling",
+                        "Hook blocked tool call for task={} session={}; cancelling",
                         task_id,
                         session_id,
                     )
-                    # Emit AGENT_FAILED before cancel so subscribers see the
-                    # error event before the terminal TASK_STATUS_CHANGED.
+                    # Emit HOOK_BLOCKED before cancel so subscribers see the
+                    # event before the terminal TASK_STATUS_CHANGED.
                     await self._events.emit(
                         task_id,
-                        SessionEventType.AGENT_FAILED,
+                        SessionEventType.HOOK_BLOCKED,
                         {
-                            "error": "Agent detected in tool-call loop; session cancelled",
-                            "error_class": "repetition",
+                            "error": hook_result.message or "Hook blocked session",
+                            "tool_name": tool_name,
                         },
                         session_id=session_id,
                     )
                     await self.cancel(task_id)
                     return
+
+            if isinstance(update, UsageUpdate):
+                used = getattr(update, "used", 0) or 0
+                size = getattr(update, "size", 0) or 0
+                if compactor.update_usage(used, size):
+                    compactor.record_compaction()
+                    await self._events.emit(
+                        task_id,
+                        SessionEventType.COMPACTION_TRIGGERED,
+                        {
+                            "context_window_used": used,
+                            "context_window_size": size,
+                            "usage_ratio": compactor.usage_ratio,
+                            "compaction_count": compactor.compaction_count,
+                        },
+                        session_id=session_id,
+                    )
 
             result = map_acp_update_to_event(update)
             if result is not None:

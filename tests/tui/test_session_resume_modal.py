@@ -14,6 +14,7 @@ def _has_options(app, widget_id: str) -> bool:
     except NoMatches:
         return False
 
+
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 

@@ -222,9 +222,7 @@ def test_render_tool_call_start() -> None:
 
 def test_render_tool_call_start_with_mcp_tool() -> None:
     """Should correctly format MCP tool names."""
-    result = render_event(
-        "TOOL_CALL_START", {"acp": {"toolName": "mcp__filesystem__read"}}
-    )
+    result = render_event("TOOL_CALL_START", {"acp": {"toolName": "mcp__filesystem__read"}})
     assert result is not None
     assert result.title == "filesystem / read"
 
@@ -261,9 +259,7 @@ def test_render_tool_call_update_in_progress() -> None:
 
 def test_render_tool_call_update_with_payload_status() -> None:
     """Should render update with payload-level status."""
-    result = render_event(
-        "TOOL_CALL_UPDATE", {"tool_name": "my_tool", "status": "pending"}
-    )
+    result = render_event("TOOL_CALL_UPDATE", {"tool_name": "my_tool", "status": "pending"})
     assert result is not None
     assert result.body == "pending"
 
@@ -297,9 +293,7 @@ def test_render_agent_status_empty_payload() -> None:
 
 def test_render_task_status_changed() -> None:
     """Should render TASK_STATUS_CHANGED as STATUS_CHANGE kind."""
-    result = render_event(
-        "TASK_STATUS_CHANGED", {"from": "pending", "to": "in_progress"}
-    )
+    result = render_event("TASK_STATUS_CHANGED", {"from": "pending", "to": "in_progress"})
     assert result is not None
     assert result.kind == RenderableKind.STATUS_CHANGE
     assert result.title == "pending -> in_progress"
@@ -617,9 +611,7 @@ def test_event_id_and_session_id_propagation() -> None:
     ]
 
     for event_type, payload in event_types:
-        result = render_event(
-            event_type, payload, event_id="evt_123", session_id="sess_456"
-        )
+        result = render_event(event_type, payload, event_id="evt_123", session_id="sess_456")
         if result is not None:
             assert result.event_id == "evt_123", f"Failed for {event_type}"
             assert result.session_id == "sess_456", f"Failed for {event_type}"

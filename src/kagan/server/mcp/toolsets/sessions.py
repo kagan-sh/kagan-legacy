@@ -247,6 +247,31 @@ async def _run_detach(task_id: str, ctx: Context) -> dict[str, Any]:
     return cast("dict[str, Any]", await app.client.tasks.detach(task_id))
 
 
+@mcp_error_boundary
+async def _session_compact(task_id: str, ctx: Context) -> dict[str, Any]:
+    """Return context window usage and compaction recommendation for the latest session."""
+    from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
+
+    app = get_context(ctx)
+    session = await _get_latest_session(app.client, task_id)
+    if session is None:
+        raise SessionError(None, f"No session found for task {task_id!r}")
+
+    used = session.context_window_used or 0
+    size = session.context_window_size or 0
+    compactor = ContextCompactor(threshold=COMPACTION_THRESHOLD)
+    compactor.update_usage(used, size)
+    return {
+        "task_id": task_id,
+        "session_id": session.id,
+        "context_window_used": used,
+        "context_window_size": size,
+        "usage_ratio": compactor.usage_ratio,
+        "needs_compaction": compactor.needs_compaction,
+        "threshold": COMPACTION_THRESHOLD,
+    }
+
+
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register session domain tools on mcp, filtered by opts."""
     _tools = [
@@ -258,6 +283,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("run_get", _run_get),
         ("run_kill", _run_kill),
         ("run_detach", _run_detach),
+        ("session_compact", _session_compact),
     ]
     for name, fn in _tools:
         if is_tool_allowed(name, opts):

@@ -13,6 +13,24 @@
 
 
 
+## v0.15.0-beta.6 (2026-04-05)
+
+
+
+
+### chores
+
+- **deps-dev**: Bump typescript from 5.9.3 to 6.0.2 in /packages/vscode
+  ([#91](https://github.com/kagan-sh/kagan/pull/91),
+  [`cd89c2a`](https://github.com/kagan-sh/kagan/commit/cd89c2a36542ac78f5960401041a6eba0e350118))
+
+- Update pnpm-lock.yaml for typescript bump ([#91](https://github.com/kagan-sh/kagan/pull/91),
+  [`cd89c2a`](https://github.com/kagan-sh/kagan/commit/cd89c2a36542ac78f5960401041a6eba0e350118))
+
+
+
+
+
 ## v0.15.0-beta.5 (2026-04-02)
 
 

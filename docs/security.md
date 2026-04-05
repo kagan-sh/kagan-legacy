@@ -452,13 +452,7 @@ If you discover a security vulnerability in Kagan, please report it responsibly:
 
 **Email:** `security@kagan.sh`
 
-**PGP Key:** (Placeholder — contact security@kagan.sh for the current PGP key)
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-[Placeholder - PGP key will be provided upon request]
------END PGP PUBLIC KEY BLOCK-----
-```
+**PGP Key:** Contact security@kagan.sh to request the current PGP key for encrypted communication.
 
 ### Responsible Disclosure
 

@@ -23,7 +23,7 @@ Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
 ```toml
 [general]
-default_agent_backend = "claude"
+default_agent_backend = "claude-code"
 auto_skill_discovery = false
 review_strictness = "balanced"
 additional_instructions = "Use conventional commit format"
@@ -45,7 +45,7 @@ max_concurrent_agents = 3
 | `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`            |
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
-| `default_agent_backend`              | string         | `"claude"`                       | Default worker agent                                                                |
+| `default_agent_backend`              | string         | `"claude-code"`                  | Default worker agent                                                                |
 | `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
 | `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
 | `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |

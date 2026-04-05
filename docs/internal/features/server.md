@@ -164,22 +164,38 @@ ______________________________________________________________________
 
 ## Plugin Routes
 
-Plugins can be synced and checked via REST without restarting the server.
+Plugins can be listed, checked, and imported via REST without restarting the server.
 
-### Syncing plugins
+### List plugins
 
-Triggers discovery and registration of all installed plugins:
+Returns all registered plugins:
 
 ```bash
-curl -X POST http://localhost:8765/api/plugins/sync
+curl http://localhost:8765/api/plugins
 ```
 
-### Preflight check
+### Preflight check (per plugin)
 
-Returns readiness status for each registered plugin:
+Returns readiness status for a specific plugin:
 
 ```bash
-curl http://localhost:8765/api/plugins/preflight
+curl http://localhost:8765/api/plugins/{name}/preflight
+```
+
+### Detect repo
+
+Detect repo metadata for a specific plugin:
+
+```bash
+curl http://localhost:8765/api/plugins/{name}/detect-repo
+```
+
+### Import
+
+Import a plugin by name:
+
+```bash
+curl -X POST http://localhost:8765/api/plugins/{name}/import
 ```
 
 ______________________________________________________________________

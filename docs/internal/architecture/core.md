@@ -50,7 +50,7 @@ kagan/core/
 ├── enums.py               # TaskStatus, SessionStatus, Priority, SessionEventType
 ├── errors.py              # KaganError hierarchy
 │
-├── _git.py                # git operations wrapper
+├── git.py                 # git operations wrapper (public module)
 ├── _acp.py                # ACP adapter: KaganACPClient + event mapping
 ├── _agent.py              # agent backend registry + launcher
 ├── _asyncio_compat.py     # asyncio compatibility shims
@@ -73,14 +73,26 @@ kagan/core/
 ├── _tasks.py              # task repository
 ├── _transitions.py        # task lifecycle state machine
 ├── _utils.py              # utility functions
+├── _watcher.py            # DBWatcher: filesystem DB change watcher
 ├── _worktrees.py          # worktree management logic
+│
+├── _agent_monitor.py      # post-agent evaluation and rebase helpers
+├── _checkpoints.py        # task execution checkpoints (create, list, rewind, cleanup)
+├── _compaction.py         # database compaction
+├── _event_rendering.py    # event display rendering helpers
+├── _hooks.py              # hook system (Hook, HookRunner, HookContext)
+├── _insights.py           # project insight extraction with decay and relevance
+├── _prompt_export.py      # prompt export functionality
+├── _security.py           # security helpers
+├── _session_helpers.py    # session utility functions
+├── _verification.py       # step-level verification tracking for acceptance criteria
 │
 └── adapters/              # adapter sub-package
     ├── __init__.py
     └── db/                # database adapters
 ```
 
-~31 files. Flat structure with private modules (underscore prefix) and adapters sub-package.
+~42 files. Flat structure with private modules (underscore prefix) and adapters sub-package.
 
 ## Frontend Construction
 
@@ -301,7 +313,7 @@ DONE ───────► BACKLOG (via task.set_status)
 
 Direct DONE from `task.set_status()` is blocked; only `review.merge()` can transition to DONE.
 
-### `_git.py` — Git Operations
+### `git.py` — Git Operations
 
 Created per-repo via `client._git_for_task()`. Operations: `worktree_add`, `worktree_remove`, `diff`, `merge`, `rebase`, etc.
 

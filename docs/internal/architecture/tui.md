@@ -75,7 +75,7 @@ KaganApp (Textual App)
 │   ├── Session sidebar      # Searchable orchestrator conversation list
 │   └── ChatPanel            # Full-width main conversation surface
 │
-├── KanbanChatScreen         # Dedicated kanban + chat (orchestrator / task chat modes)
+├── (kanban_chat helpers)     # ACP payload extraction, stream chunk helpers (not a Screen)
 │
 ├── TaskScreen               # Primary task detail screen pushed from kanban after inspector-open
 │
@@ -274,7 +274,7 @@ src/kagan/tui/
 │   ├── welcome.py           # WelcomeScreen
 │   ├── setup.py             # OnboardingFlow (modal)
 │   ├── kanban.py            # KanbanScreen
-│   ├── kanban_chat.py       # KanbanChatScreen
+│   ├── kanban_chat.py       # ACP payload + stream chunk helpers (not a Screen class)
 │   ├── workspace.py         # WorkspaceScreen
 │   ├── task_screen.py       # TaskScreen
 │   ├── session_dashboard.py # SessionDashboardScreen

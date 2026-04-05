@@ -493,7 +493,6 @@ class Tasks:
         self.events = Events(
             engine,
             signals,
-            event_bus=None,
         )
         self.sessions = Sessions(
             engine,

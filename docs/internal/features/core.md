@@ -119,11 +119,12 @@ ______________________________________________________________________
 
 - Four built-in personas: `analyst`, `planner`, `implementer`, `reviewer`
 - Each persona has a distinct prompt profile tuned to its role
-- Run a persona against a repo for structured analysis (`audit_repo`)
+- Activate a persona per session via `run_start(task_id, persona="implementer")`
 - Import persona presets from GitHub repos (subject to whitelist)
 - Export persona presets to GitHub repos
 - Manage an import whitelist of approved persona source repos
-- Multi-session task execution: run a task through a sequence of personas in order (analyst → planner → implementer → reviewer) without manual handoff between sessions
+- Audit persona repositories for preset structure and validity (`audit_repo`)
+- Multi-session sequencing is orchestrator-driven: the orchestrator agent plans and starts sequential persona sessions via MCP tools, not an automated Python-level pipeline
 
 ______________________________________________________________________
 

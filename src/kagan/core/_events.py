@@ -311,11 +311,9 @@ class Events:
         self,
         engine: Engine,
         signals: dict[str, asyncio.Event],
-        event_bus: Any = None,
     ) -> None:
         self._engine = engine
         self._signals = signals
-        self._event_bus = None
         self._live_queues: dict[str, list[_BoundedEventQueue[SessionEvent]]] = {}
         self._global_live_queues: list[_BoundedEventQueue[SessionEvent]] = []
         self._board_live_queues: list[_BoundedEventQueue[BoardEvent]] = []

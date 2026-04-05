@@ -8,7 +8,7 @@ hide:
 
 # Your agents work. You decide.
 
-Fourteen AI agents. One board. Every task tracked from backlog to merge -- while you keep your hands on the wheel.
+14+ AI agents. One board. Every task tracked from backlog to merge -- while you keep your hands on the wheel.
 
 Kagan is a keyboard-first Kanban TUI that orchestrates coding agents across the full task lifecycle. Plan. Run. Review. Merge. No context lost between steps, no state scattered across terminals.
 

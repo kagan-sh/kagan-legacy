@@ -36,9 +36,12 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point
-├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
+├── _routes.py           # Route dispatcher: imports and registers task, project, system routes
+├── _task_routes.py      # Task REST endpoints (CRUD, run, cancel, review)
+├── _project_routes.py   # Project REST endpoints
+├── _system_routes.py    # System endpoints (preflight, settings, presence)
 ├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
-├── _plugin_routes.py    # Plugin-specific REST routes (sync, preflight)
+├── _plugin_routes.py    # Plugin REST routes (list, preflight, detect-repo, import)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
 ├── _helpers.py          # Route helper functions (JSON response builders, error formatting)
@@ -64,8 +67,9 @@ ______________________________________________________________________
 
 1. Calls `kagan.server.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
-1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
+1. Calls `register_routes(mcp)` — dispatches to `_task_routes`, `_project_routes`, `_system_routes`, and adds the SSE event stream.
 1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
+1. Calls `register_plugin_routes(mcp)` to add plugin REST routes.
 
 ______________________________________________________________________
 

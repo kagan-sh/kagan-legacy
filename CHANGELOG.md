@@ -13,6 +13,24 @@
 
 
 
+## v0.15.0-beta.7 (2026-04-05)
+
+
+
+
+### chores
+
+- **deps-dev**: Bump esbuild from 0.27.4 to 0.27.5 in /packages/vscode
+  ([#90](https://github.com/kagan-sh/kagan/pull/90),
+  [`a744bc1`](https://github.com/kagan-sh/kagan/commit/a744bc11407bb148fb272da132895cfade9934a2))
+
+- Update pnpm-lock.yaml for esbuild bump ([#90](https://github.com/kagan-sh/kagan/pull/90),
+  [`a744bc1`](https://github.com/kagan-sh/kagan/commit/a744bc11407bb148fb272da132895cfade9934a2))
+
+
+
+
+
 ## v0.15.0-beta.6 (2026-04-05)
 
 

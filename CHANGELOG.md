@@ -13,6 +13,20 @@
 
 
 
+## v0.15.0-beta.8 (2026-04-05)
+
+
+
+
+### chores
+
+- Fix docs accuracy and remove dead event_bus param
+  ([`9461925`](https://github.com/kagan-sh/kagan/commit/9461925a421cf5ca6cc38262ec2ffb275753f621))
+
+
+
+
+
 ## v0.15.0-beta.7 (2026-04-05)
 
 

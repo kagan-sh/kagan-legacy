@@ -5,24 +5,17 @@ not by importing production internals. All assertions are on observable
 protocol-level outcomes: tool visibility, response shape, and error behavior.
 """
 
-import json
 from pathlib import Path
 from typing import Any
 
 import pytest
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 
 from mcp import ClientSession
 from tests.helpers.helpers import make_git_repo
+from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
-
-
-def _text(result: CallToolResult) -> dict:
-    """Extract JSON payload from the first TextContent block of a tool result."""
-    block = result.content[0]
-    assert isinstance(block, TextContent), f"Expected TextContent, got {type(block)}"
-    return json.loads(block.text)
 
 
 async def _create_attached_task_with_workspace(
@@ -177,7 +170,7 @@ async def test_session_manage_legacy_tool_is_hidden(mcp_board: ClientSession) ->
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_exists_true_after_create(mcp_board: ClientSession) -> None:
+async def test_session_manage_exists_false_after_failed_create(mcp_board: ClientSession) -> None:
     """run_create failure must leave run_exists at False."""
     task_id = "task-attached-exists-check"
     create_result = await mcp_board.call_tool("run_create", {"task_id": task_id})

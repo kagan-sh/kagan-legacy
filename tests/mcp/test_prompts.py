@@ -200,7 +200,7 @@ async def test_prompts_available_on_readonly_server() -> None:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await server_task
 
-    task = asyncio.get_event_loop().create_task(_lifecycle())
+    task = asyncio.create_task(_lifecycle())
     session = await session_q.get()
     result = await session.list_prompts()
     names = {p.name for p in result.prompts}

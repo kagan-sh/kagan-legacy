@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from kagan.core._repetition_guard import RepetitionGuard
+
+pytestmark = [pytest.mark.unit]
 
 
 def test_check_returns_false_below_threshold() -> None:

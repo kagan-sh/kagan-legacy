@@ -5,7 +5,7 @@ import pytest
 
 import kagan.cli.chat.acp as chat_acp
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [pytest.mark.unit]
 
 
 @pytest.fixture(autouse=True)

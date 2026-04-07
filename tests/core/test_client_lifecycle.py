@@ -94,13 +94,10 @@ def test_client_close_is_idempotent(client: KaganCore) -> None:
     client.close()
 
 
-def test_reset_wipes_all_data(client: KaganCore) -> None:
-    async def run():
-        project = await client.projects.create("WipeMe")
-        await client.projects.set_active(project.id)
-        await client.tasks.create("Doomed task")
-        await client.reset()
-        projects = await client.projects.list()
-        assert projects == []
-
-    asyncio.run(run())
+async def test_reset_wipes_all_data(client: KaganCore) -> None:
+    project = await client.projects.create("WipeMe")
+    await client.projects.set_active(project.id)
+    await client.tasks.create("Doomed task")
+    await client.reset()
+    projects = await client.projects.list()
+    assert projects == []

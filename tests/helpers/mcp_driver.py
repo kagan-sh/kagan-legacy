@@ -31,11 +31,10 @@ def _parse(result: CallToolResult) -> dict:
 def _to_task_view(data: dict) -> TaskView:
     """Convert a tool result dict to a TaskView DTO."""
     status_raw = data.get("status", "BACKLOG")
-    status = (
-        TaskStatus(status_raw)
-        if status_raw in TaskStatus._value2member_map_
-        else TaskStatus.BACKLOG
-    )
+    try:
+        status = TaskStatus(status_raw)
+    except ValueError:
+        status = TaskStatus.BACKLOG
 
     priority_raw = data.get("priority", "MEDIUM")
     # Priority uses integer values; tool returns string names

@@ -2,7 +2,8 @@
   "compilerOptions": {
     "module": "Node16",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "moduleResolution": "Node16",
     "outDir": "dist",
     "rootDir": "src",

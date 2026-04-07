@@ -85,17 +85,26 @@ tests/
 │   ├── test_tasks.py
 │   ├── test_task_lifecycle.py
 │   ├── test_workspaces.py
-│   ├── test_sessions_auto.py
-│   ├── test_sessions_pair.py
+│   ├── test_sessions_attached.py
+│   ├── test_sessions_detached.py
 │   ├── test_reviews.py
 │   └── test_settings_and_audit.py
 ├── unit/                                # schema/contract validation only
-│   ├── test_agent_registry.py          # backend registry data structure
-│   ├── test_config_paths.py            # XDG/env path resolution edges
-│   ├── test_acp_session.py             # ACP session handling edges
-│   ├── test_agent_spawn_acp.py         # ACP agent spawn edges
-│   ├── test_chat_commands.py           # Chat slash command parsing
-│   └── test_chat_policy.py             # Chat policy logic
+│   ├── test_agent_registry.py           # backend registry data structure
+│   ├── test_config_paths.py             # XDG/env path resolution edges
+│   ├── test_acp_session.py              # ACP session handling edges
+│   ├── test_agent_spawn_acp.py          # ACP agent spawn edges
+│   ├── test_chat_commands.py            # Chat slash command parsing
+│   ├── test_chat_policy.py              # Chat policy logic
+│   ├── test_secret_scrubbing.py         # Security: secret redaction patterns
+│   ├── test_textual_compat.py           # Platform: asyncio subprocess filter
+│   ├── test_tool_profiles.py            # Agent role → tool access schema
+│   ├── test_tui_keybinding_namespace.py # Structural: binding centralization
+│   ├── test_tui_tutorial_overlay.py     # Tutorial step navigation logic
+│   └── core/                            # Core-specific contracts
+│       ├── test_git_validation.py       # Security: ref name, path traversal
+│       ├── test_worktrees_security.py   # Security: worktree path injection
+│       └── test_runtime_env.py          # Platform: env sanitization
 ├── tui/                                 # kagan.tui (behavioral)
 │   ├── test_welcome_and_onboarding.py
 │   ├── test_kanban_board.py
@@ -103,13 +112,15 @@ tests/
 │   ├── test_task_output.py
 │   ├── test_review_and_diff.py
 │   ├── test_chat_overlay.py
-│   ├── test_chat_modes.py              # Orchestrator/task chat mode switching
+│   ├── test_chat_modes.py               # Orchestrator/task chat mode switching
 │   ├── test_session_and_backend.py
-│   ├── test_settings_modal.py          # Settings screen behaviors
+│   ├── test_settings_modal.py           # Settings screen behaviors
+│   ├── test_workspace_screen.py         # Workspace provisioning screen
+│   └── test_task_screen_review_no_criteria.py  # Review gate without acceptance criteria
 ├── mcp/                                 # kagan.server.mcp (behavioral)
 │   ├── test_task_tools.py
-│   ├── test_session_tools_auto.py
-│   ├── test_session_tools_pair.py
+│   ├── test_session_tools_attached.py
+│   ├── test_session_tools_detached.py
 │   ├── test_project_and_repo_tools.py
 │   ├── test_review_tools.py
 │   ├── test_settings_and_audit_tools.py
@@ -119,6 +130,14 @@ tests/
 │   ├── test_access_control.py
 │   ├── test_smoke.py                    # Transport & lifespan smoke tests
 │   └── test_mcp_driver_parity.py        # McpDriver CRUD parity checks
+├── server/                              # kagan.server (REST/SSE contract)
+│   ├── test_access_control.py           # HTTP route access tier enforcement
+│   ├── test_integration.py              # REST lifecycle, JSON error envelopes
+│   ├── test_middleware.py               # Rate limiting middleware
+│   ├── test_presence.py                 # Presence tracker contracts
+│   ├── test_server.py                   # Health endpoint
+│   ├── test_sse_polling.py              # Cross-process DB polling
+│   └── test_web_ui.py                   # SPA static file serving
 ├── plugins/                             # kagan.plugins (behavioral)
 │   ├── test_plugin_lifecycle.py          # Manager load/register/unregister, discovery
 │   ├── test_github_import.py            # GitHub sync: create, skip, re-import, labels

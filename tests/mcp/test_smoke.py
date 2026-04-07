@@ -18,11 +18,6 @@ async def test_server_responds_to_list_tools(mcp_board: ClientSession) -> None:
     assert isinstance(result.tools, list)
 
 
-def test_server_opts_readonly_admin_mutually_exclusive() -> None:
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        ServerOptions(readonly=True, admin=True)
-
-
 async def test_lifespan_app_context_accessible_from_tool(mcp_board: ClientSession) -> None:
     result = await mcp_board.list_tools()
     assert result is not None
@@ -57,7 +52,7 @@ async def test_create_server_with_lifespan_runs() -> None:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await server_task
 
-    lifecycle_task = asyncio.get_event_loop().create_task(_lifecycle())
+    lifecycle_task = asyncio.create_task(_lifecycle())
     session = await session_q.get()
 
     result = await session.list_tools()

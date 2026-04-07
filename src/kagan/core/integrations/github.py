@@ -111,30 +111,67 @@ async def github_preflight_checks(client: KaganCore) -> list[PreflightCheckResul
     return manager.get("github").preflight()
 
 
-async def sync_github_issues(
+async def _configure_github_plugin(
     client: KaganCore,
     *,
-    project_id: str,
     repo_slug: str,
     state: str = "open",
-    import_label: str | None = None,
-) -> ImportResult:
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
+) -> tuple[PluginManager, str]:
+    """Validate inputs, load the github plugin, configure it. Returns (manager, canonical_slug)."""
     normalized_state = normalize_github_state(state)
-    canonical_repo = canonical_repo_slug(repo_slug)
-    owner, repo = canonical_repo.split("/", 1)
+    canonical = canonical_repo_slug(repo_slug)
+    owner, repo = canonical.split("/", 1)
 
     manager = PluginManager(client)
     await manager.load()
     if "github" not in manager.available:
         raise ValueError("GitHub import is unavailable in this installation.")
 
-    import_plugin = manager.get_import("github")
-    import_plugin.configure(
+    manager.get_import("github").configure(
         GitHubImportConfig(
             owner=owner,
             repo=repo,
             state=normalized_state,
-            import_label=import_label,
+            labels=tuple(labels or ()),
+            limit=limit,
+            issue_numbers=tuple(issue_numbers or ()),
         )
     )
+    return manager, canonical
+
+
+async def sync_github_issues(
+    client: KaganCore,
+    *,
+    project_id: str,
+    repo_slug: str,
+    state: str = "open",
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
+) -> ImportResult:
+    manager, _ = await _configure_github_plugin(
+        client, repo_slug=repo_slug, state=state,
+        labels=labels, limit=limit, issue_numbers=issue_numbers,
+    )
     return await manager.sync("github", project_id=project_id)
+
+
+async def preview_github_issues(
+    client: KaganCore,
+    *,
+    project_id: str,
+    repo_slug: str,
+    state: str = "open",
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
+) -> list:
+    manager, _ = await _configure_github_plugin(
+        client, repo_slug=repo_slug, state=state,
+        labels=labels, limit=limit, issue_numbers=issue_numbers,
+    )
+    return await manager.get_import("github").preview(project_id)

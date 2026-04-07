@@ -14,16 +14,33 @@ def plugins() -> None:
 @click.argument("plugin_name")
 @click.option("--repo", required=True, help="Repository in owner/repo format")
 @click.option("--state", default="open", show_default=True, help="Issue state: open, closed, all")
-@click.option("--label", "import_label", default=None, help="Only sync issues with this label")
-def sync(plugin_name: str, repo: str, state: str, import_label: str | None) -> None:
+@click.option("--label", "labels", multiple=True, help="Filter by label (repeatable)")
+@click.option("--limit", default=100, type=int, show_default=True, help="Max issues to fetch")
+@click.option("--issues", "issue_numbers", default=None, help="Comma-separated issue numbers")
+def sync(
+    plugin_name: str,
+    repo: str,
+    state: str,
+    labels: tuple[str, ...],
+    limit: int,
+    issue_numbers: str | None,
+) -> None:
     """Sync external items from a plugin source into the active project."""
     if "/" not in repo:
         raise click.BadParameter("Must be in owner/repo format", param_hint="--repo")
 
-    run_async(_sync(plugin_name, repo, state, import_label))
+    parsed_numbers = [int(n.strip()) for n in issue_numbers.split(",")] if issue_numbers else None
+    run_async(_sync(plugin_name, repo, state, labels, limit, parsed_numbers))
 
 
-async def _sync(plugin_name: str, repo: str, state: str, import_label: str | None) -> None:
+async def _sync(
+    plugin_name: str,
+    repo: str,
+    state: str,
+    labels: tuple[str, ...],
+    limit: int,
+    issue_numbers: list[int] | None,
+) -> None:
     from kagan.core.plugins import PluginManager
 
     client = make_client()
@@ -52,7 +69,9 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
             owner=owner,
             repo=repo_name,
             state=state,
-            import_label=import_label,
+            labels=tuple(labels),
+            limit=limit,
+            issue_numbers=tuple(issue_numbers) if issue_numbers else (),
         )
         import_plugin = manager.get_import(plugin_name)
         import_plugin.configure(config)
@@ -64,6 +83,57 @@ async def _sync(plugin_name: str, repo: str, state: str, import_label: str | Non
         )
         for err in result.errors:
             click.echo(f"  error: {err}")
+    finally:
+        client.close()
+
+
+@plugins.command()
+@click.argument("plugin_name")
+@click.option("--repo", required=True, help="Repository in owner/repo format")
+@click.option("--state", default="open", show_default=True, help="Issue state: open, closed, all")
+@click.option("--label", "labels", multiple=True, help="Filter by label (repeatable)")
+@click.option("--limit", default=100, type=int, show_default=True, help="Max issues to fetch")
+def preview(plugin_name: str, repo: str, state: str, labels: tuple[str, ...], limit: int) -> None:
+    """Preview available issues from a plugin source."""
+    if "/" not in repo:
+        raise click.BadParameter("Must be in owner/repo format", param_hint="--repo")
+    run_async(_preview(plugin_name, repo, state, labels, limit))
+
+
+async def _preview(
+    plugin_name: str, repo: str, state: str, labels: tuple[str, ...], limit: int,
+) -> None:
+    from kagan.core.integrations.github import preview_github_issues
+
+    client = make_client()
+    try:
+        projects = await client.projects.list()
+        if not projects:
+            click.echo("No projects found. Create a project first.")
+            return
+        await client.projects.set_active(projects[0].id)
+
+        issues = await preview_github_issues(
+            client,
+            project_id=projects[0].id,
+            repo_slug=repo,
+            state=state,
+            labels=list(labels),
+            limit=limit,
+        )
+        if not issues:
+            click.echo("No issues match the filters.")
+            return
+
+        click.echo(f"{'#':<6} {'Title':<50} {'State':<8} {'Labels':<20} {'Synced'}")
+        click.echo("-" * 90)
+        for issue in issues:
+            labels_str = ", ".join(issue["labels"][:3])
+            synced = "yes" if issue["already_synced"] else ""
+            num = issue["number"]
+            title = issue["title"][:49]
+            st = issue["state"]
+            click.echo(f"#{num:<5} {title:<50} {st:<8} {labels_str[:19]:<20} {synced}")
     finally:
         client.close()
 

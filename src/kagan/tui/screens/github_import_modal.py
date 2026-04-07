@@ -5,7 +5,8 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, Select, Static
+from textual.widgets import Footer, Input, Select, SelectionList, Static
+from textual.widgets.selection_list import Selection
 
 from kagan.core.errors import KaganError
 from kagan.core.integrations.github import (
@@ -15,6 +16,7 @@ from kagan.core.integrations.github import (
     github_blocking_checks,
     github_preflight_checks,
     normalize_github_state,
+    preview_github_issues,
     sync_github_issues,
 )
 
@@ -43,6 +45,14 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
     def __init__(self) -> None:
         super().__init__()
         self._is_importing = False
+        self._phase: str = "filter"
+        self._previewed_issues: list = []
+        self._selection_list: SelectionList | None = None
+        # Parsed form values cached after preview
+        self._parsed_repo: str = ""
+        self._parsed_state: str = "open"
+        self._parsed_labels: list[str] = []
+        self._parsed_limit: int = 100
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -76,13 +86,21 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
                 )
 
                 yield Static(
-                    "Only import issues with label (optional)",
+                    "Filter by labels (comma-separated, optional)",
                     classes="github-import-label",
                 )
                 yield Input(
-                    placeholder="bug",
+                    placeholder="bug, feature",
                     id="github-import-label",
                 )
+
+                yield Static("Limit", classes="github-import-label")
+                yield Input(
+                    placeholder="100",
+                    id="github-import-limit",
+                )
+
+            yield SelectionList(id="github-import-selection")
 
             with Horizontal(classes="modal-action-hint-row"):
                 yield Static(
@@ -97,12 +115,13 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
     async def on_mount(self) -> None:
         state_select = self.query_one("#github-import-state", Select)
         state_select.value = "open"
+        self.query_one("#github-import-selection", SelectionList).display = False
         await self._prefill_repo_from_selected_origin()
         await self.action_check_readiness()
         self.query_one("#github-import-repo", Input).focus()
         self.query_one("#github-import-hint", KeybindingHint).show_hints(
             [
-                ("Enter", "import"),
+                ("Enter", "preview"),
                 ("Esc", "close"),
             ]
         )
@@ -111,7 +130,9 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
     def _action_hint_text(self) -> str:
         import_key = get_key_for_action(GITHUB_IMPORT_BINDINGS, "run_import", default="Enter")
         close_key = get_key_for_action(GITHUB_IMPORT_BINDINGS, "dismiss", default="Esc")
-        return f"{import_key} import  {close_key} close"
+        if self._phase == "filter":
+            return f"{import_key} preview  {close_key} close"
+        return f"{import_key} import  {close_key} back"
 
     async def action_check_readiness(self) -> None:
         ready, message = await self._check_github_ready()
@@ -137,6 +158,12 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
             self._is_importing = False
 
     async def _run_import_once(self) -> None:
+        if self._phase == "filter":
+            await self._do_preview()
+        else:
+            await self._do_import()
+
+    async def _do_preview(self) -> None:
         project = self.kagan_app.project
         if project is None:
             self.app.notify("Open a project before importing from GitHub.", severity="warning")
@@ -145,7 +172,14 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         repo_input = self.query_one("#github-import-repo", Input).value
         state_value = self.query_one("#github-import-state", Select).value
         state_input = state_value if isinstance(state_value, str) else "open"
-        import_label = self.query_one("#github-import-label", Input).value.strip() or None
+        labels_raw = self.query_one("#github-import-label", Input).value.strip()
+        labels = [lbl.strip() for lbl in labels_raw.split(",") if lbl.strip()] if labels_raw else []
+        limit_raw = self.query_one("#github-import-limit", Input).value.strip()
+        try:
+            limit = int(limit_raw) if limit_raw else 100
+        except ValueError:
+            self.app.notify("Limit must be a number.", severity="warning")
+            return
 
         try:
             repo = canonical_repo_slug(repo_input)
@@ -159,39 +193,94 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         if not ready:
             return
 
-        from kagan.tui.screens.confirm import ConfirmModal
+        self._parsed_repo = repo
+        self._parsed_state = state
+        self._parsed_labels = labels
+        self._parsed_limit = limit
 
-        confirmed = await self.app.push_screen_wait(
-            ConfirmModal(
-                title="Start GitHub Import",
-                message=(
-                    f"Repository: {repo}\n"
-                    f"State: {state}\n"
-                    f"Label filter: {import_label or 'none'}\n\n"
-                    "Continue?"
-                ),
-                confirm_label="Import",
-                cancel_label="Cancel",
+        self.app.notify("Fetching issues…", severity="information")
+        try:
+            issues = await preview_github_issues(
+                self.kagan_app.core,
+                project_id=project.id,
+                repo_slug=repo,
+                state=state,
+                labels=labels,
+                limit=limit,
             )
+        except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.app.notify(f"Preview failed: {exc}", severity="error")
+            return
+
+        if not issues:
+            self.app.notify("No issues match the filters.", severity="warning")
+            return
+
+        self._previewed_issues = issues
+        self._switch_to_select_phase(issues)
+
+    def _switch_to_select_phase(self, issues: list) -> None:
+        self._phase = "select"
+
+        selections = [
+            Selection(
+                f"#{issue['number']}  {issue['title']}"
+                + (" (synced)" if issue["already_synced"] else ""),
+                issue["number"],
+                initial_state=not issue["already_synced"],
+            )
+            for issue in issues
+        ]
+
+        fields = self.query_one("#github-import-fields", Vertical)
+        fields.display = False
+
+        selection_list = self.query_one("#github-import-selection", SelectionList)
+        selection_list.clear_options()
+        for sel in selections:
+            selection_list.add_option(sel)
+        selection_list.display = True
+        self._selection_list = selection_list
+        selection_list.focus()
+
+        self.query_one("#github-import-hint", KeybindingHint).show_hints(
+            [
+                ("Enter", "import"),
+                ("Esc", "back"),
+            ]
         )
-        if not confirmed:
+        self.query_one("#github-import-action-hint", Static).update(self._action_hint_text())
+
+    async def _do_import(self) -> None:
+        project = self.kagan_app.project
+        if project is None:
+            self.app.notify("Open a project before importing from GitHub.", severity="warning")
+            return
+
+        selection_list = self.query_one("#github-import-selection", SelectionList)
+        selected_numbers: list[int] = list(selection_list.selected)
+
+        if not selected_numbers:
+            self.app.notify("No issues selected.", severity="warning")
             return
 
         try:
             result = await sync_github_issues(
                 self.kagan_app.core,
                 project_id=project.id,
-                repo_slug=repo,
-                state=state,
-                import_label=import_label,
+                repo_slug=self._parsed_repo,
+                state=self._parsed_state,
+                labels=self._parsed_labels,
+                limit=self._parsed_limit,
+                issue_numbers=selected_numbers,
             )
         except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
             self.app.notify(f"GitHub import failed: {exc}", severity="error")
             return
 
         summary = GitHubImportSummary(
-            repo=repo,
-            state=state,
+            repo=self._parsed_repo,
+            state=self._parsed_state,
             created=result.created,
             skipped=result.skipped,
             errors=result.errors,
@@ -205,6 +294,29 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
             severity=severity,
         )
         self.dismiss(summary)
+
+    def action_back_to_filter(self) -> None:
+        if self._phase != "select":
+            return
+        self._phase = "filter"
+        self._previewed_issues = []
+        self._selection_list = None
+
+        selection_list = self.query_one("#github-import-selection", SelectionList)
+        selection_list.display = False
+        selection_list.clear_options()
+
+        fields = self.query_one("#github-import-fields", Vertical)
+        fields.display = True
+
+        self.query_one("#github-import-hint", KeybindingHint).show_hints(
+            [
+                ("Enter", "preview"),
+                ("Esc", "close"),
+            ]
+        )
+        self.query_one("#github-import-action-hint", Static).update(self._action_hint_text())
+        self.query_one("#github-import-repo", Input).focus()
 
     @on(Input.Submitted)
     def _on_input_submitted(self) -> None:
@@ -241,5 +353,18 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
 
         return False, format_github_setup_message(checks)
 
+    def action_select_all(self) -> None:
+        if self._phase != "select" or self._selection_list is None:
+            return
+        self._selection_list.select_all()
+
+    def action_select_none(self) -> None:
+        if self._phase != "select" or self._selection_list is None:
+            return
+        self._selection_list.deselect_all()
+
     async def action_dismiss(self, result: GitHubImportSummary | None = None) -> None:
-        self.dismiss(result)
+        if self._phase == "select":
+            self.action_back_to_filter()
+        else:
+            self.dismiss(result)

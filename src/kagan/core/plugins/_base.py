@@ -19,6 +19,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from importlib.metadata import Distribution, PackageNotFoundError, entry_points, version
+from typing import Any
 
 from loguru import logger
 
@@ -164,6 +165,10 @@ class ImporterPlugin(Plugin, ABC):
 
     def configure(self, config: object) -> None:
         """Configure the plugin before sync. Subclasses override to accept typed config."""
+
+    async def preview(self, project_id: str) -> list[dict[str, Any]]:
+        """Preview available items before import. Default: empty list."""
+        return []
 
     @abstractmethod
     async def sync(self, project_id: str) -> ImportResult:

@@ -42,11 +42,12 @@ ______________________________________________________________________
 ## 4. GitHub Import
 
 - Configure with owner/repo before sync — raises `PluginError` if not configured
-- Fetch open issues from GitHub using `gh` CLI (JSON output)
+- Fetch issues from GitHub using `gh` CLI (JSON output)
+- Supports filtering by state (`open`, `closed`, `all`), labels (multiple), and limit
+- Selective import: pass `issue_numbers` to `GitHubImportConfig` to restrict to specific issues
 - Create kagan tasks from issues: title, description (body + URL + unmapped labels)
 - Map GitHub labels to task properties:
   - `priority:critical` / `priority:high` / `priority:medium` / `priority:low` → Priority
-- `kagan:auto` / `kagan:pair` are ignored as legacy labels
 - Unmapped labels appear as `[label]` tags in description
 - Sync is idempotent: issue→task mapping persisted in settings table
 - Previously-synced issues are skipped
@@ -59,6 +60,12 @@ ______________________________________________________________________
 ## 5. CLI Commands
 
 - `kagan plugins sync <name> --repo owner/repo` — sync issues into active project
+  - `--label <label>` (repeatable) — filter by label
+  - `--limit <n>` — cap issue count (default 100)
+  - `--issues 1,2,3` — import only specific issue numbers
+- `kagan plugins preview <name> --repo owner/repo` — preview matching issues without importing
+  - `--label <label>` (repeatable) — filter by label
+  - `--limit <n>` — cap issue count (default 100)
 - `kagan plugins list` — show installed plugins with built-in/community labels
 - `kagan plugins check [name]` — run preflight checks for one or all plugins
 
@@ -67,6 +74,7 @@ ______________________________________________________________________
 ## 6. MCP Tools
 
 - `plugins_sync` (Admin tier) — sync issues via MCP, returns created/skipped/errors
+- `plugins_preview` (Readonly tier) — preview issues matching filters, returns list without importing
 - `plugins_preflight` (Readonly tier) — check plugin prerequisites, returns checks and readiness
 
 ______________________________________________________________________
@@ -78,3 +86,14 @@ ______________________________________________________________________
 - Filter preflight check results to blocking (non-pass) entries
 - Format actionable setup messages from blocking preflight checks (fix hints, descriptions)
 - Parse `owner/repo` slug from git remote URLs (HTTPS, SSH, `git@` forms) — return `None` for unsupported
+
+______________________________________________________________________
+
+## 8. Issue Preview
+
+- `preview_github_issues()` fetches issues matching config and returns `GitHubIssuePreview` dicts
+- Each preview includes: `number`, `title`, `state`, `labels`, `url`, `already_synced`
+- `already_synced` is `True` if the issue number appears in the persisted sync map
+- Preview does not create any tasks — read-only operation
+- TUI two-step flow: Phase 1 filters issues via preview, Phase 2 presents a `SelectionList` for selective import
+- Already-synced issues are shown with `(synced)` suffix and deselected by default

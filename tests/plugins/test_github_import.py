@@ -11,6 +11,7 @@ from kagan.core.plugins._github import (
     GitHubImportConfig,
     GitHubImporter,
     GitHubIssue,
+    GitHubIssuePreview,
     _build_description,
     _extract_label_names,
     _map_labels,
@@ -70,16 +71,16 @@ def test_map_labels_priority() -> None:
     assert remaining == ["bug"]
 
 
-def test_map_labels_ignores_legacy_mode_labels() -> None:
+def test_map_labels_unknown_labels_pass_through() -> None:
     priority, remaining = _map_labels(["kagan:detached", "enhancement"])
-    assert priority == Priority.MEDIUM  # default
-    assert remaining == ["enhancement"]
+    assert priority == Priority.MEDIUM
+    assert remaining == ["kagan:detached", "enhancement"]
 
 
 def test_map_labels_combined() -> None:
     priority, remaining = _map_labels(["priority:critical", "kagan:attached", "frontend", "bug"])
     assert priority == Priority.CRITICAL
-    assert remaining == ["frontend", "bug"]
+    assert remaining == ["kagan:attached", "frontend", "bug"]
 
 
 def test_map_labels_case_insensitive() -> None:
@@ -165,7 +166,7 @@ async def test_sync_creates_tasks_from_issues(
     """First sync creates tasks for each GitHub issue."""
     mock_fetch.return_value = _make_gh_issues(
         (1, "Bug report", ["bug", "priority:high"]),
-        (2, "Feature request", ["enhancement", "kagan:detached"]),
+        (2, "Feature request", ["enhancement"]),
     )
 
     result = await plugin.sync(client.active_project_id)
@@ -266,6 +267,65 @@ async def test_sync_persists_map_in_settings(
     assert key in settings
     sync_map = json.loads(settings[key])
     assert "42" in sync_map
+
+
+# ---------------------------------------------------------------------------
+# Preview (with mocked gh CLI)
+# ---------------------------------------------------------------------------
+
+
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
+async def test_preview_returns_issues_without_importing(
+    _mock_path, _mock_auth, mock_fetch, plugin, client
+) -> None:
+    """Preview returns issue list without creating tasks."""
+    mock_fetch.return_value = _make_gh_issues(
+        (1, "Bug report", ["bug"]),
+        (2, "Feature", ["enhancement"]),
+    )
+    previews = await plugin.preview(client.active_project_id)
+    assert len(previews) == 2
+    assert previews[0]["number"] == 1
+    assert previews[0]["already_synced"] is False
+    # No tasks created
+    tasks = await client.tasks.list()
+    assert len(tasks) == 0
+
+
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
+async def test_preview_marks_synced_issues(
+    _mock_path, _mock_auth, mock_fetch, plugin, client
+) -> None:
+    """Preview marks previously synced issues."""
+    issues = _make_gh_issues((1, "Bug", []))
+    mock_fetch.return_value = issues
+    await plugin.sync(client.active_project_id)
+
+    mock_fetch.return_value = _make_gh_issues((1, "Bug", []), (2, "New", []))
+    previews = await plugin.preview(client.active_project_id)
+    assert previews[0]["already_synced"] is True
+    assert previews[1]["already_synced"] is False
+
+
+@patch("kagan.core.plugins._github._gh_fetch_issues", new_callable=AsyncMock)
+@patch("kagan.core.plugins._github._gh_is_authenticated", new_callable=AsyncMock, return_value=True)
+@patch("kagan.core.plugins._github._gh_path", return_value="/usr/bin/gh")
+async def test_sync_with_issue_numbers_imports_only_selected(
+    _mock_path, _mock_auth, mock_fetch, plugin, client
+) -> None:
+    """Sync with issue_numbers only imports matching issues."""
+    mock_fetch.return_value = _make_gh_issues(
+        (1, "Bug", []), (2, "Feature", []), (3, "Docs", []),
+    )
+    plugin.configure(GitHubImportConfig(owner="octocat", repo="hello-world", issue_numbers=(1, 3)))
+    result = await plugin.sync(client.active_project_id)
+    assert result.created == 2  # only #1 and #3
+    tasks = await client.tasks.list()
+    assert {t.title for t in tasks} == {"Bug", "Docs"}
 
 
 # ---------------------------------------------------------------------------

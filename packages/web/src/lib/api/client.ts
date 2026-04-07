@@ -546,6 +546,19 @@ export class KaganApiClient {
     return this.request(`/api/plugins/${name}/detect-repo`);
   }
 
+  /** GET /api/plugins/:name/preview */
+  async previewPluginIssues(
+    name: string,
+    params: { repo_slug: string; state?: string; labels?: string; limit?: number },
+  ): Promise<{ plugin: string; issues: Array<{ number: number; title: string; state: string; labels: string[]; url: string; already_synced: boolean }>; total: number }> {
+    const qs = new URLSearchParams();
+    qs.set('repo_slug', params.repo_slug);
+    if (params.state) qs.set('state', params.state);
+    if (params.labels) qs.set('labels', params.labels);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return this.request(`/api/plugins/${name}/preview?${qs.toString()}`);
+  }
+
   /** POST /api/plugins/:name/import */
   async runPluginImport(name: string, config: Record<string, unknown>): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> {
     return this.request(`/api/plugins/${name}/import`, { method: 'POST', body: config });

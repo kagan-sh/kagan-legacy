@@ -29,10 +29,10 @@ def import_cmd() -> None:
     show_default=True,
     help="Issue state to import",
 )
-@click.option("--label", "import_label", default=None, help="Only import issues with this label")
+@click.option("--label", "labels", multiple=True, help="Filter by label (repeatable)")
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt")
-def import_github(repo: str | None, state: str, import_label: str | None, yes: bool) -> None:
-    run_async(_import_github(repo=repo, state=state, import_label=import_label, yes=yes))
+def import_github(repo: str | None, state: str, labels: tuple[str, ...], yes: bool) -> None:
+    run_async(_import_github(repo=repo, state=state, labels=labels, yes=yes))
 
 
 def _print_setup_checks() -> None:
@@ -52,7 +52,7 @@ async def _resolve_project(client) -> Project | None:
 
 
 async def _import_github(
-    *, repo: str | None, state: str, import_label: str | None, yes: bool
+    *, repo: str | None, state: str, labels: tuple[str, ...], yes: bool,
 ) -> None:
     client = make_client()
     try:
@@ -102,7 +102,7 @@ async def _import_github(
             project_id=project.id,
             repo_slug=repo_slug,
             state=normalized_state,
-            import_label=import_label,
+            labels=list(labels),
         )
         click.echo(
             f"Import complete: {result.created} created, "

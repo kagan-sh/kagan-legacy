@@ -106,6 +106,38 @@ def register_plugin_routes(mcp: FastMCP) -> None:
             }
         )
 
+    @mcp.custom_route("/api/plugins/{name}/preview", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def plugin_preview(request: Request, *, ctx: Any) -> JSONResponse:
+        name = cast("str", request.path_params["name"])
+
+        if name != "github":
+            return _err(f"Plugin {name!r} does not support preview", status=400)
+
+        project_id = ctx.client.active_project_id
+        if not project_id:
+            return _err("No active project", status=400)
+
+        repo_slug = canonical_repo_slug(request.query_params.get("repo_slug", ""))
+        state = normalize_github_state(request.query_params.get("state", "open"))
+        labels_raw = request.query_params.get("labels", "")
+        labels = [s.strip() for s in labels_raw.split(",") if s.strip()] if labels_raw else []
+        limit_raw = request.query_params.get("limit", "100")
+        limit = min(max(int(limit_raw), 1), 500)
+
+        from kagan.core.integrations.github import preview_github_issues
+
+        issues = await preview_github_issues(
+            ctx.client,
+            project_id=project_id,
+            repo_slug=repo_slug,
+            state=state,
+            labels=labels,
+            limit=limit,
+        )
+        return _ok({"plugin": name, "issues": issues, "total": len(issues)})
+
     @mcp.custom_route("/api/plugins/{name}/import", methods=["POST"])
     @require_context(mcp)
     @handle_errors
@@ -128,10 +160,17 @@ def register_plugin_routes(mcp: FastMCP) -> None:
         if name == "github":
             repo_slug = canonical_repo_slug(str(body.get("repo_slug", "")))
             state = normalize_github_state(str(body.get("state", "open")))
-            import_label_raw = body.get("import_label")
-            import_label = (
-                str(import_label_raw).strip() if import_label_raw is not None else None
-            ) or None
+            labels_raw = body.get("labels")
+            labels = (
+                tuple(str(s).strip() for s in labels_raw)
+                if isinstance(labels_raw, list) else ()
+            )
+            limit = min(max(int(body.get("limit", 100)), 1), 500)
+            issue_numbers_raw = body.get("issue_numbers")
+            issue_numbers = (
+                tuple(int(n) for n in issue_numbers_raw)
+                if isinstance(issue_numbers_raw, list) else ()
+            )
 
             owner, repo = repo_slug.split("/", 1)
             import_plugin.configure(
@@ -139,7 +178,9 @@ def register_plugin_routes(mcp: FastMCP) -> None:
                     owner=owner,
                     repo=repo,
                     state=state,
-                    import_label=import_label,
+                    labels=labels,
+                    limit=limit,
+                    issue_numbers=issue_numbers,
                 )
             )
         else:

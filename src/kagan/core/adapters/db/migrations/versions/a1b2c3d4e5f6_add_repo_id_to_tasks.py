@@ -25,5 +25,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_tasks_repo_id'), 'tasks')
-    op.drop_column('tasks', 'repo_id')
+    if _has_column('tasks', 'repo_id'):
+        op.drop_index(op.f('ix_tasks_repo_id'), 'tasks')
+        op.drop_column('tasks', 'repo_id')

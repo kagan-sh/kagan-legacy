@@ -109,11 +109,12 @@ async def create_task(
         raise NotFoundError("Project", project_id)
 
     if repo_id is not None:
-        repo_ok = await _db_async(
-            engine,
-            lambda s: s.get(Repository, repo_id) is not None
-            and getattr(s.get(Repository, repo_id), "project_id", None) == project_id,
-        )
+
+        def _check_repo(s: Any) -> bool:
+            repo = s.get(Repository, repo_id)
+            return repo is not None and repo.project_id == project_id
+
+        repo_ok = await _db_async(engine, _check_repo)
         if not repo_ok:
             raise NotFoundError("Repository", repo_id)
 

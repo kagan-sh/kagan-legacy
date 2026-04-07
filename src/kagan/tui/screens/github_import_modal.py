@@ -48,6 +48,11 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         self._phase: str = "filter"
         self._previewed_issues: list = []
         self._selection_list: SelectionList | None = None
+        # Parsed form values cached after preview
+        self._parsed_repo: str = ""
+        self._parsed_state: str = "open"
+        self._parsed_labels: list[str] = []
+        self._parsed_limit: int = 100
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -188,6 +193,11 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         if not ready:
             return
 
+        self._parsed_repo = repo
+        self._parsed_state = state
+        self._parsed_labels = labels
+        self._parsed_limit = limit
+
         self.app.notify("Fetching issues…", severity="information")
         try:
             issues = await preview_github_issues(
@@ -254,32 +264,14 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
             self.app.notify("No issues selected.", severity="warning")
             return
 
-        repo_input = self.query_one("#github-import-repo", Input).value
-        state_value = self.query_one("#github-import-state", Select).value
-        state_input = state_value if isinstance(state_value, str) else "open"
-        labels_raw = self.query_one("#github-import-label", Input).value.strip()
-        labels = [lbl.strip() for lbl in labels_raw.split(",") if lbl.strip()] if labels_raw else []
-        limit_raw = self.query_one("#github-import-limit", Input).value.strip()
-        try:
-            limit = int(limit_raw) if limit_raw else 100
-        except ValueError:
-            limit = 100
-
-        try:
-            repo = canonical_repo_slug(repo_input)
-            state = normalize_github_state(state_input)
-        except ValueError as exc:
-            self.app.notify(str(exc), severity="warning")
-            return
-
         try:
             result = await sync_github_issues(
                 self.kagan_app.core,
                 project_id=project.id,
-                repo_slug=repo,
-                state=state,
-                labels=labels,
-                limit=limit,
+                repo_slug=self._parsed_repo,
+                state=self._parsed_state,
+                labels=self._parsed_labels,
+                limit=self._parsed_limit,
                 issue_numbers=selected_numbers,
             )
         except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
@@ -287,8 +279,8 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
             return
 
         summary = GitHubImportSummary(
-            repo=repo,
-            state=state,
+            repo=self._parsed_repo,
+            state=self._parsed_state,
             created=result.created,
             skipped=result.skipped,
             errors=result.errors,

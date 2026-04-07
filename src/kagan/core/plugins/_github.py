@@ -271,30 +271,36 @@ class GitHubImporter(ImporterPlugin):
 
         return checks
 
-    async def sync(self, project_id: str) -> ImportResult:
+    async def _fetch_issues(self) -> list[GitHubIssue]:
+        """Validate prerequisites, fetch issues, apply issue_numbers filter."""
         if self._client is None:
             raise PluginError("Plugin not set up — call setup() first")
         if self._config is None:
             raise PluginError("Plugin not configured — call configure() first")
-
-        client = self._client
-        config = self._config
 
         if _gh_path() is None:
             raise PluginError("GitHub CLI (gh) not found. Install → https://cli.github.com")
         if not await _gh_is_authenticated():
             raise PluginError("GitHub CLI not authenticated. Run → gh auth login")
 
-        issues = await _gh_fetch_issues(config)
+        issues = await _gh_fetch_issues(self._config)
         logger.info(
-            "GitHub sync: fetched {} issues from {}",
+            "GitHub fetch: {} issues from {}",
             len(issues),
-            config.repo_slug,
+            self._config.repo_slug,
         )
 
-        if config.issue_numbers:
-            allowed = set(config.issue_numbers)
+        if self._config.issue_numbers:
+            allowed = set(self._config.issue_numbers)
             issues = [i for i in issues if i.get("number") in allowed]
+
+        return issues
+
+    async def sync(self, project_id: str) -> ImportResult:
+        issues = await self._fetch_issues()
+        client = self._client
+        config = self._config
+        assert client is not None and config is not None  # guaranteed by _fetch_issues
 
         settings_key = config.settings_key()
         sync_map = await _load_sync_map(client, settings_key)
@@ -331,16 +337,8 @@ class GitHubImporter(ImporterPlugin):
 
     async def preview(self, project_id: str) -> list[GitHubIssuePreview]:
         """Fetch issues matching config and return preview without importing."""
-        if self._client is None:
-            raise PluginError("Plugin not set up — call setup() first")
-        if self._config is None:
-            raise PluginError("Plugin not configured — call configure() first")
-
-        issues = await _gh_fetch_issues(self._config)
-
-        if self._config.issue_numbers:
-            allowed = set(self._config.issue_numbers)
-            issues = [i for i in issues if i.get("number") in allowed]
+        issues = await self._fetch_issues()
+        assert self._client is not None and self._config is not None
 
         sync_map = await _load_sync_map(self._client, self._config.settings_key())
 

@@ -90,7 +90,8 @@ def register_task_routes(mcp: FastMCP) -> None:
     async def list_tasks(request: Request, *, ctx: Any) -> JSONResponse:
         status_value = request.query_params.get("status")
         status_enum = TaskStatus(status_value) if status_value else None
-        tasks = await ctx.client.tasks.list(status=status_enum)
+        repo_id = request.query_params.get("repo_id") or None
+        tasks = await ctx.client.tasks.list(status=status_enum, repo_id=repo_id)
         runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
         return _ok([task_to_wire_dict(task, runtime=runtime.get(task.id)) for task in tasks])
 
@@ -112,6 +113,7 @@ def register_task_routes(mcp: FastMCP) -> None:
             acceptance_criteria=body.acceptance_criteria,
             agent_backend=body.agent_backend,
             launcher=body.launcher,
+            repo_id=body.repo_id,
         )
         runtime = await ctx.client.tasks.runtime_summary(task.id)
         return _ok(task_to_wire_dict(task, runtime=runtime))

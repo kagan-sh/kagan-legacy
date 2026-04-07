@@ -110,6 +110,15 @@ def print_project_info(*, project_name: str | None, project_id: str | None) -> N
         _console.print("[dim]No active project.[/dim]")
 
 
+def print_repo_info(*, repo_name: str | None, repo_id: str | None) -> None:
+    """Render /repo info."""
+    if repo_name:
+        _console.print(f"[bold]Repo:[/bold] {repo_name}")
+        _console.print(f"[dim]ID:[/dim] {repo_id or 'unknown'}")
+    else:
+        _console.print("[dim]No repo selected.[/dim]")
+
+
 def print_session_list(items: list[Any]) -> None:
     """Render a table of sessions for non-interactive terminals."""
     table = Table(box=None, show_header=False, pad_edge=False)

@@ -22,7 +22,7 @@ class _FakeTasksClient:
         self._seq = 0
         self._tasks: dict[str, Any] = {}
 
-    async def list(self, status: TaskStatus | None = None) -> list[Any]:
+    async def list(self, status: TaskStatus | None = None, repo_id: str | None = None) -> list[Any]:
         tasks = list(self._tasks.values())
         if status is None:
             return tasks
@@ -38,6 +38,7 @@ class _FakeTasksClient:
         acceptance_criteria: list[str] | None = None,
         agent_backend: str | None = None,
         launcher: str | None = None,
+        repo_id: str | None = None,
     ) -> Any:
         self._seq += 1
         task = Task(
@@ -51,6 +52,7 @@ class _FakeTasksClient:
             acceptance_criteria=acceptance_criteria or [],
             agent_backend=agent_backend,
             launcher=launcher,
+            repo_id=repo_id,
             review_approved=False,
         )
         self._tasks[task.id] = task

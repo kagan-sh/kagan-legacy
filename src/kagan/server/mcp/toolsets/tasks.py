@@ -23,6 +23,7 @@ class _BatchTaskEntry(TypedDict, total=False):
     acceptance_criteria: list[str] | None
     agent_backend: str | None
     launcher: str | None
+    repo_id: str | None
 
 
 def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
@@ -54,6 +55,7 @@ def _task_to_dict(task: Any) -> dict[str, Any]:
         "acceptance_criteria": getattr(task, "acceptance_criteria", []),
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
+        "repo_id": getattr(task, "repo_id", None),
         "review_approved": getattr(task, "review_approved", False),
         "review_verdicts": getattr(task, "review_verdicts", []) or [],
     }
@@ -176,14 +178,14 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
 
 
 @mcp_error_boundary
-async def _task_list(ctx: Context, status: str | None = None) -> dict:
-    """List tasks, optionally filtered by status.
+async def _task_list(ctx: Context, status: str | None = None, repo_id: str | None = None) -> dict:
+    """List tasks, optionally filtered by status and/or repo.
 
     Use this to inspect project state before planning or mutating work.
     """
     app = get_context(ctx)
     status_enum = TaskStatus(status) if status else None
-    tasks = await app.client.tasks.list(status=status_enum)
+    tasks = await app.client.tasks.list(status=status_enum, repo_id=repo_id)
     result_tasks = [_task_to_dict(t) for t in tasks]
     if app.bound_session_id is not None:
         for t in result_tasks:
@@ -201,6 +203,7 @@ async def _task_create(
     acceptance_criteria: list[str] | None = None,
     agent_backend: str | None = None,
     launcher: str | None = None,
+    repo_id: str | None = None,
 ) -> dict:
     """Create a task on the active board.
 
@@ -216,6 +219,7 @@ async def _task_create(
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
         launcher=launcher,
+        repo_id=repo_id,
     )
     result = _task_to_dict(task)
     if app.bound_session_id is not None:
@@ -235,6 +239,7 @@ async def _task_update(
     agent_backend: str | None = None,
     launcher: str | None = None,
     status: str | None = None,
+    repo_id: str | None = None,
 ) -> dict:
     """Update task fields or transition task status.
 
@@ -253,6 +258,7 @@ async def _task_update(
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
         launcher=launcher,
+        repo_id=repo_id,
     )
     if status_enum is not None:
         task = await app.client.tasks.set_status(resolved_task_id, status_enum)
@@ -505,6 +511,7 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
                 acceptance_criteria=criteria,
                 agent_backend=entry.get("agent_backend"),
                 launcher=entry.get("launcher"),
+                repo_id=entry.get("repo_id"),
             )
             created.append(_task_to_dict(task))
         except (KaganError, ValueError, TypeError, KeyError) as exc:

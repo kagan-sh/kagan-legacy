@@ -54,6 +54,8 @@ class SlashAction(Enum):
     SWITCH_PROJECT = "switch_project"
     SHOW_PROJECT = "show_project"
     SHOW_INFO = "show_info"
+    SWITCH_REPO = "switch_repo"
+    SHOW_REPO = "show_repo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +77,8 @@ class SlashCommandOutcome:
     status_requested: bool = False
     project_switch_requested: str | None = None
     project_info_requested: bool = False
+    repo_switch_requested: str | None = None
+    repo_info_requested: bool = False
     action: SlashAction = SlashAction.NONE
     data: str | None = None
 
@@ -231,6 +235,19 @@ def _handle_project(
     )
 
 
+def _handle_repo(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    arg = invocation.arg.strip()
+    if arg:
+        return SlashCommandOutcome(
+            handled=True, repo_switch_requested=arg, action=SlashAction.SWITCH_REPO, data=arg
+        )
+    return SlashCommandOutcome(
+        handled=True, repo_info_requested=True, action=SlashAction.SHOW_REPO
+    )
+
+
 def _handle_delete(
     invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
@@ -341,6 +358,11 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         name="project",
         description="Show or switch active project",
         handler=_handle_project,
+    )
+    registry.register(
+        name="repo",
+        description="Show or switch active repo",
+        handler=_handle_repo,
     )
     registry.register(
         name="delete",

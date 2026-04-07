@@ -53,6 +53,7 @@ class Task(SQLModel, table=True):
 
     id: str = Field(default_factory=_new_id, primary_key=True)
     project_id: str = Field(foreign_key="projects.id", index=True)
+    repo_id: str | None = Field(default=None, foreign_key="repos.id", index=True)
     title: str = Field(index=True)
     description: str = Field(default="")
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, index=True)

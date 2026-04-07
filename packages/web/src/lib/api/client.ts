@@ -139,9 +139,12 @@ export class KaganApiClient {
 
   // -- Tasks ----------------------------------------------------------------
 
-  /** GET /api/tasks?status=... */
-  async getTasks(status?: TaskStatus): Promise<WireTask[]> {
-    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  /** GET /api/tasks?status=...&repo_id=... */
+  async getTasks(status?: TaskStatus, repoId?: string): Promise<WireTask[]> {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (repoId) params.set('repo_id', repoId);
+    const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<WireTask[]>(`/api/tasks${query}`);
   }
 

@@ -25,6 +25,7 @@ from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
     print_help_documentation,
     print_project_info,
+    print_repo_info,
     print_restored_messages,
     print_session_list,
     print_status_panel,
@@ -128,6 +129,8 @@ class ChatController:
         self._session_title: str | None = None
         self._title_task: asyncio.Task[None] | None = None
         self._project_name: str | None = None
+        self._selected_repo_id: str | None = None
+        self._selected_repo_name: str | None = None
         self._watcher = DBWatcher(client)
 
     # ------------------------------------------------------------------
@@ -364,6 +367,7 @@ class ChatController:
         if project is not None:
             await self.client.projects.set_active(project.id)
             self._project_name = project.name
+            await self._auto_select_repo(project.id)
             return True
 
         # 2. Try to match by git root.
@@ -377,12 +381,15 @@ class ChatController:
                     if Path(repo.path).expanduser().resolve() == resolved_git_root:
                         await self.client.projects.set_active(proj.id)
                         await self._refresh_project_name()
+                        await self._auto_select_repo(proj.id)
                         return True
 
         # 3. No match — bootstrap a new project for this CWD.
         result = await self._bootstrap_project()
         if result:
             await self._refresh_project_name()
+            if self.client.active_project_id:
+                await self._auto_select_repo(self.client.active_project_id)
         return result
 
     async def _refresh_project_name(self) -> None:
@@ -393,6 +400,15 @@ class ChatController:
                 self._project_name = p.name
                 return
         self._project_name = None
+
+    async def _auto_select_repo(self, project_id: str) -> None:
+        repos = await self.client.projects.repos(project_id)
+        if len(repos) == 1:
+            self._selected_repo_id = repos[0].id
+            self._selected_repo_name = repos[0].name
+        else:
+            self._selected_repo_id = None
+            self._selected_repo_name = None
 
     async def _bootstrap_project(self) -> bool:
         cwd = Path.cwd()
@@ -954,6 +970,13 @@ class ChatController:
                 )
             case SlashAction.SWITCH_PROJECT:
                 await self._switch_project(result.data or result.project_switch_requested or "")
+            case SlashAction.SWITCH_REPO:
+                await self._switch_repo(result.data or result.repo_switch_requested or "")
+            case SlashAction.SHOW_REPO:
+                print_repo_info(
+                    repo_name=self._selected_repo_name,
+                    repo_id=self._selected_repo_id,
+                )
             case SlashAction.CLOSE:
                 return True
             case _:
@@ -977,6 +1000,27 @@ class ChatController:
         self._project_name = target.name
         _TOOLBAR_STATE.project_name = target.name
         _console.print(f"[green]Switched to project:[/green] {target.name}")
+        await self._auto_select_repo(target.id)
+
+    async def _switch_repo(self, name: str) -> None:
+        if not self.client.active_project_id:
+            _console.print("[red]No active project.[/red]")
+            return
+        repos = await self.client.projects.repos(self.client.active_project_id)
+        target = None
+        for r in repos:
+            if r.name.casefold() == name.casefold() or r.id == name:
+                target = r
+                break
+        if target is None:
+            _console.print(f"[red]Repo not found:[/red] {name}")
+            available = ", ".join(r.name for r in repos)
+            if available:
+                _console.print(f"[dim]Available repos:[/dim] {available}")
+            return
+        self._selected_repo_id = target.id
+        self._selected_repo_name = target.name
+        _console.print(f"[green]Switched to repo:[/green] {target.name}")
 
     async def _switch_agent(self, new_backend: str) -> bool:
         if new_backend == self.agent_backend:

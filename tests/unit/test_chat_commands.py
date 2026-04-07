@@ -118,6 +118,7 @@ def test_slash_command_registry_is_canonical() -> None:
         "help",
         "new",
         "project",
+        "repo",
         "sessions",
         "status",
         "tool",

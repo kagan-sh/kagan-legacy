@@ -82,6 +82,7 @@ export interface CreateTaskInput {
     acceptance_criteria?: string[];
     agent_backend?: string;
     launcher?: string;
+    repo_id?: string;
 }
 
 export interface CreateChatSessionInput {

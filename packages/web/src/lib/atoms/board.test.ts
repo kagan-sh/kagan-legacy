@@ -79,6 +79,7 @@ describe('board atoms', () => {
       query: 'query',
       status: 'DONE',
       sort: 'recent',
+      repoId: null,
     });
   });
 
@@ -87,6 +88,7 @@ describe('board atoms', () => {
       query: 'login',
       status: 'IN_PROGRESS',
       sort: 'priority',
+      repoId: 'some-repo',
     });
 
     store.set(resetBoardFiltersAtom);
@@ -95,6 +97,7 @@ describe('board atoms', () => {
       query: '',
       status: 'ALL',
       sort: 'default',
+      repoId: null,
     });
   });
 

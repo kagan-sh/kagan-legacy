@@ -143,6 +143,7 @@ class KaganDriver:
         base_branch: str | None = None,
         agent_backend: str | None = None,
         launcher: str | None = None,
+        repo_id: str | None = None,
     ) -> TaskView:
         """Create a task in the current project."""
         return await self._driver.create_task(
@@ -153,6 +154,7 @@ class KaganDriver:
             base_branch=base_branch,
             agent_backend=agent_backend,
             launcher=launcher,
+            repo_id=repo_id,
         )
 
     async def get_task(self, task_id: str) -> TaskView:

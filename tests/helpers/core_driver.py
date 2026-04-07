@@ -44,6 +44,7 @@ class TaskView:
     acceptance_criteria: list[str]
     project_id: str
     launcher: str | None = None
+    repo_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +170,7 @@ class CoreDriver:
         base_branch: str | None = None,
         agent_backend: str | None = None,
         launcher: str | None = None,
+        repo_id: str | None = None,
     ) -> TaskView:
         """Create a task and return its view."""
         # If a specific project_id is requested, temporarily switch active project
@@ -184,6 +186,7 @@ class CoreDriver:
             acceptance_criteria=acceptance_criteria,
             agent_backend=agent_backend,
             launcher=launcher,
+            repo_id=repo_id,
         )
 
         # Restore original active project if we switched
@@ -508,6 +511,7 @@ class CoreDriver:
             base_branch=task.base_branch,
             acceptance_criteria=task.acceptance_criteria or [],
             project_id=task.project_id,
+            repo_id=getattr(task, "repo_id", None),
         )
 
 

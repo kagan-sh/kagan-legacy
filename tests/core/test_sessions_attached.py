@@ -61,6 +61,45 @@ async def test_attached_rejects_multi_repo_projects_explicitly(tmp_path) -> None
         await driver.teardown()
 
 
+async def test_multi_repo_workspace_succeeds_when_task_has_repo_id(tmp_path) -> None:
+    """Multi-repo project: task with explicit repo_id provisions worktree correctly."""
+    repo_one = tmp_path / "repo-one"
+    repo_two = tmp_path / "repo-two"
+    await make_git_repo(repo_one, base_branch="main")
+    await make_git_repo(repo_two, base_branch="main")
+
+    driver = await KaganDriver.boot(tmp_path)
+    try:
+        await driver.create_project("Multi Repo OK", repo_path=str(repo_one))
+        repo_two_id = await driver.add_repo(repo_two)
+        task = await driver.create_task(
+            "Task targeting repo two", launcher="tmux", repo_id=repo_two_id
+        )
+        assert task.repo_id == repo_two_id
+
+        ws_id = await driver.provision_workspace(task.id)
+        assert ws_id is not None
+    finally:
+        await driver.teardown()
+
+
+async def test_single_repo_auto_resolves_without_repo_id(tmp_path) -> None:
+    """Single-repo project: task without repo_id auto-resolves to the only repo."""
+    repo = tmp_path / "solo-repo"
+    await make_git_repo(repo, base_branch="main")
+
+    driver = await KaganDriver.boot(tmp_path)
+    try:
+        await driver.create_project("Solo Repo", repo_path=str(repo))
+        task = await driver.create_task("Auto-resolve task", launcher="tmux")
+        assert task.repo_id is None
+
+        ws_id = await driver.provision_workspace(task.id)
+        assert ws_id is not None
+    finally:
+        await driver.teardown()
+
+
 async def test_attached_with_workspace_creates_session(git_board: KaganDriver) -> None:
     task = await git_board.create_task("Attached Session Task", launcher="tmux")
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)

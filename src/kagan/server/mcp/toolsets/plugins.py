@@ -18,25 +18,70 @@ def _public_plugins(available: list[str]) -> list[str]:
 
 
 @mcp_error_boundary
+async def _plugins_preview(
+    ctx: Context,
+    plugin: str,
+    repo: str,
+    state: str = "open",
+    labels: list[str] | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Preview issues from a GitHub repository without importing.
+
+    Returns a list of issues matching the filters so the user can
+    select which ones to import via plugins_sync with issue_numbers.
+
+    Args:
+        plugin: Plugin name (e.g. "github").
+        repo: Repository in owner/repo format.
+        state: Issue state filter — "open", "closed", or "all".
+        labels: Filter by labels (AND logic).
+        limit: Maximum issues to fetch (1-500).
+    """
+    app = get_context(ctx)
+    project_id = app.bound_project_id or app.client.active_project_id
+    if project_id is None:
+        raise ValidationError("", "No active project. Create or open a project first.")
+
+    if "/" not in repo:
+        raise ValidationError("", "repo must be in owner/repo format (e.g. 'octocat/hello-world')")
+
+    from kagan.core.integrations.github import preview_github_issues
+
+    issues = await preview_github_issues(
+        app.client,
+        project_id=project_id,
+        repo_slug=repo,
+        state=state,
+        labels=labels or [],
+        limit=limit,
+    )
+    return {"plugin": plugin, "repo": repo, "issues": issues, "total": len(issues)}
+
+
+@mcp_error_boundary
 async def _plugins_sync(
     ctx: Context,
     plugin: str,
     repo: str,
     state: str = "open",
-    import_label: str | None = None,
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
 ) -> dict[str, Any]:
     """Sync external items from a plugin source into the active project.
 
     Imports issues from the specified repository as kagan tasks.
-    Labels like ``priority:high`` and ``kagan:auto`` on GitHub issues
-    auto-map to task properties. Operation is idempotent — previously
-    synced issues are skipped.
+    Labels like ``priority:high`` on GitHub issues auto-map to task
+    properties. Operation is idempotent — previously synced issues are skipped.
 
     Args:
-        plugin: Plugin to sync (e.g. "github"). Use plugins_preflight to list available.
-        repo: Repository in owner/repo format (e.g. "octocat/hello-world").
+        plugin: Plugin to sync (e.g. "github").
+        repo: Repository in owner/repo format.
         state: Issue state filter — "open", "closed", or "all".
-        import_label: Only sync issues with this label.
+        labels: Only sync issues with ALL of these labels.
+        limit: Maximum issues to fetch (1-500).
+        issue_numbers: Import only these specific issue numbers.
     """
     app = get_context(ctx)
     project_id = app.bound_project_id or app.client.active_project_id
@@ -69,7 +114,9 @@ async def _plugins_sync(
             owner=owner,
             repo=repo_name,
             state=state,
-            import_label=import_label,
+            labels=tuple(labels or ()),
+            limit=limit,
+            issue_numbers=tuple(issue_numbers or ()),
         )
     )
     result = await import_plugin.sync(project_id)
@@ -147,6 +194,7 @@ async def _plugins_preflight(ctx: Context, plugin: str | None = None) -> dict[st
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register plugin domain tools on mcp, filtered by opts."""
     _tools: list[tuple[str, Callable[..., Any]]] = [
+        ("plugins_preview", _plugins_preview),
         ("plugins_sync", _plugins_sync),
         ("plugins_preflight", _plugins_preflight),
     ]

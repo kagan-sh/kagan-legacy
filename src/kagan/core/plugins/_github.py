@@ -8,8 +8,6 @@ needed. Label conventions on the GitHub side auto-map to kagan task properties:
     priority:high      →  Priority.HIGH
     priority:medium    →  Priority.MEDIUM
     priority:low       →  Priority.LOW
-    kagan:detached     →  ignored (legacy label)
-    kagan:attached     →  ignored (legacy label)
 
 Sync is idempotent: a mapping of issue numbers → task IDs is persisted in
 the kagan settings table. Re-running sync skips already-imported issues.
@@ -40,6 +38,15 @@ class GitHubIssue(TypedDict, total=False):
     url: str
 
 
+class GitHubIssuePreview(TypedDict):
+    number: int
+    title: str
+    state: str
+    labels: list[str]
+    url: str
+    already_synced: bool
+
+
 # Label prefix → (task field, mapping)
 _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:critical": Priority.CRITICAL,
@@ -47,8 +54,6 @@ _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:medium": Priority.MEDIUM,
     "priority:low": Priority.LOW,
 }
-
-_MODE_LABELS: Final[set[str]] = {"kagan:detached", "kagan:attached"}
 
 _GH_JSON_FIELDS = "number,title,body,labels,state,url"
 
@@ -60,7 +65,9 @@ class GitHubImportConfig:
     owner: str
     repo: str
     state: str = "open"
-    import_label: str | None = None
+    labels: tuple[str, ...] = ()
+    limit: int = 100
+    issue_numbers: tuple[int, ...] = ()
 
     @property
     def repo_slug(self) -> str:
@@ -102,10 +109,10 @@ async def _gh_fetch_issues(config: GitHubImportConfig) -> list[GitHubIssue]:
         "--json",
         _GH_JSON_FIELDS,
         "--limit",
-        "100",
+        str(config.limit),
     ]
-    if config.import_label:
-        cmd.extend(["--label", config.import_label])
+    for lbl in config.labels:
+        cmd.extend(["--label", lbl])
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -138,16 +145,12 @@ def _extract_label_names(issue: GitHubIssue) -> list[str]:
 def _map_labels(label_names: list[str]) -> tuple[Priority, list[str]]:
     priority = Priority.MEDIUM
     remaining: list[str] = []
-
     for name in label_names:
         lower = name.lower()
         if lower in _PRIORITY_LABELS:
             priority = _PRIORITY_LABELS[lower]
-        elif lower in _MODE_LABELS:
-            continue
         else:
             remaining.append(name)
-
     return priority, remaining
 
 
@@ -289,6 +292,10 @@ class GitHubImporter(ImporterPlugin):
             config.repo_slug,
         )
 
+        if config.issue_numbers:
+            allowed = set(config.issue_numbers)
+            issues = [i for i in issues if i.get("number") in allowed]
+
         settings_key = config.settings_key()
         sync_map = await _load_sync_map(client, settings_key)
         result = ImportResult()
@@ -321,6 +328,37 @@ class GitHubImporter(ImporterPlugin):
             len(result.errors),
         )
         return result
+
+    async def preview(self, project_id: str) -> list[GitHubIssuePreview]:
+        """Fetch issues matching config and return preview without importing."""
+        if self._client is None:
+            raise PluginError("Plugin not set up — call setup() first")
+        if self._config is None:
+            raise PluginError("Plugin not configured — call configure() first")
+
+        issues = await _gh_fetch_issues(self._config)
+
+        if self._config.issue_numbers:
+            allowed = set(self._config.issue_numbers)
+            issues = [i for i in issues if i.get("number") in allowed]
+
+        sync_map = await _load_sync_map(self._client, self._config.settings_key())
+
+        previews: list[GitHubIssuePreview] = []
+        for issue in issues:
+            number = issue.get("number")
+            title = (issue.get("title") or "").strip()
+            if not number or not title:
+                continue
+            previews.append(GitHubIssuePreview(
+                number=number,
+                title=title,
+                state=issue.get("state", "open"),
+                labels=_extract_label_names(issue),
+                url=issue.get("url", ""),
+                already_synced=str(number) in sync_map,
+            ))
+        return previews
 
     async def _sync_single_issue(
         self,
@@ -367,4 +405,5 @@ class GitHubImporter(ImporterPlugin):
 __all__ = [
     "GitHubImportConfig",
     "GitHubImporter",
+    "GitHubIssuePreview",
 ]

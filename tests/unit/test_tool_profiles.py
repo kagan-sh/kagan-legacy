@@ -28,6 +28,7 @@ def test_worker_role_tools() -> None:
         "settings_get",
         "review_conflicts",
         "plugins_preflight",
+        "plugins_preview",
         "session_compact",
         "verify_step",
         "verification_summary",

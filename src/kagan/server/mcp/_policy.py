@@ -31,6 +31,7 @@ _WORKER_TOOLS = frozenset(
         "settings_get",
         "review_conflicts",
         "plugins_preflight",
+        "plugins_preview",
         "verify_step",
         "verification_summary",
         "checkpoint_create",

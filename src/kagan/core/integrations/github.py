@@ -117,7 +117,9 @@ async def sync_github_issues(
     project_id: str,
     repo_slug: str,
     state: str = "open",
-    import_label: str | None = None,
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
 ) -> ImportResult:
     normalized_state = normalize_github_state(state)
     canonical_repo = canonical_repo_slug(repo_slug)
@@ -134,7 +136,42 @@ async def sync_github_issues(
             owner=owner,
             repo=repo,
             state=normalized_state,
-            import_label=import_label,
+            labels=tuple(labels or ()),
+            limit=limit,
+            issue_numbers=tuple(issue_numbers or ()),
         )
     )
     return await manager.sync("github", project_id=project_id)
+
+
+async def preview_github_issues(
+    client: KaganCore,
+    *,
+    project_id: str,
+    repo_slug: str,
+    state: str = "open",
+    labels: list[str] | None = None,
+    limit: int = 100,
+    issue_numbers: list[int] | None = None,
+) -> list:
+    normalized_state = normalize_github_state(state)
+    canonical_repo = canonical_repo_slug(repo_slug)
+    owner, repo = canonical_repo.split("/", 1)
+
+    manager = PluginManager(client)
+    await manager.load()
+    if "github" not in manager.available:
+        raise ValueError("GitHub import is unavailable in this installation.")
+
+    import_plugin = manager.get_import("github")
+    import_plugin.configure(
+        GitHubImportConfig(
+            owner=owner,
+            repo=repo,
+            state=normalized_state,
+            labels=tuple(labels or ()),
+            limit=limit,
+            issue_numbers=tuple(issue_numbers or ()),
+        )
+    )
+    return await import_plugin.preview(project_id)

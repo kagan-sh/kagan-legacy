@@ -112,6 +112,9 @@ def register_plugin_routes(mcp: FastMCP) -> None:
     async def plugin_preview(request: Request, *, ctx: Any) -> JSONResponse:
         name = cast("str", request.path_params["name"])
 
+        if name != "github":
+            return _err(f"Plugin {name!r} does not support preview", status=400)
+
         project_id = ctx.client.active_project_id
         if not project_id:
             return _err("No active project", status=400)

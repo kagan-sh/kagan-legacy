@@ -95,6 +95,8 @@ async def _sync(
 @click.option("--limit", default=100, type=int, show_default=True, help="Max issues to fetch")
 def preview(plugin_name: str, repo: str, state: str, labels: tuple[str, ...], limit: int) -> None:
     """Preview available issues from a plugin source."""
+    if "/" not in repo:
+        raise click.BadParameter("Must be in owner/repo format", param_hint="--repo")
     run_async(_preview(plugin_name, repo, state, labels, limit))
 
 

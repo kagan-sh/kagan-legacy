@@ -361,6 +361,16 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
 
         return False, format_github_setup_message(checks)
 
+    def action_select_all(self) -> None:
+        if self._phase != "select" or self._selection_list is None:
+            return
+        self._selection_list.select_all()
+
+    def action_select_none(self) -> None:
+        if self._phase != "select" or self._selection_list is None:
+            return
+        self._selection_list.deselect_all()
+
     async def action_dismiss(self, result: GitHubImportSummary | None = None) -> None:
         if self._phase == "select":
             self.action_back_to_filter()

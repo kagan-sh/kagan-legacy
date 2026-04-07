@@ -46,6 +46,15 @@ async def _plugins_preview(
     if "/" not in repo:
         raise ValidationError("", "repo must be in owner/repo format (e.g. 'octocat/hello-world')")
 
+    from kagan.core.plugins import PluginManager
+
+    manager = PluginManager(app.client)
+    await manager.load()
+    available_public = _public_plugins(manager.available)
+    if plugin not in available_public:
+        available = ", ".join(available_public) or "(none)"
+        raise ValidationError("Unknown plugin", f"{plugin!r}. Installed: {available}")
+
     from kagan.core.integrations.github import preview_github_issues
 
     issues = await preview_github_issues(

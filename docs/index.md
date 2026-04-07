@@ -30,11 +30,7 @@ uvx kagan
 
 - [:material-chat: **Chat orchestrator**](guides/chat.md)
 
-- :material-monitor-dashboard:{ .lg .middle } **Web dashboard**
-
-  Manage your board from a browser — locally or remotely from any device on your network.
-
-  [:octicons-arrow-right-24: Web dashboard](guides/web-dashboard.md)  ·  [:octicons-arrow-right-24: Remote access](guides/remote-access.md)
+- [:material-monitor-dashboard: **Web dashboard**](guides/web-dashboard.md)
 
 </div>
 
@@ -85,7 +81,6 @@ ______________________________________________________________________
 | Import tasks from GitHub         | [Import from GitHub](guides/github.md)                     |
 | Extend with plugins              | [Plugins](reference/plugins.md) (early stage)              |
 | Use the web dashboard            | [Web dashboard](guides/web-dashboard.md)                   |
-| Control board from any device    | [Remote access](guides/remote-access.md)                   |
 | Fix a known issue                | [Troubleshooting](troubleshooting.md)                      |
 | All CLI flags                    | [CLI reference](reference/cli.md)                          |
 | All MCP tools                    | [MCP tools reference](reference/mcp-tools.md)              |

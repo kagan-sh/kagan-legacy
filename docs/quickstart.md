@@ -100,11 +100,11 @@ The TUI board remains the primary operator surface; Workspace is the conversatio
 Kagan now has orchestrator-first workspace views in both clients:
 
 - **TUI:** press `w` from the board to switch into Workspace. Press `w` to return directly, or use `Esc` to step back from search/chat to the sidebar and then back to Kanban.
-- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W` for remote supervision and planning.
+- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W` for browser-based supervision and planning.
 
 In both clients, the conversation itself is the workspace: you navigate between orchestrator sessions, continue planning in-thread, and treat tasks as outputs of that conversation rather than as separate sidebar chat tabs.
 
-## Remote access
+## Open the web dashboard from another device
 
 Open the web dashboard from any browser:
 
@@ -112,7 +112,7 @@ Open the web dashboard from any browser:
 kagan web --host 0.0.0.0
 ```
 
-Open the URL shown in the terminal on any device on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. This is the remote companion surface, not a separate control plane. [Remote access guide](guides/remote-access.md)
+Open the URL shown in the terminal from another browser on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. If you specifically need cross-device setup details, see the [Remote access guide](guides/remote-access.md).
 
 ## When things break
 

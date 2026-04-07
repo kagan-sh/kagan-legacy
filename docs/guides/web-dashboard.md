@@ -6,7 +6,7 @@ icon: material/monitor-dashboard
 
 # Web Dashboard
 
-The web dashboard is a React SPA bundled into the `kagan web` command. It is the remote companion surface for the same task lifecycle that the TUI drives locally.
+The web dashboard is a React SPA bundled into the `kagan web` command. It is the browser companion surface for the same task lifecycle that the TUI drives locally.
 
 ```bash
 kagan web                    # localhost only

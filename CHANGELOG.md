@@ -13,6 +13,58 @@
 
 
 
+## v0.15.1-beta.1 (2026-04-07)
+
+
+
+
+### bug fixes
+
+- **ci**: Refresh pnpm lockfile for web dependency bump
+  ([#93](https://github.com/kagan-sh/kagan/pull/93),
+  [`90a6f37`](https://github.com/kagan-sh/kagan/commit/90a6f37f9e7a6d2e429596fe8c99c72db2c9b4b1))
+
+- Wire repo_id through task lifecycle for multi-repo project support
+  ([`4bba2ed`](https://github.com/kagan-sh/kagan/commit/4bba2edf6b8f971ee1862aab95c164f258c2c7ec))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### chores
+
+- **deps**: Bump the all group in /packages/web with 7 updates
+  ([#93](https://github.com/kagan-sh/kagan/pull/93),
+  [`90a6f37`](https://github.com/kagan-sh/kagan/commit/90a6f37f9e7a6d2e429596fe8c99c72db2c9b4b1))
+
+
+
+
+
+
+
+
+
+
+
+### documentation
+
+- Align web dashboard positioning on docs home
+  ([`eda73b1`](https://github.com/kagan-sh/kagan/commit/eda73b18cffab15ba44eb877ba3030151803dd64))
+
+
+
+
+
 ## v0.15.0 (2026-04-06)
 
 

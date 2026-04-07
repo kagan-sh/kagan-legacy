@@ -13,6 +13,20 @@
 
 
 
+## v0.16.0-beta.2 (2026-04-07)
+
+
+
+
+### refactoring
+
+- Polish test suite for Zen of Python compliance ([#96](https://github.com/kagan-sh/kagan/pull/96),
+  [`cdd5909`](https://github.com/kagan-sh/kagan/commit/cdd5909b25503aab8bcfe1e548c27a91cb0d5fc5))
+
+
+
+
+
 ## v0.16.0-beta.1 (2026-04-07)
 
 

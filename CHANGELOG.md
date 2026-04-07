@@ -13,6 +13,20 @@
 
 
 
+## v0.16.0-beta.1 (2026-04-07)
+
+
+
+
+### features
+
+- Selective GitHub issue import with preview workflow
+  ([`156d0a6`](https://github.com/kagan-sh/kagan/commit/156d0a6eba568ad5c0096aad7878b3114749a282))
+
+
+
+
+
 ## v0.15.1-beta.1 (2026-04-07)
 
 

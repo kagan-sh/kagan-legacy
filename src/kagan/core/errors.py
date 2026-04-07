@@ -25,7 +25,7 @@ class WorktreeError(KaganError):
 
 class MultiRepoUnsupportedError(WorktreeError):
     code = "MULTI_REPO_UNSUPPORTED"
-    hint = "Link exactly one repository to the project."
+    hint = "Specify repo_id on the task, or link exactly one repository to the project."
 
     def __init__(self, repo_count: int) -> None:
         self.repo_count = repo_count

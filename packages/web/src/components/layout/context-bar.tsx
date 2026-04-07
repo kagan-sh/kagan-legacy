@@ -4,7 +4,7 @@ import { useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import type { WireProject, WireRepository } from '@/lib/api/types';
-import { projectSwitchVersionAtom } from '@/lib/atoms/board';
+import { boardRepoFilterAtom, projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { CreateProjectDialog } from '@/components/layout/create-project-dialog';
 import { AddRepoDialog } from '@/components/layout/add-repo-dialog';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ export function ContextBar() {
   const [deleteRepoOpen, setDeleteRepoOpen] = useState(false);
 
   const bumpProjectVersion = useSetAtom(projectSwitchVersionAtom);
+  const setRepoFilter = useSetAtom(boardRepoFilterAtom);
 
   const activeProject = projects.find((p) => p.active) ?? null;
   const activeRepo = repos.find((r) => r.selected) ?? null;
@@ -137,11 +138,13 @@ export function ContextBar() {
       try {
         await apiClient.selectProjectRepo(activeProject.id, repoId);
         await loadRepos(activeProject.id);
+        setRepoFilter(repoId);
+        bumpProjectVersion((v) => v + 1);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to select repo');
       }
     },
-    [activeProject, loadRepos],
+    [activeProject, loadRepos, setRepoFilter, bumpProjectVersion],
   );
 
   const handleProjectCreated = useCallback(

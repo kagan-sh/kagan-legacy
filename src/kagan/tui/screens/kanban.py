@@ -379,7 +379,7 @@ class KanbanScreen(Screen[None]):
         self._update_review_queue_hint()
 
     async def _reload_tasks(self) -> None:
-        tasks = await self.kagan_app.core.tasks.list()
+        tasks = await self.kagan_app.core.tasks.list(repo_id=self.kagan_app.selected_repo_id)
         if not self.is_mounted:
             return
         self._all_tasks = sorted(

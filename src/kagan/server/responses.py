@@ -85,6 +85,7 @@ class TaskResponse(_OrmBase):
     status: str
     priority: str
     base_branch: str | None = None
+    repo_id: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
     agent_backend: str | None = None
     launcher: str | None = None

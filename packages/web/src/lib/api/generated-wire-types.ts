@@ -28,6 +28,7 @@ export interface TaskResponse {
   status: string;
   priority: string;
   base_branch?: string | null;
+  repo_id?: string | null;
   acceptance_criteria?: string[];
   agent_backend?: string | null;
   launcher?: string | null;

@@ -25,7 +25,16 @@ from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError
-from kagan.core.models import AuditEntry, Project, Session, SessionEvent, Task, TaskNote, Worktree
+from kagan.core.models import (
+    AuditEntry,
+    Project,
+    Repository,
+    Session,
+    SessionEvent,
+    Task,
+    TaskNote,
+    Worktree,
+)
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
@@ -71,6 +80,7 @@ async def create_task(
     acceptance_criteria: list[str] | None = None,
     agent_backend: str | None = None,
     launcher: str | None = None,
+    repo_id: str | None = None,
     active_project_id: str | None = None,
     events: Events | None = None,
     on_stale_project: Any = None,
@@ -98,6 +108,15 @@ async def create_task(
             on_stale_project(project_id)
         raise NotFoundError("Project", project_id)
 
+    if repo_id is not None:
+        repo_ok = await _db_async(
+            engine,
+            lambda s: s.get(Repository, repo_id) is not None
+            and getattr(s.get(Repository, repo_id), "project_id", None) == project_id,
+        )
+        if not repo_ok:
+            raise NotFoundError("Repository", repo_id)
+
     task = Task(
         project_id=project_id,
         title=title,
@@ -107,6 +126,7 @@ async def create_task(
         acceptance_criteria=acceptance_criteria or [],
         agent_backend=agent_backend,
         launcher=launcher,
+        repo_id=repo_id,
     )
 
     def op(s):
@@ -150,12 +170,15 @@ async def list_tasks(
     *,
     status: TaskStatus | None = None,
     project_id: str | None = None,
+    repo_id: str | None = None,
 ) -> list[Task]:
     if project_id is None:
         raise SessionError(None, "No active project. Call client.projects.set_active() first.")
     stmt = select(Task).where(Task.project_id == project_id)
     if status is not None:
         stmt = stmt.where(Task.status == status)
+    if repo_id is not None:
+        stmt = stmt.where(Task.repo_id == repo_id)
     return await _db_async(engine, lambda s: list(s.exec(stmt).all()))
 
 
@@ -170,6 +193,7 @@ async def update_task(
     acceptance_criteria: builtins.list[str] | None = None,
     agent_backend: str | None = None,
     launcher: str | None | object = _UNSET,
+    repo_id: str | None | object = _UNSET,
     events: Events | None = None,
 ) -> Task:
     task = await get_task(engine, task_id)
@@ -181,6 +205,7 @@ async def update_task(
         "acceptance_criteria": acceptance_criteria,
         "agent_backend": agent_backend,
         "launcher": launcher,
+        "repo_id": repo_id,
     }
     changed_fields: dict[str, object] = {}
 
@@ -194,6 +219,12 @@ async def update_task(
             if field == "launcher":
                 db_task.launcher = value if isinstance(value, str) else None
                 changed_fields["launcher"] = _serialize_value(
+                    value if isinstance(value, str) else None
+                )
+                continue
+            if field == "repo_id":
+                db_task.repo_id = value if isinstance(value, str) else None
+                changed_fields["repo_id"] = _serialize_value(
                     value if isinstance(value, str) else None
                 )
                 continue
@@ -612,6 +643,7 @@ class Tasks:
         acceptance_criteria: list[str] | None = None,
         agent_backend: str | None = None,
         launcher: str | None = None,
+        repo_id: str | None = None,
     ) -> Task:
         return await create_task(
             self._engine,
@@ -622,6 +654,7 @@ class Tasks:
             acceptance_criteria=acceptance_criteria,
             agent_backend=agent_backend,
             launcher=launcher,
+            repo_id=repo_id,
             active_project_id=self._require_project(),
             events=self.events,
             on_stale_project=self._clear_stale_active_project,
@@ -634,8 +667,11 @@ class Tasks:
         self,
         *,
         status: TaskStatus | None = None,
+        repo_id: str | None = None,
     ) -> list[Task]:
-        return await list_tasks(self._engine, status=status, project_id=self._require_project())
+        return await list_tasks(
+            self._engine, status=status, project_id=self._require_project(), repo_id=repo_id
+        )
 
     async def update(
         self,
@@ -648,6 +684,7 @@ class Tasks:
         acceptance_criteria: builtins.list[str] | None = None,
         agent_backend: str | None = None,
         launcher: str | None | object = _UNSET,
+        repo_id: str | None | object = _UNSET,
     ) -> Task:
         return await update_task(
             self._engine,
@@ -659,6 +696,7 @@ class Tasks:
             acceptance_criteria=acceptance_criteria,
             agent_backend=agent_backend,
             launcher=launcher,
+            repo_id=repo_id,
             events=self.events,
         )
 

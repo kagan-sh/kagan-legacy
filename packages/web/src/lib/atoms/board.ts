@@ -10,6 +10,7 @@ export interface BoardFilters {
   query: string;
   status: TaskStatus | 'ALL';
   sort: SortOption;
+  repoId: string | null;
 }
 
 function createEmptyGroups(): TaskGroups {
@@ -27,6 +28,7 @@ export const boardFiltersAtom = atom<BoardFilters>({
   query: '',
   status: 'ALL',
   sort: 'default',
+  repoId: null,
 });
 export const searchQueryAtom = atom(
   (get) => get(boardFiltersAtom).query,
@@ -40,11 +42,16 @@ export const boardSortAtom = atom(
   (get) => get(boardFiltersAtom).sort,
   (_get, set, value: SortOption) => set(boardFiltersAtom, (prev) => ({ ...prev, sort: value })),
 );
+export const boardRepoFilterAtom = atom(
+  (get) => get(boardFiltersAtom).repoId,
+  (_get, set, value: string | null) => set(boardFiltersAtom, (prev) => ({ ...prev, repoId: value })),
+);
 export const resetBoardFiltersAtom = atom(null, (_get, set) => {
   set(boardFiltersAtom, {
     query: '',
     status: 'ALL',
     sort: 'default',
+    repoId: null,
   });
 });
 
@@ -96,7 +103,7 @@ function sortTasks(tasks: WireTask[], sort: SortOption): WireTask[] {
 
 export const filteredGroupedTasksAtom = atom((get) => {
   const grouped = get(groupedTasksAtom);
-  const { query, status: statusFilter, sort } = get(boardFiltersAtom);
+  const { query, status: statusFilter, sort, repoId } = get(boardFiltersAtom);
   const normalizedQuery = query.toLowerCase().trim();
 
   const result = createEmptyGroups();
@@ -107,20 +114,22 @@ export const filteredGroupedTasksAtom = atom((get) => {
     }
     const filtered = grouped[status].filter(
       (task) =>
-        !normalizedQuery ||
-        task.title.toLowerCase().includes(normalizedQuery) ||
-        task.description?.toLowerCase().includes(normalizedQuery),
+        (!normalizedQuery ||
+          task.title.toLowerCase().includes(normalizedQuery) ||
+          task.description?.toLowerCase().includes(normalizedQuery)) &&
+        (!repoId || task.repo_id === repoId),
     );
     result[status] = sortTasks(filtered, sort);
   }
   return result;
 });
 
-export const fetchTasksAtom = atom(null, async (_get, set) => {
+export const fetchTasksAtom = atom(null, async (get, set) => {
   set(boardLoadingAtom, true);
   set(boardErrorAtom, null);
   try {
-    const tasks = await apiClient.getTasks();
+    const { repoId } = get(boardFiltersAtom);
+    const tasks = await apiClient.getTasks(undefined, repoId ?? undefined);
     set(tasksAtom, tasks);
   } catch (error) {
     set(boardErrorAtom, error instanceof Error ? error.message : 'Failed to load board');

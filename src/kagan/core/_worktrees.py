@@ -143,9 +143,14 @@ async def create_worktree(
     repos = await get_repos_fn(project_id)
     if not repos:
         raise SessionError(None, f"No repos linked to project {project_id!r}.")
-    if len(repos) != 1:
+    if task.repo_id is not None:
+        repo = next((r for r in repos if r.id == task.repo_id), None)
+        if repo is None:
+            raise SessionError(None, f"Repo {task.repo_id!r} not found in project {project_id!r}.")
+    elif len(repos) == 1:
+        repo = repos[0]
+    else:
         raise MultiRepoUnsupportedError(len(repos))
-    repo = repos[0]
 
     if not await git.is_git_repo(repo.path):
         raise WorktreeError(f"Not a git repository: {repo.path}")

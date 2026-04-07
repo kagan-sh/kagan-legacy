@@ -1,19 +1,12 @@
 """Behavioral tests for managed-run MCP tools."""
 
-import json
-
 import pytest
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 
 from mcp import ClientSession
+from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
-
-
-def _text(result: CallToolResult) -> dict:
-    block = result.content[0]
-    assert isinstance(block, TextContent), f"Expected TextContent, got {type(block)}"
-    return json.loads(block.text)
 
 
 async def _create_task(mcp_board: ClientSession, title: str) -> str:

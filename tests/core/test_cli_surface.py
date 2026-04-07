@@ -73,10 +73,10 @@ def test_unknown_command_returns_usage_exit_code_2(tmp_path: Path) -> None:
 
 
 def test_bare_kagan_delegates_to_tui(monkeypatch, tmp_path: Path) -> None:
-    called = {"value": False}
+    called = []
 
     def fake_launch(**_kw) -> None:
-        called["value"] = True
+        called.append(True)
 
     monkeypatch.setattr("kagan.cli.tui._launch_tui", fake_launch)
     monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
@@ -84,7 +84,7 @@ def test_bare_kagan_delegates_to_tui(monkeypatch, tmp_path: Path) -> None:
     result = runner.invoke(cli, [], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert called["value"] is True
+    assert called
 
 
 def _seed_surface_chooser_seen(
@@ -117,10 +117,10 @@ def _seed_project(tmp_path: Path, name: str = "Seed Project") -> None:
 
 
 def test_first_run_shows_surface_chooser_and_persists_choice(monkeypatch, tmp_path: Path) -> None:
-    called = {"value": False}
+    called = []
 
     def fake_launch(**_kw) -> None:
-        called["value"] = True
+        called.append(True)
 
     monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
     monkeypatch.setattr("click.prompt", lambda *args, **kwargs: "tui")
@@ -132,7 +132,7 @@ def test_first_run_shows_surface_chooser_and_persists_choice(monkeypatch, tmp_pa
 
     assert result.exit_code == 0
     assert "First launch - choose where to start" in result.output
-    assert called["value"] is True
+    assert called
 
     client = make_client(db_path=tmp_path / "kagan.db")
     try:
@@ -168,10 +168,10 @@ def test_first_run_web_choice_becomes_default_surface(monkeypatch, tmp_path: Pat
 
 
 def test_surface_chooser_is_skipped_after_choice_saved(monkeypatch, tmp_path: Path) -> None:
-    called = {"value": False}
+    called = []
 
     def fake_launch(**_kw) -> None:
-        called["value"] = True
+        called.append(True)
 
     _seed_surface_chooser_seen(tmp_path)
     monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
@@ -184,7 +184,7 @@ def test_surface_chooser_is_skipped_after_choice_saved(monkeypatch, tmp_path: Pa
     result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert called["value"] is True
+    assert called
     assert "First launch - choose where to start" not in result.output
 
 
@@ -226,10 +226,10 @@ def test_startup_surface_ask_reopens_surface_chooser(monkeypatch, tmp_path: Path
 
 
 def test_surface_chooser_is_skipped_when_projects_exist(monkeypatch, tmp_path: Path) -> None:
-    called = {"value": False}
+    called = []
 
     def fake_launch(**_kw) -> None:
-        called["value"] = True
+        called.append(True)
 
     _seed_project(tmp_path)
     monkeypatch.setattr("kagan.cli.main._surface_chooser_available", lambda: True)
@@ -242,7 +242,7 @@ def test_surface_chooser_is_skipped_when_projects_exist(monkeypatch, tmp_path: P
     result = CliRunner().invoke(cli, [], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert called["value"] is True
+    assert called
     assert "First launch - choose where to start" not in result.output
 
 

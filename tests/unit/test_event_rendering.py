@@ -12,7 +12,7 @@ from kagan.core._event_rendering import (
     render_event,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit]
 
 
 # -----------------------------------------------------------------------------

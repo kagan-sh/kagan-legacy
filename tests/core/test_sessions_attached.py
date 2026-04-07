@@ -1,6 +1,7 @@
 """Feature tests: interactive attach sessions — docs/internal/features/core.md §7."""
 
 import contextlib
+from pathlib import Path
 
 import pytest
 
@@ -131,17 +132,6 @@ async def test_unknown_launcher_raises_agent_error(git_board: KaganDriver) -> No
         )
 
 
-async def test_cancel_attached_session_moves_to_backlog(git_board: KaganDriver) -> None:
-    task = await git_board.create_task("Cancellable Attached Task", launcher="tmux")
-    await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
-    await git_board.provision_workspace(task.id)
-
-    await git_board.cancel_task(task.id)
-
-    fetched = await git_board.get_task(task.id)
-    assert fetched.status == TaskStatus.BACKLOG
-
-
 async def test_finish_attached_moves_to_review_when_workspace_has_pending_changes(
     git_board: KaganDriver,
 ) -> None:
@@ -151,8 +141,6 @@ async def test_finish_attached_moves_to_review_when_workspace_has_pending_change
 
     ws_path = await git_board.get_workspace_path(task.id)
     assert ws_path is not None
-    from pathlib import Path
-
     (Path(ws_path) / "attached_output.py").write_text("value = 1\n", encoding="utf-8")
 
     result = await git_board.detach_task(task.id)

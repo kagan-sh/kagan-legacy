@@ -9,7 +9,7 @@ from kagan.core._agent import BackendCapability, BackendSpec
 from kagan.core._sessions import Sessions
 from kagan.core.enums import SessionEventType, TaskStatus
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [pytest.mark.unit]
 
 
 class _FakeEvents:

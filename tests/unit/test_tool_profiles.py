@@ -6,8 +6,9 @@ from kagan.core.enums import AgentRole
 from kagan.server.mcp._policy import ALL_TOOL_NAMES, ROLE_TOOLS, is_tool_allowed
 from kagan.server.mcp.server import ServerOptions
 
+pytestmark = [pytest.mark.unit]
 
-@pytest.mark.unit
+
 def test_worker_role_tools() -> None:
     opts = ServerOptions(role=AgentRole.WORKER)
     allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, opts)}
@@ -40,7 +41,6 @@ def test_worker_role_tools() -> None:
     }
 
 
-@pytest.mark.unit
 def test_reviewer_role_includes_worker_tools() -> None:
     opts = ServerOptions(role=AgentRole.REVIEWER)
     allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, opts)}
@@ -51,21 +51,18 @@ def test_reviewer_role_includes_worker_tools() -> None:
     assert "review_clear_verdicts" in allowed
 
 
-@pytest.mark.unit
 def test_orchestrator_gets_all_tools() -> None:
     opts = ServerOptions(role=AgentRole.ORCHESTRATOR)
     allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, opts)}
     assert allowed == ALL_TOOL_NAMES
 
 
-@pytest.mark.unit
 def test_no_role_defaults_to_orchestrator() -> None:
     opts = ServerOptions()
     allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, opts)}
     assert allowed == ALL_TOOL_NAMES
 
 
-@pytest.mark.unit
 def test_role_hierarchy_is_cumulative() -> None:
     worker = ROLE_TOOLS[AgentRole.WORKER]
     reviewer = ROLE_TOOLS[AgentRole.REVIEWER]
@@ -74,7 +71,6 @@ def test_role_hierarchy_is_cumulative() -> None:
     assert reviewer < orchestrator
 
 
-@pytest.mark.unit
 def test_worker_cannot_mutate_tasks() -> None:
     opts = ServerOptions(role=AgentRole.WORKER)
     assert not is_tool_allowed("task_create", opts)
@@ -89,7 +85,6 @@ def test_worker_cannot_mutate_tasks() -> None:
     assert not is_tool_allowed("review_rebase", opts)
 
 
-@pytest.mark.unit
 def test_reviewer_cannot_decide_reviews() -> None:
     opts = ServerOptions(role=AgentRole.REVIEWER)
     assert not is_tool_allowed("review_approve", opts)

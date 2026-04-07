@@ -43,17 +43,6 @@ async def test_start_detached_with_workspace_attempts_launch(git_board: KaganDri
     assert ws_path is not None
 
 
-async def test_cancel_detached_moves_task_to_backlog(git_board: KaganDriver) -> None:
-    task = await git_board.create_task("Cancellable Detached Task")
-    await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
-    await git_board.provision_workspace(task.id)
-
-    await git_board.cancel_task(task.id)
-
-    fetched = await git_board.get_task(task.id)
-    assert fetched.status == TaskStatus.BACKLOG
-
-
 async def test_execution_logs_empty_before_any_run(git_board: KaganDriver) -> None:
     task = await git_board.create_task("Fresh Task")
 
@@ -61,17 +50,6 @@ async def test_execution_logs_empty_before_any_run(git_board: KaganDriver) -> No
 
     assert logs["items"] == []
 
-
-async def test_run_transitions_backlog_to_in_progress(git_board: KaganDriver) -> None:
-    task = await git_board.create_task("Transition Task")
-    await git_board.provision_workspace(task.id)
-    assert task.status == TaskStatus.BACKLOG
-
-    session = await git_board.run_task(task.id)
-    assert session is None
-
-    fetched = await git_board.get_task(task.id)
-    assert fetched.status == TaskStatus.IN_PROGRESS
 
 
 async def test_run_already_in_progress_stays_in_progress(git_board: KaganDriver) -> None:

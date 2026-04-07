@@ -10,7 +10,7 @@ from kagan.core.enums import SessionEventType
 from kagan.core.models import SessionEvent
 from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, _sanitize_stream_text
 
-pytestmark = [pytest.mark.core, pytest.mark.unit]
+pytestmark = [pytest.mark.unit]
 
 
 class _StreamingHarness(App[None]):

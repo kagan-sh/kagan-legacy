@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 
 from kagan.core import PreflightError, TaskStatus
+from kagan.core.errors import MergeConflictError
 from tests.helpers.driver import KaganDriver
-from tests.helpers.helpers import make_git_repo
+from tests.helpers.helpers import commit_file, make_git_repo
 
 pytestmark = [pytest.mark.core, pytest.mark.slow]
 
@@ -128,8 +129,6 @@ async def test_merge_conflict_emits_event_with_suggested_feedback(
     git_board: KaganDriver, tmp_path
 ) -> None:
     """Merge conflict emits MERGE_FAILED event containing suggested_feedback."""
-    from kagan.core.errors import MergeConflictError
-
     task = await git_board.create_task("Merge Conflict Feedback")
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)
     await git_board.provision_workspace(task.id)
@@ -142,8 +141,6 @@ async def test_merge_conflict_emits_event_with_suggested_feedback(
     assert committed is True
 
     repo_path = tmp_path / "repo"
-    from tests.helpers.helpers import commit_file
-
     await commit_file(
         repo_path,
         "shared.py",

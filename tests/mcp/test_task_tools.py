@@ -5,22 +5,15 @@ not by importing production internals. All assertions are on observable
 protocol-level outcomes: tool visibility, response shape, and error behavior.
 """
 
-import json
 from typing import Any
 
 import pytest
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 
 from mcp import ClientSession
+from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
-
-
-def _text(result: CallToolResult) -> dict:
-    """Extract JSON payload from the first TextContent block of a tool result."""
-    block = result.content[0]
-    assert isinstance(block, TextContent), f"Expected TextContent, got {type(block)}"
-    return json.loads(block.text)
 
 
 # ---------------------------------------------------------------------------

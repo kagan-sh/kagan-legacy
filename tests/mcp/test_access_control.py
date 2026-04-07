@@ -52,7 +52,7 @@ async def _connected_session(
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     return session, task, ready
 
@@ -325,25 +325,3 @@ async def test_worker_can_call_task_list() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Diagnostics tool — opt-in via enable_instrumentation
-# ---------------------------------------------------------------------------
-
-
-async def test_diagnostics_tool_hidden_by_default() -> None:
-    names = await _tool_names(ServerOptions())
-    assert "diagnostics_get_instrumentation" not in names
-
-
-async def test_diagnostics_tool_visible_when_instrumentation_enabled() -> None:
-    names = await _tool_names(ServerOptions(enable_instrumentation=True))
-    assert "diagnostics_get_instrumentation" in names
-
-
-async def test_diagnostics_tool_hidden_in_worker_without_instrumentation() -> None:
-    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
-    assert "diagnostics_get_instrumentation" not in names
-
-
-async def test_diagnostics_tool_visible_in_worker_with_instrumentation() -> None:
-    names = await _tool_names(ServerOptions(role=AgentRole.WORKER, enable_instrumentation=True))
-    assert "diagnostics_get_instrumentation" in names

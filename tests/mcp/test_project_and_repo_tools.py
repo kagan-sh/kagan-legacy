@@ -7,23 +7,16 @@ protocol-level outcomes: tool visibility, response shape, and error behavior.
 
 import asyncio
 import contextlib
-import json
 
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 
 from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
+from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
-
-
-def _text(result: CallToolResult) -> dict:
-    """Extract JSON payload from the first TextContent block of a tool result."""
-    block = result.content[0]
-    assert isinstance(block, TextContent), f"Expected TextContent, got {type(block)}"
-    return json.loads(block.text)
 
 
 async def _first_project_id(mcp_board: ClientSession) -> str:
@@ -61,7 +54,7 @@ async def _tool_names_for(opts: ServerOptions) -> set[str]:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     try:
         result = await session.list_tools()
@@ -261,7 +254,7 @@ async def test_project_create_returns_name_on_admin_server(tmp_path) -> None:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     try:
         result = await session.call_tool("project_create", {"name": "My Project"})
@@ -305,7 +298,7 @@ async def test_project_delete_removes_project_on_admin_server(tmp_path) -> None:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     try:
         create_result = await session.call_tool("project_create", {"name": "Delete me"})
@@ -349,7 +342,7 @@ async def test_project_delete_unknown_project_returns_error(tmp_path) -> None:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     try:
         result = await session.call_tool("project_delete", {"project_id": "nonexistent-proj"})

@@ -8,7 +8,6 @@ Each test asserts DTO field equivalence across operations — not type membershi
 
 import pytest
 
-from mcp import ClientSession
 from tests.helpers.mcp_driver import McpDriver
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
@@ -19,29 +18,26 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
 # ---------------------------------------------------------------------------
 
 
-async def test_create_then_get_title_matches(mcp_board: ClientSession) -> None:
+async def test_create_then_get_title_matches(mcp_driver: McpDriver) -> None:
     """task_get must return the same title as the task returned by task_create."""
-    driver = McpDriver(mcp_board)
-    created = await driver.create_task("Parity title alpha")
-    fetched = await driver.get_task(created.id)
+    created = await mcp_driver.create_task("Parity title alpha")
+    fetched = await mcp_driver.get_task(created.id)
 
     assert fetched.title == created.title
 
 
-async def test_create_then_get_id_matches(mcp_board: ClientSession) -> None:
+async def test_create_then_get_id_matches(mcp_driver: McpDriver) -> None:
     """task_get must return the same id as the task returned by task_create."""
-    driver = McpDriver(mcp_board)
-    created = await driver.create_task("Parity id beta")
-    fetched = await driver.get_task(created.id)
+    created = await mcp_driver.create_task("Parity id beta")
+    fetched = await mcp_driver.get_task(created.id)
 
     assert fetched.id == created.id
 
 
-async def test_create_then_get_status_matches(mcp_board: ClientSession) -> None:
+async def test_create_then_get_status_matches(mcp_driver: McpDriver) -> None:
     """task_get must return the same status value as the task returned by task_create."""
-    driver = McpDriver(mcp_board)
-    created = await driver.create_task("Parity status gamma")
-    fetched = await driver.get_task(created.id)
+    created = await mcp_driver.create_task("Parity status gamma")
+    fetched = await mcp_driver.get_task(created.id)
 
     assert fetched.status.value == created.status.value
 
@@ -51,32 +47,29 @@ async def test_create_then_get_status_matches(mcp_board: ClientSession) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_create_then_list_includes_task_by_id(mcp_board: ClientSession) -> None:
+async def test_create_then_list_includes_task_by_id(mcp_driver: McpDriver) -> None:
     """task_list must include the id of a task returned by task_create."""
-    driver = McpDriver(mcp_board)
-    created = await driver.create_task("Listed parity delta")
-    tasks = await driver.list_tasks()
+    created = await mcp_driver.create_task("Listed parity delta")
+    tasks = await mcp_driver.list_tasks()
 
     ids = [t.id for t in tasks]
     assert created.id in ids
 
 
-async def test_create_then_list_includes_task_by_title(mcp_board: ClientSession) -> None:
+async def test_create_then_list_includes_task_by_title(mcp_driver: McpDriver) -> None:
     """task_list must include the title of a task returned by task_create."""
-    driver = McpDriver(mcp_board)
-    created = await driver.create_task("Unique listed parity epsilon xyz")
-    tasks = await driver.list_tasks()
+    created = await mcp_driver.create_task("Unique listed parity epsilon xyz")
+    tasks = await mcp_driver.list_tasks()
 
     titles = [t.title for t in tasks]
     assert created.title in titles
 
 
-async def test_create_then_list_count_increases(mcp_board: ClientSession) -> None:
+async def test_create_then_list_count_increases(mcp_driver: McpDriver) -> None:
     """task_list count must increase by 1 after task_create."""
-    driver = McpDriver(mcp_board)
-    before = len(await driver.list_tasks())
-    await driver.create_task("Count parity zeta")
-    after = len(await driver.list_tasks())
+    before = len(await mcp_driver.list_tasks())
+    await mcp_driver.create_task("Count parity zeta")
+    after = len(await mcp_driver.list_tasks())
 
     assert after == before + 1
 
@@ -86,27 +79,24 @@ async def test_create_then_list_count_increases(mcp_board: ClientSession) -> Non
 # ---------------------------------------------------------------------------
 
 
-async def test_create_task_initial_status_is_backlog(mcp_board: ClientSession) -> None:
+async def test_create_task_initial_status_is_backlog(mcp_driver: McpDriver) -> None:
     """task_create must return a task with BACKLOG status."""
-    driver = McpDriver(mcp_board)
-    task = await driver.create_task("Initial status task")
+    task = await mcp_driver.create_task("Initial status task")
 
     assert task.status.value.upper() == "BACKLOG"
 
 
-async def test_create_task_id_is_non_empty(mcp_board: ClientSession) -> None:
+async def test_create_task_id_is_non_empty(mcp_driver: McpDriver) -> None:
     """task_create must return a task with a non-empty id."""
-    driver = McpDriver(mcp_board)
-    task = await driver.create_task("Non-empty id task")
+    task = await mcp_driver.create_task("Non-empty id task")
 
     assert task.id
     assert len(task.id) > 0
 
 
-async def test_create_task_title_is_preserved(mcp_board: ClientSession) -> None:
+async def test_create_task_title_is_preserved(mcp_driver: McpDriver) -> None:
     """task_create must return a task whose title matches the input."""
-    driver = McpDriver(mcp_board)
     title = "Preserved title eta"
-    task = await driver.create_task(title)
+    task = await mcp_driver.create_task(title)
 
     assert task.title == title

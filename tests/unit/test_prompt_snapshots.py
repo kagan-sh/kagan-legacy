@@ -11,6 +11,8 @@ import pytest
 from kagan.core._prompts import _build_detached_run_prompt, resolve_task_prompt
 from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME
 
+pytestmark = [pytest.mark.unit]
+
 
 def _make_task(
     title: str,
@@ -69,7 +71,6 @@ _SHARED_TAIL = "\n".join(
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.unit
 def test_detached_run_prompt_with_acceptance_criteria() -> None:
     """Exact snapshot: task with description + acceptance criteria."""
     task = _make_task(
@@ -99,7 +100,6 @@ def test_detached_run_prompt_with_acceptance_criteria() -> None:
     assert result == expected
 
 
-@pytest.mark.unit
 def test_detached_run_prompt_without_acceptance_criteria() -> None:
     """Exact snapshot: task with no description and no acceptance criteria."""
     task = _make_task(title="Refactor settings module")
@@ -119,7 +119,6 @@ def test_detached_run_prompt_without_acceptance_criteria() -> None:
     assert result == expected
 
 
-@pytest.mark.unit
 def test_detached_run_prompt_description_only() -> None:
     """Exact snapshot: task with description but no acceptance criteria."""
     task = _make_task(
@@ -145,7 +144,6 @@ def test_detached_run_prompt_description_only() -> None:
     assert result == expected
 
 
-@pytest.mark.unit
 def test_detached_run_prompt_key_phrases_present() -> None:
     """Structural regression guard: key phrases must all be present."""
     task = _make_task(
@@ -177,7 +175,6 @@ def test_detached_run_prompt_key_phrases_present() -> None:
         assert phrase in result, f"Missing required phrase: {phrase!r}"
 
 
-@pytest.mark.unit
 def test_resolve_task_prompt_with_learnings() -> None:
     """Learnings inject PROJECT CONTEXT section after base prompt."""
     task = _make_task(title="Write documentation")
@@ -192,7 +189,6 @@ def test_resolve_task_prompt_with_learnings() -> None:
     assert "MUST DO:" in result
 
 
-@pytest.mark.unit
 def test_resolve_task_prompt_no_learnings() -> None:
     """Empty or None learnings don't inject the PROJECT CONTEXT section."""
     task = _make_task(title="Write documentation")

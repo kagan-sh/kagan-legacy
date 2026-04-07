@@ -6,8 +6,9 @@ import pytest
 
 from kagan.core._prompts import resolve_task_prompt
 
+pytestmark = [pytest.mark.unit]
 
-@pytest.mark.unit
+
 def test_learnings_injected_into_prompt() -> None:
     """[LEARNING] notes appear as PROJECT CONTEXT section in resolved prompt."""
     import types
@@ -25,7 +26,6 @@ def test_learnings_injected_into_prompt() -> None:
     assert "- Use loguru for logging" in result
 
 
-@pytest.mark.unit
 def test_empty_learnings_no_section() -> None:
     """Empty learnings list produces no PROJECT CONTEXT section."""
     import types
@@ -35,7 +35,6 @@ def test_empty_learnings_no_section() -> None:
     assert "PROJECT CONTEXT" not in result
 
 
-@pytest.mark.unit
 def test_none_learnings_no_section() -> None:
     """None learnings (default) produces no PROJECT CONTEXT section."""
     import types
@@ -45,7 +44,6 @@ def test_none_learnings_no_section() -> None:
     assert "PROJECT CONTEXT" not in result
 
 
-@pytest.mark.unit
 def test_learnings_ordering_preserved() -> None:
     """Learnings appear in the order passed (newest-first from DB)."""
     import types
@@ -60,7 +58,6 @@ def test_learnings_ordering_preserved() -> None:
     assert first_pos < second_pos < third_pos
 
 
-@pytest.mark.unit
 def test_learnings_section_after_base_prompt() -> None:
     """PROJECT CONTEXT section appears after the base task prompt."""
     import types
@@ -78,8 +75,6 @@ def test_learnings_section_after_base_prompt() -> None:
     assert task_pos < context_pos
 
 
-@pytest.mark.asyncio
-@pytest.mark.unit
 async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
     """list_project_learnings deduplicates and caps at 20."""
     from sqlalchemy import create_engine
@@ -136,8 +131,6 @@ async def test_list_project_learnings_dedup_and_cap(tmp_path: Path) -> None:
     assert "regular note, not a learning" not in result
 
 
-@pytest.mark.asyncio
-@pytest.mark.unit
 async def test_list_project_learnings_project_isolation(tmp_path: Path) -> None:
     """Learnings from other projects are NOT included."""
     from sqlalchemy import create_engine

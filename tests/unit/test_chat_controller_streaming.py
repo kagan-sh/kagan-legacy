@@ -4,7 +4,7 @@ from acp.schema import AgentMessageChunk, TextContentBlock, ToolCallStart
 import kagan.cli.chat._chat_acp as chat_acp_module
 import kagan.cli.chat.controller as chat_controller
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [pytest.mark.unit]
 
 
 class _FakeConsoleFile:

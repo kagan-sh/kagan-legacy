@@ -8,7 +8,7 @@ from acp.schema import AgentMessageChunk, AgentThoughtChunk, TextContentBlock
 from kagan.core._acp import map_acp_update_to_event, run_acp_session
 from kagan.core.enums import SessionEventType
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [pytest.mark.unit]
 
 
 class _FakeSession:

@@ -45,6 +45,9 @@ if (typeof window !== 'undefined' && !('matchMedia' in window)) {
   });
 }
 
+// Suppress jsdom HTMLCanvasElement.getContext() warnings
+HTMLCanvasElement.prototype.getContext = (() => null) as never;
+
 afterEach(() => {
   cleanup();
 });

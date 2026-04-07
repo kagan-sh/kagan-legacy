@@ -25,9 +25,8 @@ describe('AgentPicker', () => {
       expect(screen.getAllByText('Reference').length).toBeGreaterThan(0);
     });
 
-    const buttons = screen.getAllByRole('button');
-    expect(buttons[0]).toHaveTextContent('claude-code');
-    expect(buttons[0]).toHaveTextContent('Reference');
+    const claudeButton = screen.getByRole('button', { name: /claude-code/i });
+    expect(claudeButton).toHaveTextContent('Reference');
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
   });
 });

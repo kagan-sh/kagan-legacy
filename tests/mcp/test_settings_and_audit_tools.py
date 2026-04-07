@@ -7,23 +7,16 @@ protocol-level outcomes: tool visibility, response shape, and error behavior.
 
 import asyncio
 import contextlib
-import json
 
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
-from mcp.types import CallToolResult, TextContent
+from mcp.types import TextContent
 
 from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
+from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
-
-
-def _text(result: CallToolResult) -> dict:
-    """Extract JSON payload from the first TextContent block of a tool result."""
-    block = result.content[0]
-    assert isinstance(block, TextContent), f"Expected TextContent, got {type(block)}"
-    return json.loads(block.text)
 
 
 async def _admin_session() -> tuple[ClientSession, asyncio.Task, asyncio.Event]:
@@ -53,7 +46,7 @@ async def _admin_session() -> tuple[ClientSession, asyncio.Task, asyncio.Event]:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     return session, task, ready
 
@@ -85,7 +78,7 @@ async def _tool_names_for(opts: ServerOptions) -> set[str]:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await srv
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.create_task(_run())
     session = await session_q.get()
     try:
         result = await session.list_tools()

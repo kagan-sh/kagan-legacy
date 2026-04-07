@@ -8,7 +8,7 @@ from kagan.core._agent import (
     spawn_agent_via_acp,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [pytest.mark.unit]
 
 
 class _FakeProcess:

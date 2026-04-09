@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from kagan.core._events import BoardEvent
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 class _TaskState:
     title: str
     status: str
+    updated_at: str
 
 
 class DBWatcher:
@@ -27,6 +29,7 @@ class DBWatcher:
     _POLL_INTERVAL_MAX: float = 2.0
     _POLL_BACKOFF_FACTOR: float = 1.5
     _MAX_PENDING_CONTEXT_LINES: int = 200
+    _EVENT_STREAM_RETRY_DELAY: float = 2.0
 
     def __init__(self, core: "KaganCore") -> None:
         self._core = core
@@ -96,11 +99,22 @@ class DBWatcher:
 
     async def _take_snapshot(self) -> dict[str, _TaskState]:
         tasks = await self._core.tasks.list()
-        return {t.id: _TaskState(t.title, t.status.value) for t in tasks}
+        return {
+            t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
+            for t in tasks
+        }
 
     async def _consume_events(self) -> None:
-        async for event in self._core.tasks.events.stream_board():
-            await self._handle_event(event)
+        while True:
+            try:
+                async for event in self._core.tasks.events.stream_board():
+                    await self._handle_event(event)
+                logger.debug("Board event stream ended, restarting")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("Board event stream failed, retrying", exc_info=True)
+            await asyncio.sleep(self._EVENT_STREAM_RETRY_DELAY)
 
     async def _poll_db_loop(self) -> None:
         while True:
@@ -148,16 +162,18 @@ class DBWatcher:
         for task_id in old_ids & new_ids:
             old = self._snapshot[task_id]
             new = current[task_id]
+            if old.updated_at == new.updated_at:
+                continue
+            self._snapshot[task_id] = new
             if old.status != new.status:
-                self._snapshot[task_id] = new
                 self._record(
                     f"Task '{new.title}' ({task_id}) moved {old.status} \u2192 {new.status}"
                 )
-                changed = True
             elif old.title != new.title:
-                self._snapshot[task_id] = new
+                self._record(f"Task '{new.title}' ({task_id}) title updated")
+            else:
                 self._record(f"Task '{new.title}' ({task_id}) updated")
-                changed = True
+            changed = True
         return changed
 
     def _diff_snapshot(self, current: dict[str, _TaskState]) -> bool:
@@ -180,6 +196,7 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
+                task.updated_at.isoformat(),
             )
             self._record(f"Task '{title}' ({event.task_id}) created [{status}]")
             return
@@ -193,6 +210,7 @@ class DBWatcher:
             self._snapshot[event.task_id] = _TaskState(
                 title,
                 status,
+                task.updated_at.isoformat(),
             )
             self._record(f"Task '{title}' ({event.task_id}) updated")
             return
@@ -226,6 +244,7 @@ class DBWatcher:
         self._snapshot[event.task_id] = _TaskState(
             title,
             new_status,
+            task.updated_at.isoformat(),
         )
         self._record(f"Task '{title}' ({event.task_id}) moved {prev_status} \u2192 {new_status}")
 

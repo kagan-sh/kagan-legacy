@@ -6,7 +6,7 @@
 {% if sentence %}{{ sentence[0] | upper }}{{ sentence[1:] }}{% endif %}
 {%- endmacro %}
 
-{% macro format_commit_summary(commit) -%}
+{% macro format_commit_summary(commit, compact=false) -%}
 {% if commit.error is undefined %}
 {% set description = commit.descriptions[0] if commit.descriptions else "" %}
 {% set summary = capitalize_first(description | safe) %}
@@ -15,7 +15,9 @@
 {% if commit.linked_merge_request != "" %}
 {% set _ = links.append(format_link(commit.linked_merge_request | pull_request_url, commit.linked_merge_request)) %}
 {% endif %}
+{% if not compact or commit.linked_merge_request == "" %}
 {% set _ = links.append(format_link(commit.hexsha | commit_hash_url, "`%s`" | format(commit.short_hash))) %}
+{% endif %}
 {% if summary %}{{ summary }}{% if links %} ({{ links | join(", ") }}){% endif %}{% endif %}
 {% else %}
 {{ (commit.commit.message | string).split("\n", maxsplit=1)[0] }}
@@ -34,18 +36,24 @@
 {% endif %}
 {%- endmacro %}
 
-{% macro render_sections(elements, hide_internal_types=false) -%}
-{% set hidden_types = ["Chores", "Continuous Integration", "Refactoring", "Style", "Test", "Tests"] %}
-{% for type_, commits in elements | dictsort %}
-{% if type_ != "unknown" and (not hide_internal_types or type_ not in hidden_types) %}
+{% macro render_sections(elements, hide_internal_types=false, hidden_scopes=[], compact=false) -%}
+{% set hidden_types = ["chores", "continuous integration", "code style", "testing", "build system"] %}
+{% set section_order = ["features", "bug fixes", "performance improvements", "refactoring", "documentation", "chores", "continuous integration", "code style", "testing", "build system"] %}
+{% set remaining = [] %}
+{% for t in elements.keys() | list %}{% if t not in section_order and t != "unknown" %}{% set _ = remaining.append(t) %}{% endif %}{% endfor %}
+{% set ordered_types = section_order + (remaining | sort | list) %}
+{% for type_ in ordered_types %}
+{% if type_ in elements and type_ != "unknown" and (not hide_internal_types or type_ not in hidden_types) %}
 {% set lines = [] %}
-{% for commit in commits | rejectattr("error", "defined") | sort(attribute="descriptions.0") %}
-{% set summary = format_commit_summary(commit) | trim %}
+{% for commit in elements[type_] | rejectattr("error", "defined") | sort(attribute="descriptions.0") %}
+{% if commit.scope not in hidden_scopes %}
+{% set summary = format_commit_summary(commit, compact=compact) | trim %}
 {% if summary %}{% set _ = lines.append(("- %s" | format(summary)) | autofit_text_width(100, 2)) %}{% endif %}
+{% endif %}
 {% endfor %}
 {% if lines %}
 
-### {{ type_ }}
+### {{ type_ | title }}
 
 {{ lines | unique | join("\n\n") }}
 {% endif %}

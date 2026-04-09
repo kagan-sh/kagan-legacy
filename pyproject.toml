@@ -362,6 +362,10 @@ allow_zero_version = true
 
 [tool.semantic_release.changelog]
 template_dir = ".github/semantic-release"
+exclude_commit_patterns = [
+  '''chore\(vscode\): [Bb]ump to \d.+''',
+  '''[Uu]pdate pnpm-lock\.yaml .+''',
+]
 
 [tool.semantic_release.branches.main]
 match = "main"

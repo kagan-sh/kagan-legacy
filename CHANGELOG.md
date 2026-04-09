@@ -13,6 +13,20 @@
 
 
 
+## v0.16.0-beta.4 (2026-04-09)
+
+
+
+
+### bug fixes
+
+- Improve DBWatcher resilience and change detection accuracy
+  ([`9386351`](https://github.com/kagan-sh/kagan/commit/93863519bfb355d06b8efa53694a4a1530360f5e))
+
+
+
+
+
 ## v0.16.0-beta.3 (2026-04-09)
 
 

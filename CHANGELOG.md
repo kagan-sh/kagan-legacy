@@ -13,6 +13,20 @@
 
 
 
+## v0.16.0-beta.5 (2026-04-09)
+
+
+
+
+### chores
+
+- Add server metadata and KAGAN_DB_PATH configuration
+  ([`2b1e93d`](https://github.com/kagan-sh/kagan/commit/2b1e93d4080cbb4761fbd479d1b02e9ec260d7d6))
+
+
+
+
+
 ## v0.16.0-beta.4 (2026-04-09)
 
 

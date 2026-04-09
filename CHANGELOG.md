@@ -13,6 +13,20 @@
 
 
 
+## v0.16.1-beta.1 (2026-04-09)
+
+
+
+
+### Chores
+
+- Improve release notes for user-friendly, laconic output
+  ([`943077a`](https://github.com/kagan-sh/kagan/commit/943077a09a01d5a36f50c78480ac4db8b837d1ae))
+
+
+
+
+
 ## v0.16.0 (2026-04-09)
 
 

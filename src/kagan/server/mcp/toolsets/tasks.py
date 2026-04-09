@@ -35,6 +35,15 @@ def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
     raise ValidationError("task_id", "required unless the server is session-bound")
 
 
+async def _resolve_default_repo_id(ctx: Context) -> str | None:
+    """Return the first repo for the active project, or None if no repos exist."""
+    app = get_context(ctx)
+    if app.bound_project_id is None:
+        return None
+    repos = await app.client.projects.repos(app.bound_project_id)
+    return repos[0].id if repos else None
+
+
 def _resolve_task_ids(ctx: Context, task_ids: list[str] | None) -> list[str]:
     if task_ids is None:
         return [_resolve_task_id(ctx, None)]
@@ -211,6 +220,8 @@ async def _task_create(
     """
     app = get_context(ctx)
     priority_enum = parse_priority(priority)
+    # Default to project's first repo when repo_id is not provided
+    effective_repo_id = repo_id if repo_id is not None else await _resolve_default_repo_id(ctx)
     task = await app.client.tasks.create(
         title,
         description=description,
@@ -219,7 +230,7 @@ async def _task_create(
         acceptance_criteria=acceptance_criteria,
         agent_backend=agent_backend,
         launcher=launcher,
-        repo_id=repo_id,
+        repo_id=effective_repo_id,
     )
     result = _task_to_dict(task)
     if app.bound_session_id is not None:
@@ -492,6 +503,8 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
     Returns the list of created tasks.
     """
     app = get_context(ctx)
+    # Resolve default repo_id once for all tasks that don't specify one
+    default_repo_id = await _resolve_default_repo_id(ctx)
     created: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for idx, entry in enumerate(tasks):
@@ -503,6 +516,9 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
             pri = parse_priority(entry.get("priority"))
             criteria_raw = entry.get("acceptance_criteria")
             criteria = criteria_raw if isinstance(criteria_raw, list) else None
+            # Use entry's repo_id if provided, otherwise default to project's first repo
+            entry_repo_id = entry.get("repo_id")
+            effective_repo_id = entry_repo_id if entry_repo_id is not None else default_repo_id
             task = await app.client.tasks.create(
                 title,
                 description=entry.get("description", ""),
@@ -511,7 +527,7 @@ async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict
                 acceptance_criteria=criteria,
                 agent_backend=entry.get("agent_backend"),
                 launcher=entry.get("launcher"),
-                repo_id=entry.get("repo_id"),
+                repo_id=effective_repo_id,
             )
             created.append(_task_to_dict(task))
         except (KaganError, ValueError, TypeError, KeyError) as exc:

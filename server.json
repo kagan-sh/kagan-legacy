@@ -3,6 +3,13 @@
   "name": "io.github.kagan-sh/kagan",
   "title": "Kagan",
   "description": "AI-powered Kanban TUI for autonomous development workflows with agent orchestration",
+  "websiteUrl": "https://kagan.sh",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/kagan-sh/kagan/main/docs/assets/favicon.svg",
+      "mimeType": "image/svg+xml"
+    }
+  ],
   "repository": {
     "url": "https://github.com/kagan-sh/kagan",
     "source": "github"
@@ -17,7 +24,15 @@
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "environmentVariables": [
+        {
+          "name": "KAGAN_DB_PATH",
+          "description": "Custom path for Kagan database file",
+          "format": "filepath",
+          "secret": false
+        }
+      ]
     }
   ]
 }

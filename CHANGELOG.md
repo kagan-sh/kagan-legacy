@@ -13,6 +13,25 @@
 
 
 
+## v0.16.0-beta.3 (2026-04-09)
+
+
+
+
+### bug fixes
+
+- Default repo_id for MCP-created tasks to project's first repo
+  ([#97](https://github.com/kagan-sh/kagan/pull/97),
+  [`0bc90ab`](https://github.com/kagan-sh/kagan/commit/0bc90abbf825cd717c642e8a9fd66b70bf691f50))
+
+- Make _ByteCountingStreamReader inherit from asyncio.StreamReader
+  ([#97](https://github.com/kagan-sh/kagan/pull/97),
+  [`0bc90ab`](https://github.com/kagan-sh/kagan/commit/0bc90abbf825cd717c642e8a9fd66b70bf691f50))
+
+
+
+
+
 ## v0.16.0-beta.2 (2026-04-07)
 
 

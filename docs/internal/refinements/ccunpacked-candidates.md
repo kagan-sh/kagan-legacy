@@ -40,7 +40,7 @@ gap.
    - Replaces history with: system prompt + summary message + last N tool results
 1. Wire it into the agent loop: when `context_window_used / context_window_size > 0.8`,
    auto-trigger compaction before the next API call.
-1. Expose as MCP tool `session_compact()` for manual use and as a TUI action.
+1. Expose as an MCP tool for manual use and as a TUI action.
 1. Track compaction events in session metadata for observability.
 
 **Affected files:**

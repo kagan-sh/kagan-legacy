@@ -65,12 +65,12 @@ You can still fetch the full scratchpad via `task_get(..., include_scratchpad=tr
 
 ## Recording agent decisions
 
-During managed runs, agents can append structured reasoning notes mid-task via `task_add_note`:
+During managed runs, agents can append structured reasoning notes mid-task via `insight_add`:
 
 ```text
-task_add_note(task_id="abc123", note="Chose approach B over A — A required a schema migration.")
+insight_add(task_id="abc123", category="decision", content="Chose approach B over A — A required a schema migration.")
 ```
 
-Each call appends a timestamped entry. Notes accumulate in the scratchpad and inform the acceptance criteria coverage check when the run completes.
+Each call appends a categorized entry. Insights accumulate and inform the acceptance criteria coverage check when the run completes.
 
 [:octicons-arrow-right-24: Configuration reference](../reference/configuration.md) · [:octicons-arrow-right-24: Task lifecycle](../concepts/task-lifecycle.md) · [:octicons-arrow-right-24: Troubleshooting](../troubleshooting.md)

@@ -73,7 +73,7 @@ When work finishes — the managed run completes or you detach/finish the intera
 
 - Diff summary (files changed, lines added/removed)
 - Acceptance criteria checklist (if defined)
-- Agent reasoning notes (from `task_add_note` scratchpad entries during the run)
+- Agent reasoning notes (from `insight_add` entries during the run)
 
 ### What you can do
 

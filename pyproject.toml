@@ -34,7 +34,8 @@ classifiers = [
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-  "agent-client-protocol>=0.8.0,<1.0.0",
+  # TODO: revert to PyPI release once agentclientprotocol/python-sdk#87 is merged
+  "agent-client-protocol @ git+https://github.com/aorumbayev/python-sdk.git@fix/skip-blank-lines-in-receive-loop",
   "alembic>=1.16.0",
   "click>=8.1.0",
   "cryptography>=46.0",
@@ -76,6 +77,9 @@ Changelog = "https://github.com/kagan-sh/kagan/blob/main/CHANGELOG.md"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kagan"]

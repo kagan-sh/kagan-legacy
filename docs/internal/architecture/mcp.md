@@ -34,7 +34,7 @@ There should be one obvious way to do it.
 
 1. **One `MCPServer` instance** — created with lifespan that owns a `KaganCore`
 1. **Tools are plain functions** — `@mcp.tool()` decorator, type hints drive the schema
-1. **Toolsets group by domain** — one file per domain (tasks, projects, reviews, etc.)
+1. **Toolsets group by domain** — one file per domain (tasks, sessions, projects, review, settings, personas, diagnostics, plugins)
 1. **Access control is a filter** — tools registered once, filtered at registration time
 1. **python-sdk is the framework** — no wrapper abstractions over `MCPServer`
 1. **STDIO transport only** — hosts launch `kagan mcp` as a subprocess
@@ -56,13 +56,21 @@ server.py: create_server(opts)
     ▼           ▼           ▼
 toolsets/   toolsets/   toolsets/
 tasks.py    projects.py review.py
-  task_get    project_list  review_approve
-  task_list   project_create
-  task_create
+  task_get    project_list  review_decide
+  task_list   project_setup review_merge
+  task_create project_update
 toolsets/   toolsets/   toolsets/
-sessions.py settings.py plugins.py
-  run_start   settings_get  plugins_sync
-  run_cancel  settings_set  plugins_preflight
+sessions.py settings.py personas.py
+  run_start   settings_get  persona_inspect
+  run_cancel  settings_set  persona_import
+  run_get                   persona_export
+  verify_step               persona_trust
+  checkpoint_create
+  insight_add
+toolsets/   toolsets/
+diagnostics.py plugins.py
+  audit_list    plugins_sync
+                plugins_preflight
                 │
                 ▼ (lifespan context)
         ┌───────────────┐
@@ -86,12 +94,14 @@ src/kagan/server/mcp/
 ├── prompts.py         # @mcp.prompt() definitions
 └── toolsets/          # one file per domain
     ├── __init__.py    # register_all_toolsets()
-    ├── tasks.py       # task_get, task_list, task_create, task_update, ...
-    ├── sessions.py    # run_start, run_summary, run_cancel, run_exists, ...
-    ├── projects.py    # project_list, project_create, project_set_active, ...
-    ├── review.py      # review_approve, review_reject, review_merge, ...
-    ├── settings.py    # settings_get, settings_set, audit_log_list
-    └── plugins.py     # plugins_sync, plugins_preflight
+    ├── tasks.py       # task_get, task_list, task_create, task_update, task_delete, task_events, task_wait
+    ├── sessions.py    # run_start, run_cancel, run_get, run_detach, run_summary, verify_step, verification_summary, checkpoint_create, checkpoint_list, session_rewind, insight_add, insight_list, insight_remove
+    ├── projects.py    # project_list, project_setup, project_update
+    ├── review.py      # review_decide, review_merge, review_rebase, review_conflicts, review_verdict, review_clear_verdicts
+    ├── settings.py    # settings_get, settings_set
+    ├── personas.py    # persona_inspect, persona_import, persona_export, persona_trust
+    ├── diagnostics.py # audit_list, diagnostics_get_instrumentation
+    └── plugins.py     # plugins_preview, plugins_sync, plugins_preflight
 ```
 
 ______________________________________________________________________

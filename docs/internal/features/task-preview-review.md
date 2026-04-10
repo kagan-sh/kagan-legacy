@@ -5,7 +5,7 @@
 
 ## Problem
 
-When the orchestrator creates tasks via `task_batch_create`, users lack a structured,
+When the orchestrator creates tasks via `task_create`, users lack a structured,
 editable view of what was created. The orchestrator may present a text table before
 creation but does not consistently follow up with an actionable review after tasks
 land on the board. Users want to:
@@ -35,7 +35,7 @@ orchestrator prompt, plus structured task-preview rendering across all clients.
 
 ## Orchestrator Behavior
 
-After every `task_batch_create` call, the orchestrator MUST:
+After every `task_create` call, the orchestrator MUST:
 
 1. **Present a structured overview** of all created tasks as a markdown table:
 
@@ -122,7 +122,7 @@ Each client renders the task overview in its native idiom:
 
 ### MCP (`kg mcp`)
 
-- Tool responses from `task_batch_create` already return full task payloads
+- Tool responses from `task_create` already return full task payloads
 - MCP clients (Claude Desktop, etc.) render tool results natively
 - No changes needed
 
@@ -131,13 +131,13 @@ Each client renders the task overview in its native idiom:
 The orchestrator prompt `<workflow>` section step 4 changes from:
 
 ```text
-4. On approval: call task_batch_create with all tasks.
+4. On approval: call task_create with a tasks list.
 ```
 
 To:
 
 ```text
-4. On approval: call task_batch_create with all tasks.
+4. On approval: call task_create with a tasks list.
 5. IMMEDIATELY after creation: present a review table showing every created task
    with its id, title, launcher, priority, and acceptance_criteria count.
    Ask: "Review the tasks above. Want to edit anything before I start execution?"
@@ -149,7 +149,7 @@ To:
 The `<tool-discipline>` section adds:
 
 ```text
-- After task_batch_create: ALWAYS present a review table and ask for edits before
+- After task_create: ALWAYS present a review table and ask for edits before
   starting execution. Never skip this step. Never auto-start without user confirmation.
 ```
 
@@ -174,4 +174,4 @@ The `<constraints>` ALWAYS section adds:
 1. **Bulk edit dialog** on web — select multiple tasks, edit shared fields
 1. **Task preview card** in chat — richer than a table, with inline edit buttons
 1. **Undo creation** — "undo last batch" command that deletes all tasks from the
-   most recent `task_batch_create`
+   most recent `task_create` call

@@ -87,7 +87,7 @@ tests:
       - type: icontains-any
         value: [task_get, acceptance criteria, retrieve the task]
       - type: icontains-any
-        value: [review_approve, review_reject, review_set_criterion_verdict, verdict]
+        value: [review_decide, review_verdict, verdict, approve, reject]
 
   - description: "Per-criterion PASS/FAIL structure"
     vars:

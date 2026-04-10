@@ -13,6 +13,20 @@
 
 
 
+## v0.17.0-beta.1 (2026-04-10)
+
+
+
+
+### Refactoring
+
+- Consolidate MCP toolsets and simplify tool surface
+  ([`1a537d1`](https://github.com/kagan-sh/kagan/commit/1a537d1c5ec64966322b01c94e1243ad298dca2e))
+
+
+
+
+
 ## v0.16.1-beta.1 (2026-04-09)
 
 

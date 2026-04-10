@@ -319,7 +319,9 @@ async def test_sync_with_issue_numbers_imports_only_selected(
 ) -> None:
     """Sync with issue_numbers only imports matching issues."""
     mock_fetch.return_value = _make_gh_issues(
-        (1, "Bug", []), (2, "Feature", []), (3, "Docs", []),
+        (1, "Bug", []),
+        (2, "Feature", []),
+        (3, "Docs", []),
     )
     plugin.configure(GitHubImportConfig(owner="octocat", repo="hello-world", issue_numbers=(1, 3)))
     result = await plugin.sync(client.active_project_id)

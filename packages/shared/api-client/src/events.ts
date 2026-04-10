@@ -49,13 +49,13 @@ export interface SSECallbacks {
 
 /**
  * SSE Stream Manager with automatic reconnection.
- * 
+ *
  * This class manages a Server-Sent Events connection with:
  * - Automatic reconnection with exponential backoff
  * - Auth token support
  * - Polling fallback when connection is lost
  * - Graceful shutdown
- * 
+ *
  * @example
  * ```typescript
  * const sse = new SSEManager({
@@ -63,12 +63,12 @@ export interface SSECallbacks {
  *   token: "my-auth-token",
  *   clientType: "vscode"
  * });
- * 
+ *
  * sse.connect({
  *   onMessage: (msg) => console.log("Received:", msg),
  *   onConnected: (connected) => console.log("Connected:", connected)
  * });
- * 
+ *
  * // Later...
  * sse.dispose();
  * ```
@@ -281,7 +281,7 @@ export class SSEManager {
 /**
  * Simple SSE stream reader for one-off requests.
  * Yields parsed data events as an async generator.
- * 
+ *
  * @example
  * ```typescript
  * for await (const event of streamSSE<ChatStreamEvent>("http://localhost:8765/api/chat/123/stream", {
@@ -299,7 +299,7 @@ export async function* streamSSE<T>(
   fetchImpl?: typeof fetch,
 ): AsyncGenerator<T> {
   const fetchFn = fetchImpl ?? globalThis.fetch.bind(globalThis);
-  
+
   const response = await fetchFn(url, {
     ...options,
     headers: {

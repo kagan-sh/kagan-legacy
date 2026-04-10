@@ -143,10 +143,10 @@ ______________________________________________________________________
 
 ## `kagan reset`
 
-| Option           | Description                              |
-| ---------------- | ---------------------------------------- |
-| `--project NAME` | Reset a single project by name           |
-| `-f, --force`    | Skip confirmation                        |
+| Option           | Description                                 |
+| ---------------- | ------------------------------------------- |
+| `--project NAME` | Reset a single project by name              |
+| `-f, --force`    | Skip confirmation                           |
 | `--dry-run`      | Show what would be deleted without deleting |
 
 Without `--project`, resets all data (config, DB, worktrees).
@@ -235,25 +235,25 @@ This is advanced tooling for prompt export and evaluation workflows.
 
 Persona preset import, export, and trust management.
 
-| Subcommand  | Description                                     |
-| ----------- | ----------------------------------------------- |
-| `import`    | Import persona presets from a GitHub repo        |
-| `export`    | Export persona presets to a GitHub repo           |
-| `audit`     | Audit a persona repo without importing           |
-| `whitelist` | List trusted persona repos                       |
-| `trust`     | Add a repo to persona trust list                 |
-| `untrust`   | Remove a repo from persona trust list            |
+| Subcommand  | Description                               |
+| ----------- | ----------------------------------------- |
+| `import`    | Import persona presets from a GitHub repo |
+| `export`    | Export persona presets to a GitHub repo   |
+| `audit`     | Audit a persona repo without importing    |
+| `whitelist` | List trusted persona repos                |
+| `trust`     | Add a repo to persona trust list          |
+| `untrust`   | Remove a repo from persona trust list     |
 
 #### `kagan tools prompts persona import`
 
-| Option              | Description                             |
-| ------------------- | --------------------------------------- |
-| `REPO`              | Repository in `owner/repo` format       |
-| `--path`            | Persona file path (default: `.kagan/personas.json`) |
-| `--ref`             | Git ref to import from                  |
-| `-y, --yes`         | Skip confirmation                       |
-| `--preview`         | Show personas without importing         |
-| `--acknowledge-risk`| Acknowledge risks of third-party presets |
+| Option               | Description                                         |
+| -------------------- | --------------------------------------------------- |
+| `REPO`               | Repository in `owner/repo` format                   |
+| `--path`             | Persona file path (default: `.kagan/personas.json`) |
+| `--ref`              | Git ref to import from                              |
+| `-y, --yes`          | Skip confirmation                                   |
+| `--preview`          | Show personas without importing                     |
+| `--acknowledge-risk` | Acknowledge risks of third-party presets            |
 
 #### `kagan tools prompts persona export`
 

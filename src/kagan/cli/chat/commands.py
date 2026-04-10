@@ -243,9 +243,7 @@ def _handle_repo(
         return SlashCommandOutcome(
             handled=True, repo_switch_requested=arg, action=SlashAction.SWITCH_REPO, data=arg
         )
-    return SlashCommandOutcome(
-        handled=True, repo_info_requested=True, action=SlashAction.SHOW_REPO
-    )
+    return SlashCommandOutcome(handled=True, repo_info_requested=True, action=SlashAction.SHOW_REPO)
 
 
 def _handle_delete(

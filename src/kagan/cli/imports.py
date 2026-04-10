@@ -52,7 +52,11 @@ async def _resolve_project(client) -> Project | None:
 
 
 async def _import_github(
-    *, repo: str | None, state: str, labels: tuple[str, ...], yes: bool,
+    *,
+    repo: str | None,
+    state: str,
+    labels: tuple[str, ...],
+    yes: bool,
 ) -> None:
     client = make_client()
     try:

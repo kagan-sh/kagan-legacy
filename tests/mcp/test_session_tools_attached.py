@@ -31,8 +31,8 @@ async def _create_attached_task_with_workspace(
     project_id = core_client.active_project_id
     assert isinstance(project_id, str)
     add_repo_result = await mcp_board.call_tool(
-        "project_add_repo",
-        {"project_id": project_id, "repo_path": str(repo_path)},
+        "project_update",
+        {"project_id": project_id, "add_repo_path": str(repo_path)},
     )
     assert not add_repo_result.isError
 
@@ -41,7 +41,7 @@ async def _create_attached_task_with_workspace(
         {"title": title, "launcher": "tmux"},
     )
     assert not create_result.isError
-    task_id = _text(create_result)["id"]
+    task_id = _text(create_result)["created"][0]["id"]
 
     move_result = await mcp_board.call_tool(
         "task_update",
@@ -62,49 +62,44 @@ async def test_session_manage_visible_on_default_server(mcp_board: ClientSession
     """Default server must expose explicit attached-run tools."""
     result = await mcp_board.list_tools()
     names = {t.name for t in result.tools}
-    assert "run_exists" in names
-    assert "run_create" in names
+    assert "run_start" in names
     assert "run_get" in names
-    assert "run_kill" in names
+    assert "run_cancel" in names
     assert "run_detach" in names
 
 
 # ---------------------------------------------------------------------------
-# run_exists
+# run_get (replaces run_exists — check session_status != null)
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_exists_returns_bool(mcp_board: ClientSession) -> None:
-    """run_exists must return a dict with an 'exists' bool."""
-    result = await mcp_board.call_tool("run_exists", {"task_id": "task-attached-1"})
-    assert not result.isError
-    payload = _text(result)
-    assert "exists" in payload
-    assert isinstance(payload["exists"], bool)
+async def test_session_manage_get_returns_status_fields(mcp_board: ClientSession) -> None:
+    """run_get must return a dict with session_status field."""
+    result = await mcp_board.call_tool("run_get", {"task_id": "task-attached-1"})
+    assert result.isError  # unknown task returns error
 
 
-async def test_session_manage_exists_false_for_unknown_task(mcp_board: ClientSession) -> None:
-    """run_exists on an unknown task must return exists=False."""
-    result = await mcp_board.call_tool("run_exists", {"task_id": "no-such-task"})
-    assert not result.isError
-    assert _text(result)["exists"] is False
-
-
-# ---------------------------------------------------------------------------
-# run_create
-# ---------------------------------------------------------------------------
-
-
-async def test_session_manage_create_fails_without_prerequisites(mcp_board: ClientSession) -> None:
-    """run_create must fail when attached prerequisites are missing."""
-    result = await mcp_board.call_tool("run_create", {"task_id": "task-attached-2"})
+async def test_session_manage_get_unknown_task_returns_error(mcp_board: ClientSession) -> None:
+    """run_get on an unknown task must return an error."""
+    result = await mcp_board.call_tool("run_get", {"task_id": "no-such-task"})
     assert result.isError
 
 
-async def test_session_manage_create_returns_task_id(mcp_board: ClientSession) -> None:
-    """run_create error contains the requested task id."""
+# ---------------------------------------------------------------------------
+# run_start (replaces run_create)
+# ---------------------------------------------------------------------------
+
+
+async def test_session_manage_start_fails_without_prerequisites(mcp_board: ClientSession) -> None:
+    """run_start must fail when attached prerequisites are missing."""
+    result = await mcp_board.call_tool("run_start", {"task_id": "task-attached-2"})
+    assert result.isError
+
+
+async def test_session_manage_start_returns_task_id(mcp_board: ClientSession) -> None:
+    """run_start error contains the requested task id."""
     task_id = "task-attached-3"
-    result = await mcp_board.call_tool("run_create", {"task_id": task_id})
+    result = await mcp_board.call_tool("run_start", {"task_id": task_id})
     assert result.isError
     block = result.content[0]
     assert isinstance(block, TextContent)
@@ -116,40 +111,40 @@ async def test_session_manage_create_returns_task_id(mcp_board: ClientSession) -
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_get_after_create(mcp_board: ClientSession) -> None:
-    """run_get after failed create must return an error."""
+async def test_session_manage_get_after_start(mcp_board: ClientSession) -> None:
+    """run_get after failed start must return an error."""
     task_id = "task-attached-get"
-    create_result = await mcp_board.call_tool("run_create", {"task_id": task_id})
-    assert create_result.isError
+    start_result = await mcp_board.call_tool("run_start", {"task_id": task_id})
+    assert start_result.isError
 
     get_result = await mcp_board.call_tool("run_get", {"task_id": task_id})
     assert get_result.isError
 
 
-async def test_session_manage_get_unknown_returns_error(mcp_board: ClientSession) -> None:
+async def test_session_manage_get_unknown_returns_error_attached(mcp_board: ClientSession) -> None:
     """run_get on an unknown task must return an error."""
     result = await mcp_board.call_tool("run_get", {"task_id": "no-such-task"})
     assert result.isError
 
 
 # ---------------------------------------------------------------------------
-# run_kill
+# run_cancel (replaces run_kill)
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_kill_after_create(mcp_board: ClientSession) -> None:
-    """run_kill after failed create must return an error."""
+async def test_session_manage_cancel_after_start(mcp_board: ClientSession) -> None:
+    """run_cancel after failed start must return an error."""
     task_id = "task-attached-kill"
-    create_result = await mcp_board.call_tool("run_create", {"task_id": task_id})
-    assert create_result.isError
+    start_result = await mcp_board.call_tool("run_start", {"task_id": task_id})
+    assert start_result.isError
 
-    kill_result = await mcp_board.call_tool("run_kill", {"task_id": task_id})
-    assert kill_result.isError
+    cancel_result = await mcp_board.call_tool("run_cancel", {"task_id": task_id})
+    assert cancel_result.isError
 
 
-async def test_session_manage_kill_unknown_returns_error(mcp_board: ClientSession) -> None:
-    """run_kill on an unknown task must return an error."""
-    result = await mcp_board.call_tool("run_kill", {"task_id": "no-such-task"})
+async def test_session_manage_cancel_unknown_returns_error(mcp_board: ClientSession) -> None:
+    """run_cancel on an unknown task must return an error."""
+    result = await mcp_board.call_tool("run_cancel", {"task_id": "no-such-task"})
     assert result.isError
 
 
@@ -166,32 +161,30 @@ async def test_session_manage_legacy_tool_is_hidden(mcp_board: ClientSession) ->
 
 
 # ---------------------------------------------------------------------------
-# run_exists after create / after kill
+# run_get after start / after cancel
 # ---------------------------------------------------------------------------
 
 
-async def test_session_manage_exists_false_after_failed_create(mcp_board: ClientSession) -> None:
-    """run_create failure must leave run_exists at False."""
+async def test_session_manage_get_error_after_failed_start(mcp_board: ClientSession) -> None:
+    """run_start failure means run_get returns error (no session)."""
     task_id = "task-attached-exists-check"
-    create_result = await mcp_board.call_tool("run_create", {"task_id": task_id})
-    assert create_result.isError
+    start_result = await mcp_board.call_tool("run_start", {"task_id": task_id})
+    assert start_result.isError
 
-    result = await mcp_board.call_tool("run_exists", {"task_id": task_id})
-    assert not result.isError
-    assert _text(result)["exists"] is False
+    result = await mcp_board.call_tool("run_get", {"task_id": task_id})
+    assert result.isError
 
 
-async def test_session_manage_exists_false_after_kill(mcp_board: ClientSession) -> None:
-    """run_exists must return False after a session is killed."""
+async def test_session_manage_get_error_after_cancel(mcp_board: ClientSession) -> None:
+    """run_get must return error after a session cancel on unknown task."""
     task_id = "task-attached-kill-check"
-    create_result = await mcp_board.call_tool("run_create", {"task_id": task_id})
-    assert create_result.isError
-    kill_result = await mcp_board.call_tool("run_kill", {"task_id": task_id})
-    assert kill_result.isError
+    start_result = await mcp_board.call_tool("run_start", {"task_id": task_id})
+    assert start_result.isError
+    cancel_result = await mcp_board.call_tool("run_cancel", {"task_id": task_id})
+    assert cancel_result.isError
 
-    result = await mcp_board.call_tool("run_exists", {"task_id": task_id})
-    assert not result.isError
-    assert _text(result)["exists"] is False
+    result = await mcp_board.call_tool("run_get", {"task_id": task_id})
+    assert result.isError
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +198,7 @@ async def test_core_session_start_returns_session_id(mcp_board_with_core: Client
     create_result = await mcp_board_with_core.call_tool(
         "task_create", {"title": "Core session task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _text(create_result)["created"][0]["id"]
 
     result = await mcp_board_with_core.call_tool(
         "run_start", {"task_id": task_id, "launcher": "tmux"}
@@ -213,18 +206,20 @@ async def test_core_session_start_returns_session_id(mcp_board_with_core: Client
     assert result is not None
 
 
-async def test_core_session_manage_exists_returns_bool(mcp_board_with_core: ClientSession) -> None:
-    """run_exists via core client must return a dict with 'exists' bool."""
+async def test_core_session_manage_get_returns_status_fields(
+    mcp_board_with_core: ClientSession,
+) -> None:
+    """run_get via core client must return a dict with session status fields."""
     create_result = await mcp_board_with_core.call_tool(
         "task_create", {"title": "Core session task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _text(create_result)["created"][0]["id"]
 
-    result = await mcp_board_with_core.call_tool("run_exists", {"task_id": task_id})
+    result = await mcp_board_with_core.call_tool("run_get", {"task_id": task_id})
     assert not result.isError
     payload = _text(result)
-    assert "exists" in payload
-    assert isinstance(payload["exists"], bool)
+    assert payload["task_id"] == task_id
+    assert "session_status" in payload
 
 
 async def test_core_session_manage_get_returns_status(mcp_board_with_core: ClientSession) -> None:
@@ -232,7 +227,7 @@ async def test_core_session_manage_get_returns_status(mcp_board_with_core: Clien
     create_result = await mcp_board_with_core.call_tool(
         "task_create", {"title": "Core session get task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _text(create_result)["created"][0]["id"]
 
     result = await mcp_board_with_core.call_tool("run_get", {"task_id": task_id})
     assert not result.isError
@@ -260,10 +255,10 @@ async def test_core_session_cancel_unknown_task_returns_error(
     assert result.isError
 
 
-async def test_core_session_manage_create_unknown_task_returns_error(
+async def test_core_session_manage_start_unknown_task_returns_error(
     mcp_board_with_core: ClientSession,
 ) -> None:
-    result = await mcp_board_with_core.call_tool("run_create", {"task_id": "no-such-task"})
+    result = await mcp_board_with_core.call_tool("run_start", {"task_id": "no-such-task"})
     assert result.isError
 
 
@@ -274,10 +269,10 @@ async def test_core_session_manage_get_unknown_task_returns_error(
     assert result.isError
 
 
-async def test_core_session_manage_kill_unknown_task_returns_error(
+async def test_core_session_manage_cancel_unknown_task_returns_error(
     mcp_board_with_core: ClientSession,
 ) -> None:
-    result = await mcp_board_with_core.call_tool("run_kill", {"task_id": "no-such-task"})
+    result = await mcp_board_with_core.call_tool("run_cancel", {"task_id": "no-such-task"})
     assert result.isError
 
 

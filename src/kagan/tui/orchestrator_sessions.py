@@ -60,7 +60,6 @@ class TuiOrchestratorSessionStore:
 
             sessions = await list_chat_sessions(
                 self._client,
-                source=_TUI_ORCHESTRATOR_SOURCE,
                 project_id=current_project_id,
             )
             selected = await self._resolve_initial_session(sessions, project_id=current_project_id)
@@ -168,9 +167,19 @@ class TuiOrchestratorSessionStore:
         options: list[tuple[str, str]] = []
         for item in items:
             backend_tag = f" · {item.agent_backend}" if getattr(item, "agent_backend", None) else ""
-            label = f"{item.label} [{item.session_id}]{backend_tag}"
+            source_tag = self._source_badge(item.source)
+            label = f"{item.label} [{item.session_id}]{backend_tag}{source_tag}"
             options.append((label, self._session_key(item.session_id)))
         return options
+
+    @staticmethod
+    def _source_badge(source: str) -> str:
+        normalized = source.strip().casefold()
+        if normalized == "repl":
+            return " (cli)"
+        if normalized == "web":
+            return " (web)"
+        return ""
 
     def list_items(self) -> list[ChatSessionListItem]:
         if not self._sessions_by_key:
@@ -280,6 +289,12 @@ class TuiOrchestratorSessionStore:
             self._sessions_by_key[target] = session
         return title
 
+    def source_for_key(self, key: str) -> str:
+        session = self._sessions_by_key.get(key)
+        if session is None:
+            return ""
+        return str(session.get("source") or "").strip()
+
     def agent_backend_for_key(self, key: str) -> str | None:
         session = self._sessions_by_key.get(key)
         if session is None:
@@ -320,13 +335,8 @@ class TuiOrchestratorSessionStore:
     @staticmethod
     def _is_project_session(session: dict[str, Any], *, project_id: str) -> bool:
         session_id = str(session.get("id") or "").strip()
-        session_source = str(session.get("source") or "").strip()
         session_project_id = str(session.get("project_id") or "").strip()
-        return (
-            bool(session_id)
-            and session_source == _TUI_ORCHESTRATOR_SOURCE
-            and session_project_id == project_id
-        )
+        return bool(session_id) and session_project_id == project_id
 
     @staticmethod
     def _session_key(session_id: str) -> str:

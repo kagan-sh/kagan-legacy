@@ -111,7 +111,7 @@ async def test_task_detail_returns_task_dict(mcp_board: ClientSession) -> None:
     """kagan://tasks/{task_id} must return a task dict for a created task."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Resource task"})
     block = create_result.content[0]
-    task_id = json.loads(block.text)["id"]
+    task_id = json.loads(block.text)["created"][0]["id"]
 
     result = await mcp_board.read_resource(f"kagan://tasks/{task_id}")
     payload = _json(result.contents)
@@ -191,7 +191,7 @@ async def test_core_task_detail_resource_returns_task(mcp_board_with_core: Clien
     create_result = await mcp_board_with_core.call_tool(
         "task_create", {"title": "Core resource task"}
     )
-    task_id = json.loads(create_result.content[0].text)["id"]
+    task_id = json.loads(create_result.content[0].text)["created"][0]["id"]
 
     result = await mcp_board_with_core.read_resource(f"kagan://tasks/{task_id}")
     payload = _json(result.contents)

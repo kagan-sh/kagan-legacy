@@ -59,27 +59,27 @@ ______________________________________________________________________
 
 ### Project, review, and admin
 
-| Tool                                | Annotation    | Purpose                                           |
-| ----------------------------------- | ------------- | ------------------------------------------------- |
-| `project_list(...)`                 | `read-only`   | List recent projects                              |
-| `project_set_active(...)`           | `mutating`    | Set active project                                |
-| `project_create(...)`               | `mutating`    | Create a project                                  |
+| Tool                                   | Annotation    | Purpose                                           |
+| -------------------------------------- | ------------- | ------------------------------------------------- |
+| `project_list(...)`                    | `read-only`   | List recent projects                              |
+| `project_set_active(...)`              | `mutating`    | Set active project                                |
+| `project_create(...)`                  | `mutating`    | Create a project                                  |
 | `project_add_repo(...)`                | `mutating`    | Link a repo to a project                          |
 | `project_set_repo_default_branch(...)` | `mutating`    | Set default base branch for a project repo        |
 | `project_delete(...)`                  | `destructive` | Delete a project                                  |
 | `repo_list(...)`                       | `read-only`   | List repos by project                             |
-| `review_approve(...)`               | `mutating`    | Record approval for a review-ready task           |
-| `review_reject(...)`                | `mutating`    | Reject a review-ready task with explicit feedback |
-| `review_merge(...)`                 | `destructive` | Merge an approved task into its base branch       |
-| `review_rebase(...)`                | `mutating`    | Rebase a task branch onto its base branch         |
-| `review_conflicts(...)`             | `read-only`   | Get merge conflict details                        |
-| `review_continue_rebase(...)`       | `mutating`    | Continue an interrupted rebase                    |
-| `review_abort_rebase(...)`          | `mutating`    | Abort a rebase operation                          |
-| `review_set_criterion_verdict(...)` | `mutating`    | Set verdict on an acceptance criterion            |
-| `review_clear_verdicts(...)`        | `mutating`    | Clear AI review verdicts                          |
-| `audit_list(...)`                   | `read-only`   | List recent audit events                          |
-| `settings_get()`                    | `read-only`   | Read allowlisted settings                         |
-| `settings_set(...)`                 | `mutating`    | Update allowlisted settings                       |
+| `review_approve(...)`                  | `mutating`    | Record approval for a review-ready task           |
+| `review_reject(...)`                   | `mutating`    | Reject a review-ready task with explicit feedback |
+| `review_merge(...)`                    | `destructive` | Merge an approved task into its base branch       |
+| `review_rebase(...)`                   | `mutating`    | Rebase a task branch onto its base branch         |
+| `review_conflicts(...)`                | `read-only`   | Get merge conflict details                        |
+| `review_continue_rebase(...)`          | `mutating`    | Continue an interrupted rebase                    |
+| `review_abort_rebase(...)`             | `mutating`    | Abort a rebase operation                          |
+| `review_set_criterion_verdict(...)`    | `mutating`    | Set verdict on an acceptance criterion            |
+| `review_clear_verdicts(...)`           | `mutating`    | Clear AI review verdicts                          |
+| `audit_list(...)`                      | `read-only`   | List recent audit events                          |
+| `settings_get()`                       | `read-only`   | Read allowlisted settings                         |
+| `settings_set(...)`                    | `mutating`    | Update allowlisted settings                       |
 
 ### Plugin tools (experimental)
 
@@ -90,15 +90,15 @@ ______________________________________________________________________
 
 ### Persona tools
 
-| Tool                                   | Annotation  | Purpose                            |
-| -------------------------------------- | ----------- | ---------------------------------- |
+| Tool                                   | Annotation  | Purpose                                        |
+| -------------------------------------- | ----------- | ---------------------------------------------- |
 | `persona_preset_preview(...)`          | `read-only` | Preview personas from a repo without importing |
-| `persona_preset_audit(...)`            | `read-only` | Audit persona presets in a repo    |
-| `persona_preset_import(...)`           | `mutating`  | Import persona presets from GitHub |
-| `persona_preset_export(...)`           | `mutating`  | Export persona presets to GitHub   |
-| `persona_preset_whitelist_list(...)`   | `read-only` | List trusted persona repos         |
-| `persona_preset_whitelist_add(...)`    | `mutating`  | Trust a persona repo               |
-| `persona_preset_whitelist_remove(...)` | `mutating`  | Untrust a persona repo             |
+| `persona_preset_audit(...)`            | `read-only` | Audit persona presets in a repo                |
+| `persona_preset_import(...)`           | `mutating`  | Import persona presets from GitHub             |
+| `persona_preset_export(...)`           | `mutating`  | Export persona presets to GitHub               |
+| `persona_preset_whitelist_list(...)`   | `read-only` | List trusted persona repos                     |
+| `persona_preset_whitelist_add(...)`    | `mutating`  | Trust a persona repo                           |
+| `persona_preset_whitelist_remove(...)` | `mutating`  | Untrust a persona repo                         |
 
 Review semantics:
 

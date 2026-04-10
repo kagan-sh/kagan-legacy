@@ -15,71 +15,71 @@ if TYPE_CHECKING:
 
 _WORKER_TOOLS = frozenset(
     {
+        # tasks (4 read/wait tools)
         "task_get",
         "task_list",
-        "task_search",
         "task_events",
-        "task_add_note",
-        "task_counts",
-        "tasks_wait",
-        "run_exists",
-        "run_create",
+        "task_wait",
+        # sessions (4 read/lifecycle tools)
         "run_get",
-        "run_kill",
+        "run_cancel",
         "run_detach",
         "run_summary",
-        "settings_get",
+        # review (1 read tool)
         "review_conflicts",
+        # settings (1 read tool)
+        "settings_get",
+        # plugins (2 read tools)
         "plugins_preflight",
         "plugins_preview",
+        # verification (2 tools — session-scoped)
         "verify_step",
         "verification_summary",
+        # checkpoints (3 tools — session-scoped)
         "checkpoint_create",
         "checkpoint_list",
         "session_rewind",
+        # insights (2 read/write tools)
         "insight_add",
         "insight_list",
-        "session_compact",
     }
 )
 
 _REVIEWER_TOOLS = _WORKER_TOOLS | frozenset(
     {
-        "review_set_criterion_verdict",
+        "review_verdict",
         "review_clear_verdicts",
     }
 )
 
 _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
     {
+        # tasks (3 write tools)
         "task_create",
         "task_update",
-        "task_batch_create",
         "task_delete",
+        # sessions (1 write tool)
         "run_start",
-        "run_cancel",
-        "review_approve",
-        "review_reject",
+        # review (3 write tools)
+        "review_decide",
         "review_merge",
         "review_rebase",
-        "review_continue_rebase",
-        "review_abort_rebase",
+        # projects (3 tools)
         "project_list",
-        "project_create",
-        "project_delete",
-        "project_set_active",
-        "project_add_repo",
-        "project_set_repo_default_branch",
-        "repo_list",
+        "project_setup",
+        "project_update",
+        # settings (1 write tool)
         "settings_set",
+        # diagnostics (1 tool)
         "audit_list",
+        # plugins (1 write tool)
         "plugins_sync",
-        "persona_preset_audit",
-        "persona_preset_import",
-        "persona_preset_export",
-        "persona_preset_whitelist_list",
-        "persona_preset_whitelist_add",
-        "persona_preset_whitelist_remove",
+        # personas (4 tools)
+        "persona_inspect",
+        "persona_import",
+        "persona_export",
+        "persona_trust",
+        # insights (1 destructive tool)
         "insight_remove",
     }
 )

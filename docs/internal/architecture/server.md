@@ -22,7 +22,7 @@ ______________________________________________________________________
 
 ## Design Principles
 
-1. **FastMCP as Foundation** — Wraps `create_server()` from `kagan.server.mcp` and adds custom routes.
+1. **FastMCP as Foundation** — Wraps `create_server()` from `kagan.mcp` and adds custom routes.
 1. **Hybrid Transport** — Standard MCP (STDIO) + StreamableHTTP (REST + SSE).
 1. **Stateless REST** — Standard HTTP verbs for commands and resource management.
 1. **SSE for Events** — Server-Sent Events for real-time board and session streaming.
@@ -36,12 +36,9 @@ ______________________________________________________________________
 src/kagan/server/
 ├── __init__.py          # re-export create_api_server
 ├── server.py            # ApiServer factory, entry point
-├── _routes.py           # Route dispatcher: imports and registers task, project, system routes
-├── _task_routes.py      # Task REST endpoints (CRUD, run, cancel, review)
-├── _project_routes.py   # Project REST endpoints
-├── _system_routes.py    # System endpoints (preflight, settings, presence)
+├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
 ├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
-├── _plugin_routes.py    # Plugin REST routes (list, preflight, detect-repo, import)
+├── _plugin_routes.py    # Plugin-specific REST routes (sync, preflight)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
 ├── _helpers.py          # Route helper functions (JSON response builders, error formatting)
@@ -53,7 +50,7 @@ src/kagan/server/
 
 ### Dependency Direction
 
-`kagan.server` ──► `kagan.server.mcp` ──► `kagan.core`
+`kagan.server` ──► `kagan.mcp` ──► `kagan.core`
 
 - `server` uses `mcp` to build the base server instance.
 - `server` uses `core` (via `get_server_context`) for all business logic.
@@ -65,11 +62,10 @@ ______________________________________________________________________
 
 `server.py` defines `create_api_server(opts)`, which:
 
-1. Calls `kagan.server.mcp.server.create_server(opts.mcp_opts)`.
+1. Calls `kagan.mcp.server.create_server(opts.mcp_opts)`.
 1. Registers a `/health` endpoint.
-1. Calls `register_routes(mcp)` — dispatches to `_task_routes`, `_project_routes`, `_system_routes`, and adds the SSE event stream.
+1. Calls `register_routes(mcp)` to add the REST API and SSE event stream.
 1. Calls `register_chat_routes(mcp)` to add chat REST + SSE streaming.
-1. Calls `register_plugin_routes(mcp)` to add plugin REST routes.
 
 ______________________________________________________________________
 
@@ -128,16 +124,6 @@ Persistent SSE connection. Streams two event types:
 | `SESSION_EVENT` | `{ task_id, event }` | Agent session event (output, tool call, status change, etc.) |
 
 Keepalive comments (`: keepalive\n\n`) are sent every 25 seconds.
-Clients may include `client_type` and `client_id` query params so the server can keep presence state alive for the same connected client across SSE reconnects.
-
-### Presence: `GET /api/presence` and `POST /api/presence/heartbeat`
-
-Presence is lightweight and in-memory. SSE registration creates the client record; explicit heartbeats refresh optional task context such as "currently watching task X".
-
-| Endpoint                       | Description                                |
-| ------------------------------ | ------------------------------------------ |
-| `GET /api/presence`            | List live connected clients                |
-| `POST /api/presence/heartbeat` | Refresh presence and optional task context |
 
 ### Chat Streaming: `POST /api/chat/{session_id}/stream`
 

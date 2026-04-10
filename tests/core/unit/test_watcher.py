@@ -38,7 +38,9 @@ def _task(
 class _FakeEvents:
     """Minimal stub for the events subsystem."""
 
-    def __init__(self, events: list[BoardEvent] | None = None, *, raise_on_stream: bool = False) -> None:
+    def __init__(
+        self, events: list[BoardEvent] | None = None, *, raise_on_stream: bool = False
+    ) -> None:
         self._events = events or []
         self._raise_on_stream = raise_on_stream
         self._stream_call_count = 0
@@ -100,10 +102,7 @@ async def test_poll_detects_updated_at_change() -> None:
     await watcher.initialize()
 
     # Simulate a poll cycle: take new snapshot and diff
-    current = {
-        t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
-        for t in after
-    }
+    current = {t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat()) for t in after}
     changed = watcher._diff_snapshot(current)
 
     assert changed is True
@@ -121,10 +120,7 @@ async def test_poll_ignores_unchanged_updated_at() -> None:
     watcher = DBWatcher(core)  # type: ignore[arg-type]
     await watcher.initialize()
 
-    current = {
-        t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
-        for t in stable
-    }
+    current = {t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat()) for t in stable}
     changed = watcher._diff_snapshot(current)
 
     assert changed is False
@@ -142,10 +138,7 @@ async def test_poll_detects_status_change_with_descriptive_message() -> None:
     watcher = DBWatcher(core)  # type: ignore[arg-type]
     await watcher.initialize()
 
-    current = {
-        t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
-        for t in after
-    }
+    current = {t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat()) for t in after}
     changed = watcher._diff_snapshot(current)
 
     assert changed is True
@@ -163,10 +156,7 @@ async def test_poll_detects_title_change_with_descriptive_message() -> None:
     watcher = DBWatcher(core)  # type: ignore[arg-type]
     await watcher.initialize()
 
-    current = {
-        t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
-        for t in after
-    }
+    current = {t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat()) for t in after}
     changed = watcher._diff_snapshot(current)
 
     assert changed is True

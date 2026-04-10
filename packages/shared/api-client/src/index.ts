@@ -1,6 +1,6 @@
 // ============================================================================
 // Shared API Client for Kagan
-// 
+//
 // A unified, platform-agnostic TypeScript API client that works in:
 // - Browsers (via native fetch)
 // - VS Code extensions (Node.js with native fetch)

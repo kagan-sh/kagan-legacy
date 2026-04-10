@@ -1,9 +1,12 @@
+import asyncio
+
 import pytest
 
 from kagan.core._agent import (
     AgentError,
     BackendCapability,
     BackendSpec,
+    _ByteCountingStreamReader,
     build_agent_environment,
     spawn_agent_via_acp,
 )
@@ -216,3 +219,15 @@ async def test_build_agent_environment_strips_malloc_stack_logging(
 
     assert "MallocStackLogging" not in env
     assert "MallocStackLoggingNoCompact" not in env
+
+
+async def test_byte_counting_reader_skips_blank_lines() -> None:
+    reader = asyncio.StreamReader()
+    reader.feed_data(b'\n  \n\r\n{"ok":true}\n')
+    reader.feed_eof()
+
+    proc = type("P", (), {"pid": 1, "terminate": lambda self: None})()
+    wrapper = _ByteCountingStreamReader(reader, proc)
+
+    assert await wrapper.readline() == b'{"ok":true}\n'
+    assert await wrapper.readline() == b""

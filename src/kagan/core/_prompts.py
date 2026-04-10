@@ -87,7 +87,7 @@ each with a different focus:
 Not every task needs all phases. Simple tasks may only need IMPLEMENTER.
 Complex tasks benefit from the full pipeline. You decide the optimal sequence
 based on task complexity and annotate each task with planned sessions via
-task_add_note before starting execution.
+task_update before starting execution.
 
 To activate a persona, pass its key to run_start:
   run_start(task_id, persona="implementer")
@@ -96,27 +96,27 @@ Custom personas can be loaded via settings — use settings_get to check.
 </planning>
 
 <tool-discipline>
-- Status/progress queries: call run_summary FIRST, then tasks_wait only for
+- Status/progress queries: call run_summary FIRST, then task_wait only for
   lifecycle transitions. Never loop status snapshots.
 - Log/traceback requests: use task_events with bounded limits. Summarize key failures
   instead of dumping raw output.
-- Multi-task plans: create all tasks in ONE call with task_batch_create.
-- Every task in task_create/task_batch_create must include non-empty,
+- Multi-task plans: create all tasks in ONE call with task_create (pass a tasks list).
+- Every task in task_create must include non-empty,
   testable acceptance_criteria.
-- Mutation claims must be evidence-backed: after task_create/task_update/
-  task_batch_create, report values from returned payloads (not assumptions).
-- After task_batch_create: ALWAYS present a review table and ask for edits before
+- Mutation claims must be evidence-backed: after task_create/task_update,
+  report values from returned payloads (not assumptions).
+- After task_create: ALWAYS present a review table and ask for edits before
   starting execution. Never skip this step. Never auto-start without user confirmation.
 - If a claimed field is missing from a tool payload, call task_get before
   presenting a final state summary.
 - Autonomous execution: use managed runs and start each task with
   run_start.
 - For execution waves, launch every non-overlapping task in that wave before
-  calling tasks_wait on any single task.
+  calling task_wait on any single task.
 - Review decisions: when a task reaches REVIEW, follow the structured review flow:
   clear prior verdicts, record PASS/FAIL for every acceptance criterion, then call
-  review_approve or review_reject. Tasks WITHOUT acceptance criteria must be flagged for manual
-  human review — do NOT auto-approve them.
+  review_decide(verdict="approve") or review_decide(verdict="reject"). Tasks WITHOUT acceptance
+  criteria must be flagged for manual human review — do NOT auto-approve them.
 - Merge: call review_merge only after approval.
 - Failure recovery: if any tool call fails, explain briefly and fall back to
   run_summary so the user still gets an answer.
@@ -157,7 +157,7 @@ Standard autonomous workflow:
 1. Analyze the user request — clarify if ambiguous.
 2. Decompose into tasks with acceptance criteria.
 3. Present plan table — ask managed vs attached + agent backend per task.
-4. On approval: call task_batch_create with all tasks.
+4. On approval: call task_create with a tasks list.
 5. IMMEDIATELY after creation: present a review table showing every created task
    with columns: #, ID, Title, Run Preference, Priority, AC count, Status.
    Ask: "Review the tasks above. Want to edit anything before I start execution?"
@@ -165,7 +165,7 @@ Standard autonomous workflow:
 6. Only after user confirms: build execution waves (group non-overlapping tasks).
 7. For each wave: start all managed tasks with run_start, or pass a launcher
    when an interactive launch is required,
-   then monitor with tasks_wait and summarize with run_summary.
+   then monitor with task_wait and summarize with run_summary.
 8. When tasks reach REVIEW:
    a. If acceptance criteria exist → verify each criterion is met → approve/reject.
    b. If NO acceptance criteria → flag for manual review, do not auto-approve.
@@ -177,10 +177,10 @@ When review_merge returns status="conflict":
 1. Report to user: task title, conflicting file count, target branch.
 2. Ask: "Merge failed — N files conflict with {target_branch}.
    Want me to reject and re-run the agent with rebase instructions?"
-3. On YES: call review_reject with the suggested_feedback from
+3. On YES: call review_decide(verdict="reject", feedback=...) with the suggested_feedback from
    the conflict response, then call run_start to re-launch the agent.
    The agent will rebase onto the updated base branch and resolve conflicts.
-4. On NO: present options — rebase manually (review_rebase),
+4. On NO: present options — rebase manually (review_rebase(action="start")),
    abort and skip this task, or inspect conflicts (review_conflicts).
 5. NEVER auto-resolve without asking the user first.
 6. NEVER retry more than twice per task — after 2 conflict rejections for the
@@ -196,7 +196,7 @@ conflict recovery protocol above for each failure.
 
 DEFAULT_REVIEW_PROMPT = (
     "Review task {task_id}.\n\n"
-    # Keep this protocol aligned with core.models.ReviewVerdict / review_set_criterion_verdict.
+    # Keep this protocol aligned with core.models.ReviewVerdict / review_verdict.
     "<review-protocol>\n"
     "1. Retrieve the task with task_get to read its acceptance criteria.\n"
     "2. If the task has NO acceptance criteria, STOP. Respond with:\n"
@@ -205,16 +205,16 @@ DEFAULT_REVIEW_PROMPT = (
     "3. Clear any previous verdicts by calling review_clear_verdicts(task_id).\n"
     "4. If acceptance criteria exist, verify EACH criterion:\n"
     "   - Check the diff/code changes for evidence that the criterion is met.\n"
-    "   - For EACH criterion, call review_set_criterion_verdict with:\n"
+    "   - For EACH criterion, call review_verdict with:\n"
     "     - criterion_index (0-based position in the acceptance_criteria list)\n"
     "     - verdict: 'PASS' or 'FAIL'\n"
     "     - reason: one-line justification with evidence\n"
     "   Call the tool once per criterion. Do NOT skip any.\n"
     "5. Review code quality: bugs, missing edge cases, style violations.\n"
     "6. Final verdict:\n"
-    "   - ALL criteria PASS and no blocking issues → call review_approve.\n"
-    "   - ANY criterion FAIL or blocking issue → call review_reject\n"
-    "     with specific feedback listing all failures.\n"
+    "   - ALL criteria PASS and no blocking issues → call review_decide(verdict='approve').\n"
+    "   - ANY criterion FAIL or blocking issue → call review_decide(verdict='reject',\n"
+    "     feedback='...') with specific feedback listing all failures.\n"
     "</review-protocol>"
 )
 
@@ -340,7 +340,7 @@ def _build_detached_run_prompt(task: Any) -> str:
             "- Call task_list() to see other tasks in this project.",
             "- If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
             "- Call task_get(task_id) on related tasks for full context.",
-            "- Call task_search(query) to find tasks by keyword.",
+            "- Call task_list(query=...) to find tasks by keyword.",
             "- If overlap exists, coordinate: avoid shared files or sequence edits.",
             "",
             "MUST DO:",

@@ -1506,13 +1506,18 @@ class ChatPanel(Vertical):
                     or self._infer_session_kind(key) != SessionKind.ORCHESTRATOR
                 ]
 
+        # Resolve source for each session key via the orchestrator store
+        orch_store = getattr(core, "orchestrator_sessions", None) if core else None
+
         for label, key in filtered_options:
             kind = self._infer_session_kind(key)
+            source = orch_store.source_for_key(key) if orch_store else ""
             option = SessionPickerOption(
                 key=key,
                 icon=self._session_icon(kind),
                 label=label,
                 search_text=f"{label} {key} {kind}",
+                source=source,
             )
             if kind == SessionKind.ORCHESTRATOR:
                 orchestrator.append(option)
@@ -1582,7 +1587,7 @@ class ChatPanel(Vertical):
             parsed = json.loads(blob)
             sessions = parsed.get("sessions", []) if isinstance(parsed, dict) else []
             return {
-                s.get("id", "")
+                f"orchestrator:{s.get('id', '')}"
                 for s in sessions
                 if isinstance(s, dict) and s.get("project_id") == project_id and s.get("id")
             }

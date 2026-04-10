@@ -8,14 +8,14 @@ icon: material/cog
 
 `config.toml` in Kagan config dir. Paths: `platformdirs` + env overrides.
 
-| Purpose         | Override                 |
-| --------------- | ------------------------ |
-| Config          | `KAGAN_CONFIG_DIR`       |
-| Data            | `KAGAN_DATA_DIR`         |
-| Cache           | `KAGAN_CACHE_DIR`        |
-| Worktree base   | `KAGAN_WORKTREE_BASE`    |
+| Purpose         | Override                  |
+| --------------- | ------------------------- |
+| Config          | `KAGAN_CONFIG_DIR`        |
+| Data            | `KAGAN_DATA_DIR`          |
+| Cache           | `KAGAN_CACHE_DIR`         |
+| Worktree base   | `KAGAN_WORKTREE_BASE`     |
 | Core runtime    | _(derived from data dir)_ |
-| TUI mouse input | `KAGAN_TUI_MOUSE`        |
+| TUI mouse input | `KAGAN_TUI_MOUSE`         |
 
 Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 

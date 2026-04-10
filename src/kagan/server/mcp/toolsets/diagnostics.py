@@ -1,13 +1,34 @@
-"""kagan.server.mcp.toolsets.diagnostics — Diagnostics MCP tool (opt-in)."""
+"""kagan.server.mcp.toolsets.diagnostics — Diagnostics and audit MCP tools."""
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
 from kagan.server.mcp.toolsets import mcp_error_boundary
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
-    """Register diagnostics tool on mcp — only when enable_instrumentation is True."""
+    """Register diagnostics and audit tools on mcp, filtered by opts."""
+    if is_tool_allowed("audit_list", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def audit_list(ctx: Context, limit: int | None = None) -> dict:
+            """List recent audit log entries."""
+            app = get_context(ctx)
+            entries = await app.client.audit_log.list(limit=limit)
+            return {
+                "entries": [
+                    {
+                        "id": e.id,
+                        "action": e.action,
+                        "entity_type": e.entity_type,
+                        "entity_id": e.entity_id,
+                    }
+                    for e in entries
+                ]
+            }
+
     if not opts.enable_instrumentation:
         return
 

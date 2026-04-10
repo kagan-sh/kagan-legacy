@@ -21,7 +21,7 @@ class ToolRunRecord:
 
 class ToolRunTracker:
     _MAX_TOOL_RUNS = 200
-    _REVIEW_VERDICT_TITLE = "review_set_criterion_verdict"
+    _REVIEW_VERDICT_TITLE = "review_verdict"
 
     def __init__(self) -> None:
         self._tool_status_by_key: dict[str, str] = {}
@@ -184,7 +184,7 @@ class ToolRunTracker:
         return None
 
     @staticmethod
-    def _format_review_set_criterion_verdict(payload: dict[str, object] | None) -> str | None:
+    def _format_review_verdict(payload: dict[str, object] | None) -> str | None:
         if not payload:
             return None
         index = payload.get("criterion_index")
@@ -255,20 +255,16 @@ class ToolRunTracker:
         lines.append("")
         lines.append("Input:")
         input_text = record.args if record.args else "(none)"
-        if record.title == "review_set_criterion_verdict":
-            pretty = self._format_review_set_criterion_verdict(
-                self._try_parse_json_object(record.args)
-            )
+        if record.title == "review_verdict":
+            pretty = self._format_review_verdict(self._try_parse_json_object(record.args))
             if pretty:
                 input_text = pretty
         lines.append(input_text)
         lines.append("")
         lines.append("Output:")
         output_text = record.result if record.result else "(none)"
-        if record.title == "review_set_criterion_verdict":
-            pretty = self._format_review_set_criterion_verdict(
-                self._try_parse_json_object(record.result)
-            )
+        if record.title == "review_verdict":
+            pretty = self._format_review_verdict(self._try_parse_json_object(record.result))
             if pretty:
                 output_text = pretty
         lines.append(output_text)

@@ -78,7 +78,7 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                 f"Audit persona preset source {repo} at path {path}.\n\n"
                 "You are a read-only security auditor.\n"
                 "MUST DO:\n"
-                "- Call persona_preset_audit first and quote findings exactly.\n"
+                "- Call persona_inspect first and quote findings exactly.\n"
                 "- Explicitly state whether repo is trusted by whitelist.\n"
                 "- Recommend next action: install, install with caution, or reject.\n"
                 "- Provide evidence bullets tied to audit output fields.\n\n"

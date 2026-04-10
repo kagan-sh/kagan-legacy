@@ -101,7 +101,11 @@ def preview(plugin_name: str, repo: str, state: str, labels: tuple[str, ...], li
 
 
 async def _preview(
-    plugin_name: str, repo: str, state: str, labels: tuple[str, ...], limit: int,
+    plugin_name: str,
+    repo: str,
+    state: str,
+    labels: tuple[str, ...],
+    limit: int,
 ) -> None:
     from kagan.core.integrations.github import preview_github_issues
 

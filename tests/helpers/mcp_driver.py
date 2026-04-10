@@ -83,7 +83,13 @@ class McpDriver:
         result = await self._session.call_tool(
             "task_create", {"title": title, "description": description}
         )
-        return _to_task_view(_parse(result))
+        payload = _parse(result)
+        # task_create returns batch format: {"created": [...], "errors": [...]}
+        created = payload.get("created", [])
+        if not created:
+            errors = payload.get("errors", [])
+            raise ValueError(f"task_create returned no tasks: {errors}")
+        return _to_task_view(created[0])
 
     async def get_task(self, task_id: str) -> TaskView:
         """Get a task by ID via task_get tool."""

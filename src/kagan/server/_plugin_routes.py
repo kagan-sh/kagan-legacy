@@ -162,14 +162,14 @@ def register_plugin_routes(mcp: FastMCP) -> None:
             state = normalize_github_state(str(body.get("state", "open")))
             labels_raw = body.get("labels")
             labels = (
-                tuple(str(s).strip() for s in labels_raw)
-                if isinstance(labels_raw, list) else ()
+                tuple(str(s).strip() for s in labels_raw) if isinstance(labels_raw, list) else ()
             )
             limit = min(max(int(body.get("limit", 100)), 1), 500)
             issue_numbers_raw = body.get("issue_numbers")
             issue_numbers = (
                 tuple(int(n) for n in issue_numbers_raw)
-                if isinstance(issue_numbers_raw, list) else ()
+                if isinstance(issue_numbers_raw, list)
+                else ()
             )
 
             owner, repo = repo_slug.split("/", 1)

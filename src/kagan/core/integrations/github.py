@@ -154,8 +154,12 @@ async def sync_github_issues(
     issue_numbers: list[int] | None = None,
 ) -> ImportResult:
     manager, _ = await _configure_github_plugin(
-        client, repo_slug=repo_slug, state=state,
-        labels=labels, limit=limit, issue_numbers=issue_numbers,
+        client,
+        repo_slug=repo_slug,
+        state=state,
+        labels=labels,
+        limit=limit,
+        issue_numbers=issue_numbers,
     )
     return await manager.sync("github", project_id=project_id)
 
@@ -171,7 +175,11 @@ async def preview_github_issues(
     issue_numbers: list[int] | None = None,
 ) -> list:
     manager, _ = await _configure_github_plugin(
-        client, repo_slug=repo_slug, state=state,
-        labels=labels, limit=limit, issue_numbers=issue_numbers,
+        client,
+        repo_slug=repo_slug,
+        state=state,
+        labels=labels,
+        limit=limit,
+        issue_numbers=issue_numbers,
     )
     return await manager.get_import("github").preview(project_id)

@@ -116,11 +116,11 @@ Prefer `--role` when configuring MCP clients. `--readonly` and `--admin` are com
 
 ### Access tiers
 
-| Tier       | Scope                                                                                                                                                                                                                                                                  |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_search`, `task_events`, `task_counts`, `task_add_note`, `tasks_wait`, `run_summary`, `run_exists`, `run_create`, `run_get`, `run_kill`, `run_detach`, `settings_get`, `review_conflicts`, `plugins_preflight`) |
-| `default`  | Orchestrator-scope access (worker tools plus task creation, task mutation, run orchestration, review actions, projects, settings, plugins, and persona management)                                                                                                     |
-| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                    |
+| Tier       | Scope                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `plugins_preflight`, `plugins_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`) |
+| `default`  | Orchestrator-scope access (worker tools plus task creation/mutation/deletion, run orchestration, review decisions/merge/rebase, projects, settings, audit, plugins, personas, and insight removal)                                                                                                                                                                                                        |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                                                                                                                                                      |
 
 ```bash
 kagan mcp --readonly                    # worker-scope access
@@ -143,10 +143,10 @@ ______________________________________________________________________
 
 ## `kagan reset`
 
-| Option           | Description                              |
-| ---------------- | ---------------------------------------- |
-| `--project NAME` | Reset a single project by name           |
-| `-f, --force`    | Skip confirmation                        |
+| Option           | Description                                 |
+| ---------------- | ------------------------------------------- |
+| `--project NAME` | Reset a single project by name              |
+| `-f, --force`    | Skip confirmation                           |
 | `--dry-run`      | Show what would be deleted without deleting |
 
 Without `--project`, resets all data (config, DB, worktrees).
@@ -235,25 +235,25 @@ This is advanced tooling for prompt export and evaluation workflows.
 
 Persona preset import, export, and trust management.
 
-| Subcommand  | Description                                     |
-| ----------- | ----------------------------------------------- |
-| `import`    | Import persona presets from a GitHub repo        |
-| `export`    | Export persona presets to a GitHub repo           |
-| `audit`     | Audit a persona repo without importing           |
-| `whitelist` | List trusted persona repos                       |
-| `trust`     | Add a repo to persona trust list                 |
-| `untrust`   | Remove a repo from persona trust list            |
+| Subcommand  | Description                               |
+| ----------- | ----------------------------------------- |
+| `import`    | Import persona presets from a GitHub repo |
+| `export`    | Export persona presets to a GitHub repo   |
+| `audit`     | Audit a persona repo without importing    |
+| `whitelist` | List trusted persona repos                |
+| `trust`     | Add a repo to persona trust list          |
+| `untrust`   | Remove a repo from persona trust list     |
 
 #### `kagan tools prompts persona import`
 
-| Option              | Description                             |
-| ------------------- | --------------------------------------- |
-| `REPO`              | Repository in `owner/repo` format       |
-| `--path`            | Persona file path (default: `.kagan/personas.json`) |
-| `--ref`             | Git ref to import from                  |
-| `-y, --yes`         | Skip confirmation                       |
-| `--preview`         | Show personas without importing         |
-| `--acknowledge-risk`| Acknowledge risks of third-party presets |
+| Option               | Description                                         |
+| -------------------- | --------------------------------------------------- |
+| `REPO`               | Repository in `owner/repo` format                   |
+| `--path`             | Persona file path (default: `.kagan/personas.json`) |
+| `--ref`              | Git ref to import from                              |
+| `-y, --yes`          | Skip confirmation                                   |
+| `--preview`          | Show personas without importing                     |
+| `--acknowledge-risk` | Acknowledge risks of third-party presets            |
 
 #### `kagan tools prompts persona export`
 

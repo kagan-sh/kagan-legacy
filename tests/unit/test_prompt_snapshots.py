@@ -39,7 +39,7 @@ _SHARED_TAIL = "\n".join(
         "- Call task_list() to see other tasks in this project.",
         "- If any are IN_PROGRESS, check for file overlap to avoid merge conflicts.",
         "- Call task_get(task_id) on related tasks for full context.",
-        "- Call task_search(query) to find tasks by keyword.",
+        "- Call task_list(query=...) to find tasks by keyword.",
         "- If overlap exists, coordinate: avoid shared files or sequence edits.",
         "",
         "MUST DO:",

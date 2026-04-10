@@ -76,11 +76,10 @@ async def test_worker_hides_mutating_tools() -> None:
     names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
     assert "task_create" not in names
     assert "task_delete" not in names
-    assert "project_create" not in names
+    assert "project_setup" not in names
     assert "task_update" not in names
     assert "run_start" not in names
-    assert "review_approve" not in names
-    assert "review_reject" not in names
+    assert "review_decide" not in names
     assert "review_merge" not in names
     assert "review_rebase" not in names
 
@@ -89,23 +88,14 @@ async def test_worker_exposes_read_tools() -> None:
     names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
     assert "task_get" in names
     assert "task_list" in names
-    assert "task_search" in names
     assert "task_events" in names
-    assert "task_counts" in names
-    assert "tasks_wait" in names
-    assert "run_exists" in names
-    assert "run_create" in names
+    assert "task_wait" in names
     assert "run_get" in names
-    assert "run_kill" in names
+    assert "run_cancel" in names
     assert "run_detach" in names
     assert "run_summary" in names
     assert "settings_get" in names
     assert "review_conflicts" in names
-
-
-async def test_worker_can_annotate_own_task() -> None:
-    names = await _tool_names(ServerOptions(role=AgentRole.WORKER))
-    assert "task_add_note" in names
 
 
 # ---------------------------------------------------------------------------
@@ -121,14 +111,13 @@ async def test_reviewer_includes_worker_tools() -> None:
 
 async def test_reviewer_has_verdict_tools() -> None:
     names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
-    assert "review_set_criterion_verdict" in names
+    assert "review_verdict" in names
     assert "review_clear_verdicts" in names
 
 
 async def test_reviewer_cannot_decide_or_start() -> None:
     names = await _tool_names(ServerOptions(role=AgentRole.REVIEWER))
-    assert "review_approve" not in names
-    assert "review_reject" not in names
+    assert "review_decide" not in names
     assert "review_merge" not in names
     assert "review_rebase" not in names
     assert "run_start" not in names
@@ -149,12 +138,12 @@ async def test_orchestrator_gets_all_tools() -> None:
     assert "task_update" in names
     assert "run_start" in names
     assert "run_cancel" in names
-    assert "review_approve" in names
-    assert "review_reject" in names
+    assert "review_decide" in names
     assert "review_merge" in names
     assert "review_rebase" in names
-    assert "project_create" in names
-    assert "project_delete" in names
+    assert "project_list" in names
+    assert "project_setup" in names
+    assert "project_update" in names
     assert "settings_set" in names
 
 
@@ -209,20 +198,23 @@ async def test_readonly_and_admin_mutually_exclusive() -> None:
 _WORKER_TOOLS = [
     "task_get",
     "task_list",
-    "task_search",
     "task_events",
-    "tasks_wait",
-    "task_counts",
-    "task_add_note",
-    "run_exists",
-    "run_create",
+    "task_wait",
     "run_get",
-    "run_kill",
+    "run_cancel",
     "run_detach",
     "run_summary",
     "settings_get",
     "review_conflicts",
     "plugins_preflight",
+    "plugins_preview",
+    "verify_step",
+    "verification_summary",
+    "checkpoint_create",
+    "checkpoint_list",
+    "session_rewind",
+    "insight_add",
+    "insight_list",
 ]
 
 
@@ -251,26 +243,22 @@ async def test_worker_tool_visible_in_orchestrator_role(tool_name: str) -> None:
 _ORCHESTRATOR_ONLY_TOOLS = [
     "task_create",
     "task_update",
-    "task_batch_create",
     "task_delete",
     "run_start",
-    "run_cancel",
-    "review_approve",
-    "review_reject",
+    "review_decide",
     "review_merge",
     "review_rebase",
-    "review_continue_rebase",
-    "review_abort_rebase",
-    "project_create",
-    "project_delete",
-    "project_set_active",
-    "project_add_repo",
-    "project_set_repo_default_branch",
     "project_list",
-    "repo_list",
+    "project_setup",
+    "project_update",
     "settings_set",
     "audit_list",
     "plugins_sync",
+    "persona_inspect",
+    "persona_import",
+    "persona_export",
+    "persona_trust",
+    "insight_remove",
 ]
 
 
@@ -322,6 +310,3 @@ async def test_worker_can_call_task_list() -> None:
     finally:
         ready.set()
         await task
-
-
-# ---------------------------------------------------------------------------

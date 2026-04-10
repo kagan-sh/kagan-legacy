@@ -8,23 +8,19 @@ ______________________________________________________________________
 ## 1. Task Tools
 
 - Get a task by ID (summary, full, or context mode)
-- List tasks filtered by status, scoped to active project
-- Search tasks by query string
-- Create a task with title and optional fields
-- Batch-create multiple tasks at once (title required, description optional per entry)
+- List tasks filtered by status or repo, with optional free-text `query` search
+- Create one or more tasks (single via `title`, batch via `tasks` list)
 - Patch task fields or transition status (lifecycle enforced)
 - Delete a task and all associated data
-- Add a timestamped note to a task
 - Read paginated execution event logs via `task_events`
-- Get task counts grouped by status via `task_counts`
-- Wait for task status changes or target statuses via event-driven lifecycle signals
+- Wait for task status changes or target statuses via `task_wait` (event-driven, timeout-bounded)
 
 ______________________________________________________________________
 
 ## 2. Managed Run Tools
 
 - Start managed execution → provisions worktree, spawns agent, returns run
-- Wait for task lifecycle transitions with `tasks_wait` (event-driven, timeout-bounded)
+- Wait for task lifecycle transitions with `task_wait` (event-driven, timeout-bounded)
 - Cancel a running run → kills agent, moves task to BACKLOG
 - `run_summary` returns token usage metrics per task: context_window_used, context_window_size, cost_amount, cost_currency
 
@@ -38,30 +34,26 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 4. Project & Repo Tools
+## 4. Project Tools
 
 - List projects with metadata and task counts
-- Create a project, optionally linking repos
-- Open a project (set as active for this server run)
-- Link a repo to a project; list repos in a project
-- Update a repo's default branch
+- Set up a project, optionally linking repos and setting as active
+- Update project settings, link/unlink repos, set default branch
 
 ______________________________________________________________________
 
 ## 5. Review Tools
 
-- Apply review actions: approve, reject (with feedback), merge, rebase
-- Merge enforces lifecycle (REVIEW status required, approval if configured)
-- Rebase reports conflicts with affected file list
+- Decide on a task: approve or reject via `review_decide(verdict=...)`
+- Merge an approved task into its base branch
+- Rebase a task branch via `review_rebase(action="start"|"continue"|"abort")`
 - Get merge conflict details via `review_conflicts`
-- Continue an interrupted rebase via `review_continue_rebase`
-- Abort a rebase operation via `review_abort_rebase`
-- Set verdict on individual acceptance criteria via `review_set_criterion_verdict`
+- Set verdict on individual acceptance criteria via `review_verdict`
 - Clear all AI review verdicts via `review_clear_verdicts`
 
 ______________________________________________________________________
 
-## 6. Settings & Audit Tools
+## 6. Settings & Diagnostics Tools
 
 - Read all settings as key-value pairs
 - Update settings (validated by core)
@@ -69,23 +61,36 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 7. Prompts
+## 7. Verification, Checkpoints & Insights (in sessions toolset)
+
+- Record a PASS/FAIL verdict on a plan step via `verify_step`
+- Get all step verdicts for a session via `verification_summary`
+- Create git checkpoints in a task worktree via `checkpoint_create`
+- List checkpoints via `checkpoint_list`
+- Rewind a task worktree to a checkpoint via `session_rewind`
+- Add categorized insight notes via `insight_add`
+- List insights via `insight_list`
+- Remove insights via `insight_remove`
+
+______________________________________________________________________
+
+## 8. Prompts
 
 - `review_task` — structured code review with diff context
-- `plan_tasks_from_description` — natural-language to task breakdown (orchestrator drafts tickets, user reviews before batch-creating)
+- `plan_tasks_from_description` — natural-language to task breakdown (orchestrator drafts tickets, user reviews before creating)
 - `diagnose_failure` — diagnose agent execution failure
 - Always available regardless of agent role
 
 ______________________________________________________________________
 
-## 8. Diagnostics
+## 9. Diagnostics
 
 - Internal instrumentation tool (opt-in via `--enable-internal-instrumentation`)
 - Returns active sessions, DB stats, agent process status
 
 ______________________________________________________________________
 
-## 9. Plugin Tools
+## 10. Plugin Tools
 
 - `plugins_sync` (ORCHESTRATOR role) — sync issues via MCP, returns created/skipped/errors
   - Accepts plugin name, repo (owner/repo format), optional state and label filters
@@ -93,21 +98,20 @@ ______________________________________________________________________
 - `plugins_preflight` (WORKER role) — check if a plugin's external dependencies are satisfied
   - Optional plugin name; checks all plugins if omitted
   - Returns pass/warn/fail checks and readiness status
+- `plugins_preview` (WORKER role) — preview plugin import results without applying
 
 ______________________________________________________________________
 
-## 10. Persona Tools
+## 11. Persona Tools
 
-- `persona_preset_audit` — audit persona presets in a repository
-- `persona_preset_import` — import persona presets from a GitHub repository
-- `persona_preset_export` — export persona presets to a GitHub repository
-- `persona_preset_whitelist_list` — list trusted persona repositories
-- `persona_preset_whitelist_add` — add a repository to the trusted list
-- `persona_preset_whitelist_remove` — remove a repository from the trusted list
+- `persona_inspect` — audit and preview persona presets in a repository before import
+- `persona_import` — import persona presets from a GitHub repository
+- `persona_export` — export local persona presets to a GitHub repository
+- `persona_trust` — manage trusted persona repositories (list, add, remove)
 
 ______________________________________________________________________
 
-## 11. Resources
+## 12. Resources
 
 - Read-only data endpoints, always available regardless of access mode
 - `kagan://ping` — health check
@@ -118,7 +122,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 12. Access Control
+## 13. Access Control
 
 - Three roles: WORKER (board awareness + own-task annotation), REVIEWER (+ verdicts), ORCHESTRATOR (full control)
 - `--role` flag sets the agent role; defaults to ORCHESTRATOR

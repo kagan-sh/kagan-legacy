@@ -12,7 +12,7 @@ from textual.widgets.option_list import Option
 
 from kagan.tui.keybindings import SESSION_PICKER_BINDINGS
 
-_DELETABLE_SOURCES = {"repl", "web"}
+_DELETABLE_SOURCES = {"repl", "web", "tui-orchestrator"}
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,6 +5,7 @@ Shared TypeScript API client for Kagan that works in both browser and VS Code ex
 ## Overview
 
 This package consolidates the duplicated API client code from:
+
 - `packages/web/src/lib/api/client.ts`
 - `packages/vscode/src/api/client.ts`
 
@@ -106,7 +107,7 @@ try {
     console.log("Status:", error.status);
     console.log("Detail:", error.detail);
     console.log("Error code:", error.errorCode);
-    
+
     if (error.isNotFound()) {
       console.log("Task not found");
     }
@@ -122,6 +123,7 @@ try {
 ### `KaganApiClient`
 
 The main API client class with methods for:
+
 - Tasks: `getTasks`, `createTask`, `updateTask`, `deleteTask`, `runTask`, `cancelTask`
 - Projects: `getProjects`, `createProject`, `activateProject`, `deleteProject`
 - Repos: `getProjectRepos`, `addProjectRepo`, `deleteProjectRepo`
@@ -134,6 +136,7 @@ The main API client class with methods for:
 ### `SSEManager`
 
 Manages Server-Sent Events connection with:
+
 - Automatic reconnection with exponential backoff
 - Auth token support
 - Polling fallback
@@ -151,14 +154,14 @@ for await (const event of streamSSE<ChatStreamEvent>(url, options)) {
 
 ## Differences from Legacy Clients
 
-| Feature | Web Client | VS Code Client | Shared Client |
-|---------|-----------|----------------|---------------|
-| `fetch` API | ✅ | ✅ | ✅ |
-| Bundled web mode | ✅ | ❌ | Via config |
-| Protocol handling | Base URL only | Separate | Separate (configurable) |
-| SSE reconnection | Basic | Advanced | Advanced (same as VS Code) |
-| Error codes | Basic | Detailed | Detailed |
-| Typed errors | Partial | Full | Full |
+| Feature           | Web Client    | VS Code Client | Shared Client              |
+| ----------------- | ------------- | -------------- | -------------------------- |
+| `fetch` API       | ✅            | ✅             | ✅                         |
+| Bundled web mode  | ✅            | ❌             | Via config                 |
+| Protocol handling | Base URL only | Separate       | Separate (configurable)    |
+| SSE reconnection  | Basic         | Advanced       | Advanced (same as VS Code) |
+| Error codes       | Basic         | Detailed       | Detailed                   |
+| Typed errors      | Partial       | Full           | Full                       |
 
 ## Migration Guide
 

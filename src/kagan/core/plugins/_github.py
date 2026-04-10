@@ -348,14 +348,16 @@ class GitHubImporter(ImporterPlugin):
             title = (issue.get("title") or "").strip()
             if not number or not title:
                 continue
-            previews.append(GitHubIssuePreview(
-                number=number,
-                title=title,
-                state=issue.get("state", "open"),
-                labels=_extract_label_names(issue),
-                url=issue.get("url", ""),
-                already_synced=str(number) in sync_map,
-            ))
+            previews.append(
+                GitHubIssuePreview(
+                    number=number,
+                    title=title,
+                    state=issue.get("state", "open"),
+                    labels=_extract_label_names(issue),
+                    url=issue.get("url", ""),
+                    already_synced=str(number) in sync_map,
+                )
+            )
         return previews
 
     async def _sync_single_issue(

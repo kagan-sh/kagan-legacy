@@ -15,22 +15,16 @@ def test_worker_role_tools() -> None:
     assert allowed == {
         "task_get",
         "task_list",
-        "task_search",
         "task_events",
-        "task_add_note",
-        "task_counts",
-        "tasks_wait",
-        "run_exists",
-        "run_create",
+        "task_wait",
         "run_get",
-        "run_kill",
+        "run_cancel",
         "run_detach",
         "run_summary",
         "settings_get",
         "review_conflicts",
         "plugins_preflight",
         "plugins_preview",
-        "session_compact",
         "verify_step",
         "verification_summary",
         "checkpoint_create",
@@ -47,7 +41,7 @@ def test_reviewer_role_includes_worker_tools() -> None:
     worker_opts = ServerOptions(role=AgentRole.WORKER)
     worker_allowed = {name for name in ALL_TOOL_NAMES if is_tool_allowed(name, worker_opts)}
     assert worker_allowed < allowed
-    assert "review_set_criterion_verdict" in allowed
+    assert "review_verdict" in allowed
     assert "review_clear_verdicts" in allowed
 
 
@@ -75,21 +69,15 @@ def test_worker_cannot_mutate_tasks() -> None:
     opts = ServerOptions(role=AgentRole.WORKER)
     assert not is_tool_allowed("task_create", opts)
     assert not is_tool_allowed("task_update", opts)
-    assert not is_tool_allowed("task_batch_create", opts)
     assert not is_tool_allowed("task_delete", opts)
     assert not is_tool_allowed("run_start", opts)
-    assert not is_tool_allowed("run_cancel", opts)
-    assert not is_tool_allowed("review_approve", opts)
-    assert not is_tool_allowed("review_reject", opts)
+    assert not is_tool_allowed("review_decide", opts)
     assert not is_tool_allowed("review_merge", opts)
     assert not is_tool_allowed("review_rebase", opts)
 
 
 def test_reviewer_cannot_decide_reviews() -> None:
     opts = ServerOptions(role=AgentRole.REVIEWER)
-    assert not is_tool_allowed("review_approve", opts)
-    assert not is_tool_allowed("review_reject", opts)
+    assert not is_tool_allowed("review_decide", opts)
     assert not is_tool_allowed("review_merge", opts)
     assert not is_tool_allowed("review_rebase", opts)
-    assert not is_tool_allowed("review_continue_rebase", opts)
-    assert not is_tool_allowed("review_abort_rebase", opts)

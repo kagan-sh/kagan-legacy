@@ -46,7 +46,7 @@ def _runtime_guidance_for_request(text: str) -> str | None:
     if _looks_like_status_request(text):
         return (
             "Runtime guidance: answer status-first. Call run_summary before any log tool. "
-            "Use tasks_wait for lifecycle transitions and summarize by state changes."
+            "Use task_wait for lifecycle transitions and summarize by state changes."
         )
     if _looks_like_log_request(text):
         return (

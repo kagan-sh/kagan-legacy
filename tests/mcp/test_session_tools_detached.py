@@ -12,7 +12,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
 async def _create_task(mcp_board: ClientSession, title: str) -> str:
     create_result = await mcp_board.call_tool("task_create", {"title": title})
     assert not create_result.isError
-    return _text(create_result)["id"]
+    return _text(create_result)["created"][0]["id"]
 
 
 async def test_session_tools_visible_on_default_server(mcp_board: ClientSession) -> None:
@@ -21,12 +21,12 @@ async def test_session_tools_visible_on_default_server(mcp_board: ClientSession)
     assert "run_start" in names
     assert "run_summary" in names
     assert "run_cancel" in names
-    assert "run_exists" in names
-    assert "run_create" in names
     assert "run_get" in names
-    assert "run_kill" in names
     assert "run_detach" in names
     assert "run_wait" not in names
+    assert "run_exists" not in names
+    assert "run_create" not in names
+    assert "run_kill" not in names
 
 
 async def test_session_report_visible_on_default_server(mcp_board: ClientSession) -> None:
@@ -78,19 +78,13 @@ async def test_session_report_returns_expected_columns(mcp_board: ClientSession)
 
 async def test_session_cancel_returns_success(mcp_board: ClientSession) -> None:
     task_id = await _create_task(mcp_board, "session cancel")
-    session_id = "synthetic-session-id"
-    cancel_result = await mcp_board.call_tool(
-        "run_cancel", {"session_id": session_id, "task_id": task_id}
-    )
+    cancel_result = await mcp_board.call_tool("run_cancel", {"task_id": task_id})
     assert not cancel_result.isError
     payload = _text(cancel_result)
-    assert payload.get("session_id") == session_id
     assert payload.get("task_id") == task_id
     assert payload.get("cancelled") is True
 
 
-async def test_session_cancel_unknown_session_returns_error(mcp_board: ClientSession) -> None:
-    result = await mcp_board.call_tool(
-        "run_cancel", {"session_id": "nonexistent-session", "task_id": "task-abc"}
-    )
+async def test_session_cancel_unknown_task_returns_error(mcp_board: ClientSession) -> None:
+    result = await mcp_board.call_tool("run_cancel", {"task_id": "nonexistent-task"})
     assert result.isError

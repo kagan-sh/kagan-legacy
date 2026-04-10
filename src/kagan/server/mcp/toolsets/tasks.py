@@ -1,4 +1,7 @@
-"""kagan.server.mcp.toolsets.tasks — Task domain MCP tools."""
+"""kagan.server.mcp.toolsets.tasks — Task domain MCP tools.
+
+7 tools: task_get, task_list, task_create, task_update, task_delete, task_events, task_wait.
+"""
 
 import asyncio
 import contextlib
@@ -187,14 +190,31 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
 
 
 @mcp_error_boundary
-async def _task_list(ctx: Context, status: str | None = None, repo_id: str | None = None) -> dict:
-    """List tasks, optionally filtered by status and/or repo.
+async def _task_list(
+    ctx: Context,
+    status: str | None = None,
+    repo_id: str | None = None,
+    query: str | None = None,
+) -> dict:
+    """List tasks, optionally filtered by status, repo, or free-text query.
 
     Use this to inspect project state before planning or mutating work.
+    Pass ``query`` to search tasks by text within the active project.
     """
     app = get_context(ctx)
-    status_enum = TaskStatus(status) if status else None
-    tasks = await app.client.tasks.list(status=status_enum, repo_id=repo_id)
+
+    # If a free-text query is provided, use search and apply filters in-memory
+    if query is not None:
+        tasks = await app.client.tasks.search(query)
+        if status is not None:
+            status_enum = TaskStatus(status)
+            tasks = [t for t in tasks if t.status == status_enum]
+        if repo_id is not None:
+            tasks = [t for t in tasks if getattr(t, "repo_id", None) == repo_id]
+    else:
+        status_enum = TaskStatus(status) if status else None
+        tasks = await app.client.tasks.list(status=status_enum, repo_id=repo_id)
+
     result_tasks = [_task_to_dict(t) for t in tasks]
     if app.bound_session_id is not None:
         for t in result_tasks:
@@ -205,7 +225,8 @@ async def _task_list(ctx: Context, status: str | None = None, repo_id: str | Non
 @mcp_error_boundary
 async def _task_create(
     ctx: Context,
-    title: str,
+    tasks: list[_BatchTaskEntry] | None = None,
+    title: str | None = None,
     description: str = "",
     priority: str | int | None = None,
     base_branch: str | None = None,
@@ -214,28 +235,70 @@ async def _task_create(
     launcher: str | None = None,
     repo_id: str | None = None,
 ) -> dict:
-    """Create a task on the active board.
+    """Create one or more tasks on the active board.
 
+    For a single task, pass ``title`` directly.
+    For multiple tasks, pass ``tasks`` as a list of entries (each with at least a ``title``).
     Include acceptance criteria when you want downstream review to stay concrete.
     """
     app = get_context(ctx)
-    priority_enum = parse_priority(priority)
-    # Default to project's first repo when repo_id is not provided
-    effective_repo_id = repo_id if repo_id is not None else await _resolve_default_repo_id(ctx)
-    task = await app.client.tasks.create(
-        title,
-        description=description,
-        priority=priority_enum,
-        base_branch=base_branch,
-        acceptance_criteria=acceptance_criteria,
-        agent_backend=agent_backend,
-        launcher=launcher,
-        repo_id=effective_repo_id,
-    )
-    result = _task_to_dict(task)
-    if app.bound_session_id is not None:
-        result["session_id"] = app.bound_session_id
-    return result
+    default_repo_id = await _resolve_default_repo_id(ctx)
+
+    # Normalize: single-task params → batch list
+    if tasks is not None and title is not None:
+        raise ValidationError("tasks", "pass either 'tasks' list or 'title', not both")
+    if tasks is None:
+        if title is None:
+            raise ValidationError("title", "title is required when tasks list is not provided")
+        tasks = [
+            _BatchTaskEntry(
+                title=title,
+                description=description,
+                priority=priority,
+                base_branch=base_branch,
+                acceptance_criteria=acceptance_criteria,
+                agent_backend=agent_backend,
+                launcher=launcher,
+                repo_id=repo_id,
+            )
+        ]
+
+    created: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    for idx, entry in enumerate(tasks):
+        entry_title = entry.get("title", "").strip()
+        if not entry_title:
+            errors.append({"index": str(idx), "error": "title is required"})
+            continue
+        try:
+            pri = parse_priority(entry.get("priority"))
+            criteria_raw = entry.get("acceptance_criteria")
+            criteria = criteria_raw if isinstance(criteria_raw, list) else None
+            entry_repo_id = entry.get("repo_id")
+            effective_repo_id = entry_repo_id if entry_repo_id is not None else default_repo_id
+            task = await app.client.tasks.create(
+                entry_title,
+                description=entry.get("description", ""),
+                priority=pri,
+                base_branch=entry.get("base_branch"),
+                acceptance_criteria=criteria,
+                agent_backend=entry.get("agent_backend"),
+                launcher=entry.get("launcher"),
+                repo_id=effective_repo_id,
+            )
+            result = _task_to_dict(task)
+            if app.bound_session_id is not None:
+                result["session_id"] = app.bound_session_id
+            created.append(result)
+        except (KaganError, ValueError, TypeError, KeyError) as exc:
+            errors.append({"index": str(idx), "error": str(exc)})
+
+    return {
+        "created": created,
+        "errors": errors,
+        "created_count": len(created),
+        "error_count": len(errors),
+    }
 
 
 @mcp_error_boundary
@@ -289,23 +352,15 @@ async def _task_update(
 
 
 @mcp_error_boundary
-async def _task_add_note(ctx: Context, note: str, task_id: str | None = None) -> dict:
-    """Append a timestamped reasoning note to a task scratchpad.
-
-    Use this for durable agent notes, not for status changes.
-    """
+async def _task_delete(ctx: Context, task_id: str) -> dict:
+    """Delete a task permanently."""
     app = get_context(ctx)
-    resolved_task_id = _resolve_task_id(ctx, task_id)
-    await app.client.tasks.add_note(resolved_task_id, note)
-    return {"task_id": resolved_task_id, "success": True}
+    await app.client.tasks.delete(task_id)
+    return {"task_id": task_id, "deleted": True}
 
 
-@mcp_error_boundary
-async def _task_search(ctx: Context, query: str) -> dict:
-    """Search tasks by free-text query within the active project."""
-    app = get_context(ctx)
-    tasks = await app.client.tasks.search(query)
-    return {"tasks": [_task_to_dict(t) for t in tasks]}
+_MAX_PAYLOAD_BYTES = 16384
+_MAX_TOTAL_BYTES = 262144
 
 
 @mcp_error_boundary
@@ -315,19 +370,16 @@ async def _task_events(
     limit: int = 20,
     offset: int = 0,
     include_payload: bool = False,
-    max_payload_bytes: int = 16384,
-    max_total_bytes: int = 262144,
 ) -> dict:
     """Fetch paginated execution events for a task.
 
-    Use payload flags to inspect logs while keeping responses bounded for agent context.
+    Use ``include_payload=True`` to inspect full event data.
+    Payloads are automatically truncated to keep responses bounded.
     """
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     safe_limit = _clamp_int(limit, minimum=1, maximum=200)
     safe_offset = max(0, offset)
-    safe_max_payload_bytes = _clamp_int(max_payload_bytes, minimum=256, maximum=131072)
-    safe_max_total_bytes = _clamp_int(max_total_bytes, minimum=4096, maximum=1048576)
 
     events = await app.client.tasks.events.list(
         resolved_task_id, offset=safe_offset, limit=safe_limit
@@ -340,10 +392,10 @@ async def _task_events(
     for event in events:
         serialized_payload = _payload_json(event.payload)
         payload_size_bytes = len(serialized_payload.encode("utf-8"))
-        preview = serialized_payload.encode("utf-8")[:safe_max_payload_bytes].decode(
+        preview = serialized_payload.encode("utf-8")[:_MAX_PAYLOAD_BYTES].decode(
             "utf-8", errors="ignore"
         )
-        payload_truncated = payload_size_bytes > safe_max_payload_bytes
+        payload_truncated = payload_size_bytes > _MAX_PAYLOAD_BYTES
 
         item: dict[str, Any] = {
             "event_type": event.event_type.value,
@@ -362,10 +414,10 @@ async def _task_events(
                 item["payload"] = event.payload
 
         item_size = len(_payload_json(item).encode("utf-8"))
-        if logs and bytes_used + item_size > safe_max_total_bytes:
+        if logs and bytes_used + item_size > _MAX_TOTAL_BYTES:
             truncated_by_budget = True
             break
-        if not logs and item_size > safe_max_total_bytes:
+        if not logs and item_size > _MAX_TOTAL_BYTES:
             item["payload_preview"] = (
                 item["payload_preview"].encode("utf-8")[:2048].decode("utf-8", errors="ignore")
             )
@@ -393,7 +445,7 @@ async def _task_events(
 
 
 @mcp_error_boundary
-async def _tasks_wait(
+async def _task_wait(
     ctx: Context,
     task_ids: list[str] | None = None,
     timeout_seconds: float | None = None,
@@ -478,68 +530,6 @@ async def _tasks_wait(
     }
 
 
-@mcp_error_boundary
-async def _task_counts(ctx: Context) -> dict:
-    """Return task counts grouped by board status."""
-    app = get_context(ctx)
-    return await app.client.tasks.counts()
-
-
-@mcp_error_boundary
-async def _task_delete(ctx: Context, task_id: str) -> dict:
-    """Delete a task permanently."""
-    app = get_context(ctx)
-    await app.client.tasks.delete(task_id)
-    return {"task_id": task_id, "deleted": True}
-
-
-@mcp_error_boundary
-async def _task_batch_create(ctx: Context, tasks: list[_BatchTaskEntry]) -> dict:
-    """Create multiple tasks at once.
-
-    Each entry must have a ``title`` key and may include ``description``,
-    ``priority``, ``base_branch``,
-    ``acceptance_criteria``, and ``agent_backend``.
-    Returns the list of created tasks.
-    """
-    app = get_context(ctx)
-    # Resolve default repo_id once for all tasks that don't specify one
-    default_repo_id = await _resolve_default_repo_id(ctx)
-    created: list[dict[str, Any]] = []
-    errors: list[dict[str, str]] = []
-    for idx, entry in enumerate(tasks):
-        title = entry.get("title", "").strip()
-        if not title:
-            errors.append({"index": str(idx), "error": "title is required"})
-            continue
-        try:
-            pri = parse_priority(entry.get("priority"))
-            criteria_raw = entry.get("acceptance_criteria")
-            criteria = criteria_raw if isinstance(criteria_raw, list) else None
-            # Use entry's repo_id if provided, otherwise default to project's first repo
-            entry_repo_id = entry.get("repo_id")
-            effective_repo_id = entry_repo_id if entry_repo_id is not None else default_repo_id
-            task = await app.client.tasks.create(
-                title,
-                description=entry.get("description", ""),
-                priority=pri,
-                base_branch=entry.get("base_branch"),
-                acceptance_criteria=criteria,
-                agent_backend=entry.get("agent_backend"),
-                launcher=entry.get("launcher"),
-                repo_id=effective_repo_id,
-            )
-            created.append(_task_to_dict(task))
-        except (KaganError, ValueError, TypeError, KeyError) as exc:
-            errors.append({"index": str(idx), "error": str(exc)})
-    return {
-        "created": created,
-        "errors": errors,
-        "created_count": len(created),
-        "error_count": len(errors),
-    }
-
-
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register task domain tools on mcp, filtered by opts."""
     _tools = [
@@ -547,13 +537,9 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("task_list", _task_list),
         ("task_create", _task_create),
         ("task_update", _task_update),
-        ("task_add_note", _task_add_note),
-        ("task_search", _task_search),
-        ("task_events", _task_events),
-        ("tasks_wait", _tasks_wait),
-        ("task_counts", _task_counts),
         ("task_delete", _task_delete),
-        ("task_batch_create", _task_batch_create),
+        ("task_events", _task_events),
+        ("task_wait", _task_wait),
     ]
     for name, fn in _tools:
         if is_tool_allowed(name, opts):

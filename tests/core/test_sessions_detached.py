@@ -51,7 +51,6 @@ async def test_execution_logs_empty_before_any_run(git_board: KaganDriver) -> No
     assert logs["items"] == []
 
 
-
 async def test_run_already_in_progress_stays_in_progress(git_board: KaganDriver) -> None:
     task = await git_board.create_task("Already Started")
     await git_board.move_task(task.id, TaskStatus.IN_PROGRESS)

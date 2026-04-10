@@ -8,12 +8,17 @@ protocol-level outcomes: tool visibility, response shape, and error behavior.
 from typing import Any
 
 import pytest
-from mcp.types import TextContent
 
 from mcp import ClientSession
 from tests.helpers.mcp_helpers import extract_text as _text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.mcp]
+
+
+def _first_created(result: Any) -> dict[str, Any]:
+    """Extract the first created task from a task_create batch response."""
+    payload = _text(result)
+    return payload["created"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -29,12 +34,8 @@ async def test_task_tools_visible_on_default_server(mcp_board: ClientSession) ->
     assert "task_list" in names
     assert "task_create" in names
     assert "task_update" in names
-    assert "task_add_note" in names
-    assert "task_search" in names
-    assert "task_batch_create" in names
     assert "task_events" in names
-    assert "tasks_wait" in names
-    assert "task_counts" in names
+    assert "task_wait" in names
 
 
 async def test_task_delete_visible_on_default_server(mcp_board: ClientSession) -> None:
@@ -45,59 +46,33 @@ async def test_task_delete_visible_on_default_server(mcp_board: ClientSession) -
 
 
 # ---------------------------------------------------------------------------
-# task_create — returns task dict with id and title
+# task_create — returns batch response with created tasks
 # ---------------------------------------------------------------------------
 
 
 async def test_task_create_returns_task_with_title(mcp_board: ClientSession) -> None:
-    """task_create must return a dict containing the task title."""
+    """task_create must return a batch response containing the task title."""
     result = await mcp_board.call_tool("task_create", {"title": "My new task"})
     assert not result.isError
-    assert _text(result).get("title") == "My new task"
+    assert _first_created(result).get("title") == "My new task"
 
 
 async def test_task_create_returns_task_id(mcp_board: ClientSession) -> None:
-    """task_create must return a dict with a non-empty task id."""
+    """task_create must return a batch response with a non-empty task id."""
     result = await mcp_board.call_tool("task_create", {"title": "Task with ID"})
     assert not result.isError
     payload = _text(result)
-    assert "id" in payload
-    assert payload["id"]
+    assert "created" in payload
+    first = payload["created"][0]
+    assert "id" in first
+    assert first["id"]
 
 
 async def test_task_create_returns_status(mcp_board: ClientSession) -> None:
-    """task_create must return a dict with a status field."""
+    """task_create must return a batch response with a status field on each task."""
     result = await mcp_board.call_tool("task_create", {"title": "Status task"})
     assert not result.isError
-    assert "status" in _text(result)
-
-
-async def test_task_batch_create_accepts_mixed_field_types(mcp_board: ClientSession) -> None:
-    result = await mcp_board.call_tool(
-        "task_batch_create",
-        {
-            "tasks": [
-                {
-                    "title": "Batch alpha",
-                    "description": "alpha",
-                    "priority": 2,
-                    "acceptance_criteria": ["criterion one", "criterion two"],
-                },
-                {
-                    "title": "Batch beta",
-                    "priority": "1",
-                    "launcher": "tmux",
-                },
-            ]
-        },
-    )
-
-    assert not result.isError
-    payload = _text(result)
-    assert payload["errors"] == []
-    assert payload["created_count"] == 2
-    assert payload["error_count"] == 0
-    assert [task["title"] for task in payload["created"]] == ["Batch alpha", "Batch beta"]
+    assert "status" in _first_created(result)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +83,7 @@ async def test_task_batch_create_accepts_mixed_field_types(mcp_board: ClientSess
 async def test_task_get_returns_task_dict(mcp_board: ClientSession) -> None:
     """task_get must return a dict with id and title for a created task."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Fetch me"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     get_result = await mcp_board.call_tool("task_get", {"task_id": task_id})
     assert not get_result.isError
@@ -154,7 +129,7 @@ async def test_task_list_includes_created_task(mcp_board: ClientSession) -> None
 async def test_task_patch_updates_title(mcp_board: ClientSession) -> None:
     """task_update must update the task title and return the updated task."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Original"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     patch_result = await mcp_board.call_tool(
         "task_update",
@@ -165,39 +140,6 @@ async def test_task_patch_updates_title(mcp_board: ClientSession) -> None:
 
 
 # ---------------------------------------------------------------------------
-# task_add_note — adds a note to a task
-# ---------------------------------------------------------------------------
-
-
-async def test_task_annotate_returns_success(mcp_board: ClientSession) -> None:
-    """task_add_note must return a success response with the task_id."""
-    create_result = await mcp_board.call_tool("task_create", {"title": "Annotate me"})
-    task_id = _text(create_result)["id"]
-
-    annotate_result = await mcp_board.call_tool(
-        "task_add_note", {"task_id": task_id, "note": "This is a note"}
-    )
-    assert not annotate_result.isError
-    assert _text(annotate_result).get("task_id") == task_id
-
-
-# ---------------------------------------------------------------------------
-# task_search — returns matching tasks
-# ---------------------------------------------------------------------------
-
-
-async def test_task_search_returns_matching_tasks(mcp_board: ClientSession) -> None:
-    """task_search must return tasks whose title matches the query."""
-    await mcp_board.call_tool("task_create", {"title": "Searchable unique task xyz"})
-    result = await mcp_board.call_tool("task_search", {"query": "unique task xyz"})
-    assert not result.isError
-    payload = _text(result)
-    assert "tasks" in payload
-    titles = [t["title"] for t in payload["tasks"]]
-    assert any("unique task xyz" in t for t in titles)
-
-
-# ---------------------------------------------------------------------------
 # task_events — returns logs dict
 # ---------------------------------------------------------------------------
 
@@ -205,7 +147,7 @@ async def test_task_search_returns_matching_tasks(mcp_board: ClientSession) -> N
 async def test_task_logs_returns_logs_dict(mcp_board: ClientSession) -> None:
     """task_events must return a dict with a 'logs' key for a known task."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Log task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     logs_result = await mcp_board.call_tool("task_events", {"task_id": task_id})
     assert not logs_result.isError
@@ -217,7 +159,7 @@ async def test_task_logs_default_hides_raw_payload_and_returns_preview(
 ) -> None:
     mcp_session, core_client = mcp_board_with_core_client
     create_result = await mcp_session.call_tool("task_create", {"title": "Preview log task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     await core_client.tasks.events.emit(
         task_id,
@@ -248,7 +190,7 @@ async def test_task_logs_include_payload_returns_small_payload(
     create_result = await mcp_session.call_tool(
         "task_create", {"title": "Include payload log task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     await core_client.tasks.events.emit(
         task_id,
@@ -275,7 +217,7 @@ async def test_task_logs_truncates_large_payload(
 ) -> None:
     mcp_session, core_client = mcp_board_with_core_client
     create_result = await mcp_session.call_tool("task_create", {"title": "Large payload log task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     large_payload = {"blob": "x" * 50000}
     await core_client.tasks.events.emit(task_id, "OUTPUT_CHUNK", large_payload)
@@ -286,7 +228,6 @@ async def test_task_logs_truncates_large_payload(
             "task_id": task_id,
             "limit": 50,
             "include_payload": True,
-            "max_payload_bytes": 512,
         },
     )
     assert not result.isError
@@ -297,21 +238,9 @@ async def test_task_logs_truncates_large_payload(
     )
     assert stream_entry is not None
     assert stream_entry["payload_truncated"] is True
-    assert stream_entry["payload_size_bytes"] > 512
-    assert len(stream_entry["payload_preview"].encode("utf-8")) <= 512
+    assert stream_entry["payload_size_bytes"] > 16384
+    assert len(stream_entry["payload_preview"].encode("utf-8")) <= 16384
     assert stream_entry["payload"]["truncated"] is True
-
-
-# ---------------------------------------------------------------------------
-# task_counts — returns per-status counts
-# ---------------------------------------------------------------------------
-
-
-async def test_task_counts_returns_counts_dict(mcp_board: ClientSession) -> None:
-    """task_counts must return a dict with status count fields."""
-    result = await mcp_board.call_tool("task_counts", {})
-    assert not result.isError
-    assert isinstance(_text(result), dict)
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +254,7 @@ async def test_session_bound_task_create_returns_session_id(
     """task_create on a session-bound server must return a task with session_id set."""
     result = await mcp_board_with_session.call_tool("task_create", {"title": "Session task"})
     assert not result.isError
-    payload = _text(result)
+    payload = _first_created(result)
     assert payload.get("session_id") == "test-session"
 
 
@@ -350,24 +279,24 @@ async def test_session_bound_task_get_returns_session_id(
     create_result = await mcp_board_with_session.call_tool(
         "task_create", {"title": "Get session task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
     get_result = await mcp_board_with_session.call_tool("task_get", {"task_id": task_id})
     assert not get_result.isError
     assert _text(get_result).get("session_id") == "test-session"
 
 
 # ---------------------------------------------------------------------------
-# tasks_wait — long-poll for status change
+# task_wait — long-poll for status change
 # ---------------------------------------------------------------------------
 
 
-async def test_tasks_wait_returns_status_for_known_task(mcp_board: ClientSession) -> None:
-    """tasks_wait must return task status rows for a known task."""
+async def test_task_wait_returns_status_for_known_task(mcp_board: ClientSession) -> None:
+    """task_wait must return task status rows for a known task."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Wait task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     wait_result = await mcp_board.call_tool(
-        "tasks_wait", {"task_ids": [task_id], "timeout_seconds": 0.01}
+        "task_wait", {"task_ids": [task_id], "timeout_seconds": 0.01}
     )
     assert not wait_result.isError
     payload = _text(wait_result)
@@ -376,28 +305,28 @@ async def test_tasks_wait_returns_status_for_known_task(mcp_board: ClientSession
     assert "status" in payload["tasks"][0]
 
 
-async def test_tasks_wait_unknown_task_returns_error(mcp_board: ClientSession) -> None:
-    """tasks_wait with an unknown task_id must return an error result."""
-    result = await mcp_board.call_tool("tasks_wait", {"task_ids": ["nonexistent-wait-id"]})
+async def test_task_wait_unknown_task_returns_error(mcp_board: ClientSession) -> None:
+    """task_wait with an unknown task_id must return an error result."""
+    result = await mcp_board.call_tool("task_wait", {"task_ids": ["nonexistent-wait-id"]})
     assert result.isError
 
 
-async def test_tasks_wait_returns_timed_out_flag(mcp_board: ClientSession) -> None:
-    """tasks_wait must return a timed_out field in the response."""
+async def test_task_wait_returns_timed_out_flag(mcp_board: ClientSession) -> None:
+    """task_wait must return a timed_out field in the response."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Timed out task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     wait_result = await mcp_board.call_tool(
-        "tasks_wait", {"task_ids": [task_id], "timeout_seconds": 0.01}
+        "task_wait", {"task_ids": [task_id], "timeout_seconds": 0.01}
     )
     assert not wait_result.isError
     payload = _text(wait_result)
     assert "timed_out" in payload
 
 
-async def test_tasks_wait_accepts_single_status_string(mcp_board: ClientSession) -> None:
+async def test_task_wait_accepts_single_status_string(mcp_board: ClientSession) -> None:
     create_result = await mcp_board.call_tool("task_create", {"title": "String wait status task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     move_result = await mcp_board.call_tool(
         "task_update", {"task_id": task_id, "status": "IN_PROGRESS"}
@@ -405,7 +334,7 @@ async def test_tasks_wait_accepts_single_status_string(mcp_board: ClientSession)
     assert not move_result.isError
 
     wait_result = await mcp_board.call_tool(
-        "tasks_wait",
+        "task_wait",
         {
             "task_ids": [task_id],
             "wait_for_status": "IN_PROGRESS",
@@ -417,14 +346,14 @@ async def test_tasks_wait_accepts_single_status_string(mcp_board: ClientSession)
     assert payload["tasks"][0]["status"] == "IN_PROGRESS"
 
 
-async def test_tasks_wait_rejects_unknown_status_with_clear_message(
+async def test_task_wait_rejects_unknown_status_with_clear_message(
     mcp_board: ClientSession,
 ) -> None:
     create_result = await mcp_board.call_tool("task_create", {"title": "Bad wait status task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     wait_result = await mcp_board.call_tool(
-        "tasks_wait",
+        "task_wait",
         {
             "task_ids": [task_id],
             "wait_for_status": ["FAILED"],
@@ -437,13 +366,13 @@ async def test_tasks_wait_rejects_unknown_status_with_clear_message(
     assert "Task statuses" in text or "Allowed values" in text
 
 
-async def test_tasks_wait_resolve_when_any_returns_after_first_match(
+async def test_task_wait_resolve_when_any_returns_after_first_match(
     mcp_board: ClientSession,
 ) -> None:
     first_result = await mcp_board.call_tool("task_create", {"title": "Any wait first"})
     second_result = await mcp_board.call_tool("task_create", {"title": "Any wait second"})
-    first_task_id = _text(first_result)["id"]
-    second_task_id = _text(second_result)["id"]
+    first_task_id = _first_created(first_result)["id"]
+    second_task_id = _first_created(second_result)["id"]
 
     move_result = await mcp_board.call_tool(
         "task_update", {"task_id": first_task_id, "status": "IN_PROGRESS"}
@@ -451,7 +380,7 @@ async def test_tasks_wait_resolve_when_any_returns_after_first_match(
     assert not move_result.isError
 
     wait_result = await mcp_board.call_tool(
-        "tasks_wait",
+        "task_wait",
         {
             "task_ids": [first_task_id, second_task_id],
             "wait_for_status": ["IN_PROGRESS"],
@@ -466,23 +395,6 @@ async def test_tasks_wait_resolve_when_any_returns_after_first_match(
 
 
 # ---------------------------------------------------------------------------
-# task_counts — per-status counts with actual tasks
-# ---------------------------------------------------------------------------
-
-
-async def test_task_counts_reflects_created_tasks(mcp_board: ClientSession) -> None:
-    """task_counts must reflect tasks that were just created."""
-    await mcp_board.call_tool("task_create", {"title": "Count task alpha"})
-    await mcp_board.call_tool("task_create", {"title": "Count task beta"})
-
-    result = await mcp_board.call_tool("task_counts", {})
-    assert not result.isError
-    payload = _text(result)
-    # At least 2 tasks in BACKLOG
-    assert payload.get("BACKLOG", 0) >= 2
-
-
-# ---------------------------------------------------------------------------
 # task_update — status transition
 # ---------------------------------------------------------------------------
 
@@ -490,7 +402,7 @@ async def test_task_counts_reflects_created_tasks(mcp_board: ClientSession) -> N
 async def test_task_patch_updates_status(mcp_board: ClientSession) -> None:
     """task_update must update the task status when status field is provided."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Status transition task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     patch_result = await mcp_board.call_tool(
         "task_update", {"task_id": task_id, "status": "IN_PROGRESS"}
@@ -510,7 +422,7 @@ async def test_task_patch_unknown_task_returns_error(mcp_board: ClientSession) -
 async def test_task_patch_updates_description(mcp_board: ClientSession) -> None:
     """task_update must update the task description when description field is provided."""
     create_result = await mcp_board.call_tool("task_create", {"title": "Desc task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     patch_result = await mcp_board.call_tool(
         "task_update", {"task_id": task_id, "description": "Updated description"}
@@ -521,7 +433,7 @@ async def test_task_patch_updates_description(mcp_board: ClientSession) -> None:
 
 async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -> None:
     create_result = await mcp_board.call_tool("task_create", {"title": "Run metadata task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     patch_result = await mcp_board.call_tool(
         "task_update",
@@ -544,19 +456,6 @@ async def test_task_patch_updates_execution_metadata(mcp_board: ClientSession) -
     assert payload["verification"]["all_applied"] is True
     assert payload["verification"]["mismatched_fields"] == []
     assert payload["verification"]["requested"]["launcher"] == "tmux"
-
-
-# ---------------------------------------------------------------------------
-# task_add_note — error path
-# ---------------------------------------------------------------------------
-
-
-async def test_task_annotate_unknown_task_returns_error(mcp_board: ClientSession) -> None:
-    """task_add_note with an unknown task_id must return an error result."""
-    result = await mcp_board.call_tool(
-        "task_add_note", {"task_id": "nonexistent-annotate-id", "note": "note"}
-    )
-    assert result.isError
 
 
 # ---------------------------------------------------------------------------
@@ -600,21 +499,21 @@ async def test_core_task_create_returns_task_with_title(
     """task_create via core client must return a task with the given title."""
     result = await mcp_board_with_core.call_tool("task_create", {"title": "Core task alpha"})
     assert not result.isError
-    assert _text(result).get("title") == "Core task alpha"
+    assert _first_created(result).get("title") == "Core task alpha"
 
 
 async def test_core_task_create_returns_task_id(mcp_board_with_core: ClientSession) -> None:
     """task_create via core client must return a non-empty task id."""
     result = await mcp_board_with_core.call_tool("task_create", {"title": "Core id task"})
     assert not result.isError
-    payload = _text(result)
+    payload = _first_created(result)
     assert payload.get("id")
 
 
 async def test_core_task_get_returns_created_task(mcp_board_with_core: ClientSession) -> None:
     """task_get via core client must return the task that was created."""
     create_result = await mcp_board_with_core.call_tool("task_create", {"title": "Core get task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     get_result = await mcp_board_with_core.call_tool("task_get", {"task_id": task_id})
     assert not get_result.isError
@@ -639,50 +538,30 @@ async def test_core_task_list_includes_created_task(mcp_board_with_core: ClientS
     assert "Core listed task" in titles
 
 
-async def test_core_task_search_returns_matching_tasks(mcp_board_with_core: ClientSession) -> None:
-    """task_search via core client must return tasks matching the query."""
+async def test_core_task_list_with_query_returns_matching_tasks(
+    mcp_board_with_core: ClientSession,
+) -> None:
+    """task_list with query via core client must return tasks matching the query."""
     await mcp_board_with_core.call_tool("task_create", {"title": "Core searchable unique xyz"})
-    result = await mcp_board_with_core.call_tool("task_search", {"query": "searchable unique xyz"})
+    result = await mcp_board_with_core.call_tool("task_list", {"query": "searchable unique xyz"})
     assert not result.isError
     payload = _text(result)
     assert "tasks" in payload
 
 
-async def test_core_task_annotate_returns_success(mcp_board_with_core: ClientSession) -> None:
-    """task_add_note via core client must return success."""
-    create_result = await mcp_board_with_core.call_tool(
-        "task_create", {"title": "Core annotate task"}
-    )
-    task_id = _text(create_result)["id"]
-
-    result = await mcp_board_with_core.call_tool(
-        "task_add_note", {"task_id": task_id, "note": "Core note"}
-    )
-    assert not result.isError
-    assert _text(result).get("task_id") == task_id
-
-
 async def test_core_task_logs_returns_logs(mcp_board_with_core: ClientSession) -> None:
     """task_events via core client must return a logs structure."""
     create_result = await mcp_board_with_core.call_tool("task_create", {"title": "Core logs task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     result = await mcp_board_with_core.call_tool("task_events", {"task_id": task_id})
     assert not result.isError
 
 
-async def test_core_task_counts_returns_dict(mcp_board_with_core: ClientSession) -> None:
-    """task_counts via core client must return a dict."""
-    await mcp_board_with_core.call_tool("task_create", {"title": "Core count task"})
-    result = await mcp_board_with_core.call_tool("task_counts", {})
-    assert not result.isError
-    assert isinstance(_text(result), dict)
-
-
 async def test_core_task_patch_updates_title(mcp_board_with_core: ClientSession) -> None:
     """task_update via core client must update the task title."""
     create_result = await mcp_board_with_core.call_tool("task_create", {"title": "Core patch task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     patch_result = await mcp_board_with_core.call_tool(
         "task_update", {"task_id": task_id, "title": "Core patched title"}
@@ -691,13 +570,13 @@ async def test_core_task_patch_updates_title(mcp_board_with_core: ClientSession)
     assert _text(patch_result)["title"] == "Core patched title"
 
 
-async def test_core_tasks_wait_returns_status(mcp_board_with_core: ClientSession) -> None:
-    """tasks_wait via core client must return a response payload."""
+async def test_core_task_wait_returns_status(mcp_board_with_core: ClientSession) -> None:
+    """task_wait via core client must return a response payload."""
     create_result = await mcp_board_with_core.call_tool("task_create", {"title": "Core wait task"})
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     wait_result = await mcp_board_with_core.call_tool(
-        "tasks_wait", {"task_ids": [task_id], "timeout_seconds": 0.1}
+        "task_wait", {"task_ids": [task_id], "timeout_seconds": 0.1}
     )
     assert wait_result is not None
 
@@ -709,7 +588,7 @@ async def test_core_admin_task_delete_removes_task(
     create_result = await mcp_board_admin_with_core.call_tool(
         "task_create", {"title": "Core delete task"}
     )
-    task_id = _text(create_result)["id"]
+    task_id = _first_created(create_result)["id"]
 
     delete_result = await mcp_board_admin_with_core.call_tool("task_delete", {"task_id": task_id})
     assert not delete_result.isError

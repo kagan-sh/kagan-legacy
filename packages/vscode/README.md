@@ -83,11 +83,11 @@ Full docs: <https://docs.kagan.sh/guides/vscode-extension/>
 
 Access settings commands via the Command Palette (Cmd/Ctrl+Shift+P) and type "Kagan":
 
-| Command                     | Description                                          | When to use                                              |
-| --------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
-| `kagan.settings.agentBackend`   | Set the default agent backend (claude-code, codex, etc.) | Switch between agent backends without editing config files |
-| `kagan.settings.reviewStrictness` | Configure review strictness level                    | Adjust how thorough code reviews should be               |
-| `kagan.settings.planningDepth`  | Adjust planning depth for orchestrator sessions      | Control how deeply the orchestrator plans before execution |
+| Command                           | Description                                              | When to use                                                |
+| --------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------- |
+| `kagan.settings.agentBackend`     | Set the default agent backend (claude-code, codex, etc.) | Switch between agent backends without editing config files |
+| `kagan.settings.reviewStrictness` | Configure review strictness level                        | Adjust how thorough code reviews should be                 |
+| `kagan.settings.planningDepth`    | Adjust planning depth for orchestrator sessions          | Control how deeply the orchestrator plans before execution |
 
 ## Requirements
 

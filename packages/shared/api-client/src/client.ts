@@ -70,7 +70,7 @@ function describeHttpFailure(input: FailureContext): string {
     input.envelopeError !== null
       ? input.envelopeError
       : input.rawBody.trim() || input.statusText || `HTTP ${input.status}`;
-  
+
   const looksLikeWrongServer =
     input.path.startsWith("/api/") &&
     (input.status === 404 ||
@@ -91,10 +91,10 @@ function describeHttpFailure(input: FailureContext): string {
 
 /**
  * Unified Kagan API Client.
- * 
+ *
  * Works in both browser and Node.js/VS Code extension contexts.
  * Uses native fetch API for maximum compatibility.
- * 
+ *
  * @example
  * ```typescript
  * // Browser/VS Code usage
@@ -104,7 +104,7 @@ function describeHttpFailure(input: FailureContext): string {
  *   token: "optional-auth-token",
  *   clientType: "vscode" // or "web"
  * });
- * 
+ *
  * const tasks = await client.getTasks();
  * ```
  */
@@ -184,7 +184,7 @@ export class KaganApiClient {
 
     const rawBody = await response.text();
     let envelope: WireEnvelope<T> | null = null;
-    
+
     try {
       envelope = rawBody ? (JSON.parse(rawBody) as WireEnvelope<T>) : null;
     } catch {
@@ -497,7 +497,7 @@ export class KaganApiClient {
       body: JSON.stringify({ text }),
       signal,
     });
-    
+
     if (!response.ok || !response.body) {
       throw new ApiError(response.status, `Chat stream failed: ${response.status}`);
     }
@@ -515,7 +515,7 @@ export class KaganApiClient {
    */
   async *streamChat(sessionId: string, text: string, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
     const response = await this.chatStream(sessionId, text, signal);
-    
+
     if (!response.body) {
       throw new ApiError(0, "Chat stream response has no body");
     }
@@ -620,11 +620,11 @@ export class KaganApiClient {
     const response = await this._fetchImpl(this.getFullUrl("/health"), {
       headers: { Accept: "application/json" },
     });
-    
+
     if (!response.ok) {
       throw new ApiError(response.status, "Health check failed");
     }
-    
+
     return response.json() as Promise<{ status: string; version: string }>;
   }
 

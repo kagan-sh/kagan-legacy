@@ -99,10 +99,7 @@ class DBWatcher:
 
     async def _take_snapshot(self) -> dict[str, _TaskState]:
         tasks = await self._core.tasks.list()
-        return {
-            t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat())
-            for t in tasks
-        }
+        return {t.id: _TaskState(t.title, t.status.value, t.updated_at.isoformat()) for t in tasks}
 
     async def _consume_events(self) -> None:
         while True:

@@ -1,4 +1,7 @@
-"""kagan.server.mcp.toolsets.projects — Project and repo domain MCP tools."""
+"""kagan.server.mcp.toolsets.projects — Project and repo domain MCP tools.
+
+3 tools: project_list, project_setup, project_update.
+"""
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -10,78 +13,125 @@ from kagan.server.mcp.toolsets import mcp_error_boundary
 
 @mcp_error_boundary
 async def _project_list(ctx: Context) -> dict:
-    """List projects available to the current workspace."""
+    """List all projects with repos inlined and active status.
+
+    Returns each project with its attached repositories and whether
+    it is the currently active project.
+    """
     app = get_context(ctx)
     projects = await app.client.projects.list()
-    return {"projects": [{"id": p.id, "name": p.name} for p in projects]}
+
+    active_id = app.client.active_project_id
+
+    # Gather repo lists concurrently to avoid N+1 sequential queries
+    import asyncio
+
+    repo_lists = await asyncio.gather(*(app.client.projects.repos(p.id) for p in projects))
+
+    result = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "is_active": p.id == active_id,
+            "repos": [{"id": r.id, "path": r.path} for r in repos],
+        }
+        for p, repos in zip(projects, repo_lists, strict=True)
+    ]
+    return {"projects": result}
 
 
 @mcp_error_boundary
-async def _project_set_active(project_id: str, ctx: Context) -> dict:
-    """Set the active project for subsequent project-scoped operations."""
-    app = get_context(ctx)
-    await app.client.projects.set_active(project_id)
-    return {"project_id": project_id}
-
-
-@mcp_error_boundary
-async def _project_add_repo(project_id: str, repo_path: str, ctx: Context) -> dict:
-    """Attach a repository path to a project."""
-    app = get_context(ctx)
-    await app.client.projects.add_repo(project_id, repo_path)
-    return {"project_id": project_id, "repo_path": repo_path}
-
-
-@mcp_error_boundary
-async def _project_set_repo_default_branch(
-    project_id: str, repo_id: str, branch: str, ctx: Context
+async def _project_setup(
+    name: str,
+    ctx: Context,
+    repo_paths: list[str] | None = None,
+    set_active: bool = True,
 ) -> dict:
-    """Set the default base branch for a project repository."""
-    app = get_context(ctx)
-    await app.client.projects.get(project_id)
+    """Create a new project, optionally attach repos and set it active.
 
-    repos = await app.client.projects.repos(project_id)
-    if not any(repo.id == repo_id for repo in repos):
-        raise NotFoundError("repo", repo_id)
-
-    await app.client.projects.set_repo_default_branch(project_id, repo_id, branch)
-    return {"project_id": project_id, "repo_id": repo_id, "branch": branch}
-
-
-@mcp_error_boundary
-async def _repo_list(project_id: str, ctx: Context) -> dict:
-    """List repositories attached to a project."""
-    app = get_context(ctx)
-    repos = await app.client.projects.repos(project_id)
-    return {"repos": [{"id": r.id, "path": r.path} for r in repos]}
-
-
-@mcp_error_boundary
-async def _project_create(name: str, ctx: Context) -> dict:
-    """Create a project by name."""
+    Args:
+        name: Project name (required).
+        repo_paths: Optional list of repository paths to attach.
+        set_active: Whether to set this project as active (default True).
+    """
     app = get_context(ctx)
     project = await app.client.projects.create(name)
-    return {"id": project.id, "name": project.name}
+
+    if repo_paths:
+        for path in repo_paths:
+            await app.client.projects.add_repo(project.id, path)
+
+    if set_active:
+        await app.client.projects.set_active(project.id)
+
+    repos = await app.client.projects.repos(project.id)
+    return {
+        "id": project.id,
+        "name": project.name,
+        "is_active": set_active,
+        "repos": [{"id": r.id, "path": r.path} for r in repos],
+    }
 
 
 @mcp_error_boundary
-async def _project_delete(project_id: str, ctx: Context) -> dict:
-    """Delete a project permanently."""
+async def _project_update(
+    project_id: str,
+    ctx: Context,
+    set_active: bool | None = None,
+    add_repo_path: str | None = None,
+    repo_id: str | None = None,
+    default_branch: str | None = None,
+    delete: bool = False,
+) -> dict:
+    """Update an existing project: set active, add repo, set default branch, or delete.
+
+    Args:
+        project_id: The project to update (required).
+        set_active: If True, set this project as the active project.
+        add_repo_path: Path of a repository to attach.
+        repo_id: Repository ID (required when setting default_branch).
+        default_branch: New default branch for the repo identified by repo_id.
+        delete: If True, delete the project and return early.
+    """
     app = get_context(ctx)
-    await app.client.projects.delete(project_id)
-    return {"project_id": project_id, "deleted": True}
+
+    if delete:
+        await app.client.projects.delete(project_id)
+        return {"project_id": project_id, "deleted": True}
+
+    # Validate project exists
+    await app.client.projects.get(project_id)
+
+    if set_active is True:
+        await app.client.projects.set_active(project_id)
+
+    if add_repo_path is not None:
+        await app.client.projects.add_repo(project_id, add_repo_path)
+
+    if default_branch is not None:
+        if repo_id is None:
+            raise ValueError("repo_id is required when setting default_branch")
+        repos = await app.client.projects.repos(project_id)
+        if not any(r.id == repo_id for r in repos):
+            raise NotFoundError("repo", repo_id)
+        await app.client.projects.set_repo_default_branch(project_id, repo_id, default_branch)
+
+    # Return updated state
+    repos = await app.client.projects.repos(project_id)
+
+    return {
+        "id": project_id,
+        "is_active": app.client.active_project_id == project_id,
+        "repos": [{"id": r.id, "path": r.path} for r in repos],
+    }
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register project and repo domain tools on mcp, filtered by opts."""
     _tools = [
         ("project_list", _project_list),
-        ("project_set_active", _project_set_active),
-        ("project_add_repo", _project_add_repo),
-        ("project_set_repo_default_branch", _project_set_repo_default_branch),
-        ("repo_list", _repo_list),
-        ("project_create", _project_create),
-        ("project_delete", _project_delete),
+        ("project_setup", _project_setup),
+        ("project_update", _project_update),
     ]
     for name, fn in _tools:
         if is_tool_allowed(name, opts):

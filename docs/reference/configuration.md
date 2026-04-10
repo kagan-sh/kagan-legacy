@@ -8,14 +8,14 @@ icon: material/cog
 
 `config.toml` in Kagan config dir. Paths: `platformdirs` + env overrides.
 
-| Purpose         | Override                 |
-| --------------- | ------------------------ |
-| Config          | `KAGAN_CONFIG_DIR`       |
-| Data            | `KAGAN_DATA_DIR`         |
-| Cache           | `KAGAN_CACHE_DIR`        |
-| Worktree base   | `KAGAN_WORKTREE_BASE`    |
+| Purpose         | Override                  |
+| --------------- | ------------------------- |
+| Config          | `KAGAN_CONFIG_DIR`        |
+| Data            | `KAGAN_DATA_DIR`          |
+| Cache           | `KAGAN_CACHE_DIR`         |
+| Worktree base   | `KAGAN_WORKTREE_BASE`     |
 | Core runtime    | _(derived from data dir)_ |
-| TUI mouse input | `KAGAN_TUI_MOUSE`        |
+| TUI mouse input | `KAGAN_TUI_MOUSE`         |
 
 Files: `config.toml`, `kagan.db`, core runtime (`endpoint.json`, `token`, etc.).
 
@@ -58,8 +58,8 @@ max_concurrent_agents = 3
 | `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                                   |
 | `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                       |
 | `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                    |
-| `tasks_wait_default_timeout_seconds` | integer        | `1800`                           | Default timeout for `tasks_wait` (30 minutes)                                       |
-| `tasks_wait_max_timeout_seconds`     | integer        | `3600`                           | Max allowed timeout for `tasks_wait` (60 minutes)                                   |
+| `task_wait_default_timeout_seconds`  | integer        | `1800`                           | Default timeout for `task_wait` (30 minutes)                                        |
+| `task_wait_max_timeout_seconds`      | integer        | `3600`                           | Max allowed timeout for `task_wait` (60 minutes)                                    |
 
 ## `[refinement]`
 

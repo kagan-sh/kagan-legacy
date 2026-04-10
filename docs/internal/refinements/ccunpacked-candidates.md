@@ -4,7 +4,7 @@
 **Source:** [ccunpacked.dev](https://ccunpacked.dev/) — analysis of Claude Code's 519K+ LOC codebase
 **Branch:** `refine/ccunpacked-best-practices`
 
----
+______________________________________________________________________
 
 ## Summary
 
@@ -14,7 +14,7 @@ Auto-Dream, Bridge, Kairos). After comparing these patterns against Kagan's curr
 implementation, five high-impact refinement candidates emerge — each targeting a gap
 that directly affects UX or reliability.
 
----
+______________________________________________________________________
 
 ## Candidate 1: Context Compaction (Conversation Summarization)
 
@@ -33,22 +33,24 @@ context limits and abort with no recovery path. This is the single biggest relia
 gap.
 
 **Proposed Refinement:**
+
 1. Add a `compact_session()` service method in `_sessions.py` that:
    - Reads the current ACP conversation history
    - Calls the LLM with a summarization prompt (keep tool results, drop verbose output)
    - Replaces history with: system prompt + summary message + last N tool results
-2. Wire it into the agent loop: when `context_window_used / context_window_size > 0.8`,
+1. Wire it into the agent loop: when `context_window_used / context_window_size > 0.8`,
    auto-trigger compaction before the next API call.
-3. Expose as MCP tool `session_compact()` for manual use and as a TUI action.
-4. Track compaction events in session metadata for observability.
+1. Expose as an MCP tool for manual use and as a TUI action.
+1. Track compaction events in session metadata for observability.
 
 **Affected files:**
+
 - `src/kagan/core/_sessions.py` — new `compact_session()` method
 - `src/kagan/core/_acp.py` — intercept context threshold in ACP callback
 - `src/kagan/server/mcp/toolsets/sessions.py` — new MCP tool
 - `src/kagan/tui/widgets/agent_status.py` — compaction indicator
 
----
+______________________________________________________________________
 
 ## Candidate 2: Pre/Post Tool Execution Hooks
 
@@ -67,27 +69,30 @@ and notifications (alert on completion). Without them, users have no way to enfo
 policy on agent behavior.
 
 **Proposed Refinement:**
+
 1. Define a `Hook` protocol in `src/kagan/core/hooks.py`:
    ```python
    class Hook(Protocol):
        event: HookEvent  # PRE_TOOL, POST_TOOL, POST_SAMPLING, SESSION_END
+
        async def execute(self, context: HookContext) -> HookResult: ...
    ```
-2. Add a `HookRunner` that loads hooks from project settings (`.kagan/hooks/`) and
+1. Add a `HookRunner` that loads hooks from project settings (`.kagan/hooks/`) and
    fires them at the appropriate lifecycle points.
-3. Integrate into `_sessions.py` ACP callback — fire `POST_TOOL` after each
+1. Integrate into `_sessions.py` ACP callback — fire `POST_TOOL` after each
    `ToolCallEnd` event, `POST_SAMPLING` after each full LLM turn.
-4. Built-in hooks: `RepetitionGuard` (migrate existing), `DangerousCommandBlocker`
+1. Built-in hooks: `RepetitionGuard` (migrate existing), `DangerousCommandBlocker`
    (reject `rm -rf /`, `git push --force` etc.), `LintAfterEdit`.
-5. Expose hook management via MCP toolset and TUI settings screen.
+1. Expose hook management via MCP toolset and TUI settings screen.
 
 **Affected files:**
+
 - `src/kagan/core/hooks.py` — new module
 - `src/kagan/core/_sessions.py` — hook firing points
 - `src/kagan/core/_repetition_guard.py` — migrate to hook interface
 - `src/kagan/server/mcp/toolsets/settings.py` — hook CRUD tools
 
----
+______________________________________________________________________
 
 ## Candidate 3: Plan Verification / Mid-Execution Validation
 
@@ -106,25 +111,27 @@ prevents compounding errors. Especially important for multi-step tasks where eac
 builds on the last.
 
 **Proposed Refinement:**
+
 1. Add a `verify_step()` service method that:
    - Takes the current task, step index, and expected outcome
    - Runs a lightweight LLM call (or deterministic check) to verify the step
    - Returns PASS / FAIL / NEEDS_RETRY with explanation
-2. Integrate with the existing planning depth setting (`planning_depth` in settings):
+1. Integrate with the existing planning depth setting (`planning_depth` in settings):
    - When `planning_depth: "always"`, inject verification checkpoints between plan steps
    - Agent prompt includes: "After completing each step, call verify_step() before
      proceeding"
-3. On FAIL: inject a correction prompt into the ACP session with the failure reason
-4. Track verification results in session events for post-mortem analysis
-5. Expose as MCP tool for orchestrator-level verification
+1. On FAIL: inject a correction prompt into the ACP session with the failure reason
+1. Track verification results in session events for post-mortem analysis
+1. Expose as MCP tool for orchestrator-level verification
 
 **Affected files:**
+
 - `src/kagan/core/_sessions.py` — verification integration
 - `src/kagan/core/_prompts.py` — checkpoint injection in task prompts
 - `src/kagan/server/mcp/toolsets/sessions.py` — `verify_step()` tool
 - `src/kagan/core/models.py` — `VerificationResult` model
 
----
+______________________________________________________________________
 
 ## Candidate 4: Session Rewind / Conversation Branching
 
@@ -141,29 +148,31 @@ currently must cancel and re-run from scratch. Rewind to turn 14 would save sign
 time and token cost.
 
 **Proposed Refinement:**
+
 1. Add automatic git checkpoint tagging in worktrees:
    - After each successful tool execution that modifies files, create a lightweight git
      tag: `kagan/checkpoint/{session_id}/{step_n}`
    - Store checkpoint metadata (step index, timestamp, context snapshot) in session events
-2. Add `rewind_session()` service method:
+1. Add `rewind_session()` service method:
    - Takes session_id and target step/checkpoint
    - Resets worktree to that checkpoint's git state (`git reset --hard`)
    - Truncates session events after that point
    - Optionally re-runs from that point with a corrective prompt
-3. Expose via:
+1. Expose via:
    - MCP tool: `session_rewind(session_id, step)`
    - TUI: Rewind action in session detail view (pick from checkpoint list)
    - Web: Timeline scrubber on task detail page
-4. For conversation branching: clone the session up to a point and create a new session
+1. For conversation branching: clone the session up to a point and create a new session
    with the same history prefix but divergent continuation
 
 **Affected files:**
+
 - `src/kagan/core/_sessions.py` — checkpoint creation, rewind logic
 - `src/kagan/core/_worktrees.py` — git checkpoint tagging
 - `src/kagan/server/mcp/toolsets/sessions.py` — rewind/branch tools
 - `src/kagan/tui/screens/task_detail.py` — rewind UI
 
----
+______________________________________________________________________
 
 ## Candidate 5: Auto-Dream / Memory Consolidation
 
@@ -183,42 +192,44 @@ knowledge (common error patterns, architecture decisions, preferred approaches) 
 each subsequent task smarter.
 
 **Proposed Refinement:**
+
 1. Add a `consolidate_learnings()` background task that runs after session completion:
    - Reviews all session events and tool outputs from the completed session
    - Extracts key learnings, error patterns, and architectural insights
    - Deduplicates against existing project learnings
    - Categorizes: `[PATTERN]`, `[ERROR]`, `[ARCHITECTURE]`, `[PREFERENCE]`
-2. Store consolidated memory in a structured format:
+1. Store consolidated memory in a structured format:
    - New `ProjectMemory` model with categories, relevance scores, and timestamps
    - Decay old memories (reduce relevance score over time)
    - Cap at configurable limit (default: 50 entries)
-3. Smarter injection into prompts:
+1. Smarter injection into prompts:
    - Instead of raw `[LEARNING]` strings, select most relevant memories based on task
      description similarity (simple keyword/embedding match)
    - Include category labels so the agent knows what kind of knowledge it is
-4. Expose memory management:
+1. Expose memory management:
    - MCP tool: `memory_list()`, `memory_add()`, `memory_remove()`
    - TUI: Memory browser screen showing project knowledge base
    - CLI: `kagan memory list/add/remove/consolidate`
 
 **Affected files:**
+
 - `src/kagan/core/_memory.py` — new module for memory consolidation
 - `src/kagan/core/models.py` — `ProjectMemory` model
 - `src/kagan/core/_sessions.py` — trigger consolidation on session end
 - `src/kagan/server/mcp/toolsets/memory.py` — new MCP toolset
 - `src/kagan/cli/memory.py` — new CLI command group
 
----
+______________________________________________________________________
 
 ## Priority Matrix
 
-| # | Candidate | Impact | Effort | Priority |
-|---|-----------|--------|--------|----------|
-| 1 | Context Compaction | Critical (reliability) | Medium | **P0** |
-| 2 | Tool Execution Hooks | High (reliability + UX) | Medium | **P1** |
-| 3 | Plan Verification | High (reliability) | Medium | **P1** |
-| 4 | Session Rewind | High (UX) | High | **P2** |
-| 5 | Auto-Dream Memory | Medium-High (UX) | High | **P2** |
+| #   | Candidate            | Impact                  | Effort | Priority |
+| --- | -------------------- | ----------------------- | ------ | -------- |
+| 1   | Context Compaction   | Critical (reliability)  | Medium | **P0**   |
+| 2   | Tool Execution Hooks | High (reliability + UX) | Medium | **P1**   |
+| 3   | Plan Verification    | High (reliability)      | Medium | **P1**   |
+| 4   | Session Rewind       | High (UX)               | High   | **P2**   |
+| 5   | Auto-Dream Memory    | Medium-High (UX)        | High   | **P2**   |
 
 **Recommended order:** 1 → 2 → 3 → 4 → 5
 
@@ -226,15 +237,15 @@ Candidates 1-3 are foundational reliability improvements that should land before
 UX-oriented candidates 4-5. Context compaction (1) is the single most impactful change
 because it eliminates the hard failure mode of context exhaustion.
 
----
+______________________________________________________________________
 
 ## Appendix: CC Patterns Evaluated but Deprioritized
 
-| CC Pattern | Why Deprioritized |
-|------------|-------------------|
-| Bridge (remote control from phone/browser) | Kagan already has web dashboard + SSE streaming |
-| Buddy (virtual pet) | Fun but zero reliability/UX impact |
-| Voice mode | Niche use case, high effort |
-| Daemon mode (tmux --bg) | Kagan already runs detached processes |
-| UDS Inbox (inter-session messaging) | Low priority until multi-session orchestration matures |
+| CC Pattern                                       | Why Deprioritized                                                                         |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Bridge (remote control from phone/browser)       | Kagan already has web dashboard + SSE streaming                                           |
+| Buddy (virtual pet)                              | Fun but zero reliability/UX impact                                                        |
+| Voice mode                                       | Niche use case, high effort                                                               |
+| Daemon mode (tmux --bg)                          | Kagan already runs detached processes                                                     |
+| UDS Inbox (inter-session messaging)              | Low priority until multi-session orchestration matures                                    |
 | Coordinator Mode (lead agent + parallel workers) | Kagan already has parallel worktree agents; gap is coordination quality, not architecture |

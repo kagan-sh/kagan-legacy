@@ -68,19 +68,19 @@ ______________________________________________________________________
 
 ## Find what you need
 
-| Goal                             | Page                                                       |
-| -------------------------------- | ---------------------------------------------------------- |
-| First run in under 5 minutes     | [Quickstart](quickstart.md)                                |
-| Install the VS Code extension    | [VS Code extension](guides/vscode-extension.md)            |
-| Understand the task flow         | [Task lifecycle](concepts/task-lifecycle.md)               |
-| Understand start vs attach       | [Managed vs interactive](guides/managed-vs-interactive.md) |
-| Use chat REPL or TUI overlay     | [Chat guide](guides/chat.md)                               |
-| Understand ACP chat sessions     | [ACP session lifecycle](guides/acp-session-lifecycle.md)   |
-| Connect an AI client via MCP     | [MCP setup](guides/mcp-setup.md)                           |
-| Work across multiple repos       | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo)   |
-| Import tasks from GitHub         | [Import from GitHub](guides/github.md)                     |
-| Extend with plugins              | [Plugins](reference/plugins.md) (early stage)              |
-| Use the web dashboard            | [Web dashboard](guides/web-dashboard.md)                   |
-| Fix a known issue                | [Troubleshooting](troubleshooting.md)                      |
-| All CLI flags                    | [CLI reference](reference/cli.md)                          |
-| All MCP tools                    | [MCP tools reference](reference/mcp-tools.md)              |
+| Goal                          | Page                                                       |
+| ----------------------------- | ---------------------------------------------------------- |
+| First run in under 5 minutes  | [Quickstart](quickstart.md)                                |
+| Install the VS Code extension | [VS Code extension](guides/vscode-extension.md)            |
+| Understand the task flow      | [Task lifecycle](concepts/task-lifecycle.md)               |
+| Understand start vs attach    | [Managed vs interactive](guides/managed-vs-interactive.md) |
+| Use chat REPL or TUI overlay  | [Chat guide](guides/chat.md)                               |
+| Understand ACP chat sessions  | [ACP session lifecycle](guides/acp-session-lifecycle.md)   |
+| Connect an AI client via MCP  | [MCP setup](guides/mcp-setup.md)                           |
+| Work across multiple repos    | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo)   |
+| Import tasks from GitHub      | [Import from GitHub](guides/github.md)                     |
+| Extend with plugins           | [Plugins](reference/plugins.md) (early stage)              |
+| Use the web dashboard         | [Web dashboard](guides/web-dashboard.md)                   |
+| Fix a known issue             | [Troubleshooting](troubleshooting.md)                      |
+| All CLI flags                 | [CLI reference](reference/cli.md)                          |
+| All MCP tools                 | [MCP tools reference](reference/mcp-tools.md)              |

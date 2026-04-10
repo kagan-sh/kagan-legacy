@@ -1,11 +1,15 @@
-"""kagan.server.mcp.toolsets.review — Review domain MCP tools."""
+"""kagan.server.mcp.toolsets.review — Review domain MCP tools.
+
+6 tools: review_decide, review_verdict, review_clear_verdicts, review_merge,
+review_rebase, review_conflicts.
+"""
 
 import asyncio
 
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import build_conflict_resolution_feedback
-from kagan.core.errors import MergeConflictError
+from kagan.core.errors import MergeConflictError, ValidationError
 from kagan.core.models import Task
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerContext, ServerOptions, get_context
@@ -30,20 +34,28 @@ def _has_acceptance_criteria(task: Task) -> bool:
 
 
 @mcp_error_boundary
-async def _review_approve(task_id: str, ctx: Context) -> dict:
-    """Approve a review-ready task."""
-    app = get_context(ctx)
-    task = await app.client.tasks.get(task_id)
-    if not _has_acceptance_criteria(task):
-        return _manual_review_block(task_id)
-    await app.client.reviews.approve(task_id)
-    return {"task_id": task_id, "action": "approve"}
+async def _review_decide(task_id: str, verdict: str, ctx: Context, feedback: str = "") -> dict:
+    """Approve or reject a review-ready task.
 
-
-@mcp_error_boundary
-async def _review_reject(task_id: str, feedback: str, ctx: Context) -> dict:
-    """Reject a review-ready task with feedback."""
+    verdict must be "approve" or "reject".
+    feedback is required when verdict is "reject" and ignored on "approve".
+    """
     app = get_context(ctx)
+    normalized_verdict = verdict.strip().lower()
+
+    if normalized_verdict not in ("approve", "reject"):
+        raise ValidationError("verdict", f"Must be 'approve' or 'reject', got {verdict!r}")
+
+    if normalized_verdict == "approve":
+        task = await app.client.tasks.get(task_id)
+        if not _has_acceptance_criteria(task):
+            return _manual_review_block(task_id)
+        await app.client.reviews.approve(task_id)
+        return {"task_id": task_id, "action": "approve"}
+
+    # reject
+    if not feedback.strip():
+        raise ValidationError("feedback", "feedback is required when rejecting a task")
     await app.client.reviews.reject(task_id, feedback=feedback)
     return {"task_id": task_id, "action": "reject", "feedback": feedback}
 
@@ -56,14 +68,6 @@ async def _review_merge(task_id: str, ctx: Context) -> dict:
     if not _has_acceptance_criteria(task):
         return _manual_review_block(task_id)
     return await _handle_merge(app, task_id, task)
-
-
-@mcp_error_boundary
-async def _review_rebase(task_id: str, ctx: Context) -> dict:
-    """Rebase a task branch onto its current base branch."""
-    app = get_context(ctx)
-    await app.client.reviews.rebase(task_id)
-    return {"task_id": task_id, "action": "rebase"}
 
 
 async def _handle_merge(app: ServerContext, task_id: str, task: Task) -> dict:
@@ -92,6 +96,28 @@ async def _handle_merge(app: ServerContext, task_id: str, task: Task) -> dict:
     return {"task_id": task_id, "action": "merge"}
 
 
+@mcp_error_boundary
+async def _review_rebase(task_id: str, action: str, ctx: Context) -> dict:
+    """Start, continue, or abort a rebase of the task branch onto its base branch.
+
+    action must be "start", "continue", or "abort".
+    """
+    app = get_context(ctx)
+    normalized_action = action.strip().lower()
+
+    if normalized_action == "start":
+        await app.client.reviews.rebase(task_id)
+        return {"task_id": task_id, "action": "rebase"}
+    elif normalized_action == "continue":
+        await app.client.reviews.continue_rebase(task_id)
+        return {"task_id": task_id, "action": "rebase_continue"}
+    elif normalized_action == "abort":
+        await app.client.reviews.abort_rebase(task_id)
+        return {"task_id": task_id, "action": "abort_conflicts"}
+    else:
+        raise ValidationError("action", f"Must be 'start', 'continue', or 'abort', got {action!r}")
+
+
 def _register_review_conflicts(mcp: FastMCP) -> None:
     @mcp.tool()
     @mcp_error_boundary
@@ -101,40 +127,19 @@ def _register_review_conflicts(mcp: FastMCP) -> None:
         return await app.client.reviews.conflicts(task_id)
 
 
-def _register_review_continue_rebase(mcp: FastMCP) -> None:
+def _register_review_verdict(mcp: FastMCP) -> None:
     @mcp.tool()
     @mcp_error_boundary
-    async def review_continue_rebase(task_id: str, ctx: Context) -> dict:
-        """Continue an in-progress rebase after conflicts are resolved."""
-        app = get_context(ctx)
-        await app.client.reviews.continue_rebase(task_id)
-        return {"task_id": task_id, "action": "rebase_continue"}
-
-
-def _register_review_abort_rebase(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_abort_rebase(task_id: str, ctx: Context) -> dict:
-        """Abort an in-progress rebase and restore the task branch."""
-        app = get_context(ctx)
-        await app.client.reviews.abort_rebase(task_id)
-        return {"task_id": task_id, "action": "abort_conflicts"}
-
-
-def _register_review_set_criterion_verdict(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_set_criterion_verdict(
+    async def review_verdict(
         task_id: str,
         criterion_index: int,
         verdict: str,
         reason: str,
         ctx: Context,
     ) -> dict:
-        """Report the AI review verdict for a single acceptance criterion.
+        """Record a PASS or FAIL verdict for a single acceptance criterion.
 
-        Call this once per criterion during review, BEFORE calling review_approve
-        or review_reject.
+        Call this once per criterion during review, BEFORE calling review_decide.
         verdict must be 'PASS' or 'FAIL'. reason is a one-line justification.
         """
         app = get_context(ctx)
@@ -163,18 +168,13 @@ def _register_review_clear_verdicts(mcp: FastMCP) -> None:
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register review domain tools on mcp, filtered by opts."""
     plain_tools = [
-        ("review_approve", _review_approve),
-        ("review_reject", _review_reject),
+        ("review_decide", _review_decide),
         ("review_merge", _review_merge),
         ("review_rebase", _review_rebase),
     ]
-    # Standalone coroutines register directly; helper-backed tools keep their
-    # inline closures because they bundle richer per-tool registration logic.
     wrapped_tools = [
         ("review_conflicts", _register_review_conflicts),
-        ("review_continue_rebase", _register_review_continue_rebase),
-        ("review_abort_rebase", _register_review_abort_rebase),
-        ("review_set_criterion_verdict", _register_review_set_criterion_verdict),
+        ("review_verdict", _register_review_verdict),
         ("review_clear_verdicts", _register_review_clear_verdicts),
     ]
     for name, fn in plain_tools:

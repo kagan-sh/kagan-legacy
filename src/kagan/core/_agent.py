@@ -719,6 +719,7 @@ class _ByteCountingStreamReader(asyncio.StreamReader):
             data = await self._reader.readline()
             if not data or data.strip():
                 return self._track(data)
+            self._track(data)  # count blank-line bytes even though we suppress them
             # skip blank/whitespace-only lines (workaround for upstream acp#87)
 
     async def readuntil(self, separator: bytes = b"\n") -> bytes:

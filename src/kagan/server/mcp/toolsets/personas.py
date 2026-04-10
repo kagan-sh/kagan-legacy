@@ -5,6 +5,7 @@
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from kagan.core.errors import ValidationError
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
 from kagan.server.mcp.toolsets import mcp_error_boundary
@@ -90,13 +91,14 @@ async def _persona_trust(
     app = get_context(ctx)
 
     if action not in ("list", "add", "remove"):
-        raise ValueError(f"Invalid action '{action}': must be 'list', 'add', or 'remove'")
+        msg = f"Invalid action '{action}': must be 'list', 'add', or 'remove'"
+        raise ValidationError("action", msg)
 
     if action == "list":
         return await app.client.persona_presets.whitelist_list()
 
     if repo is None:
-        raise ValueError(f"repo is required for action '{action}'")
+        raise ValidationError("repo", f"repo is required for action '{action}'")
 
     if action == "add":
         return await app.client.persona_presets.whitelist_add(repo)

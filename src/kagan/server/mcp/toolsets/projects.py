@@ -23,17 +23,20 @@ async def _project_list(ctx: Context) -> dict:
 
     active_id = app.client.active_project_id
 
-    result = []
-    for p in projects:
-        repos = await app.client.projects.repos(p.id)
-        result.append(
-            {
-                "id": p.id,
-                "name": p.name,
-                "is_active": p.id == active_id,
-                "repos": [{"id": r.id, "path": r.path} for r in repos],
-            }
-        )
+    # Gather repo lists concurrently to avoid N+1 sequential queries
+    import asyncio
+
+    repo_lists = await asyncio.gather(*(app.client.projects.repos(p.id) for p in projects))
+
+    result = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "is_active": p.id == active_id,
+            "repos": [{"id": r.id, "path": r.path} for r in repos],
+        }
+        for p, repos in zip(projects, repo_lists, strict=True)
+    ]
     return {"projects": result}
 
 

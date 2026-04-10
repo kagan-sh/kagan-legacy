@@ -245,6 +245,8 @@ async def _task_create(
     default_repo_id = await _resolve_default_repo_id(ctx)
 
     # Normalize: single-task params → batch list
+    if tasks is not None and title is not None:
+        raise ValidationError("tasks", "pass either 'tasks' list or 'title', not both")
     if tasks is None:
         if title is None:
             raise ValidationError("title", "title is required when tasks list is not provided")

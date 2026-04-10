@@ -66,14 +66,14 @@ describe("ChatInputBar", () => {
         expect(onSend).toHaveBeenCalledWith("hello world", undefined);
     });
 
-    it("disables input while streaming", () => {
+    it("disables send button while streaming", () => {
         renderWithProviders(<ChatInputBar onSend={vi.fn()} />, {
             store: connectedStore(true),
         });
 
         expect(
-            screen.getByPlaceholderText("Type a message or / for commands..."),
-        ).toHaveAttribute("readonly");
+            screen.getByRole("button", { name: "Send message" }),
+        ).toBeDisabled();
     });
 
     it("clears draft on Ctrl+C when not streaming", async () => {

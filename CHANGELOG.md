@@ -13,6 +13,20 @@
 
 
 
+## v0.17.0-beta.2 (2026-04-10)
+
+
+
+
+### Bug Fixes
+
+- Revert ACP git dependency to PyPI release for publishability
+  ([`a66cf02`](https://github.com/kagan-sh/kagan/commit/a66cf02ed85b8f2eb88e6d713ac1a9b10f6710ad))
+
+
+
+
+
 ## v0.17.0-beta.1 (2026-04-10)
 
 

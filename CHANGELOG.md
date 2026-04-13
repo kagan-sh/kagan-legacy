@@ -13,6 +13,25 @@
 
 
 
+## v0.17.1-beta.1 (2026-04-13)
+
+
+
+
+### Chores
+
+- **ci**: Bump actions/github-script from 8 to 9
+  ([#105](https://github.com/kagan-sh/kagan/pull/105),
+  [`fc19f59`](https://github.com/kagan-sh/kagan/commit/fc19f5944d2036146d309870a6be70a1a01ccfaa))
+
+- **ci**: Bump pypa/gh-action-pypi-publish in the all group
+  ([#103](https://github.com/kagan-sh/kagan/pull/103),
+  [`5678117`](https://github.com/kagan-sh/kagan/commit/5678117ccd666ed07992363bc74772e356575279))
+
+
+
+
+
 ## v0.17.0 (2026-04-10)
 
 

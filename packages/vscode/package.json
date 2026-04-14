@@ -399,7 +399,7 @@
     "ovsx": "^0.10.10",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.2",
+    "vitest": "^4.1.4",
     "wdio-vscode-service": "^6.1.4",
     "webdriverio": "^9.27.0"
   }

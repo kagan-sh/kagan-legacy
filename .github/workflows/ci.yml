@@ -250,12 +250,13 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - name: Cache pnpm store
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
+      # Temporarily disable pnpm cache to troubleshoot lockfile issue
+      # - name: Cache pnpm store
+      #   uses: actions/cache@v5
+      #   with:
+      #     path: ~/.local/share/pnpm/store
+      #     key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      #     restore-keys: pnpm-${{ runner.os }}-
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true

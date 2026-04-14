@@ -51,7 +51,7 @@
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.0.0",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.2",
     "shadcn": "^4.2.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",

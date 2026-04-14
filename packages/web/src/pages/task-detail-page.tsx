@@ -27,11 +27,11 @@ import {
 } from "@/lib/utils/constants";
 import { useTaskEvents } from "@/lib/hooks/use-task-events";
 import {
-    ActionEmptyState,
     InspectorSection,
     Panel,
     StickyActionBar,
 } from "@/components/shared/workspace";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -227,10 +227,12 @@ export function Component() {
     if (!displayTask) {
         return (
             <div className="mx-auto flex h-full w-full max-w-[1680px] items-center justify-center px-6 py-10">
-                <ActionEmptyState
-                    title="Task not found"
-                    description="The task may have been deleted or the workspace is no longer synced with the server."
-                />
+                <Empty className="border-0">
+                    <EmptyHeader>
+                        <EmptyTitle>Task not found</EmptyTitle>
+                        <EmptyDescription>The task may have been deleted or the workspace is no longer synced with the server.</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
             </div>
         );
     }
@@ -437,11 +439,12 @@ export function Component() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <ActionEmptyState
-                                                title="No acceptance criteria yet"
-                                                description="The agent can still work, but review quality will be stronger if you define concrete success checks."
-                                                className="min-h-[14rem]"
-                                            />
+                                            <Empty className="min-h-[14rem] border-0">
+                                                <EmptyHeader>
+                                                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
+                                                    <EmptyDescription>The agent can still work, but review quality will be stronger if you define concrete success checks.</EmptyDescription>
+                                                </EmptyHeader>
+                                            </Empty>
                                         )}
                                     </InspectorSection>
                                 </div>
@@ -455,15 +458,19 @@ export function Component() {
                                             taskStatus={displayTask.status}
                                         />
                                     ) : displayTask.status === "DONE" ? (
-                                        <ActionEmptyState
-                                            title="Changes merged"
-                                            description="This task's branch has been merged and the workspace cleaned up. The diff is no longer available."
-                                        />
+                                        <Empty className="border-0">
+                                            <EmptyHeader>
+                                                <EmptyTitle>Changes merged</EmptyTitle>
+                                                <EmptyDescription>This task's branch has been merged and the workspace cleaned up. The diff is no longer available.</EmptyDescription>
+                                            </EmptyHeader>
+                                        </Empty>
                                     ) : (
-                                        <ActionEmptyState
-                                            title="Workspace not ready"
-                                            description="Provision or start the task to let Kagan create a working tree. Once code starts moving, diffs will appear here."
-                                        />
+                                        <Empty className="border-0">
+                                            <EmptyHeader>
+                                                <EmptyTitle>Workspace not ready</EmptyTitle>
+                                                <EmptyDescription>Provision or start the task to let Kagan create a working tree. Once code starts moving, diffs will appear here.</EmptyDescription>
+                                            </EmptyHeader>
+                                        </Empty>
                                     )}
                                 </div>
                             </TabsContent>

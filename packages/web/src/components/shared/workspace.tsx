@@ -104,38 +104,3 @@ export function StickyActionBar({
   );
 }
 
-interface ActionEmptyStateProps {
-  title: string;
-  description: string;
-  icon?: ReactNode;
-  action?: ReactNode;
-  className?: string;
-}
-
-export function ActionEmptyState({
-  title,
-  description,
-  icon,
-  action,
-  className,
-}: ActionEmptyStateProps) {
-  return (
-    <div
-      className={cn(
-        'flex min-h-[10rem] flex-col items-center justify-center gap-2 bg-[color:var(--surface-1)]/50 px-4 py-6 text-center',
-        className,
-      )}
-    >
-      {icon ? (
-        <div className="flex size-10 items-center justify-center bg-[color:var(--surface-2)] text-[var(--muted-foreground)] shadow-[var(--soft-shadow)]">
-          {icon}
-        </div>
-      ) : null}
-      <div className="space-y-1">
-        <h3 className="line-clamp-1 text-base font-semibold">{title}</h3>
-        <p className="line-clamp-2 max-w-md text-sm leading-5 text-[var(--muted-foreground)]">{description}</p>
-      </div>
-      {action}
-    </div>
-  );
-}

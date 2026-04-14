@@ -434,36 +434,35 @@ export function KanbanBoard() {
       <div className="flex min-h-0 flex-1 gap-px overflow-hidden pt-3">
         <div className="min-w-0 flex-1">
           {showBoardEmpty ? (
-            <ActionEmptyState
-              title="Start your first task"
-              description="Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session."
-              icon={<Plus className="size-6" />}
-              action={(
-                <Button onClick={openCreateDialog} className="cta-glow">
-                  <Plus className="size-4" />
-                  Create first task
-                </Button>
-              )}
-            />
+            <Empty className="border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Plus className="size-6" /></EmptyMedia>
+                <EmptyTitle>Start your first task</EmptyTitle>
+                <EmptyDescription>Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session.</EmptyDescription>
+              </EmptyHeader>
+              <Button onClick={openCreateDialog} className="cta-glow">
+                <Plus className="size-4" />
+                Create first task
+              </Button>
+            </Empty>
           ) : showFilteredEmpty ? (
-            <ActionEmptyState
-              title="No tasks match the active filters"
-              description="Broaden your filters to bring more of the workspace back into view."
-              icon={<Search className="size-6" />}
-              action={(
-                <Button
-                  variant="outline"
-                  className=""
-                  onClick={() => {
-                    setStatusFilter('ALL');
-                    setQuery('');
-                    setSort('default');
-                  }}
-                >
-                  Reset filters
-                </Button>
-              )}
-            />
+            <Empty className="border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Search className="size-6" /></EmptyMedia>
+                <EmptyTitle>No tasks match the active filters</EmptyTitle>
+                <EmptyDescription>Broaden your filters to bring more of the workspace back into view.</EmptyDescription>
+              </EmptyHeader>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setQuery('');
+                  setSort('default');
+                }}
+              >
+                Reset filters
+              </Button>
+            </Empty>
           ) : view === 'kanban' ? (
             <DndContext
               sensors={sensors}

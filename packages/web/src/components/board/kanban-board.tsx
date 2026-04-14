@@ -47,7 +47,7 @@ import { useBoardKeyboard } from '@/lib/hooks/use-board-keyboard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ActionEmptyState } from '@/components/shared/workspace';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import {
   loadWebOnboardingTutorialSeen,
   saveWebOnboardingTutorialSeen,

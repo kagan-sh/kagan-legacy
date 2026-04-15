@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel
 
 from kagan.core._agent import cleanup_all_spawned_processes
+from kagan.core._analytics import Analytics
 from kagan.core._audit import AuditLog
 from kagan.core._db import create_db_engine, default_db_path, get_db_version
 from kagan.core._events import Events
@@ -46,6 +47,7 @@ class KaganCore:
         self.reviews = Reviews(self._engine, self)
         self.settings = Settings(self._engine)
         self.audit_log = AuditLog(self._engine)
+        self.analytics = Analytics(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
 
         self.active_project_id: str | None = None

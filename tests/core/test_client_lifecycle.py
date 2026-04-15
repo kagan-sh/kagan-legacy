@@ -1,6 +1,5 @@
 """Feature tests: Client Lifecycle — docs/internal/features/core.md §1."""
 
-import asyncio
 from pathlib import Path
 
 import pytest

@@ -1,7 +1,6 @@
 """Behavioral tests for managed-run MCP tools."""
 
 import pytest
-from mcp.types import TextContent
 
 from mcp import ClientSession
 from tests.helpers.mcp_helpers import extract_text as _text

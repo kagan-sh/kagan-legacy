@@ -56,7 +56,7 @@ async def test_session_start_accepts_persona_argument(mcp_board: ClientSession) 
         "run_start",
         {"task_id": task_id, "persona": "analyst"},
     )
-    assert result is not None
+    assert not result.isError
 
 
 async def test_session_report_returns_expected_columns(mcp_board: ClientSession) -> None:

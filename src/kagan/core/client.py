@@ -1,20 +1,10 @@
 """KaganCore — thin engine factory and convenience namespace.
 
-Attribute-style access (backward compat)::
+Usage::
 
     async with KaganCore() as client:
         project = await client.projects.create("My Project")
         task = await client.tasks.create("Fix the bug")
-
-Module-function style (canonical, preferred for new code)::
-
-    from kagan.core._db import create_db_engine
-    from kagan.core._projects import create_project
-    from kagan.core._tasks import create_task
-
-    engine = create_db_engine()
-    project = await create_project(engine, "My Project")
-    task = await create_task(engine, "Fix the bug", active_project_id=project.id)
 """
 
 import asyncio

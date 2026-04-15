@@ -47,8 +47,10 @@ def test_acp_exit_hints_include_codex_eacces_recovery() -> None:
 
 def test_acp_exit_hints_cover_generic_permission_denied() -> None:
     details = "permission denied while executing backend"
-    assert _chat_exit_hint(agent_backend="gemini-cli", details=details) is not None
-    assert _core_exit_hint(agent_backend="gemini-cli", details=details) is not None
+    chat_hint = _chat_exit_hint(agent_backend="gemini-cli", details=details)
+    core_hint = _core_exit_hint(agent_backend="gemini-cli", details=details)
+    assert isinstance(chat_hint, str) and "permission" in chat_hint.lower()
+    assert isinstance(core_hint, str) and "permission" in core_hint.lower()
 
 
 @pytest.mark.parametrize(

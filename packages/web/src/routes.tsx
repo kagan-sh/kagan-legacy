@@ -60,6 +60,11 @@ export const routes: RouteObject[] = [
             element: <SessionRedirect />,
           },
           {
+            path: 'analytics',
+            lazy: () => import('@/pages/analytics-page'),
+            errorElement: <RouteError />,
+          },
+          {
             path: 'settings',
             lazy: () => import('@/pages/settings-page'),
             errorElement: <RouteError />,

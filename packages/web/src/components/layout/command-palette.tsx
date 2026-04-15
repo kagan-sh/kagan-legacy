@@ -31,12 +31,9 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from '@/components/ui/command';
-import { tasksAtom } from '@/lib/atoms/board';
+import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
 import {
   commandPaletteOpenAtom,
-  createTaskDialogOpenAtom,
-  deleteTaskDialogTaskIdAtom,
-  editTaskDialogTaskIdAtom,
   helpOverlayOpenAtom,
   pluginImportOpenAtom,
   sessionPickerOpenAtom,
@@ -52,9 +49,7 @@ export function CommandPalette() {
   const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
   const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
   const setPluginImportOpen = useSetAtom(pluginImportOpenAtom);
-  const setCreateTaskDialogOpen = useSetAtom(createTaskDialogOpenAtom);
-  const setEditTaskDialogTaskId = useSetAtom(editTaskDialogTaskIdAtom);
-  const setDeleteTaskDialogTaskId = useSetAtom(deleteTaskDialogTaskIdAtom);
+  const setBoardDialog = useSetAtom(boardDialogAtom);
 
   const currentTaskId = useMemo(() => {
     const taskMatch = /^\/task\/([^/?]+)/.exec(location.pathname);
@@ -195,7 +190,7 @@ export function CommandPalette() {
           <CommandItem
             onSelect={() => {
               onOpenChange(false);
-              setCreateTaskDialogOpen(true);
+              setBoardDialog({ kind: 'create' });
             }}
           >
             <Plus className="size-4" />
@@ -206,7 +201,7 @@ export function CommandPalette() {
             onSelect={() => {
               if (!currentTask) return;
               onOpenChange(false);
-              setEditTaskDialogTaskId(currentTask.id);
+              setBoardDialog({ kind: 'edit', taskId: currentTask.id });
             }}
           >
             <Pencil className="size-4" />
@@ -217,7 +212,7 @@ export function CommandPalette() {
             onSelect={() => {
               if (!currentTask) return;
               onOpenChange(false);
-              setDeleteTaskDialogTaskId(currentTask.id);
+              setBoardDialog({ kind: 'delete', taskId: currentTask.id });
             }}
           >
             <Trash2 className="size-4" />

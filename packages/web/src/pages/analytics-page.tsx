@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { ValueType, NameType, Payload } from 'recharts/types/component/DefaultTooltipContent';
 import {
   Activity,
   BarChart3,
@@ -217,7 +218,7 @@ function SuccessRateChart({ data }: { data: BackendStats[] }) {
           tick={{ fontSize: 11, fontFamily: 'var(--font-code)' }}
           stroke="var(--muted-foreground)"
         />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${v}%`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => `${v ?? 0}%`} />
         <Bar dataKey="success" name="Success" stackId="a" fill={CHART_COLORS.completed} radius={[0, 0, 0, 0]} />
         <Bar dataKey="failure" name="Failure" stackId="a" fill={CHART_COLORS.failed} radius={[0, 4, 4, 0]} />
       </BarChart>
@@ -256,8 +257,8 @@ function CostTimelineChart({ data }: { data: CostSummary | null }) {
           stroke="var(--muted-foreground)"
           interval="preserveStartEnd"
         />
-        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `$${v}`} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v) => formatCost(Number(v))} labelFormatter={(_l, payload) => payload[0]?.payload?.date ?? _l} />
+        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: string | number) => `$${v}`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => formatCost(Number(v))} labelFormatter={(_l: unknown, payload: ReadonlyArray<Payload<ValueType, NameType>>) => (payload[0]?.payload as Record<string, unknown>)?.date as string ?? String(_l)} />
         <Line
           type="monotone"
           dataKey="cost"
@@ -296,8 +297,8 @@ function CostByBackendChart({ data }: { data: CostSummary | null }) {
           textAnchor="end"
           height={60}
         />
-        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `$${v}`} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v) => formatCost(Number(v))} />
+        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: string | number) => `$${v}`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => formatCost(Number(v))} />
         <Bar dataKey="cost" name="Total Cost" radius={[4, 4, 0, 0]}>
           {chartData.map((_, i) => (
             <Cell key={i} fill={BACKEND_PALETTE[i % BACKEND_PALETTE.length]} />

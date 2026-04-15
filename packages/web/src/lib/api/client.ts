@@ -1,6 +1,8 @@
 import type {
+  BackendStats,
   ChatAgentsResponse,
   ClientPresence,
+  CostSummary,
   CreateChatSessionInput,
   CreateTaskInput,
   DiffFile,
@@ -12,6 +14,7 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
+  SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
   TaskStatus,
@@ -530,6 +533,25 @@ export class KaganApiClient {
   }
 
   // -- Plugins ---------------------------------------------------------------
+
+  // -- Analytics -------------------------------------------------------------
+
+  /** GET /api/analytics/backend-stats */
+  async getBackendStats(): Promise<BackendStats[]> {
+    return this.request<BackendStats[]>('/api/analytics/backend-stats');
+  }
+
+  /** GET /api/analytics/cost-summary?days=... */
+  async getCostSummary(params?: { days?: number }): Promise<CostSummary> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<CostSummary>(`/api/analytics/cost-summary${query}`);
+  }
+
+  /** GET /api/analytics/session-timeline?days=... */
+  async getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<SessionTimelineEntry[]>(`/api/analytics/session-timeline${query}`);
+  }
 
   /** GET /api/plugins */
   async getPlugins(): Promise<{ plugins: Array<{ name: string; builtin: boolean; package: string | null; version: string | null }> }> {

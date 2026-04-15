@@ -228,3 +228,33 @@ export interface ClientPresence {
     active_task_id: string | null;
     user_label: string;
 }
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export interface BackendStats {
+    agent_backend: string;
+    count: number;
+    success_rate: number;
+    avg_cost: number;
+    avg_duration_seconds: number | null;
+    human_override_rate: number;
+    retry_rate: number;
+}
+
+export interface CostSummary {
+    total_cost: number;
+    cost_by_day: Record<string, number>;
+    cost_by_backend: Record<string, number>;
+}
+
+export interface SessionTimelineEntry {
+    date: string;
+    total: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    running: number;
+    pending: number;
+}

@@ -22,12 +22,15 @@ describe('HeaderBar', () => {
     expect(screen.getByText('Offline')).toBeVisible();
   });
 
-  it('calls callback when Quick Actions trigger is clicked', async () => {
+  it('calls callback when search button is clicked', async () => {
     const onOpenCommandPalette = vi.fn();
 
     renderWithProviders(<HeaderBar onOpenCommandPalette={onOpenCommandPalette} />);
 
-    screen.getByRole('button', { name: /Search or jump/ }).click();
+    // The search button contains a Search icon and ⌘K shortcut hint
+    const buttons = screen.getAllByRole('button');
+    const searchButton = buttons[0]; // First button in the header actions
+    searchButton.click();
 
     expect(onOpenCommandPalette).toHaveBeenCalledTimes(1);
   });

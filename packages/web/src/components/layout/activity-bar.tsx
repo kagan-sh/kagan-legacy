@@ -10,7 +10,7 @@ const ITEMS = [
 
 export function ActivityBar() {
   return (
-    <aside className="hidden w-16 shrink-0 border-r border-[color:var(--border-subtle)] bg-[color:var(--surface-0)] lg:flex lg:flex-col">
+    <aside className="hidden w-16 shrink-0 bg-[color:var(--surface-0)] lg:flex lg:flex-col">
       <div className="flex h-16 items-center justify-center">
         <NavLink
           to="/"

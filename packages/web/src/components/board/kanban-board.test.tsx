@@ -69,7 +69,7 @@ describe('KanbanBoard', () => {
       expect(await screen.findByText('Start your first task')).toBeVisible();
       expect(
         screen.getByText(
-          'Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session.',
+          'Create a task, then Start to move it toward review and merge.',
         ),
       ).toBeVisible();
     } finally {

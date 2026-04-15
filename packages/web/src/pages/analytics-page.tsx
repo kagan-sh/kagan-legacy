@@ -420,27 +420,26 @@ export function Component() {
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1680px] flex-col px-4 py-3 sm:px-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[color:var(--border-subtle)] pb-3">
-        <h1 className="text-sm font-semibold">Analytics</h1>
-        <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-        <span className="text-xs text-[var(--muted-foreground)]">
-          Agent performance, cost tracking &amp; session activity
-        </span>
-        <div className="ml-auto">
-          <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-            <SelectTrigger className="h-8 w-32 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="14">Last 14 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="flex items-center justify-between pb-6">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Agent performance, cost tracking &amp; session activity
+          </p>
         </div>
+        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="14">Last 14 days</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 90 days</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {error && (

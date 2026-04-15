@@ -369,11 +369,11 @@ export function KanbanBoard() {
       <div className="flex min-h-0 flex-1 gap-px overflow-hidden pt-3">
         <div className="min-w-0 flex-1">
           {showBoardEmpty ? (
-            <Empty className="border-0">
+            <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Plus className="size-6" /></EmptyMedia>
                 <EmptyTitle>Start your first task</EmptyTitle>
-                <EmptyDescription>Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session.</EmptyDescription>
+                <EmptyDescription>Create a task, then Start to move it toward review and merge.</EmptyDescription>
               </EmptyHeader>
               <Button onClick={openCreateDialog} className="cta-glow">
                 <Plus className="size-4" />
@@ -381,7 +381,7 @@ export function KanbanBoard() {
               </Button>
             </Empty>
           ) : showFilteredEmpty ? (
-            <Empty className="border-0">
+            <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Search className="size-6" /></EmptyMedia>
                 <EmptyTitle>No tasks match the active filters</EmptyTitle>

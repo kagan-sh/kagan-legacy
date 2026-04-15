@@ -105,9 +105,9 @@ export function KanbanColumn({
 
       <div className="flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
-          <Empty className="h-full min-h-[10rem] border-0">
+          <Empty className="h-full min-h-[10rem]">
             <EmptyHeader>
-              <EmptyTitle>{EMPTY_COPY[status].title}</EmptyTitle>
+              <EmptyTitle className="text-sm text-muted-foreground">{EMPTY_COPY[status].title}</EmptyTitle>
               <EmptyDescription>{EMPTY_COPY[status].description}</EmptyDescription>
             </EmptyHeader>
           </Empty>

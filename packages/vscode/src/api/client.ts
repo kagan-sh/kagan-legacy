@@ -1,4 +1,5 @@
 import type {
+  AnalyticsExport,
   BackendStats,
   ChatAgentsResponse,
   CreateTaskInput,
@@ -266,6 +267,10 @@ export class KaganClient {
 
   getSessionTimeline(days = 30): Promise<SessionTimelineEntry[]> {
     return this.get<SessionTimelineEntry[]>(`/api/analytics/session-timeline?days=${days}`);
+  }
+
+  getAnalyticsExport(days = 30): Promise<AnalyticsExport> {
+    return this.get<AnalyticsExport>(`/api/analytics/export?days=${days}`);
   }
 
   async ping(): Promise<boolean> {

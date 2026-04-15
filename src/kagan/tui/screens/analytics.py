@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from textual.binding import Binding
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
 ANALYTICS_BINDINGS: list[Binding] = [
     Binding("escape", "close", "Close"),
     Binding("r", "refresh", "Refresh"),
+    Binding("e", "export", "Export JSON"),
 ]
 
 
@@ -130,7 +133,7 @@ class AnalyticsModal(ModalScreen[None]):
             yield Static("Loading...", id="backend-stats", classes="analytics-body")
             yield Static("▸ Session Activity (30 days)", classes="analytics-section-title")
             yield Static("Loading...", id="timeline-summary", classes="analytics-body")
-            yield Static("[r] refresh  [esc] close", classes="analytics-hint")
+            yield Static("[e] export  [r] refresh  [esc] close", classes="analytics-hint")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -158,6 +161,20 @@ class AnalyticsModal(ModalScreen[None]):
         self.query_one("#backend-stats", Static).update("Loading...")
         self.query_one("#timeline-summary", Static).update("Loading...")
         await self._load_data()
+
+    async def action_export(self) -> None:
+        app: KaganApp = self.app  # type: ignore[assignment]
+        project_id = app.core.active_project_id
+        if not project_id:
+            self.notify("No active project", severity="warning")
+            return
+        try:
+            data = await app.core.analytics.export(project_id)
+            out = Path.cwd() / "kagan-analytics.json"
+            out.write_text(json.dumps(data, indent=2))
+            self.notify(f"Exported to {out}")
+        except Exception as exc:
+            self.notify(f"Export failed: {exc}", severity="error")
 
     def action_close(self) -> None:
         self.dismiss(None)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -60,6 +61,21 @@ class Analytics:
             ]
 
         return await _db_async(self._engine, _run)
+
+    async def export(self, project_id: str, days: int = 30) -> dict[str, Any]:
+        """Bundle backend stats + session timeline into a single export dict."""
+        stats = await self.backend_stats(project_id)
+        timeline = await self.session_timeline(project_id, days=days)
+        return {
+            "exported_at": datetime.now(UTC).isoformat(),
+            "period_days": days,
+            "backend_stats": stats,
+            "session_timeline": timeline,
+        }
+
+    def export_json(self, data: dict[str, Any]) -> str:
+        """Serialize an export dict to compact JSON."""
+        return json.dumps(data, separators=(",", ":"))
 
     async def session_timeline(self, project_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Daily session counts by status."""

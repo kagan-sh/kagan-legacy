@@ -23,6 +23,7 @@ from kagan.cli.chat._chat_acp import (
 )
 from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
+    export_analytics_json,
     print_analytics_panel,
     print_help_documentation,
     print_project_info,
@@ -965,7 +966,11 @@ class ChatController:
                     turn_count=self._turn_count,
                 )
             case SlashAction.SHOW_ANALYTICS:
-                await print_analytics_panel(self.client)
+                if result.data and result.data.startswith("export"):
+                    path = result.data if result.data != "export" else None
+                    await export_analytics_json(self.client, path)
+                else:
+                    await print_analytics_panel(self.client)
             case SlashAction.SHOW_PROJECT:
                 print_project_info(
                     project_name=self._project_name,

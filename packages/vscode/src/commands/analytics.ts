@@ -69,6 +69,20 @@ export function registerAnalyticsCommands(
         await vscode.window.showTextDocument(doc, { preview: true });
       });
     }),
+
+    vscode.commands.registerCommand("kagan.analytics.export", async () => {
+      await withErrors("export analytics", async () => {
+        const data = await client.getAnalyticsExport();
+        const uri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file("kagan-analytics.json"),
+          filters: { JSON: ["json"] },
+        });
+        if (!uri) return;
+        const content = new TextEncoder().encode(JSON.stringify(data, null, 2));
+        await vscode.workspace.fs.writeFile(uri, content);
+        vscode.window.showInformationMessage(`Analytics exported to ${uri.fsPath}`);
+      });
+    }),
   );
 }
 

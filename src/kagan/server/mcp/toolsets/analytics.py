@@ -34,3 +34,20 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                 return {"timeline": []}
             timeline = await app.client.analytics.session_timeline(project_id, days=days)
             return {"timeline": timeline}
+
+    if is_tool_allowed("analytics_export", opts):
+
+        @mcp.tool()
+        @mcp_error_boundary
+        async def analytics_export(ctx: Context, days: int = 30) -> dict:
+            """Export combined analytics (backend stats + session timeline) as JSON."""
+            app = get_context(ctx)
+            project_id = app.client.active_project_id
+            if not project_id:
+                return {
+                    "exported_at": None,
+                    "period_days": days,
+                    "backend_stats": [],
+                    "session_timeline": [],
+                }
+            return await app.client.analytics.export(project_id, days=days)

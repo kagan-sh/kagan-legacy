@@ -297,8 +297,17 @@ def _handle_tool(
 
 
 def _handle_analytics(
-    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
+    arg = invocation.arg.strip().lower()
+    if arg.startswith("export"):
+        # /analytics export [path]
+        path = invocation.arg.strip()[len("export") :].strip() or None
+        return SlashCommandOutcome(
+            handled=True,
+            action=SlashAction.SHOW_ANALYTICS,
+            data=path or "export",
+        )
     return SlashCommandOutcome(handled=True, action=SlashAction.SHOW_ANALYTICS)
 
 
@@ -386,7 +395,7 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
     )
     registry.register(
         name="analytics",
-        description="Show backend stats and session activity",
+        description="Show stats or export: /analytics [export [path]]",
         handler=_handle_analytics,
     )
     registry.register(

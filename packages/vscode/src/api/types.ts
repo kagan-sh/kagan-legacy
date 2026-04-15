@@ -251,6 +251,13 @@ export interface SessionTimelineEntry {
   pending: number;
 }
 
+export interface AnalyticsExport {
+  exported_at: string | null;
+  period_days: number;
+  backend_stats: BackendStats[];
+  session_timeline: SessionTimelineEntry[];
+}
+
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;

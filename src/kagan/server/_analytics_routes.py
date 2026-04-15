@@ -33,3 +33,20 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         days = int(request.query_params.get("days", "30"))
         timeline = await ctx.client.analytics.session_timeline(project_id, days=days)
         return _ok(timeline)
+
+    @mcp.custom_route("/api/analytics/export", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def export_analytics(request: Request, *, ctx: Any) -> JSONResponse:
+        project_id = ctx.client.active_project_id
+        if not project_id:
+            empty: dict = {
+                "exported_at": None,
+                "period_days": 30,
+                "backend_stats": [],
+                "session_timeline": [],
+            }
+            return _ok(empty)
+        days = int(request.query_params.get("days", "30"))
+        data = await ctx.client.analytics.export(project_id, days=days)
+        return _ok(data)

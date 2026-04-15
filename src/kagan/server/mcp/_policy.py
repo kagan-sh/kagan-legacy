@@ -42,9 +42,10 @@ _WORKER_TOOLS = frozenset(
         # insights (2 read/write tools)
         "insight_add",
         "insight_list",
-        # analytics (2 read tools)
+        # analytics (3 read tools)
         "analytics_backend_stats",
         "analytics_session_timeline",
+        "analytics_export",
     }
 )
 

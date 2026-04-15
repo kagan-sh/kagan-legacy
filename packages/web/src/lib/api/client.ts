@@ -1,4 +1,5 @@
 import type {
+  AnalyticsExport,
   BackendStats,
   ChatAgentsResponse,
   ClientPresence,
@@ -545,6 +546,12 @@ export class KaganApiClient {
   async getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {
     const query = params?.days ? `?days=${params.days}` : '';
     return this.request<SessionTimelineEntry[]>(`/api/analytics/session-timeline${query}`);
+  }
+
+  /** GET /api/analytics/export?days=... */
+  async getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<AnalyticsExport>(`/api/analytics/export${query}`);
   }
 
   /** GET /api/plugins */

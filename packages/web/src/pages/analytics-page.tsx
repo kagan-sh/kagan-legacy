@@ -14,10 +14,12 @@ import {
   Activity,
   BarChart3,
   Clock,
+  Download,
   TrendingUp,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import type { BackendStats, SessionTimelineEntry } from '@/lib/api/types';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -324,6 +326,7 @@ export function Component() {
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = useCallback(async (range: number) => {
     setLoading(true);
@@ -346,6 +349,22 @@ export function Component() {
     fetchData(days);
   }, [days, fetchData]);
 
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const data = await apiClient.getAnalyticsExport({ days });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kagan-analytics.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }, [days]);
+
   // Derived KPIs
   const totalSessions = backendStats.reduce((sum, b) => sum + b.count, 0);
   const avgSuccessRate =
@@ -367,17 +386,29 @@ export function Component() {
             Agent performance &amp; session activity
           </p>
         </div>
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <SelectTrigger className="h-8 w-32 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="14">Last 14 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={loading || exporting}
+            onClick={handleExport}
+          >
+            <Download className="mr-1.5 size-3.5" />
+            Export
+          </Button>
+          <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+            <SelectTrigger className="h-8 w-32 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="14">Last 14 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {error && (

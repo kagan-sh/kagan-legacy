@@ -250,3 +250,10 @@ export interface SessionTimelineEntry {
     running: number;
     pending: number;
 }
+
+export interface AnalyticsExport {
+    exported_at: string | null;
+    period_days: number;
+    backend_stats: BackendStats[];
+    session_timeline: SessionTimelineEntry[];
+}

@@ -196,6 +196,11 @@
         "command": "kagan.analytics.show",
         "title": "Show Analytics",
         "category": "Kagan"
+      },
+      {
+        "command": "kagan.analytics.export",
+        "title": "Export Analytics to JSON",
+        "category": "Kagan"
       }
     ],
     "menus": {
@@ -311,6 +316,14 @@
         },
         {
           "command": "kagan.settings.planningDepth",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.analytics.show",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.analytics.export",
           "when": "kagan.connected"
         }
       ]

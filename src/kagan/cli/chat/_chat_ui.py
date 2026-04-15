@@ -1,6 +1,8 @@
 """UI rendering helpers for chat — panels, tables, tool reports, session lists."""
 
+import json
 import shutil
+from pathlib import Path
 from typing import Any
 
 from rich.console import Group
@@ -117,6 +119,19 @@ def print_repo_info(*, repo_name: str | None, repo_id: str | None) -> None:
         _console.print(f"[dim]ID:[/dim] {repo_id or 'unknown'}")
     else:
         _console.print("[dim]No repo selected.[/dim]")
+
+
+async def export_analytics_json(client: Any, path: str | None = None) -> None:
+    """Export analytics data to a JSON file."""
+    project_id = client.active_project_id
+    if not project_id:
+        _console.print("[dim]No active project.[/dim]")
+        return
+
+    data = await client.analytics.export(project_id)
+    out = Path(path) if path else Path.cwd() / "kagan-analytics.json"
+    out.write_text(json.dumps(data, indent=2))
+    _console.print(f"[green]Exported analytics to {out}[/green]")
 
 
 async def print_analytics_panel(client: Any) -> None:

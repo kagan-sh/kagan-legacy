@@ -28,8 +28,7 @@ describe('HeaderBar', () => {
     renderWithProviders(<HeaderBar onOpenCommandPalette={onOpenCommandPalette} />);
 
     // The search button contains a Search icon and ⌘K shortcut hint
-    const buttons = screen.getAllByRole('button');
-    const searchButton = buttons[0]; // First button in the header actions
+    const searchButton = screen.getAllByRole('button')[0]!;
     searchButton.click();
 
     expect(onOpenCommandPalette).toHaveBeenCalledTimes(1);

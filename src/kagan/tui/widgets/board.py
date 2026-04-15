@@ -167,15 +167,12 @@ class BoardColumn(Vertical):
 
     def _empty_message(self) -> tuple[str, str]:
         if self.status == TaskStatus.BACKLOG:
-            return (
-                "☐ Ready",
-                "Press n to create your first task. Press ? or F1 for help.",
-            )
+            return ("No backlog tasks", "Capture upcoming work here.")
         if self.status == TaskStatus.IN_PROGRESS:
-            return ("▶ Nothing running", "No tasks in progress.")
+            return ("No active runs", "Launch a task to see progress.")
         if self.status == TaskStatus.REVIEW:
-            return ("◎ Review queue is clear", "Ship it.")
-        return ("✓ Done lane is ready", "Complete your first task to start the streak.")
+            return ("Nothing in review", "Completed work collects here.")
+        return ("No completed work", "Merged tasks move here.")
 
 
 class BoardView(Widget):

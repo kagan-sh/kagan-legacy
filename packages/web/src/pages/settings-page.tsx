@@ -78,14 +78,11 @@ export function Component() {
       <div ref={settingsRef} className="mt-8 space-y-6">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <SettingsPanel />
-          <div className="space-y-4">
+          <div ref={connectionRef} className="space-y-4">
             <AgentPicker />
+            <ConnectionCard />
+            <PreflightChecks />
           </div>
-        </div>
-
-        <div ref={connectionRef} className="space-y-4">
-          <ConnectionCard />
-          <PreflightChecks />
         </div>
       </div>
 

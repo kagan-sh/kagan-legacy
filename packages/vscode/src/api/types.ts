@@ -232,6 +232,25 @@ export interface WireEnvelope<T> {
   error_code: string | null;
 }
 
+// Analytics
+export interface BackendStats {
+  agent_backend: string;
+  count: number;
+  success_rate: number;
+  avg_duration_seconds: number | null;
+  retry_rate: number;
+}
+
+export interface SessionTimelineEntry {
+  date: string;
+  total: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  running: number;
+  pending: number;
+}
+
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;

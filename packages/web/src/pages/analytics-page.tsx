@@ -4,23 +4,20 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import type { ValueType, NameType, Payload } from 'recharts/types/component/DefaultTooltipContent';
+import type { ValueType } from 'recharts/types/component/DefaultTooltipContent';
 import {
   Activity,
   BarChart3,
-  CircleDollarSign,
   Clock,
   TrendingUp,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { BackendStats, CostSummary, SessionTimelineEntry } from '@/lib/api/types';
+import type { BackendStats, SessionTimelineEntry } from '@/lib/api/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -43,7 +40,6 @@ const CHART_COLORS = {
   cancelled: 'var(--muted-foreground, #6b7280)',
   pending: 'var(--status-idle, #3b82f6)',
   running: 'var(--status-warning, #f59e0b)',
-  cost: 'var(--primary, #d4a84b)',
   accent: 'var(--primary, #d4a84b)',
 };
 
@@ -56,11 +52,6 @@ const BACKEND_PALETTE = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatCost(v: number | null | undefined): string {
-  if (v == null) return '--';
-  return `$${v.toFixed(4)}`;
-}
 
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null) return '--';
@@ -149,9 +140,7 @@ function BackendTable({ data }: { data: BackendStats[] }) {
             <th className="pb-3 pr-4 font-medium">Backend</th>
             <th className="pb-3 pr-4 text-right font-medium">Sessions</th>
             <th className="pb-3 pr-4 text-right font-medium">Success</th>
-            <th className="pb-3 pr-4 text-right font-medium">Avg Cost</th>
             <th className="pb-3 pr-4 text-right font-medium">Avg Duration</th>
-            <th className="pb-3 pr-4 text-right font-medium">Override Rate</th>
             <th className="pb-3 text-right font-medium">Retry Rate</th>
           </tr>
         </thead>
@@ -174,13 +163,7 @@ function BackendTable({ data }: { data: BackendStats[] }) {
                 </Badge>
               </td>
               <td className="py-3 pr-4 text-right tabular-nums">
-                {formatCost(row.avg_cost)}
-              </td>
-              <td className="py-3 pr-4 text-right tabular-nums">
                 {formatDuration(row.avg_duration_seconds)}
-              </td>
-              <td className="py-3 pr-4 text-right tabular-nums">
-                {formatPct(row.human_override_rate)}
               </td>
               <td className="py-3 text-right tabular-nums">
                 {formatPct(row.retry_rate)}
@@ -221,89 +204,6 @@ function SuccessRateChart({ data }: { data: BackendStats[] }) {
         <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => `${v ?? 0}%`} />
         <Bar dataKey="success" name="Success" stackId="a" fill={CHART_COLORS.completed} radius={[0, 0, 0, 0]} />
         <Bar dataKey="failure" name="Failure" stackId="a" fill={CHART_COLORS.failed} radius={[0, 4, 4, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Cost Timeline Chart
-// ---------------------------------------------------------------------------
-
-function CostTimelineChart({ data }: { data: CostSummary | null }) {
-  if (!data) return null;
-
-  const chartData = Object.entries(data.cost_by_day).map(([date, cost]) => ({
-    date,
-    label: shortDate(date),
-    cost,
-  }));
-
-  if (chartData.every((d) => d.cost === 0)) {
-    return (
-      <div className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]">
-        No cost data recorded in this period.
-      </div>
-    );
-  }
-
-  return (
-    <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={chartData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #333)" />
-        <XAxis
-          dataKey="label"
-          tick={{ fontSize: 11 }}
-          stroke="var(--muted-foreground)"
-          interval="preserveStartEnd"
-        />
-        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: string | number) => `$${v}`} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => formatCost(Number(v))} labelFormatter={(_l: unknown, payload: ReadonlyArray<Payload<ValueType, NameType>>) => (payload[0]?.payload as Record<string, unknown>)?.date as string ?? String(_l)} />
-        <Line
-          type="monotone"
-          dataKey="cost"
-          name="Daily Cost"
-          stroke={CHART_COLORS.cost}
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 4 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Cost by Backend Bar Chart
-// ---------------------------------------------------------------------------
-
-function CostByBackendChart({ data }: { data: CostSummary | null }) {
-  if (!data || Object.keys(data.cost_by_backend).length === 0) return null;
-
-  const chartData = Object.entries(data.cost_by_backend)
-    .sort((a, b) => b[1] - a[1])
-    .map(([backend, cost]) => ({ name: backend, cost }));
-
-  return (
-    <ResponsiveContainer width="100%" height={280}>
-      <BarChart data={chartData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #333)" />
-        <XAxis
-          dataKey="name"
-          tick={{ fontSize: 11, fontFamily: 'var(--font-code)' }}
-          stroke="var(--muted-foreground)"
-          interval={0}
-          angle={-35}
-          textAnchor="end"
-          height={60}
-        />
-        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: string | number) => `$${v}`} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => formatCost(Number(v))} />
-        <Bar dataKey="cost" name="Total Cost" radius={[4, 4, 0, 0]}>
-          {chartData.map((_, i) => (
-            <Cell key={i} fill={BACKEND_PALETTE[i % BACKEND_PALETTE.length]} />
-          ))}
-        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -352,14 +252,56 @@ function SessionTimelineChart({ data }: { data: SessionTimelineEntry[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Duration by Backend Bar Chart
+// ---------------------------------------------------------------------------
+
+function DurationByBackendChart({ data }: { data: BackendStats[] }) {
+  const chartData = data
+    .filter((d) => d.avg_duration_seconds != null)
+    .map((d) => ({ name: d.agent_backend, duration: Math.round(d.avg_duration_seconds!) }));
+
+  if (chartData.length === 0) {
+    return (
+      <div className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]">
+        No duration data available yet.
+      </div>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={chartData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #333)" />
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 11, fontFamily: 'var(--font-code)' }}
+          stroke="var(--muted-foreground)"
+          interval={0}
+          angle={-35}
+          textAnchor="end"
+          height={60}
+        />
+        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: string | number) => `${v}s`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => formatDuration(Number(v))} />
+        <Bar dataKey="duration" name="Avg Duration" radius={[4, 4, 0, 0]}>
+          {chartData.map((_, i) => (
+            <Cell key={i} fill={BACKEND_PALETTE[i % BACKEND_PALETTE.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Loading skeleton
 // ---------------------------------------------------------------------------
 
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid gap-4 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-24 rounded-lg" />
         ))}
       </div>
@@ -378,7 +320,6 @@ function AnalyticsSkeleton() {
 
 export function Component() {
   const [backendStats, setBackendStats] = useState<BackendStats[]>([]);
-  const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [timeline, setTimeline] = useState<SessionTimelineEntry[]>([]);
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
@@ -388,13 +329,11 @@ export function Component() {
     setLoading(true);
     setError(null);
     try {
-      const [stats, costs, tl] = await Promise.all([
+      const [stats, tl] = await Promise.all([
         apiClient.getBackendStats(),
-        apiClient.getCostSummary({ days: range }),
         apiClient.getSessionTimeline({ days: range }),
       ]);
       setBackendStats(stats);
-      setCostSummary(costs);
       setTimeline(tl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
@@ -409,7 +348,6 @@ export function Component() {
 
   // Derived KPIs
   const totalSessions = backendStats.reduce((sum, b) => sum + b.count, 0);
-  const totalCost = costSummary?.total_cost ?? 0;
   const avgSuccessRate =
     totalSessions > 0
       ? backendStats.reduce((sum, b) => sum + b.success_rate * b.count, 0) / totalSessions
@@ -426,7 +364,7 @@ export function Component() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Agent performance, cost tracking &amp; session activity
+            Agent performance &amp; session activity
           </p>
         </div>
         <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
@@ -455,18 +393,12 @@ export function Component() {
       ) : (
         <div className="mt-4 space-y-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <KpiCard
               label="Total Sessions"
               value={totalSessions.toLocaleString()}
               icon={Activity}
               subtitle={`Across ${backendStats.length} backend${backendStats.length !== 1 ? 's' : ''}`}
-            />
-            <KpiCard
-              label="Total Cost"
-              value={formatCost(totalCost)}
-              icon={CircleDollarSign}
-              subtitle={`Last ${days} days`}
             />
             <KpiCard
               label="Avg Success Rate"
@@ -506,28 +438,17 @@ export function Component() {
             </CardContent>
           </Card>
 
-          {/* Cost & Timeline side-by-side */}
+          {/* Duration & Timeline side-by-side */}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-sm">
-                  <CircleDollarSign className="size-4 text-[var(--muted-foreground)]" />
-                  Cost Overview
+                  <Clock className="size-4 text-[var(--muted-foreground)]" />
+                  Duration by Backend
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="daily">
-                  <TabsList variant="line" className="mb-4">
-                    <TabsTrigger value="daily">Daily</TabsTrigger>
-                    <TabsTrigger value="backend">By Backend</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="daily">
-                    <CostTimelineChart data={costSummary} />
-                  </TabsContent>
-                  <TabsContent value="backend">
-                    <CostByBackendChart data={costSummary} />
-                  </TabsContent>
-                </Tabs>
+                <DurationByBackendChart data={backendStats} />
               </CardContent>
             </Card>
 

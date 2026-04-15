@@ -23,7 +23,7 @@ def print_help_documentation() -> None:
 
     spec_by_name = {spec.name: spec for spec in SLASH_COMMAND_REGISTRY.specs()}
     sections = [
-        ("Global", ["help", "flow", "status", "clear", "exit"]),
+        ("Global", ["help", "flow", "status", "analytics", "clear", "exit"]),
         ("Sessions", ["new", "sessions", "delete"]),
         ("Workspace", ["project", "agents", "tool"]),
     ]
@@ -117,6 +117,49 @@ def print_repo_info(*, repo_name: str | None, repo_id: str | None) -> None:
         _console.print(f"[dim]ID:[/dim] {repo_id or 'unknown'}")
     else:
         _console.print("[dim]No repo selected.[/dim]")
+
+
+async def print_analytics_panel(client: Any) -> None:
+    """Render /analytics summary — backend stats and session activity."""
+    project_id = client.active_project_id
+    if not project_id:
+        _console.print("[dim]No active project.[/dim]")
+        return
+
+    stats = await client.analytics.backend_stats(project_id)
+    timeline = await client.analytics.session_timeline(project_id, days=30)
+
+    if stats:
+        table = Table(box=None, show_header=True, pad_edge=False)
+        table.add_column("Backend", style="cyan", no_wrap=True)
+        table.add_column("Sessions", justify="right")
+        table.add_column("Success", justify="right")
+        table.add_column("Avg Duration", justify="right")
+        table.add_column("Retry", justify="right")
+        for s in stats:
+            sr = f"{s['success_rate'] * 100:.1f}%"
+            dur = "--"
+            if s.get("avg_duration_seconds") is not None:
+                d = s["avg_duration_seconds"]
+                dur = f"{int(d // 60)}m {round(d % 60)}s" if d >= 60 else f"{round(d)}s"
+            rr = f"{s.get('retry_rate', 0) * 100:.1f}%"
+            table.add_row(s["agent_backend"], str(s["count"]), sr, dur, rr)
+        _console.print(Panel(table, title="Backend Performance", border_style="dim"))
+    else:
+        _console.print("[dim]No backend data yet.[/dim]")
+
+    if timeline:
+        total = sum(d["total"] for d in timeline)
+        completed = sum(d["completed"] for d in timeline)
+        failed = sum(d["failed"] for d in timeline)
+        days_active = sum(1 for d in timeline if d["total"] > 0)
+        parts = [
+            f"sessions: {total}",
+            f"completed: {completed}",
+            f"failed: {failed}",
+            f"active days: {days_active}/{len(timeline)}",
+        ]
+        _console.print(f"[dim]30-day summary: {' · '.join(parts)}[/dim]")
 
 
 def print_session_list(items: list[Any]) -> None:

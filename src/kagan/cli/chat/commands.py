@@ -51,6 +51,7 @@ class SlashAction(Enum):
     SHOW_HELP = "show_help"
     SHOW_TOOL = "show_tool"
     SHOW_STATUS = "show_status"
+    SHOW_ANALYTICS = "show_analytics"
     SWITCH_PROJECT = "switch_project"
     SHOW_PROJECT = "show_project"
     SHOW_INFO = "show_info"
@@ -295,6 +296,12 @@ def _handle_tool(
     )
 
 
+def _handle_analytics(
+    _invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    return SlashCommandOutcome(handled=True, action=SlashAction.SHOW_ANALYTICS)
+
+
 def _handle_flow(
     invocation: SlashCommandInvocation, ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
@@ -376,6 +383,11 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         name="tool",
         description="Inspect tool calls: /tool [id]",
         handler=_handle_tool,
+    )
+    registry.register(
+        name="analytics",
+        description="Show backend stats and session activity",
+        handler=_handle_analytics,
     )
     registry.register(
         name="flow",

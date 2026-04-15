@@ -191,6 +191,11 @@
         "command": "kagan.settings.planningDepth",
         "title": "Set Planning Depth",
         "category": "Kagan Settings"
+      },
+      {
+        "command": "kagan.analytics.show",
+        "title": "Show Analytics",
+        "category": "Kagan"
       }
     ],
     "menus": {

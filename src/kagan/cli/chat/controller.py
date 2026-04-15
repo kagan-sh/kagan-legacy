@@ -23,6 +23,7 @@ from kagan.cli.chat._chat_acp import (
 )
 from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
+    print_analytics_panel,
     print_help_documentation,
     print_project_info,
     print_repo_info,
@@ -963,6 +964,8 @@ class ChatController:
                     agent_backend=self.agent_backend,
                     turn_count=self._turn_count,
                 )
+            case SlashAction.SHOW_ANALYTICS:
+                await print_analytics_panel(self.client)
             case SlashAction.SHOW_PROJECT:
                 print_project_info(
                     project_name=self._project_name,

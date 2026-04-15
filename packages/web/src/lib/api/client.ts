@@ -2,7 +2,7 @@ import type {
   BackendStats,
   ChatAgentsResponse,
   ClientPresence,
-  CostSummary,
+
   CreateChatSessionInput,
   CreateTaskInput,
   DiffFile,
@@ -539,12 +539,6 @@ export class KaganApiClient {
   /** GET /api/analytics/backend-stats */
   async getBackendStats(): Promise<BackendStats[]> {
     return this.request<BackendStats[]>('/api/analytics/backend-stats');
-  }
-
-  /** GET /api/analytics/cost-summary?days=... */
-  async getCostSummary(params?: { days?: number }): Promise<CostSummary> {
-    const query = params?.days ? `?days=${params.days}` : '';
-    return this.request<CostSummary>(`/api/analytics/cost-summary${query}`);
   }
 
   /** GET /api/analytics/session-timeline?days=... */

@@ -205,9 +205,7 @@ class LocalClient:
         """Get or create the httpx client connected via Unix socket."""
         if self._http_client is None:
             transport = httpx.AsyncHTTPTransport(uds=self._server.socket_path)
-            self._http_client = httpx.AsyncClient(
-                transport=transport, base_url="http://localhost"
-            )
+            self._http_client = httpx.AsyncClient(transport=transport, base_url="http://localhost")
         return self._http_client
 
     async def _ensure_connected(self) -> None:

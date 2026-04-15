@@ -57,6 +57,7 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("n", "new_task", "New Task"),
     Binding("enter", "open_task", "Open"),
     Binding("w", "toggle_workspace", "Workspace"),
+    Binding("i", "open_analytics", "Analytics"),
     Binding("e", "edit_task", "Edit"),
     Binding("x", "delete_task", "Delete"),
     Binding("y", "copy_task_id", "Copy ID"),

@@ -13,6 +13,46 @@
 
 
 
+## v0.18.0-beta.1 (2026-04-16)
+
+
+
+
+### Features
+
+- **analytics**: JSON export and metrics tracking across all surfaces
+  ([`f6e341e`](https://github.com/kagan-sh/kagan/commit/f6e341e11a62a69b4979656796fa320a1bb5c6e7))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- **deps**: Merge all dependabot updates and fix CI
+  ([#110](https://github.com/kagan-sh/kagan/pull/110),
+  [`e0cc4c8`](https://github.com/kagan-sh/kagan/commit/e0cc4c8bd0f13e44eb353f85e1900b62c8ac9480))
+
+
+
+
+
 ## v0.17.1-beta.2 (2026-04-14)
 
 

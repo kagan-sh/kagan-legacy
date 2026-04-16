@@ -20,6 +20,7 @@ eggs/
 node_modules/
 lib/
 !packages/web/src/lib/
+!packages/vscode/src/lib/
 lib64/
 parts/
 sdist/

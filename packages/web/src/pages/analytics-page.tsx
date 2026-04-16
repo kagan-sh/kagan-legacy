@@ -15,6 +15,7 @@ import {
   BarChart3,
   Clock,
   Download,
+  HelpCircle,
   TrendingUp,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
@@ -25,6 +26,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -309,6 +316,57 @@ function DurationByBackendChart({ data }: { data: BackendStats[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Glossary dialog
+// ---------------------------------------------------------------------------
+
+const GLOSSARY_ITEMS = [
+  {
+    term: 'Total Sessions',
+    definition: 'Number of agent runs initiated across all backends.',
+  },
+  {
+    term: 'Avg Success Rate',
+    definition: 'Percentage of sessions that completed successfully, weighted by session count per backend.',
+  },
+  {
+    term: 'Avg Duration',
+    definition: 'Average time per session, weighted by count. Sessions without timing data are excluded.',
+  },
+  {
+    term: 'Success Rate (per backend)',
+    definition: 'Percentage of sessions completed successfully for that backend.',
+  },
+  {
+    term: 'Retry Rate',
+    definition: 'Percentage of sessions that were retried (attempted multiple times).',
+  },
+  {
+    term: 'Active Days',
+    definition: 'Number of days in the period with at least one session recorded.',
+  },
+];
+
+function GlossaryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Analytics Glossary</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {GLOSSARY_ITEMS.map((item) => (
+            <div key={item.term}>
+              <dt className="font-medium text-sm">{item.term}</dt>
+              <dd className="text-xs text-[var(--muted-foreground)] mt-1">{item.definition}</dd>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Loading skeleton
 // ---------------------------------------------------------------------------
 
@@ -340,6 +398,7 @@ export function Component() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   const fetchData = useCallback(async (range: number) => {
     setLoading(true);
@@ -399,7 +458,18 @@ export function Component() {
       {/* Header */}
       <header className="flex items-center justify-between pb-6">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setGlossaryOpen(true)}
+              aria-label="Open analytics glossary"
+            >
+              <HelpCircle className="size-4 text-[var(--muted-foreground)]" />
+            </Button>
+          </div>
           <p className="text-sm text-[var(--muted-foreground)]">
             Agent performance &amp; session activity
           </p>
@@ -525,6 +595,8 @@ export function Component() {
           </div>
         </div>
       )}
+
+      <GlossaryDialog open={glossaryOpen} onOpenChange={setGlossaryOpen} />
     </div>
   );
 }

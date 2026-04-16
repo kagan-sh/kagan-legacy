@@ -34,6 +34,17 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         timeline = await ctx.client.analytics.session_timeline(project_id, days=days)
         return _ok(timeline)
 
+    @mcp.custom_route("/api/analytics/timeline-summary", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def get_timeline_summary(request: Request, *, ctx: Any) -> JSONResponse:
+        project_id = ctx.client.active_project_id
+        if not project_id:
+            return _ok({})
+        days = int(request.query_params.get("days", "30"))
+        summary = await ctx.client.analytics.timeline_summary(project_id, days=days)
+        return _ok(summary)
+
     @mcp.custom_route("/api/analytics/export", methods=["GET"])
     @require_context(mcp)
     @handle_errors

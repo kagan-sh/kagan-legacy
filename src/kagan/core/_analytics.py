@@ -117,3 +117,28 @@ class Analytics:
             ]
 
         return await _db_async(self._engine, _run)
+
+    async def timeline_summary(
+        self, project_id: str, days: int = 30
+    ) -> dict[str, int | float]:
+        """Aggregate timeline data into summary statistics."""
+        timeline = await self.session_timeline(project_id, days=days)
+
+        total_sessions = sum(d["total"] for d in timeline)
+        total_completed = sum(d["completed"] for d in timeline)
+        total_failed = sum(d["failed"] for d in timeline)
+        total_cancelled = sum(d["cancelled"] for d in timeline)
+        active_days = sum(1 for d in timeline if d["total"] > 0)
+
+        success_rate = (
+            total_completed / total_sessions if total_sessions > 0 else 0
+        )
+
+        return {
+            "total_sessions": total_sessions,
+            "total_completed": total_completed,
+            "total_failed": total_failed,
+            "total_cancelled": total_cancelled,
+            "active_days": active_days,
+            "success_rate": round(float(success_rate), 4),
+        }

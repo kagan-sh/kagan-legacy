@@ -9,6 +9,7 @@ import {
   DndContext,
   DragOverlay,
 } from '@dnd-kit/core';
+import type { BoardDialog } from '@/lib/atoms/board';
 import {
   boardErrorAtom,
   boardLoadingAtom,

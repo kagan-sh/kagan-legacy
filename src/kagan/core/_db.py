@@ -49,7 +49,7 @@ def _normalize_revision_state(config: Config, connection: Connection) -> None:
         "Unknown alembic revision '{}' — stamping to base and re-applying migrations",
         current_revision,
     )
-    command.stamp(config, _HEAD_REVISION, purge=True)
+    command.stamp(config, "base", purge=True)
 
 
 def _run_alembic_upgrade(database_url: str, connection: Connection | None = None) -> None:

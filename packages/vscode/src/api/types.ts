@@ -11,6 +11,21 @@ export type LauncherBackend =
   | "kiro"
   | "antigravity";
 
+export const EVENT_TYPE = {
+  OUTPUT_CHUNK: "OUTPUT_CHUNK",
+  AGENT_STATUS: "AGENT_STATUS",
+  TOOL_CALL_START: "TOOL_CALL_START",
+  TOOL_CALL_UPDATE: "TOOL_CALL_UPDATE",
+  AGENT_COMPLETED: "AGENT_COMPLETED",
+  AGENT_FAILED: "AGENT_FAILED",
+  PLAN_UPDATE: "PLAN_UPDATE",
+  TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
+  MERGE_COMPLETED: "MERGE_COMPLETED",
+  MERGE_FAILED: "MERGE_FAILED",
+} as const;
+
+export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
+
 export const SSE_TYPE = {
   TASK_UPDATED: "TASK_UPDATED",
   SESSION_EVENT: "SESSION_EVENT",
@@ -74,7 +89,7 @@ export interface WireTask {
 export interface WireEvent {
   id: string;
   session_id: string | null;
-  type: string;
+  type: EventType | string;
   payload: Record<string, unknown>;
   created_at: string;
 }

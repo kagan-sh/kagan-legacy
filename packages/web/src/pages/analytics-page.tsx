@@ -372,9 +372,13 @@ export function Component() {
     totalSessions > 0
       ? backendStats.reduce((sum, b) => sum + b.success_rate * b.count, 0) / totalSessions
       : 0;
+  const sessionsWithDuration = backendStats
+    .filter((b) => b.avg_duration_seconds != null)
+    .reduce((sum, b) => sum + b.count, 0);
   const avgDuration =
-    backendStats.filter((b) => b.avg_duration_seconds != null).length > 0
-      ? backendStats.reduce((sum, b) => sum + (b.avg_duration_seconds ?? 0) * b.count, 0) / totalSessions
+    sessionsWithDuration > 0
+      ? backendStats.reduce((sum, b) => sum + (b.avg_duration_seconds ?? 0) * b.count, 0) /
+        sessionsWithDuration
       : null;
 
   return (

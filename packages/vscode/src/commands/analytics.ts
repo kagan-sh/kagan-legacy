@@ -1,17 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null) return "--";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-}
-
-function formatPercentage(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
-}
+import { formatDuration, formatPercentage } from "../lib/format.js";
 
 export function registerAnalyticsCommands(
   context: vscode.ExtensionContext,

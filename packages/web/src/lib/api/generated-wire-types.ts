@@ -3,11 +3,19 @@
  * DO NOT EDIT — regenerate with: uv run python scripts/generate_wire_types.py -o packages/web/src/lib/api/generated-wire-types.ts
  */
 
+export interface BackendSelectionResponse {
+  selected_backend: string;
+  backend_confidence: number;
+  backend_reason: string;
+  alternatives?: string[];
+}
+
 export interface ActiveSessionResponse {
   id: string;
   status: string;
   launcher?: string | null;
   agent_backend: string;
+  agent_role?: string | null;
   started_at: string;
   context_window_used?: number | null;
   context_window_size?: number | null;
@@ -39,6 +47,7 @@ export interface TaskResponse {
   has_workspace?: boolean;
   review_running?: boolean;
   active_session?: ActiveSessionResponse | null;
+  backend_selection?: BackendSelectionResponse | null;
 }
 
 export interface TaskSessionResponse {
@@ -46,6 +55,7 @@ export interface TaskSessionResponse {
   launcher?: string | null;
   status: string;
   agent_backend: string;
+  agent_role?: string | null;
   started_at: string;
 }
 

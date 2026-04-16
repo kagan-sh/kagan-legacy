@@ -13,11 +13,34 @@ if TYPE_CHECKING:
     from starlette.responses import JSONResponse
 
 
+def _group_by_key(stats: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+    """Group stats list by a key field."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for stat in stats:
+        group_key = stat.get(key, "unknown")
+        if group_key not in grouped:
+            grouped[group_key] = []
+        grouped[group_key].append(stat)
+    return grouped
+
+
+def _filter_by_params(
+    stats: list[dict[str, Any]], role: str | None, task_type: str | None
+) -> list[dict[str, Any]]:
+    """Filter stats by role and/or task type."""
+    return [
+        stat
+        for stat in stats
+        if (not role or stat.get("agent_role") == role)
+        and (not task_type or stat.get("task_type") == task_type)
+    ]
+
+
 def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/backend-stats", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_backend_stats(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _backend_stats(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
@@ -27,7 +50,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/session-timeline", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_session_timeline(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _session_timeline(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
@@ -38,7 +61,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/timeline-summary", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_timeline_summary(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _timeline_summary(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -49,7 +72,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/recommended-backend", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_recommended_backend(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _recommended_backend(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -59,11 +82,10 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/export", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def export_analytics(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _export(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         days = int(request.query_params.get("days", "30"))
         if not project_id:
-            # Return same structure as successful export, just empty
             return _ok(
                 {
                     "exported_at": None,
@@ -78,103 +100,46 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/by-role", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_analytics_by_role(request: Request, *, ctx: Any) -> JSONResponse:
-        """Returns backend stats grouped by agent role.
-
-        Response: { agent_role → [backend stats] }
-        """
+    async def _by_role(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
-
         raw_stats = await ctx.client.analytics.backend_by_role_stats(project_id)
-
-        # Group by agent_role
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for stat in raw_stats:
-            role = stat.get("agent_role", "unknown")
-            if role not in grouped:
-                grouped[role] = []
-            grouped[role].append(stat)
-
+        grouped = _group_by_key(raw_stats, "agent_role")
         return _ok(grouped)
 
     @mcp.custom_route("/api/analytics/by-task-type", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_analytics_by_task_type(request: Request, *, ctx: Any) -> JSONResponse:
-        """Returns backend stats grouped by task type.
-
-        Response: { task_type → [backend stats] }
-        """
+    async def _by_task_type(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
-
         raw_stats = await ctx.client.analytics.backend_by_task_type_stats(project_id)
-
-        # Group by task_type
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for stat in raw_stats:
-            task_type = stat.get("task_type", "unknown")
-            if task_type not in grouped:
-                grouped[task_type] = []
-            grouped[task_type].append(stat)
-
+        grouped = _group_by_key(raw_stats, "task_type")
         return _ok(grouped)
 
     @mcp.custom_route("/api/analytics/by-role-and-task-type", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_analytics_by_role_and_task_type(
-        request: Request, *, ctx: Any
-    ) -> JSONResponse:
-        """Returns backend stats filtered by role and/or task type.
-
-        Query params: role=<role>, task_type=<task_type>
-        Response: [backend stats matching filters]
-        """
+    async def _by_role_and_task_type(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
-
         filter_role = request.query_params.get("role")
         filter_task_type = request.query_params.get("task_type")
-
         raw_stats = await ctx.client.analytics.backend_role_task_stats(project_id)
-
-        # Filter by role and/or task_type
-        filtered = []
-        for stat in raw_stats:
-            if filter_role and stat.get("agent_role") != filter_role:
-                continue
-            if filter_task_type and stat.get("task_type") != filter_task_type:
-                continue
-            filtered.append(stat)
-
+        filtered = _filter_by_params(raw_stats, filter_role, filter_task_type)
         return _ok(filtered)
 
     @mcp.custom_route("/api/analytics/recommend-for-task", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def recommend_backend_for_task(request: Request, *, ctx: Any) -> JSONResponse:
-        """Get intelligent backend recommendation for a task.
-
-        Query params:
-        - title: task title (required)
-        - description: task description (optional)
-        - role: agent role (optional, e.g. 'worker')
-
-        Response: { backend, reason, confidence, alternatives }
-        """
+    async def _recommend_for_task(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
-
         title = request.query_params.get("title", "")
-        description = request.query_params.get("description", "")
-        role = request.query_params.get("role")
-
         if not title:
             return _ok(
                 {
@@ -184,12 +149,12 @@ def register_analytics_routes(mcp: FastMCP) -> None:
                     "alternatives": [],
                 }
             )
-
+        description = request.query_params.get("description", "")
+        role = request.query_params.get("role")
         selector = BackendSelector(ctx.client.analytics, project_id)
         recommendation = await selector.select_backend(
             title=title,
             description=description,
             agent_role=role,
         )
-
         return _ok(recommendation)

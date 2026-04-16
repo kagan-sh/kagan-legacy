@@ -111,6 +111,7 @@ def test_slash_command_registry_is_canonical() -> None:
     names = [spec.name for spec in specs]
     assert names == [
         "agents",
+        "analytics",
         "clear",
         "delete",
         "exit",

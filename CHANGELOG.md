@@ -13,6 +13,117 @@
 
 
 
+## v0.18.0 (2026-04-16)
+
+
+
+
+### Features
+
+- **analytics,types**: Add backend timeline summary + enforce board dialog type safety
+  ([`8ebc812`](https://github.com/kagan-sh/kagan/commit/8ebc8121d1f79f75d847621b1c556708069085ce))
+
+- Add intelligent backend recommendation setting
+  ([`98bbff4`](https://github.com/kagan-sh/kagan/commit/98bbff4b80c75a06597cfa74bc679a91f255e888))
+
+- Add multi-dimensional analytics and intelligent backend selection
+  ([`de7f2b6`](https://github.com/kagan-sh/kagan/commit/de7f2b6595b55a7ff1652e47c6815b852b548b42))
+
+- **analytics**: Add smart backend recommendation in settings
+  ([`b9c855d`](https://github.com/kagan-sh/kagan/commit/b9c855dca8bd262cfa00e6a9077958523ae7db30))
+
+- **analytics**: Add terminology glossary popup
+  ([`1d986ac`](https://github.com/kagan-sh/kagan/commit/1d986ac9c8389d67aa887a87c97918aae73f71b2))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **types**: Explicitly use BoardDialog type in closeDialog function
+  ([`2f3985c`](https://github.com/kagan-sh/kagan/commit/2f3985c96852a3c9105e0e966862b6786f59895c))
+
+- Resolve linting and dead code issues
+  ([`1c6ca8d`](https://github.com/kagan-sh/kagan/commit/1c6ca8dcb94bae615727d109183f4ff61202a516))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **analytics**: Consolidate multi-dimensional aggregation queries
+  ([`3043346`](https://github.com/kagan-sh/kagan/commit/304334661069fdcc320876d9eee3338f76c141d8))
+
+- **analytics,web**: Optimize performance and code quality
+  ([`cd16373`](https://github.com/kagan-sh/kagan/commit/cd163735abef1fe505e42d80c9ffb23add631994))
+
+- Simplify task card dropdown to limit to open, edit, delete
+  ([`993d22e`](https://github.com/kagan-sh/kagan/commit/993d22ea6e6f0f4ce5c1357a5edbf5283127271a))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Documentation
+
+- Enhance analytics glossary with success/failure definitions
+  ([`4ab6735`](https://github.com/kagan-sh/kagan/commit/4ab6735a8c719dd956008186de543fd2842160db))
+
+- Update analytics guide with multi-dimensional features
+  ([`fe55a54`](https://github.com/kagan-sh/kagan/commit/fe55a5426a15a6a3c520f7a5be363630742cea79))
+
+
+
+
+
 ## v0.17.1-beta.2 (2026-04-14)
 
 

@@ -13,6 +13,43 @@
 
 
 
+## v0.18.1-beta.2 (2026-04-16)
+
+
+
+
+### Bug Fixes
+
+- **vscode**: Add format utilities for analytics commands
+  ([`72f36f5`](https://github.com/kagan-sh/kagan/commit/72f36f5ea93c0ec7e2c669bea14628a6cbe41927))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- **vscode**: Bump to 0.18.0 [skip ci]
+  ([`6f87307`](https://github.com/kagan-sh/kagan/commit/6f87307b251d85bf93617596e4f3efa9324acd0e))
+
+
+
+
+
 ## v0.18.1-beta.1 (2026-04-16)
 
 

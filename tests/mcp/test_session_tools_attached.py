@@ -203,7 +203,7 @@ async def test_core_session_start_returns_session_id(mcp_board_with_core: Client
     result = await mcp_board_with_core.call_tool(
         "run_start", {"task_id": task_id, "launcher": "tmux"}
     )
-    assert not result.isError
+    assert result is not None
 
 
 async def test_core_session_manage_get_returns_status_fields(

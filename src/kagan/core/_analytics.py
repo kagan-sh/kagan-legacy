@@ -11,6 +11,7 @@ from sqlalchemy import cast as sa_cast
 from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
+from kagan.core._utils import utc_iso
 from kagan.core.enums import SessionStatus
 from kagan.core.models import Session, Task
 
@@ -67,7 +68,7 @@ class Analytics:
         stats = await self.backend_stats(project_id)
         timeline = await self.session_timeline(project_id, days=days)
         return {
-            "exported_at": datetime.now(UTC).isoformat(),
+            "exported_at": utc_iso(datetime.now(UTC)),
             "period_days": days,
             "backend_stats": stats,
             "session_timeline": timeline,

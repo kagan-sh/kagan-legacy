@@ -312,6 +312,39 @@ export function KanbanBoard() {
     setBoardDialog({ kind: 'none' });
   }, [setBoardDialog]);
 
+  const handlePeekOpen = useCallback(
+    (open: boolean) => {
+      if (open && selectedTask) {
+        setBoardDialog({ kind: 'peek', taskId: selectedTask.id });
+      } else {
+        setBoardDialog({ kind: 'none' });
+      }
+    },
+    [selectedTask, setBoardDialog]
+  );
+
+  const handleEditingTask = useCallback(
+    (task: WireTask | null) => {
+      if (task) {
+        setBoardDialog({ kind: 'edit', taskId: task.id });
+      } else {
+        setBoardDialog({ kind: 'none' });
+      }
+    },
+    [setBoardDialog]
+  );
+
+  const handleDeleteTask = useCallback(
+    (task: WireTask | null) => {
+      if (task) {
+        setBoardDialog({ kind: 'delete', taskId: task.id });
+      } else {
+        setBoardDialog({ kind: 'none' });
+      }
+    },
+    [setBoardDialog]
+  );
+
   useBoardKeyboard({
     selectedTask,
     selectedTaskPosition,
@@ -321,9 +354,9 @@ export function KanbanBoard() {
     query,
     setSelectedTaskId,
     openCreateDialog,
-    setPeekOpen: (open: boolean) => { if (open && selectedTask) setBoardDialog({ kind: 'peek', taskId: selectedTask.id }); else setBoardDialog({ kind: 'none' }); },
-    setEditingTask: (task: WireTask | null) => { if (task) setBoardDialog({ kind: 'edit', taskId: task.id }); else setBoardDialog({ kind: 'none' }); },
-    setDeleteTask: (task: WireTask | null) => { if (task) setBoardDialog({ kind: 'delete', taskId: task.id }); else setBoardDialog({ kind: 'none' }); },
+    setPeekOpen: handlePeekOpen,
+    setEditingTask: handleEditingTask,
+    setDeleteTask: handleDeleteTask,
     setQuery,
     openTask,
     startSelectedTask,
@@ -334,10 +367,14 @@ export function KanbanBoard() {
   });
 
   const boardMetrics = useMemo(() => {
-    const running = tasks.filter((task) => Boolean(task.active_session)).length;
-    const readyForReview = tasks.filter((task) => task.status === 'REVIEW').length;
-    const approved = tasks.filter((task) => task.review_approved).length;
-    return { running, readyForReview, approved };
+    return tasks.reduce(
+      (acc, task) => ({
+        ...acc,
+        running: acc.running + (task.active_session ? 1 : 0),
+        readyForReview: acc.readyForReview + (task.status === 'REVIEW' ? 1 : 0),
+      }),
+      { running: 0, readyForReview: 0 }
+    );
   }, [tasks]);
 
   const showBoardEmpty = !loading && tasks.length === 0;

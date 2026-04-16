@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -178,11 +178,15 @@ function BackendTable({ data }: { data: BackendStats[] }) {
 function SuccessRateChart({ data }: { data: BackendStats[] }) {
   if (data.length === 0) return null;
 
-  const chartData = data.map((d) => ({
-    name: d.agent_backend,
-    success: +(d.success_rate * 100).toFixed(1),
-    failure: +((1 - d.success_rate) * 100).toFixed(1),
-  }));
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        name: d.agent_backend,
+        success: +(d.success_rate * 100).toFixed(1),
+        failure: +((1 - d.success_rate) * 100).toFixed(1),
+      })),
+    [data]
+  );
 
   return (
     <ResponsiveContainer width="100%" height={280}>
@@ -211,10 +215,14 @@ function SuccessRateChart({ data }: { data: BackendStats[] }) {
 function SessionTimelineChart({ data }: { data: SessionTimelineEntry[] }) {
   if (data.length === 0) return null;
 
-  const chartData = data.map((d) => ({
-    ...d,
-    label: shortDate(d.date),
-  }));
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        ...d,
+        label: shortDate(d.date),
+      })),
+    [data]
+  );
 
   if (chartData.every((d) => d.total === 0)) {
     return (
@@ -255,9 +263,13 @@ function SessionTimelineChart({ data }: { data: SessionTimelineEntry[] }) {
 // ---------------------------------------------------------------------------
 
 function DurationByBackendChart({ data }: { data: BackendStats[] }) {
-  const chartData = data
-    .filter((d) => d.avg_duration_seconds != null)
-    .map((d) => ({ name: d.agent_backend, duration: Math.round(d.avg_duration_seconds!) }));
+  const chartData = useMemo(
+    () =>
+      data
+        .filter((d) => d.avg_duration_seconds != null)
+        .map((d) => ({ name: d.agent_backend, duration: Math.round(d.avg_duration_seconds!) })),
+    [data]
+  );
 
   if (chartData.length === 0) {
     return (
@@ -367,19 +379,20 @@ export function Component() {
   }, [days]);
 
   // Derived KPIs
-  const totalSessions = backendStats.reduce((sum, b) => sum + b.count, 0);
-  const avgSuccessRate =
-    totalSessions > 0
-      ? backendStats.reduce((sum, b) => sum + b.success_rate * b.count, 0) / totalSessions
-      : 0;
-  const sessionsWithDuration = backendStats
-    .filter((b) => b.avg_duration_seconds != null)
-    .reduce((sum, b) => sum + b.count, 0);
-  const avgDuration =
-    sessionsWithDuration > 0
-      ? backendStats.reduce((sum, b) => sum + (b.avg_duration_seconds ?? 0) * b.count, 0) /
-        sessionsWithDuration
-      : null;
+  const { totalSessions, avgSuccessRate, avgDuration } = useMemo(() => {
+    const total = backendStats.reduce((sum, b) => sum + b.count, 0);
+    const avgSuccess =
+      total > 0 ? backendStats.reduce((sum, b) => sum + b.success_rate * b.count, 0) / total : 0;
+    const sessionsWithDur = backendStats
+      .filter((b) => b.avg_duration_seconds != null)
+      .reduce((sum, b) => sum + b.count, 0);
+    const avgDur =
+      sessionsWithDur > 0
+        ? backendStats.reduce((sum, b) => sum + (b.avg_duration_seconds ?? 0) * b.count, 0) /
+          sessionsWithDur
+        : null;
+    return { totalSessions: total, avgSuccessRate: avgSuccess, avgDuration: avgDur };
+  }, [backendStats]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6">

@@ -200,6 +200,26 @@ curl -X POST http://localhost:8765/api/plugins/{name}/import
 
 ______________________________________________________________________
 
+## Analytics Routes
+
+Registered in `src/kagan/server/_analytics_routes.py`. All endpoints require an active project context — if none is set, they return an empty list or object rather than erroring. Used by the web dashboard's analytics views and by agents deciding which backend to invoke.
+
+| Endpoint                                                                 | Purpose                                                                                             |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `GET /api/analytics/backend-stats`                                       | Per-backend aggregates (sessions, success rate, duration) for the active project.                   |
+| `GET /api/analytics/session-timeline?days=N`                             | Daily session counts over the last `N` days (default 30).                                           |
+| `GET /api/analytics/timeline-summary?days=N`                             | Rolled-up timeline aggregates over `N` days (default 30).                                           |
+| `GET /api/analytics/recommended-backend`                                 | Simple recommendation: the backend with the highest success rate for this project.                  |
+| `GET /api/analytics/export?days=N`                                       | Combined export blob (backend stats + session timeline) over `N` days — used for download/share.    |
+| `GET /api/analytics/by-role`                                             | Backend stats grouped by agent role (WORKER/REVIEWER/ORCHESTRATOR).                                 |
+| `GET /api/analytics/by-task-type`                                        | Backend stats grouped by task type.                                                                 |
+| `GET /api/analytics/by-role-and-task-type?role=&task_type=`              | 3D stats (backend × role × task type), optionally filtered by role and/or task type query params.   |
+| `GET /api/analytics/recommend-for-task?title=&description=&role=`        | Intelligent backend selection via `BackendSelector` — combines history with task title/description. |
+
+`title` is required on `/recommend-for-task`; omitting it returns a default `claude-code` recommendation with zero confidence.
+
+______________________________________________________________________
+
 ## Troubleshooting
 
 ### Port Conflicts

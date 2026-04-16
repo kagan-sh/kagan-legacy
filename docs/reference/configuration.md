@@ -46,6 +46,7 @@ max_concurrent_agents = 3
 | `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
 | `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
 | `default_agent_backend`              | string         | `"claude-code"`                  | Default worker agent                                                                |
+| `use_recommended_backend`            | boolean        | `false`                          | Auto-pick the best-performing backend per task from historical analytics (requires ≥5 prior sessions per backend × role × task-type). See [intelligent backend selection](../guides/analytics.md#intelligent-backend-selection). |
 | `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
 | `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
 | `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |

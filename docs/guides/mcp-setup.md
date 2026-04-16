@@ -277,6 +277,20 @@ Add `"--role", "WORKER"`, `"--role", "REVIEWER"`, or `"--role", "ORCHESTRATOR"` 
 
 ______________________________________________________________________
 
+## Analytics tools
+
+Kagan exposes its analytics data over MCP so external clients (Claude Desktop, Cursor, Claude Code, etc.) can query agent performance and session activity programmatically. These tools are available to every role (`WORKER`, `REVIEWER`, `ORCHESTRATOR`) and operate on the currently active project — open a project in Kagan first, otherwise they return empty results.
+
+| Tool                         | What it returns                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `analytics_backend_stats`    | Per-backend session count, success rate, average duration, and retry rate.       |
+| `analytics_session_timeline` | Daily session counts by status. Accepts `days` (default `30`).                   |
+| `analytics_export`           | Combined backend stats + session timeline, ready for dashboards. Accepts `days`. |
+
+See the [Analytics guide](analytics.md) for the full list of metrics, UI surfaces, and export workflows.
+
+______________________________________________________________________
+
 ## Multi-repo
 
 **Create:** Kagan → New Project → add repo paths. First repo = active.

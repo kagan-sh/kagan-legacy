@@ -111,7 +111,19 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 12. Resources
+## 12. Analytics Tools
+
+Read-only wrappers around `Analytics` in `kagan.core._analytics`, scoped to the active project. All three tools are registered in the WORKER tier so any agent role can query them; they return empty payloads when no project is active.
+
+- `analytics_backend_stats` — per-backend aggregates (count, success rate, avg duration, retry rate) for choosing an agent backend
+- `analytics_session_timeline(days=30)` — daily session counts bucketed by status (completed/failed/cancelled/running/pending) for trend charts
+- `analytics_export(days=30)` — combined `{exported_at, period_days, backend_stats, session_timeline}` snapshot for archival or offline analysis
+
+The richer multi-dimensional analytics (by agent role, by task type, per-task backend recommendation) live only on the REST surface under `/api/analytics/*` (see `src/kagan/server/_analytics_routes.py`). They are intentionally not exposed as MCP tools yet — add them to `toolsets/analytics.py` and register in `_policy.py` if a use case emerges.
+
+______________________________________________________________________
+
+## 13. Resources
 
 - Read-only data endpoints, always available regardless of access mode
 - `kagan://ping` — health check
@@ -122,7 +134,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 13. Access Control
+## 14. Access Control
 
 - Three roles: WORKER (board awareness + own-task annotation), REVIEWER (+ verdicts), ORCHESTRATOR (full control)
 - `--role` flag sets the agent role; defaults to ORCHESTRATOR

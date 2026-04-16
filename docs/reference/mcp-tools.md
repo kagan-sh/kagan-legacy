@@ -113,6 +113,36 @@ Review semantics:
 | `plugins_sync(...)`      | `destructive` | Sync issues via plugin, returns counts   |
 | `plugins_preflight(...)` | `read-only`   | Check plugin prerequisites and readiness |
 
+### Analytics tools (`toolsets/analytics.py`)
+
+All analytics tools are read-only, scoped to the active project, and return empty payloads when no project is active.
+
+| Tool                            | Annotation  | Purpose                                                             |
+| ------------------------------- | ----------- | ------------------------------------------------------------------- |
+| `analytics_backend_stats()`     | `read-only` | Per-backend session stats: count, success rate, avg duration, retry rate |
+| `analytics_session_timeline(...)` | `read-only` | Daily session counts by status over a trailing window               |
+| `analytics_export(...)`         | `read-only` | Combined backend stats + session timeline snapshot                  |
+
+#### `analytics_backend_stats`
+
+- **Arguments**: none
+- **Returns**: `{"backends": [{"agent_backend", "count", "success_rate", "avg_duration_seconds", "retry_rate"}, ...]}`
+- **Use case**: Compare agent backends across the active project to choose the most reliable one for a new task.
+
+#### `analytics_session_timeline`
+
+- **Arguments**: `days: int = 30`
+- **Returns**: `{"timeline": [{"date", "total", "completed", "failed", "cancelled", "running", "pending"}, ...]}`
+- **Use case**: Plot session volume and outcome trends over a trailing window.
+
+#### `analytics_export`
+
+- **Arguments**: `days: int = 30`
+- **Returns**: `{"exported_at", "period_days", "backend_stats", "session_timeline"}`
+- **Use case**: Snapshot aggregate analytics in a single call for archival, sharing, or offline analysis.
+
+Additional multi-dimensional analytics (by role, by task type, per-task backend recommendation) are exposed over REST at `/api/analytics/...` but are not currently wrapped as MCP tools.
+
 ______________________________________________________________________
 
 ## `task_get` API
@@ -300,7 +330,7 @@ same orchestrator-scoped MCP tool set.
 
 | Tier       | Visible tools |
 | ---------- | ------------- |
-| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `plugins_preflight`, `plugins_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`) |
+| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `plugins_preflight`, `plugins_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`, `analytics_backend_stats`, `analytics_session_timeline`, `analytics_export`) |
 | `default`  | Orchestrator-scope tools (worker tools plus `task_create`, `task_update`, `task_delete`, `run_start`, `review_decide`, `review_merge`, `review_rebase`, `review_verdict`, `review_clear_verdicts`, `project_list`, `project_setup`, `project_update`, `settings_set`, `audit_list`, `plugins_sync`, `persona_inspect`, `persona_import`, `persona_export`, `persona_trust`, `insight_remove`) |
 | `admin`    | Alias of `default` for MCP; currently exposes the same tool surface |
 

@@ -13,6 +13,20 @@
 
 
 
+## v0.18.1-beta.4 (2026-04-16)
+
+
+
+
+### Bug Fixes
+
+- **ci**: Strip leading whitespace from release notes template
+  ([`6ffb07a`](https://github.com/kagan-sh/kagan/commit/6ffb07ab3f69036ddaedaf817cbd8c787fb3ba47))
+
+
+
+
+
 ## v0.18.1-beta.3 (2026-04-16)
 
 

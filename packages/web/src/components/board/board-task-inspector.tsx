@@ -3,6 +3,7 @@ import type { TaskStatus, WireEvent, WireTask } from '@/lib/api/types';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { STATUS_LABELS } from '@/lib/utils/constants';
 import { AgentControl } from '@/components/board/agent-control';
+import { TaskMetadataPanel } from '@/components/board/task-metadata-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -192,26 +193,15 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
         )}
       </InspectorSection>
 
-      <InspectorSection title="Runtime">
-        <dl className="space-y-2 text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-[var(--muted-foreground)]">Status</dt>
-            <dd>{STATUS_LABELS[task.status as TaskStatus] ?? task.status}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-[var(--muted-foreground)]">Workspace</dt>
-            <dd>{task.has_workspace ? 'Provisioned' : 'Not provisioned'}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-[var(--muted-foreground)]">Base branch</dt>
-            <dd>{task.base_branch || 'Project default'}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-[var(--muted-foreground)]">Session</dt>
-            <dd>{task.active_session?.status || 'Idle'}</dd>
-          </div>
-        </dl>
-      </InspectorSection>
+      <TaskMetadataPanel
+        task={task}
+        runtimeRows={[
+          { label: 'Workspace', value: task.has_workspace ? 'Provisioned' : 'Not provisioned' },
+          { label: 'Session', value: task.active_session?.status || 'Idle' },
+          { label: 'Base branch', value: task.base_branch || 'Project default' },
+        ]}
+        showTaskDataSection={false}
+      />
 
       <InspectorSection title="Recent Activity">
         {recentEvents.length > 0 ? (

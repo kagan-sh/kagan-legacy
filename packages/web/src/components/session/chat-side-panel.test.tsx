@@ -114,7 +114,6 @@ describe('ChatSidePanel', () => {
       { initialEntries: ['/?lane=worker'] },
     );
 
-    expect(chatInputBarRender).toHaveBeenCalled();
     const { disableSend } = chatInputBarRender.mock.calls[0]![0];
     expect(disableSend).toBe(true);
   });

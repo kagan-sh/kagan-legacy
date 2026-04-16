@@ -1,4 +1,5 @@
 import { atom } from 'jotai';
+import { boardDialogAtom } from '@/lib/atoms/board';
 
 /**
  * Right-rail panel mode.
@@ -27,15 +28,6 @@ export const helpOverlayOpenAtom = atom(false);
 /** Plugin import dialog open state. */
 export const pluginImportOpenAtom = atom(false);
 
-/** Create task dialog open state (used by command palette). */
-export const createTaskDialogOpenAtom = atom(false);
-
-/** Edit task dialog task ID (used by command palette; null = closed). */
-export const editTaskDialogTaskIdAtom = atom<string | null>(null);
-
-/** Delete task dialog task ID (used by command palette; null = closed). */
-export const deleteTaskDialogTaskIdAtom = atom<string | null>(null);
-
 /** Currently selected orchestrator session in workspace view. */
 export const workspaceSessionIdAtom = atom<string | null>(null);
 
@@ -46,8 +38,6 @@ export const isAnyDialogOpenAtom = atom((get) => {
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
     get(pluginImportOpenAtom) ||
-    get(createTaskDialogOpenAtom) ||
-    get(editTaskDialogTaskIdAtom) !== null ||
-    get(deleteTaskDialogTaskIdAtom) !== null
+    get(boardDialogAtom).kind !== 'none'
   );
 });

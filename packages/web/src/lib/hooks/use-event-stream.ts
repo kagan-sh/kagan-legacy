@@ -12,10 +12,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { useLocation } from 'react-router';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
-import {
-  sseConnectedAtom,
-  reconnectAttemptsAtom,
-} from '@/lib/atoms/connection';
+import { sseConnectedAtom } from '@/lib/atoms/connection';
 import {
   tasksAtom,
   fetchTasksAtom,
@@ -34,7 +31,6 @@ interface SSEMessage {
 export function useEventStream() {
   const location = useLocation();
   const setSseConnected = useSetAtom(sseConnectedAtom);
-  const setReconnectAttempts = useSetAtom(reconnectAttemptsAtom);
   const setTasks = useSetAtom(tasksAtom);
   const setPresence = useSetAtom(presenceAtom);
   const fetchTasks = useSetAtom(fetchTasksAtom);
@@ -94,7 +90,6 @@ export function useEventStream() {
             if (!streamEstablished) {
               streamEstablished = true;
               reconnectAttemptsRef.current = 0;
-              setReconnectAttempts(0);
             }
             if (msg.type === 'TASK_UPDATED') {
               if (msg.task_id) {
@@ -146,7 +141,6 @@ export function useEventStream() {
           if (!controller.signal.aborted) {
             setSseConnected(false);
             reconnectAttemptsRef.current += 1;
-            setReconnectAttempts(reconnectAttemptsRef.current);
             // Exponential backoff: 1s, 2s, 4s, ... max 30s
             const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30_000);
             reconnectTimerRef.current = setTimeout(connect, delay);
@@ -163,7 +157,7 @@ export function useEventStream() {
         clearTimeout(reconnectTimerRef.current);
       }
     };
-  }, [setSseConnected, setReconnectAttempts, setTasks, setPresence, fetchTasks, projectVersion]);
+  }, [setSseConnected, setTasks, setPresence, fetchTasks, projectVersion]);
 
   // Adaptive polling fallback when SSE is disconnected
   useEffect(() => {

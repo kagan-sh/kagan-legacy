@@ -22,8 +22,6 @@ export const EVENT_TYPE = {
   TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
   MERGE_COMPLETED: "MERGE_COMPLETED",
   MERGE_FAILED: "MERGE_FAILED",
-  CRITERION_VERDICT: "CRITERION_VERDICT",
-  AUTO_REVIEW_STARTED: "AUTO_REVIEW_STARTED",
 } as const;
 
 export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
@@ -247,6 +245,32 @@ export interface WireEnvelope<T> {
   data: T | null;
   error: string | null;
   error_code: string | null;
+}
+
+// Analytics
+export interface BackendStats {
+  agent_backend: string;
+  count: number;
+  success_rate: number;
+  avg_duration_seconds: number | null;
+  retry_rate: number;
+}
+
+export interface SessionTimelineEntry {
+  date: string;
+  total: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  running: number;
+  pending: number;
+}
+
+export interface AnalyticsExport {
+  exported_at: string | null;
+  period_days: number;
+  backend_stats: BackendStats[];
+  session_timeline: SessionTimelineEntry[];
 }
 
 export interface SSETaskUpdated {

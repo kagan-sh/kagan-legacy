@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from loguru import logger
 
-from kagan.server.client.base import KaganClient
 from kagan.server.client.events import (
     AnyEvent,
     SessionEndedEvent,
@@ -177,40 +176,66 @@ class EmbeddedServer:
         logger.debug("EmbeddedServer stopped")
 
 
-class UnixSocketClient:
-    """HTTP client that connects via Unix socket.
+class LocalClient:
+    """Client that connects to embedded server via Unix socket.
 
-    Uses httpx with a custom transport to communicate over
-    Unix domain sockets instead of TCP.
+    Manages an EmbeddedServer and an httpx client that communicates
+    over a Unix domain socket.
+
+    Usage:
+        async with LocalClient() as client:
+            task = await client.create_task("Fix bug")
+            await client.run_task(task.id)
+            async for event in client.subscribe_events():
+                print(event)
     """
 
-    def __init__(self, socket_path: str) -> None:
-        self.socket_path = socket_path
-        self._client: httpx.AsyncClient | None = None
+    def __init__(self, db_path: Path | str | None = None) -> None:
+        self._server = EmbeddedServer(db_path)
+        self._http_client: httpx.AsyncClient | None = None
+        self._seq = 0
+        self._closed = False
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client."""
-        if self._client is None:
-            # Create transport that uses Unix socket
-            transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
-            self._client = httpx.AsyncClient(transport=transport, base_url="http://localhost")
-        return self._client
+    def _next_seq(self) -> int:
+        """Get next sequence number."""
+        self._seq += 1
+        return self._seq
 
-    async def request(
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create the httpx client connected via Unix socket."""
+        if self._http_client is None:
+            transport = httpx.AsyncHTTPTransport(uds=self._server.socket_path)
+            self._http_client = httpx.AsyncClient(transport=transport, base_url="http://localhost")
+        return self._http_client
+
+    async def _ensure_connected(self) -> None:
+        """Ensure server is started and client is connected."""
+        if self._closed:
+            raise RuntimeError("Client is closed")
+
+        if self._http_client is None:
+            # Start server in thread (sync operation)
+            await asyncio.to_thread(self._server.start)
+            # Eagerly create the http client so it's ready
+            await self._get_http_client()
+
+    async def _request(
         self,
         method: str,
         path: str,
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Make an HTTP request and return JSON response."""
-        client = await self._get_client()
+        """Make an HTTP request over the Unix socket and return JSON response."""
+        await self._ensure_connected()
+        client = await self._get_http_client()
         response = await client.request(method, path, json=json_data)
         response.raise_for_status()
         return response.json()
 
-    async def stream_sse(self, path: str) -> AsyncIterator[dict[str, Any]]:
-        """Stream SSE events from the server."""
-        client = await self._get_client()
+    async def _stream_sse(self, path: str) -> AsyncIterator[dict[str, Any]]:
+        """Stream SSE events from the server over the Unix socket."""
+        await self._ensure_connected()
+        client = await self._get_http_client()
         async with client.stream("GET", path) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
@@ -224,50 +249,6 @@ class UnixSocketClient:
                 elif line.startswith(": keepalive"):
                     continue
 
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
-
-
-class LocalClient(KaganClient):
-    """Client that connects to embedded server.
-
-    Combines EmbeddedServer and UnixSocketClient to provide
-    a clean local client interface. Same interface as RemoteClient.
-
-    Usage:
-        async with LocalClient() as client:
-            task = await client.create_task("Fix bug")
-            await client.run_task(task.id)
-            async for event in client.subscribe_events():
-                print(event)
-    """
-
-    def __init__(self, db_path: Path | str | None = None) -> None:
-        self._server = EmbeddedServer(db_path)
-        self._client: UnixSocketClient | None = None
-        self._seq = 0
-        self._closed = False
-
-    def _next_seq(self) -> int:
-        """Get next sequence number."""
-        self._seq += 1
-        return self._seq
-
-    async def _ensure_client(self) -> UnixSocketClient:
-        """Ensure server is started and client is connected."""
-        if self._closed:
-            raise RuntimeError("Client is closed")
-
-        if self._client is None:
-            # Start server in thread (sync operation)
-            await asyncio.to_thread(self._server.start)
-            self._client = UnixSocketClient(self._server.socket_path)
-
-        return self._client
-
     async def create_task(
         self,
         title: str,
@@ -278,9 +259,7 @@ class LocalClient(KaganClient):
         acceptance_criteria: list[str] | None = None,
     ) -> TaskCreatedEvent:
         """Create a new task in the active project."""
-        client = await self._ensure_client()
-
-        result = await client.request(
+        result = await self._request(
             "POST",
             "/api/tasks",
             json_data={
@@ -308,9 +287,7 @@ class LocalClient(KaganClient):
         launcher: str | None = None,
     ) -> None:
         """Start an agent session on a task."""
-        client = await self._ensure_client()
-
-        await client.request(
+        await self._request(
             "POST",
             f"/api/tasks/{task_id}/run",
             json_data={
@@ -321,9 +298,7 @@ class LocalClient(KaganClient):
 
     async def subscribe_events(self) -> AsyncIterator[AnyEvent]:
         """Subscribe to all real-time events via SSE."""
-        client = await self._ensure_client()
-
-        async for data in client.stream_sse("/api/events/stream"):
+        async for data in self._stream_sse("/api/events/stream"):
             event_type = data.get("type")
 
             if event_type == "TASK_CREATED":
@@ -375,13 +350,26 @@ class LocalClient(KaganClient):
             return
         self._closed = True
 
-        if self._client:
-            await self._client.close()
-            self._client = None
+        if self._http_client:
+            await self._http_client.aclose()
+            self._http_client = None
 
         # Stop server in thread (sync operation)
         await asyncio.to_thread(self._server.stop)
         logger.debug("LocalClient closed")
 
+    async def __aenter__(self) -> LocalClient:
+        """Async context manager entry."""
+        return self
 
-__all__ = ["EmbeddedServer", "LocalClient", "UnixSocketClient"]
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """Async context manager exit — ensures cleanup."""
+        await self.close()
+
+
+__all__ = ["EmbeddedServer", "LocalClient"]

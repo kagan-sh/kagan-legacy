@@ -3,90 +3,80 @@ import { EditTaskDialog } from '@/components/board/edit-task-dialog';
 import { TaskDeleteDialog } from '@/components/board/task-delete-dialog';
 import { BoardTaskPeekDialog } from '@/components/board/board-task-inspector';
 import type { WireTask } from '@/lib/api/types';
+import type { BoardDialog } from '@/lib/atoms/board';
 
 interface BoardDialogsProps {
-  createOpen: boolean;
-  setCreateOpen: (open: boolean) => void;
+  boardDialog: BoardDialog;
+  closeDialog: () => void;
   editingTask: WireTask | null;
-  setEditingTask: (task: WireTask | null) => void;
   deleteTask: WireTask | null;
-  setDeleteTask: (task: WireTask | null) => void;
   peekTask: WireTask | null;
-  peekOpen: boolean;
-  setPeekOpen: (open: boolean) => void;
   selectedTaskId: string | null;
   setSelectedTaskId: (id: string | null) => void;
   onOpenTask: (task: WireTask) => void;
   onOpenStream: () => void;
+  onEditTask: (task: WireTask) => void;
+  onDeleteTask: (task: WireTask) => void;
 }
 
 export function BoardDialogs({
-  createOpen,
-  setCreateOpen,
+  boardDialog,
+  closeDialog,
   editingTask,
-  setEditingTask,
   deleteTask,
-  setDeleteTask,
   peekTask,
-  peekOpen,
-  setPeekOpen,
   selectedTaskId,
   setSelectedTaskId,
   onOpenTask,
   onOpenStream,
+  onEditTask,
+  onDeleteTask,
 }: BoardDialogsProps) {
   return (
     <>
       <CreateTaskDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
+        open={boardDialog.kind === 'create'}
+        onOpenChange={(open) => { if (!open) closeDialog(); }}
       />
       <EditTaskDialog
-        open={Boolean(editingTask)}
-        onOpenChange={(open) => {
-          if (!open) setEditingTask(null);
-        }}
+        open={boardDialog.kind === 'edit'}
+        onOpenChange={(open) => { if (!open) closeDialog(); }}
         task={editingTask}
         onUpdated={(task) => {
-          setEditingTask(task);
           setSelectedTaskId(task.id);
         }}
       />
       <BoardTaskPeekDialog
         task={peekTask}
-        open={peekOpen}
-        onOpenChange={setPeekOpen}
+        open={boardDialog.kind === 'peek'}
+        onOpenChange={(open) => { if (!open) closeDialog(); }}
         onOpenTask={() => {
           if (!peekTask) return;
-          setPeekOpen(false);
+          closeDialog();
           onOpenTask(peekTask);
         }}
         onOpenStream={() => {
-          setPeekOpen(false);
+          closeDialog();
           onOpenStream();
         }}
         onEdit={() => {
           if (!peekTask) return;
-          setPeekOpen(false);
-          setEditingTask(peekTask);
+          onEditTask(peekTask);
         }}
         onDelete={() => {
           if (!peekTask) return;
-          setPeekOpen(false);
-          setDeleteTask(peekTask);
+          onDeleteTask(peekTask);
         }}
       />
       <TaskDeleteDialog
         task={deleteTask}
-        open={Boolean(deleteTask)}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTask(null);
-        }}
+        open={boardDialog.kind === 'delete'}
+        onOpenChange={(open) => { if (!open) closeDialog(); }}
         onDeleted={(task) => {
           if (selectedTaskId === task.id) {
             setSelectedTaskId(null);
           }
-          setDeleteTask(null);
+          closeDialog();
         }}
       />
     </>

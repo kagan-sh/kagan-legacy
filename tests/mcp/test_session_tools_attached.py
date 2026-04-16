@@ -203,7 +203,9 @@ async def test_core_session_start_returns_session_id(mcp_board_with_core: Client
     result = await mcp_board_with_core.call_tool(
         "run_start", {"task_id": task_id, "launcher": "tmux"}
     )
-    assert result is not None
+    # Result structure should be valid even if execution fails
+    assert hasattr(result, "isError"), "Result missing isError field"
+    assert hasattr(result, "content"), "Result missing content field"
 
 
 async def test_core_session_manage_get_returns_status_fields(

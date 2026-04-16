@@ -318,7 +318,7 @@ def test_known_legacy_alembic_revision_is_remapped_to_head(tmp_path: Path) -> No
         client.close()
 
 
-def test_unknown_alembic_revision_fails_with_explicit_message(tmp_path: Path) -> None:
+def test_unknown_alembic_revision_auto_recovers(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy-unknown-rev.db"
     _seed_v060_schema(db_path)
 
@@ -330,5 +330,14 @@ def test_unknown_alembic_revision_fails_with_explicit_message(tmp_path: Path) ->
     finally:
         conn.close()
 
-    with pytest.raises(RuntimeError, match="Unknown alembic revision 'deadbeefdead'"):
-        KaganCore(db_path=db_path)
+    client = KaganCore(db_path=db_path)
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            head = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+            assert head is not None
+            assert head[0] != "deadbeefdead"
+        finally:
+            conn.close()
+    finally:
+        client.close()

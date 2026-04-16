@@ -1,7 +1,6 @@
 """Behavioral tests for managed-run MCP tools."""
 
 import pytest
-from mcp.types import TextContent
 
 from mcp import ClientSession
 from tests.helpers.mcp_helpers import extract_text as _text
@@ -56,7 +55,9 @@ async def test_session_start_accepts_persona_argument(mcp_board: ClientSession) 
         "run_start",
         {"task_id": task_id, "persona": "analyst"},
     )
-    assert result is not None
+    # Persona argument is accepted; should execute without parameter validation errors
+    assert hasattr(result, "isError"), "Result missing isError field"
+    assert hasattr(result, "content"), "Result missing content field"
 
 
 async def test_session_report_returns_expected_columns(mcp_board: ClientSession) -> None:

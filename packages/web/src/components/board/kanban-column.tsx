@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import type { TaskStatus, WireTask } from '@/lib/api/types';
 import { STATUS_LABELS, STATUS_COLORS } from '@/lib/utils/constants';
 import { TaskCard } from '@/components/board/task-card';
-import { ActionEmptyState } from '@/components/shared/workspace';
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
 interface KanbanColumnProps {
   status: TaskStatus;
@@ -105,11 +105,12 @@ export function KanbanColumn({
 
       <div className="flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
-          <ActionEmptyState
-            title={EMPTY_COPY[status].title}
-            description={EMPTY_COPY[status].description}
-            className="h-full min-h-[10rem]"
-          />
+          <Empty className="h-full min-h-[10rem]">
+            <EmptyHeader>
+              <EmptyTitle className="text-sm text-muted-foreground">{EMPTY_COPY[status].title}</EmptyTitle>
+              <EmptyDescription>{EMPTY_COPY[status].description}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="divide-y divide-border/50">
             {tasks.map((task) => (

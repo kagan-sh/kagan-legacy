@@ -97,6 +97,7 @@ def mcp_error_boundary[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awa
 
 def register_all_toolsets(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register all domain toolsets on the MCP server."""
+    from kagan.server.mcp.toolsets.analytics import register as register_analytics
     from kagan.server.mcp.toolsets.diagnostics import register as register_diagnostics
     from kagan.server.mcp.toolsets.personas import register as register_personas
     from kagan.server.mcp.toolsets.plugins import register as register_plugins
@@ -114,3 +115,4 @@ def register_all_toolsets(mcp: FastMCP, opts: ServerOptions) -> None:
     register_personas(mcp, opts)
     register_diagnostics(mcp, opts)
     register_plugins(mcp, opts)
+    register_analytics(mcp, opts)

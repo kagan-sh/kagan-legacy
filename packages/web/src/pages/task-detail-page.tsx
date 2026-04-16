@@ -4,11 +4,12 @@ import {
     ArrowLeft,
     CheckCircle,
     ChevronRight,
-    LayoutDashboard,
     ListChecks,
     MessageSquare,
+    MoreHorizontal,
     MoveRight,
     Pencil,
+    Trash2,
     XCircle,
 } from "lucide-react";
 import { useSetAtom } from "jotai";
@@ -27,12 +28,24 @@ import {
 } from "@/lib/utils/constants";
 import { useTaskEvents } from "@/lib/hooks/use-task-events";
 import {
-    ActionEmptyState,
     InspectorSection,
     Panel,
     StickyActionBar,
 } from "@/components/shared/workspace";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Select,
@@ -41,14 +54,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { AgentControl } from "@/components/board/agent-control";
 import { ReviewPanel } from "@/components/board/review-panel";
 import { DiffViewer } from "@/components/board/diff-viewer";
@@ -227,10 +232,12 @@ export function Component() {
     if (!displayTask) {
         return (
             <div className="mx-auto flex h-full w-full max-w-[1680px] items-center justify-center px-6 py-10">
-                <ActionEmptyState
-                    title="Task not found"
-                    description="The task may have been deleted or the workspace is no longer synced with the server."
-                />
+                <Empty className="border-0">
+                    <EmptyHeader>
+                        <EmptyTitle>Task not found</EmptyTitle>
+                        <EmptyDescription>The task may have been deleted or the workspace is no longer synced with the server.</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
             </div>
         );
     }
@@ -243,28 +250,6 @@ export function Component() {
 
     return (
         <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6">
-            <Breadcrumb>
-                <BreadcrumbList className="text-[var(--muted-foreground)]">
-                    <BreadcrumbItem>
-                        <BreadcrumbLink
-                            onClick={() => navigate("/board")}
-                            className="inline-flex cursor-pointer items-center gap-1.5 hover:text-[var(--foreground)]"
-                        >
-                            <LayoutDashboard className="size-3.5" />
-                            Board
-                        </BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator>
-                        <ChevronRight className="size-3.5" />
-                    </BreadcrumbSeparator>
-                    <BreadcrumbItem>
-                        <BreadcrumbPage className="max-w-[200px] truncate text-[var(--foreground)] sm:max-w-[300px]">
-                            {displayTask.title}
-                        </BreadcrumbPage>
-                    </BreadcrumbItem>
-                </BreadcrumbList>
-            </Breadcrumb>
-
             <div className="flex items-center gap-2 border-b border-[color:var(--border-subtle)] pb-3">
                 <Button
                     variant="ghost"
@@ -277,27 +262,32 @@ export function Component() {
                 <h1 className="min-w-0 truncate text-sm font-semibold">
                     {displayTask.title}
                 </h1>
-                <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-                <span className="text-xs text-[var(--muted-foreground)]">
-                    {displayTask.description || "No description"}
-                </span>
-                <div className="ml-auto flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditOpen(true)}
-                    >
-                        <Pencil className="size-3.5" />
-                        Edit
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDeleteOpen(true)}
-                    >
-                        Delete
-                    </Button>
-                </div>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                            aria-label="Task actions"
+                        >
+                            <MoreHorizontal className="size-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                            <Pencil className="size-4" />
+                            Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setDeleteOpen(true)}
+                        >
+                            <Trash2 className="size-4" />
+                            Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
             <Panel className="mt-3">
@@ -389,7 +379,7 @@ export function Component() {
 
                                     <InspectorSection title="Acceptance Criteria">
                                         {criteria.length > 0 ? (
-                                            <div className="space-y-2">
+                                            <ul className="space-y-1">
                                                 {criteria.map(
                                                     (criterion, index) => {
                                                         const verdict =
@@ -399,49 +389,71 @@ export function Component() {
                                                                     index,
                                                             );
                                                         return (
-                                                            <div
+                                                            <li
                                                                 key={criterion}
-                                                                className="flex items-start gap-3 bg-[color:var(--surface-1)] p-3 shadow-[var(--soft-shadow)]"
                                                             >
-                                                                {verdict?.verdict ===
-                                                                "PASS" ? (
-                                                                    <CheckCircle className="mt-0.5 size-4 text-[var(--kagan-success)]" />
-                                                                ) : verdict?.verdict ===
-                                                                  "FAIL" ? (
-                                                                    <XCircle className="mt-0.5 size-4 text-[var(--destructive)]" />
-                                                                ) : (
-                                                                    <ListChecks className="mt-0.5 size-4 text-[var(--primary)]" />
-                                                                )}
-                                                                <div className="min-w-0 flex-1">
-                                                                    <p className="text-sm leading-6 text-[var(--muted-foreground)]">
-                                                                        {
-                                                                            criterion
-                                                                        }
-                                                                    </p>
-                                                                    {verdict ? (
-                                                                        <p className="mt-1 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                                                                            AI:{" "}
+                                                                <Collapsible
+                                                                    disabled={
+                                                                        !verdict
+                                                                    }
+                                                                >
+                                                                    <div className="flex items-center gap-2 py-1">
+                                                                        {verdict?.verdict ===
+                                                                        "PASS" ? (
+                                                                            <CheckCircle className="size-3.5 shrink-0 text-[var(--kagan-success)]" />
+                                                                        ) : verdict?.verdict ===
+                                                                          "FAIL" ? (
+                                                                            <XCircle className="size-3.5 shrink-0 text-[var(--destructive)]" />
+                                                                        ) : (
+                                                                            <ListChecks className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                                                                        )}
+                                                                        <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
                                                                             {
-                                                                                verdict.verdict
-                                                                            }{" "}
-                                                                            —{" "}
-                                                                            {
-                                                                                verdict.reason
+                                                                                criterion
                                                                             }
-                                                                        </p>
+                                                                        </span>
+                                                                        {verdict ? (
+                                                                            <CollapsibleTrigger
+                                                                                asChild
+                                                                            >
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon-xs"
+                                                                                    className="size-5"
+                                                                                    aria-label="Toggle verdict details"
+                                                                                >
+                                                                                    <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
+                                                                                </Button>
+                                                                            </CollapsibleTrigger>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    {verdict ? (
+                                                                        <CollapsibleContent>
+                                                                            <p className="pb-1 pl-5.5 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                                                                                AI:{" "}
+                                                                                {
+                                                                                    verdict.verdict
+                                                                                }{" "}
+                                                                                —{" "}
+                                                                                {
+                                                                                    verdict.reason
+                                                                                }
+                                                                            </p>
+                                                                        </CollapsibleContent>
                                                                     ) : null}
-                                                                </div>
-                                                            </div>
+                                                                </Collapsible>
+                                                            </li>
                                                         );
                                                     },
                                                 )}
-                                            </div>
+                                            </ul>
                                         ) : (
-                                            <ActionEmptyState
-                                                title="No acceptance criteria yet"
-                                                description="The agent can still work, but review quality will be stronger if you define concrete success checks."
-                                                className="min-h-[14rem]"
-                                            />
+                                            <Empty className="min-h-[14rem] border-0">
+                                                <EmptyHeader>
+                                                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
+                                                    <EmptyDescription>The agent can still work, but review quality will be stronger if you define concrete success checks.</EmptyDescription>
+                                                </EmptyHeader>
+                                            </Empty>
                                         )}
                                     </InspectorSection>
                                 </div>
@@ -455,15 +467,19 @@ export function Component() {
                                             taskStatus={displayTask.status}
                                         />
                                     ) : displayTask.status === "DONE" ? (
-                                        <ActionEmptyState
-                                            title="Changes merged"
-                                            description="This task's branch has been merged and the workspace cleaned up. The diff is no longer available."
-                                        />
+                                        <Empty className="border-0">
+                                            <EmptyHeader>
+                                                <EmptyTitle>Changes merged</EmptyTitle>
+                                                <EmptyDescription>This task's branch has been merged and the workspace cleaned up. The diff is no longer available.</EmptyDescription>
+                                            </EmptyHeader>
+                                        </Empty>
                                     ) : (
-                                        <ActionEmptyState
-                                            title="Workspace not ready"
-                                            description="Provision or start the task to let Kagan create a working tree. Once code starts moving, diffs will appear here."
-                                        />
+                                        <Empty className="border-0">
+                                            <EmptyHeader>
+                                                <EmptyTitle>Workspace not ready</EmptyTitle>
+                                                <EmptyDescription>Provision or start the task to let Kagan create a working tree. Once code starts moving, diffs will appear here.</EmptyDescription>
+                                            </EmptyHeader>
+                                        </Empty>
                                     )}
                                 </div>
                             </TabsContent>

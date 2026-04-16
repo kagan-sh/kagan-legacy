@@ -12,6 +12,7 @@ import contextlib
 
 import pytest
 from mcp.shared.memory import create_client_server_memory_streams
+
 from kagan.server.mcp.server import ServerOptions, create_server
 from mcp import ClientSession
 from tests.helpers.mcp_helpers import extract_text as _text

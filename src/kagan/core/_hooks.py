@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+from abc import abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any
 
 from loguru import logger
 
@@ -47,38 +48,29 @@ class HookResult:
     message: str | None = None
 
 
-class Hook(Protocol):
-    """Protocol for lifecycle hooks."""
+@dataclass(slots=True)
+class Hook:
+    """Base class for lifecycle hooks."""
 
-    @property
-    def name(self) -> str: ...
+    name: str
+    events: frozenset[HookEvent]
 
-    @property
-    def events(self) -> frozenset[HookEvent]: ...
-
+    @abstractmethod
     def execute(self, context: HookContext) -> HookResult: ...
 
 
 @dataclass(slots=True)
-class RepetitionHook:
+class RepetitionHook(Hook):
     """Built-in hook: detects agents stuck in tool-call loops.
 
     Migrated from the standalone RepetitionGuard.
     """
 
-    _name: str = "repetition_guard"
-    _events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
+    name: str = "repetition_guard"
+    events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
     window: int = 20
     threshold: int = 8
     _recent: deque[str] = field(default_factory=lambda: deque(maxlen=20))
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def events(self) -> frozenset[HookEvent]:
-        return self._events
 
     def execute(self, context: HookContext) -> HookResult:
         from kagan.core._repetition_guard import _normalize_for_hash
@@ -103,12 +95,12 @@ class RepetitionHook:
 
 
 @dataclass(slots=True)
-class DangerousCommandHook:
+class DangerousCommandHook(Hook):
     """Built-in hook: blocks known destructive shell commands."""
 
-    _name: str = "dangerous_command_guard"
-    _events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
-    _blocked_patterns: tuple[str, ...] = (
+    name: str = "dangerous_command_guard"
+    events: frozenset[HookEvent] = field(default_factory=lambda: frozenset({HookEvent.PRE_TOOL}))
+    blocked_patterns: tuple[str, ...] = (
         "rm -rf /",
         "git push --force ",  # trailing space avoids matching --force-with-lease
         "git push -f ",
@@ -117,20 +109,12 @@ class DangerousCommandHook:
         "DROP DATABASE",
     )
 
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def events(self) -> frozenset[HookEvent]:
-        return self._events
-
     def execute(self, context: HookContext) -> HookResult:
         if context.tool_name is None or context.tool_arguments is None:
             return HookResult()
 
         args_str = str(context.tool_arguments).lower()
-        for pattern in self._blocked_patterns:
+        for pattern in self.blocked_patterns:
             if pattern.lower() in args_str:
                 logger.warning(
                     "Dangerous command blocked: pattern={!r} tool={} task={}",

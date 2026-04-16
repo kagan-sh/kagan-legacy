@@ -32,6 +32,9 @@ def test_worker_role_tools() -> None:
         "session_rewind",
         "insight_add",
         "insight_list",
+        "analytics_backend_stats",
+        "analytics_session_timeline",
+        "analytics_export",
     }
 
 

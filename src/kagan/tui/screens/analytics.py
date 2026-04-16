@@ -7,23 +7,17 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
 from kagan.core._formatting import format_duration, format_percentage
+from kagan.tui.keybindings import ANALYTICS_BINDINGS
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
     from kagan.tui.app import KaganApp
-
-ANALYTICS_BINDINGS: list[Binding] = [
-    Binding("escape", "close", "Close"),
-    Binding("r", "refresh", "Refresh"),
-    Binding("e", "export", "Export JSON"),
-]
 
 
 def _build_backend_table(stats: list[dict[str, Any]]) -> str:

@@ -6,6 +6,7 @@ from textual.binding import Binding, BindingType
 
 __all__ = [
     "AGENT_PICKER_BINDINGS",
+    "ANALYTICS_BINDINGS",
     "APP_BINDINGS",
     "CHAT_BINDINGS",
     "CHAT_PERMISSION_BINDINGS",
@@ -273,6 +274,12 @@ GITHUB_IMPORT_BINDINGS: list[BindingType] = [
 AGENT_PICKER_BINDINGS: list[BindingType] = [
     Binding("enter", "select_agent", "Select", show=False, priority=True),
     Binding("escape", "dismiss", "Close"),
+]
+
+ANALYTICS_BINDINGS: list[BindingType] = [
+    Binding("escape", "close", "Close"),
+    Binding("r", "refresh", "Refresh"),
+    Binding("e", "export", "Export JSON"),
 ]
 
 CHAT_PERMISSION_BINDINGS: list[BindingType] = [

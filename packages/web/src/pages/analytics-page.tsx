@@ -321,28 +321,48 @@ function DurationByBackendChart({ data }: { data: BackendStats[] }) {
 
 const GLOSSARY_ITEMS = [
   {
+    term: 'Success vs Failure',
+    definition: 'A session is "successful" if the agent completed its work and moved the task to the Review stage. A session "fails" if the agent encountered an error, timed out, or was unable to proceed. Failed sessions may be retried automatically or manually.',
+  },
+  {
+    term: 'Completed',
+    definition: 'Task successfully finished—the agent completed work and the task moved to Review for approval.',
+  },
+  {
+    term: 'Failed',
+    definition: 'Agent encountered an error, timed out, or could not proceed. Failed sessions can trigger retries.',
+  },
+  {
+    term: 'Cancelled',
+    definition: 'Session was manually stopped or interrupted by the user before completion.',
+  },
+  {
+    term: 'Running & Pending',
+    definition: 'Running: agent is actively processing. Pending: session is queued or waiting to start.',
+  },
+  {
     term: 'Total Sessions',
-    definition: 'Number of agent runs initiated across all backends.',
+    definition: 'Total number of agent runs initiated across all backends in the selected period.',
   },
   {
     term: 'Avg Success Rate',
-    definition: 'Percentage of sessions that completed successfully, weighted by session count per backend.',
+    definition: 'Percentage of all sessions completed successfully, weighted by session count per backend. Green badge (≥80%): excellent, Yellow (50-79%): acceptable, Red (<50%): needs improvement.',
   },
   {
     term: 'Avg Duration',
-    definition: 'Average time per session, weighted by count. Sessions without timing data are excluded.',
+    definition: 'Average time per session, weighted by session count. Useful for identifying slow backends or performance trends.',
   },
   {
     term: 'Success Rate (per backend)',
-    definition: 'Percentage of sessions completed successfully for that backend.',
+    definition: 'Percentage of that backend\'s sessions completed successfully. Compare backends to identify the most reliable one.',
   },
   {
     term: 'Retry Rate',
-    definition: 'Percentage of sessions that were retried (attempted multiple times).',
+    definition: 'Percentage of sessions that required multiple attempts before completion. High retry rates may indicate unstable backends or challenging tasks.',
   },
   {
     term: 'Active Days',
-    definition: 'Number of days in the period with at least one session recorded.',
+    definition: 'Number of unique days in the period with at least one session recorded. Useful for understanding usage patterns.',
   },
 ];
 

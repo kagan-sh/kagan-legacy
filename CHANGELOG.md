@@ -13,6 +13,20 @@
 
 
 
+## v0.18.1-beta.3 (2026-04-16)
+
+
+
+
+### Bug Fixes
+
+- **vscode**: Downgrade @types/vscode to match engines.vscode version
+  ([`550e7bc`](https://github.com/kagan-sh/kagan/commit/550e7bc5046e23913bffc7a89301d682efc08b23))
+
+
+
+
+
 ## v0.18.1-beta.2 (2026-04-16)
 
 

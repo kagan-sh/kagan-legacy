@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 
 from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
+from kagan.core._backend_selector import BackendSelector
 from kagan.core._utils import utc_iso
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
@@ -36,6 +37,97 @@ if TYPE_CHECKING:
 
 def _event_dict(event: Any) -> dict[str, Any]:
     return EventResponse.model_validate(event).model_dump(mode="json")
+
+
+
+
+async def _select_backend_intelligently(
+    ctx: Any,
+    task_id: str,
+    agent_backend: str | None,
+    task_title: str,
+    task_description: str,
+) -> tuple[str, dict[str, Any]]:
+    """Select backend using BackendSelector if enabled, else use default.
+
+    Returns: (selected_backend, selection_metadata)
+    """
+    settings = await ctx.client.settings.get()
+    use_recommended = settings.get("use_recommended_backend") == "true"
+    default_backend = resolve_default_agent_backend(settings)
+
+    # If user explicitly specified backend, use it (unless recommendation is enabled)
+    if agent_backend and not use_recommended:
+        return agent_backend, {
+            "backend": agent_backend,
+            "reason": "user_specified",
+            "confidence": 0.0,
+            "alternatives": [],
+        }
+
+    # If no intelligent selection, use default
+    if not use_recommended:
+        return default_backend, {
+            "backend": default_backend,
+            "reason": "default_backend",
+            "confidence": 0.0,
+            "alternatives": [],
+        }
+
+    # Perform intelligent selection
+    try:
+        from kagan.core._agent import list_available_backends
+
+        # Get task details
+        task = await ctx.client.tasks.get(task_id)
+
+        # Infer agent role (same logic as _sessions._infer_agent_role)
+        agent_role = "reviewer" if task.status == TaskStatus.REVIEW else "worker"
+
+        # Get available backends
+        available_map = list_available_backends()
+        available = [name for name, is_installed in available_map.items() if is_installed]
+
+        if not available:
+            available = [default_backend]
+
+        # Create selector and select backend
+        project_id = task.project_id
+        selector = BackendSelector(ctx.client.analytics, project_id)
+
+        result = await selector.select_backend(
+            title=task_title,
+            description=task_description,
+            agent_role=agent_role,
+            available_backends=available,
+            fallback_backend=default_backend,
+        )
+
+        selected = result.get("backend", default_backend)
+        logger.info(
+            "Backend selection: task={}, role={}, selected={}, confidence={}, reason={}",
+            task_id,
+            agent_role,
+            selected,
+            result.get("confidence", 0),
+            result.get("reason", "unknown"),
+        )
+
+        return selected, result
+
+    except Exception as exc:
+        logger.warning(
+            "BackendSelector failed for task={}: {}. Using default backend: {}",
+            task_id,
+            exc,
+            default_backend,
+        )
+        return default_backend, {
+            "backend": default_backend,
+            "reason": "selector_error",
+            "confidence": 0.0,
+            "alternatives": [],
+        }
 
 
 def _manual_review_required(task_id: str) -> JSONResponse:
@@ -191,14 +283,24 @@ def register_task_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, RunTaskRequest)
-        agent_backend = body.agent_backend
-        settings = await ctx.client.settings.get()
-        if not agent_backend:
-            agent_backend = resolve_default_agent_backend(settings)
+
+        # Get task for title/description
+        task = await ctx.client.tasks.get(task_id)
+
+        # Select backend intelligently if enabled
+        agent_backend, selection_metadata = await _select_backend_intelligently(
+            ctx,
+            task_id,
+            body.agent_backend,
+            task.title,
+            task.description or "",
+        )
+
         launcher = None
         ide = None
         if body.launcher and body.launcher.strip():
             launcher, ide = resolve_launcher(body.launcher.strip().lower())
+
         await ctx.client.tasks.run(
             task_id,
             agent_backend=agent_backend,
@@ -206,9 +308,20 @@ def register_task_routes(mcp: FastMCP) -> None:
             ide=ide,
             persona=body.persona,
         )
+
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+
+        # Include selection metadata in response
+        wire_dict = task_to_wire_dict(task, runtime=runtime)
+        wire_dict["backend_selection"] = {
+            "selected_backend": selection_metadata.get("backend"),
+            "backend_confidence": selection_metadata.get("confidence"),
+            "backend_reason": selection_metadata.get("reason"),
+            "alternatives": selection_metadata.get("alternatives", []),
+        }
+
+        return _ok(wire_dict)
 
     @mcp.custom_route("/api/tasks/{task_id}/cancel", methods=["POST"])
     @require_context(mcp)
@@ -483,10 +596,26 @@ def register_task_routes(mcp: FastMCP) -> None:
         updated_desc = f"{current_desc}\n\n{follow_up}" if current_desc else follow_up
         task = await ctx.client.tasks.update(task_id, description=updated_desc)
 
-        settings = await ctx.client.settings.get()
-        backend = getattr(task, "agent_backend", None) or resolve_default_agent_backend(settings)
-        await ctx.client.tasks.run(task_id, agent_backend=backend)
+        # Select backend intelligently (with updated description)
+        agent_backend, selection_metadata = await _select_backend_intelligently(
+            ctx,
+            task_id,
+            getattr(task, "agent_backend", None),
+            task.title,
+            updated_desc,
+        )
+
+        await ctx.client.tasks.run(task_id, agent_backend=agent_backend)
 
         runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+
+        wire_dict = task_to_wire_dict(task, runtime=runtime)
+        wire_dict["backend_selection"] = {
+            "selected_backend": selection_metadata.get("backend"),
+            "backend_confidence": selection_metadata.get("confidence"),
+            "backend_reason": selection_metadata.get("reason"),
+            "alternatives": selection_metadata.get("alternatives", []),
+        }
+
+        return _ok(wire_dict)

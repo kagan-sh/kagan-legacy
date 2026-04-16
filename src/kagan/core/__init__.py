@@ -92,6 +92,7 @@ from kagan.core._security import (
 )
 from kagan.core._sessions import (
     active_session_summaries,
+    backfill_agent_roles,
     complete_session,
     fail_session,
     fetch_project_learnings,
@@ -105,7 +106,8 @@ from kagan.core._sessions import (
     update_session_pid,
 )
 from kagan.core._settings import get_settings, set_settings
-from kagan.core._tasks import Tasks
+from kagan.core._task_classification import classify_task
+from kagan.core._tasks import Tasks, backfill_task_types
 from kagan.core._worktrees import (
     cleanup_orphan_worktrees,
     cleanup_worktree,
@@ -171,8 +173,8 @@ __all__ = [
     "ACPClientBase",
     "AgentBackendConfig",
     "AgentError",
-    "AttackVector",
     "AgentRole",
+    "AttackVector",
     "AuditEntry",
     "BackendCapability",
     "BackendSpec",
@@ -215,9 +217,12 @@ __all__ = [
     "active_session_summaries",
     "add_repo",
     "approve_review",
+    "backfill_agent_roles",
+    "backfill_task_types",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
+    "classify_task",
     "cleanup_orphan_worktrees",
     "cleanup_worktree",
     "clear_review_verdicts",

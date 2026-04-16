@@ -118,9 +118,7 @@ class Analytics:
 
         return await _db_async(self._engine, _run)
 
-    async def timeline_summary(
-        self, project_id: str, days: int = 30
-    ) -> dict[str, int | float]:
+    async def timeline_summary(self, project_id: str, days: int = 30) -> dict[str, int | float]:
         """Aggregate timeline data into summary statistics."""
         timeline = await self.session_timeline(project_id, days=days)
 
@@ -130,9 +128,7 @@ class Analytics:
         total_cancelled = sum(d["cancelled"] for d in timeline)
         active_days = sum(1 for d in timeline if d["total"] > 0)
 
-        success_rate = (
-            total_completed / total_sessions if total_sessions > 0 else 0
-        )
+        success_rate = total_completed / total_sessions if total_sessions > 0 else 0
 
         return {
             "total_sessions": total_sessions,
@@ -156,148 +152,100 @@ class Analytics:
             "count": best["count"],
         }
 
-    async def backend_by_role_stats(
-        self, project_id: str
+    async def _aggregate_stats(
+        self,
+        project_id: str,
+        group_by_role: bool = False,
+        group_by_task_type: bool = False,
     ) -> list[dict[str, Any]]:
+        """Unified aggregation across dimensions: backend, role, task_type.
+
+        Args:
+            project_id: Project to aggregate for
+            group_by_role: Include agent_role in grouping and results
+            group_by_task_type: Include task_type in grouping and results
+
+        Returns:
+            List of dicts with agent_backend, optional agent_role, optional task_type,
+            count, success_rate, and avg_duration_seconds
+        """
+        completed_case = case(
+            (Session.status == SessionStatus.COMPLETED, 1),
+            else_=0,
+        )
+        duration_expr = func.julianday(Session.ended_at) - func.julianday(Session.started_at)
+
+        # Build select columns dynamically
+        select_cols = [
+            Session.agent_backend,
+        ]
+        group_cols = [Session.agent_backend]
+
+        if group_by_role:
+            select_cols.append(Session.agent_role)
+            group_cols.append(Session.agent_role)
+
+        if group_by_task_type:
+            select_cols.append(Task.task_type)
+            group_cols.append(Task.task_type)
+
+        select_cols.extend([
+            func.count(Session.id).label("count"),
+            func.avg(completed_case).label("success_rate"),
+            func.avg(
+                case(
+                    (Session.ended_at.is_not(None), duration_expr * 86400),
+                    else_=None,
+                ),
+            ).label("avg_duration_seconds"),
+        ])
+
+        stmt = (
+            select(*select_cols)
+            .join(Task, Task.id == Session.task_id)
+            .where(Task.project_id == project_id)
+            .group_by(*group_cols)
+            .order_by(func.count(Session.id).desc())
+        )
+
+        def _run(s):
+            rows = s.exec(stmt).all()
+            results = []
+            col_idx = 0
+
+            for row in rows:
+                result = {"agent_backend": row[col_idx]}
+                col_idx += 1
+
+                if group_by_role:
+                    result["agent_role"] = row[col_idx]
+                    col_idx += 1
+
+                if group_by_task_type:
+                    result["task_type"] = row[col_idx]
+                    col_idx += 1
+
+                result["count"] = row[col_idx]
+                result["success_rate"] = round(float(row[col_idx + 1] or 0), 4)
+                result["avg_duration_seconds"] = (
+                    round(float(row[col_idx + 2]), 1)
+                    if row[col_idx + 2] is not None
+                    else None
+                )
+                results.append(result)
+
+            return results
+
+        return await _db_async(self._engine, _run)
+
+    async def backend_by_role_stats(self, project_id: str) -> list[dict[str, Any]]:
         """Per-backend, per-agent-role aggregates."""
-        completed_case = case(
-            (Session.status == SessionStatus.COMPLETED, 1),
-            else_=0,
-        )
-        duration_expr = func.julianday(Session.ended_at) - func.julianday(
-            Session.started_at
-        )
+        return await self._aggregate_stats(project_id, group_by_role=True)
 
-        stmt = (
-            select(
-                Session.agent_backend,
-                Session.agent_role,
-                func.count(Session.id).label("count"),
-                func.avg(completed_case).label("success_rate"),
-                func.avg(
-                    case(
-                        (Session.ended_at.is_not(None), duration_expr * 86400),
-                        else_=None,
-                    ),
-                ).label("avg_duration_seconds"),
-            )
-            .join(Task, Task.id == Session.task_id)
-            .where(Task.project_id == project_id)
-            .group_by(Session.agent_backend, Session.agent_role)
-            .order_by(func.count(Session.id).desc())
-        )
-
-        def _run(s):
-            rows = s.exec(stmt).all()
-            return [
-                {
-                    "agent_backend": row[0],
-                    "agent_role": row[1],
-                    "count": row[2],
-                    "success_rate": round(float(row[3] or 0), 4),
-                    "avg_duration_seconds": round(float(row[4]), 1)
-                    if row[4] is not None
-                    else None,
-                }
-                for row in rows
-            ]
-
-        return await _db_async(self._engine, _run)
-
-    async def backend_by_task_type_stats(
-        self, project_id: str
-    ) -> list[dict[str, Any]]:
+    async def backend_by_task_type_stats(self, project_id: str) -> list[dict[str, Any]]:
         """Per-backend, per-task-type aggregates."""
-        completed_case = case(
-            (Session.status == SessionStatus.COMPLETED, 1),
-            else_=0,
-        )
-        duration_expr = func.julianday(Session.ended_at) - func.julianday(
-            Session.started_at
-        )
+        return await self._aggregate_stats(project_id, group_by_task_type=True)
 
-        stmt = (
-            select(
-                Session.agent_backend,
-                Task.task_type,
-                func.count(Session.id).label("count"),
-                func.avg(completed_case).label("success_rate"),
-                func.avg(
-                    case(
-                        (Session.ended_at.is_not(None), duration_expr * 86400),
-                        else_=None,
-                    ),
-                ).label("avg_duration_seconds"),
-            )
-            .join(Task, Task.id == Session.task_id)
-            .where(Task.project_id == project_id)
-            .group_by(Session.agent_backend, Task.task_type)
-            .order_by(func.count(Session.id).desc())
-        )
-
-        def _run(s):
-            rows = s.exec(stmt).all()
-            return [
-                {
-                    "agent_backend": row[0],
-                    "task_type": row[1],
-                    "count": row[2],
-                    "success_rate": round(float(row[3] or 0), 4),
-                    "avg_duration_seconds": round(float(row[4]), 1)
-                    if row[4] is not None
-                    else None,
-                }
-                for row in rows
-            ]
-
-        return await _db_async(self._engine, _run)
-
-    async def backend_role_task_stats(
-        self, project_id: str
-    ) -> list[dict[str, Any]]:
+    async def backend_role_task_stats(self, project_id: str) -> list[dict[str, Any]]:
         """Per-backend, per-agent-role, per-task-type aggregates (fully dimensional)."""
-        completed_case = case(
-            (Session.status == SessionStatus.COMPLETED, 1),
-            else_=0,
-        )
-        duration_expr = func.julianday(Session.ended_at) - func.julianday(
-            Session.started_at
-        )
-
-        stmt = (
-            select(
-                Session.agent_backend,
-                Session.agent_role,
-                Task.task_type,
-                func.count(Session.id).label("count"),
-                func.avg(completed_case).label("success_rate"),
-                func.avg(
-                    case(
-                        (Session.ended_at.is_not(None), duration_expr * 86400),
-                        else_=None,
-                    ),
-                ).label("avg_duration_seconds"),
-            )
-            .join(Task, Task.id == Session.task_id)
-            .where(Task.project_id == project_id)
-            .group_by(Session.agent_backend, Session.agent_role, Task.task_type)
-            .order_by(func.count(Session.id).desc())
-        )
-
-        def _run(s):
-            rows = s.exec(stmt).all()
-            return [
-                {
-                    "agent_backend": row[0],
-                    "agent_role": row[1],
-                    "task_type": row[2],
-                    "count": row[3],
-                    "success_rate": round(float(row[4] or 0), 4),
-                    "avg_duration_seconds": round(float(row[5]), 1)
-                    if row[5] is not None
-                    else None,
-                }
-                for row in rows
-            ]
-
-        return await _db_async(self._engine, _run)
+        return await self._aggregate_stats(project_id, group_by_role=True, group_by_task_type=True)

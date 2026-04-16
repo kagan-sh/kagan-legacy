@@ -1,10 +1,13 @@
 import type {
   AnalyticsExport,
+  AnalyticsByRole,
+  AnalyticsByTaskType,
   BackendRecommendation,
   BackendStats,
+  BackendTaskRecommendation,
   ChatAgentsResponse,
   ClientPresence,
-
+  CombinedStats,
   CreateChatSessionInput,
   CreateTaskInput,
   DiffFile,
@@ -16,10 +19,12 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
+  RoleStats,
   SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
   TaskStatus,
+  TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
   UpdateTaskInput,
@@ -558,6 +563,51 @@ export class KaganApiClient {
   /** GET /api/analytics/recommended-backend */
   async getRecommendedBackend(): Promise<BackendRecommendation> {
     return this.request<BackendRecommendation>('/api/analytics/recommended-backend');
+  }
+
+  /** GET /api/analytics/by-role - Returns backend stats grouped by agent role */
+  async getAnalyticsByRole(): Promise<AnalyticsByRole> {
+    return this.request<AnalyticsByRole>('/api/analytics/by-role');
+  }
+
+  /** GET /api/analytics/by-task-type - Returns backend stats grouped by task type */
+  async getAnalyticsByTaskType(): Promise<AnalyticsByTaskType> {
+    return this.request<AnalyticsByTaskType>('/api/analytics/by-task-type');
+  }
+
+  /** GET /api/analytics/by-role-and-task-type - Returns filtered backend stats */
+  async getAnalyticsByRoleAndTaskType(params?: { role?: string; task_type?: string }): Promise<CombinedStats[]> {
+    const qs = new URLSearchParams();
+    if (params?.role) qs.set('role', params.role);
+    if (params?.task_type) qs.set('task_type', params.task_type);
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request<CombinedStats[]>(`/api/analytics/by-role-and-task-type${query}`);
+  }
+
+  /** GET /api/analytics/recommend-for-task - Get intelligent backend recommendation */
+  async recommendBackendForTask(params: { title: string; description?: string; role?: string }): Promise<BackendTaskRecommendation> {
+    const qs = new URLSearchParams();
+    qs.set('title', params.title);
+    if (params.description) qs.set('description', params.description);
+    if (params.role) qs.set('role', params.role);
+    return this.request<BackendTaskRecommendation>(`/api/analytics/recommend-for-task?${qs.toString()}`);
+  }
+
+  /** GET /api/analytics/by-role (legacy) */
+  async getStatsByRole(): Promise<RoleStats[]> {
+    const grouped = await this.getAnalyticsByRole();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/by-task-type (legacy) */
+  async getStatsByTaskType(): Promise<TaskTypeStats[]> {
+    const grouped = await this.getAnalyticsByTaskType();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/combined (legacy) */
+  async getCombinedStats(): Promise<CombinedStats[]> {
+    return this.getAnalyticsByRoleAndTaskType();
   }
 
   /** GET /api/plugins */

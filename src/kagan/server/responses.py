@@ -51,6 +51,7 @@ class ActiveSessionResponse(_OrmBase):
     status: str
     launcher: str | None = None
     agent_backend: str
+    agent_role: str | None = None
     started_at: str
     context_window_used: int | None = None
     context_window_size: int | None = None
@@ -70,6 +71,15 @@ class ActiveSessionResponse(_OrmBase):
 
 
 # ── Task ──────────────────────────────────────────────────────────────────────
+
+
+class BackendSelectionResponse(BaseModel):
+    """Metadata about intelligent backend selection."""
+
+    selected_backend: str
+    backend_confidence: float = Field(ge=0.0, le=1.0)
+    backend_reason: str
+    alternatives: list[str] = Field(default_factory=list)
 
 
 class ReviewVerdictResponse(BaseModel):
@@ -98,6 +108,7 @@ class TaskResponse(_OrmBase):
     has_workspace: bool = False
     review_running: bool = False
     active_session: ActiveSessionResponse | None = None
+    backend_selection: BackendSelectionResponse | None = None
 
     @field_validator("status", "priority", mode="before")
     @classmethod
@@ -118,6 +129,7 @@ class TaskSessionResponse(_OrmBase):
     launcher: str | None = None
     status: str
     agent_backend: str
+    agent_role: str | None = None
     started_at: str
 
     @field_validator("status", mode="before")

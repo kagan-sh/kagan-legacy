@@ -263,3 +263,43 @@ export interface BackendRecommendation {
     success_rate?: number;
     count?: number;
 }
+
+export interface RoleStats {
+    agent_backend: string;
+    agent_role: string;
+    count: number;
+    success_rate: number;
+    avg_duration_seconds: number | null;
+}
+
+export interface TaskTypeStats {
+    agent_backend: string;
+    task_type: string;
+    count: number;
+    success_rate: number;
+    avg_duration_seconds: number | null;
+}
+
+export interface CombinedStats {
+    agent_backend: string;
+    agent_role: string;
+    task_type: string;
+    count: number;
+    success_rate: number;
+    avg_duration_seconds: number | null;
+}
+
+export interface AnalyticsByRole {
+    [role: string]: RoleStats[];
+}
+
+export interface AnalyticsByTaskType {
+    [taskType: string]: TaskTypeStats[];
+}
+
+export interface BackendTaskRecommendation {
+    backend: string;
+    reason: string;
+    confidence: number;
+    alternatives: string[];
+}

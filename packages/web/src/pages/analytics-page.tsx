@@ -15,11 +15,19 @@ import {
   BarChart3,
   Clock,
   Download,
+  Grid3x3,
   HelpCircle,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { BackendStats, SessionTimelineEntry } from '@/lib/api/types';
+import type {
+  BackendStats,
+  CombinedStats,
+  RoleStats,
+  SessionTimelineEntry,
+  TaskTypeStats,
+} from '@/lib/api/types';
 import { formatDuration, formatPercentage } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -364,6 +372,22 @@ const GLOSSARY_ITEMS = [
     term: 'Active Days',
     definition: 'Number of unique days in the period with at least one session recorded. Useful for understanding usage patterns.',
   },
+  {
+    term: 'Agent Roles',
+    definition: 'WORKER: executes code and implements changes. REVIEWER: analyzes PRs and provides feedback. ORCHESTRATOR: coordinates multi-step workflows.',
+  },
+  {
+    term: 'Task Types',
+    definition: 'CODE_IMPLEMENTATION: building new features. BUG_FIX: fixing existing issues. REFACTORING: improving code quality. DOCUMENTATION: adding docs. ARCHITECTURE: design changes. DESIGN: UI/UX design. ANALYSIS: code review or investigation. TESTING: adding tests. DEPLOYMENT: release/infrastructure. INVESTIGATION: debugging. OPTIMIZATION: performance improvements.',
+  },
+  {
+    term: 'Role-Specific Metrics',
+    definition: 'Shows success rates and duration for each agent role (worker, reviewer, orchestrator) across different backends, revealing role-specific performance patterns.',
+  },
+  {
+    term: 'Task-Type Metrics',
+    definition: 'Breaks down performance by task classification, helping identify which backends excel at specific types of work (e.g., code implementation vs bug fixes).',
+  },
 ];
 
 function GlossaryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -383,6 +407,235 @@ function GlossaryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// By-Role Analytics
+// ---------------------------------------------------------------------------
+
+function RoleCards({ data }: { data: RoleStats[] }) {
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex h-32 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+        aria-label="No role-specific data available"
+      >
+        No role-specific data available yet.
+      </div>
+    );
+  }
+
+  const roleNames = ['WORKER', 'REVIEWER', 'ORCHESTRATOR'];
+  const roleData = roleNames.map((role) => {
+    const items = data.filter((d) => d.agent_role === role);
+    const totalCount = items.reduce((sum, item) => sum + item.count, 0);
+    const weightedSuccess = items.length > 0
+      ? items.reduce((sum, item) => sum + item.success_rate * item.count, 0) / totalCount
+      : 0;
+    const weightedDuration = items.filter((d) => d.avg_duration_seconds !== null).length > 0
+      ? items.reduce((sum, item) => sum + (item.avg_duration_seconds ?? 0) * item.count, 0) /
+        items.filter((d) => d.avg_duration_seconds !== null).reduce((sum, item) => sum + item.count, 0)
+      : null;
+    return { role, count: totalCount, success_rate: weightedSuccess, avg_duration_seconds: weightedDuration };
+  }).filter(item => item.count > 0);
+
+  if (roleData.length === 0) {
+    return (
+      <div
+        className="flex h-32 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+      >
+        No sessions recorded for any role.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {roleData.map((role) => (
+        <Card key={role.role} className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+          <CardContent className="py-4">
+            <div className="space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                {role.role}
+              </p>
+              <div className="space-y-1">
+                <p className="text-2xl font-semibold">{formatPercentage(role.success_rate)}</p>
+                <p className="text-xs text-[var(--muted-foreground)]">Success Rate</p>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[var(--muted-foreground)]">{role.count} sessions</span>
+                {role.avg_duration_seconds !== null && (
+                  <span className="text-[var(--muted-foreground)]">{formatDuration(role.avg_duration_seconds)}</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function RoleComparisonChart({ data }: { data: RoleStats[] }) {
+  if (data.length === 0) return null;
+
+  const roleNames = ['WORKER', 'REVIEWER', 'ORCHESTRATOR'];
+  const backends = Array.from(new Set(data.map((d) => d.agent_backend)));
+
+  const chartData = backends.map((backend) => {
+    const item: Record<string, any> = { name: backend };
+    roleNames.forEach((role) => {
+      const found = data.find((d) => d.agent_backend === backend && d.agent_role === role);
+      item[role] = found ? +(found.success_rate * 100).toFixed(1) : 0;
+    });
+    return item;
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={chartData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #333)" />
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 11, fontFamily: 'var(--font-code)' }}
+          stroke="var(--muted-foreground)"
+          interval={0}
+          angle={-35}
+          textAnchor="end"
+          height={60}
+        />
+        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" domain={[0, 100]} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v: ValueType | undefined) => `${v ?? 0}%`} />
+        <Bar dataKey="WORKER" name="Worker" stackId="a" fill="#3b82f6" />
+        <Bar dataKey="REVIEWER" name="Reviewer" stackId="a" fill="#8b5cf6" />
+        <Bar dataKey="ORCHESTRATOR" name="Orchestrator" stackId="a" fill="#ec4899" />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// By-Task-Type Analytics
+// ---------------------------------------------------------------------------
+
+function TaskTypeCards({ data }: { data: TaskTypeStats[] }) {
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex h-32 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+        aria-label="No task-type data available"
+      >
+        No task-type data available yet.
+      </div>
+    );
+  }
+
+  // Aggregate by task type, show top 8
+  const typeNames = [
+    'code_implementation', 'bug_fix', 'refactoring', 'documentation',
+    'architecture', 'design', 'analysis', 'testing'
+  ];
+
+  const typeData = typeNames
+    .map((type) => {
+      const items = data.filter((d) => d.task_type === type);
+      if (items.length === 0) return null;
+      const totalCount = items.reduce((sum, item) => sum + item.count, 0);
+      const weightedSuccess = items.reduce((sum, item) => sum + item.success_rate * item.count, 0) / totalCount;
+      return { type, count: totalCount, success_rate: weightedSuccess };
+    })
+    .filter((item) => item !== null) as Array<{ type: string; count: number; success_rate: number }>;
+
+  if (typeData.length === 0) {
+    return (
+      <div
+        className="flex h-32 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+      >
+        No sessions recorded for any task type.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {typeData.map((item) => (
+        <Card key={item.type} className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+          <CardContent className="py-3">
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                {item.type.replace(/_/g, ' ')}
+              </p>
+              <p className="text-xl font-semibold">{formatPercentage(item.success_rate)}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">{item.count} sessions</p>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function TaskTypeTable({ data }: { data: TaskTypeStats[] }) {
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+      >
+        No task-type data available.
+      </div>
+    );
+  }
+
+  const backends = Array.from(new Set(data.map((d) => d.agent_backend)));
+  const taskTypes = Array.from(new Set(data.map((d) => d.task_type)));
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-[color:var(--border-subtle)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
+            <th className="pb-3 pr-4 font-medium">Task Type</th>
+            {backends.map((backend) => (
+              <th key={backend} className="pb-3 pr-4 text-right font-medium text-xs">
+                {backend}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {taskTypes.map((type) => (
+            <tr key={type} className="border-b border-[color:var(--border-subtle)] last:border-0">
+              <td className="py-3 pr-4 text-xs">
+                <span className="font-medium">{type.replace(/_/g, ' ')}</span>
+              </td>
+              {backends.map((backend) => {
+                const found = data.find((d) => d.agent_backend === backend && d.task_type === type);
+                return (
+                  <td key={backend} className="py-3 pr-4 text-right">
+                    {found ? (
+                      <Badge
+                        variant={found.success_rate >= 0.8 ? 'default' : found.success_rate >= 0.5 ? 'secondary' : 'destructive'}
+                        className="tabular-nums text-xs"
+                      >
+                        {formatPercentage(found.success_rate)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -414,6 +667,9 @@ function AnalyticsSkeleton() {
 export function Component() {
   const [backendStats, setBackendStats] = useState<BackendStats[]>([]);
   const [timeline, setTimeline] = useState<SessionTimelineEntry[]>([]);
+  const [roleStats, setRoleStats] = useState<RoleStats[]>([]);
+  const [taskTypeStats, setTaskTypeStats] = useState<TaskTypeStats[]>([]);
+  const [combinedStats, setCombinedStats] = useState<CombinedStats[]>([]);
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -424,12 +680,18 @@ export function Component() {
     setLoading(true);
     setError(null);
     try {
-      const [stats, tl] = await Promise.all([
+      const [stats, tl, roles, taskTypes, combined] = await Promise.all([
         apiClient.getBackendStats(),
         apiClient.getSessionTimeline({ days: range }),
+        apiClient.getStatsByRole(),
+        apiClient.getStatsByTaskType(),
+        apiClient.getCombinedStats(),
       ]);
       setBackendStats(stats);
       setTimeline(tl);
+      setRoleStats(roles);
+      setTaskTypeStats(taskTypes);
+      setCombinedStats(combined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
     } finally {
@@ -554,65 +816,202 @@ export function Component() {
             />
           </div>
 
-          {/* Backend comparison */}
-          <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
-            <CardHeader>
-              <CardTitle
-                className="flex items-center gap-2 text-sm"
-                aria-label="Backend performance metrics table and chart"
-              >
-                <BarChart3 className="size-4 text-[var(--muted-foreground)]" />
-                Backend Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="table">
-                <TabsList variant="line" className="mb-4">
-                  <TabsTrigger value="table">Table</TabsTrigger>
-                  <TabsTrigger value="chart">Success Rate</TabsTrigger>
-                </TabsList>
-                <TabsContent value="table">
-                  <BackendTable data={backendStats} />
-                </TabsContent>
-                <TabsContent value="chart">
-                  <SuccessRateChart data={backendStats} />
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+          {/* Main tabs for different analytics views */}
+          <Tabs defaultValue="backend" className="space-y-4">
+            <TabsList className="grid grid-cols-4">
+              <TabsTrigger value="backend" className="flex items-center gap-2">
+                <BarChart3 className="size-4" />
+                Backend
+              </TabsTrigger>
+              <TabsTrigger value="role" className="flex items-center gap-2">
+                <Users className="size-4" />
+                By Role
+              </TabsTrigger>
+              <TabsTrigger value="tasktype" className="flex items-center gap-2">
+                <BarChart3 className="size-4" />
+                By Type
+              </TabsTrigger>
+              <TabsTrigger value="combined" className="flex items-center gap-2">
+                <Grid3x3 className="size-4" />
+                Combined
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Duration & Timeline side-by-side */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
-              <CardHeader>
-                <CardTitle
-                  className="flex items-center gap-2 text-sm"
-                  aria-label="Average session duration by backend"
-                >
-                  <Clock className="size-4 text-[var(--muted-foreground)]" />
-                  Duration by Backend
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DurationByBackendChart data={backendStats} />
-              </CardContent>
-            </Card>
+            {/* Backend Performance Tab */}
+            <TabsContent value="backend" className="space-y-4">
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle
+                    className="flex items-center gap-2 text-sm"
+                    aria-label="Backend performance metrics table and chart"
+                  >
+                    <BarChart3 className="size-4 text-[var(--muted-foreground)]" />
+                    Backend Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Tabs defaultValue="table">
+                    <TabsList variant="line" className="mb-4">
+                      <TabsTrigger value="table">Table</TabsTrigger>
+                      <TabsTrigger value="chart">Success Rate</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="table">
+                      <BackendTable data={backendStats} />
+                    </TabsContent>
+                    <TabsContent value="chart">
+                      <SuccessRateChart data={backendStats} />
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
 
-            <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
-              <CardHeader>
-                <CardTitle
-                  className="flex items-center gap-2 text-sm"
-                  aria-label="Daily session activity over time"
-                >
-                  <Activity className="size-4 text-[var(--muted-foreground)]" />
-                  Session Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SessionTimelineChart data={timeline} />
-              </CardContent>
-            </Card>
-          </div>
+              {/* Duration & Timeline side-by-side */}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                  <CardHeader>
+                    <CardTitle
+                      className="flex items-center gap-2 text-sm"
+                      aria-label="Average session duration by backend"
+                    >
+                      <Clock className="size-4 text-[var(--muted-foreground)]" />
+                      Duration by Backend
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <DurationByBackendChart data={backendStats} />
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                  <CardHeader>
+                    <CardTitle
+                      className="flex items-center gap-2 text-sm"
+                      aria-label="Daily session activity over time"
+                    >
+                      <Activity className="size-4 text-[var(--muted-foreground)]" />
+                      Session Activity
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <SessionTimelineChart data={timeline} />
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* By-Role Tab */}
+            <TabsContent value="role" className="space-y-4">
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Users className="size-4 text-[var(--muted-foreground)]" />
+                    Performance by Agent Role
+                  </CardTitle>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-2">
+                    Success rate and duration metrics for each agent role across backends.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <RoleCards data={roleStats} />
+                </CardContent>
+              </Card>
+
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle className="text-sm">Role Comparison by Backend</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RoleComparisonChart data={roleStats} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* By-Task-Type Tab */}
+            <TabsContent value="tasktype" className="space-y-4">
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle className="text-sm">Performance by Task Type</CardTitle>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-2">
+                    Success rates for different task classifications. Showing top types by frequency.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <TaskTypeCards data={taskTypeStats} />
+                </CardContent>
+              </Card>
+
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle className="text-sm">Backend × Task Type Matrix</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TaskTypeTable data={taskTypeStats} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Combined Tab */}
+            <TabsContent value="combined" className="space-y-4">
+              <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
+                <CardHeader>
+                  <CardTitle className="text-sm">Combined Analytics (Backend × Role × Task Type)</CardTitle>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-2">
+                    Three-dimensional breakdown showing how each backend performs across all roles and task types.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-[color:var(--border-subtle)]">
+                          <th className="pb-2 pr-4 font-medium">Backend</th>
+                          <th className="pb-2 pr-4 font-medium">Role</th>
+                          <th className="pb-2 pr-4 font-medium">Task Type</th>
+                          <th className="pb-2 pr-4 text-right font-medium">Sessions</th>
+                          <th className="pb-2 pr-4 text-right font-medium">Success</th>
+                          <th className="pb-2 text-right font-medium">Avg Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {combinedStats.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-4 text-center text-[var(--muted-foreground)]">
+                              No combined data available.
+                            </td>
+                          </tr>
+                        ) : (
+                          combinedStats.slice(0, 50).map((row, idx) => (
+                            <tr key={idx} className="border-b border-[color:var(--border-subtle)] last:border-0">
+                              <td className="py-2 pr-4 font-code">{row.agent_backend}</td>
+                              <td className="py-2 pr-4">{row.agent_role}</td>
+                              <td className="py-2 pr-4">{row.task_type.replace(/_/g, ' ')}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums">{row.count}</td>
+                              <td className="py-2 pr-4 text-right">
+                                <Badge
+                                  variant={row.success_rate >= 0.8 ? 'default' : row.success_rate >= 0.5 ? 'secondary' : 'destructive'}
+                                  className="text-xs tabular-nums"
+                                >
+                                  {formatPercentage(row.success_rate)}
+                                </Badge>
+                              </td>
+                              <td className="py-2 text-right tabular-nums">
+                                {row.avg_duration_seconds !== null ? formatDuration(row.avg_duration_seconds) : '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {combinedStats.length > 50 && (
+                    <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                      Showing first 50 of {combinedStats.length} entries. Use filters or export for full data.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 

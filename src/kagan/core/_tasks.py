@@ -21,6 +21,7 @@ from kagan.core._events import BoardEvent, Events, list_events
 from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
 from kagan.core._sessions import Sessions
+from kagan.core._task_classification import classify_task
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
@@ -65,6 +66,29 @@ def _record_task_audit(
             detail=detail or {},
         )
     )
+
+
+async def backfill_task_types(engine: Engine) -> int:
+    """Backfill task_type for all tasks without classification.
+
+    Classifies all unclassified tasks using classify_task() based on their
+    title and description. Returns the count of tasks updated.
+    """
+
+    def op(s) -> int:
+        unclassified = list(s.exec(select(Task).where(Task.task_type.is_(None))).all())
+        updated_count = 0
+        for task in unclassified:
+            task_type = classify_task(task.title, task.description)
+            task.task_type = task_type.value
+            s.add(task)
+            updated_count += 1
+        if updated_count > 0:
+            s.commit()
+        logger.info("Backfilled task_type for {} tasks", updated_count)
+        return updated_count
+
+    return await _db_async(engine, op)
 
 
 # ── Tasks class ─────────────────────────────────────────────────────
@@ -248,6 +272,9 @@ class Tasks:
             launcher=launcher,
             repo_id=repo_id,
         )
+        # Classify task for analytics
+        task_type = classify_task(title, description)
+        task.task_type = task_type.value
 
         def op(s):
             try:
@@ -255,7 +282,7 @@ class Tasks:
                 s.add(AuditEntry(action="task.create", entity_type="task", entity_id=task.id))
                 s.commit()
                 s.refresh(task)
-                logger.debug("Task created id={}", task.id)
+                logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
                 s.rollback()
@@ -320,6 +347,8 @@ class Tasks:
             "repo_id": repo_id,
         }
         changed_fields: dict[str, object] = {}
+        # Re-classify if title or description changes
+        should_reclassify = title is not None or description is not None
 
         def op(s):
             db_task = s.get(Task, task.id)
@@ -343,6 +372,16 @@ class Tasks:
                 if value is not None:
                     setattr(db_task, field, value)
                     changed_fields[field] = _serialize_value(value)
+
+            # Re-classify task if title or description changed
+            if should_reclassify:
+                new_title = title if title is not None else db_task.title
+                new_desc = description if description is not None else db_task.description
+                new_type = classify_task(new_title, new_desc)
+                if db_task.task_type != new_type.value:
+                    db_task.task_type = new_type.value
+                    changed_fields["task_type"] = new_type.value
+
             db_task.updated_at = _utc_now()
             if changed_fields:
                 _record_task_audit(

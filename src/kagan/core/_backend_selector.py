@@ -38,15 +38,9 @@ class BackendSelector:
         """Load all analytics stats (cached)."""
         if self._cached_stats is None:
             # Load all dimensional stats
-            backend_role_task = (
-                await self._analytics.backend_role_task_stats(self._project_id)
-            )
-            backend_role = await self._analytics.backend_by_role_stats(
-                self._project_id
-            )
-            backend_task = await self._analytics.backend_by_task_type_stats(
-                self._project_id
-            )
+            backend_role_task = await self._analytics.backend_role_task_stats(self._project_id)
+            backend_role = await self._analytics.backend_by_role_stats(self._project_id)
+            backend_task = await self._analytics.backend_by_task_type_stats(self._project_id)
             backend_only = await self._analytics.backend_stats(self._project_id)
 
             self._cached_stats = {
@@ -81,9 +75,7 @@ class BackendSelector:
         stats = await self._load_stats()
 
         # Filter to available backends
-        available = available_backends or [
-            b["agent_backend"] for b in stats["backend"]
-        ]
+        available = available_backends or [b["agent_backend"] for b in stats["backend"]]
         if not available:
             return {
                 "backend": fallback_backend,
@@ -109,9 +101,7 @@ class BackendSelector:
             return result
 
         # Fallback: use highest-performing available backend
-        backend_stats = [
-            b for b in stats["backend"] if b["agent_backend"] in available
-        ]
+        backend_stats = [b for b in stats["backend"] if b["agent_backend"] in available]
         if backend_stats:
             best = max(backend_stats, key=lambda b: b["success_rate"])
             return {
@@ -120,9 +110,9 @@ class BackendSelector:
                 "confidence": 0.5 if best["count"] >= MIN_SESSIONS_FOR_CONFIDENCE else 0,
                 "alternatives": [
                     b["agent_backend"]
-                    for b in sorted(
-                        backend_stats, key=lambda x: x["success_rate"], reverse=True
-                    )[:2]
+                    for b in sorted(backend_stats, key=lambda x: x["success_rate"], reverse=True)[
+                        :2
+                    ]
                 ],
             }
 
@@ -202,7 +192,8 @@ class BackendSelector:
         # Return best candidate if found
         if candidates:
             best_strategy, best_backend, success_rate, count = max(
-                candidates, key=lambda x: x[2]  # Sort by success rate
+                candidates,
+                key=lambda x: x[2],  # Sort by success rate
             )
             confidence = min(1.0, count / (MIN_SESSIONS_FOR_CONFIDENCE * 3))
 

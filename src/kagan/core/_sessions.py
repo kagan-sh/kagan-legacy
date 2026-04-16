@@ -45,6 +45,7 @@ from kagan.core._session_helpers import (
     terminate_process,
 )
 from kagan.core.enums import (
+    AgentRole,
     SessionEventType,
     SessionStatus,
     TaskStatus,
@@ -205,6 +206,45 @@ async def active_session_summaries(
     return summaries
 
 
+def _infer_agent_role(task_status: TaskStatus) -> AgentRole:
+    """Infer agent role based on task status context.
+
+    Maps task status to agent role:
+    - REVIEW → reviewer (agent is reviewing/approving)
+    - IN_PROGRESS → worker (agent is executing/working on the task)
+    - Others → worker (default)
+    """
+    if task_status == TaskStatus.REVIEW:
+        return AgentRole.REVIEWER
+    return AgentRole.WORKER
+
+
+async def backfill_agent_roles(engine: Engine) -> int:
+    """Backfill agent_role for all sessions without role assignment.
+
+    Infers agent_role for all unassigned sessions based on the associated
+    task's status. Returns the count of sessions updated.
+    """
+
+    def op(s) -> int:
+        unassigned = list(s.exec(select(Session).where(Session.agent_role.is_(None))).all())
+        updated_count = 0
+        for session in unassigned:
+            task = s.get(Task, session.task_id)
+            if task is None:
+                continue
+            role = _infer_agent_role(task.status)
+            session.agent_role = role.value
+            s.add(session)
+            updated_count += 1
+        if updated_count > 0:
+            s.commit()
+        logger.info("Backfilled agent_role for {} sessions", updated_count)
+        return updated_count
+
+    return await _db_async(engine, op)
+
+
 # ---------------------------------------------------------------------------
 # Module-level sync DB helpers
 # ---------------------------------------------------------------------------
@@ -355,11 +395,15 @@ class Sessions:
             # Rebase existing worktrees against current base branch
             await rebase_if_enabled(task_id, self._engine, self._get_task, self._events)
 
+        # Infer agent role based on task status
+        agent_role = _infer_agent_role(task.status)
+
         session_obj = Session(
             task_id=task_id,
             agent_backend=agent_backend,
             launcher=launcher,
             persona=persona,
+            agent_role=agent_role.value,
         )
         session_obj = await _db_async(self._engine, lambda s: _add_and_refresh(s, session_obj))
 

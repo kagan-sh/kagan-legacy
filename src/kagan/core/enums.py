@@ -81,6 +81,23 @@ class StreamSource(StrEnum):
     REVIEWER = "reviewer"
 
 
+class TaskType(StrEnum):
+    """Task classification types for analytics and intelligent routing."""
+
+    CODE_IMPLEMENTATION = "code_implementation"
+    BUG_FIX = "bug_fix"
+    REFACTORING = "refactoring"
+    DOCUMENTATION = "documentation"
+    ARCHITECTURE = "architecture"
+    DESIGN = "design"
+    ANALYSIS = "analysis"
+    TESTING = "testing"
+    DEPLOYMENT = "deployment"
+    INVESTIGATION = "investigation"
+    OPTIMIZATION = "optimization"
+    UNKNOWN = "unknown"  # Fallback for unclassified tasks
+
+
 class ReviewStrictness(StrEnum):
     """Review strictness level."""
 

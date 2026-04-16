@@ -116,11 +116,13 @@ from kagan.core._worktrees import (
 )
 from kagan.core.client import DBWatcher, KaganCore
 from kagan.core.enums import (
+    AgentRole,
     BranchRefStrategy,
     Priority,
     SessionEventType,
     SessionStatus,
     TaskStatus,
+    TaskType,
     parse_priority,
 )
 from kagan.core.errors import (
@@ -170,6 +172,7 @@ __all__ = [
     "AgentBackendConfig",
     "AgentError",
     "AttackVector",
+    "AgentRole",
     "AuditEntry",
     "BackendCapability",
     "BackendSpec",
@@ -200,6 +203,7 @@ __all__ = [
     "Task",
     "TaskNote",
     "TaskStatus",
+    "TaskType",
     "Tasks",
     "ValidationError",
     "Worktree",

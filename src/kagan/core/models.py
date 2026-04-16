@@ -72,6 +72,7 @@ class Task(SQLModel, table=True):
     review_verdicts: list[ReviewVerdict] = Field(default_factory=list, sa_column=Column(JSON))
     max_retries: int = Field(default=0)
     success_command: str | None = Field(default=None)
+    task_type: str | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 
@@ -107,6 +108,7 @@ class Session(SQLModel, table=True):
     context_window_size: int | None = Field(default=None)
     cost_amount: float | None = Field(default=None)
     cost_currency: str | None = Field(default=None)
+    agent_role: str | None = Field(default=None, index=True)
 
 
 class SessionEvent(SQLModel, table=True):

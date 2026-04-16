@@ -13,6 +13,20 @@
 
 
 
+## v0.18.1-beta.1 (2026-04-16)
+
+
+
+
+### Bug Fixes
+
+- **server**: Reduce complexity in analytics routes registration
+  ([`196bee5`](https://github.com/kagan-sh/kagan/commit/196bee532bee0678aab46bffef5babb0db29c940))
+
+
+
+
+
 ## v0.18.0 (2026-04-16)
 
 

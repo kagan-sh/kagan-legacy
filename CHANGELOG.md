@@ -13,6 +13,21 @@
 
 
 
+## v0.17.1-beta.2 (2026-04-14)
+
+
+
+
+### Chores
+
+- **deps**: Merge all dependabot updates and fix CI
+  ([#110](https://github.com/kagan-sh/kagan/pull/110),
+  [`e0cc4c8`](https://github.com/kagan-sh/kagan/commit/e0cc4c8bd0f13e44eb353f85e1900b62c8ac9480))
+
+
+
+
+
 ## v0.17.1-beta.1 (2026-04-13)
 
 

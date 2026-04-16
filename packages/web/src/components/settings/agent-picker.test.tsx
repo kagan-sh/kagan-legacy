@@ -5,6 +5,9 @@ import { AgentPicker } from '@/components/settings/agent-picker';
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: {
+    getSettings: vi.fn().mockResolvedValue({
+      use_recommended_backend: 'false',
+    }),
     getChatAgents: vi.fn().mockResolvedValue({
       backends: [
         { name: 'cursor', available: false },
@@ -13,12 +16,13 @@ vi.mock('@/lib/api/client', () => ({
       ],
       default: 'cursor',
     }),
+    getRecommendedBackend: vi.fn().mockResolvedValue({}),
     setSettings: vi.fn().mockResolvedValue({}),
   },
 }));
 
 describe('AgentPicker', () => {
-  it('surfaces reference backends first and marks unavailable entries', async () => {
+  it('shows only available backends and surfaces reference ones first', async () => {
     renderWithProviders(<AgentPicker />);
 
     await waitFor(() => {
@@ -27,6 +31,8 @@ describe('AgentPicker', () => {
 
     const claudeButton = screen.getByRole('button', { name: /claude-code/i });
     expect(claudeButton).toHaveTextContent('Reference');
-    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
+
+    // Unavailable backends should not be shown in the selection buttons
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
   });
 });

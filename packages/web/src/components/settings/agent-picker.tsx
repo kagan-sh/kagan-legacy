@@ -26,13 +26,32 @@ export function AgentPicker() {
   useEffect(() => {
     (async () => {
       try {
-        const agents = await apiClient.getChatAgents();
-        setBackends(sortBackends(agents.backends));
+        const [settings, agents] = await Promise.all([
+          apiClient.getSettings(),
+          apiClient.getChatAgents(),
+        ]);
+
+        const useRecommended = String(settings.use_recommended_backend) === 'true';
+
+        const availableBackends = sortBackends(agents.backends);
+        setBackends(availableBackends);
         setDefaultBackend(agents.default);
+
         try {
           const rec = await apiClient.getRecommendedBackend();
           if (rec.backend) {
-            setRecommendedBackend({ backend: rec.backend, success_rate: rec.success_rate || 0 });
+            const recBackend = { backend: rec.backend, success_rate: rec.success_rate || 0 };
+            setRecommendedBackend(recBackend);
+
+            // Auto-select recommended backend if enabled and available
+            if (useRecommended && availableBackends.some(b => b.name === rec.backend && b.available)) {
+              setDefaultBackend(rec.backend);
+              try {
+                await apiClient.setSettings({ default_agent_backend: rec.backend });
+              } catch {
+                // Silent fail on auto-select
+              }
+            }
           }
         } catch {
           // Recommendation failed, continue without it
@@ -90,20 +109,18 @@ export function AgentPicker() {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-          {backends.map((backend) => (
+          {backends.filter((backend) => backend.available).map((backend) => (
             <Button
               key={backend.name}
               variant="outline"
               size="xs"
               onClick={() => selectBackend(backend.name)}
               disabled={saving}
-              title={!backend.available ? 'Not installed' : undefined}
               className={cn(
                 'min-w-0 gap-1.5 transition-colors',
                 backend.name === defaultBackend
                   ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]'
                   : 'border-[color:var(--border-subtle)] text-[var(--muted-foreground)] hover:bg-[color:var(--surface-2)]',
-                !backend.available && 'opacity-60',
               )}
             >
               {backend.name === defaultBackend ? (
@@ -123,7 +140,6 @@ export function AgentPicker() {
                 </span>
               )}
               {backend.reference && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">Reference</Badge>}
-              {!backend.available && <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">Unavailable</Badge>}
             </Button>
           ))}
           </div>

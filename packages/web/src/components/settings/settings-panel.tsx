@@ -47,6 +47,7 @@ export type SettingsFormState = {
   review_strictness: string;
   planning_depth: string;
   auto_confirm_single_tasks: boolean;
+  use_recommended_backend: boolean;
 };
 
 export const DEFAULT_FORM: SettingsFormState = {
@@ -70,6 +71,7 @@ export const DEFAULT_FORM: SettingsFormState = {
   review_strictness: 'balanced',
   planning_depth: 'always',
   auto_confirm_single_tasks: false,
+  use_recommended_backend: false,
 };
 
 export interface ToggleRowProps {
@@ -190,6 +192,10 @@ export function SettingsPanel() {
           auto_confirm_single_tasks: asBool(
             settings.auto_confirm_single_tasks,
             DEFAULT_FORM.auto_confirm_single_tasks,
+          ),
+          use_recommended_backend: asBool(
+            settings.use_recommended_backend,
+            DEFAULT_FORM.use_recommended_backend,
           ),
         };
         setForm(loaded);

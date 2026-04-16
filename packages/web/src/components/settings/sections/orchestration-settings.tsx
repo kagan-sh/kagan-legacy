@@ -13,6 +13,12 @@ export function OrchestrationSettings({ form, saveField }: SectionProps) {
     <FieldSet>
       <FieldLegend variant="label">Orchestration</FieldLegend>
       <ToggleRow
+        title="Use recommended backend"
+        description="Automatically select the most successful backend based on analytics. This overrides your manual selection."
+        checked={form.use_recommended_backend}
+        onCheckedChange={(value) => saveField('use_recommended_backend', value)}
+      />
+      <ToggleRow
         title="Auto-confirm single tasks"
         description="Skip the confirmation step for single-task plans and proceed directly to execution."
         checked={form.auto_confirm_single_tasks}

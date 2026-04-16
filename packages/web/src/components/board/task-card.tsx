@@ -3,9 +3,6 @@ import { useNavigate } from "react-router";
 import {
     ExternalLink,
     Pencil,
-    Play,
-    Square,
-    Terminal,
     Trash2,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
@@ -29,9 +26,6 @@ interface TaskCardProps {
     onOpenTask?: (task: WireTask) => void;
     onEditTask?: (task: WireTask) => void;
     onDeleteTask?: (task: WireTask) => void;
-    onStartAgent?: (task: WireTask) => void;
-    onStopAgent?: (task: WireTask) => void;
-    onAttachTask?: (task: WireTask) => void;
     isSelected?: boolean;
 }
 
@@ -142,9 +136,6 @@ function TaskCardImpl({
     onOpenTask,
     onEditTask,
     onDeleteTask,
-    onStartAgent,
-    onStopAgent,
-    onAttachTask,
     isSelected = false,
 }: TaskCardProps) {
     const navigate = useNavigate();
@@ -257,23 +248,6 @@ function TaskCardImpl({
                     <Pencil />
                     Edit
                 </DropdownMenuItem>
-                {task.active_session ? (
-                    <DropdownMenuItem onSelect={() => onStopAgent?.(task)}>
-                        <Square />
-                        Stop Agent
-                    </DropdownMenuItem>
-                ) : (
-                    <DropdownMenuItem onSelect={() => onStartAgent?.(task)}>
-                        <Play />
-                        Start Agent
-                    </DropdownMenuItem>
-                )}
-                {task.status !== "DONE" ? (
-                    <DropdownMenuItem onSelect={() => onAttachTask?.(task)}>
-                        <Terminal />
-                        Attach
-                    </DropdownMenuItem>
-                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     variant="destructive"
@@ -301,9 +275,6 @@ function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
         prevProps.onOpenTask === nextProps.onOpenTask &&
         prevProps.onEditTask === nextProps.onEditTask &&
         prevProps.onDeleteTask === nextProps.onDeleteTask &&
-        prevProps.onStartAgent === nextProps.onStartAgent &&
-        prevProps.onStopAgent === nextProps.onStopAgent &&
-        prevProps.onAttachTask === nextProps.onAttachTask &&
         prevProps.onInspectTask === nextProps.onInspectTask &&
         prevProps.className === nextProps.className
     );

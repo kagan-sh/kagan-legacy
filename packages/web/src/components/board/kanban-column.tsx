@@ -15,9 +15,6 @@ interface KanbanColumnProps {
   onOpenTask?: (task: WireTask) => void;
   onEditTask?: (task: WireTask) => void;
   onDeleteTask?: (task: WireTask) => void;
-  onStartAgent?: (task: WireTask) => void;
-  onStopAgent?: (task: WireTask) => void;
-  onAttachTask?: (task: WireTask) => void;
   selectedTaskId?: string | null;
   wipLimit?: number;
   isValidDropTarget?: boolean;
@@ -52,9 +49,6 @@ export function KanbanColumn({
   onOpenTask,
   onEditTask,
   onDeleteTask,
-  onStartAgent,
-  onStopAgent,
-  onAttachTask,
   selectedTaskId,
   wipLimit = 0,
   isValidDropTarget,
@@ -122,9 +116,6 @@ export function KanbanColumn({
                 onOpenTask={onOpenTask}
                 onEditTask={onEditTask}
                 onDeleteTask={onDeleteTask}
-                onStartAgent={onStartAgent}
-                onStopAgent={onStopAgent}
-                onAttachTask={onAttachTask}
                 isSelected={selectedTaskId === task.id}
               />
             ))}

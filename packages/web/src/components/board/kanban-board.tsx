@@ -152,13 +152,6 @@ export function KanbanBoard() {
     [navigate],
   );
 
-  const attachTask = useCallback(
-    (task: WireTask) => {
-      navigate(`/task/${task.id}`);
-    },
-    [navigate],
-  );
-
   const openSelectedStream = useCallback(() => {
     if (!selectedTask) return;
     navigate(`/task/${selectedTask.id}?lane=worker`);
@@ -191,32 +184,6 @@ export function KanbanBoard() {
     );
     toast.success(`Stopping ${selectedTask.title}`);
   }, [selectedTask, sseConnected]);
-
-  const startAgent = useCallback((task: WireTask) => {
-    if (!sseConnected) {
-      toast.error('Not connected to server');
-      return;
-    }
-    if (task.status === 'DONE') {
-      toast.error('Done tasks cannot be started again');
-      return;
-    }
-    apiClient.runTask(task.id).catch((err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed to start task'),
-    );
-    toast.success(`Starting ${task.title}`);
-  }, [sseConnected]);
-
-  const stopAgent = useCallback((task: WireTask) => {
-    if (!sseConnected) {
-      toast.error('Not connected to server');
-      return;
-    }
-    apiClient.cancelTask(task.id).catch((err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed to stop task'),
-    );
-    toast.success(`Stopping ${task.title}`);
-  }, [sseConnected]);
 
   const openCreateDialog = useCallback(() => {
     setBoardDialog({ kind: 'create' });
@@ -458,9 +425,6 @@ export function KanbanBoard() {
                     onOpenTask={isMobile ? undefined : openTask}
                     onEditTask={openEditDialog}
                     onDeleteTask={openDeleteDialog}
-                    onStartAgent={startAgent}
-                    onStopAgent={stopAgent}
-                    onAttachTask={attachTask}
                     selectedTaskId={selectedTaskId}
                     wipLimit={wipLimits[status] ?? 0}
                     isDragActive={isDragActive}

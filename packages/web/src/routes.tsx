@@ -33,7 +33,13 @@ export const routes: RouteObject[] = [
         children: [
           {
             index: true,
-            element: <Navigate to="/welcome" replace />,
+            lazy: () => import('@/pages/home-page'),
+            errorElement: <RouteError />,
+          },
+          {
+            path: 'home',
+            lazy: () => import('@/pages/home-page'),
+            errorElement: <RouteError />,
           },
           {
             path: 'board',

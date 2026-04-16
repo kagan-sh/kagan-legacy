@@ -13,6 +13,7 @@ from rich.text import Text
 from kagan.cli.chat._chat_acp import _OrchestratorACPClient
 from kagan.cli.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.cli.chat.repl import SearchPickerOption, _console
+from kagan.core._formatting import format_duration, format_percentage
 
 
 def print_help_documentation() -> None:
@@ -152,12 +153,9 @@ async def print_analytics_panel(client: Any) -> None:
         table.add_column("Avg Duration", justify="right")
         table.add_column("Retry", justify="right")
         for s in stats:
-            sr = f"{s['success_rate'] * 100:.1f}%"
-            dur = "--"
-            if s.get("avg_duration_seconds") is not None:
-                d = s["avg_duration_seconds"]
-                dur = f"{int(d // 60)}m {round(d % 60)}s" if d >= 60 else f"{round(d)}s"
-            rr = f"{s.get('retry_rate', 0) * 100:.1f}%"
+            sr = format_percentage(s["success_rate"])
+            dur = format_duration(s.get("avg_duration_seconds"))
+            rr = format_percentage(s.get("retry_rate", 0))
             table.add_row(s["agent_backend"], str(s["count"]), sr, dur, rr)
         _console.print(Panel(table, title="Backend Performance", border_style="dim"))
     else:

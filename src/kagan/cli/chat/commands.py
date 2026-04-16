@@ -299,14 +299,15 @@ def _handle_tool(
 def _handle_analytics(
     invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
-    arg = invocation.arg.strip().lower()
-    if arg.startswith("export"):
-        # /analytics export [path]
-        path = invocation.arg.strip()[len("export") :].strip() or None
+    # /analytics [export [path]]
+    arg = invocation.arg.strip()
+    if arg.lower().startswith("export"):
+        # Extract path from "export /path/to/file.json" or just "export"
+        rest = arg[len("export") :].strip() or None
         return SlashCommandOutcome(
             handled=True,
             action=SlashAction.SHOW_ANALYTICS,
-            data=path or "export",
+            data=f"export:{rest}" if rest else "export:",
         )
     return SlashCommandOutcome(handled=True, action=SlashAction.SHOW_ANALYTICS)
 

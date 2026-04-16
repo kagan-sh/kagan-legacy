@@ -265,12 +265,14 @@ export class KaganClient {
     return this.get<BackendStats[]>("/api/analytics/backend-stats");
   }
 
-  getSessionTimeline(days = 30): Promise<SessionTimelineEntry[]> {
+  getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {
+    const days = params?.days ?? 30;
     return this.get<SessionTimelineEntry[]>(`/api/analytics/session-timeline?days=${days}`);
   }
 
-  getAnalyticsExport(days = 30): Promise<AnalyticsExport> {
-    return this.get<AnalyticsExport>(`/api/analytics/export?days=${days}`);
+  getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.get<AnalyticsExport>(`/api/analytics/export${query}`);
   }
 
   async ping(): Promise<boolean> {

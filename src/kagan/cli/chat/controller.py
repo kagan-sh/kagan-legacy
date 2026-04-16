@@ -966,8 +966,8 @@ class ChatController:
                     turn_count=self._turn_count,
                 )
             case SlashAction.SHOW_ANALYTICS:
-                if result.data and result.data.startswith("export"):
-                    path = result.data if result.data != "export" else None
+                if result.data and result.data.startswith("export:"):
+                    path = result.data[len("export:") :] or None
                     await export_analytics_json(self.client, path)
                 else:
                     await print_analytics_panel(self.client)

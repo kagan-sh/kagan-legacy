@@ -15,27 +15,13 @@ from textual.widgets import Footer, Static
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.tui.app import KaganApp
+    from kagan.core._formatting import format_duration, format_percentage
 
 ANALYTICS_BINDINGS: list[Binding] = [
     Binding("escape", "close", "Close"),
     Binding("r", "refresh", "Refresh"),
     Binding("e", "export", "Export JSON"),
 ]
-
-
-def _fmt_pct(v: float) -> str:
-    return f"{v * 100:.1f}%"
-
-
-def _fmt_duration(seconds: float | None) -> str:
-    if seconds is None:
-        return "--"
-    if seconds < 60:
-        return f"{round(seconds)}s"
-    mins = int(seconds // 60)
-    secs = round(seconds % 60)
-    return f"{mins}m {secs}s" if secs else f"{mins}m"
 
 
 def _build_backend_table(stats: list[dict[str, Any]]) -> str:
@@ -56,9 +42,9 @@ def _build_backend_table(stats: list[dict[str, Any]]) -> str:
         lines.append(
             f"  {s['agent_backend']:<{name_w}}"
             f"  {s['count']:>8}"
-            f"  {_fmt_pct(s['success_rate']):>8}"
-            f"  {_fmt_duration(s.get('avg_duration_seconds')):>13}"
-            f"  {_fmt_pct(s.get('retry_rate', 0)):>6}"
+            f"  {format_percentage(s['success_rate']):>8}"
+            f"  {format_duration(s.get('avg_duration_seconds')):>13}"
+            f"  {format_percentage(s.get('retry_rate', 0)):>6}"
         )
     return "\n".join(lines)
 
@@ -80,7 +66,7 @@ def _build_timeline_summary(timeline: list[dict[str, Any]]) -> str:
     ]
     if total > 0:
         success_rate = completed / total
-        lines.append(f"  Overall success rate: {_fmt_pct(success_rate)}")
+        lines.append(f"  Overall success rate: {format_percentage(success_rate)}")
     return "\n".join(lines)
 
 

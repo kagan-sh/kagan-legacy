@@ -9,7 +9,7 @@ function formatDuration(seconds: number | null): string {
   return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
 }
 
-function formatPct(v: number): string {
+function formatPercentage(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }
 
@@ -22,7 +22,7 @@ export function registerAnalyticsCommands(
       await withErrors("show analytics", async () => {
         const [stats, timeline] = await Promise.all([
           client.getBackendStats(),
-          client.getSessionTimeline(30),
+          client.getSessionTimeline({ days: 30 }),
         ]);
 
         const lines: string[] = [];
@@ -36,7 +36,7 @@ export function registerAnalyticsCommands(
           lines.push("|---------|----------|---------|--------------|-------|");
           for (const s of stats) {
             lines.push(
-              `| ${s.agent_backend} | ${s.count} | ${formatPct(s.success_rate)} | ${formatDuration(s.avg_duration_seconds)} | ${formatPct(s.retry_rate)} |`,
+              `| ${s.agent_backend} | ${s.count} | ${formatPercentage(s.success_rate)} | ${formatDuration(s.avg_duration_seconds)} | ${formatPercentage(s.retry_rate)} |`,
             );
           }
           lines.push("");
@@ -57,7 +57,7 @@ export function registerAnalyticsCommands(
           lines.push(`- **Failed:** ${failed}`);
           lines.push(`- **Active days:** ${daysActive} / ${timeline.length}`);
           if (total > 0) {
-            lines.push(`- **Success rate:** ${formatPct(completed / total)}`);
+            lines.push(`- **Success rate:** ${formatPercentage(completed / total)}`);
           }
         }
 

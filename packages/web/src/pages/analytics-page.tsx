@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import type { BackendStats, SessionTimelineEntry } from '@/lib/api/types';
+import { formatDuration, formatPercentage } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,18 +55,6 @@ const BACKEND_PALETTE = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (seconds == null) return '--';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-}
-
-function formatPct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
-}
 
 function shortDate(iso: string): string {
   const d = new Date(iso);
@@ -128,7 +117,11 @@ const tooltipStyle = {
 function BackendTable({ data }: { data: BackendStats[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]">
+      <div
+        className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+        aria-label="No backend performance data available"
+      >
         No backend data available yet. Run some sessions to see metrics here.
       </div>
     );
@@ -161,14 +154,14 @@ function BackendTable({ data }: { data: BackendStats[] }) {
                   variant={row.success_rate >= 0.8 ? 'default' : row.success_rate >= 0.5 ? 'secondary' : 'destructive'}
                   className="tabular-nums"
                 >
-                  {formatPct(row.success_rate)}
+                  {formatPercentage(row.success_rate)}
                 </Badge>
               </td>
               <td className="py-3 pr-4 text-right tabular-nums">
                 {formatDuration(row.avg_duration_seconds)}
               </td>
               <td className="py-3 text-right tabular-nums">
-                {formatPct(row.retry_rate)}
+                {formatPercentage(row.retry_rate)}
               </td>
             </tr>
           ))}
@@ -225,7 +218,11 @@ function SessionTimelineChart({ data }: { data: SessionTimelineEntry[] }) {
 
   if (chartData.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]">
+      <div
+        className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+        aria-label="No sessions recorded in this period"
+      >
         No sessions recorded in this period.
       </div>
     );
@@ -264,7 +261,11 @@ function DurationByBackendChart({ data }: { data: BackendStats[] }) {
 
   if (chartData.length === 0) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]">
+      <div
+        className="flex h-48 items-center justify-center text-sm text-[var(--muted-foreground)]"
+        role="status"
+        aria-label="No duration data available"
+      >
         No duration data available yet.
       </div>
     );
@@ -379,7 +380,7 @@ export function Component() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6">
       {/* Header */}
-      <div className="flex items-center justify-between pb-6">
+      <header className="flex items-center justify-between pb-6">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
@@ -391,8 +392,9 @@ export function Component() {
             variant="outline"
             size="sm"
             className="h-8 text-xs"
-            disabled={loading || exporting}
+            disabled={exporting}
             onClick={handleExport}
+            aria-label="Export analytics as JSON"
           >
             <Download className="mr-1.5 size-3.5" />
             Export
@@ -409,7 +411,7 @@ export function Component() {
             </SelectContent>
           </Select>
         </div>
-      </div>
+      </header>
 
       {error && (
         <div className="mt-3 rounded-md border border-[var(--status-error)] bg-[var(--status-error)]/10 px-4 py-3 text-sm text-[var(--status-error)]">
@@ -433,7 +435,7 @@ export function Component() {
             />
             <KpiCard
               label="Avg Success Rate"
-              value={formatPct(avgSuccessRate)}
+              value={formatPercentage(avgSuccessRate)}
               icon={TrendingUp}
               subtitle="Weighted by session count"
             />
@@ -448,7 +450,10 @@ export function Component() {
           {/* Backend comparison */}
           <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
+              <CardTitle
+                className="flex items-center gap-2 text-sm"
+                aria-label="Backend performance metrics table and chart"
+              >
                 <BarChart3 className="size-4 text-[var(--muted-foreground)]" />
                 Backend Performance
               </CardTitle>
@@ -473,7 +478,10 @@ export function Component() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
+                <CardTitle
+                  className="flex items-center gap-2 text-sm"
+                  aria-label="Average session duration by backend"
+                >
                   <Clock className="size-4 text-[var(--muted-foreground)]" />
                   Duration by Backend
                 </CardTitle>
@@ -485,7 +493,10 @@ export function Component() {
 
             <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm">
+                <CardTitle
+                  className="flex items-center gap-2 text-sm"
+                  aria-label="Daily session activity over time"
+                >
                   <Activity className="size-4 text-[var(--muted-foreground)]" />
                   Session Activity
                 </CardTitle>

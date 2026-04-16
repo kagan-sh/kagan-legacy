@@ -39,14 +39,16 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def export_analytics(request: Request, *, ctx: Any) -> JSONResponse:
         project_id = ctx.client.active_project_id
-        if not project_id:
-            empty: dict = {
-                "exported_at": None,
-                "period_days": 30,
-                "backend_stats": [],
-                "session_timeline": [],
-            }
-            return _ok(empty)
         days = int(request.query_params.get("days", "30"))
+        if not project_id:
+            # Return same structure as successful export, just empty
+            return _ok(
+                {
+                    "exported_at": None,
+                    "period_days": days,
+                    "backend_stats": [],
+                    "session_timeline": [],
+                }
+            )
         data = await ctx.client.analytics.export(project_id, days=days)
         return _ok(data)

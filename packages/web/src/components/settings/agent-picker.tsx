@@ -21,13 +21,22 @@ export function AgentPicker() {
   const [defaultBackend, setDefaultBackend] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [recommendedBackend, setRecommendedBackend] = useState<{ backend: string; success_rate: number } | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiClient.getChatAgents();
-        setBackends(sortBackends(data.backends));
-        setDefaultBackend(data.default);
+        const agents = await apiClient.getChatAgents();
+        setBackends(sortBackends(agents.backends));
+        setDefaultBackend(agents.default);
+        try {
+          const rec = await apiClient.getRecommendedBackend();
+          if (rec.backend) {
+            setRecommendedBackend({ backend: rec.backend, success_rate: rec.success_rate || 0 });
+          }
+        } catch {
+          // Recommendation failed, continue without it
+        }
       } catch {
         toast.error('Failed to load agent backends');
       } finally {
@@ -103,6 +112,16 @@ export function AgentPicker() {
                 <Bot className="size-3" />
               )}
               <span>{backend.name}</span>
+              {recommendedBackend?.backend === backend.name && (
+                <Badge className="px-1.5 py-0 text-[10px] bg-[var(--primary)]/20 text-[var(--primary)] border-[var(--primary)]/30">
+                  Recommended
+                </Badge>
+              )}
+              {recommendedBackend?.backend === backend.name && (
+                <span className="text-[10px] text-[var(--muted-foreground)]">
+                  {(recommendedBackend.success_rate * 100).toFixed(0)}% success
+                </span>
+              )}
               {backend.reference && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">Reference</Badge>}
               {!backend.available && <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">Unavailable</Badge>}
             </Button>

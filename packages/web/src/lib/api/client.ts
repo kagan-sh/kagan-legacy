@@ -1,5 +1,6 @@
 import type {
   AnalyticsExport,
+  BackendRecommendation,
   BackendStats,
   ChatAgentsResponse,
   ClientPresence,
@@ -552,6 +553,11 @@ export class KaganApiClient {
   async getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
     const query = params?.days ? `?days=${params.days}` : '';
     return this.request<AnalyticsExport>(`/api/analytics/export${query}`);
+  }
+
+  /** GET /api/analytics/recommended-backend */
+  async getRecommendedBackend(): Promise<BackendRecommendation> {
+    return this.request<BackendRecommendation>('/api/analytics/recommended-backend');
   }
 
   /** GET /api/plugins */

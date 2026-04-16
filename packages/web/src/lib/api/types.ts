@@ -257,3 +257,9 @@ export interface AnalyticsExport {
     backend_stats: BackendStats[];
     session_timeline: SessionTimelineEntry[];
 }
+
+export interface BackendRecommendation {
+    backend?: string;
+    success_rate?: number;
+    count?: number;
+}

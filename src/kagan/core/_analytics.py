@@ -142,3 +142,16 @@ class Analytics:
             "active_days": active_days,
             "success_rate": round(float(success_rate), 4),
         }
+
+    async def recommended_backend(self, project_id: str) -> dict[str, Any]:
+        """Get the backend with the highest success rate (if any sessions exist)."""
+        stats = await self.backend_stats(project_id)
+        if not stats:
+            return {}
+        # Return backend with highest success rate
+        best = max(stats, key=lambda s: s["success_rate"])
+        return {
+            "backend": best["agent_backend"],
+            "success_rate": best["success_rate"],
+            "count": best["count"],
+        }

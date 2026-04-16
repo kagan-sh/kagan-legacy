@@ -45,6 +45,16 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         summary = await ctx.client.analytics.timeline_summary(project_id, days=days)
         return _ok(summary)
 
+    @mcp.custom_route("/api/analytics/recommended-backend", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def get_recommended_backend(request: Request, *, ctx: Any) -> JSONResponse:
+        project_id = ctx.client.active_project_id
+        if not project_id:
+            return _ok({})
+        recommendation = await ctx.client.analytics.recommended_backend(project_id)
+        return _ok(recommendation)
+
     @mcp.custom_route("/api/analytics/export", methods=["GET"])
     @require_context(mcp)
     @handle_errors

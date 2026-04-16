@@ -309,8 +309,10 @@ export function KanbanBoard() {
     setBoardDialog({ kind: 'delete', taskId: task.id });
   }, [setBoardDialog]);
 
-  const closeDialog = useCallback(() => {
-    setBoardDialog({ kind: 'none' });
+  const closeDialog = useCallback((): BoardDialog => {
+    const dialog: BoardDialog = { kind: 'none' };
+    setBoardDialog(dialog);
+    return dialog;
   }, [setBoardDialog]);
 
   const handlePeekOpen = useCallback(

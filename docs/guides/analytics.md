@@ -9,9 +9,12 @@ Kagan tracks performance metrics across your agent runs, giving you visibility i
 
 ## What Gets Tracked
 
-Kagan collects metrics for every session run:
+Kagan collects multi-dimensional metrics for every session run:
 
 - **Backend Performance**: Per-agent statistics (success rate, average duration, retry rate)
+- **Agent Roles**: Separate metrics for Worker, Orchestrator, and Reviewer roles
+- **Task Types**: Automatic classification into 12 categories (code implementation, bug fix, refactoring, testing, optimization, documentation, architecture, design, analysis, investigation, deployment, and unknown)
+- **Combined Dimensions**: Cross-tabulation of backend × role × task type for granular insights
 - **Session Activity**: Daily counts of completed, failed, and cancelled sessions over the last 30 days
 - **Timestamps**: When each session ran and how long it took
 - **Task Status**: Final outcome of each agent run (completed, failed, cancelled)
@@ -39,7 +42,9 @@ The modal shows:
 
 Navigate to the **Analytics** page from the main navigation.
 
-The web analytics page includes:
+The web analytics page includes four tabs for different views:
+
+#### Backend Tab
 - **KPI Cards**: Quick stats at the top
   - Total Sessions
   - Success Rate
@@ -49,9 +54,22 @@ The web analytics page includes:
 - **Duration by Backend**: Bar chart showing average session times
 - **Session Activity Timeline**: Line chart of daily session counts over 30 days
 
+#### By-Role Tab
+- **Performance by Agent Role**: Success rates and duration metrics for Worker, Orchestrator, and Reviewer roles
+- **Role Comparison by Backend**: See which agent roles perform best on each backend
+
+#### By-Task-Type Tab
+- **Performance by Task Type**: Success rates for different task classifications (code implementation, bug fix, refactoring, etc.)
+- **Backend × Task Type Matrix**: Cross-tabulation showing how each backend handles different task types
+
+#### Combined Tab
+- **Backend × Role × Task Type Matrix**: Three-dimensional breakdown showing optimal combinations (e.g., "claude-code excels at code implementation tasks as a worker")
+
 **Export:** Click the **Export** button in the header to download analytics as JSON.
 
 **Time Range:** Use the dropdown (top right) to filter by last 7, 14, or 30 days.
+
+**Glossary:** Click the help icon (?) to view definitions of metrics and success criteria.
 
 ### CLI — Chat REPL
 
@@ -139,6 +157,50 @@ Returns: Combined export with both datasets above
 - **Success Rate**: Percentage of sessions that completed (not failed or cancelled)
 - **Avg Duration**: Weighted average execution time across all backends (only counts backends with timing data)
 - **Retry Rate**: Percentage of sessions that required a retry
+
+## Intelligent Backend Selection
+
+Kagan can automatically recommend the best backend for a task based on historical performance data across three dimensions: backend, agent role, and task type.
+
+### How It Works
+
+1. **Task Classification**: Every task is automatically classified into one of 12 categories (e.g., "code implementation", "bug fix", "refactoring") based on keywords in the title and description.
+
+2. **Role Inference**: The system infers whether the task is being handled by a Worker, Orchestrator, or Reviewer based on the task status and execution context.
+
+3. **Performance Lookup**: When running a task, Kagan queries the analytics database for the best-performing backend combination matching:
+   - Backend + Role + Task Type (most specific match)
+   - Backend + Task Type (if role-specific data is sparse)
+   - Backend + Role (if task-type-specific data is sparse)
+   - Backend only (if dimensional data is limited)
+
+4. **Confidence Scoring**: Recommendations include a confidence score (0–1) indicating how much historical data supports the choice. Scores are only given if at least 5 prior sessions exist for that combination.
+
+### Enabling Recommendations
+
+In **Settings → Backend Selection**, enable **Use recommended backend for tasks**. When enabled:
+- Tasks will be assigned to the recommended backend automatically
+- You can still override by explicitly specifying a backend when creating a task
+- The selection metadata is logged for auditability (visible in task details)
+
+### Task Classification Keywords
+
+Tasks are classified using keyword matching. Here are the main categories:
+
+| Category | Example Keywords |
+|----------|------------------|
+| **Code Implementation** | implement, add feature, build, develop, new endpoint, api, function, module |
+| **Bug Fix** | bug, fix, broken, crash, error, exception, failing, regression |
+| **Refactoring** | refactor, cleanup, restructure, simplify, technical debt, modernize |
+| **Testing** | test, unit test, integration test, test coverage, pytest, jest |
+| **Optimization** | optimize, performance, perf, slow, latency, caching, speed |
+| **Documentation** | document, docs, readme, comment, docstring, wiki, guide |
+| **Architecture** | architecture, design system, scalability, microservice |
+| **Design** | design, ux, ui, user experience, styling, layout, visual |
+| **Analysis** | analyze, research, code review, audit, assessment |
+| **Investigation** | investigate, debug, troubleshoot, diagnose, root cause |
+| **Deployment** | deploy, release, ci/cd, docker, kubernetes, infra, devops |
+| **Unknown** | (no keywords match) |
 
 ## Exporting & Integration
 
@@ -259,9 +321,12 @@ Use this if you need to comply with data retention policies or privacy regulatio
 ## Limitations
 
 - Analytics cover the **last 30 days by default** (configurable in export commands)
-- **Per-backend metrics** do not distinguish between different task types (all tasks are aggregated)
+- **Intelligent recommendations** require at least 5 prior sessions per dimension combination to provide a confidence score
+- **Task classification** uses keyword matching and may mis-classify tasks with unusual naming conventions
 - **Duration data** includes only backends that report timing; backends without timing data don't affect the average
+- **Role inference** is based on task status transitions; edge cases may not be correctly identified
 - Historical data is not archived; if you clear your database, analytics history is lost
+- **Combined analytics** displays the top 50 entries due to result size; use filters or export for full data
 
 ## Troubleshooting
 

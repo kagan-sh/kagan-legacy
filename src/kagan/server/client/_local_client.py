@@ -364,9 +364,9 @@ class LocalClient:
 
     async def __aexit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: Any,
+        _exc_type: type[BaseException] | None,
+        _exc_val: BaseException | None,
+        _exc_tb: Any,
     ) -> None:
         """Async context manager exit — ensures cleanup."""
         await self.close()

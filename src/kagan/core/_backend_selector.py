@@ -13,10 +13,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from kagan.core._task_classification import classify_task
-from kagan.core.enums import TaskType
 
 if TYPE_CHECKING:
     from kagan.core._analytics import Analytics
+    from kagan.core.enums import TaskType
 
 
 # Minimum number of sessions needed before a recommendation is considered valid
@@ -191,7 +191,7 @@ class BackendSelector:
 
         # Return best candidate if found
         if candidates:
-            best_strategy, best_backend, success_rate, count = max(
+            best_strategy, best_backend, _success_rate, count = max(
                 candidates,
                 key=lambda x: x[2],  # Sort by success rate
             )

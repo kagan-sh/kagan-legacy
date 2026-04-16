@@ -12,10 +12,12 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
+from kagan.core._formatting import format_duration, format_percentage
+
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
-    from kagan.core._formatting import format_duration, format_percentage
+    from kagan.tui.app import KaganApp
 
 ANALYTICS_BINDINGS: list[Binding] = [
     Binding("escape", "close", "Close"),

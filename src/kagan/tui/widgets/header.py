@@ -74,10 +74,6 @@ class KaganHeader(Horizontal):
         stats = Static("", id="header-stats", classes="header-stats")
         stats.tooltip = "Task statistics (active, in review, completed)"
         yield stats
-        yield Static(HEADER_SEPARATOR, id="sep-stats", classes="header-separator")
-        help_widget = Static("? help", id="header-help", classes="header-branch")
-        help_widget.tooltip = "Press ? to open help (keyboard shortcuts)"
-        yield help_widget
 
     def on_mount(self) -> None:
         self._render_project()

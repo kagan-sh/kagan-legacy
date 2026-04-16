@@ -45,10 +45,11 @@ def _normalize_revision_state(config: Config, connection: Connection) -> None:
     except CommandError:
         pass
 
-    raise RuntimeError(
-        "Unknown alembic revision "
-        f"'{current_revision}'. Run 'alembic stamp {_HEAD_REVISION}' after verifying schema state."
+    logger.warning(
+        "Unknown alembic revision '{}' — stamping to base and re-applying migrations",
+        current_revision,
     )
+    command.stamp(config, "base", purge=True)
 
 
 def _run_alembic_upgrade(database_url: str, connection: Connection | None = None) -> None:

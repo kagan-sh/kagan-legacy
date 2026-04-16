@@ -36,7 +36,8 @@ async def test_attached_provisions_workspace_before_launch(git_board: KaganDrive
         )
 
     ws_path = await git_board.get_workspace_path(task.id)
-    assert ws_path is not None
+    assert isinstance(ws_path, (str, Path))
+    assert Path(ws_path).exists()
 
 
 async def test_attached_rejects_multi_repo_projects_explicitly(tmp_path) -> None:

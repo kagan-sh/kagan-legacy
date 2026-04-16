@@ -14,6 +14,7 @@ from kagan.core.models import Project
 from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
 from kagan.tui.screens.agent_picker import AgentPickerModal
+from kagan.tui.screens.analytics import AnalyticsModal
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
@@ -56,6 +57,7 @@ class KaganApp(App[None]):
         "session-dashboard-screen": SessionDashboardScreen,
         "repo-picker-modal": RepoPickerModal,
         "agent-picker-modal": AgentPickerModal,
+        "analytics-modal": AnalyticsModal,
         "settings-modal": SettingsModal,
         "setup-flow": OnboardingFlow,
         "help-modal": HelpModal,

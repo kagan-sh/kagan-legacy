@@ -3,6 +3,16 @@ import type { TaskStatus, WireTask } from '@/lib/api/types';
 import { apiClient } from '@/lib/api/client';
 import { COLUMN_ORDER, type SortOption } from '@/lib/utils/constants';
 
+/** Discriminated union for all board-level dialog states. */
+export type BoardDialog =
+  | { kind: 'none' }
+  | { kind: 'create' }
+  | { kind: 'edit'; taskId: string }
+  | { kind: 'delete'; taskId: string }
+  | { kind: 'peek'; taskId: string };
+
+export const boardDialogAtom = atom<BoardDialog>({ kind: 'none' });
+
 type TaskGroups = Record<TaskStatus, WireTask[]>;
 type TaskCounts = Record<TaskStatus, number>;
 

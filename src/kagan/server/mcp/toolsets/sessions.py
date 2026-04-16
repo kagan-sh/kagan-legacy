@@ -6,7 +6,7 @@ session_rewind, insight_add, insight_list, insight_remove.
 """
 
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
@@ -39,13 +39,6 @@ from kagan.server.mcp.toolsets import mcp_error_boundary
 # ---------------------------------------------------------------------------
 
 
-class SessionGetResult(TypedDict):
-    task_id: str
-    task_status: str
-    session_id: str | None
-    session_status: str | None
-
-
 async def _get_latest_session(client: Any, task_id: str) -> Any:
     return await client.tasks.sessions.get_latest(task_id)
 
@@ -62,53 +55,9 @@ def _attached_session_or_none(session: Any) -> Any:
 
 _VALID_VERDICTS = frozenset(v.value for v in StepVerdict)
 
-
-class VerifyStepResult(TypedDict):
-    task_id: str
-    session_id: str | None
-    step_index: int
-    step_description: str
-    verdict: str
-    reason: str
-    verified_at: str
-
-
-class VerificationSummaryResult(TypedDict):
-    task_id: str
-    session_id: str | None
-    total: int
-    passed: int
-    failed: int
-    all_passed: bool
-    steps: list[dict[str, Any]]
-
-
 # ---------------------------------------------------------------------------
 # Checkpoint helpers
 # ---------------------------------------------------------------------------
-
-
-class CheckpointResult(TypedDict):
-    task_id: str
-    session_id: str | None
-    step_index: int
-    commit_sha: str
-    tag_name: str
-    description: str
-    created_at: str
-
-
-class CheckpointListResult(TypedDict):
-    task_id: str
-    session_id: str | None
-    checkpoints: list[dict[str, Any]]
-
-
-class RewindResult(TypedDict):
-    task_id: str
-    session_id: str | None
-    step_index: int
-    commit_sha: str
 
 
 async def _resolve_worktree_path(app: Any, task_id: str) -> Path:
@@ -338,7 +287,7 @@ async def _verify_step(
     verdict: str,
     reason: str,
     ctx: Context,
-) -> VerifyStepResult:
+) -> dict[str, Any]:
     """Record the outcome of a plan step verification.
 
     Call this after completing each major step in a task to signal whether the
@@ -347,6 +296,9 @@ async def _verify_step(
     step_index is the 0-based position of the step in the plan.
     step_description is a short human-readable label for the step.
     reason is a one-line justification with evidence.
+
+    Returns dict with: task_id, session_id, step_index, step_description,
+    verdict, reason, verified_at.
     """
     app = get_context(ctx)
 
@@ -399,11 +351,13 @@ async def _verification_summary(
     task_id: str,
     ctx: Context,
     session_id: str | None = None,
-) -> VerificationSummaryResult:
+) -> dict[str, Any]:
     """Return aggregated step verification results for a task.
 
     If session_id is provided, only steps from that session are included.
-    Returns counts of passed, failed, and skipped steps plus individual details.
+
+    Returns dict with: task_id, session_id, total, passed, failed, all_passed,
+    steps (list of step dicts).
     """
     app = get_context(ctx)
 
@@ -465,7 +419,7 @@ async def _checkpoint_create(
     step_index: int,
     ctx: Context,
     description: str = "",
-) -> CheckpointResult:
+) -> dict[str, Any]:
     """Create a git-tag checkpoint at the current worktree HEAD.
 
     Captures the current HEAD commit of the task's worktree as a named
@@ -475,6 +429,9 @@ async def _checkpoint_create(
     step_index is a caller-assigned integer identifying this checkpoint
     (should be monotonically increasing within a session).
     description is an optional human-readable label for the checkpoint.
+
+    Returns dict with: task_id, session_id, step_index, commit_sha,
+    tag_name, description, created_at.
     """
     app = get_context(ctx)
 
@@ -518,11 +475,13 @@ async def _checkpoint_create(
 async def _checkpoint_list(
     task_id: str,
     ctx: Context,
-) -> CheckpointListResult:
+) -> dict[str, Any]:
     """List all checkpoints for the task's current session.
 
     Returns checkpoints sorted by step_index (ascending).
     task_id is the ID of the task to query.
+
+    Returns dict with: task_id, session_id, checkpoints (list of checkpoint dicts).
     """
     app = get_context(ctx)
 
@@ -551,7 +510,7 @@ async def _session_rewind(
     task_id: str,
     step_index: int,
     ctx: Context,
-) -> RewindResult:
+) -> dict[str, Any]:
     """Rewind the task's worktree to the commit captured at step_index.
 
     Performs a hard reset of the worktree to the checkpoint's commit SHA.
@@ -559,6 +518,8 @@ async def _session_rewind(
 
     task_id is the ID of the task to rewind.
     step_index identifies which checkpoint to restore.
+
+    Returns dict with: task_id, session_id, step_index, commit_sha.
     """
     app = get_context(ctx)
 

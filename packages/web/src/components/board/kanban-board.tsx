@@ -2,10 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
-  LayoutGrid,
-  ListTodo,
   Plus,
-  Radar,
   Search,
 } from 'lucide-react';
 import {
@@ -17,37 +14,31 @@ import {
   boardLoadingAtom,
   boardSortAtom,
   boardStatusFilterAtom,
+  boardDialogAtom,
   fetchTasksAtom,
   filteredGroupedTasksAtom,
   projectSwitchVersionAtom,
   searchQueryAtom,
   tasksAtom,
 } from '@/lib/atoms/board';
-import { COLUMN_ORDER, STATUS_LABELS, SORT_LABELS, isAllowedTaskTransition, type SortOption } from '@/lib/utils/constants';
+import { COLUMN_ORDER, STATUS_LABELS, isAllowedTaskTransition } from '@/lib/utils/constants';
 import { KanbanColumn } from '@/components/board/kanban-column';
 import { TaskCardOverlayPreview } from '@/components/board/task-card';
 import { BoardDialogs } from '@/components/board/board-dialogs';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { BoardTaskInspector } from '@/components/board/board-task-inspector';
+import { BoardToolbar } from '@/components/board/board-toolbar';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { FirstBootTutorialDialog } from '@/components/board/first-boot-tutorial-dialog';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@/lib/api/types';
-import {
-  createTaskDialogOpenAtom,
-  deleteTaskDialogTaskIdAtom,
-  editTaskDialogTaskIdAtom,
-  helpOverlayOpenAtom,
-} from '@/lib/atoms/ui';
+import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
 import { useBoardKeyboard } from '@/lib/hooks/use-board-keyboard';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ActionEmptyState } from '@/components/shared/workspace';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import {
   loadWebOnboardingTutorialSeen,
   saveWebOnboardingTutorialSeen,
@@ -74,16 +65,11 @@ export function KanbanBoard() {
   const [query, setQuery] = useAtom(searchQueryAtom);
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
   const [sort, setSort] = useAtom(boardSortAtom);
-  const [createOpen, setCreateOpen] = useAtom(createTaskDialogOpenAtom);
-  const [editDialogTaskId, setEditDialogTaskId] = useAtom(editTaskDialogTaskIdAtom);
-  const [deleteDialogTaskId, setDeleteDialogTaskId] = useAtom(deleteTaskDialogTaskIdAtom);
+  const [boardDialog, setBoardDialog] = useAtom(boardDialogAtom);
   const [view, setView] = useState<'kanban' | 'backlog'>('kanban');
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inspectorClosed, setInspectorClosed] = useState(false);
-  const [peekOpen, setPeekOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<WireTask | null>(null);
-  const [deleteTask, setDeleteTask] = useState<WireTask | null>(null);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -232,22 +218,23 @@ export function KanbanBoard() {
   }, [sseConnected]);
 
   const openCreateDialog = useCallback(() => {
-    setCreateOpen(true);
-  }, [setCreateOpen]);
+    setBoardDialog({ kind: 'create' });
+  }, [setBoardDialog]);
 
-  useEffect(() => {
-    if (!editDialogTaskId) return;
-    const task = tasks.find((t) => t.id === editDialogTaskId) ?? null;
-    if (task) setEditingTask(task);
-    setEditDialogTaskId(null);
-  }, [editDialogTaskId, tasks, setEditDialogTaskId]);
+  const editingTask = useMemo(
+    () => (boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
+    [boardDialog, tasks],
+  );
 
-  useEffect(() => {
-    if (!deleteDialogTaskId) return;
-    const task = tasks.find((t) => t.id === deleteDialogTaskId) ?? null;
-    if (task) setDeleteTask(task);
-    setDeleteDialogTaskId(null);
-  }, [deleteDialogTaskId, tasks, setDeleteDialogTaskId]);
+  const deleteTask = useMemo(
+    () => (boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
+    [boardDialog, tasks],
+  );
+
+  const peekTask = useMemo(
+    () => (boardDialog.kind === 'peek' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
+    [boardDialog, tasks],
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -307,7 +294,23 @@ export function KanbanBoard() {
     [fetchTasks, selectedTask, selectedTaskPosition],
   );
 
-  const isAnyDialogOpen = createOpen || peekOpen || Boolean(editingTask) || Boolean(deleteTask);
+  const isAnyDialogOpen = boardDialog.kind !== 'none';
+
+  const openPeekDialog = useCallback((task: WireTask) => {
+    setBoardDialog({ kind: 'peek', taskId: task.id });
+  }, [setBoardDialog]);
+
+  const openEditDialog = useCallback((task: WireTask) => {
+    setBoardDialog({ kind: 'edit', taskId: task.id });
+  }, [setBoardDialog]);
+
+  const openDeleteDialog = useCallback((task: WireTask) => {
+    setBoardDialog({ kind: 'delete', taskId: task.id });
+  }, [setBoardDialog]);
+
+  const closeDialog = useCallback(() => {
+    setBoardDialog({ kind: 'none' });
+  }, [setBoardDialog]);
 
   useBoardKeyboard({
     selectedTask,
@@ -318,9 +321,9 @@ export function KanbanBoard() {
     query,
     setSelectedTaskId,
     openCreateDialog,
-    setPeekOpen,
-    setEditingTask,
-    setDeleteTask,
+    setPeekOpen: (open: boolean) => { if (open && selectedTask) setBoardDialog({ kind: 'peek', taskId: selectedTask.id }); else setBoardDialog({ kind: 'none' }); },
+    setEditingTask: (task: WireTask | null) => { if (task) setBoardDialog({ kind: 'edit', taskId: task.id }); else setBoardDialog({ kind: 'none' }); },
+    setDeleteTask: (task: WireTask | null) => { if (task) setBoardDialog({ kind: 'delete', taskId: task.id }); else setBoardDialog({ kind: 'none' }); },
     setQuery,
     openTask,
     startSelectedTask,
@@ -342,87 +345,19 @@ export function KanbanBoard() {
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[1800px] flex-col px-4 py-3 sm:px-6">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border-subtle)] pb-3">
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(value) => {
-            if (value === 'kanban' || value === 'backlog') {
-              setView(value);
-            }
-          }}
-          variant="outline"
-          size="sm"
-          aria-label="Board view"
-        >
-          <ToggleGroupItem value="kanban" aria-label="Kanban view" className="data-[state=on]:bg-[color:var(--foreground)] data-[state=on]:text-[color:var(--background)]">
-            <LayoutGrid className="size-3.5" />
-            Board
-          </ToggleGroupItem>
-          <ToggleGroupItem value="backlog" aria-label="Backlog list view" className="data-[state=on]:bg-[color:var(--foreground)] data-[state=on]:text-[color:var(--background)]">
-            <ListTodo className="size-3.5" />
-            List
-          </ToggleGroupItem>
-        </ToggleGroup>
-
-        <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-
-        {view === 'backlog' ? (
-          <>
-            {(['ALL', ...COLUMN_ORDER] as const).map((value) => (
-              <Button
-                key={value}
-                type="button"
-                variant="ghost"
-                size="xs"
-                className={statusFilter === value ? 'bg-[color:var(--foreground)] text-[color:var(--background)] hover:bg-[color:var(--foreground)]/90 hover:text-[color:var(--background)]' : 'text-[var(--muted-foreground)]'}
-                onClick={() => setStatusFilter(value)}
-              >
-                {value === 'ALL' ? 'All' : STATUS_LABELS[value as TaskStatus]}
-              </Button>
-            ))}
-            <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-          </>
-        ) : null}
-
-        <NativeSelect
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortOption)}
-          className="h-7 min-w-[7rem] border-none bg-transparent px-2 text-xs text-[var(--muted-foreground)] shadow-none"
-          aria-label="Sort tasks"
-        >
-          {(Object.entries(SORT_LABELS) as [SortOption, string][]).map(([value, label]) => (
-            <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
-          ))}
-        </NativeSelect>
-
-        <div className="ml-auto flex items-center gap-2">
-          <span className="font-code text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
-            <Radar className="mr-1 inline size-3" />
-            {boardMetrics.running} live
-          </span>
-          <span className="font-code text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
-            {boardMetrics.readyForReview} ready for review
-          </span>
-
-          <div className="relative min-w-[7rem]">
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-            <Input
-              ref={searchInputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="/"
-              className="h-7 w-28 border-[color:var(--border-subtle)] bg-transparent pl-7 pr-2 text-xs"
-              aria-label="Search tasks"
-            />
-          </div>
-
-          <Button size="sm" onClick={openCreateDialog}>
-            <Plus className="size-3.5" />
-            New
-          </Button>
-        </div>
-      </div>
+      <BoardToolbar
+        query={query}
+        setQuery={setQuery}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        sort={sort}
+        setSort={setSort}
+        view={view}
+        setView={setView}
+        boardMetrics={boardMetrics}
+        onCreateTask={openCreateDialog}
+        searchInputRef={searchInputRef}
+      />
 
       {error ? (
         <div className=" border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-4 py-3 text-sm text-[var(--destructive)]">
@@ -434,36 +369,35 @@ export function KanbanBoard() {
       <div className="flex min-h-0 flex-1 gap-px overflow-hidden pt-3">
         <div className="min-w-0 flex-1">
           {showBoardEmpty ? (
-            <ActionEmptyState
-              title="Start your first task"
-              description="Create a task, then Start to move it toward review and merge. Attach stays available from the task view if you need an interactive session."
-              icon={<Plus className="size-6" />}
-              action={(
-                <Button onClick={openCreateDialog} className="cta-glow">
-                  <Plus className="size-4" />
-                  Create first task
-                </Button>
-              )}
-            />
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Plus className="size-6" /></EmptyMedia>
+                <EmptyTitle>Start your first task</EmptyTitle>
+                <EmptyDescription>Create a task, then Start to move it toward review and merge.</EmptyDescription>
+              </EmptyHeader>
+              <Button onClick={openCreateDialog} className="cta-glow">
+                <Plus className="size-4" />
+                Create first task
+              </Button>
+            </Empty>
           ) : showFilteredEmpty ? (
-            <ActionEmptyState
-              title="No tasks match the active filters"
-              description="Broaden your filters to bring more of the workspace back into view."
-              icon={<Search className="size-6" />}
-              action={(
-                <Button
-                  variant="outline"
-                  className=""
-                  onClick={() => {
-                    setStatusFilter('ALL');
-                    setQuery('');
-                    setSort('default');
-                  }}
-                >
-                  Reset filters
-                </Button>
-              )}
-            />
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Search className="size-6" /></EmptyMedia>
+                <EmptyTitle>No tasks match the active filters</EmptyTitle>
+                <EmptyDescription>Broaden your filters to bring more of the workspace back into view.</EmptyDescription>
+              </EmptyHeader>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setQuery('');
+                  setSort('default');
+                }}
+              >
+                Reset filters
+              </Button>
+            </Empty>
           ) : view === 'kanban' ? (
             <DndContext
               sensors={sensors}
@@ -482,8 +416,8 @@ export function KanbanBoard() {
                     onInspectTask={isMobile ? openTask : undefined}
                     onSelectTask={isMobile ? undefined : selectTask}
                     onOpenTask={isMobile ? undefined : openTask}
-                    onEditTask={setEditingTask}
-                    onDeleteTask={setDeleteTask}
+                    onEditTask={openEditDialog}
+                    onDeleteTask={openDeleteDialog}
                     onStartAgent={startAgent}
                     onStopAgent={stopAgent}
                     onAttachTask={attachTask}
@@ -519,9 +453,9 @@ export function KanbanBoard() {
               className="h-full min-h-0 overflow-hidden"
               onOpenTask={() => openTask(selectedTask)}
               onOpenStream={openSelectedStream}
-              onPeek={() => setPeekOpen(true)}
-              onEdit={() => setEditingTask(selectedTask)}
-              onDelete={() => setDeleteTask(selectedTask)}
+              onPeek={() => openPeekDialog(selectedTask)}
+              onEdit={() => openEditDialog(selectedTask)}
+              onDelete={() => openDeleteDialog(selectedTask)}
               onClose={() => {
                 setInspectorClosed(true);
                 setSelectedTaskId(null);
@@ -532,19 +466,17 @@ export function KanbanBoard() {
       </div>
 
       <BoardDialogs
-        createOpen={createOpen}
-        setCreateOpen={setCreateOpen}
+        boardDialog={boardDialog}
+        closeDialog={closeDialog}
         editingTask={editingTask}
-        setEditingTask={setEditingTask}
         deleteTask={deleteTask}
-        setDeleteTask={setDeleteTask}
-        peekTask={selectedTask}
-        peekOpen={peekOpen}
-        setPeekOpen={setPeekOpen}
+        peekTask={peekTask}
         selectedTaskId={selectedTaskId}
         setSelectedTaskId={setSelectedTaskId}
         onOpenTask={openTask}
         onOpenStream={openSelectedStream}
+        onEditTask={openEditDialog}
+        onDeleteTask={openDeleteDialog}
       />
       <FirstBootTutorialDialog
         open={tutorialOpen}

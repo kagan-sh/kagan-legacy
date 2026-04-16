@@ -1,5 +1,5 @@
 import { useSetAtom } from 'jotai';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { logoutAtom } from '@/lib/atoms/auth';
 import { SettingsPanel } from '@/components/settings/settings-panel';
@@ -18,31 +18,37 @@ export function Component() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1680px] flex-col px-4 py-3 sm:px-6">
-      <div className="flex items-center gap-3 border-b border-[color:var(--border-subtle)] pb-3">
-        <h1 className="text-sm font-semibold">Preferences</h1>
-        <span className="h-4 w-px bg-[color:var(--border-subtle)]" />
-        <span className="text-xs text-[var(--muted-foreground)]">Runtime, identity &amp; orchestration defaults with reference backends surfaced first</span>
-        <div className="ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-[var(--destructive)] text-[var(--destructive)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)]"
-            onClick={handleLogout}
-          >
-            <ArrowLeft className="size-3.5" />
-            Return to welcome
-          </Button>
+    <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-10 sm:px-6">
+      {/* Hero */}
+      <div className="space-y-2 text-center">
+        <div className="mx-auto mb-3 flex size-12 items-center justify-center text-[var(--muted-foreground)]">
+          <Settings className="size-7" />
         </div>
+        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Configure how Kagan works with your codebase.
+        </p>
       </div>
 
-      <div className="mt-3 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      {/* All sections stacked in one column */}
+      <div className="mt-8 space-y-4">
         <SettingsPanel />
-        <div className="space-y-4">
-          <AgentPicker />
-          <ConnectionCard />
-          <PreflightChecks />
-        </div>
+        <AgentPicker />
+        <ConnectionCard />
+        <PreflightChecks />
+      </div>
+
+      {/* Return */}
+      <div className="mt-10 flex justify-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-[var(--muted-foreground)]"
+          onClick={handleLogout}
+        >
+          <ArrowLeft className="size-3.5" />
+          Return to welcome
+        </Button>
       </div>
     </div>
   );

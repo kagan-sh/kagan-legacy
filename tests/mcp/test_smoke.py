@@ -14,13 +14,10 @@ pytestmark = [pytest.mark.mcp, pytest.mark.smoke]
 
 async def test_server_responds_to_list_tools(mcp_board: ClientSession) -> None:
     result = await mcp_board.list_tools()
-    assert result is not None
     assert isinstance(result.tools, list)
-
-
-async def test_lifespan_app_context_accessible_from_tool(mcp_board: ClientSession) -> None:
-    result = await mcp_board.list_tools()
-    assert result is not None
+    assert len(result.tools) > 0
+    tool_names = [t.name for t in result.tools]
+    assert "project_list" in tool_names
 
 
 async def test_create_server_with_lifespan_runs() -> None:
@@ -56,7 +53,8 @@ async def test_create_server_with_lifespan_runs() -> None:
     session = await session_q.get()
 
     result = await session.list_tools()
-    assert result is not None
+    assert isinstance(result.tools, list)
+    assert len(result.tools) > 0
 
     teardown_event.set()
     await lifecycle_task
@@ -66,7 +64,8 @@ async def test_core_lifespan_with_session_id_starts_and_handles_tool_call(
     mcp_board_core_with_session: ClientSession,
 ) -> None:
     tools = await mcp_board_core_with_session.list_tools()
-    assert tools is not None
+    assert isinstance(tools.tools, list)
+    assert len(tools.tools) > 0
 
     result = await mcp_board_core_with_session.call_tool("project_list", {})
     assert not result.isError

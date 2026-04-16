@@ -32,6 +32,8 @@ uvx kagan
 
 - [:material-monitor-dashboard: **Web dashboard**](guides/web-dashboard.md)
 
+- [:material-chart-line: **Analytics & metrics**](guides/analytics.md)
+
 </div>
 
 ______________________________________________________________________
@@ -81,6 +83,7 @@ ______________________________________________________________________
 | Import tasks from GitHub      | [Import from GitHub](guides/github.md)                     |
 | Extend with plugins           | [Plugins](reference/plugins.md) (early stage)              |
 | Use the web dashboard         | [Web dashboard](guides/web-dashboard.md)                   |
+| View analytics & metrics      | [Analytics](guides/analytics.md)                           |
 | Fix a known issue             | [Troubleshooting](troubleshooting.md)                      |
 | All CLI flags                 | [CLI reference](reference/cli.md)                          |
 | All MCP tools                 | [MCP tools reference](reference/mcp-tools.md)              |

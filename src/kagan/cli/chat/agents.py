@@ -83,10 +83,6 @@ def format_agent_usage() -> str:
     return "Usage: `/agents`, `/agents name`, or `/agents number`"
 
 
-def format_agent_switching(backend: str) -> str:
-    return f"Switching to {backend}..."
-
-
 def list_backends_with_availability() -> list[AgentBackendAvailability]:
     availability = list_available_backends()
     specs = list_backend_specs()

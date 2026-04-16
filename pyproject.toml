@@ -210,7 +210,8 @@ lint = "ruff check src/"
 check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"
 check-wire-drift = "python scripts/check_wire_drift.py"
-check-guardrails = ["check-loc", "check-complexity", "check-wire-drift"]
+check-test-quality = { help = "Lint test files for tautological patterns", cmd = "python scripts/check_test_quality.py" }
+check-guardrails = ["check-loc", "check-complexity", "check-wire-drift", "check-test-quality"]
 format = "ruff format src/ tests/"
 typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrations/versions src/"
 deadcode = "vulture"
@@ -293,6 +294,10 @@ shell = "pnpm run web:typecheck"
 [tool.poe.tasks.web-test]
 help = "Run Vitest unit tests on the web package"
 shell = "pnpm run web:test"
+
+[tool.poe.tasks.web-a11y]
+help = "Run accessibility checks (vitest-axe component scans)"
+shell = "pnpm --filter kagan-web exec vitest run src/test/a11y.test.tsx"
 
 [tool.poe.tasks.web-check]
 help = "Run all web package checks (typecheck + test)"

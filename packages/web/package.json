@@ -10,6 +10,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:a11y": "vitest run src/test/a11y.test.tsx",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -28,13 +29,13 @@
     "lucide-react": "^1.8.0",
     "marked": "^18.0.0",
     "monaco-editor": "^0.55.1",
-    "motion": "^12.38.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-hook-form": "^7.72.1",
     "react-resizable-panels": "^4.10.0",
     "react-router": "^7.14.0",
+    "recharts": "^3.8.1",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.3.0",
     "zod": "^4.3.6"

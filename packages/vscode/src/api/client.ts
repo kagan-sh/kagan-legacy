@@ -1,4 +1,6 @@
 import type {
+  AnalyticsExport,
+  BackendStats,
   ChatAgentsResponse,
   CreateTaskInput,
   DiffFile,
@@ -7,6 +9,7 @@ import type {
   ReviewDecisionResponse,
   ReviewStatusResponse,
   RunTaskInput,
+  SessionTimelineEntry,
   SettingsResponse,
   TaskStatus,
   TaskWorktreeResponse,
@@ -254,6 +257,22 @@ export class KaganClient {
       throw new ApiError(response.status, `Chat stream failed: ${response.status}`);
     }
     return response;
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────
+
+  getBackendStats(): Promise<BackendStats[]> {
+    return this.get<BackendStats[]>("/api/analytics/backend-stats");
+  }
+
+  getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {
+    const days = params?.days ?? 30;
+    return this.get<SessionTimelineEntry[]>(`/api/analytics/session-timeline?days=${days}`);
+  }
+
+  getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.get<AnalyticsExport>(`/api/analytics/export${query}`);
   }
 
   async ping(): Promise<boolean> {

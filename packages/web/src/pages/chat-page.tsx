@@ -20,7 +20,7 @@ import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
 import { ChatInputBar } from '@/components/chat/chat-input-bar';
 
-import { ActionEmptyState } from '@/components/shared/workspace';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -333,11 +333,13 @@ export function Component() {
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
           {!hasContent ? (
-            <ActionEmptyState
-              title="Start the orchestration loop"
-              description="Ask for a plan, switch agent backends, or request a higher-level summary of what the current tasks are doing."
-              icon={<MessageSquareText className="size-6" />}
-            />
+            <Empty className="border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><MessageSquareText className="size-6" /></EmptyMedia>
+                <EmptyTitle>Start the orchestration loop</EmptyTitle>
+                <EmptyDescription>Ask for a plan, switch agent backends, or request a higher-level summary of what the current tasks are doing.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="divide-y divide-[color:var(--border-subtle)]">
               {/* Persisted message history */}

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { KaganClient } from "./api/client.js";
 import { SSEStream } from "./api/sse.js";
+import { registerAnalyticsCommands } from "./commands/analytics.js";
 import { registerReviewCommands } from "./commands/review.js";
 import { registerSettingsCommands } from "./commands/settings.js";
 import { registerTaskCommands } from "./commands/tasks.js";
@@ -85,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerReviewCommands(context, client, boardProvider, reviewProvider);
   registerSettingsCommands(context, client);
+  registerAnalyticsCommands(context, client);
   registerChatParticipant(context, client, sse);
 
   // Polling fallback: refresh board when SSE is disconnected

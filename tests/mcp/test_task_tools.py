@@ -578,7 +578,7 @@ async def test_core_task_wait_returns_status(mcp_board_with_core: ClientSession)
     wait_result = await mcp_board_with_core.call_tool(
         "task_wait", {"task_ids": [task_id], "timeout_seconds": 0.1}
     )
-    assert wait_result is not None
+    assert not wait_result.isError
 
 
 async def test_core_admin_task_delete_removes_task(

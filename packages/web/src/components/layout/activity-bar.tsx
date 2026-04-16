@@ -1,16 +1,17 @@
 import { NavLink } from 'react-router';
-import { LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
+import { BarChart3, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
 export function ActivityBar() {
   return (
-    <aside className="hidden w-16 shrink-0 border-r border-[color:var(--border-subtle)] bg-[color:var(--surface-0)] lg:flex lg:flex-col">
+    <aside className="hidden w-16 shrink-0 bg-[color:var(--surface-0)] lg:flex lg:flex-col">
       <div className="flex h-16 items-center justify-center">
         <NavLink
           to="/"

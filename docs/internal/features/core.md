@@ -142,3 +142,16 @@ ______________________________________________________________________
 - Before each managed task run, kagan queries all learning insights across every task in the current project
 - Up to 20 unique learnings (newest-first, deduplicated) are injected into the task prompt as a `PROJECT CONTEXT (from prior tasks):` section
 - Learnings are strictly scoped to the project — insights from other projects are never included
+
+______________________________________________________________________
+
+## 13. Analytics & Metrics
+
+- Track per-backend performance metrics: session count, success rate, average duration, retry rate
+- Session activity timeline aggregates daily counts (total, completed, failed, cancelled) over a configurable window (default 30 days)
+- Metrics are computed from session event logs, not external telemetry
+- All data stays local — no export to external services
+- Export analytics as JSON for external dashboards, compliance, or team reporting
+- Three MCP tools expose analytics: `analytics_backend_stats`, `analytics_session_timeline`, `analytics_export`
+- Export respects the same project-scoping as other operations (per active project)
+- Analytics queries are read-only; no effect on task state or events

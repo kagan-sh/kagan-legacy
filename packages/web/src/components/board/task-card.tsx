@@ -1,10 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
-    CheckCheck,
-    Eye,
     ExternalLink,
-    ListChecks,
     Pencil,
     Play,
     Square,
@@ -13,11 +10,9 @@ import {
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { useAtomValue } from "jotai";
 import { cn } from "@/lib/utils";
 import type { WireTask } from "@/lib/api/types";
 import { parseUtc } from "@/lib/utils/time";
-import { taskWatchersAtom } from "@/lib/atoms/presence";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -77,10 +72,6 @@ function TaskCardBody({
     task: WireTask;
     isSelected?: boolean;
 }) {
-    const criteriaCount = task.acceptance_criteria?.length ?? 0;
-    const watcherMap = useAtomValue(taskWatchersAtom);
-    const watchers = watcherMap.get(task.id) ?? [];
-
     return (
         <div className="ml-2 flex min-h-0 flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
@@ -105,45 +96,15 @@ function TaskCardBody({
                         : "max-h-0 opacity-0 group-hover:max-h-20 group-hover:opacity-100",
                 )}
             >
-                <p className="font-code text-[10px] uppercase tracking-[0.16em] text-foreground/60">
-                    {task.id}
-                </p>
-
                 {task.description ? (
                     <p className="line-clamp-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
                         {task.description}
                     </p>
                 ) : null}
 
-                <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                    <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        <ListChecks className="size-2.5" />
-                        {criteriaCount} AC
-                    </span>
-                    {task.review_approved ? (
-                        <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                            <CheckCheck className="size-2.5" />
-                            Approved
-                        </span>
-                    ) : null}
-                </div>
-
-                <div className="mt-0.5 flex items-center justify-between gap-1 bg-[color:var(--surface-1)] px-2 py-0.5 text-[9px] text-muted-foreground">
-                    <span className="inline-flex min-w-0 items-center truncate">
-                        {formatLastActivity(
-                            task.last_event_at || task.updated_at,
-                        )}
-                    </span>
-                    {watchers.length > 0 ? (
-                        <span
-                            className="inline-flex shrink-0 items-center gap-0.5"
-                            title={watchers.map((w) => w.client_type).join(", ")}
-                        >
-                            <Eye className="size-2.5" />
-                            {watchers.length}
-                        </span>
-                    ) : null}
-                </div>
+                <p className="mt-0.5 text-[9px] text-muted-foreground">
+                    {formatLastActivity(task.last_event_at || task.updated_at)}
+                </p>
             </div>
         </div>
     );
@@ -198,10 +159,9 @@ function TaskCardImpl({
         ? { transform: CSS.Translate.toString(transform) }
         : undefined;
 
-    // 2.6: Reset didDrag when dragging ends (including Escape-cancelled drags)
+    // Reset didDrag when dragging ends (including Escape-cancelled drags)
     useEffect(() => {
         if (!isDragging && didDrag.current) {
-            // Delay reset so the click handler can still read it for the current event cycle
             const id = requestAnimationFrame(() => {
                 didDrag.current = false;
             });
@@ -332,10 +292,10 @@ function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
         prevProps.task.id === nextProps.task.id &&
         prevProps.task.status === nextProps.task.status &&
         prevProps.task.title === nextProps.task.title &&
+        prevProps.task.description === nextProps.task.description &&
         prevProps.task.priority === nextProps.task.priority &&
         prevProps.task.active_session?.id === nextProps.task.active_session?.id &&
         prevProps.task.last_event_at === nextProps.task.last_event_at &&
-        prevProps.task.review_approved === nextProps.task.review_approved &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.onSelectTask === nextProps.onSelectTask &&
         prevProps.onOpenTask === nextProps.onOpenTask &&

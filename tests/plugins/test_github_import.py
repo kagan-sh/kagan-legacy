@@ -11,7 +11,6 @@ from kagan.core.plugins._github import (
     GitHubImportConfig,
     GitHubImporter,
     GitHubIssue,
-    GitHubIssuePreview,
     _build_description,
     _extract_label_names,
     _map_labels,

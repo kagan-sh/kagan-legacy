@@ -1879,6 +1879,9 @@ class KanbanScreen(Screen[None]):
     def action_toggle_workspace(self) -> None:
         self.app.switch_screen("workspace-screen")
 
+    def action_open_analytics(self) -> None:
+        self.app.push_screen("analytics-modal")
+
     def _on_settings_dismissed(self, _result: None) -> None:
         from kagan.tui.app import KaganApp
 

@@ -1,4 +1,5 @@
 from kagan.tui.screens.agent_picker import AgentPickerModal
+from kagan.tui.screens.analytics import AnalyticsModal
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.gateway import AttachedInstructionsModal
 from kagan.tui.screens.help import HelpModal
@@ -15,6 +16,7 @@ from kagan.tui.screens.workspace import WorkspaceScreen
 
 __all__ = [
     "AgentPickerModal",
+    "AnalyticsModal",
     "AttachedInstructionsModal",
     "ConfirmModal",
     "HelpModal",

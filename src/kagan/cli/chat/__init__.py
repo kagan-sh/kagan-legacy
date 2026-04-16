@@ -8,7 +8,6 @@ from kagan.cli.chat._title import ensure_session_title, generate_session_title, 
 from kagan.cli.chat.acp import run_orchestrator_turn, warm_orchestrator_backend
 from kagan.cli.chat.agents import (
     format_agent_backend_list,
-    format_agent_switching,
     format_agent_usage,
     list_registered_agent_backends,
     resolve_agent_backend_selection,
@@ -83,7 +82,6 @@ __all__ = [
     "delete_chat_session",
     "ensure_session_title",
     "format_agent_backend_list",
-    "format_agent_switching",
     "format_agent_usage",
     "format_session_payload",
     "format_unknown_slash_command",

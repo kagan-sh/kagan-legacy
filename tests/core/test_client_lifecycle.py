@@ -1,6 +1,5 @@
 """Feature tests: Client Lifecycle — docs/internal/features/core.md §1."""
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -63,7 +62,8 @@ async def test_async_context_manager_disposes_cleanly(tmp_path: Path) -> None:
     db_path = tmp_path / "ctx.db"
     async with KaganCore(db_path=db_path) as client:
         project = await client.projects.create("CM Project")
-        assert project.id is not None
+        assert isinstance(project.id, str)
+        assert len(project.id) > 0
 
 
 async def test_preflight_returns_structured_results(tmp_path: Path) -> None:

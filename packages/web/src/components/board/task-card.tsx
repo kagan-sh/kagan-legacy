@@ -10,6 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import type { WireTask } from "@/lib/api/types";
 import { parseUtc } from "@/lib/utils/time";
+import { CardPulse } from "@/components/board/card-pulse";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -81,6 +82,12 @@ function TaskCardBody({
                     </span>
                 ) : null}
             </div>
+            <CardPulse
+                sessionId={task.active_session?.id ?? null}
+                status={task.status}
+                startedAt={task.active_session?.started_at ?? null}
+                taskTitle={task.title}
+            />
 
             <div
                 className={cn(
@@ -269,6 +276,8 @@ function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
         prevProps.task.description === nextProps.task.description &&
         prevProps.task.priority === nextProps.task.priority &&
         prevProps.task.active_session?.id === nextProps.task.active_session?.id &&
+        prevProps.task.active_session?.started_at ===
+            nextProps.task.active_session?.started_at &&
         prevProps.task.last_event_at === nextProps.task.last_event_at &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.onSelectTask === nextProps.onSelectTask &&

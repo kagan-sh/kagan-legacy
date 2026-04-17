@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { SkipLink } from "@/components/a11y/skip-link";
 import { ActivityBar } from "@/components/layout/activity-bar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { HelpOverlay } from "@/components/layout/help-overlay";
@@ -388,12 +389,7 @@ function AppLayout() {
 
     return (
         <>
-            <a
-                href="#main-content"
-                className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-[var(--primary)] focus:px-4 focus:py-2 focus:text-[var(--primary-foreground)]"
-            >
-                Skip to content
-            </a>
+            <SkipLink>Skip to content</SkipLink>
 
             <div className="flex h-screen overflow-hidden bg-[color:var(--surface-0)]">
                 {!isMobile && <ActivityBar />}

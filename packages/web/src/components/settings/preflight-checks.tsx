@@ -63,7 +63,7 @@ export function PreflightChecks() {
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium">System Checks</h3>
+        <h2 className="text-sm font-medium">System Checks</h2>
         <Button
           variant="ghost"
           size="icon-sm"

@@ -264,10 +264,6 @@ export function KanbanBoard() {
 
   const isAnyDialogOpen = boardDialog.kind !== 'none';
 
-  const openPeekDialog = useCallback((task: WireTask) => {
-    setBoardDialog({ kind: 'peek', taskId: task.id });
-  }, [setBoardDialog]);
-
   const openEditDialog = useCallback((task: WireTask) => {
     setBoardDialog({ kind: 'edit', taskId: task.id });
   }, [setBoardDialog]);
@@ -457,9 +453,7 @@ export function KanbanBoard() {
               className="h-full min-h-0 overflow-hidden"
               onOpenTask={() => openTask(selectedTask)}
               onOpenStream={openSelectedStream}
-              onPeek={() => openPeekDialog(selectedTask)}
               onEdit={() => openEditDialog(selectedTask)}
-              onDelete={() => openDeleteDialog(selectedTask)}
               onClose={() => {
                 setInspectorClosed(true);
                 setSelectedTaskId(null);
@@ -480,7 +474,6 @@ export function KanbanBoard() {
         onOpenTask={openTask}
         onOpenStream={openSelectedStream}
         onEditTask={openEditDialog}
-        onDeleteTask={openDeleteDialog}
       />
       <FirstBootTutorialDialog
         open={tutorialOpen}

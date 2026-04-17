@@ -16,7 +16,6 @@ interface BoardDialogsProps {
   onOpenTask: (task: WireTask) => void;
   onOpenStream: () => void;
   onEditTask: (task: WireTask) => void;
-  onDeleteTask: (task: WireTask) => void;
 }
 
 export function BoardDialogs({
@@ -30,7 +29,6 @@ export function BoardDialogs({
   onOpenTask,
   onOpenStream,
   onEditTask,
-  onDeleteTask,
 }: BoardDialogsProps) {
   return (
     <>
@@ -62,10 +60,6 @@ export function BoardDialogs({
         onEdit={() => {
           if (!peekTask) return;
           onEditTask(peekTask);
-        }}
-        onDelete={() => {
-          if (!peekTask) return;
-          onDeleteTask(peekTask);
         }}
       />
       <TaskDeleteDialog

@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router';
-import { BarChart3, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
+import { BarChart3, Home, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
+  { to: '/home', label: 'Home', icon: Home },
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },

@@ -769,7 +769,7 @@ export function Component() {
             Export
           </Button>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-            <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectTrigger className="h-8 w-32 text-xs" aria-label="Time range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

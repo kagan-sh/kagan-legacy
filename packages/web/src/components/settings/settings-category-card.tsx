@@ -22,7 +22,6 @@ export const SettingsCategoryCard = forwardRef<HTMLButtonElement, SettingsCatego
         type="button"
         id={`settings-card-${id}`}
         aria-expanded={expanded}
-        aria-controls={`settings-panel-${id}`}
         onClick={onClick}
         className={cn(
           'group flex w-full items-center gap-4 rounded-md px-4 py-3 text-left',

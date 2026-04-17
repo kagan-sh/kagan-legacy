@@ -3,6 +3,7 @@ import { useSetAtom } from 'jotai';
 import { ArrowLeft, Bot, Cog, Settings, Workflow } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { logoutAtom } from '@/lib/atoms/auth';
+import { LiveRegion } from '@/components/a11y/live-region';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConnectionCard } from '@/components/settings/connection-card';
@@ -95,8 +96,10 @@ export function Component() {
         </p>
       </div>
 
+      <LiveRegion message={activeMeta ? `${activeMeta.title} settings expanded` : null} />
+
       {/* Category cards / expanded section */}
-      <div className="mt-8" aria-live="polite">
+      <div className="mt-8">
         {activeMeta ? (
           <SettingsSectionView
             meta={activeMeta}

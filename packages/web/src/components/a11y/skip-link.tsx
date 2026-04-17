@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { focusRing } from '@/lib/a11y/focus-ring';
 
 interface SkipLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
-  /** Target element id, e.g. `main`. */
+  /** Target element id. Must match the `id` on the `<main>` landmark. */
   targetId?: string;
 }
 
@@ -12,7 +12,7 @@ interface SkipLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
  * Place as the first interactive element in the document.
  */
 export function SkipLink({
-  targetId = 'main',
+  targetId = 'main-content',
   className,
   children = 'Skip to main content',
   ...rest

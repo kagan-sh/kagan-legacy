@@ -5,7 +5,7 @@ import { useSetAtom } from 'jotai';
 import { apiClient } from '@/lib/api/client';
 import type { WireTask } from '@/lib/api/types';
 import { fetchTasksAtom } from '@/lib/atoms/board';
-import { classifyIntent, type ClassifiedIntent } from '@/lib/intent/classify-intent';
+import { classifyIntent, describeIntent } from '@/lib/intent/classify-intent';
 import { LiveRegion } from '@/components/a11y/live-region';
 import { IntentInput } from '@/components/home/intent-input';
 import { IntentPreview } from '@/components/home/intent-preview';
@@ -21,27 +21,6 @@ function greetingFor(date: Date): string {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
-}
-
-function previewDescription(intent: ClassifiedIntent, rawInput: string): string {
-  switch (intent.kind) {
-    case 'create-task':
-      return `Create task: ${intent.extractedFields?.title ?? rawInput}`;
-    case 'chat':
-      return 'Ask in chat';
-    case 'search':
-      return `Search tasks for ${rawInput}`;
-    case 'navigate-analytics':
-      return 'Open analytics';
-    case 'navigate-settings':
-      return 'Open settings';
-    case 'navigate-board':
-      return 'Open board';
-    case 'navigate-workspace':
-      return 'Open workspace';
-    case 'unknown':
-      return 'Open chat';
-  }
 }
 
 function sortByRecency(tasks: WireTask[]): WireTask[] {
@@ -80,7 +59,7 @@ export function HomePage() {
       return;
     }
     const handle = window.setTimeout(() => {
-      setAnnouncement(previewDescription(intent, value));
+      setAnnouncement(describeIntent(intent, value));
     }, ANNOUNCE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [intent, value, previewVisible]);

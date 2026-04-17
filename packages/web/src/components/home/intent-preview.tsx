@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react';
-import type { ClassifiedIntent } from '@/lib/intent/classify-intent';
+import { describeIntent, type ClassifiedIntent } from '@/lib/intent/classify-intent';
 import { cn } from '@/lib/utils';
 
 interface IntentPreviewProps {
@@ -8,27 +8,6 @@ interface IntentPreviewProps {
   rawInput: string;
   /** Render nothing when the user hasn't typed enough. */
   visible: boolean;
-}
-
-function describe(intent: ClassifiedIntent, rawInput: string): string {
-  switch (intent.kind) {
-    case 'create-task':
-      return `Create task: ${intent.extractedFields?.title ?? rawInput}`;
-    case 'chat':
-      return 'Ask in chat';
-    case 'search':
-      return `Search tasks for "${rawInput}"`;
-    case 'navigate-analytics':
-      return 'Open analytics';
-    case 'navigate-settings':
-      return 'Open settings';
-    case 'navigate-board':
-      return 'Open board';
-    case 'navigate-workspace':
-      return 'Open workspace';
-    case 'unknown':
-      return 'Open chat';
-  }
 }
 
 function confidenceTone(confidence: number): string {
@@ -48,7 +27,7 @@ export function IntentPreview({ intent, rawInput, visible }: IntentPreviewProps)
     return <div aria-hidden className="h-7" />;
   }
 
-  const description = describe(intent, rawInput);
+  const description = describeIntent(intent, rawInput);
 
   return (
     <div

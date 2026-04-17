@@ -173,3 +173,29 @@ export function classifyIntent(input: string): ClassifiedIntent {
 
   return { ...UNKNOWN_INTENT, confidence: 0.2 };
 }
+
+/**
+ * User-facing description of a classified intent. Shared by the visible chip
+ * and the live-region announcement so sighted and screen-reader users get
+ * identical copy.
+ */
+export function describeIntent(intent: ClassifiedIntent, rawInput: string): string {
+  switch (intent.kind) {
+    case 'create-task':
+      return `Create task: ${intent.extractedFields?.title ?? rawInput}`;
+    case 'chat':
+      return 'Ask in chat';
+    case 'search':
+      return `Search tasks for "${rawInput}"`;
+    case 'navigate-analytics':
+      return 'Open analytics';
+    case 'navigate-settings':
+      return 'Open settings';
+    case 'navigate-board':
+      return 'Open board';
+    case 'navigate-workspace':
+      return 'Open workspace';
+    case 'unknown':
+      return 'Open chat';
+  }
+}

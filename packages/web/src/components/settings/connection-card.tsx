@@ -17,7 +17,7 @@ export function ConnectionCard() {
 
   return (
     <Card className="p-4">
-      <h3 className="mb-3 text-sm font-medium">Connection</h3>
+      <h2 className="mb-3 text-sm font-medium">Connection</h2>
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-[var(--muted-foreground)]">Server</span>

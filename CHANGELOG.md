@@ -13,6 +13,44 @@
 
 
 
+## v0.19.0-beta.1 (2026-04-17)
+
+
+
+
+### Features
+
+- **web**: UX/UI v2 — a11y foundation, command palette, intent home, settings disclosure, living
+  cards
+  ([`411c6fb`](https://github.com/kagan-sh/kagan/commit/411c6fb99241a12f0fa2f80cb341df82ba62e79c))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Documentation
+
+- Document v0.18.0 analytics across external and internal guides
+  ([`e622d8f`](https://github.com/kagan-sh/kagan/commit/e622d8f447e80705c34ed47e3cd8fd6581e46351))
+
+
+
+
+
 ## v0.18.1-beta.4 (2026-04-16)
 
 

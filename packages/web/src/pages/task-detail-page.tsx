@@ -6,10 +6,7 @@ import {
     ChevronRight,
     ListChecks,
     MessageSquare,
-    MoreHorizontal,
     MoveRight,
-    Pencil,
-    Trash2,
     XCircle,
 } from "lucide-react";
 import { useSetAtom } from "jotai";
@@ -39,13 +36,6 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Select,
@@ -262,32 +252,6 @@ export function Component() {
                 <h1 className="min-w-0 truncate text-sm font-semibold">
                     {displayTask.title}
                 </h1>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                            aria-label="Task actions"
-                        >
-                            <MoreHorizontal className="size-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => setEditOpen(true)}>
-                            <Pencil className="size-4" />
-                            Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() => setDeleteOpen(true)}
-                        >
-                            <Trash2 className="size-4" />
-                            Delete
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
             </div>
 
             <Panel className="mt-3">

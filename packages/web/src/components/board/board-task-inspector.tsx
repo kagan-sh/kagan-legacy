@@ -1,4 +1,4 @@
-import { Activity, ArrowUpRight, Copy, Eye, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Activity, ArrowUpRight, Copy, Pencil, Plus, X } from 'lucide-react';
 import type { TaskStatus, WireEvent, WireTask } from '@/lib/api/types';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { STATUS_LABELS } from '@/lib/utils/constants';
@@ -7,7 +7,6 @@ import { TaskMetadataPanel } from '@/components/board/task-metadata-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { InspectorSection, Panel } from '@/components/shared/workspace';
 import { cn } from '@/lib/utils';
@@ -15,9 +14,7 @@ import { cn } from '@/lib/utils';
 interface BoardTaskActions {
   onOpenTask: () => void;
   onOpenStream: () => void;
-  onPeek?: () => void;
   onEdit?: () => void;
-  onDelete?: () => void;
 }
 
 interface BoardTaskInspectorProps extends BoardTaskActions {
@@ -78,7 +75,7 @@ function TaskStatusBadge({ task }: { task: WireTask }) {
   );
 }
 
-function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDelete }: BoardTaskInspectorProps) {
+function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskInspectorProps) {
   const { events, runningSince } = useTaskEvents(task.id, { initialLimit: 18, pollInterval: 5000 });
   const criteria = task.acceptance_criteria ?? [];
   const recentEvents = events.filter((e) => INSPECTOR_EVENT_TYPES.has(e.type)).slice(-6).reverse();
@@ -119,33 +116,6 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
               <Pencil className="size-4" />
               Edit
             </Button>
-          ) : null}
-          {(onPeek || onDelete) ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" className=" text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-                  <MoreHorizontal className="size-4" />
-                  More
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {onPeek ? (
-                  <DropdownMenuItem onSelect={onPeek}>
-                    <Eye className="size-4" />
-                    Peek
-                  </DropdownMenuItem>
-                ) : null}
-                {onDelete ? (
-                  <>
-                    {onPeek ? <DropdownMenuSeparator /> : null}
-                    <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-                      <Trash2 className="size-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
           ) : null}
         </div>
       </InspectorSection>
@@ -228,7 +198,7 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onPeek, onEdit, onDe
   );
 }
 
-export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, onPeek, onEdit, onDelete, onClose }: BoardTaskInspectorProps) {
+export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, onEdit, onClose }: BoardTaskInspectorProps) {
   return (
     <Panel className={cn('flex flex-col', className)}>
       <div className="border-b border-[color:var(--border-subtle)] px-5 py-4">
@@ -272,9 +242,7 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
               task={task}
               onOpenTask={onOpenTask}
               onOpenStream={onOpenStream}
-              onPeek={onPeek}
               onEdit={onEdit}
-              onDelete={onDelete}
             />
           </div>
         </ScrollArea>
@@ -283,7 +251,7 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
   );
 }
 
-export function BoardTaskPeekDialog({ task, open, onOpenChange, onOpenTask, onOpenStream, onEdit, onDelete }: BoardTaskPeekDialogProps) {
+export function BoardTaskPeekDialog({ task, open, onOpenChange, onOpenTask, onOpenStream, onEdit }: BoardTaskPeekDialogProps) {
   if (!task) {
     return null;
   }
@@ -312,7 +280,6 @@ export function BoardTaskPeekDialog({ task, open, onOpenChange, onOpenTask, onOp
               onOpenTask={onOpenTask}
               onOpenStream={onOpenStream}
               onEdit={onEdit}
-              onDelete={onDelete}
             />
           </div>
         </ScrollArea>

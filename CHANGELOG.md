@@ -13,6 +13,25 @@
 
 
 
+## v0.19.0-beta.3 (2026-04-19)
+
+
+
+
+### Chores
+
+- **deps-dev**: Bump ovsx from 0.10.10 to 0.10.11 in /packages/vscode
+  ([#113](https://github.com/kagan-sh/kagan/pull/113),
+  [`69ec762`](https://github.com/kagan-sh/kagan/commit/69ec762931f0c1b67188f2834f49d7ef2ed43ba0))
+
+- **deps-dev**: Update pnpm-lock.yaml for ovsx 0.10.11
+  ([#113](https://github.com/kagan-sh/kagan/pull/113),
+  [`69ec762`](https://github.com/kagan-sh/kagan/commit/69ec762931f0c1b67188f2834f49d7ef2ed43ba0))
+
+
+
+
+
 ## v0.19.0-beta.2 (2026-04-19)
 
 

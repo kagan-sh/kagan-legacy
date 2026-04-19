@@ -13,6 +13,29 @@
 
 
 
+## v0.19.0-beta.2 (2026-04-19)
+
+
+
+
+### Chores
+
+- **deps-dev**: Bump @vscode/vsce from 3.7.1 to 3.9.0 in /packages/vscode
+  ([#111](https://github.com/kagan-sh/kagan/pull/111),
+  [`2efdd3a`](https://github.com/kagan-sh/kagan/commit/2efdd3a861242b49926c3b3557c53e5b77fba11f))
+
+- **deps-dev**: Bump @vscode/vsce in /packages/vscode
+  ([#111](https://github.com/kagan-sh/kagan/pull/111),
+  [`2efdd3a`](https://github.com/kagan-sh/kagan/commit/2efdd3a861242b49926c3b3557c53e5b77fba11f))
+
+- **deps-dev**: Update pnpm-lock.yaml for vsce 3.9.0
+  ([#111](https://github.com/kagan-sh/kagan/pull/111),
+  [`2efdd3a`](https://github.com/kagan-sh/kagan/commit/2efdd3a861242b49926c3b3557c53e5b77fba11f))
+
+
+
+
+
 ## v0.19.0-beta.1 (2026-04-17)
 
 

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
 from textual.widgets import Button, OptionList, Static
 
@@ -77,6 +77,10 @@ class WelcomeScreen(Screen[None]):
                         classes="modal-action-hint",
                         id="cwd-actions-hint",
                     )
+
+            with Horizontal(id="degraded-banner", classes="hidden"):
+                yield Static("", id="db-banner-text", classes="db-banner-text")
+                yield Button("Dismiss", id="db-dismiss-btn", classes="db-dismiss-btn")
 
             yield Static("Recent Projects", id="recent-header")
             yield Static("Loading projects…", id="projects-loading")
@@ -205,6 +209,26 @@ class WelcomeScreen(Screen[None]):
 
     def action_settings(self) -> None:
         self.app.push_screen("settings-modal", callback=self._on_settings_dismissed)
+
+    def show_degraded_banner(self, *, warn_count: int) -> None:
+        """Show the amber degraded-mode banner with a warning count summary."""
+        banner = self.query_one("#degraded-banner", Horizontal)
+        text = self.query_one("#db-banner-text", Static)
+        noun = "check" if warn_count == 1 else "checks"
+        text.update(
+            f"[bold]Degraded mode:[/bold] {warn_count} doctor {noun} returned warnings. "
+            "Run [bold]kagan doctor[/bold] to fix."
+        )
+        banner.remove_class("hidden")
+
+    @on(Button.Pressed, "#db-dismiss-btn")
+    def _on_degraded_banner_dismiss(self, _: Button.Pressed) -> None:
+        banner = self.query_one("#degraded-banner", Horizontal)
+        banner.add_class("hidden")
+        from kagan.tui.app import KaganApp
+
+        if isinstance(self.app, KaganApp):
+            self.app._doctor_banner_dismissed = True
 
     @on(Button.Pressed, "#welcome-resume-session")
     def _on_resume_recent_session_pressed(self, _: Button.Pressed) -> None:

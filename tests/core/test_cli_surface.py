@@ -271,13 +271,16 @@ def test_tui_session_id_is_forwarded_to_app_launch(monkeypatch, tmp_path: Path) 
     captured: dict[str, str | None] = {}
 
     def _fake_launch(
-        *, db_path: str | Path | None = None, startup_chat_session_id: str | None = None
+        *,
+        db_path: str | Path | None = None,
+        startup_chat_session_id: str | None = None,
+        startup_checks: object = None,
     ) -> None:
-        del db_path
+        del db_path, startup_checks
         captured["session_id"] = startup_chat_session_id
 
     monkeypatch.setattr("kagan.cli.tui._launch_tui", _fake_launch)
-    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+    monkeypatch.setattr("kagan.cli.tui._collect_startup_checks", lambda **_kw: [])
 
     runner = CliRunner()
     result = runner.invoke(

@@ -49,6 +49,32 @@ export class StatusBar implements vscode.Disposable {
     this.item.show();
   }
 
+  // Doctor health states — called once on activation after GET /api/doctor.
+
+  showReady(): void {
+    this.item.text = "Kagan: ready";
+    this.item.tooltip = "All checks passed";
+    this.item.backgroundColor = undefined;
+    this.item.command = undefined;
+    this.item.show();
+  }
+
+  showDegraded(warnCount: number): void {
+    this.item.text = "$(alert) Kagan: degraded";
+    this.item.tooltip = `${warnCount} warning${warnCount === 1 ? "" : "s"} — run 'kagan doctor' for details`;
+    this.item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
+    this.item.command = undefined;
+    this.item.show();
+  }
+
+  showSetupNeeded(failCount: number): void {
+    this.item.text = "$(warning) Kagan: setup needed";
+    this.item.tooltip = `${failCount} check${failCount === 1 ? "" : "s"} failed — run 'kagan doctor' for details`;
+    this.item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
+    this.item.command = undefined;
+    this.item.show();
+  }
+
   dispose(): void {
     this.item.dispose();
   }

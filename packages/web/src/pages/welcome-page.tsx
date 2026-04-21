@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PathPicker } from '@/components/shared/path-picker';
+import { PreflightGate } from '@/components/welcome/preflight-gate';
 
 interface ProjectWithRepos {
   project: WireProject;
@@ -269,6 +270,8 @@ export function Component() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-[color:var(--surface-0)] px-4 py-16 sm:px-6">
       <div className="w-full max-w-xl">
+        {/* Preflight gate — zero-ready renders a modal; degraded renders a banner above content */}
+        <PreflightGate />
         {/* Logo */}
         <div className="mb-6 text-center">
           <span className="inline-flex items-center gap-1.5 bg-[color:var(--surface-1)] px-3 py-1.5 shadow-[var(--ambient-shadow)]">

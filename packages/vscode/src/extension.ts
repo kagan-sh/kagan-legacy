@@ -14,6 +14,7 @@ import {
 import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/review.comments.js";
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
 import { registerChatParticipant } from "./providers/chat.participant.js";
+import { DoctorStatusProvider } from "./providers/doctor.status.js";
 import { StatusBar } from "./status/bar.js";
 import { SSE_TYPE, type SSEMessage } from "./api/types.js";
 import { LocalServerSupervisor } from "./server/supervisor.js";
@@ -36,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const reviewProvider = new ReviewCommentProvider();
   const terminalProvider = new AgentTerminalProvider(client);
   const statusBar = new StatusBar();
+  const doctorStatus = new DoctorStatusProvider(client, statusBar);
   const serverLog = vscode.window.createOutputChannel("Kagan Server");
   const serverSupervisor = new LocalServerSupervisor(serverLog);
 
@@ -162,19 +164,25 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.showDisconnected();
   void vscode.commands.executeCommand("setContext", "kagan.connected", false);
 
-  if (config.get<boolean>("autoConnect", true)) {
-    void connect(
-      client,
-      sse,
-      boardProvider,
-      statusBar,
-      serverLog,
-      serverSupervisor,
-      getServerLaunchSettings(),
-    );
-  }
+  // Preflight runs first so its showReady/Degraded/SetupNeeded cannot clobber
+  // the task-count display that connect() writes via showConnected().
+  void (async () => {
+    await doctorStatus.runPreflight();
 
-  void detectAttachContext(client, sse);
+    if (config.get<boolean>("autoConnect", true)) {
+      void connect(
+        client,
+        sse,
+        boardProvider,
+        statusBar,
+        serverLog,
+        serverSupervisor,
+        getServerLaunchSettings(),
+      );
+    }
+
+    void detectAttachContext(client, sse);
+  })();
 
   function getServerLaunchSettings(): { autoStartServer: boolean; serverCommand: string } {
     const nextConfig = vscode.workspace.getConfiguration("kagan");

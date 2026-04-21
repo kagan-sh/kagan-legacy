@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from kagan.cli.doctor import run_doctor_checks
 from kagan.core import TaskStatus, detect_dotfile_overrides
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
@@ -162,6 +163,37 @@ def register_system_routes(mcp: FastMCP) -> None:
 
         result = await asyncio.to_thread(_list_dir, raw_path)
         return _ok(result)
+
+    @mcp.custom_route("/api/doctor", methods=["GET"])
+    @handle_errors
+    async def get_doctor(_request: Request) -> JSONResponse:
+        import asyncio
+
+        from kagan.server.responses import DoctorCheckResponse, DoctorReportResponse
+
+        checks = await asyncio.to_thread(run_doctor_checks)
+        check_responses = [
+            DoctorCheckResponse(
+                name=c.name,
+                status=c.status,
+                message=c.message,
+                fix_hint=c.fix_hint,
+                verify_hint=c.verify_hint,
+                # category is added by task 623a6f913a0047db; fall back gracefully
+                category=getattr(c, "category", "core"),
+                is_blocking=c.status == "fail",
+            )
+            for c in checks
+        ]
+        fail_count = sum(1 for cr in check_responses if cr.status == "fail")
+        warn_count = sum(1 for cr in check_responses if cr.status == "warn")
+        report = DoctorReportResponse(
+            checks=check_responses,
+            ok=fail_count == 0,
+            fail_count=fail_count,
+            warn_count=warn_count,
+        )
+        return _ok(report.model_dump())
 
     @mcp.custom_route("/api/preflight", methods=["GET"])
     @require_context(mcp)

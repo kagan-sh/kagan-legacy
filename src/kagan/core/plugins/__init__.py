@@ -3,6 +3,7 @@
 Public API re-exports. Import everything you need from here::
 
     from kagan.core.plugins import PluginManager, ImporterPlugin, ImportResult
+    from kagan.core.plugins import collect_plugin_checks
 """
 
 from kagan.core.plugins._base import (
@@ -16,6 +17,7 @@ from kagan.core.plugins._base import (
     PluginSyncError,
     discover_plugins,
 )
+from kagan.core.plugins._preflight import collect_plugin_checks
 
 __all__ = [
     "ENTRY_POINT_GROUP",
@@ -26,5 +28,6 @@ __all__ = [
     "PluginInfo",
     "PluginManager",
     "PluginSyncError",
+    "collect_plugin_checks",
     "discover_plugins",
 ]

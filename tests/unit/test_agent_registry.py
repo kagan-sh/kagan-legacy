@@ -52,10 +52,14 @@ def test_backend_specs_expose_reference_backends() -> None:
     assert codex.reference is True
     assert claude.display_name == "Claude Code"
     assert codex.display_name == "Codex CLI"
-    assert claude.install_hint is not None
-    assert codex.install_hint is not None
-    assert claude.auth_hint is not None
-    assert codex.auth_hint is not None
+    assert claude.install is not None
+    assert codex.install is not None
+    assert claude.auth is not None
+    assert codex.auth is not None
+    assert claude.resolve_command("install") is not None
+    assert codex.resolve_command("install") is not None
+    assert claude.resolve_command("auth") is not None
+    assert codex.resolve_command("auth") is not None
     assert "claude-code" in claude.label().lower()
     assert "codex" in codex.label().lower()
     assert BackendCapability.ACP_STREAMING in claude.capabilities
@@ -121,3 +125,47 @@ def test_reference_aligned_acp_commands_for_shared_backends() -> None:
     }
     for name, acp_command in expected.items():
         assert AGENT_BACKENDS[name]["acp_command"] == acp_command
+
+
+@pytest.mark.parametrize(
+    "backend_name",
+    [
+        "claude-code",
+        "codex",
+        "gemini-cli",
+        "kimi-cli",
+        "github-copilot",
+        "goose",
+        "openhands",
+        "opencode",
+        "auggie",
+        "amp",
+        "docker-cagent",
+        "stakpak",
+        "mistral-vibe",
+        "vt-code",
+    ],
+)
+def test_every_backend_resolve_install_returns_non_none(backend_name: str) -> None:
+    """AC #8 — every backend spec has a non-None install BackendCommand."""
+    from kagan.core._agent import BackendCommand
+
+    spec = get_backend_spec(backend_name)
+    result = spec.resolve_command("install")
+    assert result is not None, (
+        f"Backend {backend_name!r}: resolve_command('install') returned None — "
+        "install entry is missing or has no '*' wildcard"
+    )
+    assert isinstance(result, BackendCommand), (
+        f"Backend {backend_name!r}: resolve_command('install') must return BackendCommand"
+    )
+    assert result.command, (
+        f"Backend {backend_name!r}: install BackendCommand.command must not be empty"
+    )
+    assert result.description, (
+        f"Backend {backend_name!r}: install BackendCommand.description must not be empty"
+    )
+    assert len(result.description) <= 60, (
+        f"Backend {backend_name!r}: description {result.description!r} exceeds 60 chars "
+        f"({len(result.description)} chars)"
+    )

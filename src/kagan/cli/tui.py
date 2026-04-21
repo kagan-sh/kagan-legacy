@@ -1,45 +1,62 @@
-"""TUI command with startup doctor gate."""
+"""TUI command with startup doctor gate.
+
+The doctor gate now runs inside the TUI via DoctorModal (FAIL cases) or a
+degraded banner on WelcomeScreen (WARN-only). The CLI-level hard exit has been
+replaced with an in-TUI modal path so users get a guided remediation flow.
+
+``_run_doctor_gate`` is kept as a compatibility shim so existing test
+monkeypatches continue to work — it no longer blocks startup.
+"""
+
+from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from loguru import logger
 
+if TYPE_CHECKING:
+    from kagan.cli.doctor import DoctorCheck
+
+
+def _collect_startup_checks(*, skip_preflight: bool) -> list[DoctorCheck]:
+    """Run doctor checks and return them for in-TUI routing.
+
+    Returns an empty list when ``skip_preflight`` is True so the app
+    starts without displaying any doctor UI.
+    """
+    if skip_preflight:
+        return []
+
+    from kagan.cli.doctor import run_doctor_checks
+
+    return run_doctor_checks()
+
 
 def _run_doctor_gate(*, skip_preflight: bool) -> bool:
-    if skip_preflight:
-        return True
+    """Compatibility shim — always returns True.
 
-    from kagan.cli.doctor import (
-        doctor_has_failures,
-        render_doctor_report,
-        run_doctor_checks,
-    )
-
-    checks = run_doctor_checks()
-
-    if not doctor_has_failures(checks):
-        return True
-
-    render_doctor_report(checks, title="Kagan Doctor (startup)", verbosity="short")
-    click.echo()
-    click.secho(
-        "Blocking issues prevent TUI startup. "
-        "Resolve the issues above and run `kagan` again, "
-        "or run `kagan doctor --verbosity technical` for full details.",
-        fg="red",
-    )
-    return False
+    Previously blocked TUI startup on FAIL checks via a hard exit. FAIL
+    handling is now done inside the TUI by DoctorModal so the CLI gate is
+    a no-op. Kept so existing test monkeypatches continue to resolve.
+    """
+    return True
 
 
 def _launch_tui(
     *,
     db_path: str | Path | None = None,
     startup_chat_session_id: str | None = None,
+    startup_checks: list[DoctorCheck] | None = None,
 ) -> None:
     from kagan.tui.app import KaganApp
 
-    app = KaganApp(db_path=db_path, startup_chat_session_id=startup_chat_session_id)
+    app = KaganApp(
+        db_path=db_path,
+        startup_chat_session_id=startup_chat_session_id,
+        startup_checks=startup_checks,
+    )
     app.run()
 
 
@@ -61,15 +78,18 @@ def _launch_tui(
 )
 def tui(db: str | None, session_id: str | None, skip_preflight: bool) -> None:
     """Run the Kanban TUI (default command)."""
-    if not _run_doctor_gate(skip_preflight=skip_preflight):
-        raise SystemExit(1)
+    startup_checks = _collect_startup_checks(skip_preflight=skip_preflight)
 
     db_path: str | Path | None = None
     if db:
         db_path = Path(db).expanduser().resolve(strict=False)
 
     try:
-        _launch_tui(db_path=db_path, startup_chat_session_id=session_id)
+        _launch_tui(
+            db_path=db_path,
+            startup_chat_session_id=session_id,
+            startup_checks=startup_checks,
+        )
     except ImportError as exc:
         logger.exception("TUI module import failed")
         raise click.ClickException(

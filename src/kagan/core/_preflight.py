@@ -1,4 +1,21 @@
-"""System health checks for kagan.core — fail blocks operations, warn is informational."""
+"""System health checks for kagan.core — fail blocks operations, warn is informational.
+
+Severity rules for agent backends (documented here and enforced in check_agent_backends):
+
+Rule 1 — Zero installed:
+    The default backend check is FAIL (triggers DoctorModal zero-ready blocking state).
+    All other backend checks are WARN.
+
+Rule 2 — Default missing, at least one other installed:
+    The default backend check is FAIL.
+    Installed non-default backends are PASS.
+    Uninstalled non-default backends are WARN.
+
+Rule 3 — Default installed:
+    The default backend check is PASS.
+    Installed non-default backends are PASS.
+    Uninstalled non-default backends are WARN.
+"""
 
 import shutil
 from dataclasses import dataclass
@@ -91,6 +108,11 @@ def check_db_writability(db_path: Path) -> PreflightCheckResult:
 
 
 def check_agent_backend(executable: str) -> PreflightCheckResult:
+    """Check a single agent backend executable (legacy single-backend path).
+
+    Returns WARN (not FAIL) when missing — severity escalation to FAIL requires
+    calling check_agent_backends() which applies the multi-backend severity rules.
+    """
     found = shutil.which(executable)
     if found is None:
         return PreflightCheckResult(
@@ -107,17 +129,131 @@ def check_agent_backend(executable: str) -> PreflightCheckResult:
     )
 
 
+def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResult]:
+    """Survey all registered backends and classify each result by severity.
+
+    Emits one PreflightCheckResult per registered backend using
+    list_available_backends() from kagan.core._agent under the hood.
+
+    Severity rules:
+    - Zero of N installed → default is FAIL, rest are WARN.
+    - Default missing but at least one other installed → default FAIL,
+      installed others PASS, uninstalled others WARN.
+    - Default installed → default PASS, uninstalled others WARN,
+      installed others PASS.
+
+    The FAIL severity on the default backend check triggers DoctorModal's
+    zero-ready blocking state (``any(check.status == "fail")`` is True).
+
+    Args:
+        default_backend: The canonical backend name (e.g. "claude-code").
+            When None, falls back to "claude-code" for the default slot.
+
+    Returns:
+        A list of PreflightCheckResult, one per registered backend,
+        with the default backend listed first.
+    """
+    from kagan.core._agent import AGENT_BACKENDS, list_available_backends
+
+    availability = list_available_backends()
+    any_installed = any(availability.values())
+
+    resolved_default = default_backend or "claude-code"
+
+    results: list[PreflightCheckResult] = []
+
+    # --- Default backend slot ---
+    default_executable = AGENT_BACKENDS.get(resolved_default, {}).get(
+        "executable", resolved_default
+    )
+    default_installed = availability.get(resolved_default, False)
+
+    if default_installed:
+        default_status = CheckStatus.PASS
+        default_msg = (
+            f"Default agent backend '{resolved_default}' found"
+            f" (executable: {default_executable})"
+        )
+        default_hint = ""
+    elif any_installed:
+        # Default missing but at least one other is available → FAIL
+        default_status = CheckStatus.FAIL
+        default_msg = (
+            f"Default agent backend '{resolved_default}'"
+            f" (executable: {default_executable}) not found on PATH"
+        )
+        default_hint = (
+            f"Install '{default_executable}' or change the default backend in Settings"
+            " to one that is already installed"
+        )
+    else:
+        # Zero of N installed → also FAIL for default
+        default_status = CheckStatus.FAIL
+        default_msg = (
+            f"Default agent backend '{resolved_default}'"
+            f" (executable: {default_executable}) not found on PATH"
+            " — no agent backends are installed"
+        )
+        default_hint = (
+            f"Install at least one agent backend."
+            f" For '{resolved_default}': install '{default_executable}'."
+            " Run `kg doctor` for setup guidance."
+        )
+
+    results.append(
+        PreflightCheckResult(
+            name=f"agent_backend:{resolved_default}",
+            status=default_status,
+            message=default_msg,
+            fix_hint=default_hint,
+        )
+    )
+    logger.debug(
+        "Preflight backend (default) {}: {}", resolved_default, default_status
+    )
+
+    # --- Non-default backend slots ---
+    for name, installed in availability.items():
+        if name == resolved_default:
+            continue
+        executable = AGENT_BACKENDS.get(name, {}).get("executable", name)
+        if installed:
+            status = CheckStatus.PASS
+            msg = f"Agent backend '{name}' (executable: {executable}) found"
+            hint = ""
+        else:
+            status = CheckStatus.WARN
+            msg = f"Agent backend '{name}' (executable: {executable}) not found on PATH"
+            hint = f"Install '{executable}' to enable the '{name}' backend"
+
+        results.append(
+            PreflightCheckResult(
+                name=f"agent_backend:{name}",
+                status=status,
+                message=msg,
+                fix_hint=hint,
+            )
+        )
+        logger.debug("Preflight backend {} = {}", name, status)
+
+    return results
+
+
 def run_all_checks(
     db_path: Path,
     agent_backend: str | None = None,
 ) -> list[PreflightCheckResult]:
+    """Run all system health checks.
+
+    When agent_backend is provided, surveys all 14 registered backends using
+    check_agent_backends() with agent_backend as the default. The default
+    backend result uses FAIL severity when not installed (triggers DoctorModal).
+    """
     results: list[PreflightCheckResult] = [check_git(), check_tmux(), check_db_writability(db_path)]
     for result in results:
         logger.debug("Preflight: {} = {}", result.name, result.status)
 
-    if agent_backend is not None:
-        result = check_agent_backend(agent_backend)
-        results.append(result)
-        logger.debug("Preflight: {} = {}", result.name, result.status)
+    backend_results = check_agent_backends(agent_backend)
+    results.extend(backend_results)
 
     return results

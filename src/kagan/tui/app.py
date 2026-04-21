@@ -8,6 +8,7 @@ from textual.app import App, SystemCommand
 from textual.binding import Binding, BindingType
 from textual.screen import Screen
 
+from kagan.cli.doctor import DoctorCheck
 from kagan.core import KaganCore
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.core.models import Project
@@ -16,6 +17,7 @@ from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
 from kagan.tui.screens.agent_picker import AgentPickerModal
 from kagan.tui.screens.analytics import AnalyticsModal
 from kagan.tui.screens.confirm import ConfirmModal
+from kagan.tui.screens.doctor_modal import DoctorModal, emit_doctor_warned_telemetry_async
 from kagan.tui.screens.gateway import AttachedInstructionsModal  # noqa: F401
 from kagan.tui.screens.help import HelpModal
 from kagan.tui.screens.kanban import KanbanScreen
@@ -49,6 +51,7 @@ class KaganApp(App[None]):
         "styles/session_dashboard.tcss",
         "styles/task_screen.tcss",
         "styles/workspace.tcss",
+        "screens/doctor_modal.tcss",
     ]
 
     SCREENS = {
@@ -70,6 +73,7 @@ class KaganApp(App[None]):
         *,
         db_path: str | Path | None = None,
         startup_chat_session_id: str | None = None,
+        startup_checks: list[DoctorCheck] | None = None,
         **kwargs,
     ) -> None:
         apply_textual_compat_workarounds()
@@ -82,6 +86,10 @@ class KaganApp(App[None]):
         self.project: Project | None = None
         self.selected_repo_id: str | None = None
         self.selected_repo_name: str | None = None
+        # Startup doctor checks (None = skip_preflight was True or tests; [] = no issues)
+        self._startup_checks: list[DoctorCheck] | None = startup_checks
+        # Session-level degraded banner dismissed flag
+        self._doctor_banner_dismissed: bool = False
 
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)
@@ -111,6 +119,31 @@ class KaganApp(App[None]):
             yield command
 
     async def _route_startup(self) -> None:
+        checks = self._startup_checks
+        if checks is not None and len(checks) > 0:
+            has_fail = any(c.status == "fail" for c in checks)
+            has_warn = any(c.status == "warn" for c in checks)
+            if has_fail or has_warn:
+                fail_count = sum(1 for c in checks if c.status == "fail")
+                warn_count = sum(1 for c in checks if c.status == "warn")
+                self.run_worker(
+                    emit_doctor_warned_telemetry_async(
+                        self.core,
+                        fail_count=fail_count,
+                        warn_count=warn_count,
+                    ),
+                    exit_on_error=False,
+                )
+            if has_fail:
+                self.push_screen(
+                    DoctorModal(checks),
+                    callback=self._on_doctor_modal_dismissed,
+                )
+                return
+            if has_warn:
+                await self._push_welcome_with_banner(checks)
+                return
+
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")
         open_last_project = _is_enabled(
@@ -132,6 +165,28 @@ class KaganApp(App[None]):
             self.push_screen("kanban-screen")
             return
         self.push_screen("welcome-screen")
+
+    async def _push_welcome_with_banner(self, checks: list[DoctorCheck]) -> None:
+        """Push WelcomeScreen then show the degraded WARN banner on it."""
+        self.push_screen("welcome-screen")
+        # Give the screen time to mount before showing the banner
+        self.call_after_refresh(self._show_degraded_banner, checks)
+
+    def _show_degraded_banner(self, checks: list[DoctorCheck]) -> None:
+        """Show the degraded-mode amber banner on the current WelcomeScreen."""
+        if not isinstance(self.screen, WelcomeScreen):
+            return
+        warn_count = sum(1 for c in checks if c.status == "warn")
+        self.screen.show_degraded_banner(warn_count=warn_count)
+
+    def _on_doctor_modal_dismissed(self, _skipped: bool) -> None:
+        """Called when DoctorModal is dismissed (user clicked Skip anyway)."""
+        self.run_worker(self._route_startup_after_doctor(), exit_on_error=False)
+
+    async def _route_startup_after_doctor(self) -> None:
+        """Continue normal startup routing after DoctorModal is dismissed."""
+        self._startup_checks = []  # Clear checks so we don't loop back into doctor
+        await self._route_startup()
 
     async def activate_project(self, project: Project) -> None:
         # Use set_active_project to avoid redundant DB lookup

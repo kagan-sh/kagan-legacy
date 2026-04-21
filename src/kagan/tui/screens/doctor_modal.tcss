@@ -1,0 +1,250 @@
+/* === DoctorModal styles — namespaced with dm- prefix === */
+
+DoctorModal {
+    align: center middle;
+    background: $background 80%;
+}
+
+#dm-container {
+    width: 80%;
+    max-width: 90;
+    height: 85%;
+    max-height: 50;
+    border: round $error;
+    background: $surface;
+    padding: 0;
+}
+
+/* Header */
+#dm-header {
+    width: 100%;
+    height: auto;
+    padding: 1 2;
+    background: $panel;
+    border-bottom: solid $border;
+}
+
+#dm-title {
+    text-style: bold;
+    color: $error;
+    width: 100%;
+    text-align: center;
+    padding-bottom: 1;
+}
+
+#dm-subtitle {
+    color: $text;
+    width: 100%;
+    text-align: center;
+}
+
+#dm-summary {
+    color: $warning;
+    width: 100%;
+    text-align: center;
+    padding-top: 1;
+    text-style: bold;
+}
+
+/* Checklist area */
+#dm-checklist {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+}
+
+/* Individual check rows */
+.dm-check-row {
+    width: 100%;
+    height: auto;
+    padding: 1 1;
+    margin-bottom: 1;
+    border: solid $border;
+    background: $background;
+}
+
+.dm-check-row:focus {
+    border: solid $primary;
+    background: $primary 8%;
+}
+
+.dm-status-pass {
+    border: solid $success;
+    background: $success 5%;
+}
+
+.dm-status-warn {
+    border: solid $warning;
+    background: $warning 5%;
+}
+
+.dm-status-fail {
+    border: solid $error;
+    background: $error 5%;
+}
+
+.dm-check-header {
+    width: 100%;
+    height: 1;
+    margin-bottom: 1;
+}
+
+.dm-status-icon {
+    width: 3;
+    text-style: bold;
+}
+
+.dm-status-pass .dm-status-icon {
+    color: $success;
+}
+
+.dm-status-warn .dm-status-icon {
+    color: $warning;
+}
+
+.dm-status-fail .dm-status-icon {
+    color: $error;
+}
+
+.dm-check-name {
+    width: 1fr;
+    text-style: bold;
+    color: $text;
+}
+
+.dm-check-category {
+    width: auto;
+    color: $text-muted;
+    text-style: italic;
+    padding-right: 1;
+}
+
+.dm-check-message {
+    width: 100%;
+    color: $text;
+    padding-bottom: 1;
+    padding-left: 3;
+}
+
+.dm-fix-hint {
+    width: 100%;
+    color: $secondary;
+    background: $background;
+    border: dashed $border;
+    padding: 0 1;
+    margin: 0 0 1 3;
+}
+
+.dm-run-fix-btn {
+    margin-left: 3;
+    min-width: 14;
+}
+
+/* Action row */
+#dm-actions {
+    dock: bottom;
+    width: 100%;
+    height: auto;
+    padding: 1 2;
+    background: $panel;
+    border-top: solid $border;
+    align: center middle;
+}
+
+.dm-btn-recheck {
+    margin-right: 2;
+}
+
+.dm-btn-skip {
+    background: $surface;
+    color: $warning;
+}
+
+.dm-btn-skip:disabled {
+    color: $text-disabled;
+    opacity: 50%;
+}
+
+/* Hint bar */
+#dm-hint {
+    width: 100%;
+    text-align: center;
+    color: $text-disabled;
+    padding: 0 2 1 2;
+    background: $panel;
+}
+
+/* Command pane */
+.dm-command-pane {
+    width: 100%;
+    height: auto;
+    max-height: 20;
+    border: solid $secondary;
+    background: $background;
+    margin: 1 2;
+    padding: 1;
+}
+
+.dm-cmd-header {
+    width: 100%;
+    color: $secondary;
+    text-style: bold;
+    padding-bottom: 1;
+}
+
+.dm-cmd-output {
+    width: 100%;
+    height: auto;
+    max-height: 15;
+    color: $text;
+    overflow-y: auto;
+    background: $background;
+    border: solid $border;
+    padding: 0 1;
+}
+
+.dm-cmd-actions {
+    width: 100%;
+    height: auto;
+    padding-top: 1;
+    align: right middle;
+}
+
+.dm-cmd-close-btn {
+    min-width: 8;
+}
+
+/* === DegradedBanner styles — amber warning bar on WelcomeScreen === */
+
+#degraded-banner {
+    width: 100%;
+    height: auto;
+    background: $warning 15%;
+    border: solid $warning;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+.db-banner-row {
+    width: 100%;
+    height: auto;
+    align: left middle;
+}
+
+.db-banner-text {
+    width: 1fr;
+    color: $warning;
+    text-style: bold;
+}
+
+.db-dismiss-btn {
+    width: auto;
+    min-width: 10;
+    background: transparent;
+    color: $warning;
+    border: none;
+}
+
+.db-dismiss-btn:hover {
+    background: $warning 20%;
+}

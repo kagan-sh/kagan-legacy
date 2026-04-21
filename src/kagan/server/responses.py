@@ -221,6 +221,30 @@ class ChatSessionResponse(ChatSessionSummaryResponse):
     messages: list[ChatMessageResponse]
 
 
+# ── Doctor / preflight ───────────────────────────────────────────────────────
+
+
+class DoctorCheckResponse(BaseModel):
+    """A single doctor check result projected from DoctorCheck."""
+
+    name: str
+    status: str
+    message: str
+    fix_hint: str
+    verify_hint: str
+    category: str
+    is_blocking: bool
+
+
+class DoctorReportResponse(BaseModel):
+    """Aggregate report returned by GET /api/doctor."""
+
+    checks: list[DoctorCheckResponse]
+    ok: bool
+    fail_count: int
+    warn_count: int
+
+
 # ── Schema export helper ─────────────────────────────────────────────────────
 
 # All response models that map to TS interfaces.
@@ -237,4 +261,6 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ChatMessageResponse": ChatMessageResponse,
     "ChatSessionSummaryResponse": ChatSessionSummaryResponse,
     "ChatSessionResponse": ChatSessionResponse,
+    "DoctorCheckResponse": DoctorCheckResponse,
+    "DoctorReportResponse": DoctorReportResponse,
 }

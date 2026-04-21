@@ -5,6 +5,7 @@ import type {
   CreateTaskInput,
   DiffFile,
   DiffStats,
+  DoctorReportResponse,
   ReviewDecisionInput,
   ReviewDecisionResponse,
   ReviewStatusResponse,
@@ -291,6 +292,10 @@ export class KaganClient {
 
   async verifyApi(): Promise<void> {
     await this.getSettings();
+  }
+
+  getDoctor(): Promise<DoctorReportResponse> {
+    return this.get<DoctorReportResponse>("/api/doctor");
   }
 
   private async get<T>(path: string): Promise<T> {

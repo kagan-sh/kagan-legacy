@@ -56,8 +56,10 @@ def test_acp_exit_hints_cover_generic_permission_denied() -> None:
 @pytest.mark.parametrize(
     ("agent_backend", "expected_hint"),
     [
-        (CLAUDE_CODE_BACKEND, "run `claude` and follow the login prompts"),
-        (CODEX_BACKEND, "set `OPENAI_API_KEY`"),
+        # Descriptions shortened to ≤60 chars (AC #3). Check that auth guidance
+        # text still surfaces in the friendly error message.
+        (CLAUDE_CODE_BACKEND, "Authenticate Claude Code"),
+        (CODEX_BACKEND, "OPENAI_API_KEY"),
     ],
 )
 def test_friendly_acp_error_message_uses_reference_backend_auth_guidance(

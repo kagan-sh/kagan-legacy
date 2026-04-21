@@ -23,6 +23,7 @@ from kagan.core._agent_monitor import (
     ref_strategy,
     resolve_post_agent_status,
 )
+from kagan.core._analytics import emit_telemetry
 from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
@@ -56,7 +57,16 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Repository, Session, SessionEvent, Setting, Task, TaskNote, Worktree
+from kagan.core.models import (
+    Project,
+    Repository,
+    Session,
+    SessionEvent,
+    Setting,
+    Task,
+    TaskNote,
+    Worktree,
+)
 
 # ---------------------------------------------------------------------------
 # Module-level query functions
@@ -736,6 +746,15 @@ class Sessions:
             else:
                 await asyncio.to_thread(self._complete_session, session_id)
                 db_task = await self._get_task(task_id)
+                completed_session = await _db_async(
+                    self._engine, lambda s: s.get(Session, session_id)
+                )
+                session_backend = (
+                    completed_session.agent_backend if completed_session is not None else ""
+                )
+
+                # Emit first_session_success telemetry if this is the very first completion
+                await self._maybe_emit_first_session_success(session_id, session_backend)
 
                 # Retry with success check: if task has a success_command, verify it
                 if await self._should_retry(db_task, session_id):
@@ -878,6 +897,13 @@ class Sessions:
                 await unregister_spawned_process(session_id)
                 await asyncio.to_thread(self._complete_session, session_id)
                 task = await self._get_task(task_id)
+                detached_session = await _db_async(
+                    self._engine, lambda s: s.get(Session, session_id)
+                )
+                detached_backend = (
+                    detached_session.agent_backend if detached_session is not None else ""
+                )
+                await self._maybe_emit_first_session_success(session_id, detached_backend)
                 transitioned_to_review = False
                 if task.status == TaskStatus.IN_PROGRESS:
                     next_status = await resolve_post_agent_status(
@@ -906,6 +932,52 @@ class Sessions:
                 return
             except PermissionError:
                 continue
+
+    async def _maybe_emit_first_session_success(self, session_id: str, agent_backend: str) -> None:
+        """Emit FIRST_SESSION_SUCCESS telemetry once when no prior completed sessions exist."""
+        from datetime import UTC, datetime
+
+        try:
+
+            def _check_and_get_install_time(s):
+                """Return install_at if this is the first completed session, else None."""
+                prior = s.exec(
+                    select(Session).where(
+                        Session.status == SessionStatus.COMPLETED,
+                        Session.id != session_id,
+                    )
+                ).first()
+                if prior is not None:
+                    return None
+                earliest_project = s.exec(select(Project).order_by(Project.created_at)).first()
+                return earliest_project.created_at if earliest_project is not None else None
+
+            install_at = await _db_async(self._engine, _check_and_get_install_time)
+            if install_at is None:
+                return
+
+            now = datetime.now(UTC)
+            # install_at may be naive (no tzinfo); normalize to UTC for comparison
+            if install_at.tzinfo is None:
+                install_at = install_at.replace(tzinfo=UTC)
+            seconds_since_install = (now - install_at).total_seconds()
+
+            await emit_telemetry(
+                self._engine,
+                "FIRST_SESSION_SUCCESS",
+                {
+                    "backend": agent_backend,
+                    "seconds_since_install": round(seconds_since_install, 1),
+                },
+            )
+            logger.info(
+                "Emitted first_session_success telemetry: backend={} seconds={}",
+                agent_backend,
+                round(seconds_since_install, 1),
+            )
+        except Exception:
+            # Telemetry is best-effort; never disrupt the session lifecycle
+            logger.opt(exception=True).debug("Failed to emit first_session_success telemetry")
 
     async def _maybe_auto_review(self, task_id: str) -> None:
         settings = await _db_async(

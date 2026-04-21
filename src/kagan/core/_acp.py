@@ -171,7 +171,8 @@ def _default_acp_timeout_seconds(agent_backend: str) -> float:
 
 def _backend_auth_hint(agent_backend: str) -> str | None:
     try:
-        return get_backend_spec(agent_backend).auth_hint
+        cmd = get_backend_spec(agent_backend).resolve_command("auth")
+        return cmd.description if cmd is not None else None
     except AgentError:
         return None
 

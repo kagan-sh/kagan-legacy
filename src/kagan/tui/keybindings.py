@@ -10,11 +10,13 @@ __all__ = [
     "APP_BINDINGS",
     "CHAT_BINDINGS",
     "CHAT_PERMISSION_BINDINGS",
+    "CHECK_ROW_BINDINGS",
     "CONFIRM_BINDINGS",
     "DIFF_BINDINGS",
     "DIFF_CONTENT_PANE_BINDINGS",
     "DIFF_FILE_TREE_BINDINGS",
     "DIFF_VIEW_BINDINGS",
+    "DOCTOR_MODAL_BINDINGS",
     "EDITOR_BINDINGS",
     "GITHUB_IMPORT_BINDINGS",
     "HELP_BINDINGS",
@@ -52,6 +54,15 @@ APP_BINDINGS: list[BindingType] = [
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
     Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),
     Binding("ctrl+q", "quit", "Quit", key_display="Ctrl+Q"),
+]
+
+CHECK_ROW_BINDINGS: list[BindingType] = [
+    Binding("enter", "run_fix", "Run fix", show=False),
+]
+
+DOCTOR_MODAL_BINDINGS: list[BindingType] = [
+    Binding("tab", "focus_next", "Next", show=False),
+    Binding("shift+tab", "focus_previous", "Prev", show=False),
 ]
 
 KANBAN_BINDINGS: list[BindingType] = [

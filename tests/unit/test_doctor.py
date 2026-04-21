@@ -85,7 +85,8 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
             CLAUDE_CODE_BACKEND,
             "claude",
             "curl -fsSL https://claude.ai/install.sh | bash",
-            "run `claude`",
+            # Auth description shortened to ≤60 chars (AC #3).
+            "Authenticate Claude Code",
             "claude --version",
         ),
         (
@@ -123,3 +124,97 @@ def test_run_doctor_checks_adds_reference_backend_guidance(
     assert agent_backend_check.verify_hint == expected_verify
     assert f"Default agent backend '{default_agent_backend}'" in agent_backend_check.message
     assert client.closed is True
+
+
+# ── run_doctor_check_for_backend unit tests ──────────────────────────────────
+
+
+def test_run_doctor_check_for_backend_returns_check_for_known_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returns a DoctorCheck (pass) when the backend executable is on PATH."""
+    import shutil
+
+    import kagan.core._agent as agent_mod
+
+    fake_backends = {
+        CLAUDE_CODE_BACKEND: {"executable": "claude"},
+    }
+    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
+    # Patch shutil.which directly — the new impl calls it exactly once.
+    monkeypatch.setattr(shutil, "which", lambda _x: "/usr/local/bin/claude")
+
+    result = doctor_module.run_doctor_check_for_backend(CLAUDE_CODE_BACKEND)
+
+    assert result is not None
+    assert result.status == "pass"
+    assert result.category == "backend"
+    assert CLAUDE_CODE_BACKEND in result.name or "claude" in result.name.lower()
+
+
+def test_run_doctor_check_for_backend_returns_none_for_unknown_backend() -> None:
+    """Returns None when the backend name is not in AGENT_BACKENDS."""
+    result = doctor_module.run_doctor_check_for_backend("nonexistent-backend-xyz")
+    assert result is None
+
+
+def test_run_doctor_check_for_backend_fires_exactly_one_shutil_which(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exactly one shutil.which call fires — no full 14-backend survey."""
+    import shutil
+
+    import kagan.core._agent as agent_mod
+
+    fake_backends = {
+        CODEX_BACKEND: {"executable": "codex"},
+    }
+    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
+
+    calls: list[str] = []
+    monkeypatch.setattr(shutil, "which", lambda x: (calls.append(x), None)[1])
+
+    result = doctor_module.run_doctor_check_for_backend(CODEX_BACKEND)
+
+    assert len(calls) == 1, f"Expected exactly 1 shutil.which call, got {len(calls)}: {calls}"
+    assert calls[0] == "codex"
+    # Binary not found → hard FAIL in this recheck call path (deliberate)
+    assert result is not None
+    assert result.status == "fail"
+
+
+def test_run_doctor_check_for_backend_does_not_call_environment_or_plugin_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_doctor_check_for_backend must not invoke environment, plugin, or IDE checks."""
+    import shutil
+
+    import kagan.core._agent as agent_mod
+
+    fake_backends = {
+        CODEX_BACKEND: {"executable": "codex"},
+    }
+    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
+    monkeypatch.setattr(shutil, "which", lambda _x: None)
+
+    env_called: list[bool] = []
+    plugin_called: list[bool] = []
+
+    monkeypatch.setattr(
+        doctor_module,
+        "collect_environment_checks",
+        lambda: (env_called.append(True), [])[1],
+    )
+    monkeypatch.setattr(
+        doctor_module,
+        "PluginManager",
+        lambda *_a, **_kw: (plugin_called.append(True), None)[1],
+    )
+
+    result = doctor_module.run_doctor_check_for_backend(CODEX_BACKEND)
+
+    assert not env_called, "collect_environment_checks must not be called"
+    assert not plugin_called, "PluginManager must not be instantiated"
+    # Backend not installed → fail status (hard failure in recheck path)
+    assert result is not None
+    assert result.status == "fail"

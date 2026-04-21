@@ -10,10 +10,16 @@ from sqlalchemy import Engine, case, func
 from sqlalchemy import cast as sa_cast
 from sqlmodel import select
 
-from kagan.core._db_helpers import _db_async
+from kagan.core._db_helpers import _add_and_refresh, _db_async
 from kagan.core._utils import utc_iso
 from kagan.core.enums import SessionStatus
-from kagan.core.models import Session, Task
+from kagan.core.models import Session, Task, TelemetryEvent
+
+
+async def emit_telemetry(engine: Engine, event_type: str, payload: dict[str, Any]) -> None:
+    """Persist a system-level telemetry event not tied to any task or session."""
+    event = TelemetryEvent(event_type=event_type, payload=payload)
+    await _db_async(engine, lambda s: _add_and_refresh(s, event))
 
 
 class Analytics:
@@ -79,13 +85,13 @@ class Analytics:
         return json.dumps(data, separators=(",", ":"))
 
     async def session_timeline(self, project_id: str, days: int = 30) -> list[dict[str, Any]]:
-        """Daily session counts by status."""
+        """Daily session counts by status, plus doctor_warned and first_session_success counts."""
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
         def _status_count(status: SessionStatus):
             return func.sum(case((Session.status == status, 1), else_=0))
 
-        stmt = (
+        sessions_stmt = (
             select(
                 func.date(Session.started_at).label("day"),
                 func.count(Session.id).label("total"),
@@ -101,10 +107,30 @@ class Analytics:
             .order_by(func.date(Session.started_at))
         )
 
+        telemetry_stmt = (
+            select(
+                func.date(TelemetryEvent.created_at).label("day"),
+                func.sum(
+                    case(
+                        (TelemetryEvent.event_type == "DOCTOR_WARNED", 1),
+                        else_=0,
+                    )
+                ).label("doctor_warned_count"),
+                func.sum(
+                    case(
+                        (TelemetryEvent.event_type == "FIRST_SESSION_SUCCESS", 1),
+                        else_=0,
+                    )
+                ).label("first_session_success_count"),
+            )
+            .where(TelemetryEvent.created_at >= cutoff)
+            .group_by(func.date(TelemetryEvent.created_at))
+        )
+
         def _run(s):
-            rows = s.exec(stmt).all()
-            return [
-                {
+            rows = s.exec(sessions_stmt).all()
+            result_by_day: dict[str, dict[str, Any]] = {
+                str(row[0]): {
                     "date": str(row[0]),
                     "total": int(row[1]),
                     "completed": int(row[2]),
@@ -112,9 +138,33 @@ class Analytics:
                     "cancelled": int(row[4]),
                     "running": int(row[5]),
                     "pending": int(row[6]),
+                    "doctor_warned_count": 0,
+                    "first_session_success_count": 0,
                 }
                 for row in rows
-            ]
+            }
+
+            for trow in s.exec(telemetry_stmt).all():
+                day_key = str(trow[0])
+                warned = int(trow[1] or 0)
+                success = int(trow[2] or 0)
+                if day_key in result_by_day:
+                    result_by_day[day_key]["doctor_warned_count"] = warned
+                    result_by_day[day_key]["first_session_success_count"] = success
+                else:
+                    result_by_day[day_key] = {
+                        "date": day_key,
+                        "total": 0,
+                        "completed": 0,
+                        "failed": 0,
+                        "cancelled": 0,
+                        "running": 0,
+                        "pending": 0,
+                        "doctor_warned_count": warned,
+                        "first_session_success_count": success,
+                    }
+
+            return sorted(result_by_day.values(), key=lambda r: r["date"])
 
         return await _db_async(self._engine, _run)
 
@@ -189,16 +239,18 @@ class Analytics:
             select_cols.append(Task.task_type)
             group_cols.append(Task.task_type)
 
-        select_cols.extend([
-            func.count(Session.id).label("count"),
-            func.avg(completed_case).label("success_rate"),
-            func.avg(
-                case(
-                    (Session.ended_at.is_not(None), duration_expr * 86400),
-                    else_=None,
-                ),
-            ).label("avg_duration_seconds"),
-        ])
+        select_cols.extend(
+            [
+                func.count(Session.id).label("count"),
+                func.avg(completed_case).label("success_rate"),
+                func.avg(
+                    case(
+                        (Session.ended_at.is_not(None), duration_expr * 86400),
+                        else_=None,
+                    ),
+                ).label("avg_duration_seconds"),
+            ]
+        )
 
         stmt = (
             select(*select_cols)
@@ -228,9 +280,7 @@ class Analytics:
                 result["count"] = row[col_idx]
                 result["success_rate"] = round(float(row[col_idx + 1] or 0), 4)
                 result["avg_duration_seconds"] = (
-                    round(float(row[col_idx + 2]), 1)
-                    if row[col_idx + 2] is not None
-                    else None
+                    round(float(row[col_idx + 2]), 1) if row[col_idx + 2] is not None else None
                 )
                 results.append(result)
 

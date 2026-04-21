@@ -642,6 +642,13 @@ export class KaganApiClient {
   async runPluginImport(name: string, config: Record<string, unknown>): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> {
     return this.request(`/api/plugins/${name}/import`, { method: 'POST', body: config });
   }
+
+  // -- Doctor ---------------------------------------------------------------
+
+  /** GET /api/doctor — run backend preflight checks, returns DoctorReportResponse */
+  async getDoctorReport(): Promise<import('@/lib/api/generated-wire-types').DoctorReportResponse> {
+    return this.request('/api/doctor');
+  }
 }
 
 // ---------------------------------------------------------------------------

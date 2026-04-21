@@ -19,7 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, TypedDict, cast
+from typing import Any, Final, Literal, TypedDict, cast
 
 from loguru import logger
 
@@ -97,6 +97,38 @@ def resolve_default_agent_backend(settings: dict[str, str]) -> str:
     return settings.get("default_agent_backend") or "claude-code"
 
 
+# ---------------------------------------------------------------------------
+# Typed install/auth command schema (mirrors Toad agent_schema.Command)
+# ---------------------------------------------------------------------------
+
+OS = Literal["macos", "linux", "windows", "*"]
+"""An OS identifier for per-platform command selection, or '*' wildcard."""
+
+
+def _current_os_key() -> str:
+    """Return the canonical OS key for the current host platform."""
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform == "win32":
+        return "windows"
+    return "linux"
+
+
+@dataclass(frozen=True, slots=True)
+class BackendCommand:
+    """A structured, executable command associated with a backend action.
+
+    Mirrors Toad's ``agent_schema.Command`` shape (MIT-licensed).
+    """
+
+    description: str
+    """Human-readable description of what the command does."""
+    command: str
+    """The shell command string to execute."""
+    bootstrap_uv: bool = False
+    """Whether the command requires uv to be bootstrapped first."""
+
+
 class AgentBackendConfig(TypedDict, total=False):
     """Schema for an agent backend registry entry."""
 
@@ -136,8 +168,8 @@ class BackendSpec:
     capabilities: frozenset[BackendCapability] = field(default_factory=frozenset)
     aliases: tuple[str, ...] = ()
     reference: bool = False
-    install_hint: str | None = None
-    auth_hint: str | None = None
+    install: Mapping[OS, BackendCommand] | None = None
+    auth: Mapping[OS, BackendCommand] | None = None
 
     def to_legacy_config(self) -> AgentBackendConfig:
         """Project the typed spec into the legacy mapping contract."""
@@ -162,11 +194,48 @@ class BackendSpec:
             return self.name
         return f"{self.display_name} ({self.name})"
 
+    def resolve_command(
+        self,
+        action: Literal["install", "auth"],
+        *,
+        platform: str | None = None,
+    ) -> BackendCommand | None:
+        """Return the best-matching command for *action* on *platform*.
+
+        Resolution order:
+        1. Exact OS key matching *platform* (e.g. ``"macos"``, ``"linux"``, ``"windows"``).
+        2. Wildcard ``"*"`` entry.
+        3. ``None`` when no mapping exists for the action.
+
+        *platform* defaults to the current host platform when ``None``.
+        """
+        mapping: Mapping[OS, BackendCommand] | None = getattr(self, action, None)
+        if mapping is None:
+            return None
+        if platform is None:
+            platform = _current_os_key()
+        # type: ignore[arg-type] — platform is str, key type is OS (Literal);
+        # _current_os_key() always returns a valid OS key at runtime.
+        exact = mapping.get(platform)  # type: ignore[arg-type]
+        if exact is not None:
+            return exact
+        return mapping.get("*")
+
     def guidance_hints(self) -> tuple[str, ...]:
-        """Return explicit setup hints for this backend."""
-        return tuple(
-            hint for hint in (self.install_hint, self.auth_hint) if isinstance(hint, str) and hint
-        )
+        """Return explicit setup hint strings for this backend (legacy shim).
+
+        Derives human-readable hints from the structured ``install`` / ``auth``
+        mappings so that existing callers continue to work during the transition.
+        Each hint is formatted as ``"{description} {command}"`` so callers that
+        previously searched hint text for the command string continue to work.
+        """
+        hints: list[str] = []
+        for action in ("install", "auth"):
+            # type: ignore[arg-type] — looping over known-valid Literal strings.
+            cmd = self.resolve_command(action)  # type: ignore[arg-type]
+            if cmd is not None:
+                hints.append(f"{cmd.description} {cmd.command}")
+        return tuple(hints)
 
 
 CLAUDE_CODE_BACKEND: Final = "claude-code"
@@ -200,8 +269,18 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
         ),
         aliases=("claude",),
         reference=True,
-        install_hint="Install with `curl -fsSL https://claude.ai/install.sh | bash`.",
-        auth_hint="If Claude Code is already installed, run `claude` and follow the login prompts.",
+        install={
+            "*": BackendCommand(
+                description="Install Claude Code",
+                command="curl -fsSL https://claude.ai/install.sh | bash",
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Authenticate Claude Code (follow login prompts)",
+                command="claude",
+            ),
+        },
     ),
     CODEX_BACKEND: BackendSpec(
         name=CODEX_BACKEND,
@@ -219,11 +298,18 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             }
         ),
         reference=True,
-        install_hint="Install with `npm install -g @openai/codex`.",
-        auth_hint=(
-            "If Codex is already installed, run `codex` to sign in with ChatGPT or set"
-            " `OPENAI_API_KEY`, then retry."
-        ),
+        install={
+            "*": BackendCommand(
+                description="Install Codex CLI",
+                command="npm install -g @openai/codex",
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Authenticate Codex (sign in or set OPENAI_API_KEY)",
+                command="codex",
+            ),
+        },
     ),
     GEMINI_CLI_BACKEND: BackendSpec(
         name=GEMINI_CLI_BACKEND,
@@ -240,6 +326,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             }
         ),
         aliases=("gemini",),
+        # Source: references/toad/src/toad/data/agents/geminicli.com.toml
+        install={
+            "*": BackendCommand(
+                description="Install Gemini CLI",
+                command="npm install -g @google/gemini-cli",
+            ),
+        },
     ),
     KIMI_CLI_BACKEND: BackendSpec(
         name=KIMI_CLI_BACKEND,
@@ -256,6 +349,20 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             }
         ),
         aliases=("kimi",),
+        # Source: references/toad/src/toad/data/agents/kimi.com.toml
+        install={
+            "*": BackendCommand(
+                description="Install Kimi CLI",
+                command="uv tool install kimi-cli --no-cache",
+                bootstrap_uv=True,
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Set MOONSHOT_API_KEY to authenticate Kimi CLI",
+                command="echo 'export MOONSHOT_API_KEY=<your-key>' >> ~/.bashrc",
+            ),
+        },
     ),
     GITHUB_COPILOT_BACKEND: BackendSpec(
         name=GITHUB_COPILOT_BACKEND,
@@ -272,6 +379,19 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             }
         ),
         aliases=("copilot",),
+        # Source: references/toad/src/toad/data/agents/copilot.github.com.toml
+        install={
+            "*": BackendCommand(
+                description="Install GitHub Copilot CLI",
+                command="npm install -g @github/copilot@prerelease",
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Authenticate GitHub Copilot CLI",
+                command="copilot auth",
+            ),
+        },
     ),
     "goose": BackendSpec(
         name="goose",
@@ -288,6 +408,17 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/goose.ai.toml
+        install={
+            "*": BackendCommand(
+                description="Install Goose",
+                command=(
+                    "curl -fsSL"
+                    " https://github.com/block/goose/releases/download/stable/download_cli.sh"
+                    " | bash"
+                ),
+            ),
+        },
     ),
     "openhands": BackendSpec(
         name="openhands",
@@ -305,6 +436,21 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.WORKDIR_ARGUMENT,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/openhands.dev.toml
+        # Toad bundles install+login as one command; split here for clarity.
+        install={
+            "*": BackendCommand(
+                description="Install OpenHands",
+                command="uv tool install openhands -U --python 3.12",
+                bootstrap_uv=True,
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Login to OpenHands",
+                command="openhands login",
+            ),
+        },
     ),
     OPENCODE_BACKEND: BackendSpec(
         name=OPENCODE_BACKEND,
@@ -320,6 +466,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/opencode.ai.toml
+        install={
+            "*": BackendCommand(
+                description="Install OpenCode",
+                command="npm i -g opencode-ai",
+            ),
+        },
     ),
     "auggie": BackendSpec(
         name="auggie",
@@ -335,6 +488,19 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/augmentcode.com.toml
+        install={
+            "*": BackendCommand(
+                description="Install Auggie CLI (requires Node 22+)",
+                command="npm install -g @augmentcode/auggie",
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Login to Auggie (run once)",
+                command="auggie login",
+            ),
+        },
     ),
     "amp": BackendSpec(
         name="amp",
@@ -350,6 +516,22 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/ampcode.com.toml
+        install={
+            "*": BackendCommand(
+                description="Install Amp and ACP adapter",
+                command=(
+                    "curl -fsSL https://ampcode.com/install.sh | bash"
+                    " && npm install -g amp-acp"
+                ),
+            ),
+        },
+        auth={
+            "*": BackendCommand(
+                description="Login to Amp (run once)",
+                command="amp login",
+            ),
+        },
     ),
     "docker-cagent": BackendSpec(
         name="docker-cagent",
@@ -367,6 +549,17 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.WORKDIR_ARGUMENT,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/docker.com.toml
+        # cagent is bundled with Docker Desktop 4.49+; no standalone installer.
+        install={
+            "*": BackendCommand(
+                description="Install Docker Desktop 4.49+ (includes cagent)",
+                command=(
+                    "echo 'See https://www.docker.com/products/docker-desktop/'"
+                    " — install Docker Desktop 4.49+ to get cagent"
+                ),
+            ),
+        },
     ),
     "stakpak": BackendSpec(
         name="stakpak",
@@ -382,6 +575,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/stakpak.dev.toml
+        install={
+            "*": BackendCommand(
+                description="Install Stakpak Agent via Cargo",
+                command="cargo install stakpak",
+            ),
+        },
     ),
     "mistral-vibe": BackendSpec(
         name="mistral-vibe",
@@ -397,6 +597,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/vibe.mistral.ai.toml
+        install={
+            "*": BackendCommand(
+                description="Install Mistral Vibe",
+                command="curl -LsSf https://mistral.ai/vibe/install.sh | bash",
+            ),
+        },
     ),
     "vt-code": BackendSpec(
         name="vt-code",
@@ -412,6 +619,13 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
                 BackendCapability.TASK_SCOPED_MCP,
             }
         ),
+        # Source: references/toad/src/toad/data/agents/vtcode.dev.toml
+        install={
+            "*": BackendCommand(
+                description="Install VT Code via Cargo",
+                command="cargo install --git https://github.com/vinhnx/vtcode",
+            ),
+        },
     ),
 }
 _AGENT_BACKEND_ALIASES: dict[str, str] = {

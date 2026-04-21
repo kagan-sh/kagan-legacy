@@ -138,6 +138,17 @@ class Setting(SQLModel, table=True):
     value: str
 
 
+class TelemetryEvent(SQLModel, table=True):
+    """System-level telemetry events not tied to a specific task or session."""
+
+    __tablename__ = "telemetry_events"  # type: ignore[assignment]
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    event_type: str = Field(index=True)
+    payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class AuditEntry(SQLModel, table=True):
     __tablename__ = "audit_entries"  # type: ignore[assignment]
 
@@ -159,6 +170,7 @@ __all__ = [
     "Setting",
     "Task",
     "TaskNote",
+    "TelemetryEvent",
     "Worktree",
     "_utc_now",
 ]

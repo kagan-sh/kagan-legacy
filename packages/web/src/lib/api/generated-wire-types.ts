@@ -118,3 +118,20 @@ export interface ChatSessionResponse {
   message_count: number;
   messages: ChatMessageResponse[];
 }
+
+export interface DoctorCheckResponse {
+  name: string;
+  status: string;
+  message: string;
+  fix_hint: string;
+  verify_hint: string;
+  category: string;
+  is_blocking: boolean;
+}
+
+export interface DoctorReportResponse {
+  checks: DoctorCheckResponse[];
+  ok: boolean;
+  fail_count: number;
+  warn_count: number;
+}

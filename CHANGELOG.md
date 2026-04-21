@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.5 (2026-04-21)
+
+
+
+
+### Features
+
+- **doctor**: Doctor-gated onboarding — interactive preflight with install guidance and auto-promote
+  ([`32dcf1e`](https://github.com/kagan-sh/kagan/commit/32dcf1ee4d2ca9da6838923d004ec77837c643e7))
+
+
+
+
+
 ## v0.19.0-beta.4 (2026-04-21)
 
 

@@ -13,6 +13,21 @@
 
 
 
+## v0.19.0-beta.4 (2026-04-21)
+
+
+
+
+### Chores
+
+- **ci**: Bump actions/upload-pages-artifact from 4 to 5
+  ([#116](https://github.com/kagan-sh/kagan/pull/116),
+  [`b5895bc`](https://github.com/kagan-sh/kagan/commit/b5895bc130f044a5621679885900ac9dd679d25a))
+
+
+
+
+
 ## v0.19.0-beta.3 (2026-04-19)
 
 

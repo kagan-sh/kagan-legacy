@@ -165,26 +165,22 @@ def register_system_routes(mcp: FastMCP) -> None:
             try:
                 with os.scandir(target) as it:
                     for entry in it:
-                        if _is_hidden(entry):
-                            continue
                         try:
+                            if _is_hidden(entry):
+                                continue
                             is_symlink = entry.is_symlink()
-                            # Include junctions (Windows) and symlinks.
-                            # is_junction() available from Python 3.12.
                             is_junction = (
                                 Path(entry.path).is_junction()
                                 if hasattr(Path, "is_junction")
                                 else False
                             )
                             is_link = is_symlink or is_junction
-                            # Follow links/junctions to determine if they point at a dir.
-                            is_dir = entry.is_dir(follow_symlinks=True)
+                            if not entry.is_dir(follow_symlinks=True):
+                                continue
+                            full_path = str(Path(entry.path).resolve())
+                            is_git = (Path(entry.path) / ".git").exists()
                         except OSError:
                             continue
-                        if not is_dir:
-                            continue
-                        full_path = str(Path(entry.path).resolve())
-                        is_git = (Path(entry.path) / ".git").exists()
                         entry_models.append(
                             FsEntryResponse(
                                 name=entry.name,

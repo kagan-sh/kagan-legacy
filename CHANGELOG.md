@@ -13,6 +13,89 @@
 
 
 
+## v0.19.0-beta.9 (2026-04-23)
+
+
+
+
+### Bug Fixes
+
+- **server**: Guard fs/browse per-entry against OSError in resolve/exists
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- **runtime_env**: Platform-aware essential env for Windows
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- **core**: Resolve .cmd shims via cmd.exe on Windows
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- **core**: Terminate agent processes via handle, not os.kill
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- Windows support across fs/browse, agent spawn, env, and signals
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- **server**: Windows-safe fs/browse endpoint ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+- **web**: Windows-safe PathPicker ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- **wire**: Regenerate TS types for FsBrowse/FsEntry
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- **agent_kill**: Strengthen returncode assertion to satisfy test-quality check
+  ([#123](https://github.com/kagan-sh/kagan/pull/123),
+  [`da963d0`](https://github.com/kagan-sh/kagan/commit/da963d01aecd938991660fbcca453584e84e4aa9))
+
+
+
+
+
 ## v0.19.0-beta.8 (2026-04-23)
 
 

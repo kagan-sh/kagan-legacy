@@ -54,7 +54,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
         yield Footer(show_command_palette=False)
 
     async def on_mount(self) -> None:
-        await self._reload_sessions()
+        self.call_after_refresh(self._reload_sessions)
 
     async def _reload_sessions(self) -> None:
         option_list = self.query_one("#session-resume-options", OptionList)

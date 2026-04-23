@@ -11,6 +11,7 @@ from textual.widgets import Footer, Input, Label, Select, Static
 
 from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
@@ -786,13 +787,11 @@ class SessionDashboardScreen(Screen[None]):
         return await self.kagan_app.core.tasks.sessions.list_for_task(self._task_id)
 
     async def _load_commits(self, worktree_path: str, base_branch: str) -> list[tuple[str, str]]:
+        resolved = resolve_spawn_command(
+            "git", "-C", worktree_path, "log", "--pretty=format:%h%x09%s", f"{base_branch}..HEAD"
+        )
         proc = await asyncio.create_subprocess_exec(
-            "git",
-            "-C",
-            worktree_path,
-            "log",
-            "--pretty=format:%h%x09%s",
-            f"{base_branch}..HEAD",
+            *resolved,
             env=build_sanitized_subprocess_environment(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,

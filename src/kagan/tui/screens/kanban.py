@@ -17,6 +17,7 @@ from kagan.cli.chat import (
     warm_orchestrator_backend,
 )
 from kagan.core import resolve_launcher
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.core.models import Task, Worktree
@@ -1235,11 +1236,9 @@ class KanbanScreen(Screen[None]):
         import asyncio as _aio
 
         try:
+            resolved = resolve_spawn_command("tmux", "attach-session", "-t", session_name)
             proc = await _aio.create_subprocess_exec(
-                "tmux",
-                "attach-session",
-                "-t",
-                session_name,
+                *resolved,
                 env=build_sanitized_subprocess_environment(),
             )
         except OSError:
@@ -1253,9 +1252,9 @@ class KanbanScreen(Screen[None]):
 
         target = str(prompt_path) if prompt_path.exists() else str(workspace_path)
         try:
+            resolved = resolve_spawn_command("nvim", target)
             proc = await _aio.create_subprocess_exec(
-                "nvim",
-                target,
+                *resolved,
                 cwd=str(workspace_path),
                 env=build_sanitized_subprocess_environment(),
             )

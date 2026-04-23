@@ -10,9 +10,7 @@ import contextlib
 import errno
 import functools
 import json
-import os
 import shutil
-import signal
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
@@ -23,42 +21,59 @@ from typing import Any, Final, Literal, TypedDict, cast
 
 from loguru import logger
 
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 # Registry of spawned processes for cleanup
 _spawned_processes: dict[str, asyncio.subprocess.Process] = {}
 
-# Scheduled timeout handles for agent processes (pid -> TimerHandle)
-_AGENT_TIMEOUTS: dict[int, asyncio.TimerHandle] = {}
+
+@dataclass(slots=True)
+class _AgentTimeout:
+    """Bundles an asyncio Process handle with its pending timer handle."""
+
+    proc: asyncio.subprocess.Process
+    handle: asyncio.TimerHandle
+
+
+# Scheduled timeout records for agent processes (pid -> _AgentTimeout)
+_AGENT_TIMEOUTS: dict[int, _AgentTimeout] = {}
 
 _AGENT_TIMEOUT_GRACE_SECONDS: Final[float] = 5.0
 
 
-def _kill_agent(pid: int) -> None:
-    """Send SIGTERM to an agent process, then SIGKILL after a grace period."""
-    logger.warning("Agent pid={} exceeded timeout, sending SIGTERM", pid)
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        _AGENT_TIMEOUTS.pop(pid, None)
-        return
+def _force_kill(proc: asyncio.subprocess.Process) -> None:
+    """Kill the process unconditionally after the grace period expires."""
+    pid = proc.pid
+    logger.warning(
+        "Agent pid={} did not exit after terminate grace period, force-killing", pid
+    )
+    if proc.returncode is None:
+        with contextlib.suppress(OSError, ProcessLookupError):
+            proc.kill()
+    _AGENT_TIMEOUTS.pop(pid, None)
 
-    def _force_kill(pid: int) -> None:
-        logger.warning("Agent pid={} did not exit after SIGTERM grace period, sending SIGKILL", pid)
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
-        _AGENT_TIMEOUTS.pop(pid, None)
+
+def _kill_agent(proc: asyncio.subprocess.Process) -> None:
+    """Terminate an agent process via its handle, then force-kill after a grace period.
+
+    Uses ``proc.terminate()`` (POSIX: SIGTERM; Windows: TerminateProcess) so the
+    path is safe on Windows where ``signal.SIGKILL`` does not exist and
+    ``os.kill(pid, SIGTERM)`` is a no-op for detached processes.
+    """
+    pid = proc.pid
+    logger.warning("Agent pid={} exceeded timeout, terminating", pid)
+    with contextlib.suppress(OSError, ProcessLookupError):
+        proc.terminate()
 
     try:
         loop = asyncio.get_running_loop()
-        handle = loop.call_later(_AGENT_TIMEOUT_GRACE_SECONDS, _force_kill, pid)
-        _AGENT_TIMEOUTS[pid] = handle
+        handle = loop.call_later(_AGENT_TIMEOUT_GRACE_SECONDS, _force_kill, proc)
+        _AGENT_TIMEOUTS[pid] = _AgentTimeout(proc=proc, handle=handle)
     except RuntimeError:
-        # No running loop — best-effort force kill
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
-        _AGENT_TIMEOUTS.pop(pid, None)
+        # No running loop — best-effort immediate kill
+        _force_kill(proc)
 
 
 async def register_spawned_process(session_id: str, proc: asyncio.subprocess.Process) -> None:
@@ -67,15 +82,23 @@ async def register_spawned_process(session_id: str, proc: asyncio.subprocess.Pro
 
 
 async def unregister_spawned_process(session_id: str) -> None:
-    """Unregister a process when it's no longer needed."""
-    _spawned_processes.pop(session_id, None)
+    """Unregister a process when it exits naturally.
+
+    Also cancels any pending timeout timer so the kill callback does not fire
+    on a process that has already been reclaimed.
+    """
+    proc = _spawned_processes.pop(session_id, None)
+    if proc is not None and proc.pid is not None:
+        entry = _AGENT_TIMEOUTS.pop(proc.pid, None)
+        if entry is not None:
+            entry.handle.cancel()
 
 
 async def cleanup_all_spawned_processes() -> None:
     """Terminate all tracked processes. Called on shutdown."""
     # Cancel all pending timeout handles
-    for _pid, handle in list(_AGENT_TIMEOUTS.items()):
-        handle.cancel()
+    for _pid, entry in list(_AGENT_TIMEOUTS.items()):
+        entry.handle.cancel()
     _AGENT_TIMEOUTS.clear()
 
     for _session_id, proc in list(_spawned_processes.items()):
@@ -691,7 +714,7 @@ def _copilot_builtin_acp_supported() -> bool:
 
     try:
         completed = subprocess.run(
-            ["copilot", "--acp", "--help"],
+            resolve_spawn_command("copilot", "--acp", "--help"),
             capture_output=True,
             text=True,
             timeout=5,
@@ -801,7 +824,7 @@ async def _prepare_spawn(
                 ) from exc
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
 
-    cmd: list[str] = [entry["executable"]]
+    cmd: list[str] = list(resolve_spawn_command(entry["executable"]))
     if entry["workdir_flag"]:
         cmd += [entry["workdir_flag"], str(worktree_path)]
 
@@ -871,8 +894,8 @@ async def spawn_agent(
     # Schedule a timeout kill if requested
     if timeout_seconds is not None and proc.pid is not None:
         loop = asyncio.get_running_loop()
-        handle = loop.call_later(timeout_seconds, _kill_agent, proc.pid)
-        _AGENT_TIMEOUTS[proc.pid] = handle
+        handle = loop.call_later(timeout_seconds, _kill_agent, proc)
+        _AGENT_TIMEOUTS[proc.pid] = _AgentTimeout(proc=proc, handle=handle)
         logger.debug("Agent process started, pid={}, timeout={}s", proc.pid, timeout_seconds)
     else:
         logger.debug("Agent process started, pid={}", proc.pid)
@@ -984,7 +1007,7 @@ async def spawn_agent_via_acp(
     )
     acp_cmd = resolve_acp_command(backend_name)
     if acp_cmd:
-        cmd = list(acp_cmd)
+        cmd = list(resolve_spawn_command(acp_cmd[0], *acp_cmd[1:]))
     if spec.acp_args:
         cmd.extend(spec.acp_args)
 

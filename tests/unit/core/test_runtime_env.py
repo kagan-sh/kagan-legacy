@@ -8,15 +8,23 @@ Tests for src/kagan/runtime_env.py covering:
 - Platform-specific noisy env var handling
 """
 
+from __future__ import annotations
+
 import os
 import sys
-from collections.abc import MutableMapping
+from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from collections.abc import MutableMapping
 
 import pytest
 
 from kagan.runtime_env import (
     _ESSENTIAL_ENV,
+    _ESSENTIAL_ENV_POSIX,
+    _ESSENTIAL_ENV_WINDOWS,
+    _essential_env,
     _is_python_key,
     _is_sensitive_key,
     build_sanitized_subprocess_environment,
@@ -632,3 +640,110 @@ class TestIntegrationScenarios:
         allow_extra = {"GITHUB_TOKEN": "new_token"}  # But added back via allow_extra
         result = build_sanitized_subprocess_environment(base_env, allow_extra=allow_extra)
         assert result["GITHUB_TOKEN"] == "new_token"
+
+
+class TestEssentialEnvSelector:
+    """Tests for the _essential_env() platform-selection helper."""
+
+    def test_posix_set_returned_for_linux(self) -> None:
+        """Linux platform should return the POSIX frozenset."""
+        assert _essential_env("linux") is _ESSENTIAL_ENV_POSIX
+
+    def test_posix_set_returned_for_darwin(self) -> None:
+        """Darwin platform should return the POSIX frozenset."""
+        assert _essential_env("darwin") is _ESSENTIAL_ENV_POSIX
+
+    def test_windows_set_returned_for_win32(self) -> None:
+        """win32 platform should return the Windows frozenset."""
+        assert _essential_env("win32") is _ESSENTIAL_ENV_WINDOWS
+
+    def test_essential_env_alias_is_posix(self) -> None:
+        """The backwards-compat _ESSENTIAL_ENV alias must equal the POSIX set."""
+        assert _ESSENTIAL_ENV is _ESSENTIAL_ENV_POSIX
+
+    def test_windows_set_contains_critical_vars(self) -> None:
+        """Windows set must include the vars that prevent DLL/config failures."""
+        required = {
+            "SYSTEMROOT",
+            "TEMP",
+            "TMP",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "USERPROFILE",
+            "PATHEXT",
+            "COMSPEC",
+        }
+        assert required <= _ESSENTIAL_ENV_WINDOWS
+
+    def test_defaults_to_sys_platform(self) -> None:
+        """Without an argument, _essential_env() consults sys.platform."""
+        with patch.object(sys, "platform", "win32"):
+            assert _essential_env() is _ESSENTIAL_ENV_WINDOWS
+
+        with patch.object(sys, "platform", "linux"):
+            assert _essential_env() is _ESSENTIAL_ENV_POSIX
+
+
+class TestBuildSanitizedWindowsPlatform:
+    """Tests for build_sanitized_subprocess_environment on Windows platform."""
+
+    def _windows_env(self) -> dict[str, str]:
+        """Return a representative Windows environment dict."""
+        return {
+            "PATH": "C:\\Windows\\System32;C:\\Windows",
+            "PATHEXT": ".COM;.EXE;.BAT;.CMD",
+            "SYSTEMROOT": "C:\\Windows",
+            "WINDIR": "C:\\Windows",
+            "COMSPEC": "C:\\Windows\\System32\\cmd.exe",
+            "TEMP": "C:\\Users\\User\\AppData\\Local\\Temp",
+            "TMP": "C:\\Users\\User\\AppData\\Local\\Temp",
+            "USERPROFILE": "C:\\Users\\User",
+            "HOMEDRIVE": "C:",
+            "HOMEPATH": "\\Users\\User",
+            "APPDATA": "C:\\Users\\User\\AppData\\Roaming",
+            "LOCALAPPDATA": "C:\\Users\\User\\AppData\\Local",
+            "PROGRAMFILES": "C:\\Program Files",
+            "PROGRAMFILES(X86)": "C:\\Program Files (x86)",
+            "PROGRAMDATA": "C:\\ProgramData",
+            "USERNAME": "User",
+            "COMPUTERNAME": "MYPC",
+            "USERDOMAIN": "MYPC",
+            "LANG": "en_US.UTF-8",
+            "ANTHROPIC_API_KEY": "sk-ant-xxx",
+        }
+
+    def test_windows_essential_vars_preserved(self) -> None:
+        """All Windows essential vars present in the env must be kept."""
+        base_env = self._windows_env()
+        result = build_sanitized_subprocess_environment(base_env, platform_name="win32")
+        for key in _ESSENTIAL_ENV_WINDOWS:
+            if key in base_env:
+                assert key in result, f"Expected Windows essential var {key!r} in result"
+                assert result[key] == base_env[key]
+
+    def test_sensitive_var_stripped_on_windows(self) -> None:
+        """Sensitive credentials must still be stripped even on Windows platform."""
+        base_env = self._windows_env()
+        result = build_sanitized_subprocess_environment(base_env, platform_name="win32")
+        assert "ANTHROPIC_API_KEY" not in result
+
+    def test_linux_platform_drops_windows_vars(self) -> None:
+        """When platform_name='linux', Windows-specific vars are not carried over."""
+        base_env = self._windows_env()
+        result = build_sanitized_subprocess_environment(base_env, platform_name="linux")
+        # Windows-only vars must be absent
+        for win_var in ("SYSTEMROOT", "APPDATA", "LOCALAPPDATA", "COMSPEC", "WINDIR"):
+            assert win_var not in result, f"Windows var {win_var!r} leaked into POSIX result"
+        # PATH is in both sets and must be present
+        assert "PATH" in result
+
+    def test_allow_extra_works_on_windows_platform(self) -> None:
+        """allow_extra must be present alongside Windows essentials."""
+        base_env = self._windows_env()
+        allow_extra = {"CUSTOM_VAR": "hello"}
+        result = build_sanitized_subprocess_environment(
+            base_env, allow_extra=allow_extra, platform_name="win32"
+        )
+        assert result["CUSTOM_VAR"] == "hello"
+        assert "SYSTEMROOT" in result
+        assert "APPDATA" in result

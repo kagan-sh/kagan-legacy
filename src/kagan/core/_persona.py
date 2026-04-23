@@ -17,6 +17,7 @@ from kagan.core._prompts import (
     load_persona_repo_whitelist,
     serialize_persona_definitions,
 )
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 if TYPE_CHECKING:
@@ -349,8 +350,9 @@ def _validate_repo_path(path: str) -> None:
 
 
 async def _run_gh_cmd(*args: str) -> tuple[bytes, bytes, int]:
+    resolved = resolve_spawn_command(args[0], *args[1:]) if args else list(args)
     proc = await asyncio.create_subprocess_exec(
-        *args,
+        *resolved,
         env=build_sanitized_subprocess_environment(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

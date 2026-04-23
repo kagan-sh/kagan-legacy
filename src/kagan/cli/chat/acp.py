@@ -37,6 +37,7 @@ from kagan.core import (
     get_backend_spec,
     resolve_orchestrator_prompt,
 )
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.errors import AgentError
 
 _ACP_CLIENT_NAME = "kagan"
@@ -165,6 +166,7 @@ async def run_orchestrator_turn(
         return ""
 
     exe, exe_args = _resolve_acp_command_for_backend(agent_backend)
+    resolved_cmd = resolve_spawn_command(exe, *exe_args)
     session_id = mcp_session_id or uuid4().hex[:16]
     db_path = str(default_db_path())
     resolved_cwd = cwd or Path.cwd()
@@ -191,8 +193,8 @@ async def run_orchestrator_turn(
     try:
         async with acp.spawn_agent_process(
             capture_client,
-            exe,
-            *exe_args,
+            resolved_cmd[0],
+            *resolved_cmd[1:],
             cwd=str(resolved_cwd),
             env=env,
             transport_kwargs={"limit": _ACP_STDIO_BUFFER_LIMIT_BYTES},

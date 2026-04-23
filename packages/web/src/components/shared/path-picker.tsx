@@ -5,6 +5,7 @@ import {
   FolderGit2,
   FolderOpen,
   Home,
+  Link2,
   Loader2,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
@@ -30,6 +31,52 @@ interface PathPickerProps {
   gitOnly?: boolean;
 }
 
+/**
+ * Build breadcrumb segments from a resolved path and server-provided context.
+ *
+ * Returns an array of { label, target } pairs where:
+ * - label  — the display name of the segment
+ * - target — the absolute path to navigate to when the crumb is clicked
+ *
+ * Examples:
+ *   POSIX /Users/you/dev  → [{ label:'Users', target:'/Users' }, { label:'you', target:'/Users/you' }, ...]
+ *   Windows C:\Users\you  → [{ label:'C:', target:'C:\\' }, { label:'Users', target:'C:\\Users' }, ...]
+ */
+function buildBreadcrumbs(
+  resolvedPath: string,
+  separator: string,
+  roots: string[],
+): { label: string; target: string }[] {
+  const segments = resolvedPath.split(separator).filter(Boolean);
+  if (segments.length === 0) return [];
+
+  // Determine if this is a Windows-style path by checking whether the first
+  // segment matches any known root (e.g. "C:" matches root "C:\").
+  const firstSegment = segments[0] ?? '';
+  const firstMatchedRoot = roots.find(
+    (r) => r.toUpperCase() === firstSegment.toUpperCase() + separator,
+  );
+  const isWindowsStyle = firstMatchedRoot !== undefined;
+
+  return segments.map((segment, i) => {
+    let target: string;
+
+    if (isWindowsStyle) {
+      if (i === 0) {
+        // Drive root: navigate to "C:\" not "C:" (bare drive = cwd on that drive).
+        target = firstMatchedRoot!;
+      } else {
+        target = firstMatchedRoot! + segments.slice(1, i + 1).join(separator);
+      }
+    } else {
+      // POSIX: paths are rooted with a leading separator.
+      target = separator + segments.slice(0, i + 1).join(separator);
+    }
+
+    return { label: segment, target };
+  });
+}
+
 export function PathPicker({
   open,
   onOpenChange,
@@ -40,6 +87,9 @@ export function PathPicker({
 }: PathPickerProps) {
   const [currentPath, setCurrentPath] = useState('~');
   const [resolvedPath, setResolvedPath] = useState('');
+  const [parent, setParent] = useState<string | null>(null);
+  const [separator, setSeparator] = useState('/');
+  const [roots, setRoots] = useState<string[]>(['/']);
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +101,9 @@ export function PathPicker({
     try {
       const result = await apiClient.browsePath(path);
       setResolvedPath(result.path);
+      setParent(result.parent);
+      setSeparator(result.separator);
+      setRoots(result.roots);
       setEntries(result.entries);
       setManualPath(result.path);
     } catch (err) {
@@ -72,8 +125,9 @@ export function PathPicker({
   };
 
   const navigateUp = () => {
-    const parent = resolvedPath.split('/').slice(0, -1).join('/') || '/';
-    navigateTo(parent);
+    if (parent !== null) {
+      navigateTo(parent);
+    }
   };
 
   const handleManualNav = () => {
@@ -86,7 +140,11 @@ export function PathPicker({
     onOpenChange(false);
   };
 
-  const breadcrumbs = resolvedPath.split('/').filter(Boolean);
+  const breadcrumbs = buildBreadcrumbs(resolvedPath, separator, roots);
+
+  // Last segment for the Select button label
+  const lastSegment =
+    resolvedPath.split(separator).filter(Boolean).at(-1) ?? 'folder';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,7 +162,7 @@ export function PathPicker({
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleManualNav()}
-              placeholder="/path/to/directory"
+              placeholder="Enter a path or browse"
               className="h-9 pl-10 pr-4 font-mono text-sm"
             />
           </div>
@@ -113,30 +171,51 @@ export function PathPicker({
           </Button>
         </div>
 
-        {/* Breadcrumb */}
+        {/* Breadcrumb + home + root pickers */}
         <div className="flex flex-wrap items-center gap-1 text-xs text-[var(--muted-foreground)]">
+          {/* Home button — always navigates to "~" so the server expands correctly */}
           <button
             type="button"
-            onClick={() => navigateTo('/')}
+            onClick={() => navigateTo('~')}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            aria-label="Home"
           >
             <Home className="size-3" />
           </button>
-          {breadcrumbs.map((segment, i) => {
-            const segmentPath = '/' + breadcrumbs.slice(0, i + 1).join('/');
-            return (
-              <span key={segmentPath} className="inline-flex items-center gap-1">
-                <ChevronRight className="size-3" />
+
+          {/* Drive/root pickers — only shown when the server reports multiple roots (Windows) */}
+          {roots.length > 1 &&
+            roots.map((root) => {
+              // Display "C:" not "C:\" for brevity
+              const label = root.endsWith(separator)
+                ? root.slice(0, -separator.length)
+                : root;
+              return (
                 <button
+                  key={root}
                   type="button"
-                  onClick={() => navigateTo(segmentPath)}
-                  className=" px-1.5 py-0.5 hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  onClick={() => navigateTo(root)}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 font-mono hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  aria-label={`Browse ${root}`}
                 >
-                  {segment}
+                  {label}
                 </button>
-              </span>
-            );
-          })}
+              );
+            })}
+
+          {/* Breadcrumb segments built from server-provided separator */}
+          {breadcrumbs.map(({ label, target }) => (
+            <span key={target} className="inline-flex items-center gap-1">
+              <ChevronRight className="size-3" />
+              <button
+                type="button"
+                onClick={() => navigateTo(target)}
+                className="px-1.5 py-0.5 hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                {label}
+              </button>
+            </span>
+          ))}
         </div>
 
         {/* Entry list */}
@@ -153,15 +232,17 @@ export function PathPicker({
             </div>
           ) : (
             <div className="divide-y divide-[color:var(--border-subtle)]">
-              {/* Go up */}
-              <button
-                type="button"
-                onClick={navigateUp}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[color:var(--surface-2)]"
-              >
-                <Folder className="size-4 text-[var(--muted-foreground)]" />
-                <span className="text-[var(--muted-foreground)]">..</span>
-              </button>
+              {/* Go up — disabled (hidden) when at a filesystem root */}
+              {parent !== null && (
+                <button
+                  type="button"
+                  onClick={navigateUp}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[color:var(--surface-2)]"
+                >
+                  <Folder className="size-4 text-[var(--muted-foreground)]" />
+                  <span className="text-[var(--muted-foreground)]">..</span>
+                </button>
+              )}
               {entries.map((entry) => (
                 <button
                   type="button"
@@ -181,9 +262,7 @@ export function PathPicker({
                     }
                   }}
                   className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[color:var(--surface-2)] ${
-                    entry.is_git_repo
-                      ? 'bg-[var(--primary)]/5'
-                      : ''
+                    entry.is_git_repo ? 'bg-[var(--primary)]/5' : ''
                   }`}
                 >
                   {entry.is_git_repo ? (
@@ -195,6 +274,12 @@ export function PathPicker({
                   {entry.is_git_repo && (
                     <span className="shrink-0 border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--primary)]">
                       git repo
+                    </span>
+                  )}
+                  {entry.is_link && (
+                    <span className="inline-flex shrink-0 items-center gap-0.5 border border-[var(--muted-foreground)]/30 bg-[var(--muted)]/40 px-2 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                      <Link2 className="size-2.5" />
+                      link
                     </span>
                   )}
                   <ChevronRight className="size-3.5 text-[var(--muted-foreground)]" />
@@ -210,7 +295,7 @@ export function PathPicker({
           </Button>
           <Button onClick={handleSelect} disabled={!resolvedPath}>
             <FolderOpen className="size-4" />
-            Select {resolvedPath.split('/').at(-1) || 'folder'}
+            Select {lastSegment}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -63,6 +63,12 @@ def _error_response(exc: Exception) -> JSONResponse:
     if isinstance(exc, ValueError | TypeError):
         logger.debug("Route handler validation error: {}", exc)
         return _err(str(exc), status=400, error_code=error_code)
+    if isinstance(exc, FileNotFoundError | NotADirectoryError):
+        logger.debug("Route handler path error: {}", exc)
+        return _err(str(exc), status=400, error_code=error_code)
+    if isinstance(exc, PermissionError):
+        logger.debug("Route handler permission denied: {}", exc)
+        return _err(str(exc), status=403, error_code=error_code)
 
     logger.exception("Unexpected error in route handler")
     return _err("Internal server error", status=500)

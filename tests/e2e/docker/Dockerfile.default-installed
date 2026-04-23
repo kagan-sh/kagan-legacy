@@ -1,0 +1,60 @@
+# Dockerfile.default-installed — Default backend present, 13 others absent.
+#
+# Purpose: Simulates a user who has installed claude-code (the default backend)
+# but no other Kagan backends. Rule 3 of the severity classification should
+# apply: default=PASS, all non-defaults=WARN, no blocking modal.
+#
+# Usage: Built and used by scenarios.sh; not for direct production use.
+
+FROM debian:bookworm-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── System dependencies ──────────────────────────────────────────────────────
+# Debian bookworm ships Python 3.11 natively; uv will fetch 3.12 as needed.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    sqlite3 \
+    jq \
+    build-essential \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── uv ──────────────────────────────────────────────────────────────────────
+RUN curl -fsSL https://astral.sh/uv/install.sh | bash
+ENV PATH="/root/.local/bin:/root/.cargo/bin:${PATH}"
+
+# ── Kagan install ────────────────────────────────────────────────────────────
+WORKDIR /kagan
+COPY . /kagan/
+
+RUN uv tool install --python python3.12 /kagan
+
+ENV PATH="/root/.local/bin:${PATH}"
+RUN kagan --help > /dev/null
+
+# ── Default backend: claude-code ─────────────────────────────────────────────
+# claude-code's executable is 'claude'. Install via the official install script.
+# This is the install command stored in AGENT_BACKENDS["claude-code"].install["*"].
+# We stub it with a minimal shim that satisfies shutil.which() so the image
+# builds without requiring a real Anthropic account / network egress in CI.
+#
+# NOTE: For a real end-to-end test with live auth, replace the shim below with:
+#   RUN curl -fsSL https://claude.ai/install.sh | bash
+#   RUN npm install -g @anthropic-ai/claude-code   (alternative)
+#
+# The shim is sufficient to validate Rule 3 (shutil.which finds 'claude' →
+# default=PASS, rest=WARN) without network access or credentials.
+
+RUN echo '#!/bin/sh\necho "claude (stub) 1.0.0"' > /usr/local/bin/claude && \
+    chmod +x /usr/local/bin/claude
+
+# Verify the stub is on PATH
+RUN which claude && claude --version
+
+# No other backend binaries — codex, gemini, kimi, goose, etc. all absent.
+
+CMD ["/bin/bash"]

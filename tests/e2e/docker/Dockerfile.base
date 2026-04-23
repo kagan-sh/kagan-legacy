@@ -1,0 +1,46 @@
+# Dockerfile.base — Zero-ready image: Python 3.12 + uv + kagan installed, NO backends.
+#
+# Purpose: Simulates a fresh Linux install where the user has installed kagan
+# but has not yet installed any agent backend binaries.
+#
+# Usage: Built and used by scenarios.sh; not for direct production use.
+
+FROM debian:bookworm-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── System dependencies ──────────────────────────────────────────────────────
+# Debian bookworm ships Python 3.11 natively; uv will fetch 3.12 as needed.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    sqlite3 \
+    jq \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── uv ──────────────────────────────────────────────────────────────────────
+RUN curl -fsSL https://astral.sh/uv/install.sh | bash
+ENV PATH="/root/.local/bin:/root/.cargo/bin:${PATH}"
+
+# ── Kagan install ────────────────────────────────────────────────────────────
+# Repo root is mounted at /kagan at build time.
+# We copy the source in (rather than mount) so the image is self-contained.
+WORKDIR /kagan
+COPY . /kagan/
+
+# Install kagan as a uv tool from the local source directory.
+# uv tool install <dir> installs the package defined at <dir>.
+# --python pins to 3.12 (uv downloads CPython if not present).
+RUN uv tool install --python python3.12 /kagan
+
+# uv tool installs to ~/.local/bin — ensure it is on PATH for subsequent RUN commands.
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Smoke-test the install: kagan must be findable
+RUN kagan --help > /dev/null
+
+# No backend binaries installed — this is the "zero-ready" state.
+
+CMD ["/bin/bash"]

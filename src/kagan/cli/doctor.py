@@ -13,7 +13,6 @@ from kagan.core._environment_checks import (
     _VERIFY_HINTS,
     _derive_category,
     collect_environment_checks,
-    resolve_agent_executable,
     resolve_backend_guidance,
     resolve_doctor_backend_name,
     verify_hint_for,
@@ -190,7 +189,7 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
     try:
         default_backend = run_async(resolve_doctor_backend_name(client))
         preflight = run_async(
-            client.preflight(agent_backend=resolve_agent_executable(default_backend))
+            client.preflight(agent_backend=default_backend)
         )
 
         # Detect whether we have new multi-backend results

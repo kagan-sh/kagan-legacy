@@ -66,7 +66,7 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
     checks = doctor_module.run_doctor_checks()
 
     agent_backend_check = next(check for check in checks if check.name == "agent backend")
-    assert client.preflight_calls == ["codex"]
+    assert client.preflight_calls == [CODEX_BACKEND]
     assert "Default agent backend 'codex'" in agent_backend_check.message
     assert "codex" in agent_backend_check.verify_hint
     assert client.closed is True
@@ -75,7 +75,6 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
 @pytest.mark.parametrize(
     (
         "default_agent_backend",
-        "expected_executable",
         "expected_install",
         "expected_auth",
         "expected_verify",
@@ -83,7 +82,6 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
     [
         (
             CLAUDE_CODE_BACKEND,
-            "claude",
             "curl -fsSL https://claude.ai/install.sh | bash",
             # Auth description shortened to ≤60 chars (AC #3).
             "Authenticate Claude Code",
@@ -91,7 +89,6 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
         ),
         (
             CODEX_BACKEND,
-            "codex",
             "npm install -g @openai/codex",
             "OPENAI_API_KEY",
             "codex --version",
@@ -101,7 +98,6 @@ def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.M
 def test_run_doctor_checks_adds_reference_backend_guidance(
     monkeypatch: pytest.MonkeyPatch,
     default_agent_backend: str,
-    expected_executable: str,
     expected_install: str,
     expected_auth: str,
     expected_verify: str,
@@ -118,7 +114,8 @@ def test_run_doctor_checks_adds_reference_backend_guidance(
     checks = doctor_module.run_doctor_checks()
 
     agent_backend_check = next(check for check in checks if check.name == "agent backend")
-    assert client.preflight_calls == [expected_executable]
+    # preflight receives the backend name directly — not the executable
+    assert client.preflight_calls == [default_agent_backend]
     assert expected_install in agent_backend_check.fix_hint
     assert expected_auth in agent_backend_check.fix_hint
     assert agent_backend_check.verify_hint == expected_verify

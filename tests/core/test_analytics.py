@@ -9,10 +9,8 @@ Tests cover:
 
 import pytest
 
-from kagan.core import TaskStatus
 from kagan.core._task_classification import classify_task
-from kagan.core.enums import AgentRole, SessionStatus, TaskType
-from tests.helpers.driver import KaganDriver
+from kagan.core.enums import TaskType
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
 

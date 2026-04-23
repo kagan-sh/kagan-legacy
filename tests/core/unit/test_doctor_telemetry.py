@@ -28,7 +28,7 @@ from kagan.cli.doctor import (
 from kagan.core._analytics import Analytics, emit_telemetry
 from kagan.core._db_helpers import _db_sync
 from kagan.core.enums import SessionEventType
-from kagan.core.models import Project, Session, TelemetryEvent
+from kagan.core.models import Project, Session
 
 pytestmark = [pytest.mark.unit]
 

@@ -7,7 +7,6 @@ Tests cover:
 - Batch classification
 """
 
-import pytest
 
 from kagan.core._task_classification import classify_task, classify_tasks_by_type
 from kagan.core.enums import TaskType

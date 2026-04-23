@@ -13,6 +13,49 @@
 
 
 
+## v0.19.0-beta.6 (2026-04-23)
+
+
+
+
+### Bug Fixes
+
+- **doctor**: Pass backend name not executable to preflight (ghost backend bug)
+  ([`45335d1`](https://github.com/kagan-sh/kagan/commit/45335d1441fd3ddfec7e203b861ce4e650d288e9))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- **e2e**: Add Docker sandbox harness for doctor-gated onboarding scenarios
+  ([`23bc68d`](https://github.com/kagan-sh/kagan/commit/23bc68daa92f36c50e28cf6bd53089d843d487bd))
+
+
+
+
+
 ## v0.19.0-beta.5 (2026-04-21)
 
 

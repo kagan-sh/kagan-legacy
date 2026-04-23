@@ -106,6 +106,9 @@ class WelcomeScreen(Screen[None]):
         self._update_keybinding_hints()
 
     async def on_screen_resume(self) -> None:
+        self.call_after_refresh(self._on_screen_resume_deferred)
+
+    async def _on_screen_resume_deferred(self) -> None:
         await self._reload_projects()
         await self._maybe_hide_cwd_banner()
         self._update_cwd_banner_hint()

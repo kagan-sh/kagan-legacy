@@ -97,12 +97,15 @@ class WorkspaceScreen(Screen[None]):
         )
 
     async def on_screen_resume(self) -> None:
+        self.call_after_refresh(self._on_screen_resume_deferred)
+
+    async def _on_screen_resume_deferred(self) -> None:
         await self.kagan_app.orchestrator_sessions.reload()
         panel = self.query_one(ChatPanel)
         await self._load_workspace_panel_state(panel)
         self._refresh_header()
         await self._refresh_header_context()
-        self.call_after_refresh(self._focus_sidebar)
+        self._focus_sidebar()
 
     async def on_unmount(self) -> None:
         if self._chat_message_task is not None:

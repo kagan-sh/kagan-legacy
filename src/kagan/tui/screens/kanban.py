@@ -1893,9 +1893,12 @@ class KanbanScreen(Screen[None]):
         self.app.push_screen(TaskEditorModal())
 
     async def on_screen_resume(self) -> None:
+        self.call_after_refresh(self._on_screen_resume_deferred)
+
+    async def _on_screen_resume_deferred(self) -> None:
         await self._reload_tasks()
         self._sync_layout_state()
-        self.call_after_refresh(self._auto_focus_board)
+        self._auto_focus_board()
 
     def _handle_search_key(self, event: events.Key) -> bool:
         search_bar = self.query_one(SearchBar)

@@ -135,3 +135,19 @@ export interface DoctorReportResponse {
   fail_count: number;
   warn_count: number;
 }
+
+export interface FsEntryResponse {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  is_git_repo: boolean;
+  is_link: boolean;
+}
+
+export interface FsBrowseResponse {
+  path: string;
+  parent: string | null;
+  separator: string;
+  roots: string[];
+  entries: FsEntryResponse[];
+}

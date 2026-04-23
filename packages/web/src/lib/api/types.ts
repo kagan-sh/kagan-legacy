@@ -11,6 +11,7 @@ import type {
     ChatSessionResponse,
     ChatSessionSummaryResponse,
     EventResponse,
+    FsEntryResponse,
     ProjectResponse,
     RepositoryResponse,
     ReviewVerdictResponse,
@@ -205,21 +206,8 @@ export interface WorkflowResolvedSettings {
 // Filesystem browsing
 // ---------------------------------------------------------------------------
 
-export interface FsEntry {
-    name: string;
-    path: string;
-    is_dir: boolean;
-    is_git_repo: boolean;
-    is_link: boolean;
-}
-
-export interface FsBrowseResponse {
-    path: string;
-    parent: string | null;
-    separator: string;
-    roots: string[];
-    entries: FsEntry[];
-}
+export type FsEntry = FsEntryResponse;
+export type { FsBrowseResponse } from "./generated-wire-types";
 
 // ---------------------------------------------------------------------------
 // Client presence

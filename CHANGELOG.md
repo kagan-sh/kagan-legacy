@@ -13,6 +13,21 @@
 
 
 
+## v0.19.0-beta.7 (2026-04-23)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Defer _reload_projects to call_after_refresh to survive xdist race
+  ([#121](https://github.com/kagan-sh/kagan/pull/121),
+  [`8bd88cb`](https://github.com/kagan-sh/kagan/commit/8bd88cbf5e33a42952d0c795827c920bdbec96ab))
+
+
+
+
+
 ## v0.19.0-beta.6 (2026-04-23)
 
 

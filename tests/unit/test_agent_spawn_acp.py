@@ -46,6 +46,9 @@ async def _spawn_and_capture_command(
         _fake_create_subprocess_exec,
     )
     monkeypatch.setattr("kagan.core._acp.run_acp_session", _fake_run_acp_session)
+    # resolve_spawn_command calls shutil.which; return the bare name unchanged so
+    # assertions on the captured command remain stable across environments.
+    monkeypatch.setattr("kagan.core._subprocess.shutil.which", lambda exe: exe)
 
     _, reader_task = await spawn_agent_via_acp(
         backend_name,
@@ -142,7 +145,8 @@ async def test_spawn_agent_acp_uses_typed_capability_over_legacy_supports_flag(
 
     monkeypatch.setattr("kagan.core._agent.get_backend_spec", lambda _name: spec)
     monkeypatch.setattr("kagan.core._agent.get_backend", lambda _name: legacy_entry)
-    monkeypatch.setattr("kagan.core._agent.shutil.which", lambda _exe: "/usr/bin/typed-acp")
+    # resolve_spawn_command uses shutil.which from _subprocess, not _agent.
+    monkeypatch.setattr("kagan.core._subprocess.shutil.which", lambda exe: exe)
 
     captured: dict[str, list[str]] = {}
 

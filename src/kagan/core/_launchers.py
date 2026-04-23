@@ -21,6 +21,7 @@ from typing import Any
 from loguru import logger
 
 from kagan.core._agent import build_mcp_manifest, get_backend_spec
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -129,20 +130,17 @@ async def _run_detached(
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     kwargs["env"] = build_sanitized_subprocess_environment()
 
-    proc = await asyncio.create_subprocess_exec(*cmd, **kwargs)
+    resolved = resolve_spawn_command(cmd[0], *cmd[1:]) if cmd else list(cmd)
+    proc = await asyncio.create_subprocess_exec(*resolved, **kwargs)
     await proc.wait()
 
 
 async def _tmux_send_keys(session_name: str, text: str) -> None:
     """Send keys to a tmux session."""
     env = build_sanitized_subprocess_environment()
+    resolved = resolve_spawn_command("tmux", "send-keys", "-t", session_name, text, "Enter")
     proc = await asyncio.create_subprocess_exec(
-        "tmux",
-        "send-keys",
-        "-t",
-        session_name,
-        text,
-        "Enter",
+        *resolved,
         env=env,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.DEVNULL,

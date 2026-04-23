@@ -110,7 +110,9 @@ async def test_run_orchestrator_turn_uses_backend_spec_env_vars(
     )
 
     assert result == ""
-    assert captured["exe"] == "typed-backend"
+    # resolve_spawn_command resolves the executable via shutil.which; on POSIX the
+    # resolved path is passed directly, so accept any value ending in "typed-backend".
+    assert str(captured["exe"]).endswith("typed-backend")
     assert captured["exe_args"] == ["acp"]
     assert captured["cwd"] == str(tmp_path)
     env = captured["env"]

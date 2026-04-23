@@ -23,6 +23,7 @@ from typing import Any, Final, TypedDict
 from loguru import logger
 
 from kagan.core import CheckStatus, KaganCore, PreflightCheckResult
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.enums import Priority
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.core.plugins import ImporterPlugin, ImportResult, PluginError, PluginSyncError
@@ -83,10 +84,9 @@ def _gh_path() -> str | None:
 
 async def _gh_is_authenticated() -> bool:
     try:
+        resolved = resolve_spawn_command("gh", "auth", "token")
         proc = await asyncio.create_subprocess_exec(
-            "gh",
-            "auth",
-            "token",
+            *resolved,
             env=build_sanitized_subprocess_environment(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -114,8 +114,9 @@ async def _gh_fetch_issues(config: GitHubImportConfig) -> list[GitHubIssue]:
     for lbl in config.labels:
         cmd.extend(["--label", lbl])
 
+    resolved = resolve_spawn_command(cmd[0], *cmd[1:])
     proc = await asyncio.create_subprocess_exec(
-        *cmd,
+        *resolved,
         env=build_sanitized_subprocess_environment(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -235,7 +236,7 @@ class GitHubImporter(ImporterPlugin):
 
         try:
             result = subprocess.run(
-                ["gh", "auth", "token"],
+                resolve_spawn_command("gh", "auth", "token"),
                 capture_output=True,
                 text=True,
                 timeout=5,

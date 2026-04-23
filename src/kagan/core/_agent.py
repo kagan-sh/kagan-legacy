@@ -23,6 +23,7 @@ from typing import Any, Final, Literal, TypedDict, cast
 
 from loguru import logger
 
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.errors import AgentError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
@@ -691,7 +692,7 @@ def _copilot_builtin_acp_supported() -> bool:
 
     try:
         completed = subprocess.run(
-            ["copilot", "--acp", "--help"],
+            resolve_spawn_command("copilot", "--acp", "--help"),
             capture_output=True,
             text=True,
             timeout=5,
@@ -801,7 +802,7 @@ async def _prepare_spawn(
                 ) from exc
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
 
-    cmd: list[str] = [entry["executable"]]
+    cmd: list[str] = list(resolve_spawn_command(entry["executable"]))
     if entry["workdir_flag"]:
         cmd += [entry["workdir_flag"], str(worktree_path)]
 
@@ -984,7 +985,7 @@ async def spawn_agent_via_acp(
     )
     acp_cmd = resolve_acp_command(backend_name)
     if acp_cmd:
-        cmd = list(acp_cmd)
+        cmd = list(resolve_spawn_command(acp_cmd[0], *acp_cmd[1:]))
     if spec.acp_args:
         cmd.extend(spec.acp_args)
 

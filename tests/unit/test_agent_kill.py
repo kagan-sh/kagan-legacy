@@ -229,7 +229,9 @@ async def test_timeout_kills_real_subprocess() -> None:
     total_wait = 0.05 + _AGENT_TIMEOUT_GRACE_SECONDS + 1.0
     await asyncio.sleep(total_wait)
 
-    assert proc.returncode is not None, "Process must have been terminated by the timeout"
+    rc = proc.returncode
+    assert isinstance(rc, int), "Process must have been terminated by the timeout"
+    assert rc != 0, f"Killed process must have non-zero exit code, got {rc}"
 
     # Clean up tracking state
     _spawned_processes.pop(session_id, None)

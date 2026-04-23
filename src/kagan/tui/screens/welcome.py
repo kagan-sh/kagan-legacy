@@ -97,6 +97,9 @@ class WelcomeScreen(Screen[None]):
             yield KeybindingHint(id="welcome-hint")
 
     async def on_mount(self) -> None:
+        self.call_after_refresh(self._on_mount_deferred)
+
+    async def _on_mount_deferred(self) -> None:
         await self._reload_projects()
         await self._maybe_hide_cwd_banner()
         self._update_cwd_banner_hint()

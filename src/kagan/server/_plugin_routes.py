@@ -90,8 +90,6 @@ def register_plugin_routes(mcp: FastMCP) -> None:
         repo_path_param = request.query_params.get("repo_path")
         if repo_path_param:
             repo_path = Path(repo_path_param).resolve()
-            if not repo_path.is_relative_to(Path.home()):
-                return _err("Path outside allowed boundaries", status=403)
         else:
             repo_path = await _resolve_selected_repo_path(ctx)
         if repo_path is None:

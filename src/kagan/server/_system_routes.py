@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -124,42 +125,86 @@ def register_system_routes(mcp: FastMCP) -> None:
     async def browse_filesystem(request: Request, *, ctx: Any) -> JSONResponse:
         import asyncio
 
+        from kagan.server.responses import FsBrowseResponse, FsEntryResponse
+
         raw_path = request.query_params.get("path", "~")
+
+        def _get_roots() -> list[str]:
+            """Return available filesystem roots for the current platform."""
+            if os.name == "nt":
+                import ctypes
+
+                bitmask: int = ctypes.windll.kernel32.GetLogicalDrives()  # type: ignore[attr-defined]  # Windows-only API
+                return [f"{chr(ord('A') + i)}:\\" for i in range(26) if bitmask & (1 << i)]
+            return ["/"]
+
+        def _is_hidden(entry: os.DirEntry[str]) -> bool:
+            """Return True if the entry should be hidden from the listing."""
+            if entry.name.startswith("."):
+                return True
+            if os.name == "nt":
+                try:
+                    file_stat = entry.stat(follow_symlinks=False)
+                    if getattr(file_stat, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_HIDDEN:  # type: ignore[attr-defined]  # Windows-only stat attribute
+                        return True
+                except OSError:
+                    pass
+            return False
 
         def _list_dir(raw: str) -> dict[str, Any]:
             target = Path(raw).expanduser().resolve()
-            if not target.is_relative_to(Path.home()):
-                raise ValueError("Path outside allowed boundaries")
+            if not target.exists():
+                raise FileNotFoundError(f"Path does not exist: {target}")
             if not target.is_dir():
-                raise ValueError("Invalid path: not a directory")
+                raise NotADirectoryError(f"Not a directory: {target}")
 
-            entries: list[dict[str, Any]] = []
+            parent_path = target.parent
+            parent: str | None = str(parent_path) if parent_path != target else None
+
+            entry_models: list[FsEntryResponse] = []
             try:
                 with os.scandir(target) as it:
                     for entry in it:
-                        if entry.name.startswith("."):
+                        if _is_hidden(entry):
                             continue
                         try:
-                            is_dir = entry.is_dir(follow_symlinks=False)
+                            is_symlink = entry.is_symlink()
+                            # Include junctions (Windows) and symlinks.
+                            # is_junction() available from Python 3.12.
+                            is_junction = (
+                                Path(entry.path).is_junction()
+                                if hasattr(Path, "is_junction")
+                                else False
+                            )
+                            is_link = is_symlink or is_junction
+                            # Follow links/junctions to determine if they point at a dir.
+                            is_dir = entry.is_dir(follow_symlinks=True)
                         except OSError:
                             continue
                         if not is_dir:
                             continue
                         full_path = str(Path(entry.path).resolve())
                         is_git = (Path(entry.path) / ".git").exists()
-                        entries.append(
-                            {
-                                "name": entry.name,
-                                "path": full_path,
-                                "is_dir": True,
-                                "is_git_repo": is_git,
-                            }
+                        entry_models.append(
+                            FsEntryResponse(
+                                name=entry.name,
+                                path=full_path,
+                                is_dir=True,
+                                is_git_repo=is_git,
+                                is_link=is_link,
+                            )
                         )
-            except PermissionError:
-                pass
+            except PermissionError as exc:
+                raise PermissionError(str(exc)) from exc
 
-            entries.sort(key=lambda e: (not e["is_git_repo"], e["name"].lower()))
-            return {"path": str(target), "entries": entries}
+            entry_models.sort(key=lambda e: (not e.is_git_repo, e.name.lower()))
+            return FsBrowseResponse(
+                path=str(target),
+                parent=parent,
+                separator=os.sep,
+                roots=_get_roots(),
+                entries=entry_models,
+            ).model_dump(mode="json")
 
         result = await asyncio.to_thread(_list_dir, raw_path)
         return _ok(result)

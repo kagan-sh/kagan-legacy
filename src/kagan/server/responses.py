@@ -221,6 +221,29 @@ class ChatSessionResponse(ChatSessionSummaryResponse):
     messages: list[ChatMessageResponse]
 
 
+# ── Filesystem browser ───────────────────────────────────────────────────────
+
+
+class FsEntryResponse(BaseModel):
+    """A single directory entry returned by GET /api/fs/browse."""
+
+    name: str
+    path: str
+    is_dir: bool
+    is_git_repo: bool
+    is_link: bool
+
+
+class FsBrowseResponse(BaseModel):
+    """Response shape for GET /api/fs/browse."""
+
+    path: str
+    parent: str | None
+    separator: str
+    roots: list[str]
+    entries: list[FsEntryResponse]
+
+
 # ── Doctor / preflight ───────────────────────────────────────────────────────
 
 
@@ -263,4 +286,6 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ChatSessionResponse": ChatSessionResponse,
     "DoctorCheckResponse": DoctorCheckResponse,
     "DoctorReportResponse": DoctorReportResponse,
+    "FsEntryResponse": FsEntryResponse,
+    "FsBrowseResponse": FsBrowseResponse,
 }

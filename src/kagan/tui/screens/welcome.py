@@ -96,7 +96,7 @@ class WelcomeScreen(Screen[None]):
             )
             yield KeybindingHint(id="welcome-hint")
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         self.call_after_refresh(self._on_mount_deferred)
 
     async def _on_mount_deferred(self) -> None:

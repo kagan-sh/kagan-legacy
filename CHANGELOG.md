@@ -13,6 +13,48 @@
 
 
 
+## v0.19.0-beta.8 (2026-04-23)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Defer query_one work in on_mount/on_screen_resume across screens (xdist race)
+  ([#122](https://github.com/kagan-sh/kagan/pull/122),
+  [`3adc7c5`](https://github.com/kagan-sh/kagan/commit/3adc7c529ccb93ed9d718d5983c756ffa45af1ee))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Code Style
+
+- **tui**: Drop unnecessary async on WelcomeScreen.on_mount
+  ([`bceff8a`](https://github.com/kagan-sh/kagan/commit/bceff8aa61225fcfac658d4ee5caa7011deb81ea))
+
+
+
+
+
 ## v0.19.0-beta.7 (2026-04-23)
 
 

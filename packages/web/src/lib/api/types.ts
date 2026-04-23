@@ -210,10 +210,14 @@ export interface FsEntry {
     path: string;
     is_dir: boolean;
     is_git_repo: boolean;
+    is_link: boolean;
 }
 
 export interface FsBrowseResponse {
     path: string;
+    parent: string | null;
+    separator: string;
+    roots: string[];
     entries: FsEntry[];
 }
 

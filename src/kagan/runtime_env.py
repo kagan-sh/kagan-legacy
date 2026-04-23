@@ -9,8 +9,10 @@ import os
 import sys
 from collections.abc import Mapping, MutableMapping
 
-# Essential environment variables that should always be preserved in subprocesses
-_ESSENTIAL_ENV: frozenset[str] = frozenset(
+# Essential environment variables that should always be preserved in subprocesses.
+# Platform-specific sets are selected at call time via _essential_env().
+
+_ESSENTIAL_ENV_POSIX: frozenset[str] = frozenset(
     {
         "PATH",
         "HOME",
@@ -24,6 +26,50 @@ _ESSENTIAL_ENV: frozenset[str] = frozenset(
         "SSH_AUTH_SOCK",
     }
 )
+
+_ESSENTIAL_ENV_WINDOWS: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "PROGRAMDATA",
+        "USERNAME",
+        "COMPUTERNAME",
+        "USERDOMAIN",
+        "LANG",
+        "LC_ALL",
+        "EDITOR",
+    }
+)
+
+# Backwards-compatible alias — points to the POSIX set (unchanged behaviour).
+_ESSENTIAL_ENV: frozenset[str] = _ESSENTIAL_ENV_POSIX
+
+
+def _essential_env(platform_name: str | None = None) -> frozenset[str]:
+    """Return the platform-appropriate set of essential environment variable names.
+
+    Args:
+        platform_name: Platform identifier (win32, linux, darwin, …).
+            Defaults to sys.platform.
+
+    Returns:
+        Frozenset of environment variable names that must be preserved.
+    """
+    key = (platform_name or sys.platform).lower()
+    return _ESSENTIAL_ENV_WINDOWS if key == "win32" else _ESSENTIAL_ENV_POSIX
+
 
 # Sensitive patterns that should be stripped from environment variables
 # These match anywhere in the variable name (case-insensitive)
@@ -143,11 +189,12 @@ def build_sanitized_subprocess_environment(
     base_env: Mapping[str, str] | None = None,
     *,
     allow_extra: Mapping[str, str] | None = None,
+    platform_name: str | None = None,
 ) -> dict[str, str]:
     """Build a sanitized environment for subprocess execution.
 
     This function creates an allowlist-based sanitized environment by:
-    1. Starting with essential environment variables (PATH, HOME, etc.)
+    1. Starting with essential environment variables (platform-aware allowlist)
     2. Adding any explicitly allowed extra variables
     3. Stripping variables matching sensitive patterns (tokens, keys, secrets)
     4. Stripping Python-specific variables (PYTHONPATH, PYTHONHOME, etc.)
@@ -157,6 +204,9 @@ def build_sanitized_subprocess_environment(
         base_env: Base environment to sanitize. Defaults to os.environ.
         allow_extra: Additional environment variables to allow (name -> value).
             These override base_env values and bypass sensitive pattern checks.
+        platform_name: Platform identifier (win32, linux, darwin, …).
+            Defaults to sys.platform. Pass an explicit value in tests to verify
+            cross-platform behaviour without running on the target OS.
 
     Returns:
         Sanitized environment dictionary safe for subprocess execution.
@@ -166,10 +216,11 @@ def build_sanitized_subprocess_environment(
         >>> # env contains only essential vars + MY_VAR, no secrets
     """
     source_env = base_env if base_env is not None else os.environ
+    essential = _essential_env(platform_name)
 
     # Start with essential variables from source environment
     sanitized: dict[str, str] = {}
-    for key in _ESSENTIAL_ENV:
+    for key in essential:
         if key in source_env:
             sanitized[key] = source_env[key]
 
@@ -192,6 +243,6 @@ def build_sanitized_subprocess_environment(
         sanitized.pop(key, None)
 
     # Also strip noisy platform-specific variables
-    strip_noisy_environment_variables(sanitized)
+    strip_noisy_environment_variables(sanitized, platform_name=platform_name)
 
     return sanitized

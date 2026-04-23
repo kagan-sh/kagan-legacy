@@ -13,6 +13,41 @@
 
 
 
+## v0.19.0-beta.10 (2026-04-23)
+
+
+
+
+### Chores
+
+- **deps**: Bump the all group in /packages/web with 5 updates
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+- **deps-dev**: Bump typescript from 5.9.3 to 6.0.3 in /packages/vscode
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+- **deps**: Bump typescript from 5.9.3 to 6.0.3 in /packages/web
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+- **deps-dev**: Bump vitest from 4.1.4 to 4.1.5 in /packages/vscode
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+- **deps**: Bundle open dependabot bumps (#117 #118 #119 #120)
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+- **deps**: Update pnpm-lock.yaml for bundled bumps
+  ([#124](https://github.com/kagan-sh/kagan/pull/124),
+  [`ae93c59`](https://github.com/kagan-sh/kagan/commit/ae93c59a95d822bf55b371b8fab342433e9eac82))
+
+
+
+
+
 ## v0.19.0-beta.9 (2026-04-23)
 
 

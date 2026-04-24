@@ -250,7 +250,7 @@ async function withErrors(action: string, run: () => Promise<void>): Promise<voi
 function renderTaskSummary(task: WireTask): string {
   const criteria =
     task.acceptance_criteria.length > 0
-      ? task.acceptance_criteria.map((item, index) => `${index + 1}. ${item}`).join("\n")
+      ? task.acceptance_criteria.map((c) => `${c.ordinal + 1}. ${c.text}`).join("\n")
       : "None";
 
   return [

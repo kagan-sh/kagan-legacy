@@ -62,9 +62,18 @@ export interface ActiveSession {
 }
 
 export interface ReviewVerdict {
-  criterion_index: number;
+  id: string;
+  criterion_id: string;
+  session_id?: string | null;
   verdict: ReviewVerdictState;
   reason: string;
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  task_id: string;
+  ordinal: number;
+  text: string;
 }
 
 export interface WireTask {
@@ -74,7 +83,7 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
-  acceptance_criteria: string[];
+  acceptance_criteria: AcceptanceCriterion[];
   agent_backend: string | null;
   launcher: string | null;
   review_approved: boolean;

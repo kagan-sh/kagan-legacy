@@ -45,8 +45,12 @@ export class ReviewCommentProvider implements vscode.Disposable {
   private showVerdicts(task: WireTask, uri: vscode.Uri): void {
     this.clear();
 
+    const ordinalById = new Map(task.acceptance_criteria.map((c) => [c.id, c.ordinal]));
+
     for (const verdict of task.review_verdicts) {
-      const line = criterionLine(verdict.criterion_index);
+      const ordinal = ordinalById.get(verdict.criterion_id);
+      if (ordinal === undefined) continue;
+      const line = criterionLine(ordinal);
       const range = new vscode.Range(line, 0, line, 0);
       const comment: vscode.Comment = {
         body: buildCommentBody(verdict),
@@ -55,7 +59,7 @@ export class ReviewCommentProvider implements vscode.Disposable {
       };
 
       const thread = this.controller.createCommentThread(uri, range, [comment]);
-      thread.label = `Criterion ${verdict.criterion_index + 1}`;
+      thread.label = `Criterion ${ordinal + 1}`;
       thread.state =
         verdict.verdict === "PASS"
           ? vscode.CommentThreadState.Resolved
@@ -87,17 +91,23 @@ function buildReviewDocument(task: WireTask): string {
     "",
   ];
 
-  const criteria = task.acceptance_criteria.length > 0 ? task.acceptance_criteria : ["No acceptance criteria"];
-  for (const [index, criterion] of criteria.entries()) {
-    const verdict = task.review_verdicts.find((item) => item.criterion_index === index);
-    const marker = verdict?.verdict === "PASS" ? "[PASS]" : verdict?.verdict === "FAIL" ? "[FAIL]" : "[ ]";
-    lines.push(`${index + 1}. ${marker} ${criterion}`);
+  if (task.acceptance_criteria.length === 0) {
+    lines.push(`1. [ ] No acceptance criteria`);
+  } else {
+    for (const criterion of task.acceptance_criteria) {
+      const verdict = task.review_verdicts.find((item) => item.criterion_id === criterion.id);
+      const marker = verdict?.verdict === "PASS" ? "[PASS]" : verdict?.verdict === "FAIL" ? "[FAIL]" : "[ ]";
+      lines.push(`${criterion.ordinal + 1}. ${marker} ${criterion.text}`);
+    }
   }
 
   if (task.review_verdicts.length > 0) {
+    const ordinalById = new Map(task.acceptance_criteria.map((c) => [c.id, c.ordinal]));
     lines.push("", "## Verdict Summary", "");
     for (const verdict of task.review_verdicts) {
-      lines.push(`${verdict.criterion_index + 1}. ${verdict.verdict}: ${verdict.reason}`);
+      const ordinal = ordinalById.get(verdict.criterion_id);
+      const label = ordinal !== undefined ? `${ordinal + 1}` : verdict.criterion_id;
+      lines.push(`${label}. ${verdict.verdict}: ${verdict.reason}`);
     }
   }
 

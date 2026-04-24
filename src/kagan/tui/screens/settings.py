@@ -431,28 +431,34 @@ class SettingsModal(ModalScreen[None]):
     def _text_field(self, label: str, field_id: str) -> Vertical:
         return Vertical(
             Static(label, classes="settings-field-label-top"),
-            Input(id=field_id, classes="settings-input"),
+            Input(id=field_id, classes="settings-input", tooltip=label),
             classes="settings-field-group",
         )
 
     def _select_field(self, label: str, field_id: str, options: list[tuple[str, str]]) -> Vertical:
         return Vertical(
             Static(label, classes="settings-field-label-top"),
-            Select(options=options, id=field_id, allow_blank=False, classes="settings-select"),
+            Select(
+                options=options,
+                id=field_id,
+                allow_blank=False,
+                classes="settings-select",
+                tooltip=label,
+            ),
             classes="settings-field-group",
         )
 
     def _textarea_field(self, label: str, field_id: str) -> Vertical:
         return Vertical(
             Static(label, classes="settings-field-label-top"),
-            TextArea(id=field_id, classes="settings-textarea"),
+            TextArea(id=field_id, classes="settings-textarea", tooltip=label),
             classes="settings-field-group",
         )
 
     def _switch_field(self, label: str, field_id: str) -> Horizontal:
         return Horizontal(
             Static(label, classes="settings-field-label-inline"),
-            Switch(id=field_id, classes="settings-checkbox"),
+            Switch(id=field_id, classes="settings-checkbox", tooltip=label),
             classes="settings-field-row",
         )
 

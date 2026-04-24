@@ -285,6 +285,7 @@ GITHUB_IMPORT_BINDINGS: list[BindingType] = [
 AGENT_PICKER_BINDINGS: list[BindingType] = [
     Binding("enter", "select_agent", "Select", show=False, priority=True),
     Binding("escape", "dismiss", "Close"),
+    Binding("a", "toggle_all_backends", "Show all"),
 ]
 
 ANALYTICS_BINDINGS: list[BindingType] = [

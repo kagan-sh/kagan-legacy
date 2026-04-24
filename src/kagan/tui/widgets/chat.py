@@ -41,6 +41,12 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 }
 
 
+class _SessionSelect(Select[str]):
+    def _on_mount(self, _event: Any) -> None:
+        with contextlib.suppress(NoMatches):
+            super()._on_mount(_event)
+
+
 @dataclass(slots=True)
 class _SessionState:
     entries: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
@@ -262,7 +268,7 @@ class ChatPanel(Vertical):
                         toggle_label = Static("Session", id="chat-overlay-session-toggle-label")
                         toggle_label.tooltip = "Switch between active sessions"
                         yield toggle_label
-                        session_select = Select[str](
+                        session_select = _SessionSelect(
                             options=self._session_options,
                             value=self._selected_session_key,
                             id="chat-overlay-session-select",
@@ -333,8 +339,8 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def set_mode_title(self, title: str) -> None:
-        self.query_one("#chat-title", Static).update(title)
         with contextlib.suppress(NoMatches):
+            self.query_one("#chat-title", Static).update(title)
             self.query_one("#chat-overlay-session-badge", Static).update(title)
         self._refresh_status()
 
@@ -349,14 +355,20 @@ class ChatPanel(Vertical):
         if not any(key == next_key for _, key in self._session_options):
             next_key = self._session_options[0][1]
 
-        selector = self.query_one("#chat-overlay-session-select", Select)
-        set_options = getattr(selector, "set_options", None)
         self._suspend_session_change_event = True
-        if callable(set_options):
-            set_options(self._session_options)
-        selector.value = next_key
+        selector_ready = False
+        with contextlib.suppress(NoMatches):
+            selector = self.query_one("#chat-overlay-session-select", Select)
+            set_options = getattr(selector, "set_options", None)
+            if callable(set_options):
+                set_options(self._session_options)
+            selector.value = next_key
+            selector_ready = True
         self.set_class(len(self._session_options) > 1, "chat-overlay-multi-session")
-        self._switch_session(next_key, emit=False)
+        if selector_ready:
+            self._switch_session(next_key, emit=False)
+        else:
+            self._selected_session_key = next_key
         if self.is_mounted:
             self.call_after_refresh(self._release_session_change_suspension)
         else:
@@ -366,10 +378,10 @@ class ChatPanel(Vertical):
         self._suspend_session_change_event = False
 
     def set_session_kind(self, kind: str) -> None:
-        indicator = self.query_one("#chat-overlay-session-indicator", Static)
-        for css_kind in SessionKind:
-            indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
         with contextlib.suppress(NoMatches):
+            indicator = self.query_one("#chat-overlay-session-indicator", Static)
+            for css_kind in SessionKind:
+                indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
             badge = self.query_one("#chat-overlay-session-badge", Static)
             for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")

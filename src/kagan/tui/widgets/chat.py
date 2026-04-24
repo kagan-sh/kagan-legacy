@@ -283,21 +283,24 @@ class ChatPanel(Vertical):
         self.set_class(False, "expanded")
         self.set_class(False, "fullscreen")
 
-        self.query_one("#slash-complete", Vertical).display = False
-        self.query_one("#task-mention-complete", Vertical).display = False
-        self.query_one("#chat-inline-surface", Vertical).display = False
-        self.query_one("#chat-messages", Static).display = False
+        with contextlib.suppress(NoMatches):
+            self.query_one("#slash-complete", Vertical).display = False
+            self.query_one("#task-mention-complete", Vertical).display = False
+            self.query_one("#chat-inline-surface", Vertical).display = False
+            self.query_one("#chat-messages", Static).display = False
 
-        input_widget = self._input_widget()
-        session_select = self.query_one("#chat-overlay-session-select", Select)
-        self.query_one("#chat-title", Static).display = False
-        input_widget.disabled = True
-        input_widget.can_focus = False
-        session_select.disabled = True
-        self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
-        self._sync_input_enabled_state()
-        self._render_current_session()
-        self._refresh_status()
+            input_widget = self._input_widget()
+            session_select = self.query_one("#chat-overlay-session-select", Select)
+            self.query_one("#chat-title", Static).display = False
+            input_widget.disabled = True
+            input_widget.can_focus = False
+            session_select.disabled = True
+            self.query_one("#chat-overlay-empty-heading", Static).update(
+                self._DOCKED_EMPTY_HEADING
+            )
+            self._sync_input_enabled_state()
+            self._render_current_session()
+            self._refresh_status()
 
     def set_visible(self, visible: bool) -> None:
         self.set_class(visible, "visible")

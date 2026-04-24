@@ -46,6 +46,10 @@ class _SessionSelect(Select[str]):
         with contextlib.suppress(NoMatches):
             super()._setup_options_renderables()
 
+    def _init_selected_option(self, hint: Any = Select.BLANK) -> None:
+        with contextlib.suppress(NoMatches):
+            super()._init_selected_option(hint)
+
 
 @dataclass(slots=True)
 class _SessionState:
@@ -1117,7 +1121,8 @@ class ChatPanel(Vertical):
         previous_key = self._selected_session_key
         if self.is_mounted:
             self._flush_deferred()
-            self._ensure_session_state(previous_key).draft = self._input_widget().value
+            with contextlib.suppress(NoMatches):
+                self._ensure_session_state(previous_key).draft = self._input_widget().value
 
         self._selected_session_key = key
         self._ensure_session_state(key)
@@ -1125,10 +1130,11 @@ class ChatPanel(Vertical):
         self.set_session_kind(self._infer_session_kind(key))
 
         if self.is_mounted:
-            input_widget = self._input_widget()
-            input_widget.value = self._current_state().draft
-            self._sync_completion_overlays(input_widget.value)
-            self._render_current_session()
+            with contextlib.suppress(NoMatches):
+                input_widget = self._input_widget()
+                input_widget.value = self._current_state().draft
+                self._sync_completion_overlays(input_widget.value)
+                self._render_current_session()
 
         if emit and previous_key != key:
             self.post_message(self.SessionChanged(key))

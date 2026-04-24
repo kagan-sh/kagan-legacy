@@ -47,6 +47,7 @@ export interface ActiveSession {
   status: SessionStatus | string;
   launcher: string | null;
   agent_backend: string;
+  agent_role?: string | null;
   started_at: string;
   context_window_used: number | null;
   context_window_size: number | null;
@@ -55,9 +56,24 @@ export interface ActiveSession {
 }
 
 export interface ReviewVerdict {
-  criterion_index: number;
+  id: string;
+  criterion_id: string;
+  session_id?: string | null;
   verdict: ReviewVerdictState;
   reason: string;
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  task_id: string;
+  ordinal: number;
+  text: string;
+}
+
+export interface DiffSummary {
+  files_changed: number;
+  additions: number;
+  deletions: number;
 }
 
 export interface WireTask {
@@ -67,7 +83,7 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
-  acceptance_criteria: string[];
+  acceptance_criteria: AcceptanceCriterion[];
   agent_backend: string | null;
   launcher: string | null;
   review_approved: boolean;
@@ -77,6 +93,7 @@ export interface WireTask {
   has_workspace: boolean;
   review_running: boolean;
   active_session: ActiveSession | null;
+  diff_summary?: DiffSummary | null;
 }
 
 export interface WireEvent {

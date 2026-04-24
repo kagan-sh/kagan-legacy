@@ -161,11 +161,6 @@ export function KanbanBoard() {
     [boardDialog, tasks],
   );
 
-  const peekTask = useMemo(
-    () => (boardDialog.kind === 'peek' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
-
   const moveSelectedTaskToAdjacentLane = useCallback(
     async (direction: -1 | 1) => {
       if (!selectedTaskPosition || !selectedTask) return;
@@ -371,12 +366,8 @@ export function KanbanBoard() {
         closeDialog={closeDialog}
         editingTask={editingTask}
         deleteTask={deleteTask}
-        peekTask={peekTask}
         selectedTaskId={selectedTaskId}
         setSelectedTaskId={setSelectedTaskId}
-        onOpenTask={openTask}
-        onOpenStream={openSelectedStream}
-        onEditTask={openEditDialog}
       />
     </div>
   );

@@ -8,8 +8,7 @@ export type BoardDialog =
   | { kind: 'none' }
   | { kind: 'create' }
   | { kind: 'edit'; taskId: string }
-  | { kind: 'delete'; taskId: string }
-  | { kind: 'peek'; taskId: string };
+  | { kind: 'delete'; taskId: string };
 
 export const boardDialogAtom = atom<BoardDialog>({ kind: 'none' });
 

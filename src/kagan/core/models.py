@@ -73,8 +73,8 @@ class Task(SQLModel, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan", "lazy": "select"},
     )
 
-    # Backward-compat shims for TUI / consumers that previously accessed these
-    # as plain attributes when they were DB columns.
+    # Backward-compat shim for TUI / consumers that previously accessed this
+    # as a plain attribute when it was a DB column.
     @property
     def acceptance_criteria(self) -> list[str]:
         """Return acceptance criterion texts in ordinal order.
@@ -86,16 +86,6 @@ class Task(SQLModel, table=True):
             return [c.text for c in sorted(self.criteria, key=lambda c: c.ordinal)]
         except Exception:
             return []
-
-    @property
-    def review_approved(self) -> bool:
-        """Backward-compat shim — always False on the ORM object.
-
-        The authoritative value lives in ReviewVerdict rows and is computed
-        by _reviews.is_review_approved(). The TaskResponse wire type carries
-        the computed boolean for read-only display purposes.
-        """
-        return False
 
 
 class AcceptanceCriterion(SQLModel, table=True):

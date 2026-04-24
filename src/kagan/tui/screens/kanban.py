@@ -173,6 +173,7 @@ class KanbanScreen(Screen[None]):
         self._branch_sync_task: asyncio.Task[None] | None = None
         self._inline_action_message: str | None = None
         self._session_summary_by_task: dict[str, _TaskSessionSummary] = {}
+        self._review_approved_by_task: dict[str, bool] = {}
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -388,6 +389,7 @@ class KanbanScreen(Screen[None]):
             key=lambda task: (str(getattr(task, "created_at", "") or ""), task.id),
         )
         self._session_summary_by_task = await self._collect_session_summaries(self._all_tasks)
+        self._review_approved_by_task = await self._collect_review_approvals(self._all_tasks)
         self._apply_filter()
 
     async def _collect_session_summaries(self, tasks: list[Task]) -> dict[str, _TaskSessionSummary]:
@@ -408,6 +410,23 @@ class KanbanScreen(Screen[None]):
 
         return summaries
 
+    async def _collect_review_approvals(self, tasks: list[Task]) -> dict[str, bool]:
+        """Fetch review approval state for all tasks that are in REVIEW status."""
+        review_tasks = [t for t in tasks if t.status is TaskStatus.REVIEW]
+        if not review_tasks:
+            return {}
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(self.kagan_app.core.reviews.is_approved, t.id)
+                for t in review_tasks
+            ),
+            return_exceptions=True,
+        )
+        return {
+            t.id: bool(result) if not isinstance(result, BaseException) else False
+            for t, result in zip(review_tasks, results, strict=True)
+        }
+
     def _board_tasks(self, tasks: list[Task]) -> list[_BoardTaskView]:
         views: list[_BoardTaskView] = []
         for task in tasks:
@@ -419,7 +438,7 @@ class KanbanScreen(Screen[None]):
                     description=task.description,
                     priority=task.priority,
                     status=task.status,
-                    review_approved=task.review_approved,
+                    review_approved=self._review_approved_by_task.get(task.id, False),
                     acceptance_criteria=list(task.acceptance_criteria),
                     updated_at=task.updated_at,
                     agent_backend=task.agent_backend,

@@ -1,0 +1,393 @@
+import { useState, useRef, useCallback, useEffect, type MutableRefObject } from 'react';
+import { useSetAtom } from 'jotai';
+import { toast } from 'sonner';
+import { apiClient } from '@/lib/api/client';
+import { streamSSE } from '@/lib/api/sse';
+import { isStreamingAtom, type ChatStreamEntry } from '@/lib/atoms/chat';
+import type { WireChatMessage } from '@/lib/api/types';
+import type { Attachment } from '@/components/chat/chat-input-bar';
+
+// ---------------------------------------------------------------------------
+// Pure reducer helpers — no closures over component state
+// ---------------------------------------------------------------------------
+
+export function appendChunk(
+  entries: ChatStreamEntry[],
+  payload: { content: string; thought?: boolean },
+): ChatStreamEntry[] {
+  const kind = payload.thought ? 'thought' : 'text';
+  const last = entries.at(-1);
+  if (last && last.kind === kind) {
+    const updated = [...entries];
+    updated[updated.length - 1] = { ...last, content: last.content + payload.content };
+    return updated;
+  }
+  return [...entries, { kind, content: payload.content }];
+}
+
+export function addToolStart(entries: ChatStreamEntry[], tool: string): ChatStreamEntry[] {
+  const id = `tool-${crypto.randomUUID()}`;
+  return [...entries, { kind: 'tool', id, name: tool, status: 'running' }];
+}
+
+export function updateToolProgress(
+  entries: ChatStreamEntry[],
+  payload: { tool: string; status?: string },
+): ChatStreamEntry[] {
+  const updated = [...entries];
+  for (let i = updated.length - 1; i >= 0; i--) {
+    const entry = updated[i]!;
+    if (entry.kind === 'tool' && entry.name === payload.tool) {
+      updated[i] = {
+        ...entry,
+        status: payload.status === 'done' ? 'done' : entry.status,
+        detail: payload.status ?? entry.detail,
+      };
+      break;
+    }
+  }
+  return updated;
+}
+
+export function addNote(entries: ChatStreamEntry[], message: string): ChatStreamEntry[] {
+  return [...entries, { kind: 'note', message }];
+}
+
+export function addError(entries: ChatStreamEntry[], message: string): ChatStreamEntry[] {
+  return [...entries, { kind: 'error', message }];
+}
+
+// ---------------------------------------------------------------------------
+// Hook result
+// ---------------------------------------------------------------------------
+
+export interface UseChatStreamResult {
+  messages: WireChatMessage[];
+  streamEntries: ChatStreamEntry[];
+  isStreaming: boolean;
+  loading: boolean;
+  label: string;
+  agentBackend: string | null;
+  availableBackends: string[];
+  lastSentText: string;
+  editPrefill: string | null;
+  scrollRef: MutableRefObject<HTMLDivElement | null>;
+  handleSend: (text: string, attachments?: Attachment[]) => void;
+  handleInterrupt: (opts?: { pendingText: string | null }) => void;
+  handleSlashCommand: (command: string, slashExtra?: SlashCommandExtra) => void;
+  switchBackend: (backend: string) => Promise<void>;
+  setEditPrefill: (value: string | null) => void;
+  setMessages: React.Dispatch<React.SetStateAction<WireChatMessage[]>>;
+  setLabel: React.Dispatch<React.SetStateAction<string>>;
+}
+
+export interface SlashCommandExtra {
+  /** Called for /new and /exit slash commands — context-dependent. */
+  onNew?: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
+export function useChatStream(sessionId: string | undefined): UseChatStreamResult {
+  const [messages, setMessages] = useState<WireChatMessage[]>([]);
+  const [streamEntries, setStreamEntries] = useState<ChatStreamEntry[]>([]);
+  const [isStreamingLocal, setIsStreamingLocal] = useState(false);
+  const setIsStreamingAtom = useSetAtom(isStreamingAtom);
+  const [loading, setLoading] = useState(true);
+  const [label, setLabel] = useState('');
+  const [agentBackend, setAgentBackend] = useState<string | null>(null);
+  const [availableBackends, setAvailableBackends] = useState<string[]>([]);
+  const [lastSentText, setLastSentText] = useState('');
+  const [editPrefill, setEditPrefill] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
+
+  // Keep jotai atom in sync so ChatInputBar reads it across the tree
+  const setIsStreaming = useCallback(
+    (value: boolean | ((prev: boolean) => boolean)) => {
+      setIsStreamingLocal((prev) => {
+        const next = typeof value === 'function' ? value(prev) : value;
+        setIsStreamingAtom(next);
+        return next;
+      });
+    },
+    [setIsStreamingAtom],
+  );
+
+  // Use local state directly for reads (avoids stale-closure in handlers)
+  const isStreamingRef = useRef(false);
+  useEffect(() => {
+    isStreamingRef.current = isStreamingLocal;
+  }, [isStreamingLocal]);
+
+  // Poll for turn completion after reconnect
+  const pollForTurnCompletion = useCallback(
+    (sid: string) => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient.getTurnStatus(sid);
+          if (!status.active) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            const session = await apiClient.getChatSession(sid);
+            setMessages(session.messages);
+            setStreamEntries([]);
+            setIsStreaming(false);
+          }
+        } catch {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setIsStreaming(false);
+        }
+      }, 2000);
+    },
+    [setIsStreaming],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  // Load session
+  useEffect(() => {
+    if (!sessionId) return;
+    setLoading(true);
+    setMessages([]);
+    setStreamEntries([]);
+    setIsStreaming(false);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await apiClient.getChatSession(sessionId);
+        if (cancelled) return;
+        setMessages(session.messages);
+        setLabel(session.label || 'Chat');
+        setAgentBackend(session.agent_backend ?? null);
+
+        const turnStatus = await apiClient.getTurnStatus(sessionId);
+        if (!cancelled && turnStatus.active) {
+          setIsStreaming(true);
+          setStreamEntries((prev) => addNote(prev, 'Agent is working… (reconnected)'));
+          pollForTurnCompletion(sessionId);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Session not found');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, setIsStreaming, pollForTurnCompletion]);
+
+  // Fetch available backends (once)
+  useEffect(() => {
+    apiClient.getChatAgents().then((resp) => setAvailableBackends(resp.backends.map((b) => b.name))).catch(() => {});
+  }, []);
+
+  // Auto-scroll
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, streamEntries]);
+
+  const switchBackend = useCallback(
+    async (backend: string) => {
+      if (!sessionId) return;
+      try {
+        await apiClient.updateChatSession(sessionId, { agent_backend: backend });
+        setAgentBackend(backend);
+        toast.success(`Switched to ${backend}`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to switch backend');
+      }
+    },
+    [sessionId],
+  );
+
+  const handleSSEMsg = useCallback(
+    (data: Record<string, unknown>) => {
+      const t = data.t as string;
+      if (t === 'CHAT_CHUNK') {
+        setIsStreaming(true);
+        const content = (data.content as string) ?? '';
+        const thought = Boolean(data.thought);
+        if (content) setStreamEntries((prev) => appendChunk(prev, { content, thought }));
+      } else if (t === 'CHAT_TOOL_START') {
+        setIsStreaming(true);
+        setStreamEntries((prev) => addToolStart(prev, (data.tool as string) ?? 'tool'));
+      } else if (t === 'CHAT_TOOL_PROGRESS') {
+        setStreamEntries((prev) =>
+          updateToolProgress(prev, {
+            tool: (data.tool as string) ?? 'tool',
+            status: (data.status as string) ?? undefined,
+          }),
+        );
+      } else if (t === 'CHAT_ERROR') {
+        setStreamEntries((prev) => addError(prev, (data.error as string) ?? 'An error occurred'));
+        setIsStreaming(false);
+      } else if (t === 'CHAT_DONE') {
+        setStreamEntries([]);
+        setIsStreaming(false);
+        if (sessionId) {
+          apiClient.getChatSession(sessionId).then((session) => setMessages(session.messages)).catch(() => {});
+        }
+      } else if (t === 'CHAT_SESSION_UPDATED') {
+        if (typeof data.label === 'string') setLabel(data.label);
+      }
+    },
+    [sessionId, setIsStreaming],
+  );
+
+  const handleSend = useCallback(
+    (text: string, attachments?: Attachment[]) => {
+      if (!sessionId) return;
+      setLastSentText(text);
+      setIsStreaming(true);
+
+      const displayText = attachments?.length
+        ? `${text}\n\n[Attachments: ${attachments.map((a) => a.name).join(', ')}]`
+        : text;
+      setMessages((prev) => [...prev, { role: 'user', content: displayText }]);
+
+      const wireAttachments = attachments
+        ?.filter((a) => a.content)
+        .map((a) => ({
+          type: a.type,
+          name: a.name,
+          mime_type: a.file?.type ?? (a.type === 'image' ? 'image/png' : 'text/plain'),
+          data: a.content!,
+        }));
+
+      chatAbortRef.current?.abort();
+      const controller = new AbortController();
+      chatAbortRef.current = controller;
+
+      (async () => {
+        try {
+          for await (const chunk of streamSSE<Record<string, unknown>>(
+            `/api/chat/${sessionId}/stream`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text,
+                ...(wireAttachments?.length ? { attachments: wireAttachments } : {}),
+              }),
+              signal: controller.signal,
+            },
+          )) {
+            handleSSEMsg(chunk);
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          setStreamEntries((prev) => addError(prev, err instanceof Error ? err.message : 'Stream failed'));
+          setIsStreaming(false);
+        }
+      })();
+    },
+    [sessionId, setIsStreaming, handleSSEMsg],
+  );
+
+  const handleInterrupt = useCallback(
+    (opts?: { pendingText: string | null }) => {
+      if (!sessionId || !isStreamingRef.current) return;
+      chatAbortRef.current?.abort();
+      apiClient.interruptChatSession(sessionId).catch(() => {});
+      setStreamEntries((prev) => addNote(prev, 'Interrupted by user.'));
+      setIsStreaming(false);
+
+      if (opts?.pendingText) {
+        setTimeout(() => handleSend(opts.pendingText!), 50);
+      } else {
+        setEditPrefill(lastSentText);
+      }
+    },
+    [sessionId, setIsStreaming, lastSentText, handleSend],
+  );
+
+  const handleSlashCommand = useCallback(
+    (command: string, extra?: SlashCommandExtra) => {
+      const [cmd, ...args] = command.split(' ');
+      switch (cmd) {
+        case '/clear':
+          setMessages([]);
+          setStreamEntries([]);
+          setIsStreaming(false);
+          break;
+        case '/new':
+        case '/exit':
+          extra?.onNew?.();
+          break;
+        case '/help':
+          setMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: 'Available commands: /clear, /new, /agents <name>, /flow <goal>, /exit, /help' },
+          ]);
+          break;
+        case '/agents':
+          if (args.length > 0) {
+            void switchBackend(args.join(' '));
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              { role: 'assistant', content: 'Use `/agents <name>` to switch the orchestrator backend.' },
+            ]);
+          }
+          break;
+        case '/flow': {
+          const goal = args.join(' ').trim();
+          const lines = [
+            '**Structured flow: Plan → Execute → Orchestrate**',
+            '',
+            goal ? `**Goal:** ${goal}` : '',
+            '1. **PLAN** — State the outcome, constraints, and acceptance criteria in 1–3 bullets.',
+            '2. **EXECUTE** — Implement one small step at a time and verify each step.',
+            '3. **ORCHESTRATE** — Summarize what changed, what was verified, and the next action.',
+            '',
+            '_Tip: Start your next message with "Plan for: <goal>" to begin explicitly._',
+          ].filter(Boolean);
+          setMessages((prev) => [
+            ...prev,
+            { role: 'user', content: command },
+            { role: 'assistant', content: lines.join('\n') },
+          ]);
+          break;
+        }
+        default:
+          handleSend(command);
+      }
+    },
+    [handleSend, switchBackend, setIsStreaming],
+  );
+
+  return {
+    messages,
+    streamEntries,
+    isStreaming: isStreamingLocal,
+    loading,
+    label,
+    agentBackend,
+    availableBackends,
+    lastSentText,
+    editPrefill,
+    scrollRef,
+    handleSend,
+    handleInterrupt,
+    handleSlashCommand,
+    switchBackend,
+    setEditPrefill,
+    setMessages,
+    setLabel,
+  };
+}

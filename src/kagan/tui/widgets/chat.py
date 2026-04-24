@@ -1140,6 +1140,8 @@ class ChatPanel(Vertical):
             self.post_message(self.SessionChanged(key))
 
     def _render_current_session(self) -> None:
+        if not self._dom_ready():
+            return
         stream = self._stream_output()
         if stream is not None:
             stream.clear()
@@ -1149,6 +1151,12 @@ class ChatPanel(Vertical):
         self._update_hidden_buffer()
         self._update_content_state()
         self._refresh_status()
+
+    def _dom_ready(self) -> bool:
+        return (
+            self.query("#chat-inline-surface").first() is not None
+            and self.query("#chat-messages").first() is not None
+        )
 
     def _render_entry(self, stream: StreamingOutput, kind: str, payload: dict[str, Any]) -> None:
         raw_text = str(payload.get("text") or "")
@@ -1216,7 +1224,10 @@ class ChatPanel(Vertical):
         return rendered
 
     def _update_hidden_buffer(self) -> None:
-        messages = self.query_one("#chat-messages", Static)
+        try:
+            messages = self.query_one("#chat-messages", Static)
+        except NoMatches:
+            return
         rendered = self._rendered_messages()
         if not rendered:
             messages.set_class(True, "chat-empty")

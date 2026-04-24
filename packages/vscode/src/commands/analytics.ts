@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import { formatDuration, formatPercentage } from "../lib/format.js";
+import { withErrors } from "./common.js";
 
 export function registerAnalyticsCommands(
   context: vscode.ExtensionContext,
@@ -73,13 +74,4 @@ export function registerAnalyticsCommands(
       });
     }),
   );
-}
-
-async function withErrors(action: string, run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Failed to ${action}: ${message}`);
-  }
 }

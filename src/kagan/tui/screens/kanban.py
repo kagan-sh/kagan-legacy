@@ -720,8 +720,12 @@ class KanbanScreen(Screen[None]):
         stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
         attach_key = get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a")
         start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
-        panel = self.query_one(ChatPanel)
-        overlay_open = panel.has_class("visible")
+        try:
+            panel = self.query_one(ChatPanel)
+        except NoMatches:
+            overlay_open = False
+        else:
+            overlay_open = panel.has_class("visible")
         fullscreen_key = get_key_for_action(
             KANBAN_BINDINGS, "expand_chat_overlay", default="Ctrl+F"
         )

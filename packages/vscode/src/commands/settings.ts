@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { AgentBackend } from "../api/types.js";
+import { withErrors } from "./common.js";
 
 const REVIEW_STRICTNESS_OPTIONS = [
   { label: "Strict", description: "All criteria must pass, detailed review", value: "strict" },
@@ -112,13 +113,4 @@ export function registerSettingsCommands(
       });
     }),
   );
-}
-
-async function withErrors(action: string, run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Failed to ${action}: ${message}`);
-  }
 }

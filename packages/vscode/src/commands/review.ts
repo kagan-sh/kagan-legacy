@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { BoardItem, BoardTreeProvider } from "../providers/board.tree.js";
+import type { BoardTreeProvider } from "../providers/board.tree.js";
 import type { ReviewCommentProvider } from "../providers/review.comments.js";
-import type { WireTask } from "../api/types.js";
-
-type TaskItem = Extract<BoardItem, { kind: "task" }>;
+import { confirmAction, resolveTask, type TaskItem, withErrors } from "./common.js";
 
 export function registerReviewCommands(
   context: vscode.ExtensionContext,
@@ -15,7 +13,12 @@ export function registerReviewCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand("kagan.review.approve", async (item?: TaskItem) => {
       await withErrors("approve task", async () => {
-        const task = await resolveReviewTask(client, item);
+        const task = await resolveTask(client, item, {
+          status: "REVIEW",
+          noMatchesMessage: "No tasks are waiting for review.",
+          placeHolder: "Select a review task",
+          showStatusAndPriority: false,
+        });
         if (!task) return;
 
         const result = await client.reviewDecide(task.id, { action: "approve" });
@@ -29,7 +32,12 @@ export function registerReviewCommands(
 
     vscode.commands.registerCommand("kagan.review.reject", async (item?: TaskItem) => {
       await withErrors("reject task", async () => {
-        const task = await resolveReviewTask(client, item);
+        const task = await resolveTask(client, item, {
+          status: "REVIEW",
+          noMatchesMessage: "No tasks are waiting for review.",
+          placeHolder: "Select a review task",
+          showStatusAndPriority: false,
+        });
         if (!task) return;
 
         const feedback = await vscode.window.showInputBox({
@@ -52,15 +60,19 @@ export function registerReviewCommands(
 
     vscode.commands.registerCommand("kagan.review.merge", async (item?: TaskItem) => {
       await withErrors("merge task", async () => {
-        const task = await resolveReviewTask(client, item);
+        const task = await resolveTask(client, item, {
+          status: "REVIEW",
+          noMatchesMessage: "No tasks are waiting for review.",
+          placeHolder: "Select a review task",
+          showStatusAndPriority: false,
+        });
         if (!task) return;
 
-        const confirmed = await vscode.window.showWarningMessage(
+        const confirmed = await confirmAction(
           `Merge "${task.title}" into ${task.base_branch ?? "base branch"}?`,
-          { modal: true },
           "Merge Task",
         );
-        if (confirmed !== "Merge Task") return;
+        if (!confirmed) return;
 
         await client.reviewDecide(task.id, { action: "merge" });
         boardProvider.refresh();
@@ -68,42 +80,4 @@ export function registerReviewCommands(
       });
     }),
   );
-}
-
-function isTaskItem(item: unknown): item is TaskItem {
-  return typeof item === "object" && item !== null && "kind" in item && (item as TaskItem).kind === "task";
-}
-
-async function resolveReviewTask(
-  client: KaganClient,
-  item?: TaskItem,
-): Promise<WireTask | undefined> {
-  if (isTaskItem(item)) {
-    return client.getTask(item.task.id);
-  }
-
-  const tasks = await client.getTasks("REVIEW");
-  if (tasks.length === 0) {
-    vscode.window.showInformationMessage("No tasks are waiting for review.");
-    return undefined;
-  }
-
-  const picked = await vscode.window.showQuickPick(
-    tasks.map((task) => ({
-      label: task.title,
-      detail: task.description || undefined,
-      task,
-    })),
-    { placeHolder: "Select a review task" },
-  );
-  return picked?.task;
-}
-
-async function withErrors(action: string, run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Failed to ${action}: ${message}`);
-  }
 }

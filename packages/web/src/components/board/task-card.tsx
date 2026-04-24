@@ -127,16 +127,9 @@ function TaskCardBody({
                 <DiffSummaryRow summary={task.diff_summary} onNavigate={onDiffNavigate} />
             ) : null}
 
-            <div
-                className={cn(
-                    "overflow-hidden transition-all duration-150",
-                    isSelected
-                        ? "max-h-20 opacity-100"
-                        : "max-h-0 opacity-0 group-hover:max-h-20 group-hover:opacity-100",
-                )}
-            >
+            <div>
                 {task.description ? (
-                    <p className="line-clamp-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
+                    <p className="line-clamp-2 text-[11px] leading-4 text-[var(--muted-foreground)]">
                         {task.description}
                     </p>
                 ) : null}

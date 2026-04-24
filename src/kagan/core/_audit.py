@@ -1,19 +1,19 @@
 """Audit log persistence."""
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlmodel import select
 
-from kagan.core._db_helpers import _add_and_refresh, _db_async
+from kagan.core._db_helpers import _add_and_refresh, _col, _db_async
 from kagan.core.models import AuditEntry
 
 # ── Module-level functions (canonical API) ─────────────────────────
 
 
 async def list_audit(engine: Engine, *, limit: int | None = None) -> list[AuditEntry]:
-    stmt = select(AuditEntry).order_by(cast("Any", AuditEntry.created_at).desc())
+    stmt = select(AuditEntry).order_by(_col(AuditEntry.created_at).desc())
     if limit is not None:
         stmt = stmt.limit(limit)
     return await _db_async(engine, lambda s: list(s.exec(stmt).all()))

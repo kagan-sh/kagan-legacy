@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from acp.schema import ToolCallStart, UsageUpdate
 from loguru import logger
@@ -26,7 +26,14 @@ from kagan.core._agent_monitor import (
 from kagan.core._analytics import emit_telemetry
 from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
-from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
+from kagan.core._db_helpers import (
+    _add_and_refresh,
+    _col,
+    _db_async,
+    _db_sync,
+    _setting_enabled,
+    _utc_now,
+)
 from kagan.core._events import BoardEvent, Events
 from kagan.core._hooks import HookAction, HookContext, HookEvent, HookRunner
 from kagan.core._launchers import get_launcher
@@ -80,10 +87,10 @@ async def fetch_project_learnings(engine: Engine, project_id: str) -> list[str]:
     stmt = (
         select(TaskNote)
         .where(
-            cast("Any", TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id))
+            _col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id))
         )
-        .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
-        .order_by(desc(cast("Any", TaskNote.created_at)))
+        .where(_col(TaskNote.content).like("[LEARNING]%"))
+        .order_by(desc(_col(TaskNote.created_at)))
         .limit(30)
     )
     notes: list[TaskNote] = await _db_async(engine, lambda s: list(s.exec(stmt).all()))
@@ -105,7 +112,7 @@ async def get_latest_session(engine: Engine, task_id: str) -> Session | None:
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(cast("Any", Session.started_at)))
+            .order_by(desc(_col(Session.started_at)))
         ).first(),
     )
 
@@ -142,7 +149,7 @@ async def list_task_sessions(engine: Engine, task_id: str) -> list[Session]:
             s.exec(
                 select(Session)
                 .where(Session.task_id == task_id)
-                .order_by(cast("Any", Session.started_at))
+                .order_by(_col(Session.started_at))
             ).all()
         ),
     )
@@ -154,7 +161,7 @@ async def get_latest_task_session(engine: Engine, task_id: str) -> Session | Non
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(cast("Any", Session.started_at)))
+            .order_by(desc(_col(Session.started_at)))
         ).first(),
     )
 
@@ -165,7 +172,7 @@ async def has_active_session(engine: Engine, task_id: str) -> bool:
         lambda s: s.exec(
             select(Session).where(
                 Session.task_id == task_id,
-                cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
             )
         ).first(),
     )
@@ -183,8 +190,8 @@ async def active_session_summaries(
         lambda s: list(
             s.exec(
                 select(Session)
-                .where(cast("Any", Session.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_col(Session.started_at)))
             ).all()
         ),
     )
@@ -549,8 +556,8 @@ class Sessions:
             self._engine,
             lambda s: s.exec(
                 select(Session)
-                .where(Session.task_id == task_id, cast("Any", Session.launcher).is_not(None))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(Session.task_id == task_id, _col(Session.launcher).is_not(None))
+                .order_by(desc(_col(Session.started_at)))
             ).first(),
         )
 
@@ -620,7 +627,7 @@ class Sessions:
             lambda s: s.exec(
                 select(Session).where(
                     Session.task_id == task_id,
-                    cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                    _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
                 )
             ).first(),
         )

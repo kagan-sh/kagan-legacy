@@ -3,7 +3,7 @@ import builtins
 import contextlib
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
 from loguru import logger
 from sqlalchemy import Engine, desc
@@ -12,6 +12,7 @@ from sqlmodel import select
 
 from kagan.core._db_helpers import (
     _add_and_refresh,
+    _col,
     _db_async,
     _db_sync,
     _utc_now,
@@ -550,23 +551,23 @@ class Tasks:
             worktrees = {
                 worktree.task_id
                 for worktree in s.exec(
-                    select(Worktree).where(cast("Any", Worktree.task_id).in_(task_ids))
+                    select(Worktree).where(_col(Worktree.task_id).in_(task_ids))
                 ).all()
             }
 
             latest_events: dict[str, str] = {}
             for event in s.exec(
                 select(SessionEvent)
-                .where(cast("Any", SessionEvent.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", SessionEvent.created_at)))
+                .where(_col(SessionEvent.task_id).in_(task_ids))
+                .order_by(desc(_col(SessionEvent.created_at)))
             ).all():
                 latest_events.setdefault(event.task_id, utc_iso(event.created_at) or "")
 
             active_sessions: dict[str, dict[str, Any]] = {}
             for session in s.exec(
                 select(Session)
-                .where(cast("Any", Session.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_col(Session.started_at)))
             ).all():
                 if session.status not in running_statuses or session.task_id in active_sessions:
                     continue
@@ -619,7 +620,7 @@ class Tasks:
         stmt = (
             select(TaskNote)
             .where(TaskNote.task_id == task_id)
-            .order_by(cast("Any", TaskNote.created_at))
+            .order_by(_col(TaskNote.created_at))
         )
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 
@@ -644,12 +645,12 @@ class Tasks:
         stmt = (
             select(TaskNote)
             .where(
-                cast("Any", TaskNote.task_id).in_(
+                _col(TaskNote.task_id).in_(
                     select(Task.id).where(Task.project_id == project_id)
                 )
             )
-            .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
-            .order_by(desc(cast("Any", TaskNote.created_at)))
+            .where(_col(TaskNote.content).like("[LEARNING]%"))
+            .order_by(desc(_col(TaskNote.created_at)))
             .limit(30)
         )
         notes: builtins.list[TaskNote] = await _db_async(

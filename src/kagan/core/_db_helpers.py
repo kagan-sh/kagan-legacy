@@ -1,10 +1,21 @@
 import asyncio
 from collections.abc import Callable, Mapping
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlmodel import Session as DBSession
 
 from kagan.core.models import _utc_now
+
+
+def _col(x: Any) -> Any:
+    """Typed passthrough for SQLModel column expressions.
+
+    SQLModel's Mapped[...] columns trip pyrefly when used with
+    .like / .in_ / .desc — historically wrapped in cast("Any", x).
+    Centralised here so changes (e.g. an SQLModel bump) touch one place.
+    """
+    return x
 
 
 def _setting_enabled(settings: Mapping[str, str], key: str, *, default: bool) -> bool:
@@ -43,6 +54,7 @@ def _add_and_refresh(s, obj):
 
 __all__ = [
     "_add_and_refresh",
+    "_col",
     "_db_async",
     "_db_sync",
     "_setting_branch",

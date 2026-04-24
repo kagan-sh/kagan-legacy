@@ -182,6 +182,12 @@ class KanbanScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield KaganHeader()
         yield SearchBar(id="search-bar").data_bind(is_visible=KanbanScreen.search_visible)
+        yield Static(
+            "No project open — press [bold]n[/bold] to create one,"
+            " or [bold]Ctrl+O[/bold] to open a folder.",
+            id="kanban-no-project-hint",
+            classes="kanban-no-project-hint",
+        )
         with Container(classes="board-container kanban-board-container"):
             with Container(classes="kanban-content-pane"):
                 with Container(classes="kanban-main-pane"):
@@ -201,6 +207,7 @@ class KanbanScreen(Screen[None]):
 
     async def on_mount(self) -> None:
         self._refresh_header()
+        self._update_no_project_hint()
         panel = self.query_one(ChatPanel)
         panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
@@ -381,7 +388,10 @@ class KanbanScreen(Screen[None]):
         self._update_review_queue_hint()
 
     async def _reload_tasks(self) -> None:
-        tasks = await self.kagan_app.core.tasks.list(repo_id=self.kagan_app.selected_repo_id)
+        if self.kagan_app.project is None:
+            tasks = []
+        else:
+            tasks = await self.kagan_app.core.tasks.list(repo_id=self.kagan_app.selected_repo_id)
         if not self.is_mounted:
             return
         self._all_tasks = sorted(
@@ -635,6 +645,11 @@ class KanbanScreen(Screen[None]):
     def _set_inline_action_message(self, message: str | None) -> None:
         self._inline_action_message = message.strip() if message else None
         self._update_hint_bar()
+
+    def _update_no_project_hint(self) -> None:
+        with contextlib.suppress(NoMatches):
+            hint = self.query_one("#kanban-no-project-hint", Static)
+            hint.display = self.kagan_app.project is None
 
     def _refresh_header(self) -> None:
         with contextlib.suppress(NoMatches):
@@ -1914,6 +1929,7 @@ class KanbanScreen(Screen[None]):
         self.call_after_refresh(self._on_screen_resume_deferred)
 
     async def _on_screen_resume_deferred(self) -> None:
+        self._update_no_project_hint()
         await self._reload_tasks()
         self._sync_layout_state()
         self._auto_focus_board()

@@ -104,6 +104,8 @@ class CoreDriver:
         str_paths = [str(p) for p in repo_paths] if repo_paths else None
         project = await self._ctx.projects.create(name, repo_paths=str_paths)
         await self._ctx.projects.set_active(project.id)
+        # Persist so TUI instances using the same DB auto-restore this project.
+        await self._ctx.settings.set({"ui.last_project_id": project.id})
         return project.id
 
     async def add_repo(self, repo_path: str | Path) -> str:

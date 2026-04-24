@@ -39,7 +39,6 @@ async def test_ctrl_o_opens_chat_on_kanban(board: KaganDriver) -> None:
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         await pilot.press("ctrl+i")
         await pilot.pause()
@@ -79,7 +78,6 @@ async def test_card_run_state_shows_mode_specific_running_and_not_started(
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
 
         cards = {
@@ -117,8 +115,6 @@ async def test_kanban_mount_remains_interactive_while_bootstrap_runs(
 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.press("enter")
         await asyncio.wait_for(started.wait(), timeout=1.0)
 
         await pilot.press("/")
@@ -135,7 +131,6 @@ async def test_p_opens_peek_overlay(board: KaganDriver) -> None:
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         peek = app.screen.query_one("#peek-overlay")
         assert not peek.has_class("visible")
@@ -276,7 +271,6 @@ async def test_ctrl_o_on_selected_detached_task_opens_docked_task_overlay(
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         await pilot.press("ctrl+i")
         await pilot.pause()
@@ -305,7 +299,6 @@ async def test_hjkl_navigation_moves_selection_across_cards(board: KaganDriver) 
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
 
         screen = cast("KanbanScreen", app.screen)
@@ -342,7 +335,6 @@ async def test_arrow_navigation_moves_selection_across_cards(board: KaganDriver)
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
 
         screen = cast("KanbanScreen", app.screen)
@@ -378,7 +370,6 @@ async def test_tab_navigation_moves_within_column_and_shift_tab_reverses(
     app = KaganApp(db_path=board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
 
         screen = cast("KanbanScreen", app.screen)
@@ -403,7 +394,6 @@ async def test_empty_board_shows_onboarding_hint_with_help_fallback(
     app = KaganApp(db_path=empty_board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
 
         hint = app.screen.query_one("#review-queue-hint", Static)
@@ -420,7 +410,6 @@ async def test_f1_opens_help_modal_on_kanban(empty_board: KaganDriver) -> None:
     app = KaganApp(db_path=empty_board.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         await pilot.press("f1")
         await pilot.pause()
@@ -439,7 +428,6 @@ async def test_first_boot_tutorial_overlay_is_shown_once(tmp_path) -> None:
     app = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         await pilot.pause()
 
@@ -456,7 +444,6 @@ async def test_first_boot_tutorial_overlay_is_shown_once(tmp_path) -> None:
     app2 = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app2.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("enter")
         await pilot.pause()
         await pilot.pause()
 

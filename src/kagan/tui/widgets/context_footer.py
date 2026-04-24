@@ -105,7 +105,7 @@ class ContextFooter(Horizontal):
         elif self.context == "session":
             return self._format_hints(FooterBuilder.session_dashboard())
         elif self.context == "welcome":
-            return self._format_hints(FooterBuilder.welcome())
+            return self._format_hints(FooterBuilder.kanban_core())
         elif self.context == "settings":
             return self._format_hints(FooterBuilder.settings())
         elif self.context == "confirm":

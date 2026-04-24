@@ -1,4 +1,4 @@
-"""Smoke tests for DoctorModal and degraded banner on WelcomeScreen."""
+"""Smoke tests for DoctorModal and WARN-only startup routing."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ async def test_doctor_modal_skip_button_enabled_after_mount_autofocus(tmp_path) 
 
 
 async def test_doctor_modal_skip_button_dismisses_modal(tmp_path) -> None:
-    """Clicking 'Skip anyway' button dismisses DoctorModal and routes to welcome."""
+    """Clicking 'Skip anyway' button dismisses DoctorModal and routes to kanban."""
     from textual.widgets import Button
 
     from kagan.tui import KaganApp
@@ -158,31 +158,11 @@ async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
         assert "dm-fix-hint" in hint_widget.classes
 
 
-# ── WelcomeScreen: WARN-only / degraded banner ─────────────────────────────
+# ── Startup routing: WARN-only / all-pass / no checks ──────────────────────
 
 
-async def test_warn_only_shows_welcome_with_banner(tmp_path) -> None:
-    """WARN-only checks produce WelcomeScreen with the degraded banner visible."""
-    from textual.containers import Horizontal
-
-    from kagan.tui import KaganApp
-
-    checks = [_make_check("ide", "warn", fix_hint="Install VS Code")]
-    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()  # allow call_after_refresh to fire
-        assert app.screen.id == "welcome-screen"
-
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" not in banner.classes
-
-
-async def test_degraded_banner_dismisses_on_button(tmp_path) -> None:
-    """Dismissing the amber banner hides it for the session."""
-    from textual.containers import Horizontal
-    from textual.widgets import Button
-
+async def test_warn_only_routes_to_kanban(tmp_path) -> None:
+    """WARN-only checks route directly to kanban-screen (no blocking modal)."""
     from kagan.tui import KaganApp
 
     checks = [_make_check("ide", "warn", fix_hint="Install VS Code")]
@@ -190,23 +170,11 @@ async def test_degraded_banner_dismisses_on_button(tmp_path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        assert app.screen.id == "welcome-screen"
-
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" not in banner.classes
-
-        dismiss_btn = app.screen.query_one("#db-dismiss-btn", Button)
-        dismiss_btn.press()
-        await pilot.pause()
-
-        assert "hidden" in banner.classes
-        assert app._doctor_banner_dismissed is True
+        assert app.screen.id == "kanban-screen"
 
 
-async def test_no_banner_when_all_checks_pass(tmp_path) -> None:
-    """No degraded banner when all checks pass."""
-    from textual.containers import Horizontal
-
+async def test_all_pass_routes_to_kanban(tmp_path) -> None:
+    """All-pass checks route to kanban-screen."""
     from kagan.tui import KaganApp
 
     checks = [_make_check("git", "pass", fix_hint="")]
@@ -214,25 +182,17 @@ async def test_no_banner_when_all_checks_pass(tmp_path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        assert app.screen.id == "welcome-screen"
-
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" in banner.classes
+        assert app.screen.id == "kanban-screen"
 
 
-async def test_no_banner_when_no_checks_provided(tmp_path) -> None:
-    """When startup_checks is None (no preflight), welcome shows without banner."""
-    from textual.containers import Horizontal
-
+async def test_no_checks_routes_to_kanban(tmp_path) -> None:
+    """When startup_checks is None (no preflight), kanban is shown directly."""
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=None)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.screen.id == "welcome-screen"
-
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" in banner.classes
+        assert app.screen.id == "kanban-screen"
 
 
 # ── Command pane smoke ─────────────────────────────────────────────────────

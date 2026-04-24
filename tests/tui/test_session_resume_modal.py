@@ -4,7 +4,7 @@ import pytest
 from tests.helpers.async_utils import wait_for
 from tests.helpers.driver import KaganDriver
 from textual.css.query import NoMatches
-from textual.widgets import Button, OptionList
+from textual.widgets import OptionList
 
 
 def _has_options(app, widget_id: str) -> bool:
@@ -18,11 +18,12 @@ def _has_options(app, widget_id: str) -> bool:
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
-async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
+async def test_session_resume_modal_opens_and_resumes_project(
     tmp_path,
 ) -> None:
     from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
+    from kagan.tui.screens.session_resume_modal import SessionResumeModal
 
     driver = await KaganDriver.boot(tmp_path)
     project_id = await driver.create_project("Resume Project")
@@ -43,11 +44,10 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
     app = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.screen.id == "welcome-screen"
-        button = app.screen.query_one("#welcome-resume-session", Button)
-        assert "Resume recent session" in str(button.label)
+        assert app.screen.id == "kanban-screen"
 
-        button.press()
+        # Push the SessionResumeModal directly (previously opened via welcome button)
+        app.push_screen(SessionResumeModal())
         await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
         await wait_for(
@@ -69,6 +69,7 @@ async def test_welcome_resume_session_button_opens_modal_and_resumes_project(
 async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> None:
     from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
+    from kagan.tui.screens.session_resume_modal import SessionResumeModal
 
     driver = await KaganDriver.boot(tmp_path)
     project_id = await driver.create_project("Resume Project")
@@ -100,8 +101,7 @@ async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> 
     app = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app.run_test() as pilot:
         await pilot.pause()
-        button = app.screen.query_one("#welcome-resume-session", Button)
-        button.press()
+        app.push_screen(SessionResumeModal())
         await wait_for(lambda: app.screen.id == "session-resume-modal", pump_delay=0.05)
 
         await wait_for(

@@ -42,9 +42,9 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 
 
 class _SessionSelect(Select[str]):
-    def _on_mount(self, _event: Any) -> None:
+    def _setup_options_renderables(self) -> None:
         with contextlib.suppress(NoMatches):
-            super()._on_mount(_event)
+            super()._setup_options_renderables()
 
 
 @dataclass(slots=True)

@@ -1,4 +1,4 @@
-import type { WireChatSession, WireEvent, WireProject, WireRepository, WireTask } from '@/lib/api/types';
+import type { AcceptanceCriterionResponse, WireChatSession, WireEvent, WireProject, WireRepository, WireTask } from '@/lib/api/types';
 
 let idCounter = 0;
 
@@ -67,6 +67,18 @@ export function mockChatSession(overrides: Partial<WireChatSession> = {}): WireC
     updated_at: new Date().toISOString(),
     message_count: 0,
     messages: [],
+    ...overrides,
+  };
+}
+
+export function mockCriterion(
+  overrides: Partial<AcceptanceCriterionResponse> & { task_id?: string } = {},
+): AcceptanceCriterionResponse {
+  return {
+    id: nextId(),
+    task_id: overrides.task_id ?? nextId(),
+    ordinal: 0,
+    text: 'Test criterion',
     ...overrides,
   };
 }

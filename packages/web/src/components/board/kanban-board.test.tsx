@@ -99,7 +99,8 @@ describe('KanbanBoard', () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<KanbanBoard />, { store });
 
-    const card = await screen.findByRole('button', { name: 'Inspector target' });
+    // The auto-select effect may suffix the label with " (selected)"; use a regex match.
+    const card = await screen.findByRole('button', { name: /^Inspector target/ });
 
     await user.click(card);
 
@@ -224,7 +225,7 @@ describe('KanbanBoard', () => {
     expect(navigateMock).toHaveBeenCalledWith('/task/task-2');
   });
 
-  it('opens delete confirmation from the board keyboard shortcut', async () => {
+  it('opens delete confirmation from the card context menu', async () => {
     const { apiClient } = await import('@/lib/api/client');
     const task = {
       id: 'task-3',
@@ -242,11 +243,15 @@ describe('KanbanBoard', () => {
     store.set(boardLoadingAtom, false);
     store.set(tasksAtom, [task]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<KanbanBoard />, { store });
 
-    await user.click(await screen.findByRole('button', { name: 'Delete target' }));
-    await user.keyboard('x');
+    // Right-click the card to open the context menu, then select Delete.
+    const card = await screen.findByRole('button', { name: /^Delete target/ });
+    await user.pointer({ target: card, keys: '[MouseRight]' });
+
+    const deleteItem = await screen.findByRole('menuitem', { name: /Delete/i });
+    await user.click(deleteItem);
 
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Delete task?')).toBeVisible();

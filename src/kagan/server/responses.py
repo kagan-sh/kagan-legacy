@@ -142,6 +142,7 @@ class TaskResponse(_OrmBase):
     last_event_at: str | None = None
     has_workspace: bool = False
     review_running: bool = False
+    review_verdicts: list[ReviewVerdictResponse] = Field(default_factory=list)
     active_session: ActiveSessionResponse | None = None
     backend_selection: BackendSelectionResponse | None = None
     diff_summary: DiffSummaryResponse | None = None

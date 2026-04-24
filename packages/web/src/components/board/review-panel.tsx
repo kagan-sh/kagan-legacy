@@ -166,22 +166,26 @@ export function ReviewPanel({ taskId, task, className, enableHotkeys = false }: 
             </span>
           </div>
           <div className="space-y-1.5">
-            {task.review_verdicts.map((v) => (
-              <div key={v.criterion_index} className="flex items-start gap-2 text-sm">
-                {v.verdict === 'PASS' ? (
-                  <CheckCircle className="mt-0.5 size-3.5 text-[var(--kagan-success)]" />
-                ) : (
-                  <XCircle className="mt-0.5 size-3.5 text-[var(--destructive)]" />
-                )}
-                <div className="min-w-0">
-                  <span className="font-medium">
-                    {(task.acceptance_criteria ?? [])[v.criterion_index] ??
-                      `Criterion ${v.criterion_index + 1}`}
-                  </span>
-                  <p className="text-[var(--muted-foreground)]">{v.reason}</p>
+            {task.review_verdicts.map((v) => {
+              const criterion = (task.acceptance_criteria ?? []).find(
+                (c) => c.id === v.criterion_id,
+              );
+              return (
+                <div key={v.id} className="flex items-start gap-2 text-sm">
+                  {v.verdict === 'PASS' ? (
+                    <CheckCircle className="mt-0.5 size-3.5 text-[var(--kagan-success)]" />
+                  ) : (
+                    <XCircle className="mt-0.5 size-3.5 text-[var(--destructive)]" />
+                  )}
+                  <div className="min-w-0">
+                    <span className="font-medium">
+                      {criterion?.text ?? 'Unknown criterion'}
+                    </span>
+                    <p className="text-[var(--muted-foreground)]">{v.reason}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : task?.review_running ? (
@@ -259,7 +263,7 @@ export function ReviewPanel({ taskId, task, className, enableHotkeys = false }: 
 }
 
 function buildReviewSummary(task?: WireTask): ReviewSummary {
-  const criteriaCount = (task?.acceptance_criteria ?? []).filter((criterion) => criterion.trim()).length;
+  const criteriaCount = (task?.acceptance_criteria ?? []).filter((c) => c.text.trim()).length;
   const verdicts = task?.review_verdicts ?? [];
   const reviewedCount = Math.min(verdicts.length, criteriaCount);
   const passedCount = verdicts.filter((verdict) => verdict.verdict === 'PASS').length;

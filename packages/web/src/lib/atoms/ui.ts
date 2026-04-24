@@ -17,9 +17,6 @@ export const rightRailTaskIdAtom = atom<string | null>(null);
 
 export const rightRailChatSessionIdAtom = atom<string | null>(null);
 
-/** Command palette open state. */
-export const commandPaletteOpenAtom = atom(false);
-
 /** Session picker overlay open state. */
 export const sessionPickerOpenAtom = atom(false);
 
@@ -34,7 +31,6 @@ export const workspaceSessionIdAtom = atom<string | null>(null);
 /** Derived atom: true if any dialog/overlay is open. */
 export const isAnyDialogOpenAtom = atom((get) => {
   return (
-    get(commandPaletteOpenAtom) ||
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
     get(pluginImportOpenAtom) ||

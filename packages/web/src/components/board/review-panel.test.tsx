@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import { ReviewPanel } from '@/components/board/review-panel';
+import { mockCriterion } from '@/test/mocks';
 import type { WireTask } from '@/lib/api/types';
 
 vi.mock('@/lib/api/client', () => ({
@@ -10,25 +11,30 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('ReviewPanel', () => {
+  const crit1 = mockCriterion({ id: 'crit-1', task_id: 't1', ordinal: 0, text: 'One' });
+
   const reviewTask: WireTask = {
     id: 't1',
     title: 'Task',
     status: 'REVIEW',
     priority: 'MEDIUM',
-    acceptance_criteria: ['One'],
+    acceptance_criteria: [crit1],
     review_running: false,
   };
+
+  const crit2a = mockCriterion({ id: 'crit-2a', task_id: 't2', ordinal: 0, text: 'First' });
+  const crit2b = mockCriterion({ id: 'crit-2b', task_id: 't2', ordinal: 1, text: 'Second' });
 
   const reviewEvidenceTask: WireTask = {
     id: 't2',
     title: 'Evidence task',
     status: 'REVIEW',
     priority: 'HIGH',
-    acceptance_criteria: ['First', 'Second'],
+    acceptance_criteria: [crit2a, crit2b],
     review_approved: false,
     review_verdicts: [
-      { criterion_index: 0, verdict: 'PASS', reason: 'Covers the acceptance criteria' },
-      { criterion_index: 1, verdict: 'FAIL', reason: 'Missing regression coverage' },
+      { id: 'v1', criterion_id: 'crit-2a', verdict: 'PASS', reason: 'Covers the acceptance criteria' },
+      { id: 'v2', criterion_id: 'crit-2b', verdict: 'FAIL', reason: 'Missing regression coverage' },
     ],
     review_running: false,
   };

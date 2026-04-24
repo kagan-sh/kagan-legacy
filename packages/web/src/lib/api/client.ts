@@ -464,13 +464,33 @@ export class KaganApiClient {
     });
   }
 
-  /** GET /health — auth-exempt, returns server status and package version. */
+  /**
+   * GET /health — auth-exempt, returns server status and package version.
+   * The health endpoint returns plain JSON (not a WireEnvelope), so this
+   * uses a private raw-fetch helper rather than `_doRequest`.
+   */
   async getHealth(): Promise<{ status: string; version: string }> {
-    const response = await fetch(`${this.baseUrl}/health`, {
+    return this._rawRequest<{ status: string; version: string }>('/health', 'Health check failed');
+  }
+
+  /** POST /api/chat/:sessionId/interrupt — signal the server to stop the current turn. */
+  async interruptChatSession(sessionId: string): Promise<{ session_id: string; interrupted: boolean }> {
+    return this.request<{ session_id: string; interrupted: boolean }>(
+      `/api/chat/${sessionId}/interrupt`,
+      { method: 'POST' },
+    );
+  }
+
+  /**
+   * Perform a raw fetch for endpoints that return plain JSON (no WireEnvelope).
+   * Auth-exempt paths (e.g. /health) use this instead of `_doRequest`.
+   */
+  private async _rawRequest<T>(path: string, errorMessage: string): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new ApiError(response.status, 'Health check failed');
-    return response.json() as Promise<{ status: string; version: string }>;
+    if (!response.ok) throw new ApiError(response.status, errorMessage);
+    return response.json() as Promise<T>;
   }
 
   /** GET /api/preflight?agent_backend=... */

@@ -142,10 +142,10 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
           <div className="space-y-2">
             {criteria.map((criterion) => (
               <div
-                key={criterion}
+                key={criterion.id}
                 className=" border border-[color:var(--border-subtle)] bg-[color:var(--surface-0)] px-3 py-2 text-sm text-[var(--muted-foreground)]"
               >
-                {criterion}
+                {criterion.text}
               </div>
             ))}
           </div>
@@ -223,7 +223,7 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
             <span>{task.id}</span>
             <button
               type="button"
-              className="inline-flex size-5 items-center justify-center text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="inline-flex size-5 items-center justify-center text-[var(--muted-foreground)] opacity-50 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
               onClick={() => {
                 void navigator.clipboard.writeText(task.id).then(() => undefined, () => undefined);
               }}

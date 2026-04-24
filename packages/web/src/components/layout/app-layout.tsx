@@ -3,7 +3,6 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { SkipLink } from "@/components/a11y/skip-link";
 import { ActivityBar } from "@/components/layout/activity-bar";
-import { CommandPalette } from "@/components/layout/command-palette";
 import { HelpOverlay } from "@/components/layout/help-overlay";
 import { HeaderBar } from "@/components/layout/header-bar";
 import { MobileTabs } from "@/components/layout/mobile-tabs";
@@ -22,7 +21,6 @@ import {
     projectSwitchVersionAtom,
 } from "@/lib/atoms/board";
 import {
-    commandPaletteOpenAtom,
     helpOverlayOpenAtom,
     pluginImportOpenAtom,
     rightRailChatSessionIdAtom,
@@ -30,6 +28,7 @@ import {
     rightRailTaskIdAtom,
     sessionPickerOpenAtom,
 } from "@/lib/atoms/ui";
+import { commandPaletteSpineOpenAtom } from "@/lib/commands/open-atom";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { isEditableTarget, hasOpenOverlay } from "@/lib/utils/dom";
@@ -47,7 +46,7 @@ function AppLayout() {
     const location = useLocation();
     const navigate = useNavigate();
     const { createOrGetSession } = useOrchestratorSession();
-    const [, setCommandOpen] = useAtom(commandPaletteOpenAtom);
+    const setCommandOpen = useSetAtom(commandPaletteSpineOpenAtom);
     const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
     const [pluginImportOpen, setPluginImportOpen] =
@@ -233,21 +232,16 @@ function AppLayout() {
                 railMode !== "none" && Boolean(railTaskId || railChatSessionId);
             const hasTask = Boolean(currentTaskId ?? railTaskId);
 
-            // Cmd/Ctrl+Shift+P — Quick Actions (canonical)
+            // Cmd/Ctrl+Shift+P — open command palette (alias for Cmd+K)
             if (
                 (event.metaKey || event.ctrlKey) &&
                 event.shiftKey &&
                 lowerKey === "p"
             ) {
                 event.preventDefault();
-                setCommandOpen((prev) => {
-                    const next = !prev;
-                    if (next) {
-                        setSessionPickerOpen(false);
-                        setHelpOverlayOpen(false);
-                    }
-                    return next;
-                });
+                setSessionPickerOpen(false);
+                setHelpOverlayOpen(false);
+                setCommandOpen(true);
                 return;
             }
 
@@ -315,14 +309,9 @@ function AppLayout() {
                 lowerKey === "k"
             ) {
                 event.preventDefault();
-                setSessionPickerOpen((prev) => {
-                    const next = !prev;
-                    if (next) {
-                        setCommandOpen(false);
-                        setHelpOverlayOpen(false);
-                    }
-                    return next;
-                });
+                setCommandOpen(false);
+                setHelpOverlayOpen(false);
+                setSessionPickerOpen(true);
                 return;
             }
 
@@ -587,7 +576,6 @@ function AppLayout() {
                 </div>
             ) : null}
 
-            <CommandPalette />
             <SessionPicker />
             <HelpOverlay />
             <PluginImportDialog

@@ -61,7 +61,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
       launcher: task.launcher ?? '',
       base_branch: task.base_branch ?? '',
     });
-    criteriaList.reset(task.acceptance_criteria ?? []);
+    criteriaList.reset((task.acceptance_criteria ?? []).map((c) => c.text));
   }, [task, reset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSubmit = async (data: TaskFormValues) => {

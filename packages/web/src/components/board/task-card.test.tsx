@@ -59,6 +59,57 @@ describe('TaskCard', () => {
     expect(onInspectTask).toHaveBeenCalledWith(task);
   });
 
+  describe('a11y: role and selection', () => {
+    it('does not have aria-pressed on the card element', () => {
+      renderWithProviders(<TaskCard task={mockTask({ title: 'No pressed' })} />);
+      const btn = screen.getByRole('button', { name: 'No pressed' });
+      expect(btn).not.toHaveAttribute('aria-pressed');
+    });
+
+    it('has aria-current="true" when isSelected', () => {
+      renderWithProviders(
+        <TaskCard task={mockTask({ title: 'Selected card' })} isSelected />,
+      );
+      // aria-label includes "(selected)" suffix
+      const btn = screen.getByRole('button', { name: 'Selected card (selected)' });
+      expect(btn).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('does not have aria-current when not selected', () => {
+      renderWithProviders(
+        <TaskCard task={mockTask({ title: 'Unselected card' })} isSelected={false} />,
+      );
+      const btn = screen.getByRole('button', { name: 'Unselected card' });
+      expect(btn).not.toHaveAttribute('aria-current');
+    });
+
+    it('activates on Enter key', async () => {
+      const onInspectTask = vi.fn();
+      const task = mockTask({ title: 'Key card' });
+      renderWithProviders(<TaskCard task={task} onInspectTask={onInspectTask} />);
+
+      const btn = screen.getByRole('button', { name: 'Key card' });
+      btn.focus();
+      fireEvent.keyDown(btn, { key: 'Enter' });
+
+      expect(onInspectTask).toHaveBeenCalledWith(task);
+    });
+
+    it('does not navigate on j/k/l key presses', () => {
+      const onInspectTask = vi.fn();
+      const task = mockTask({ title: 'Vim card' });
+      renderWithProviders(<TaskCard task={task} onInspectTask={onInspectTask} />);
+
+      const btn = screen.getByRole('button', { name: 'Vim card' });
+      btn.focus();
+      fireEvent.keyDown(btn, { key: 'j' });
+      fireEvent.keyDown(btn, { key: 'k' });
+      fireEvent.keyDown(btn, { key: 'l' });
+
+      expect(onInspectTask).not.toHaveBeenCalled();
+    });
+  });
+
   describe('diff summary', () => {
     it('renders inline diff row when task has diff_summary with changes', () => {
       renderWithProviders(

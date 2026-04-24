@@ -390,10 +390,7 @@ export function OrchestratorChatPanel({
         (opts?: { pendingText: string | null }) => {
             if (!isStreaming) return;
             chatAbortRef.current?.abort();
-            fetch(
-                `${apiClient.getBaseUrl()}/api/chat/${sessionId}/interrupt`,
-                { method: "POST" },
-            ).catch(() => {});
+            apiClient.interruptChatSession(sessionId).catch(() => {});
             setStreamEntries((prev) => [
                 ...prev,
                 { kind: "note", message: "Interrupted by user." },

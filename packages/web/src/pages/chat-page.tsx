@@ -1,21 +1,12 @@
 import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, ChevronDown, MessageSquareText } from 'lucide-react';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
-import {
-  chatMessagesAtom,
-  isStreamingAtom,
-  streamEntriesAtom,
-  appendStreamChunkAtom,
-  addToolStartAtom,
-  updateToolProgressAtom,
-  addStreamErrorAtom,
-  addStreamNoteAtom,
-  resetStreamAtom,
-} from '@/lib/atoms/chat';
+import { isStreamingAtom, type ChatStreamEntry } from '@/lib/atoms/chat';
+import type { WireChatMessage } from '@/lib/api/types';
 import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
 import { ChatInputBar } from '@/components/chat/chat-input-bar';
@@ -29,22 +20,77 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+// ---------------------------------------------------------------------------
+// Stream entry helpers (previously atom write-only action atoms)
+// ---------------------------------------------------------------------------
+
+function appendChunk(
+  entries: ChatStreamEntry[],
+  payload: { content: string; thought?: boolean },
+): ChatStreamEntry[] {
+  const kind = payload.thought ? 'thought' : 'text';
+  const last = entries.at(-1);
+  if (last && last.kind === kind) {
+    const updated = [...entries];
+    updated[updated.length - 1] = { ...last, content: last.content + payload.content };
+    return updated;
+  }
+  return [...entries, { kind, content: payload.content }];
+}
+
+function addToolStart(entries: ChatStreamEntry[], tool: string): ChatStreamEntry[] {
+  const id = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  return [...entries, { kind: 'tool', id, name: tool, status: 'running' }];
+}
+
+function updateToolProgress(
+  entries: ChatStreamEntry[],
+  payload: { tool: string; status?: string },
+): ChatStreamEntry[] {
+  const updated = [...entries];
+  for (let i = updated.length - 1; i >= 0; i--) {
+    const entry = updated[i]!;
+    if (entry.kind === 'tool' && entry.name === payload.tool) {
+      updated[i] = {
+        ...entry,
+        status: payload.status === 'done' ? 'done' : entry.status,
+        detail: payload.status ?? entry.detail,
+      };
+      break;
+    }
+  }
+  return updated;
+}
+
+function addNote(entries: ChatStreamEntry[], message: string): ChatStreamEntry[] {
+  return [...entries, { kind: 'note', message }];
+}
+
+function addError(entries: ChatStreamEntry[], message: string): ChatStreamEntry[] {
+  return [...entries, { kind: 'error', message }];
+}
+
 export function Component() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   // ── State ──────────────────────────────────────────────────────────────────
-  // Persisted messages (loaded from API, refreshed on CHAT_DONE)
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
-  // Live streaming state (cleared on CHAT_DONE)
-  const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
-  const streamEntries = useAtomValue(streamEntriesAtom);
-  const appendChunk = useSetAtom(appendStreamChunkAtom);
-  const addToolStart = useSetAtom(addToolStartAtom);
-  const updateToolProgress = useSetAtom(updateToolProgressAtom);
-  const addError = useSetAtom(addStreamErrorAtom);
-  const addNote = useSetAtom(addStreamNoteAtom);
-  const resetStream = useSetAtom(resetStreamAtom);
+  const [messages, setMessages] = useState<WireChatMessage[]>([]);
+  const [streamEntries, setStreamEntries] = useState<ChatStreamEntry[]>([]);
+  const [isStreaming, setIsStreamingLocal] = useState(false);
+  // Keep the shared atom in sync so ChatInputBar can read it across the tree.
+  const setIsStreamingAtom = useSetAtom(isStreamingAtom);
+
+  const setIsStreaming = useCallback(
+    (value: boolean | ((prev: boolean) => boolean)) => {
+      setIsStreamingLocal((prev) => {
+        const next = typeof value === 'function' ? value(prev) : value;
+        setIsStreamingAtom(next);
+        return next;
+      });
+    },
+    [setIsStreamingAtom],
+  );
 
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
@@ -65,7 +111,8 @@ export function Component() {
             pollRef.current = null;
             const session = await apiClient.getChatSession(sid);
             setMessages(session.messages);
-            resetStream();
+            setStreamEntries([]);
+            setIsStreaming(false);
           }
         } catch {
           if (pollRef.current) clearInterval(pollRef.current);
@@ -74,7 +121,7 @@ export function Component() {
         }
       }, 2000);
     },
-    [setMessages, resetStream, setIsStreaming],
+    [setIsStreaming],
   );
 
   useEffect(() => {
@@ -98,7 +145,7 @@ export function Component() {
         const turnStatus = await apiClient.getTurnStatus(id);
         if (turnStatus.active) {
           setIsStreaming(true);
-          addNote({ message: 'Agent is working\u2026 (reconnected)' });
+          setStreamEntries((prev) => addNote(prev, 'Agent is working… (reconnected)'));
           pollForTurnCompletion(id);
         }
       } catch (error) {
@@ -109,9 +156,10 @@ export function Component() {
     })();
     return () => {
       setMessages([]);
-      resetStream();
+      setStreamEntries([]);
+      setIsStreaming(false);
     };
-  }, [id, setMessages, resetStream, setIsStreaming, addNote, pollForTurnCompletion]);
+  }, [id, setIsStreaming, pollForTurnCompletion]);
 
   // ── Fetch available backends ────────────────────────────────────────────────
   useEffect(() => {
@@ -147,20 +195,23 @@ export function Component() {
         setIsStreaming(true);
         const content = (data.content as string) ?? '';
         const thought = Boolean(data.thought);
-        if (content) appendChunk({ content, thought });
+        if (content) setStreamEntries((prev) => appendChunk(prev, { content, thought }));
       } else if (t === 'CHAT_TOOL_START') {
         setIsStreaming(true);
-        addToolStart({ tool: (data.tool as string) ?? 'tool' });
+        setStreamEntries((prev) => addToolStart(prev, (data.tool as string) ?? 'tool'));
       } else if (t === 'CHAT_TOOL_PROGRESS') {
-        updateToolProgress({
-          tool: (data.tool as string) ?? 'tool',
-          status: (data.status as string) ?? undefined,
-        });
+        setStreamEntries((prev) =>
+          updateToolProgress(prev, {
+            tool: (data.tool as string) ?? 'tool',
+            status: (data.status as string) ?? undefined,
+          }),
+        );
       } else if (t === 'CHAT_ERROR') {
-        addError({ message: (data.error as string) ?? 'An error occurred' });
+        setStreamEntries((prev) => addError(prev, (data.error as string) ?? 'An error occurred'));
         setIsStreaming(false);
       } else if (t === 'CHAT_DONE') {
-        resetStream();
+        setStreamEntries([]);
+        setIsStreaming(false);
         if (id) {
           apiClient
             .getChatSession(id)
@@ -171,7 +222,7 @@ export function Component() {
         if (typeof data.label === 'string') setLabel(data.label);
       }
     },
-    [id, setIsStreaming, appendChunk, addToolStart, updateToolProgress, addError, resetStream, setMessages],
+    [id, setIsStreaming],
   );
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
@@ -226,20 +277,20 @@ export function Component() {
           }
         } catch (err) {
           if (controller.signal.aborted) return;
-          addError({ message: err instanceof Error ? err.message : 'Stream failed' });
+          setStreamEntries((prev) => addError(prev, err instanceof Error ? err.message : 'Stream failed'));
           setIsStreaming(false);
         }
       })();
     },
-    [id, setIsStreaming, setMessages, handleSSEMsg, addError],
+    [id, setIsStreaming, handleSSEMsg],
   );
 
   const handleInterrupt = useCallback(
     (opts?: { pendingText: string | null }) => {
       if (!id || !isStreaming) return;
       chatAbortRef.current?.abort();
-      fetch(`${apiClient.getBaseUrl()}/api/chat/${id}/interrupt`, { method: 'POST' }).catch(() => {});
-      addNote({ message: 'Interrupted by user.' });
+      apiClient.interruptChatSession(id).catch(() => {});
+      setStreamEntries((prev) => addNote(prev, 'Interrupted by user.'));
       setIsStreaming(false);
 
       if (opts?.pendingText) {
@@ -248,7 +299,7 @@ export function Component() {
         setEditPrefill(lastSentText);
       }
     },
-    [id, isStreaming, addNote, setIsStreaming, lastSentText, handleSend],
+    [id, isStreaming, setIsStreaming, lastSentText, handleSend],
   );
 
   const handleSlashCommand = useCallback(
@@ -282,7 +333,7 @@ export function Component() {
           handleSend(command, undefined);
       }
     },
-    [handleSend, navigate, setMessages, switchBackend],
+    [handleSend, navigate, switchBackend],
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -296,8 +347,6 @@ export function Component() {
   }
 
   const hasContent = messages.length > 0 || streamEntries.length > 0 || isStreaming;
-  // Show wave indicator when streaming starts but no content yet
-
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6">

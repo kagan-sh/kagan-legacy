@@ -22,6 +22,7 @@ import type {
 
 // Re-export generated types under their canonical names
 export type {
+    AcceptanceCriterionResponse,
     ActiveSessionResponse,
     AgentBackendResponse,
     ChatAgentsResponse,

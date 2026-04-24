@@ -66,6 +66,7 @@ export interface TaskResponse {
   last_event_at?: string | null;
   has_workspace?: boolean;
   review_running?: boolean;
+  review_verdicts?: ReviewVerdictResponse[];
   active_session?: ActiveSessionResponse | null;
   backend_selection?: BackendSelectionResponse | null;
   diff_summary?: DiffSummaryResponse | null;

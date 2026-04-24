@@ -265,8 +265,8 @@ function TaskCardImpl({
             )}
             role="button"
             tabIndex={0}
-            aria-label={task.title}
-            aria-pressed={isSelected}
+            aria-label={isSelected ? `${task.title} (selected)` : task.title}
+            aria-current={isSelected ? true : undefined}
             data-task-id={task.id}
             onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {

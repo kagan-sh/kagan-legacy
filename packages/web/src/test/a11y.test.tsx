@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { createStore } from 'jotai';
 import { renderWithProviders } from '@/test/render';
-import { mockTask, mockTaskInReview, mockEvent } from '@/test/mocks';
+import { mockCriterion, mockTask, mockTaskInReview, mockEvent } from '@/test/mocks';
 import { sseConnectedAtom } from '@/lib/atoms/connection';
 
 // ── Mocks (same as existing test files) ──────────────────────────────────────
@@ -103,7 +103,7 @@ describe('Accessibility (axe-core)', () => {
   });
 
   it('ReviewPanel has no violations', async () => {
-    const task = mockTaskInReview({ acceptance_criteria: ['Criterion one'] });
+    const task = mockTaskInReview({ acceptance_criteria: [mockCriterion({ text: 'Criterion one' })] });
     const { container } = renderWithProviders(
       <ReviewPanel taskId={task.id} task={task} />,
     );

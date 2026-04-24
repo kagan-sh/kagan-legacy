@@ -1,11 +1,7 @@
 import { atom } from 'jotai';
 
 /**
- * Open state for the new command-palette spine (Cmd+K).
- *
- * Intentionally separate from `commandPaletteOpenAtom` in `lib/atoms/ui` —
- * that atom still drives the legacy quick-actions dialog (Cmd+Shift+P).
- * During the migration window (see PR #115) both surfaces coexist; a
- * follow-up PR will consolidate them.
+ * Open state for the command palette (Cmd+K).
+ * Toggled by `useGlobalShortcuts` and the header search button.
  */
 export const commandPaletteSpineOpenAtom = atom(false);

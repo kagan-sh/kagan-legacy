@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'jotai';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { Component as AppLayout } from '@/components/layout/app-layout';
 import {
-  commandPaletteOpenAtom,
   rightRailModeAtom,
   rightRailTaskIdAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
+import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
 
 vi.mock('@/lib/hooks/use-event-stream', () => ({
   useEventStream: () => undefined,
@@ -42,18 +42,12 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('AppLayout', () => {
-  it('renders Quick Actions when commandPaletteOpenAtom is true', async () => {
+  it('Cmd+Shift+P sets commandPaletteSpineOpenAtom to true', async () => {
     const store = createStore();
-    store.set(commandPaletteOpenAtom, true);
-
     renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
 
-    const dialog = await screen.findByRole('dialog', { name: 'Quick Actions' });
-    expect(within(dialog).getByRole('combobox')).toBeVisible();
-    expect(within(dialog).getByRole('option', { name: /^Board/ })).toBeVisible();
-    expect(within(dialog).getByRole('option', { name: /^Workspace/ })).toBeVisible();
-    expect(within(dialog).getByRole('option', { name: /^Settings/ })).toBeVisible();
-    expect(within(dialog).getByRole('option', { name: /^Session Switcher/ })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+    expect(store.get(commandPaletteSpineOpenAtom)).toBe(true);
   });
 
   it('Space does not cycle chat rail; Escape closes it', async () => {
@@ -96,9 +90,9 @@ describe('AppLayout', () => {
     renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
 
     fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
+    expect(store.get(commandPaletteSpineOpenAtom)).toBe(true);
 
-    store.set(commandPaletteOpenAtom, false);
+    store.set(commandPaletteSpineOpenAtom, false);
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true, shiftKey: true });
     expect(store.get(sessionPickerOpenAtom)).toBe(true);
 

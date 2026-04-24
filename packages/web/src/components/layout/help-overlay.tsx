@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useAtom } from 'jotai';
 import { ExternalLink, GitBranch, HelpCircle } from 'lucide-react';
 import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
@@ -22,7 +22,7 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Global',
     rows: [
-      { keys: ['Cmd/Ctrl', 'Shift', 'P'], description: 'Open Quick Actions' },
+      { keys: ['Cmd/Ctrl', 'K'], description: 'Open Command Palette' },
       { keys: ['Cmd/Ctrl', 'Shift', 'K'], description: 'Open Session Switcher' },
       { keys: ['?', 'F1'], description: 'Help & Shortcuts' },
       { keys: ['Cmd/Ctrl', 'I'], description: 'Toggle AI Panel' },
@@ -33,11 +33,9 @@ const SHORTCUTS: ShortcutSection[] = [
   {
     title: 'Board',
     rows: [
-      { keys: ['N'], description: 'Create task' },
-      { keys: ['/'], description: 'Focus task search' },
+      { keys: ['Arrow keys'], description: 'Navigate tasks and columns' },
       { keys: ['Enter'], description: 'Open selected task' },
-      { keys: ['S'], description: 'Start selected task' },
-      { keys: ['Shift', 'S'], description: 'Stop selected task' },
+      { keys: ['E'], description: 'Edit selected task' },
       { keys: ['Shift', '←', '→'], description: 'Move task between lanes' },
     ],
   },
@@ -95,40 +93,37 @@ export function HelpOverlay() {
 
   const normalizedQuery = query.trim().toLowerCase();
 
-  const filteredShortcutSections = useMemo(() => {
-    if (!normalizedQuery) return SHORTCUTS;
-    return SHORTCUTS
-      .map((section) => ({
-        ...section,
-        rows: section.rows.filter((row) => {
-          const keyText = row.keys.join(' ').toLowerCase();
-          return (
-            section.title.toLowerCase().includes(normalizedQuery) ||
-            keyText.includes(normalizedQuery) ||
-            row.description.toLowerCase().includes(normalizedQuery)
-          );
-        }),
-      }))
-      .filter((section) => section.rows.length > 0);
-  }, [normalizedQuery]);
+  const filteredShortcutSections = normalizedQuery
+    ? SHORTCUTS
+        .map((section) => ({
+          ...section,
+          rows: section.rows.filter((row) => {
+            const keyText = row.keys.join(' ').toLowerCase();
+            return (
+              section.title.toLowerCase().includes(normalizedQuery) ||
+              keyText.includes(normalizedQuery) ||
+              row.description.toLowerCase().includes(normalizedQuery)
+            );
+          }),
+        }))
+        .filter((section) => section.rows.length > 0)
+    : SHORTCUTS;
 
-  const filteredFlows = useMemo(() => {
-    if (!normalizedQuery) return FLOWS;
-    return FLOWS.filter(
-      (item) =>
-        item.title.toLowerCase().includes(normalizedQuery) ||
-        item.body.toLowerCase().includes(normalizedQuery),
-    );
-  }, [normalizedQuery]);
+  const filteredFlows = normalizedQuery
+    ? FLOWS.filter(
+        (item) =>
+          item.title.toLowerCase().includes(normalizedQuery) ||
+          item.body.toLowerCase().includes(normalizedQuery),
+      )
+    : FLOWS;
 
-  const filteredConcepts = useMemo(() => {
-    if (!normalizedQuery) return CONCEPTS;
-    return CONCEPTS.filter(
-      (item) =>
-        item.title.toLowerCase().includes(normalizedQuery) ||
-        item.body.toLowerCase().includes(normalizedQuery),
-    );
-  }, [normalizedQuery]);
+  const filteredConcepts = normalizedQuery
+    ? CONCEPTS.filter(
+        (item) =>
+          item.title.toLowerCase().includes(normalizedQuery) ||
+          item.body.toLowerCase().includes(normalizedQuery),
+      )
+    : CONCEPTS;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

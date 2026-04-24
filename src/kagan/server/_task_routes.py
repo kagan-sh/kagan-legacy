@@ -205,6 +205,60 @@ async def _review_diff_summaries(
     return dict(zip(review_ids, results, strict=True))
 
 
+async def _task_review_verdicts(ctx: Any, task_id: str) -> list[dict[str, str | None]]:
+    """Return the latest ReviewVerdict row per criterion for the given task.
+
+    Fetched from the DB directly (mirrors the is_review_approved pattern).
+    Returns an empty list when the task has no criteria or no verdicts.
+    """
+    import sqlalchemy as sa
+    from sqlmodel import select as _select
+
+    from kagan.core._db_helpers import _db_async
+    from kagan.core.models import AcceptanceCriterion, ReviewVerdict
+
+    def op(session: Any) -> list[dict[str, str | None]]:
+        criteria = list(
+            session.exec(
+                _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+            ).all()
+        )
+        rows: list[dict[str, str | None]] = []
+        for criterion in criteria:
+            latest = session.exec(
+                _select(ReviewVerdict)
+                .where(ReviewVerdict.criterion_id == criterion.id)
+                .order_by(sa.text("rowid DESC"))
+            ).first()
+            if latest is not None:
+                rows.append(
+                    {
+                        "id": latest.id,
+                        "criterion_id": latest.criterion_id,
+                        "session_id": latest.session_id,
+                        "verdict": latest.verdict,
+                        "reason": latest.reason,
+                    }
+                )
+        return rows
+
+    with contextlib.suppress(Exception):
+        return await _db_async(ctx.client.engine, op)
+    return []
+
+
+async def _bulk_task_review_verdicts(
+    ctx: Any, task_ids: list[str]
+) -> dict[str, list[dict[str, str | None]]]:
+    """Concurrently fetch latest verdicts for a list of tasks."""
+    if not task_ids:
+        return {}
+    results = await asyncio.gather(
+        *(_task_review_verdicts(ctx, tid) for tid in task_ids), return_exceptions=False
+    )
+    return dict(zip(task_ids, results, strict=True))
+
+
 def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks", methods=["GET"])
     @require_context(mcp)
@@ -216,12 +270,14 @@ def register_task_routes(mcp: FastMCP) -> None:
         tasks = await ctx.client.tasks.list(status=status_enum, repo_id=repo_id)
         runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
         diff_summaries = await _review_diff_summaries(ctx, tasks, runtime)
+        verdict_map = await _bulk_task_review_verdicts(ctx, [task.id for task in tasks])
         return _ok(
             [
                 task_to_wire_dict(
                     task,
                     runtime=runtime.get(task.id),
                     diff_summary=diff_summaries.get(task.id),
+                    review_verdicts=verdict_map.get(task.id),
                 )
                 for task in tasks
             ]
@@ -270,7 +326,15 @@ def register_task_routes(mcp: FastMCP) -> None:
             "has_workspace", False
         ):
             diff_summary = await _safe_diff_stats(ctx, task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime, diff_summary=diff_summary))
+        verdicts = await _task_review_verdicts(ctx, task_id)
+        return _ok(
+            task_to_wire_dict(
+                task,
+                runtime=runtime,
+                diff_summary=diff_summary,
+                review_verdicts=verdicts,
+            )
+        )
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["PATCH"])
     @require_context(mcp)

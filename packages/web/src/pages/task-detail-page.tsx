@@ -56,8 +56,7 @@ export type WorkspaceTab = "overview" | "changes" | "review";
 export function defaultTabForTask(task: WireTask): WorkspaceTab {
     if (task.status === "BACKLOG") return "overview";
     if (task.status === "REVIEW" && task.has_workspace) return "review";
-    if (task.status === "DONE" && (task.review_verdicts?.length ?? 0) > 0)
-        return "review";
+    if (task.status === "DONE" && task.review_approved) return "review";
     if (task.has_workspace) return "changes";
     return "overview";
 }
@@ -233,10 +232,9 @@ export function Component() {
     }
 
     const criteria = displayTask.acceptance_criteria ?? [];
-    const hasVerdicts = (displayTask.review_verdicts?.length ?? 0) > 0;
     const showReviewTab =
         displayTask.status === "REVIEW" ||
-        (displayTask.status === "DONE" && hasVerdicts);
+        (displayTask.status === "DONE" && displayTask.review_approved);
 
     return (
         <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6">
@@ -345,16 +343,16 @@ export function Component() {
                                         {criteria.length > 0 ? (
                                             <ul className="space-y-1">
                                                 {criteria.map(
-                                                    (criterion, index) => {
+                                                    (criterion) => {
                                                         const verdict =
                                                             displayTask.review_verdicts?.find(
                                                                 (v) =>
-                                                                    v.criterion_index ===
-                                                                    index,
+                                                                    v.criterion_id ===
+                                                                    criterion.id,
                                                             );
                                                         return (
                                                             <li
-                                                                key={criterion}
+                                                                key={criterion.id}
                                                             >
                                                                 <Collapsible
                                                                     disabled={
@@ -373,7 +371,7 @@ export function Component() {
                                                                         )}
                                                                         <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
                                                                             {
-                                                                                criterion
+                                                                                criterion.text
                                                                             }
                                                                         </span>
                                                                         {verdict ? (

@@ -11,19 +11,32 @@ interface UseBoardKeyboardOptions {
   view: 'kanban' | 'backlog';
   query: string;
   setSelectedTaskId: (id: string | null) => void;
-  openCreateDialog: () => void;
-  setPeekOpen: (open: boolean) => void;
   setEditingTask: (task: WireTask | null) => void;
-  setDeleteTask: (task: WireTask | null) => void;
   setQuery: (query: string) => void;
   openTask: (task: WireTask) => void;
-  startSelectedTask: () => void;
-  stopSelectedTask: () => void;
   moveSelectedTaskToAdjacentLane: (direction: -1 | 1) => Promise<void>;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
   isAnyDialogOpen: boolean;
 }
 
+/**
+ * Board keyboard bindings.
+ *
+ * Kept bindings:
+ *   - Arrow keys — navigate tasks within/across columns
+ *   - Shift+Arrow Left/Right — move task to adjacent lane
+ *   - Enter — open selected task
+ *   - Escape — clear search query (when search is focused)
+ *   - e — edit selected task
+ *
+ * Removed bindings (conflicted with AT virtual cursors or were TUI-ism):
+ *   - j/k/h/l — vim navigation (use Arrow keys instead)
+ *   - s/S — start/stop (use visible buttons)
+ *   - n — new task (use toolbar button or Cmd+K palette)
+ *   - x — delete (use context menu)
+ *   - p — peek (use click or Enter)
+ *   - / — search focus (AT intercepts; use click)
+ */
 export function useBoardKeyboard({
   selectedTask,
   selectedTaskPosition,
@@ -32,14 +45,9 @@ export function useBoardKeyboard({
   view,
   query,
   setSelectedTaskId,
-  openCreateDialog,
-  setPeekOpen,
   setEditingTask,
-  setDeleteTask,
   setQuery,
   openTask,
-  startSelectedTask,
-  stopSelectedTask,
   moveSelectedTaskToAdjacentLane,
   searchInputRef,
   isAnyDialogOpen,
@@ -51,62 +59,27 @@ export function useBoardKeyboard({
 
       const isEditable = isEditableTarget(event.target);
 
-      if (!isEditable && event.key === '/') {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-        return;
-      }
-
-      if (!isEditable && !event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'n') {
-        event.preventDefault();
-        openCreateDialog();
-        return;
-      }
-
       if (!isEditable && selectedTask) {
-        const lowerKey = event.key.toLowerCase();
-
-        if (lowerKey === 's' && event.shiftKey) {
-          event.preventDefault();
-          stopSelectedTask();
-          return;
-        }
-        if (lowerKey === 's') {
-          event.preventDefault();
-          startSelectedTask();
-          return;
-        }
         if (event.key === 'Enter') {
           event.preventDefault();
           openTask(selectedTask);
           return;
         }
-        if (lowerKey === 'p') {
-          event.preventDefault();
-          setPeekOpen(true);
-          return;
-        }
-        if (lowerKey === 'e') {
+        if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'e') {
           event.preventDefault();
           setEditingTask(selectedTask);
           return;
         }
-        if (lowerKey === 'x') {
-          event.preventDefault();
-          setDeleteTask(selectedTask);
-          return;
-        }
 
         if (view === 'backlog') {
-          if (event.key === 'ArrowDown' || lowerKey === 'j') {
+          if (event.key === 'ArrowDown') {
             event.preventDefault();
             const currentIndex = allFilteredTasks.findIndex((task) => task.id === selectedTask.id);
             const nextTask = allFilteredTasks[currentIndex + 1];
             if (nextTask) setSelectedTaskId(nextTask.id);
             return;
           }
-          if (event.key === 'ArrowUp' || lowerKey === 'k') {
+          if (event.key === 'ArrowUp') {
             event.preventDefault();
             const currentIndex = allFilteredTasks.findIndex((task) => task.id === selectedTask.id);
             const previousTask = allFilteredTasks[currentIndex - 1];
@@ -127,21 +100,20 @@ export function useBoardKeyboard({
 
           const columnTasks = grouped[selectedTaskPosition.status];
 
-          if (event.key === 'ArrowDown' || lowerKey === 'j') {
+          if (event.key === 'ArrowDown') {
             event.preventDefault();
             const nextTask = columnTasks[selectedTaskPosition.index + 1];
             if (nextTask) setSelectedTaskId(nextTask.id);
             return;
           }
-          if (event.key === 'ArrowUp' || lowerKey === 'k') {
+          if (event.key === 'ArrowUp') {
             event.preventDefault();
             const previousTask = columnTasks[selectedTaskPosition.index - 1];
             if (previousTask) setSelectedTaskId(previousTask.id);
             return;
           }
-          if (event.key === 'ArrowLeft' || lowerKey === 'h') {
+          if (!event.shiftKey && event.key === 'ArrowLeft') {
             event.preventDefault();
-            // select neighbor in adjacent left column
             const currentColumnIndex = COLUMN_ORDER.indexOf(selectedTaskPosition.status);
             for (
               let nextColumnIndex = currentColumnIndex - 1;
@@ -159,9 +131,8 @@ export function useBoardKeyboard({
             }
             return;
           }
-          if (event.key === 'ArrowRight' || lowerKey === 'l') {
+          if (!event.shiftKey && event.key === 'ArrowRight') {
             event.preventDefault();
-            // select neighbor in adjacent right column
             const currentColumnIndex = COLUMN_ORDER.indexOf(selectedTaskPosition.status);
             for (
               let nextColumnIndex = currentColumnIndex + 1;
@@ -200,14 +171,9 @@ export function useBoardKeyboard({
     searchInputRef,
     selectedTask,
     selectedTaskPosition,
-    openCreateDialog,
-    setDeleteTask,
     setEditingTask,
-    setPeekOpen,
     setQuery,
     setSelectedTaskId,
-    startSelectedTask,
-    stopSelectedTask,
     view,
   ]);
 }

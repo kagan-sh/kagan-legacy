@@ -10,6 +10,7 @@ import type {
     ChatMessageResponse,
     ChatSessionResponse,
     ChatSessionSummaryResponse,
+    DiffSummaryResponse,
     EventResponse,
     FsEntryResponse,
     ProjectResponse,
@@ -27,6 +28,7 @@ export type {
     ChatMessageResponse,
     ChatSessionResponse,
     ChatSessionSummaryResponse,
+    DiffSummaryResponse,
     EventResponse,
     ProjectResponse,
     RepositoryResponse,
@@ -41,6 +43,7 @@ export type {
 
 export type WireTaskActiveSession = ActiveSessionResponse;
 export type WireTaskSession = TaskSessionResponse;
+export type WireDiffSummary = DiffSummaryResponse;
 export type ReviewVerdict = ReviewVerdictResponse;
 export type WireTask = TaskResponse;
 export type WireProject = ProjectResponse;

@@ -112,6 +112,14 @@ class BackendSelectionResponse(BaseModel):
     alternatives: list[str] = Field(default_factory=list)
 
 
+class DiffSummaryResponse(BaseModel):
+    """Inline diff statistics attached to REVIEW-status tasks that have a worktree."""
+
+    files_changed: int
+    additions: int
+    deletions: int
+
+
 class TaskResponse(_OrmBase):
     id: str
     title: str
@@ -136,6 +144,7 @@ class TaskResponse(_OrmBase):
     review_running: bool = False
     active_session: ActiveSessionResponse | None = None
     backend_selection: BackendSelectionResponse | None = None
+    diff_summary: DiffSummaryResponse | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -333,6 +342,7 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ActiveSessionResponse": ActiveSessionResponse,
     "AcceptanceCriterionResponse": AcceptanceCriterionResponse,
     "ReviewVerdictResponse": ReviewVerdictResponse,
+    "DiffSummaryResponse": DiffSummaryResponse,
     "TaskResponse": TaskResponse,
     "TaskSessionResponse": TaskSessionResponse,
     "ProjectResponse": ProjectResponse,

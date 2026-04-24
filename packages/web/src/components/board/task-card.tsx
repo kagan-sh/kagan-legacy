@@ -8,7 +8,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import type { WireTask } from "@/lib/api/types";
+import type { WireDiffSummary, WireTask } from "@/lib/api/types";
 import { parseUtc } from "@/lib/utils/time";
 import { CardPulse } from "@/components/board/card-pulse";
 import {
@@ -60,12 +60,46 @@ function formatLastActivity(value?: string | null) {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+function DiffSummaryRow({
+    summary,
+    onNavigate,
+}: {
+    summary: WireDiffSummary;
+    onNavigate: (e: React.MouseEvent) => void;
+}) {
+    const hasChanges =
+        summary.files_changed > 0 || summary.additions > 0 || summary.deletions > 0;
+    if (!hasChanges) return null;
+
+    return (
+        <button
+            type="button"
+            data-testid="diff-summary"
+            onClick={onNavigate}
+            className="mt-0.5 flex items-center gap-1.5 text-[10px] tabular-nums leading-none"
+            aria-label={`Diff: +${summary.additions} -${summary.deletions} across ${summary.files_changed} file${summary.files_changed === 1 ? "" : "s"}`}
+        >
+            <span className="text-[color:var(--color-green-600)] dark:text-[color:var(--color-green-400)]">
+                +{summary.additions}
+            </span>
+            <span className="text-[color:var(--color-red-600)] dark:text-[color:var(--color-red-400)]">
+                -{summary.deletions}
+            </span>
+            <span className="text-muted-foreground">
+                · {summary.files_changed} file{summary.files_changed === 1 ? "" : "s"}
+            </span>
+        </button>
+    );
+}
+
 function TaskCardBody({
     task,
     isSelected = false,
+    onDiffNavigate,
 }: {
     task: WireTask;
     isSelected?: boolean;
+    onDiffNavigate?: (e: React.MouseEvent) => void;
 }) {
     return (
         <div className="ml-2 flex min-h-0 flex-col gap-0.5">
@@ -88,6 +122,10 @@ function TaskCardBody({
                 startedAt={task.active_session?.started_at ?? null}
                 taskTitle={task.title}
             />
+
+            {task.diff_summary && onDiffNavigate ? (
+                <DiffSummaryRow summary={task.diff_summary} onNavigate={onDiffNavigate} />
+            ) : null}
 
             <div
                 className={cn(
@@ -134,6 +172,7 @@ export function TaskCardOverlayPreview({
         </div>
     );
 }
+
 
 function TaskCardImpl({
     task,
@@ -183,6 +222,11 @@ function TaskCardImpl({
         }
 
         navigate(`/task/${task.id}`);
+    };
+
+    const handleDiffNavigate = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        navigate(`/task/${task.id}`, { state: { tab: "diff" } });
     };
 
     const handleClick = () => {
@@ -239,7 +283,7 @@ function TaskCardImpl({
                 aria-hidden="true"
             />
 
-            <TaskCardBody task={task} isSelected={isSelected} />
+            <TaskCardBody task={task} isSelected={isSelected} onDiffNavigate={handleDiffNavigate} />
         </div>
     );
 
@@ -268,6 +312,19 @@ function TaskCardImpl({
     );
 }
 
+function diffSummaryEqual(
+    a: WireDiffSummary | null | undefined,
+    b: WireDiffSummary | null | undefined,
+): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return (
+        a.files_changed === b.files_changed &&
+        a.additions === b.additions &&
+        a.deletions === b.deletions
+    );
+}
+
 function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
     return (
         prevProps.task.id === nextProps.task.id &&
@@ -279,6 +336,7 @@ function areEqual(prevProps: TaskCardProps, nextProps: TaskCardProps): boolean {
         prevProps.task.active_session?.started_at ===
             nextProps.task.active_session?.started_at &&
         prevProps.task.last_event_at === nextProps.task.last_event_at &&
+        diffSummaryEqual(prevProps.task.diff_summary, nextProps.task.diff_summary) &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.onSelectTask === nextProps.onSelectTask &&
         prevProps.onOpenTask === nextProps.onOpenTask &&

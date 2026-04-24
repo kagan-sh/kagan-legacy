@@ -3,8 +3,7 @@
  * DO NOT EDIT — regenerate with: uv run python scripts/generate_wire_types.py -o packages/web/src/lib/api/generated-wire-types.ts
  */
 
-export interface SessionStatus {
-}
+export type SessionStatus = string;
 
 export interface BackendSelectionResponse {
   selected_backend: string;
@@ -13,11 +12,9 @@ export interface BackendSelectionResponse {
   alternatives?: string[];
 }
 
-export interface Priority {
-}
+export type Priority = string;
 
-export interface TaskStatus {
-}
+export type TaskStatus = string;
 
 export interface ActiveSessionResponse {
   id: string;
@@ -47,6 +44,12 @@ export interface ReviewVerdictResponse {
   reason: string;
 }
 
+export interface DiffSummaryResponse {
+  files_changed: number;
+  additions: number;
+  deletions: number;
+}
+
 export interface TaskResponse {
   id: string;
   title: string;
@@ -65,6 +68,7 @@ export interface TaskResponse {
   review_running?: boolean;
   active_session?: ActiveSessionResponse | null;
   backend_selection?: BackendSelectionResponse | null;
+  diff_summary?: DiffSummaryResponse | null;
 }
 
 export interface TaskSessionResponse {

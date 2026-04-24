@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 from typing import TYPE_CHECKING, Any, cast
 
@@ -9,6 +10,7 @@ from loguru import logger
 from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
 from kagan.core._backend_selector import BackendSelector
 from kagan.core._utils import utc_iso
+from kagan.core.errors import KaganError
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
@@ -173,6 +175,36 @@ async def _load_task_branch_commits(
     return commits
 
 
+async def _safe_diff_stats(ctx: Any, task_id: str) -> dict[str, int] | None:
+    """Fetch diff stats for a single task's worktree; returns None on any error."""
+    with contextlib.suppress(KaganError, OSError, RuntimeError, AttributeError):
+        stats = await ctx.client.worktrees.diff_stats(task_id)
+        return dict(stats)
+    return None
+
+
+async def _review_diff_summaries(
+    ctx: Any, tasks: list[Any], runtime: dict[str, dict]
+) -> dict[str, dict[str, int] | None]:
+    """Concurrently compute diff stats for every task that is in REVIEW with a workspace.
+
+    Capped to REVIEW tasks only — scanning all worktrees on every board refresh
+    would be prohibitively slow.  Tasks without a worktree are skipped.
+    """
+    review_ids = [
+        t.id
+        for t in tasks
+        if getattr(t.status, "value", t.status) == TaskStatus.REVIEW.value
+        and runtime.get(t.id, {}).get("has_workspace", False)
+    ]
+    if not review_ids:
+        return {}
+    results = await asyncio.gather(
+        *(_safe_diff_stats(ctx, tid) for tid in review_ids), return_exceptions=False
+    )
+    return dict(zip(review_ids, results, strict=True))
+
+
 def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks", methods=["GET"])
     @require_context(mcp)
@@ -183,7 +215,17 @@ def register_task_routes(mcp: FastMCP) -> None:
         repo_id = request.query_params.get("repo_id") or None
         tasks = await ctx.client.tasks.list(status=status_enum, repo_id=repo_id)
         runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
-        return _ok([task_to_wire_dict(task, runtime=runtime.get(task.id)) for task in tasks])
+        diff_summaries = await _review_diff_summaries(ctx, tasks, runtime)
+        return _ok(
+            [
+                task_to_wire_dict(
+                    task,
+                    runtime=runtime.get(task.id),
+                    diff_summary=diff_summaries.get(task.id),
+                )
+                for task in tasks
+            ]
+        )
 
     @mcp.custom_route("/api/tasks", methods=["POST"])
     @require_context(mcp)
@@ -223,7 +265,12 @@ def register_task_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
         runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        diff_summary = None
+        if getattr(task.status, "value", task.status) == TaskStatus.REVIEW.value and runtime.get(
+            "has_workspace", False
+        ):
+            diff_summary = await _safe_diff_stats(ctx, task_id)
+        return _ok(task_to_wire_dict(task, runtime=runtime, diff_summary=diff_summary))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["PATCH"])
     @require_context(mcp)

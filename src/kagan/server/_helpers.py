@@ -13,7 +13,7 @@ from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.server._envelope import WireEnvelope
 from kagan.server.mcp.server import get_server_context
-from kagan.server.responses import ActiveSessionResponse, TaskResponse
+from kagan.server.responses import ActiveSessionResponse, DiffSummaryResponse, TaskResponse
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -79,6 +79,7 @@ def task_to_wire_dict(
     *,
     runtime: dict[str, Any] | None = None,
     review_approved: bool = False,
+    diff_summary: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Serialize a Task ORM instance to a JSON-safe dict for the wire."""
     resp = TaskResponse.model_validate(task)
@@ -94,6 +95,12 @@ def task_to_wire_dict(
         ActiveSessionResponse(**active_session) if isinstance(active_session, dict) else None
     )
     resp.review_approved = review_approved
+    if diff_summary is not None and is_review_task:
+        resp.diff_summary = DiffSummaryResponse(
+            files_changed=diff_summary.get("files", 0),
+            additions=diff_summary.get("insertions", 0),
+            deletions=diff_summary.get("deletions", 0),
+        )
     return resp.model_dump(mode="json")
 
 

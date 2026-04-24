@@ -39,8 +39,6 @@ def _event_dict(event: Any) -> dict[str, Any]:
     return EventResponse.model_validate(event).model_dump(mode="json")
 
 
-
-
 async def _select_backend_intelligently(
     ctx: Any,
     task_id: str,
@@ -426,11 +424,12 @@ def register_task_routes(mcp: FastMCP) -> None:
     async def review_status(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
+        review_approved = ctx.client.reviews.is_approved(task_id)
         return _ok(
             {
                 "task_id": task_id,
                 "status": task.status.value,
-                "review_approved": getattr(task, "review_approved", False),
+                "review_approved": review_approved,
             }
         )
 
@@ -449,8 +448,21 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
-            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-            if not criteria:
+            # Load criteria via the relationship (async DB call)
+            from sqlmodel import select as _select
+
+            from kagan.core._db_helpers import _db_async
+            from kagan.core.models import AcceptanceCriterion
+
+            criteria_list = await _db_async(
+                ctx.client.engine,
+                lambda s: list(
+                    s.exec(
+                        _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                    ).all()
+                ),
+            )
+            if not criteria_list:
                 return _manual_review_required(task_id)
 
         if action == "approve":

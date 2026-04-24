@@ -273,6 +273,7 @@ class DoctorModal(ModalScreen[bool]):
     def on_key(self, event: object) -> None:
         """Escape is always blocked on DoctorModal; use Skip anyway button."""
         from textual import events
+
         if not isinstance(event, events.Key):
             return
         if event.key == "escape":
@@ -422,9 +423,7 @@ class DoctorModal(ModalScreen[bool]):
                 await self._auto_promote_backend(backend_name, elapsed)
 
             # Patch self._checks in-place — only this one check is re-verified.
-            updated_checks = [
-                target if c.name == check_name else c for c in self._checks
-            ]
+            updated_checks = [target if c.name == check_name else c for c in self._checks]
         else:
             # Non-backend check — refresh all checks via full survey.
             all_checks = await asyncio.to_thread(run_doctor_checks)

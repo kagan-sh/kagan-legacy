@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
+import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy import Engine
+from sqlmodel import select
 
 from kagan.core import git
 from kagan.core._db_helpers import _db_async, _setting_enabled, _utc_now
@@ -18,10 +20,48 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import Repository, ReviewVerdict, Task, Worktree
+from kagan.core.models import AcceptanceCriterion, Repository, ReviewVerdict, Task, Worktree
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
+
+# ── Module-level helper ────────────────────────────────────────────────────────
+
+
+def is_review_approved(task_id: str, engine: Engine) -> bool:
+    """Return True if every acceptance criterion for the task has a 'pass' verdict.
+
+    A task with no criteria is considered NOT approved (cannot auto-approve without
+    evidence). A task where all criteria have at least one verdict and all latest
+    verdicts are 'pass' is approved.
+    """
+
+    def op(s) -> bool:
+        criteria = list(
+            s.exec(select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
+        )
+        if not criteria:
+            return False
+        for criterion in criteria:
+            verdicts = list(
+                s.exec(
+                    select(ReviewVerdict)
+                    .where(ReviewVerdict.criterion_id == criterion.id)
+                    .order_by(sa.text("rowid ASC"))
+                ).all()
+            )
+            if not verdicts:
+                return False
+            # Latest verdict wins (last inserted = highest rowid)
+            latest = verdicts[-1]
+            if latest.verdict.lower() != "pass":
+                return False
+        return True
+
+    from kagan.core._db_helpers import _db_sync
+
+    return _db_sync(engine, op)
+
 
 # ── Module-level functions (canonical API) ─────────────────────────
 
@@ -32,20 +72,38 @@ async def approve_review(
     *,
     get_task: Callable[[str], Awaitable[Task]],
 ) -> Task:
-    await get_task(task_id)
+    """Approve a task by stamping 'pass' verdicts on all acceptance criteria.
 
-    def op(s) -> Task:
-        db_task = cast("Task | None", s.get(Task, task_id))
-        if db_task is None:
-            raise NotFoundError("Task", task_id)
-        db_task.review_approved = True
-        db_task.updated_at = _utc_now()
-        s.add(db_task)
+    This is the human-approval path (review_decide verdict=approve). It inserts
+    pass verdicts for every criterion so that is_review_approved() returns True.
+    Criteria that already have a pass as their latest verdict are left unchanged.
+    """
+    task = await get_task(task_id)
+
+    def op(s) -> None:
+        criteria = list(
+            s.exec(select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
+        )
+        for criterion in criteria:
+            # Read latest verdict via rowid ordering (insertion order)
+            latest = s.exec(
+                select(ReviewVerdict)
+                .where(ReviewVerdict.criterion_id == criterion.id)
+                .order_by(sa.text("rowid DESC"))
+            ).first()
+            if latest is not None and latest.verdict.lower() == "pass":
+                continue  # already approved
+            verdict_row = ReviewVerdict(
+                criterion_id=criterion.id,
+                session_id=None,
+                verdict="pass",
+                reason="Approved by reviewer",
+            )
+            s.add(verdict_row)
         s.commit()
-        s.refresh(db_task)
-        return db_task
 
-    return await _db_async(engine, op)
+    await _db_async(engine, op)
+    return task
 
 
 async def reject_review(
@@ -80,36 +138,45 @@ async def set_criterion_verdict(
     *,
     get_task: Callable[[str], Awaitable[Task]],
     emit_event: Callable[[str, SessionEventType, dict], Awaitable[Any]],
+    session_id: str | None = None,
 ) -> Task:
-    allowed = {"PASS", "FAIL"}
-    if verdict not in allowed:
+    allowed = {"pass", "fail", "skip"}
+    verdict_normalized = verdict.strip().lower()
+    # Also accept legacy uppercase PASS/FAIL
+    if verdict_normalized not in allowed:
         raise ValueError(f"verdict must be one of {sorted(allowed)}, got {verdict!r}")
 
-    verdict_typed = cast('Literal["PASS", "FAIL"]', verdict)
-
-    task = await get_task(task_id)
-    criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-    if criterion_index < 0 or criterion_index >= len(criteria):
-        raise ValueError(
-            f"criterion_index {criterion_index} out of range (task has {len(criteria)} criteria)"
-        )
+    # Validate task exists before entering the sync op
+    await get_task(task_id)
 
     def op(s) -> Task:
         db_task = cast("Task | None", s.get(Task, task_id))
         if db_task is None:
             raise NotFoundError("Task", task_id)
-        verdicts: list[ReviewVerdict] = list(db_task.review_verdicts or [])
-        # Replace existing verdict for this index if present
-        verdicts = [v for v in verdicts if v["criterion_index"] != criterion_index]
-        verdicts.append(
-            {
-                "criterion_index": criterion_index,
-                "verdict": verdict_typed,
-                "reason": reason,
-            }
+
+        # Find criterion by ordinal
+        criteria = list(
+            s.exec(
+                select(AcceptanceCriterion)
+                .where(AcceptanceCriterion.task_id == task_id)
+                .order_by(AcceptanceCriterion.ordinal)  # type: ignore[arg-type]
+            ).all()
         )
-        verdicts.sort(key=lambda v: v["criterion_index"])
-        db_task.review_verdicts = verdicts
+        if criterion_index < 0 or criterion_index >= len(criteria):
+            raise ValueError(
+                f"criterion_index {criterion_index} out of range "
+                f"(task has {len(criteria)} criteria)"
+            )
+        criterion = criteria[criterion_index]
+
+        # Insert new verdict row (latest wins by id ordering)
+        verdict_row = ReviewVerdict(
+            criterion_id=criterion.id,
+            session_id=session_id,
+            verdict=verdict_normalized,
+            reason=reason,
+        )
+        s.add(verdict_row)
         db_task.updated_at = _utc_now()
         s.add(db_task)
         s.commit()
@@ -122,7 +189,7 @@ async def set_criterion_verdict(
         SessionEventType.CRITERION_VERDICT,
         {
             "criterion_index": criterion_index,
-            "verdict": verdict,
+            "verdict": verdict_normalized,
             "reason": reason,
         },
     )
@@ -135,13 +202,28 @@ async def clear_review_verdicts(
     *,
     get_task: Callable[[str], Awaitable[Task]],
 ) -> Task:
+    # Validate task exists before entering the sync op
     await get_task(task_id)
 
     def op(s) -> Task:
         db_task = cast("Task | None", s.get(Task, task_id))
         if db_task is None:
             raise NotFoundError("Task", task_id)
-        db_task.review_verdicts = []
+        # Delete all verdict rows for this task's criteria
+        criteria = list(
+            s.exec(select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
+        )
+        criterion_ids = {c.id for c in criteria}
+        if criterion_ids:
+            verdicts = list(
+                s.exec(
+                    select(ReviewVerdict).where(
+                        ReviewVerdict.criterion_id.in_(criterion_ids)  # type: ignore[attr-defined]
+                    )
+                ).all()
+            )
+            for v in verdicts:
+                s.delete(v)
         db_task.updated_at = _utc_now()
         s.add(db_task)
         s.commit()
@@ -180,7 +262,7 @@ async def merge_task(
         "require_review_approval",
         default=False,
     )
-    if require_review_approval and not task.review_approved:
+    if require_review_approval and not await asyncio.to_thread(is_review_approved, task_id, engine):
         error = "Cannot merge task branch: review approval is required."
         await emit_event(
             task_id,
@@ -389,6 +471,8 @@ class Reviews:
         criterion_index: int,
         verdict: str,
         reason: str,
+        *,
+        session_id: str | None = None,
     ) -> Task:
         return await set_criterion_verdict(
             self._engine,
@@ -398,6 +482,7 @@ class Reviews:
             reason,
             get_task=self._client.tasks.get,
             emit_event=self._client.tasks.events.emit,
+            session_id=session_id,
         )
 
     async def clear_verdicts(self, task_id: str) -> Task:
@@ -406,6 +491,9 @@ class Reviews:
             task_id,
             get_task=self._client.tasks.get,
         )
+
+    def is_approved(self, task_id: str) -> bool:
+        return is_review_approved(task_id, self._engine)
 
     async def merge(self, task_id: str) -> Task:
         return await merge_task(
@@ -458,6 +546,7 @@ __all__ = [
     "clear_review_verdicts",
     "continue_rebase",
     "get_conflicts",
+    "is_review_approved",
     "merge_task",
     "rebase_task",
     "reject_review",

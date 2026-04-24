@@ -46,9 +46,7 @@ _AGENT_TIMEOUT_GRACE_SECONDS: Final[float] = 5.0
 def _force_kill(proc: asyncio.subprocess.Process) -> None:
     """Kill the process unconditionally after the grace period expires."""
     pid = proc.pid
-    logger.warning(
-        "Agent pid={} did not exit after terminate grace period, force-killing", pid
-    )
+    logger.warning("Agent pid={} did not exit after terminate grace period, force-killing", pid)
     if proc.returncode is None:
         with contextlib.suppress(OSError, ProcessLookupError):
             proc.kill()
@@ -544,8 +542,7 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             "*": BackendCommand(
                 description="Install Amp and ACP adapter",
                 command=(
-                    "curl -fsSL https://ampcode.com/install.sh | bash"
-                    " && npm install -g amp-acp"
+                    "curl -fsSL https://ampcode.com/install.sh | bash && npm install -g amp-acp"
                 ),
             ),
         },

@@ -14,7 +14,6 @@ from kagan.core._db_helpers import (
     _add_and_refresh,
     _db_async,
     _db_sync,
-    _delete_task_children,
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events, list_events
@@ -27,6 +26,7 @@ from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError
 from kagan.core.models import (
+    AcceptanceCriterion,
     AuditEntry,
     Project,
     Repository,
@@ -267,7 +267,6 @@ class Tasks:
             description=description,
             priority=priority,
             base_branch=base_branch,
-            acceptance_criteria=acceptance_criteria or [],
             agent_backend=agent_backend,
             launcher=launcher,
             repo_id=repo_id,
@@ -275,13 +274,27 @@ class Tasks:
         # Classify task for analytics
         task_type = classify_task(title, description)
         task.task_type = task_type.value
+        criteria_texts = acceptance_criteria or []
 
         def op(s):
             try:
                 s.add(task)
                 s.add(AuditEntry(action="task.create", entity_type="task", entity_id=task.id))
+                s.flush()
+                # Create AcceptanceCriterion rows
+                for ordinal, text in enumerate(criteria_texts):
+                    if text and str(text).strip():
+                        s.add(
+                            AcceptanceCriterion(
+                                task_id=task.id,
+                                ordinal=ordinal,
+                                text=str(text).strip()[:500],
+                            )
+                        )
                 s.commit()
                 s.refresh(task)
+                # Eagerly load the criteria relationship while the session is open
+                _ = list(task.criteria)
                 logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
@@ -303,7 +316,13 @@ class Tasks:
         return created
 
     async def get(self, task_id: str) -> Task:
-        task = await _db_async(self._engine, lambda s: s.get(Task, task_id))
+        def _get_with_criteria(s) -> Task | None:
+            t = s.get(Task, task_id)
+            if t is not None:
+                _ = list(t.criteria)  # Eagerly load criteria while session is open
+            return t
+
+        task = await _db_async(self._engine, _get_with_criteria)
         if task is None:
             raise NotFoundError("Task", task_id)
         return task
@@ -320,7 +339,14 @@ class Tasks:
             stmt = stmt.where(Task.status == status)
         if repo_id is not None:
             stmt = stmt.where(Task.repo_id == repo_id)
-        return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
+
+        def _list_with_criteria(s) -> list[Task]:
+            tasks = list(s.exec(stmt).all())
+            for t in tasks:
+                _ = list(t.criteria)  # Eagerly load criteria while session is open
+            return tasks
+
+        return await _db_async(self._engine, _list_with_criteria)
 
     async def update(
         self,
@@ -336,12 +362,11 @@ class Tasks:
         repo_id: str | None | object = _UNSET,
     ) -> Task:
         task = await self.get(task_id)
-        updates = {
+        scalar_updates = {
             "title": title,
             "description": description,
             "priority": priority,
             "base_branch": base_branch,
-            "acceptance_criteria": acceptance_criteria,
             "agent_backend": agent_backend,
             "launcher": launcher,
             "repo_id": repo_id,
@@ -354,7 +379,7 @@ class Tasks:
             db_task = s.get(Task, task.id)
             if db_task is None:
                 raise NotFoundError("Task", task.id)
-            for field, value in updates.items():
+            for field, value in scalar_updates.items():
                 if value is _UNSET:
                     continue
                 if field == "launcher":
@@ -372,6 +397,28 @@ class Tasks:
                 if value is not None:
                     setattr(db_task, field, value)
                     changed_fields[field] = _serialize_value(value)
+
+            # Update acceptance_criteria rows if provided
+            if acceptance_criteria is not None:
+                # Delete existing criteria rows then re-insert
+                existing = list(
+                    s.exec(
+                        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task.id)
+                    ).all()
+                )
+                for crit in existing:
+                    s.delete(crit)
+                s.flush()
+                for ordinal, text in enumerate(acceptance_criteria):
+                    if text and str(text).strip():
+                        s.add(
+                            AcceptanceCriterion(
+                                task_id=task.id,
+                                ordinal=ordinal,
+                                text=str(text).strip()[:500],
+                            )
+                        )
+                changed_fields["acceptance_criteria"] = acceptance_criteria
 
             # Re-classify task if title or description changed
             if should_reclassify:
@@ -393,6 +440,7 @@ class Tasks:
             s.add(db_task)
             s.commit()
             s.refresh(db_task)
+            _ = list(db_task.criteria)  # Eagerly load criteria while session is open
             return db_task
 
         updated = await _db_async(self._engine, op)
@@ -426,8 +474,6 @@ class Tasks:
                 raise NotFoundError("Task", task_id)
             from_status = task.status
             task.status = status
-            if status is not TaskStatus.DONE:
-                task.review_approved = False
             task.updated_at = _utc_now()
             _record_task_audit(
                 s,
@@ -438,6 +484,7 @@ class Tasks:
             s.add(task)
             s.commit()
             s.refresh(task)
+            _ = list(task.criteria)  # Eagerly load criteria while session is open
             logger.info("Task {} moved to {}", task_id, status.value)
             return task
 
@@ -460,7 +507,6 @@ class Tasks:
         await self._client.worktrees.cleanup(task_id)
 
         def op(s):
-            _delete_task_children(s, task_id)
             db_task = s.get(Task, task_id)
             if db_task:
                 _record_task_audit(
@@ -469,6 +515,8 @@ class Tasks:
                     task_id=task_id,
                     detail={"status": db_task.status.value, "title": db_task.title},
                 )
+                # CASCADE delete handles all child rows (sessions, worktrees,
+                # task_events, notes, acceptance_criteria, review_verdicts)
                 s.delete(db_task)
 
         await _db_async(self._engine, op, commit=True)

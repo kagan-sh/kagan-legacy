@@ -21,8 +21,8 @@ PROMPT_TYPES = ("orchestrator", "execution", "review")
 _PLACEHOLDER_TASK = SimpleNamespace(
     title="Example task",
     description="Placeholder task for prompt export preview.",
-    acceptance_criteria=["Tests pass", "No regressions"],
 )
+_PLACEHOLDER_CRITERIA = ["Tests pass", "No regressions"]
 
 
 def export_prompt_yml(
@@ -97,7 +97,9 @@ def _resolve(
     if prompt_type == "orchestrator":
         return resolve_orchestrator_prompt(settings, project_path)
     if prompt_type == "execution":
-        return resolve_task_prompt(task or _PLACEHOLDER_TASK, settings, project_path)
+        _task = task or _PLACEHOLDER_TASK
+        _criteria = _PLACEHOLDER_CRITERIA if task is None else None
+        return resolve_task_prompt(_task, settings, project_path, criteria_texts=_criteria)
     return resolve_review_prompt(task_id or "TASK_ID_PLACEHOLDER", settings, project_path)
 
 

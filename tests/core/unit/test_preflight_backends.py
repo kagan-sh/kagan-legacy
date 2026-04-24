@@ -94,9 +94,7 @@ def test_rule1_zero_installed_all_results_emitted() -> None:
     with _patch_backends(set()):
         results = check_agent_backends("claude-code")
 
-    assert len(results) == len(_BACKENDS), (
-        f"Expected {len(_BACKENDS)} results, got {len(results)}"
-    )
+    assert len(results) == len(_BACKENDS), f"Expected {len(_BACKENDS)} results, got {len(results)}"
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +156,7 @@ def test_rule3_default_installed_is_pass() -> None:
         results = check_agent_backends("claude-code")
 
     default_result = next(r for r in results if r.name == "agent_backend:claude-code")
-    assert default_result.status == CheckStatus.PASS, (
-        "Default backend must be PASS when installed"
-    )
+    assert default_result.status == CheckStatus.PASS, "Default backend must be PASS when installed"
     assert default_result.is_blocking is False
 
 
@@ -173,8 +169,7 @@ def test_rule3_default_installed_uninstalled_others_are_warn() -> None:
     non_default = [r for r in results if r.name != "agent_backend:claude-code"]
     for result in non_default:
         assert result.status == CheckStatus.WARN, (
-            f"Non-default uninstalled backend {result.name!r} must be WARN,"
-            f" got {result.status!r}"
+            f"Non-default uninstalled backend {result.name!r} must be WARN, got {result.status!r}"
         )
 
 

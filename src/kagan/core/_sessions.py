@@ -58,8 +58,10 @@ from kagan.core.errors import (
     WorktreeError,
 )
 from kagan.core.models import (
+    AcceptanceCriterion,
     Project,
     Repository,
+    ReviewVerdict,
     Session,
     SessionEvent,
     Setting,
@@ -459,7 +461,24 @@ class Sessions:
                 prompt = resolve_review_prompt(task_id, settings_dict, project_path)
             else:
                 learnings = await self._fetch_project_learnings(task.project_id)
-                prompt = resolve_task_prompt(task, settings_dict, project_path, learnings=learnings)
+                task_criteria_texts = await _db_async(
+                    self._engine,
+                    lambda s: [
+                        c.text
+                        for c in s.exec(
+                            select(AcceptanceCriterion).where(
+                                AcceptanceCriterion.task_id == task_id
+                            )
+                        ).all()
+                    ],
+                )
+                prompt = resolve_task_prompt(
+                    task,
+                    settings_dict,
+                    project_path,
+                    learnings=learnings,
+                    criteria_texts=task_criteria_texts,
+                )
 
             persona_prompt: str | None = None
             if persona:
@@ -508,7 +527,16 @@ class Sessions:
         launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
         backend_spec = get_backend_spec(agent_backend)
-        startup_prompt = build_attached_startup_prompt(task)
+        criteria_texts = await _db_async(
+            self._engine,
+            lambda s: [
+                c.text
+                for c in s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            ],
+        )
+        startup_prompt = build_attached_startup_prompt(task, criteria_texts)
         agent_cmd = backend_spec.executable
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
@@ -988,16 +1016,42 @@ class Sessions:
             return
 
         task = await self._get_task(task_id)
-        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+
+        # Load criteria from the new table
+        criteria = await _db_async(
+            self._engine,
+            lambda s: [
+                c.text.strip()
+                for c in s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+                if c.text.strip()
+            ],
+        )
         if not criteria:
             logger.info("Skipping auto-review for task={}: no acceptance criteria", task_id)
             return
 
         # Clear stale verdicts before starting fresh review
         def clear_verdicts(s) -> None:
+            crit_rows = list(
+                s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            )
+            criterion_ids = {c.id for c in crit_rows}
+            if criterion_ids:
+                verdict_rows = list(
+                    s.exec(
+                        select(ReviewVerdict).where(
+                            ReviewVerdict.criterion_id.in_(criterion_ids)  # type: ignore[attr-defined]
+                        )
+                    ).all()
+                )
+                for v in verdict_rows:
+                    s.delete(v)
             db_task = s.get(Task, task_id)
             if db_task is not None:
-                db_task.review_verdicts = []
                 db_task.updated_at = _utc_now()
                 s.add(db_task)
 

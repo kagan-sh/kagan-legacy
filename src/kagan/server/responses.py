@@ -11,18 +11,19 @@ models (see ``scripts/generate_wire_types.py``).
 from __future__ import annotations
 
 from datetime import datetime
-from enum import IntEnum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from kagan.core.enums import Priority, SessionStatus, TaskStatus
 
 # ── Tiny helpers ──────────────────────────────────────────────────────────────
 
 
 def _enum_name(v: Any) -> str:
-    """Coerce StrEnum/IntEnum to a wire-safe string."""
-    if isinstance(v, IntEnum):
-        return v.name
+    """Coerce StrEnum/IntEnum to a wire-safe string name."""
+    if hasattr(v, "name"):
+        return str(v.name)
     if hasattr(v, "value"):
         return str(v.value)
     return str(v)
@@ -48,7 +49,7 @@ class _OrmBase(BaseModel):
 
 class ActiveSessionResponse(_OrmBase):
     id: str
-    status: str
+    status: SessionStatus
     launcher: str | None = None
     agent_backend: str
     agent_role: str | None = None
@@ -60,14 +61,43 @@ class ActiveSessionResponse(_OrmBase):
 
     @field_validator("status", mode="before")
     @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
+    def _coerce_status(cls, v: Any) -> SessionStatus:
+        if isinstance(v, SessionStatus):
+            return v
+        return SessionStatus(str(v))
 
     @field_validator("started_at", mode="before")
     @classmethod
     def _coerce_dt(cls, v: Any) -> str:
         result = _dt_iso(v)
         return result or ""
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        d = super().model_dump(**kwargs)
+        if isinstance(d.get("status"), SessionStatus):
+            d["status"] = d["status"].value
+        return d
+
+
+# ── Acceptance criterion ──────────────────────────────────────────────────────
+
+
+class AcceptanceCriterionResponse(_OrmBase):
+    id: str
+    task_id: str
+    ordinal: int
+    text: str
+
+
+# ── Review verdict ────────────────────────────────────────────────────────────
+
+
+class ReviewVerdictResponse(_OrmBase):
+    id: str
+    criterion_id: str
+    session_id: str | None = None
+    verdict: str
+    reason: str
 
 
 # ── Task ──────────────────────────────────────────────────────────────────────
@@ -82,25 +112,22 @@ class BackendSelectionResponse(BaseModel):
     alternatives: list[str] = Field(default_factory=list)
 
 
-class ReviewVerdictResponse(BaseModel):
-    criterion_index: int
-    verdict: Literal["PASS", "FAIL"]
-    reason: str
-
-
 class TaskResponse(_OrmBase):
     id: str
     title: str
     description: str = ""
-    status: str
-    priority: str
+    status: TaskStatus
+    priority: Priority
     base_branch: str | None = None
     repo_id: str | None = None
-    acceptance_criteria: list[str] = Field(default_factory=list)
+    # criteria is the ORM relationship name; acceptance_criteria is the wire name
+    acceptance_criteria: list[AcceptanceCriterionResponse] = Field(
+        default_factory=list, validation_alias="criteria"
+    )
     agent_backend: str | None = None
     launcher: str | None = None
+    # Computed server-side from ReviewVerdict table (no stored field)
     review_approved: bool = False
-    review_verdicts: list[ReviewVerdictResponse] = Field(default_factory=list)
     updated_at: str | None = None
 
     # Runtime-computed (not on ORM — injected after construction)
@@ -110,15 +137,38 @@ class TaskResponse(_OrmBase):
     active_session: ActiveSessionResponse | None = None
     backend_selection: BackendSelectionResponse | None = None
 
-    @field_validator("status", "priority", mode="before")
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator("status", mode="before")
     @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
+    def _coerce_status(cls, v: Any) -> TaskStatus:
+        if isinstance(v, TaskStatus):
+            return v
+        return TaskStatus(str(v))
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _coerce_priority(cls, v: Any) -> Priority:
+        if isinstance(v, Priority):
+            return v
+        # Handle int values (stored as IntEnum)
+        try:
+            return Priority(int(v))
+        except (ValueError, TypeError):
+            return Priority[str(v)]
 
     @field_validator("updated_at", mode="before")
     @classmethod
     def _coerce_dt(cls, v: Any) -> str | None:
         return _dt_iso(v)
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        d = super().model_dump(**kwargs)
+        if isinstance(d.get("status"), TaskStatus):
+            d["status"] = d["status"].value
+        if isinstance(d.get("priority"), Priority):
+            d["priority"] = d["priority"].name
+        return d
 
 
 # ── Task session (inline in /tasks/{id}/sessions) ────────────────────────────
@@ -127,21 +177,29 @@ class TaskResponse(_OrmBase):
 class TaskSessionResponse(_OrmBase):
     id: str
     launcher: str | None = None
-    status: str
+    status: SessionStatus
     agent_backend: str
     agent_role: str | None = None
     started_at: str
 
     @field_validator("status", mode="before")
     @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
+    def _coerce_status(cls, v: Any) -> SessionStatus:
+        if isinstance(v, SessionStatus):
+            return v
+        return SessionStatus(str(v))
 
     @field_validator("started_at", mode="before")
     @classmethod
     def _coerce_dt(cls, v: Any) -> str:
         result = _dt_iso(v)
         return result or ""
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        d = super().model_dump(**kwargs)
+        if isinstance(d.get("status"), SessionStatus):
+            d["status"] = d["status"].value
+        return d
 
 
 # ── Project ───────────────────────────────────────────────────────────────────
@@ -273,6 +331,7 @@ class DoctorReportResponse(BaseModel):
 # All response models that map to TS interfaces.
 RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ActiveSessionResponse": ActiveSessionResponse,
+    "AcceptanceCriterionResponse": AcceptanceCriterionResponse,
     "ReviewVerdictResponse": ReviewVerdictResponse,
     "TaskResponse": TaskResponse,
     "TaskSessionResponse": TaskSessionResponse,

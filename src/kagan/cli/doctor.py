@@ -188,9 +188,7 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
     client = make_client()
     try:
         default_backend = run_async(resolve_doctor_backend_name(client))
-        preflight = run_async(
-            client.preflight(agent_backend=default_backend)
-        )
+        preflight = run_async(client.preflight(agent_backend=default_backend))
 
         # Detect whether we have new multi-backend results
         backend_results = [r for r in preflight if r.name.startswith("agent_backend:")]

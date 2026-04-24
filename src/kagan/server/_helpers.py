@@ -74,7 +74,12 @@ def _error_response(exc: Exception) -> JSONResponse:
     return _err("Internal server error", status=500)
 
 
-def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
+def task_to_wire_dict(
+    task: Any,
+    *,
+    runtime: dict[str, Any] | None = None,
+    review_approved: bool = False,
+) -> dict[str, Any]:
     """Serialize a Task ORM instance to a JSON-safe dict for the wire."""
     resp = TaskResponse.model_validate(task)
     runtime = runtime or {}
@@ -88,6 +93,7 @@ def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> di
     resp.active_session = (
         ActiveSessionResponse(**active_session) if isinstance(active_session, dict) else None
     )
+    resp.review_approved = review_approved
     return resp.model_dump(mode="json")
 
 

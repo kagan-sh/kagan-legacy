@@ -126,9 +126,15 @@ async def serve_http(
 
     # Initialise KaganCore for REST API routes.
     from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
+    from kagan.core._orphan_reap import reap_orphan_sessions
 
     install_asyncio_subprocess_exception_filter()
     client = KaganCore(db_path=opts.mcp_opts.db_path)
+
+    # Reap any sessions that were RUNNING when the previous server process died.
+    reaped = await reap_orphan_sessions(client.engine)
+    if reaped:
+        logger.info("Server startup: reaped {} orphan session(s)", reaped)
 
     project_id = opts.mcp_opts.project_id
     if project_id:

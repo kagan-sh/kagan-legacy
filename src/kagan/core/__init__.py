@@ -44,6 +44,7 @@ from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filt
 from kagan.core._audit import list_audit, record_audit
 from kagan.core._db import default_db_path
 from kagan.core._launchers import resolve_launcher
+from kagan.core._orphan_reap import reap_orphan_sessions
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._projects import (
     add_repo,
@@ -80,6 +81,7 @@ from kagan.core._reviews import (
     clear_review_verdicts,
     continue_rebase,
     get_conflicts,
+    is_review_approved,
     merge_task,
     rebase_task,
     reject_review,
@@ -144,9 +146,11 @@ from kagan.core.errors import (
 )
 from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME, get_system_git_identity
 from kagan.core.models import (
+    AcceptanceCriterion,
     AuditEntry,
     Project,
     Repository,
+    ReviewVerdict,
     Session,
     SessionEvent,
     Setting,
@@ -174,6 +178,7 @@ __all__ = [
     "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
     "ACPClientBase",
+    "AcceptanceCriterion",
     "AgentBackendConfig",
     "AgentError",
     "AgentRole",
@@ -200,6 +205,7 @@ __all__ = [
     "Priority",
     "Project",
     "Repository",
+    "ReviewVerdict",
     "Session",
     "SessionError",
     "SessionEvent",
@@ -255,6 +261,7 @@ __all__ = [
     "get_worktree_diff_stats",
     "has_active_session",
     "install_asyncio_subprocess_exception_filter",
+    "is_review_approved",
     "list_active_sessions",
     "list_audit",
     "list_available_backends",
@@ -267,6 +274,7 @@ __all__ = [
     "mark_session_running",
     "merge_task",
     "parse_priority",
+    "reap_orphan_sessions",
     "rebase_task",
     "record_audit",
     "reject_review",

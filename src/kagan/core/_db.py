@@ -13,8 +13,11 @@ from loguru import logger
 from sqlalchemy import Connection, Engine, event
 from sqlmodel import create_engine
 
-_HEAD_REVISION = "0001_v060_to_latest"
-_LEGACY_REVISION_REMAP = {"5b95758fdb4d": _HEAD_REVISION}
+_HEAD_REVISION = "6f4d63a80a1e"
+_LEGACY_REVISION_REMAP = {
+    "5b95758fdb4d": "0001_v060_to_latest",
+    "0001_v060_to_latest": "0001_v060_to_latest",
+}
 
 logger.disable("sqlalchemy")
 logger.disable("alembic")

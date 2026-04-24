@@ -25,6 +25,18 @@ from kagan.core import (
 )
 from kagan.core.models import Repository, Worktree
 
+
+def _safe_criteria_texts(task: Any) -> list[str]:
+    """Extract criteria texts from a Task ORM object, handling detached instances."""
+    from sqlalchemy.orm.exc import DetachedInstanceError
+
+    try:
+        criteria = getattr(task, "criteria", None) or []
+        return [c.text for c in sorted(criteria, key=lambda c: c.ordinal)]
+    except DetachedInstanceError:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Result types (protocol-independent DTOs for test assertions)
 # ---------------------------------------------------------------------------
@@ -509,7 +521,7 @@ class CoreDriver:
             agent_backend=task.agent_backend,
             launcher=getattr(task, "launcher", None),
             base_branch=task.base_branch,
-            acceptance_criteria=task.acceptance_criteria or [],
+            acceptance_criteria=_safe_criteria_texts(task),
             project_id=task.project_id,
             repo_id=getattr(task, "repo_id", None),
         )

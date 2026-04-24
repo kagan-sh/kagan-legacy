@@ -389,8 +389,7 @@ async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -
 
         events = await _db_async(app.core.engine, _fetch)
         promo_events = [
-            e for e in events
-            if e.event_type == SessionEventType.BACKEND_AUTO_PROMOTED.value
+            e for e in events if e.event_type == SessionEventType.BACKEND_AUTO_PROMOTED.value
         ]
         assert promo_events, "BACKEND_AUTO_PROMOTED telemetry event not found"
         payload = promo_events[0].payload

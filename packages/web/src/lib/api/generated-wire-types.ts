@@ -3,6 +3,9 @@
  * DO NOT EDIT — regenerate with: uv run python scripts/generate_wire_types.py -o packages/web/src/lib/api/generated-wire-types.ts
  */
 
+export interface SessionStatus {
+}
+
 export interface BackendSelectionResponse {
   selected_backend: string;
   backend_confidence: number;
@@ -10,9 +13,15 @@ export interface BackendSelectionResponse {
   alternatives?: string[];
 }
 
+export interface Priority {
+}
+
+export interface TaskStatus {
+}
+
 export interface ActiveSessionResponse {
   id: string;
-  status: string;
+  status: SessionStatus;
   launcher?: string | null;
   agent_backend: string;
   agent_role?: string | null;
@@ -23,9 +32,18 @@ export interface ActiveSessionResponse {
   cost_currency?: string | null;
 }
 
+export interface AcceptanceCriterionResponse {
+  id: string;
+  task_id: string;
+  ordinal: number;
+  text: string;
+}
+
 export interface ReviewVerdictResponse {
-  criterion_index: number;
-  verdict: 'PASS' | 'FAIL';
+  id: string;
+  criterion_id: string;
+  session_id?: string | null;
+  verdict: string;
   reason: string;
 }
 
@@ -33,15 +51,14 @@ export interface TaskResponse {
   id: string;
   title: string;
   description?: string;
-  status: string;
-  priority: string;
+  status: TaskStatus;
+  priority: Priority;
   base_branch?: string | null;
   repo_id?: string | null;
-  acceptance_criteria?: string[];
+  acceptance_criteria?: AcceptanceCriterionResponse[];
   agent_backend?: string | null;
   launcher?: string | null;
   review_approved?: boolean;
-  review_verdicts?: ReviewVerdictResponse[];
   updated_at?: string | null;
   last_event_at?: string | null;
   has_workspace?: boolean;
@@ -53,7 +70,7 @@ export interface TaskResponse {
 export interface TaskSessionResponse {
   id: string;
   launcher?: string | null;
-  status: string;
+  status: SessionStatus;
   agent_backend: string;
   agent_role?: string | null;
   started_at: string;

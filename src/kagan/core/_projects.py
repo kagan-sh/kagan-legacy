@@ -13,7 +13,6 @@ from kagan.core import git
 from kagan.core._db_helpers import (
     _add_and_refresh,
     _db_async,
-    _delete_task_children,
     _setting_branch,
     _setting_enabled,
 )
@@ -118,10 +117,11 @@ async def delete_project(
                 )
 
     # DB transaction: delete remaining rows
+    # CASCADE FK deletes handle child rows (sessions, worktrees, task_events,
+    # notes, acceptance_criteria, review_verdicts) when the Task row is deleted.
     def op(s):
         tasks = list(s.exec(select(Task).where(Task.project_id == project_id)).all())
         for task in tasks:
-            _delete_task_children(s, task.id)
             s.delete(task)
         for repo in s.exec(select(Repository).where(Repository.project_id == project_id)).all():
             s.delete(repo)

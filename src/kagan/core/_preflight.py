@@ -171,8 +171,7 @@ def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResu
     if default_installed:
         default_status = CheckStatus.PASS
         default_msg = (
-            f"Default agent backend '{resolved_default}' found"
-            f" (executable: {default_executable})"
+            f"Default agent backend '{resolved_default}' found (executable: {default_executable})"
         )
         default_hint = ""
     elif any_installed:
@@ -208,9 +207,7 @@ def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResu
             fix_hint=default_hint,
         )
     )
-    logger.debug(
-        "Preflight backend (default) {}: {}", resolved_default, default_status
-    )
+    logger.debug("Preflight backend (default) {}: {}", resolved_default, default_status)
 
     # --- Non-default backend slots ---
     for name, installed in availability.items():

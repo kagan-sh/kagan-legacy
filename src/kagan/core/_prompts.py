@@ -298,7 +298,7 @@ def resolve_orchestrator_prompt(settings: dict[str, str], project_path: Path | N
     return _apply_settings(DEFAULT_ORCHESTRATOR_PROMPT, settings)
 
 
-def _build_detached_run_prompt(task: Any) -> str:
+def _build_detached_run_prompt(task: Any, criteria_texts: list[str] | None = None) -> str:
     from kagan.core import git
 
     description = (getattr(task, "description", "") or "").strip()
@@ -306,11 +306,12 @@ def _build_detached_run_prompt(task: Any) -> str:
         f"Task: {task.title}",
         "",
     ]
-    criteria = [
-        item.strip()
-        for item in getattr(task, "acceptance_criteria", [])
-        if isinstance(item, str) and item.strip()
-    ]
+    # criteria_texts may be passed explicitly (from AcceptanceCriterion table);
+    # fall back to task.acceptance_criteria only if still present (legacy/test).
+    _raw = (
+        criteria_texts if criteria_texts is not None else getattr(task, "acceptance_criteria", [])
+    )
+    criteria = [item.strip() for item in _raw if isinstance(item, str) and item.strip()]
     if description:
         lines.extend(["Description:", description, ""])
     if criteria:
@@ -383,7 +384,13 @@ def resolve_task_prompt(
     project_path: Path | None = None,
     *,
     learnings: list[str] | None = None,
+    criteria_texts: list[str] | None = None,
 ) -> str:
+    # criteria_texts passed explicitly from AcceptanceCriterion table;
+    # fall back to task attribute for legacy/test compatibility.
+    _raw = (
+        criteria_texts if criteria_texts is not None else getattr(task, "acceptance_criteria", [])
+    )
     overrides = detect_dotfile_overrides(project_path)
     override_path = overrides.get("execution")
     if override_path is not None:
@@ -391,9 +398,7 @@ def resolve_task_prompt(
         if template is not None:
             description = (getattr(task, "description", "") or "").strip()
             criteria_items = [
-                item.strip()
-                for item in getattr(task, "acceptance_criteria", [])
-                if isinstance(item, str) and item.strip()
+                item.strip() for item in _raw if isinstance(item, str) and item.strip()
             ]
             payload = {
                 "title": str(getattr(task, "title", "") or ""),
@@ -409,7 +414,7 @@ def resolve_task_prompt(
                     exc,
                 )
 
-    base = _build_detached_run_prompt(task)
+    base = _build_detached_run_prompt(task, list(_raw))
     if learnings:
         parts = [base, "", "PROJECT CONTEXT (from prior tasks):"]
         parts.extend(f"- {item}" for item in learnings)
@@ -419,11 +424,7 @@ def resolve_task_prompt(
     if depth == "always":
         from kagan.core._verification import build_verification_prompt_section
 
-        criteria = [
-            item.strip()
-            for item in getattr(task, "acceptance_criteria", [])
-            if isinstance(item, str) and item.strip()
-        ]
+        criteria = [item.strip() for item in _raw if isinstance(item, str) and item.strip()]
         verification_section = build_verification_prompt_section(criteria)
         if verification_section:
             base = base + "\n\n" + verification_section

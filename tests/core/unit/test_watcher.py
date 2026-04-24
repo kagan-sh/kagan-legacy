@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 import pytest
 
@@ -236,7 +238,6 @@ async def test_consume_events_retries_on_error(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(DBWatcher, "_EVENT_STREAM_RETRY_DELAY", 0.01)
 
     call_count = 0
-    received_events: list[BoardEvent] = []
 
     async def _fake_stream() -> AsyncIterator[BoardEvent]:
         nonlocal call_count

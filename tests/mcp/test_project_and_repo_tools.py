@@ -188,7 +188,7 @@ async def test_project_update_add_repo_returns_id(mcp_board: ClientSession, tmp_
 async def test_project_update_repo_default_branch_returns_id(
     mcp_board: ClientSession, tmp_path
 ) -> None:
-    """project_update with repo_id and default_branch must return a dict containing the project id."""
+    """project_update with repo_id and default_branch must return a dict with the project id."""
     project_id = await _first_project_id(mcp_board)
     repo_path = str(tmp_path / "repo_for_branch")
 
@@ -283,7 +283,7 @@ async def test_project_setup_returns_name_on_admin_server(tmp_path) -> None:
 
 
 async def test_project_update_delete_removes_project_on_admin_server(tmp_path) -> None:
-    """project_update with delete=True must remove a project and return deleted=True on admin server."""
+    """project_update with delete=True must remove a project and return deleted=True."""
     mcp = create_server(ServerOptions(admin=True, db_path=str(tmp_path / "admin_delete.db")))
     session_q: asyncio.Queue[ClientSession] = asyncio.Queue()
     ready = asyncio.Event()

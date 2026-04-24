@@ -56,7 +56,28 @@ def _resolve_task_ids(ctx: Context, task_ids: list[str] | None) -> list[str]:
     return list(dict.fromkeys(normalized))
 
 
-def _task_to_dict(task: Any) -> dict[str, Any]:
+async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
+    """Serialize a Task ORM row to a dict suitable for MCP tool responses.
+
+    Loads acceptance_criteria from the AcceptanceCriterion table and computes
+    review_approved from ReviewVerdict rows.
+    """
+    from sqlmodel import select as _select
+
+    from kagan.core._db_helpers import _db_async
+    from kagan.core._reviews import is_review_approved
+    from kagan.core.models import AcceptanceCriterion as _AC
+
+    criteria = await _db_async(
+        engine,
+        lambda s: [
+            c.text
+            for c in s.exec(
+                _select(_AC).where(_AC.task_id == task.id).order_by(_AC.ordinal)  # type: ignore[arg-type]
+            ).all()
+        ],
+    )
+    approved = await asyncio.to_thread(is_review_approved, task.id, engine)
     return {
         "id": task.id,
         "title": task.title,
@@ -64,12 +85,11 @@ def _task_to_dict(task: Any) -> dict[str, Any]:
         "status": task.status.value,
         "priority": task.priority.name,
         "base_branch": getattr(task, "base_branch", None),
-        "acceptance_criteria": getattr(task, "acceptance_criteria", []),
+        "acceptance_criteria": criteria,
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
         "repo_id": getattr(task, "repo_id", None),
-        "review_approved": getattr(task, "review_approved", False),
-        "review_verdicts": getattr(task, "review_verdicts", []) or [],
+        "review_approved": approved,
     }
 
 
@@ -155,7 +175,7 @@ async def _task_get(ctx: Context, task_id: str | None = None) -> dict:
     app = get_context(ctx)
     resolved_task_id = _resolve_task_id(ctx, task_id)
     task = await app.client.tasks.get(resolved_task_id)
-    result = _task_to_dict(task)
+    result = await _task_to_dict(task, app.client.engine)
     if app.bound_session_id is not None:
         result["session_id"] = app.bound_session_id
 
@@ -215,11 +235,12 @@ async def _task_list(
         status_enum = TaskStatus(status) if status else None
         tasks = await app.client.tasks.list(status=status_enum, repo_id=repo_id)
 
-    result_tasks = [_task_to_dict(t) for t in tasks]
+    result_tasks = await asyncio.gather(*[_task_to_dict(t, app.client.engine) for t in tasks])
+    result_list = list(result_tasks)
     if app.bound_session_id is not None:
-        for t in result_tasks:
+        for t in result_list:
             t["session_id"] = app.bound_session_id
-    return {"tasks": result_tasks}
+    return {"tasks": result_list}
 
 
 @mcp_error_boundary
@@ -286,7 +307,7 @@ async def _task_create(
                 launcher=entry.get("launcher"),
                 repo_id=effective_repo_id,
             )
-            result = _task_to_dict(task)
+            result = await _task_to_dict(task, app.client.engine)
             if app.bound_session_id is not None:
                 result["session_id"] = app.bound_session_id
             created.append(result)
@@ -336,7 +357,7 @@ async def _task_update(
     )
     if status_enum is not None:
         task = await app.client.tasks.set_status(resolved_task_id, status_enum)
-    result = _task_to_dict(task)
+    result = await _task_to_dict(task, app.client.engine)
     result["verification"] = _build_update_verification(
         result,
         title=title,

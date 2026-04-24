@@ -3,6 +3,7 @@ from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.css.query import NoMatches
 from textual.reactive import reactive
 from textual.widgets import Static
 
@@ -60,11 +61,20 @@ class PeekOverlay(Vertical):
         yield Static("", id="peek-status", classes="peek-status")
         yield Static("", id="peek-content", classes="peek-content")
 
+    def on_mount(self) -> None:
+        self._sync_task_content()
+
     def watch_peek_task(self, task: _TaskData | None) -> None:
-        model = self._build_model(task)
-        self.query_one("#peek-title", Static).update(model.title)
-        self.query_one("#peek-status", Static).update(model.status)
-        self.query_one("#peek-content", Static).update(model.content)
+        self._sync_task_content(task)
+
+    def _sync_task_content(self, task: _TaskData | None = None) -> None:
+        model = self._build_model(self.peek_task if task is None else task)
+        try:
+            self.query_one("#peek-title", Static).update(model.title)
+            self.query_one("#peek-status", Static).update(model.status)
+            self.query_one("#peek-content", Static).update(model.content)
+        except NoMatches:
+            return
 
     def watch_peek_visible(self, visible: bool) -> None:
         self.display = visible

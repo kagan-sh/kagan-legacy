@@ -313,7 +313,7 @@ class LocalClient:
                 yield TaskUpdatedEvent(
                     seq=self._next_seq(),
                     task_id=data.get("task_id", ""),
-                    changes={},
+                    changes={"task": data["task"]} if isinstance(data.get("task"), dict) else {},
                 )
             elif event_type == "TASK_DELETED":
                 yield TaskDeletedEvent(

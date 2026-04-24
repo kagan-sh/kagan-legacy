@@ -94,11 +94,9 @@ function DiffSummaryRow({
 
 function TaskCardBody({
     task,
-    isSelected = false,
     onDiffNavigate,
 }: {
     task: WireTask;
-    isSelected?: boolean;
     onDiffNavigate?: (e: React.MouseEvent) => void;
 }) {
     return (
@@ -161,7 +159,7 @@ export function TaskCardOverlayPreview({
                     PRIORITY_RAIL[task.priority] ?? PRIORITY_RAIL.MEDIUM,
                 )}
             />
-            <TaskCardBody task={task} isSelected={true} />
+            <TaskCardBody task={task} />
         </div>
     );
 }
@@ -276,7 +274,7 @@ function TaskCardImpl({
                 aria-hidden="true"
             />
 
-            <TaskCardBody task={task} isSelected={isSelected} onDiffNavigate={handleDiffNavigate} />
+            <TaskCardBody task={task} onDiffNavigate={handleDiffNavigate} />
         </div>
     );
 

@@ -20,11 +20,12 @@ import {
 } from '@/lib/atoms/board';
 import { presenceAtom } from '@/lib/atoms/presence';
 import { isAnyDialogOpenAtom } from '@/lib/atoms/ui';
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent, WireTask } from '@/lib/api/types';
 
 interface SSEMessage {
   type: string;
   task_id?: string;
+  task?: WireTask;
   event?: WireEvent;
 }
 
@@ -92,7 +93,18 @@ export function useEventStream() {
               reconnectAttemptsRef.current = 0;
             }
             if (msg.type === 'TASK_UPDATED') {
-              if (msg.task_id) {
+              if (msg.task) {
+                const task = msg.task;
+                setTasks((prev) => {
+                  const index = prev.findIndex((t) => t.id === task.id);
+                  if (index >= 0) {
+                    const next = [...prev];
+                    next[index] = task;
+                    return next;
+                  }
+                  return [...prev, task];
+                });
+              } else if (msg.task_id) {
                 try {
                   const task = await apiClient.getTask(msg.task_id);
                   setTasks((prev) => {

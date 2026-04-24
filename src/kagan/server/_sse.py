@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from starlette.responses import StreamingResponse
 
 from kagan.core.errors import KaganError
+from kagan.server._helpers import task_wire_dict
 from kagan.server.mcp.server import get_server_context
 from kagan.server.responses import EventResponse
 
@@ -26,6 +28,7 @@ _SSE_KEEPALIVE_SECONDS = 25.0
 # Safety-net fallback interval — the event bus delivers most mutations
 # instantly; this poll only catches cross-process writes the bus cannot see.
 _DB_POLL_SECONDS = 10.0
+_TASK_UPDATE_MIN_INTERVAL_SECONDS = 0.2
 
 
 def _event_to_wire(event: SessionEvent) -> dict[str, Any]:
@@ -116,6 +119,7 @@ async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) 
     allowed_task_ids = await _build_project_task_ids(ctx)
     events_since_refresh = 0
     _REFRESH_INTERVAL = 50
+    last_sent_at: dict[str, float] = {}
 
     try:
         async for event in ctx.client.tasks.events.stream_board():
@@ -131,11 +135,25 @@ async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) 
                 if allowed_task_ids is not None and task_id not in allowed_task_ids:
                     continue
 
-            _queue_put_best_effort(queue, {"type": "TASK_UPDATED", "task_id": task_id})
+            now = time.monotonic()
+            if now - last_sent_at.get(task_id, 0.0) < _TASK_UPDATE_MIN_INTERVAL_SECONDS:
+                continue
+            last_sent_at[task_id] = now
+
+            _queue_put_best_effort(queue, await _task_update_message(ctx, task_id))
     except asyncio.CancelledError:
         raise
     except (ConnectionError, RuntimeError, OSError, KaganError):
         logger.debug("SSE board event stream failed", exc_info=True)
+
+
+async def _task_update_message(ctx: Any, task_id: str) -> dict[str, Any]:
+    try:
+        task = await task_wire_dict(ctx, task_id)
+        return {"type": "TASK_UPDATED", "task_id": task_id, "task": task}
+    except (KaganError, OSError, RuntimeError, AttributeError):
+        logger.debug("SSE: failed to build task payload for {}", task_id, exc_info=True)
+        return {"type": "TASK_UPDATED", "task_id": task_id}
 
 
 async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIterator[str]:
@@ -149,11 +167,11 @@ async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIter
 
 async def _poll_db_for_external_changes(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
     project_id = getattr(ctx, "bound_project_id", None)
-    await _poll_db_changes(ctx.client.tasks, queue, project_id=project_id)
+    await _poll_db_changes(ctx, queue, project_id=project_id)
 
 
 async def _poll_db_changes(
-    tasks: Tasks,
+    ctx_or_tasks: Any,
     queue: asyncio.Queue[dict[str, Any]],
     *,
     project_id: str | None = None,
@@ -167,6 +185,8 @@ async def _poll_db_changes(
     When *project_id* is provided, only tasks belonging to that project are
     tracked — events for other projects are never emitted.
     """
+    ctx = ctx_or_tasks if hasattr(ctx_or_tasks, "client") else None
+    tasks: Tasks = ctx.client.tasks if ctx is not None else ctx_or_tasks
     known: dict[str, str] = {}
 
     def _scoped(snapshot: list[Any]) -> list[Any]:
@@ -195,7 +215,12 @@ async def _poll_db_changes(
 
             for task_id in changed:
                 with contextlib.suppress(asyncio.QueueFull):
-                    queue.put_nowait({"type": "TASK_UPDATED", "task_id": task_id})
+                    message = (
+                        await _task_update_message(ctx, task_id)
+                        if ctx is not None
+                        else {"type": "TASK_UPDATED", "task_id": task_id}
+                    )
+                    queue.put_nowait(message)
             for task_id in deleted:
                 with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait({"type": "TASK_DELETED", "task_id": task_id})

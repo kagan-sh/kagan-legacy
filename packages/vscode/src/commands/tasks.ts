@@ -7,17 +7,11 @@ import type { TaskScmProvider } from "../providers/tasks.scm.js";
 import type { AgentTerminalProvider } from "../providers/tasks.terminal.js";
 import type { Priority, TaskStatus, WireTask } from "../api/types.js";
 import { TASK_COLUMNS } from "../api/types.js";
+import { TASK_COLUMN_LABELS } from "../providers/board.tree.helpers.js";
 
 type TaskItem = Extract<BoardItem, { kind: "task" }>;
 
 const PRIORITIES: Priority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-
-const COLUMN_LABELS: Record<TaskStatus, string> = {
-  BACKLOG: "Backlog",
-  IN_PROGRESS: "In Progress",
-  REVIEW: "Review",
-  DONE: "Done",
-};
 
 export function registerTaskCommands(
   context: vscode.ExtensionContext,
@@ -139,7 +133,7 @@ export function registerTaskCommands(
 
         const picked = await vscode.window.showQuickPick(
           TASK_COLUMNS.map((status) => ({
-            label: COLUMN_LABELS[status],
+            label: TASK_COLUMN_LABELS[status],
             description: status === task.status ? "Current" : undefined,
             status,
           })),

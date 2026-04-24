@@ -1176,7 +1176,10 @@ class ChatPanel(Vertical):
             )
 
     def _render_decision_surface(self) -> None:
-        container = self.query_one("#chat-inline-surface", Vertical)
+        try:
+            container = self.query_one("#chat-inline-surface", Vertical)
+        except NoMatches:
+            return
         for child in list(container.children):
             child.remove()
         state = self._current_state()

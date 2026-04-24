@@ -1,0 +1,23 @@
+import { TASK_COLUMNS, type TaskStatus, type WireTask } from "../api/types.js";
+
+export const TASK_COLUMN_LABELS: Record<TaskStatus, string> = {
+  BACKLOG: "Backlog",
+  IN_PROGRESS: "In Progress",
+  REVIEW: "Review",
+  DONE: "Done",
+};
+
+export function groupTasksByStatus(tasks: WireTask[]): Map<TaskStatus, WireTask[]> {
+  const groups = new Map<TaskStatus, WireTask[]>();
+  for (const status of TASK_COLUMNS) {
+    groups.set(status, []);
+  }
+  for (const task of tasks) {
+    groups.get(task.status)?.push(task);
+  }
+  return groups;
+}
+
+export function sortTasksByTitle(tasks: WireTask[]): WireTask[] {
+  return [...tasks].sort((left, right) => left.title.localeCompare(right.title));
+}

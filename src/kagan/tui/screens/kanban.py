@@ -371,7 +371,14 @@ class KanbanScreen(Screen[None]):
         return None
 
     def _sync_layout_state(self) -> None:
-        panel = self.query_one(ChatPanel)
+        try:
+            panel = self.query_one(ChatPanel)
+        except NoMatches:
+            self.set_class(False, "chat-overlay-visible")
+            self.set_class(False, "chat-overlay-expanded")
+            self.set_class(False, "chat-overlay-vertical")
+            self.set_class(False, "chat-overlay-horizontal")
+            return
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
         if not self._all_tasks and visible and not fullscreen:

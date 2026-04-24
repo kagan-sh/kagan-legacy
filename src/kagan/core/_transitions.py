@@ -41,13 +41,19 @@ _TRANSITIONS: dict[TaskStatus, dict[Trigger, TaskStatus]] = {
     },
 }
 
-# Derived flat set for legacy validate_move / can_move callers.
-_ALLOWED: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
-    {
-        (from_status, to_status)
-        for from_status, triggers in _TRANSITIONS.items()
-        for to_status in triggers.values()
-    }
+# MERGE is reserved for the merge action; direct move_task() must not satisfy it.
+_MOVE_ALLOWED: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    (from_status, to_status)
+    for from_status, triggers in _TRANSITIONS.items()
+    for trigger, to_status in triggers.items()
+    if trigger is not Trigger.MERGE
+)
+
+_MERGE_ALLOWED: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    (from_status, to_status)
+    for from_status, triggers in _TRANSITIONS.items()
+    for trigger, to_status in triggers.items()
+    if trigger is Trigger.MERGE
 )
 
 
@@ -64,7 +70,7 @@ def transition(from_status: TaskStatus, trigger: Trigger) -> TaskStatus:
 
 
 def can_move(from_status: TaskStatus, to_status: TaskStatus) -> bool:
-    return (from_status, to_status) in _ALLOWED
+    return (from_status, to_status) in _MOVE_ALLOWED
 
 
 def validate_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
@@ -74,17 +80,17 @@ def validate_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
     logger.debug("Transition validated: {} -> {}", from_status.value, to_status.value)
 
 
-# validate_merge_move is unified here — REVIEW→DONE is just Trigger.MERGE.
-# Kept as a named function for clarity at the single call site in _reviews.py.
 def validate_merge_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
-    validate_move(from_status, to_status)
+    if (from_status, to_status) not in _MOVE_ALLOWED | _MERGE_ALLOWED:
+        logger.warning("Invalid merge transition: {} -> {}", from_status.value, to_status.value)
+        raise InvalidTransitionError(from_status, to_status)
 
 
 def allowed_targets(status: TaskStatus) -> list[TaskStatus]:
-    """Return valid transition targets for a given status (excluding merge-only)."""
-    return [to for (frm, to) in _ALLOWED if frm == status]
+    """Return valid direct-move targets (excludes merge-only)."""
+    return [to for (frm, to) in _MOVE_ALLOWED if frm == status]
 
 
 def all_allowed_targets(status: TaskStatus) -> list[TaskStatus]:
-    """Return all valid targets (merge included — same set now)."""
-    return allowed_targets(status)
+    """Return all valid targets including merge."""
+    return [to for (frm, to) in _MOVE_ALLOWED | _MERGE_ALLOWED if frm == status]

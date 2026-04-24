@@ -20,7 +20,7 @@ from kagan.core._db_helpers import (
 from kagan.core._events import BoardEvent, Events, list_events
 from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
-from kagan.core._sessions import Sessions
+from kagan.core._sessions import Sessions, fetch_project_learnings
 from kagan.core._task_classification import classify_task
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
@@ -642,30 +642,7 @@ class Tasks:
         Notes are ordered newest-first and deduplicated by content after stripping the prefix.
         Only notes whose content starts with "[LEARNING]" are included.
         """
-        stmt = (
-            select(TaskNote)
-            .where(
-                _col(TaskNote.task_id).in_(
-                    select(Task.id).where(Task.project_id == project_id)
-                )
-            )
-            .where(_col(TaskNote.content).like("[LEARNING]%"))
-            .order_by(desc(_col(TaskNote.created_at)))
-            .limit(30)
-        )
-        notes: builtins.list[TaskNote] = await _db_async(
-            self._engine, lambda s: list(s.exec(stmt).all())
-        )
-        seen: set[str] = set()
-        result: builtins.list[str] = []
-        for note in notes:
-            text = note.content.removeprefix("[LEARNING]").strip()
-            if text and text not in seen:
-                seen.add(text)
-                result.append(text)
-                if len(result) >= 20:
-                    break
-        return result
+        return await fetch_project_learnings(self._engine, project_id)
 
 
 __all__ = [

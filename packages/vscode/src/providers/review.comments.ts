@@ -1,18 +1,25 @@
 import * as vscode from "vscode";
 import type { ReviewVerdict, WireTask } from "../api/types.js";
+import { buildReviewDocument } from "./review.document.js";
 
 const REVIEW_SCHEME = "kagan-review";
 
 export class ReviewDocumentProvider implements vscode.TextDocumentContentProvider {
-  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const query = new URLSearchParams(uri.query);
-    const encoded = query.get("payload");
-    if (!encoded) {
-      return "";
-    }
+  private readonly tasks = new Map<string, WireTask>();
+  private readonly didChange = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChange = this.didChange.event;
 
-    const task = JSON.parse(decodeURIComponent(encoded)) as WireTask;
-    return buildReviewDocument(task);
+  setTask(task: WireTask): void {
+    this.tasks.set(task.id, task);
+    this.didChange.fire(reviewUri(task.id));
+  }
+
+  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+    return buildReviewDocument(this.tasks.get(taskIdFromUri(uri)) ?? null).text;
+  }
+
+  dispose(): void {
+    this.didChange.dispose();
   }
 }
 
@@ -20,11 +27,12 @@ export class ReviewCommentProvider implements vscode.Disposable {
   private readonly controller: vscode.CommentController;
   private threads: vscode.CommentThread[] = [];
 
-  constructor() {
+  constructor(private readonly documents: ReviewDocumentProvider) {
     this.controller = vscode.comments.createCommentController("kagan-review", "Kagan Review");
   }
 
   async showTaskReview(task: WireTask): Promise<void> {
+    this.documents.setTask(task);
     const uri = buildReviewUri(task);
     await vscode.window.showTextDocument(uri, { preview: false });
     this.showVerdicts(task, uri);
@@ -45,12 +53,11 @@ export class ReviewCommentProvider implements vscode.Disposable {
   private showVerdicts(task: WireTask, uri: vscode.Uri): void {
     this.clear();
 
-    const ordinalById = new Map(task.acceptance_criteria.map((c) => [c.id, c.ordinal]));
+    const { criterionLabels, criterionLines } = buildReviewDocument(task);
 
     for (const verdict of task.review_verdicts) {
-      const ordinal = ordinalById.get(verdict.criterion_id);
-      if (ordinal === undefined) continue;
-      const line = criterionLine(ordinal);
+      const line = criterionLines.get(verdict.criterion_id);
+      if (line === undefined) continue;
       const range = new vscode.Range(line, 0, line, 0);
       const comment: vscode.Comment = {
         body: buildCommentBody(verdict),
@@ -59,7 +66,7 @@ export class ReviewCommentProvider implements vscode.Disposable {
       };
 
       const thread = this.controller.createCommentThread(uri, range, [comment]);
-      thread.label = `Criterion ${ordinal + 1}`;
+      thread.label = `Criterion ${criterionLabels.get(verdict.criterion_id) ?? "?"}`;
       thread.state =
         verdict.verdict === "PASS"
           ? vscode.CommentThreadState.Resolved
@@ -70,48 +77,14 @@ export class ReviewCommentProvider implements vscode.Disposable {
 }
 
 function buildReviewUri(task: WireTask): vscode.Uri {
-  return vscode.Uri.from({
-    scheme: REVIEW_SCHEME,
-    path: `/${task.id}.md`,
-    query: new URLSearchParams({
-      payload: encodeURIComponent(JSON.stringify(task)),
-    }).toString(),
-  });
+  return reviewUri(task.id);
 }
 
-function buildReviewDocument(task: WireTask): string {
-  const lines = [
-    `# ${task.title}`,
-    "",
-    `Status: ${task.status}`,
-    `Priority: ${task.priority}`,
-    `Approved: ${task.review_approved ? "yes" : "no"}`,
-    "",
-    "## Acceptance Criteria",
-    "",
-  ];
-
-  if (task.acceptance_criteria.length === 0) {
-    lines.push(`1. [ ] No acceptance criteria`);
-  } else {
-    for (const criterion of task.acceptance_criteria) {
-      const verdict = task.review_verdicts.find((item) => item.criterion_id === criterion.id);
-      const marker = verdict?.verdict === "PASS" ? "[PASS]" : verdict?.verdict === "FAIL" ? "[FAIL]" : "[ ]";
-      lines.push(`${criterion.ordinal + 1}. ${marker} ${criterion.text}`);
-    }
-  }
-
-  if (task.review_verdicts.length > 0) {
-    const ordinalById = new Map(task.acceptance_criteria.map((c) => [c.id, c.ordinal]));
-    lines.push("", "## Verdict Summary", "");
-    for (const verdict of task.review_verdicts) {
-      const ordinal = ordinalById.get(verdict.criterion_id);
-      const label = ordinal !== undefined ? `${ordinal + 1}` : verdict.criterion_id;
-      lines.push(`${label}. ${verdict.verdict}: ${verdict.reason}`);
-    }
-  }
-
-  return lines.join("\n");
+function reviewUri(taskId: string): vscode.Uri {
+  return vscode.Uri.from({
+    scheme: REVIEW_SCHEME,
+    path: `/${taskId}.md`,
+  });
 }
 
 function buildCommentBody(verdict: ReviewVerdict): vscode.MarkdownString {
@@ -119,9 +92,6 @@ function buildCommentBody(verdict: ReviewVerdict): vscode.MarkdownString {
   return new vscode.MarkdownString(`${icon} ${verdict.reason}`);
 }
 
-/** Header lines before criteria: title, blank, status, priority, approved, blank, heading, blank */
-const CRITERIA_START_LINE = 8;
-
-function criterionLine(index: number): number {
-  return CRITERIA_START_LINE + index;
+function taskIdFromUri(uri: vscode.Uri): string {
+  return uri.path.replace(/^\/|\.md$/g, "");
 }

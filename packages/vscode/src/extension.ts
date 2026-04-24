@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const diffProvider = new KaganDiffContentProvider(client);
   const outputProvider = new AgentOutputProvider(client);
   const reviewDocumentProvider = new ReviewDocumentProvider();
-  const reviewProvider = new ReviewCommentProvider();
+  const reviewProvider = new ReviewCommentProvider(reviewDocumentProvider);
   const terminalProvider = new AgentTerminalProvider(client);
   const statusBar = new StatusBar();
   const doctorStatus = new DoctorStatusProvider(client, statusBar);
@@ -155,6 +155,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sse,
     scmProvider,
     outputProvider,
+    reviewDocumentProvider,
     reviewProvider,
     statusBar,
     serverLog,

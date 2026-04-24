@@ -38,12 +38,9 @@ def mcp_error_boundary[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awa
                 break
 
         if ctx is not None:
-            try:
-                app = get_context(ctx)
-                session_id = app.bound_session_id or app.opts.session_id
-                role = app.opts.role.value if app.opts.role else None
-            except Exception:
-                pass
+            app = get_context(ctx)
+            session_id = app.bound_session_id or app.opts.session_id
+            role = app.opts.role.value if app.opts.role else None
 
         sanitized_kwargs = _sanitize_params(kwargs)
 

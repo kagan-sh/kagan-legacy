@@ -349,17 +349,18 @@ def run_doctor_check_for_backend(backend_name: str) -> DoctorCheck | None:
 
     Returns:
         A :class:`DoctorCheck` for that backend, or ``None`` if the backend
-        name is not registered in AGENT_BACKENDS.
+        name is not registered.
     """
     import shutil
 
-    from kagan.core._agent import AGENT_BACKENDS
+    from kagan.core._agent import AgentError, get_backend_spec
 
-    spec = AGENT_BACKENDS.get(backend_name)
-    if spec is None:
+    try:
+        backend_spec = get_backend_spec(backend_name)
+    except AgentError:
         return None
 
-    executable = spec["executable"]
+    executable = backend_spec.executable
     installed = shutil.which(executable) is not None
     status = "pass" if installed else "fail"
     if installed:

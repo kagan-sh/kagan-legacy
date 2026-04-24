@@ -149,10 +149,10 @@ def test_build_launch_command_uses_prompt_flag() -> None:
     assert cmd.startswith("claude -p ")
 
 
-@pytest.mark.parametrize("agent_backend", sorted(_agent.AGENT_BACKENDS))
+@pytest.mark.parametrize("agent_backend", sorted(_agent.list_backends()))
 def test_build_launch_command_smoke_all_backends(agent_backend: str) -> None:
     """All registered backends produce a non-None command."""
     cmd = _launchers._build_launch_command(agent_backend, "test prompt")
     assert cmd is not None
-    executable = _agent.AGENT_BACKENDS[agent_backend].get("executable", "")
+    executable = _agent.get_backend_spec(agent_backend).executable
     assert executable in cmd

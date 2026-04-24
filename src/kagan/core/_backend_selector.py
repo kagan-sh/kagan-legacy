@@ -90,7 +90,7 @@ class BackendSelector:
         # 3. Backend + Role
         # 4. Backend only (least specific)
 
-        result = await self._find_best_backend(
+        result = self._find_best_backend(
             available,
             task_type,
             agent_role,
@@ -124,7 +124,7 @@ class BackendSelector:
             "alternatives": available,
         }
 
-    async def _find_best_backend(
+    def _find_best_backend(
         self,
         available: list[str],
         task_type: TaskType,

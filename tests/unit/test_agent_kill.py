@@ -169,14 +169,14 @@ async def test_unregister_cancels_pending_timer() -> None:
     session_id = "session-cancel-test"
     proc = _FakeProcess(pid=3001)
 
-    await register_spawned_process(session_id, proc)
+    register_spawned_process(session_id, proc)
 
     loop = asyncio.get_event_loop()
     handle = loop.call_later(9999, _kill_agent, proc)
     _AGENT_TIMEOUTS[proc.pid] = _AgentTimeout(proc=proc, handle=handle)
 
     assert not handle.cancelled()
-    await unregister_spawned_process(session_id)
+    unregister_spawned_process(session_id)
 
     assert handle.cancelled(), "Timer handle must be cancelled after unregister"
     assert proc.pid not in _AGENT_TIMEOUTS
@@ -188,15 +188,15 @@ async def test_unregister_without_timer_does_not_crash() -> None:
     session_id = "session-no-timer"
     proc = _FakeProcess(pid=3002)
 
-    await register_spawned_process(session_id, proc)
-    await unregister_spawned_process(session_id)  # No timer registered — must not raise
+    register_spawned_process(session_id, proc)
+    unregister_spawned_process(session_id)  # No timer registered — must not raise
 
     assert session_id not in _spawned_processes
 
 
 async def test_unregister_unknown_session_is_noop() -> None:
     """unregister_spawned_process on an unknown session_id must not crash."""
-    await unregister_spawned_process("does-not-exist")  # Should not raise
+    unregister_spawned_process("does-not-exist")  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ async def test_timeout_kills_real_subprocess() -> None:
 
     pid = proc.pid
     session_id = f"integration-{pid}"
-    await register_spawned_process(session_id, proc)
+    register_spawned_process(session_id, proc)
 
     # Schedule a very short timeout
     loop = asyncio.get_event_loop()

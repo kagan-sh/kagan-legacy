@@ -40,21 +40,14 @@ _BACKENDS = {"claude-code", "codex", "gemini-cli", "opencode", "goose"}
 
 @contextmanager
 def _patch_backends(installed: set[str]) -> Generator[None, None, None]:
-    """Patch both list_available_backends and AGENT_BACKENDS at the source module.
+    """Patch list_available_backends at the source module.
 
-    check_agent_backends() does local imports inside its body, so we must patch
-    at kagan.core._agent (where AGENT_BACKENDS and list_available_backends live)
-    rather than at kagan.core._preflight.
+    check_agent_backends() does a local import inside its body, so we must patch
+    at kagan.core._agent (where list_available_backends lives) rather than at
+    kagan.core._preflight.
     """
-    from kagan.core._agent import AGENT_BACKENDS
-
-    fake_backends = {name: cfg for name, cfg in AGENT_BACKENDS.items() if name in _BACKENDS}
     availability = _make_availability(installed, _BACKENDS)
-
-    with (
-        patch("kagan.core._agent.list_available_backends", return_value=availability),
-        patch("kagan.core._agent.AGENT_BACKENDS", fake_backends),
-    ):
+    with patch("kagan.core._agent.list_available_backends", return_value=availability):
         yield
 
 

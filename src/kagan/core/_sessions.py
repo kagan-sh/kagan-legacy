@@ -262,72 +262,6 @@ async def backfill_agent_roles(engine: Engine) -> int:
 # ---------------------------------------------------------------------------
 
 
-def update_session_pid(engine: Engine, session_id: str, pid: int) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj:
-            obj.pid = pid
-            obj.status = SessionStatus.RUNNING
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def mark_session_running(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status == SessionStatus.PENDING:
-            obj.status = SessionStatus.RUNNING
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def complete_session(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-            obj.status = SessionStatus.COMPLETED
-            obj.ended_at = _utc_now()
-
-            # Populate context window fields from the latest UsageUpdate event
-            usage_event = s.exec(
-                select(SessionEvent)
-                .where(
-                    SessionEvent.session_id == session_id,
-                    SessionEvent.event_type == SessionEventType.AGENT_STATUS,
-                )
-                .order_by(desc(SessionEvent.created_at))
-            ).first()
-            if usage_event and isinstance(usage_event.payload, dict):
-                usage = usage_event.payload.get("usage")
-                if isinstance(usage, dict):
-                    obj.context_window_used = usage.get("used")
-                    obj.context_window_size = usage.get("size")
-                    obj.cost_amount = usage.get("cost")
-                    obj.cost_currency = usage.get("cost_currency")
-
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def fail_session(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-            obj.status = SessionStatus.FAILED
-            obj.ended_at = _utc_now()
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-# ---------------------------------------------------------------------------
-# Thin class wrapper for backward compatibility
-# ---------------------------------------------------------------------------
-
-
 class Sessions:
     def __init__(
         self,
@@ -375,16 +309,61 @@ class Sessions:
     # -- Sync DB helper delegates -------------------------------------------
 
     def _update_session_pid(self, session_id: str, pid: int) -> None:
-        update_session_pid(self._engine, session_id, pid)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj:
+                obj.pid = pid
+                obj.status = SessionStatus.RUNNING
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _mark_session_running(self, session_id: str) -> None:
-        mark_session_running(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status == SessionStatus.PENDING:
+                obj.status = SessionStatus.RUNNING
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _complete_session(self, session_id: str) -> None:
-        complete_session(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+                obj.status = SessionStatus.COMPLETED
+                obj.ended_at = _utc_now()
+
+                # Populate context window fields from the latest UsageUpdate event
+                usage_event = s.exec(
+                    select(SessionEvent)
+                    .where(
+                        SessionEvent.session_id == session_id,
+                        SessionEvent.event_type == SessionEventType.AGENT_STATUS,
+                    )
+                    .order_by(desc(SessionEvent.created_at))
+                ).first()
+                if usage_event and isinstance(usage_event.payload, dict):
+                    usage = usage_event.payload.get("usage")
+                    if isinstance(usage, dict):
+                        obj.context_window_used = usage.get("used")
+                        obj.context_window_size = usage.get("size")
+                        obj.cost_amount = usage.get("cost")
+                        obj.cost_currency = usage.get("cost_currency")
+
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _fail_session(self, session_id: str) -> None:
-        fail_session(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+                obj.status = SessionStatus.FAILED
+                obj.ended_at = _utc_now()
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     # -- Orchestration methods (kept on class) ------------------------------
 
@@ -657,7 +636,7 @@ class Sessions:
                     active.pid,
                 )
         if active:
-            await unregister_spawned_process(active.id)
+            unregister_spawned_process(active.id)
 
             def cancel_op(s):
                 obj = s.get(Session, active.id)
@@ -922,7 +901,7 @@ class Sessions:
                 if not process_exists(pid):
                     raise ProcessLookupError(pid)
             except ProcessLookupError:
-                await unregister_spawned_process(session_id)
+                unregister_spawned_process(session_id)
                 await asyncio.to_thread(self._complete_session, session_id)
                 task = await self._get_task(task_id)
                 detached_session = await _db_async(
@@ -1081,15 +1060,11 @@ __all__ = [
     "DetachResult",
     "Sessions",
     "active_session_summaries",
-    "complete_session",
-    "fail_session",
     "fetch_project_learnings",
     "get_latest_session",
     "get_latest_task_session",
     "has_active_session",
     "list_active_sessions",
     "list_task_sessions",
-    "mark_session_running",
     "resolve_session_binding",
-    "update_session_pid",
 ]

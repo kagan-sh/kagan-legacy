@@ -101,22 +101,6 @@ class TaskType(StrEnum):
     UNKNOWN = "unknown"  # Fallback for unclassified tasks
 
 
-class ReviewStrictness(StrEnum):
-    """Review strictness level."""
-
-    STRICT = "strict"
-    BALANCED = "balanced"
-    RELAXED = "relaxed"
-
-
-class PlanningDepth(StrEnum):
-    """Planning depth setting."""
-
-    ALWAYS = "always"
-    MULTI_TASK = "multi_task"
-    NEVER = "never"
-
-
 def parse_priority(value: str | int | None) -> Priority:
     """Parse a string, int, or None into a Priority enum value."""
     if value is None:

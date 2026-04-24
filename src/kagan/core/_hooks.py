@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from abc import abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
@@ -10,6 +11,26 @@ from enum import StrEnum
 from typing import Any
 
 from loguru import logger
+
+
+def _normalize_for_hash(arguments: Any) -> str:
+    """Normalize tool arguments to a stable string for hashing.
+
+    Handles dict, JSON-encoded string, None, and arbitrary types.
+    """
+    if arguments is None:
+        return ""
+    if isinstance(arguments, dict):
+        return repr(sorted(arguments.items()))
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+            if isinstance(parsed, dict):
+                return repr(sorted(parsed.items()))
+            return repr(parsed)
+        except (json.JSONDecodeError, ValueError):
+            return arguments
+    return repr(arguments)
 
 
 class HookEvent(StrEnum):
@@ -73,8 +94,6 @@ class RepetitionHook(Hook):
     _recent: deque[str] = field(default_factory=lambda: deque(maxlen=20))
 
     def execute(self, context: HookContext) -> HookResult:
-        from kagan.core._repetition_guard import _normalize_for_hash
-
         if context.tool_name is None:
             return HookResult()
 

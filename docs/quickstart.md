@@ -1,125 +1,65 @@
 ---
 title: Quickstart
-description: Install Kagan and complete your first task in under 5 minutes
+description: Install Kagan and complete your first task — including the review gate — in under 5 minutes
 icon: material/timer
 ---
 
 # Quickstart
 
-Board up. First task running. Under five minutes.
+Install. Launch. Run a task. Review and merge. That's the whole flow.
 
-**Prerequisites:** [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, a local repo, and at least one [supported agent](concepts/architecture-overview.md#supported-agents) installed.
+**Prerequisites:** [`uv`](https://docs.astral.sh/uv/getting-started/installation/), `git`, a local repo, and at least one supported agent installed (Claude Code, Codex, or Gemini CLI are good starting points — see [supported agents](concepts/architecture-overview.md#supported-agents)).
 
 ## 1. Install
 
 ```bash
-# Don't have uv? One line:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 uv tool install kagan
 kagan --version
 ```
 
+No `uv`? `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ## 2. Launch
-
-Start with the TUI unless you specifically want browser or editor-first supervision:
-
-- `kagan` - primary operator surface
-- `kagan web` - remote dashboard
-- VS Code extension - embedded companion surface
-- `kagan mcp` - MCP clients like Claude Code, Cursor, or OpenCode
 
 ```bash
 cd your-project-directory
 kagan
 ```
 
-On a fresh install with no projects yet, bare `kagan` shows a one-time surface picker so you can choose TUI, web, chat, VS Code, Open VSX, or MCP setup. Runtime picks (`TUI`, `web`, `chat`) become the default for future bare `kagan` launches until you change them in settings.
+First run shows a welcome screen. Open or create a project from the current directory. The board appears: BACKLOG → IN_PROGRESS → REVIEW → DONE.
 
-Welcome screen -> open/create project -> board appears (BACKLOG -> IN_PROGRESS -> REVIEW -> DONE).
-The canonical flow is `Create -> Start -> Review -> Merge`; the board is where that flow begins.
+## 3. Create and run a task
 
-## Optional: use VS Code
+Press `n` to create a task. Give it a title and description — include acceptance criteria if you want AI-assisted review. Press `Ctrl+S` to save. The task appears in BACKLOG.
 
-If you want Kagan inside your editor, install the VS Code extension from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode) or [Open VSX](https://open-vsx.org/extension/kagan/kagan-vscode).
+Select the task, press `s` to start a managed run. The agent launches in the background in an isolated git worktree. Your working copy stays untouched. Watch output in the task detail panel (`Enter`).
 
-If you install the extension, you do **not** need `.vscode/mcp.json` just to use the Kagan sidebar or `@kagan` chat.
+When the agent finishes, the card moves to REVIEW automatically.
 
-Full guide: [VS Code extension](guides/vscode-extension.md)
+## 4. Review and merge
 
-## 3. Create a task
+This is the gate. Open the REVIEW card with `Enter`. You see:
 
-`n` -> title + description -> `Ctrl+S` save. Task appears in BACKLOG.
+- Diff summary (files changed, lines added/removed)
+- Acceptance criteria checklist (if you set them)
+- Agent reasoning notes from the run
 
-## 4. Run it
+Press `a` to approve. Press `m` to merge. The worktree branch merges into your base branch. The task moves to DONE.
 
-- **Run in background:** Select task -> `s` to start. Use `Shift+S` to stop.
-- **Open in editor or terminal:** Select task -> `a` to launch in your configured backend.
-
-[Managed runs and interactive attach](guides/managed-vs-interactive.md)
-
-## 5. Review and merge
-
-Move to REVIEW -> `Enter` -> approve (`a`) / reject (`x`) -> merge (`m`).
-
-## Optional: import existing GitHub issues
-
-Use Quick Actions (`Ctrl+Shift+P`) and run `github import`, or use:
-
-```bash
-kagan import github --repo owner/repo
 ```
+REVIEW → DONE requires your explicit merge. The state machine does not skip this step.
+```
+
+That's it. The agent ran in isolation, you reviewed the diff, you approved, the merge fired.
 
 ## Shortcuts
 
-`?` Help · `Ctrl+Shift+P` Quick Actions · `Ctrl+O` Projects · `Ctrl+R` Repositories · `Ctrl+,` Settings · `Ctrl+I` AI Panel · `Space` Chat split · `w` Workspace (TUI) · `Cmd/Ctrl+Shift+W` Workspace (web)
-
-Press `?` from any screen to open context-aware help. Rare actions (repo sync, GitHub import, AI review) live in Quick Actions.
-
-## AI Panel
-
-`Ctrl+I` toggles the AI Panel. `Space` cycles split layout while open. Press `Esc` to close and `Ctrl+F` to fullscreen it. Or use the standalone REPL:
-
-```bash
-kagan chat
-```
-
-Type `/help` for slash commands, `/sessions` to manage conversations.
-
-[Chat guide](guides/chat.md) · [ACP session lifecycle](guides/acp-session-lifecycle.md)
-
-## TUI navigation
-
-In the TUI board, `Enter` is two-step: the first press opens the inspector for the selected card, and the second press opens the full task screen.
-
-Press `w` to switch from the board to the TUI **Workspace** screen. That view is orchestrator-first: the left sidebar lists orchestrator conversations, `n` starts a new session, `/` filters sessions, `x` deletes the selected session, and `Ctrl+I` jumps focus into the chat input. `Esc` steps back cleanly: from chat to the sidebar, then from the sidebar back to Kanban.
-The TUI board remains the primary operator surface; Workspace is the conversation companion inside the same client.
-
-## Workspace view
-
-Kagan now has orchestrator-first workspace views in both clients:
-
-- **TUI:** press `w` from the board to switch into Workspace. Press `w` to return directly, or use `Esc` to step back from search/chat to the sidebar and then back to Kanban.
-- **Web:** click the Workspace icon in the activity bar or press `Cmd/Ctrl+Shift+W` for browser-based supervision and planning.
-
-In both clients, the conversation itself is the workspace: you navigate between orchestrator sessions, continue planning in-thread, and treat tasks as outputs of that conversation rather than as separate sidebar chat tabs.
-
-## Open the web dashboard from another device
-
-Open the web dashboard from any browser:
-
-```bash
-kagan web --host 0.0.0.0
-```
-
-Open the URL shown in the terminal from another browser on your network. The bundled dashboard is served directly by `kagan web`; it does not pair to a separate `kagan serve` instance. If you specifically need cross-device setup details, see the [Remote access guide](guides/remote-access.md).
+`?` Help · `n` New task · `s` Start run · `Enter` Open task · `a` Approve · `m` Merge · `Ctrl+Shift+P` Quick Actions · `Ctrl+,` Settings
 
 ## When things break
-
-Startup runs doctor checks silently. If a critical blocker is found, Kagan prints the report and exits.
 
 ```bash
 kagan doctor
 ```
 
-[Troubleshooting](troubleshooting.md)
+Reports which agents are installed and whether the environment is healthy. [Troubleshooting](troubleshooting.md)

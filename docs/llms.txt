@@ -1,19 +1,21 @@
 # Kagan Documentation
 
-> Documentation for Kagan: an open-source daemon that orchestrates AI coding agents with a terminal Kanban board, MCP server, and CLI.
+> Documentation for Kagan: a Kanban TUI for AI coding agents with a structural human review gate. No agent-authored task reaches your main branch without an explicit approval — the state machine enforces it.
 
-Kagan runs 14+ AI coding agents (Claude Code, Codex, Gemini CLI, and more) in parallel on isolated git worktrees. Every task is tracked from backlog to merge in a keyboard-first TUI.
+Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolated git worktrees. When an agent finishes, the task lands in REVIEW. A human approves and merges. That gate is structural — not a setting.
 
 ## Docs
 
 - [Home](https://docs.kagan.sh/): Documentation home
-- [Quickstart](https://docs.kagan.sh/quickstart/): 60-second setup guide
-- [Architecture Overview](https://docs.kagan.sh/concepts/architecture-overview/): System components and supported agents
-- [Task Lifecycle](https://docs.kagan.sh/concepts/task-lifecycle/): How tasks flow from backlog to merge
+- [Quickstart](https://docs.kagan.sh/quickstart/): Install, run a task, review, and merge in under 5 minutes
+- [The review gate](https://docs.kagan.sh/concepts/task-lifecycle/): How the state machine enforces human review before merge
+- [Backends](https://docs.kagan.sh/concepts/architecture-overview/): Supported agents and interactive launchers
 - [Managed Runs](https://docs.kagan.sh/guides/managed-vs-interactive/): Run modes — managed vs interactive attach
 - [Chat & REPL](https://docs.kagan.sh/guides/chat/): Interactive chat orchestrator
 - [ACP Sessions](https://docs.kagan.sh/guides/acp-session-lifecycle/): Chat session lifecycle management
 - [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/): Editor integration via MCP
+- [Web Dashboard](https://docs.kagan.sh/guides/web-dashboard/): Browser-based companion surface
+- [VS Code Extension](https://docs.kagan.sh/guides/vscode-extension/): VS Code companion surface
 - [GitHub Import](https://docs.kagan.sh/guides/github/): Import issues from GitHub
 - [GitHub Models](https://docs.kagan.sh/guides/github-models/): Use 40+ LLMs for free via GitHub Models
 - [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone

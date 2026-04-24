@@ -1,10 +1,16 @@
 ---
-title: Task lifecycle
-description: How tasks move from idea to merged code
+title: The review gate
+description: How the state machine enforces a structural human review before any agent-authored task reaches main
 icon: material/state-machine
 ---
 
-# Task lifecycle
+# The review gate
+
+Kagan enforces a structural human review gate between your agent and your main branch. This is not a setting or a convention — it is a property of the state machine.
+
+A task cannot reach DONE without passing through REVIEW. REVIEW → DONE requires an explicit merge action from a human. There is no automated path, no bypass flag, no config key that skips this step.
+
+Competitors hand you a diff and wish you luck, or automate the merge and pray. Kagan gives you a board where the agent's output is always staged for your decision before it touches main.
 
 Every task follows the same four-column flow. The board enforces it.
 

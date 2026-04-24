@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kagan-sh/kagan/main/.github/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/kagan-sh/kagan/main/.github/assets/hero-light.svg">
-    <img alt="Kagan — AI-powered Kanban board for coding agents" src="https://raw.githubusercontent.com/kagan-sh/kagan/main/.github/assets/hero-dark.svg" width="100%">
+    <img alt="Kagan — Kanban TUI for AI coding agents with a structural human review gate" src="https://raw.githubusercontent.com/kagan-sh/kagan/main/.github/assets/hero-dark.svg" width="100%">
   </picture>
 </p>
 <p align="center">
@@ -25,8 +25,7 @@
 <h3 align="center">
   <a href="https://docs.kagan.sh/">Docs</a> ·
   <a href="https://docs.kagan.sh/quickstart/">Quickstart</a> ·
-  <a href="https://marketplace.visualstudio.com/items?itemName=kagan.kagan-vscode">VS Code Extension</a> ·
-  <a href="https://open-vsx.org/extension/kagan/kagan-vscode">Open VSX</a> ·
+  <a href="https://docs.kagan.sh/concepts/task-lifecycle/">The review gate</a> ·
   <a href="https://docs.kagan.sh/guides/mcp-setup/">MCP Setup</a> ·
   <a href="https://docs.kagan.sh/reference/cli/">CLI Reference</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -34,7 +33,9 @@
 
 ---
 
-A terminal Kanban board that runs AI coding agents on your code. Create tasks, run agents autonomously or in pair mode. 14 agents supported.
+Kagan is a Kanban TUI for AI coding agents with a structural human review gate. No agent-authored task reaches your main branch without an explicit approval — the state machine enforces it.
+
+The agent runs in an isolated git worktree. When it finishes, the task card moves to REVIEW. You read the diff, check the acceptance criteria, and press approve. Then merge fires. That transition — REVIEW to DONE — cannot be automated away. It is not a setting.
 
 ## Install
 
@@ -58,11 +59,27 @@ iwr -useb uvget.me/install.ps1 -OutFile install.ps1; .\install.ps1 kagan
 ```
 </details>
 
-Full docs: **[docs.kagan.sh](https://docs.kagan.sh/)**. TUI: `Space` cycles layout, `Esc` closes, `Ctrl+F` fullscreen.
+## What you get
 
-## Web Dashboard
+- Kanban board (BACKLOG → IN_PROGRESS → REVIEW → DONE) enforced by a state machine
+- Each task runs in its own git worktree — your working copy stays untouched
+- Managed runs (background agent) or interactive attach (you + agent in tmux/editor)
+- REVIEW stage requires explicit human approval before merge; no path around it
+- MCP server so Claude Code, Codex, or any MCP-capable client can drive the board
+- `kagan doctor` preflight checks all required tools before first run
 
-Run `kagan web` (add `--host 0.0.0.0` for network access). See [docs](https://docs.kagan.sh/guides/remote-access/).
+Tested agents: **Claude Code** · **Codex** · **Gemini CLI** · 11 more — see [docs/backends](https://docs.kagan.sh/concepts/architecture-overview/#supported-agents).
+
+Full docs: **[docs.kagan.sh](https://docs.kagan.sh/)**
+
+## Companion surfaces
+
+The TUI (`kagan`) is the primary operator surface. Two companion surfaces exist for specific workflows:
+
+- **Web dashboard** (`kagan web`) — browser-based board, useful for remote access or a second monitor
+- **VS Code extension** — sidebar panel and `@kagan` chat participant inside VS Code
+
+Both companions share the same state as the TUI via the same API server. Neither is required.
 
 ## License
 

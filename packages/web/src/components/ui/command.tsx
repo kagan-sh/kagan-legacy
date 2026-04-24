@@ -51,7 +51,7 @@ function CommandDialog({
           "overflow-hidden border-[color:var(--border-subtle)] bg-[var(--card)] p-0 shadow-[var(--ambient-shadow)] sm:max-w-2xl",
           className,
         )}
-        overlayClassName="bg-black/72 backdrop-blur-sm"
+        overlayClassName="bg-[var(--surface-overlay)] backdrop-blur-sm"
         showCloseButton={showCloseButton}
       >
         <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-muted-foreground/90 [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-1 [&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-input]]:h-12 [& [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]]:text-[15px] [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4">

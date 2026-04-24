@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from kagan.core.enums import Priority, SessionStatus, TaskStatus
 
@@ -44,20 +44,9 @@ class _OrmBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ── Active-session sub-shape ──────────────────────────────────────────────────
-
-
-class ActiveSessionResponse(_OrmBase):
-    id: str
+class _SessionSummaryBase(_OrmBase):
     status: SessionStatus
-    launcher: str | None = None
-    agent_backend: str
-    agent_role: str | None = None
     started_at: str
-    context_window_used: int | None = None
-    context_window_size: int | None = None
-    cost_amount: float | None = None
-    cost_currency: str | None = None
 
     @field_validator("status", mode="before")
     @classmethod
@@ -68,15 +57,27 @@ class ActiveSessionResponse(_OrmBase):
 
     @field_validator("started_at", mode="before")
     @classmethod
-    def _coerce_dt(cls, v: Any) -> str:
+    def _coerce_started_at(cls, v: Any) -> str:
         result = _dt_iso(v)
         return result or ""
 
-    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        d = super().model_dump(**kwargs)
-        if isinstance(d.get("status"), SessionStatus):
-            d["status"] = d["status"].value
-        return d
+    @field_serializer("status")
+    def _serialize_status(self, v: SessionStatus) -> str:
+        return v.value
+
+
+# ── Active-session sub-shape ──────────────────────────────────────────────────
+
+
+class ActiveSessionResponse(_SessionSummaryBase):
+    id: str
+    launcher: str | None = None
+    agent_backend: str
+    agent_role: str | None = None
+    context_window_used: int | None = None
+    context_window_size: int | None = None
+    cost_amount: float | None = None
+    cost_currency: str | None = None
 
 
 # ── Acceptance criterion ──────────────────────────────────────────────────────
@@ -172,44 +173,23 @@ class TaskResponse(_OrmBase):
     def _coerce_dt(cls, v: Any) -> str | None:
         return _dt_iso(v)
 
-    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        d = super().model_dump(**kwargs)
-        if isinstance(d.get("status"), TaskStatus):
-            d["status"] = d["status"].value
-        if isinstance(d.get("priority"), Priority):
-            d["priority"] = d["priority"].name
-        return d
+    @field_serializer("status")
+    def _serialize_status(self, v: TaskStatus) -> str:
+        return v.value
+
+    @field_serializer("priority")
+    def _serialize_priority(self, v: Priority) -> str:
+        return v.name
 
 
 # ── Task session (inline in /tasks/{id}/sessions) ────────────────────────────
 
 
-class TaskSessionResponse(_OrmBase):
+class TaskSessionResponse(_SessionSummaryBase):
     id: str
     launcher: str | None = None
-    status: SessionStatus
     agent_backend: str
     agent_role: str | None = None
-    started_at: str
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _coerce_status(cls, v: Any) -> SessionStatus:
-        if isinstance(v, SessionStatus):
-            return v
-        return SessionStatus(str(v))
-
-    @field_validator("started_at", mode="before")
-    @classmethod
-    def _coerce_dt(cls, v: Any) -> str:
-        result = _dt_iso(v)
-        return result or ""
-
-    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        d = super().model_dump(**kwargs)
-        if isinstance(d.get("status"), SessionStatus):
-            d["status"] = d["status"].value
-        return d
 
 
 # ── Project ───────────────────────────────────────────────────────────────────

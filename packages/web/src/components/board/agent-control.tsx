@@ -231,7 +231,7 @@ export function AgentControl({
                     {isRunning && (
                         <span className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
                             <Clock className="size-3" aria-hidden="true" />
-                            <span aria-label={`Running for ${formatTime(elapsed)}`}>{formatTime(elapsed)}</span>
+                            <span role="timer" aria-label={`Running for ${formatTime(elapsed)}`}>{formatTime(elapsed)}</span>
                         </span>
                     )}
                     {pending === "starting" && !isRunning && (

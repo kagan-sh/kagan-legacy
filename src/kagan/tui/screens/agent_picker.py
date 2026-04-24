@@ -46,13 +46,7 @@ class AgentPickerModal(ModalScreen[str | None]):
                 id="agent-picker-description",
             )
             with Vertical(id="agent-picker-body"):
-                yield OptionList(
-                    id="agent-picker-options",
-                    tooltip=(
-                        "Arrow keys to move, Enter to select, "
-                        "Escape to close, a to toggle all backends"
-                    ),
-                )
+                yield OptionList(id="agent-picker-options")
             yield Footer(show_command_palette=False)
 
     async def on_mount(self) -> None:

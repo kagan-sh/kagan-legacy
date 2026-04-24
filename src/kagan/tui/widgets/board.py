@@ -3,6 +3,7 @@ from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -97,7 +98,10 @@ class BoardColumn(Vertical):
         yield content
 
     def set_tasks(self, tasks: list[_TaskData], selected_task_id: str | None) -> None:
-        content = self.query_one(f"#content-{self.status.value.lower()}", ScrollableContainer)
+        try:
+            content = self.query_one(f"#content-{self.status.value.lower()}", ScrollableContainer)
+        except NoMatches:
+            return
         existing_cards: dict[str, TaskCard] = {}
         for card in content.query(TaskCard):
             task_data = card.task_data
@@ -163,7 +167,10 @@ class BoardColumn(Vertical):
         return "Done"
 
     def _update_header_count(self, count: int) -> None:
-        self.query_one(f"#count-{self.status.value.lower()}", Static).update(f"({count})")
+        try:
+            self.query_one(f"#count-{self.status.value.lower()}", Static).update(f"({count})")
+        except NoMatches:
+            return
 
     def _empty_message(self) -> tuple[str, str]:
         if self.status == TaskStatus.BACKLOG:
@@ -286,7 +293,10 @@ class BoardView(Widget):
         grouped = self._tasks_by_status()
         self._normalize_selection()
         for status in _COLUMN_ORDER:
-            column = self.query_one(f"#column-{status.value.lower()}", BoardColumn)
+            try:
+                column = self.query_one(f"#column-{status.value.lower()}", BoardColumn)
+            except NoMatches:
+                return
             column.set_tasks(grouped[status], self.selected_task_id)
 
     def _update_selection_only(self) -> None:

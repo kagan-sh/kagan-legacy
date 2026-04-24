@@ -332,6 +332,12 @@ def upgrade() -> None:
     bind = op.get_bind()
     bind.exec_driver_sql("PRAGMA foreign_keys=OFF")
 
+    # Drop any *_old tables left behind by a crashed prior run of this migration.
+    # Without this the second attempt dies at "ALTER TABLE X RENAME TO X_old"
+    # with "there is already another table or index with this name: X_old".
+    for stale in ("sessions_old", "worktrees_old", "task_events_old", "notes_old"):
+        bind.exec_driver_sql(f"DROP TABLE IF EXISTS {stale}")
+
     try:
         # ── 1. Recreate sessions with CASCADE FK + stale column removal ────────
         # NOTE: _recreate_sessions renames sessions → sessions_old. SQLite will

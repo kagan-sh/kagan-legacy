@@ -4,11 +4,6 @@ import { apiClient } from '@/lib/api/client';
 import type { UserFollowUp } from '@/components/session/event-stream';
 import type { QueuedPrompt } from '@/components/session/follow-up-queue';
 
-let _nextQueueId = 0;
-function nextQueueId(): string {
-  return `fq-${++_nextQueueId}`;
-}
-
 export interface UseFollowUpQueueResult {
   sentFollowUps: UserFollowUp[];
   queue: QueuedPrompt[];
@@ -32,7 +27,7 @@ export function useFollowUpQueue(taskId: string | undefined): UseFollowUpQueueRe
     const displayText = attachments?.length
       ? `${text} [Attachments: ${attachments.map((a) => a.name).join(', ')}]`
       : text;
-    setQueue((prev) => [...prev, { id: nextQueueId(), text: displayText }]);
+    setQueue((prev) => [...prev, { id: crypto.randomUUID(), text: displayText }]);
   }, []);
 
   const removePrompt = useCallback((id: string) => {

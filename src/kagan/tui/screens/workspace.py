@@ -75,16 +75,6 @@ class WorkspaceScreen(Screen[None]):
         yield Static("", id="workspace-footer")
 
     async def on_mount(self) -> None:
-        panel = self.query_one(ChatPanel)
-        panel.set_visible(True)
-        panel.set_fullscreen(True)
-        panel.set_mode_title("Workspace")
-        panel.set_session_kind(SessionKind.ORCHESTRATOR)
-        panel.set_status_hint_override(
-            "Enter send · Shift+Enter newline · Ctrl+K sessions · Esc sidebar"
-        )
-        await self.kagan_app.orchestrator_sessions.ensure_loaded()
-        await self._load_workspace_panel_state(panel)
         self._refresh_header()
         await self._refresh_header_context()
         self._update_footer()
@@ -95,6 +85,18 @@ class WorkspaceScreen(Screen[None]):
             exclusive=False,
             exit_on_error=False,
         )
+
+    async def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
+        panel = self.query_one(ChatPanel)
+        panel.set_visible(True)
+        panel.set_fullscreen(True)
+        panel.set_mode_title("Workspace")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
+        panel.set_status_hint_override(
+            "Enter send · Shift+Enter newline · Ctrl+K sessions · Esc sidebar"
+        )
+        await self.kagan_app.orchestrator_sessions.ensure_loaded()
+        await self._load_workspace_panel_state(panel)
 
     async def on_screen_resume(self) -> None:
         self.call_after_refresh(self._on_screen_resume_deferred)

@@ -185,7 +185,6 @@ class TaskScreen(Screen[None]):
             self._task_id = app_task_id if isinstance(app_task_id, str) else None
 
         if self._task_id is None:
-            self._configure_overlay_chat()
             self._refresh_header()
             self._refresh_header_labels()
             self._set_status("Idle")
@@ -204,13 +203,11 @@ class TaskScreen(Screen[None]):
 
         with contextlib.suppress(NotFoundError):
             self._task_model = await self.kagan_app.core.tasks.get(self._task_id)
-        self._configure_overlay_chat()
         self._refresh_header()
         self._refresh_header_labels()
         self._select_initial_tab()
         await self._hydrate_workspace_panels()
         await self._load_review_context()
-        self._ensure_stream_worker()
         self._sync_action_bar()
         self._sync_overlay_layout_class()
         self.run_worker(
@@ -229,6 +226,10 @@ class TaskScreen(Screen[None]):
             )
         self._sync_stream_source_indicator()
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)
+
+    def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
+        self._configure_overlay_chat()
+        self._ensure_stream_worker()
 
     def on_unmount(self) -> None:
         if self._stream_task is not None:

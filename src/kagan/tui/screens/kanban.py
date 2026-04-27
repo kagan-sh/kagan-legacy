@@ -208,16 +208,6 @@ class KanbanScreen(Screen[None]):
     async def on_mount(self) -> None:
         self._refresh_header()
         self._update_no_project_hint()
-        try:
-            panel = self.query_one(ChatPanel)
-        except NoMatches:
-            panel = None
-        if panel is not None:
-            panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
-            await self.kagan_app.orchestrator_sessions.ensure_loaded()
-            await self._load_orchestrator_panel_state(panel)
-            panel.set_mode_title("Orchestrator")
-            panel.set_session_kind(SessionKind.ORCHESTRATOR)
         self._set_tutorial_visible(False)
         self._chat_auto_opened = False
         self._update_search_bar_state()
@@ -244,6 +234,14 @@ class KanbanScreen(Screen[None]):
             exclusive=True,
             exit_on_error=False,
         )
+
+    async def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
+        panel = self.query_one(ChatPanel)
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
+        await self.kagan_app.orchestrator_sessions.ensure_loaded()
+        await self._load_orchestrator_panel_state(panel)
+        panel.set_mode_title("Orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
 
     async def _maybe_show_first_boot_tutorial(self) -> None:
         settings = await self.kagan_app.core.settings.get()

@@ -41,8 +41,10 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 }
 
 
-# Overrides Textual private methods to suppress NoMatches during early-mount
-# rendering before the option list widget is attached. Pinned to textual>=7.0.0,<8.0.0.
+# Overrides Textual private methods to suppress NoMatches during Select's own
+# early-mount rendering before SelectCurrent's children are attached.
+# This is a Textual-internal initialization sequence issue, not a caller issue.
+# Pinned to textual>=7.0.0,<8.0.0.
 class _SessionSelect(Select[str]):
     def _setup_options_renderables(self) -> None:
         with contextlib.suppress(NoMatches):
@@ -121,6 +123,10 @@ class ChatPanel(Vertical):
     @dataclass
     class EditResendRequested(Message):
         text: str
+
+    @dataclass
+    class Ready(Message):
+        pass
 
     _EMPTY_TEXT = "No messages yet"
     _LOGO = """\
@@ -295,41 +301,41 @@ class ChatPanel(Vertical):
         self.set_class(False, "expanded")
         self.set_class(False, "fullscreen")
 
-        with contextlib.suppress(NoMatches):
-            self.query_one("#slash-complete", Vertical).display = False
-        with contextlib.suppress(NoMatches):
-            self.query_one("#task-mention-complete", Vertical).display = False
-        with contextlib.suppress(NoMatches):
-            self.query_one("#chat-inline-surface", Vertical).display = False
-        with contextlib.suppress(NoMatches):
-            self.query_one("#chat-messages", Static).display = False
+        # Most setup queries widgets yielded unconditionally in compose().
+        # A handful of test fixtures mount ChatPanel via partial-compose paths
+        # (e.g. doctor modal harness) where individual children may be absent;
+        # guard each query so a missing widget doesn't abort the rest of mount.
+        for query_id, widget_type in (
+            ("#slash-complete", Vertical),
+            ("#task-mention-complete", Vertical),
+            ("#chat-inline-surface", Vertical),
+            ("#chat-messages", Static),
+            ("#chat-title", Static),
+        ):
+            with contextlib.suppress(NoMatches):
+                self.query_one(query_id, widget_type).display = False
         with contextlib.suppress(NoMatches):
             input_widget = self._input_widget()
             input_widget.disabled = True
             input_widget.can_focus = False
         with contextlib.suppress(NoMatches):
-            self.query_one("#chat-title", Static).display = False
-        with contextlib.suppress(NoMatches):
             self.query_one("#chat-overlay-session-select", Select).disabled = True
         with contextlib.suppress(NoMatches):
-            self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
+            self.query_one("#chat-overlay-empty-heading", Static).update(
+                self._DOCKED_EMPTY_HEADING
+            )
         self._sync_input_enabled_state()
         self._render_current_session()
         self._refresh_status()
+        self.post_message(ChatPanel.Ready())
 
     def set_visible(self, visible: bool) -> None:
-        if not self.is_mounted:
-            return
         self.set_class(visible, "visible")
-        with contextlib.suppress(NoMatches):
-            session_select = self.query_one("#chat-overlay-session-select", Select)
-            session_select.disabled = not visible
+        self.query_one("#chat-overlay-session-select", Select).disabled = not visible
         self._sync_input_enabled_state()
         if not visible:
             self._flush_deferred()
-            input_widget = self._input_widget_safe()
-            if input_widget is not None:
-                self._current_state().draft = input_widget.value
+            self._current_state().draft = self._input_widget().value
             self._hide_overlays()
         self._refresh_status()
 
@@ -338,29 +344,25 @@ class ChatPanel(Vertical):
         self.set_class(fullscreen, "expanded")
         self.set_class(not fullscreen, "docked")
         self.set_class(not fullscreen, "default")
-        with contextlib.suppress(NoMatches):
-            badge = self.query_one("#chat-overlay-mode-badge", Static)
-            if fullscreen:
-                badge.update("Expanded")
-                badge.set_class(True, "mode-expanded")
-                badge.set_class(False, "mode-docked")
-            else:
-                badge.update("Docked")
-                badge.set_class(False, "mode-expanded")
-                badge.set_class(True, "mode-docked")
-        with contextlib.suppress(NoMatches):
-            heading = self.query_one("#chat-overlay-empty-heading", Static)
-            if fullscreen:
-                heading.update(self._EXPANDED_EMPTY_HEADING)
-            else:
-                heading.update(self._DOCKED_EMPTY_HEADING)
+        badge = self.query_one("#chat-overlay-mode-badge", Static)
+        if fullscreen:
+            badge.update("Expanded")
+            badge.set_class(True, "mode-expanded")
+            badge.set_class(False, "mode-docked")
+        else:
+            badge.update("Docked")
+            badge.set_class(False, "mode-expanded")
+            badge.set_class(True, "mode-docked")
+        heading = self.query_one("#chat-overlay-empty-heading", Static)
+        if fullscreen:
+            heading.update(self._EXPANDED_EMPTY_HEADING)
+        else:
+            heading.update(self._DOCKED_EMPTY_HEADING)
         self._refresh_status()
 
     def set_mode_title(self, title: str) -> None:
-        with contextlib.suppress(NoMatches):
-            self.query_one("#chat-title", Static).update(title)
-        with contextlib.suppress(NoMatches):
-            self.query_one("#chat-overlay-session-badge", Static).update(title)
+        self.query_one("#chat-title", Static).update(title)
+        self.query_one("#chat-overlay-session-badge", Static).update(title)
         self._refresh_status()
 
     def set_sessions(self, sessions: list[tuple[str, str]], active_key: str | None = None) -> None:
@@ -375,42 +377,25 @@ class ChatPanel(Vertical):
             next_key = self._session_options[0][1]
 
         self._suspend_session_change_event = True
-        selector_ready = False
-        with contextlib.suppress(NoMatches):
-            selector = self.query_one("#chat-overlay-session-select", Select)
-            set_options = getattr(selector, "set_options", None)
-            if callable(set_options):
-                set_options(self._session_options)
-            selector.value = next_key
-            selector_ready = True
+        selector = self.query_one("#chat-overlay-session-select", Select)
+        set_options = getattr(selector, "set_options", None)
+        if callable(set_options):
+            set_options(self._session_options)
+        selector.value = next_key
         self.set_class(len(self._session_options) > 1, "chat-overlay-multi-session")
-        if selector_ready:
-            self._switch_session(next_key, emit=False)
-        else:
-            self._selected_session_key = next_key
-            self.set_session_kind(self._infer_session_kind(next_key))
-            self._sync_session_label()
-            # _render_current_session is intentionally skipped here: it requires
-            # the streaming surface to be mounted, which is not the case when
-            # set_sessions is called before _on_mount.  The render will fire once
-            # the widget mounts via _on_mount → set_visible / set_sessions path.
-        if self.is_mounted:
-            self.call_after_refresh(self._release_session_change_suspension)
-        else:
-            self._release_session_change_suspension()
+        self._switch_session(next_key, emit=False)
+        self.call_after_refresh(self._release_session_change_suspension)
 
     def _release_session_change_suspension(self) -> None:
         self._suspend_session_change_event = False
 
     def set_session_kind(self, kind: str) -> None:
-        with contextlib.suppress(NoMatches):
-            indicator = self.query_one("#chat-overlay-session-indicator", Static)
-            for css_kind in SessionKind:
-                indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
-        with contextlib.suppress(NoMatches):
-            badge = self.query_one("#chat-overlay-session-badge", Static)
-            for css_kind in SessionKind:
-                badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
+        indicator = self.query_one("#chat-overlay-session-indicator", Static)
+        for css_kind in SessionKind:
+            indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
+        badge = self.query_one("#chat-overlay-session-badge", Static)
+        for css_kind in SessionKind:
+            badge.set_class(css_kind == kind, f"session-kind-{css_kind}")
 
     def set_overlay_shortcuts(
         self,
@@ -718,9 +703,7 @@ class ChatPanel(Vertical):
         if event.key == "escape" and not self._input_has_focus():
             event.prevent_default()
             event.stop()
-            input_widget = self._input_widget_safe()
-            if input_widget is not None:
-                input_widget.focus()
+            self._input_widget().focus()
             return
 
         if not self._input_has_focus():
@@ -1145,8 +1128,7 @@ class ChatPanel(Vertical):
         previous_key = self._selected_session_key
         if self.is_mounted:
             self._flush_deferred()
-            with contextlib.suppress(NoMatches):
-                self._ensure_session_state(previous_key).draft = self._input_widget().value
+            self._ensure_session_state(previous_key).draft = self._input_widget().value
 
         self._selected_session_key = key
         self._ensure_session_state(key)
@@ -1154,18 +1136,15 @@ class ChatPanel(Vertical):
         self.set_session_kind(self._infer_session_kind(key))
 
         if self.is_mounted:
-            with contextlib.suppress(NoMatches):
-                input_widget = self._input_widget()
-                input_widget.value = self._current_state().draft
-                self._sync_completion_overlays(input_widget.value)
-                self._render_current_session()
+            input_widget = self._input_widget()
+            input_widget.value = self._current_state().draft
+            self._sync_completion_overlays(input_widget.value)
+            self._render_current_session()
 
         if emit and previous_key != key:
             self.post_message(self.SessionChanged(key))
 
     def _render_current_session(self) -> None:
-        if not self._dom_ready():
-            return
         stream = self._stream_output()
         if stream is not None:
             stream.clear()
@@ -1175,9 +1154,6 @@ class ChatPanel(Vertical):
         self._update_hidden_buffer()
         self._update_content_state()
         self._refresh_status()
-
-    def _dom_ready(self) -> bool:
-        return bool(self.query("#chat-inline-surface")) and bool(self.query("#chat-messages"))
 
     def _render_entry(self, stream: StreamingOutput, kind: str, payload: dict[str, Any]) -> None:
         raw_text = str(payload.get("text") or "")
@@ -1205,10 +1181,7 @@ class ChatPanel(Vertical):
             )
 
     def _render_decision_surface(self) -> None:
-        try:
-            container = self.query_one("#chat-inline-surface", Vertical)
-        except NoMatches:
-            return
+        container = self.query_one("#chat-inline-surface", Vertical)
         for child in list(container.children):
             child.remove()
         state = self._current_state()
@@ -1245,10 +1218,7 @@ class ChatPanel(Vertical):
         return rendered
 
     def _update_hidden_buffer(self) -> None:
-        try:
-            messages = self.query_one("#chat-messages", Static)
-        except NoMatches:
-            return
+        messages = self.query_one("#chat-messages", Static)
         rendered = self._rendered_messages()
         if not rendered:
             messages.set_class(True, "chat-empty")
@@ -1290,6 +1260,9 @@ class ChatPanel(Vertical):
         return self.query_one("#chat-overlay-input", Input)
 
     def _input_widget_safe(self) -> Input | None:
+        # Returns None when called from a partial-mount test fixture that
+        # doesn't yield the input widget (e.g. doctor modal harness). All
+        # post-Ready call sites can use the bare _input_widget() directly.
         try:
             return self._input_widget()
         except NoMatches:
@@ -1316,11 +1289,10 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def _sync_input_enabled_state(self) -> None:
-        if not self.is_mounted:
-            return
-        try:
-            input_widget = self._input_widget()
-        except NoMatches:
+        # Reachable from on_mount before all children are guaranteed; degrade
+        # quietly when the input widget is absent in a partial-compose harness.
+        input_widget = self._input_widget_safe()
+        if input_widget is None:
             return
         visible = self.has_class("visible")
         locked = self._chat_input_disable_depth > 0
@@ -1423,9 +1395,7 @@ class ChatPanel(Vertical):
         else:
             selected = self._mention_matches[highlighted]
 
-        input_widget = self._input_widget_safe()
-        if input_widget is None:
-            return
+        input_widget = self._input_widget()
         mention = self._mention_span(input_widget.value)
         if mention is None:
             self._hide_mention_complete()
@@ -1453,8 +1423,7 @@ class ChatPanel(Vertical):
     def _sync_session_label(self) -> None:
         by_key = {key: label for label, key in self._session_options}
         label = by_key.get(self._selected_session_key, "Orchestrator")
-        with contextlib.suppress(NoMatches):
-            self.query_one("#chat-overlay-session-current", Static).update(label)
+        self.query_one("#chat-overlay-session-current", Static).update(label)
         self._refresh_status()
 
     def _refresh_status(self) -> None:
@@ -1471,8 +1440,7 @@ class ChatPanel(Vertical):
         close_key = self._overlay_close_key
         is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
         if is_active:
-            input_widget = self._input_widget_safe()
-            value = input_widget.value if input_widget is not None else ""
+            value = self._input_widget().value
             has_pending = bool(normalize_chat_input(value))
             esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
         else:
@@ -1524,8 +1492,7 @@ class ChatPanel(Vertical):
         return True
 
     def _input_has_focus(self) -> bool:
-        input_widget = self._input_widget_safe()
-        return input_widget is not None and input_widget.has_focus
+        return self._input_widget().has_focus
 
     def _consume_session_prefix(self, text: str) -> tuple[str | None, str]:
         stripped = text.lstrip()

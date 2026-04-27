@@ -137,11 +137,6 @@ class SessionDashboardScreen(Screen[None]):
 
     async def on_mount(self) -> None:
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
-        panel = self._chat_panel()
-        panel.set_visible(False)
-        panel.set_fullscreen(False)
-        self._set_chat_mode(ChatMode.TASK)
-
         self.query_one("#dashboard-agent-status").border_title = "Agent Status"
         self.query_one("#dashboard-persona-pipeline").border_title = "Persona Pipeline"
         self.query_one("#dashboard-live-output").border_title = "Live Output"
@@ -155,14 +150,20 @@ class SessionDashboardScreen(Screen[None]):
         self._refresh_header()
         self._refresh_status_bar_header()
         self._sync_action_bar()
-        panel.add_system_message(
-            f"Session attached — streaming agent output for task {self._task_id[:8]}"
-        )
         self._ensure_stream_worker()
         self._queue_refreshes(agent_status=True, worktree=True, persona=True, delay=0.0)
         self._agent_status_timer = self.set_interval(1.0, self._schedule_agent_status_refresh)
         self._worktree_refresh_timer = self.set_interval(
             5.0, self._schedule_worktree_panels_refresh
+        )
+
+    def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
+        panel = self._chat_panel()
+        panel.set_visible(False)
+        panel.set_fullscreen(False)
+        self._set_chat_mode(ChatMode.TASK)
+        panel.add_system_message(
+            f"Session attached — streaming agent output for task {self._task_id[:8]}"
         )
 
     def on_unmount(self) -> None:

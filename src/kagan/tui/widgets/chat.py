@@ -297,20 +297,25 @@ class ChatPanel(Vertical):
 
         with contextlib.suppress(NoMatches):
             self.query_one("#slash-complete", Vertical).display = False
+        with contextlib.suppress(NoMatches):
             self.query_one("#task-mention-complete", Vertical).display = False
+        with contextlib.suppress(NoMatches):
             self.query_one("#chat-inline-surface", Vertical).display = False
+        with contextlib.suppress(NoMatches):
             self.query_one("#chat-messages", Static).display = False
-
+        with contextlib.suppress(NoMatches):
             input_widget = self._input_widget()
-            session_select = self.query_one("#chat-overlay-session-select", Select)
-            self.query_one("#chat-title", Static).display = False
             input_widget.disabled = True
             input_widget.can_focus = False
-            session_select.disabled = True
+        with contextlib.suppress(NoMatches):
+            self.query_one("#chat-title", Static).display = False
+        with contextlib.suppress(NoMatches):
+            self.query_one("#chat-overlay-session-select", Select).disabled = True
+        with contextlib.suppress(NoMatches):
             self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
-            self._sync_input_enabled_state()
-            self._render_current_session()
-            self._refresh_status()
+        self._sync_input_enabled_state()
+        self._render_current_session()
+        self._refresh_status()
 
     def set_visible(self, visible: bool) -> None:
         if not self.is_mounted:
@@ -354,6 +359,7 @@ class ChatPanel(Vertical):
     def set_mode_title(self, title: str) -> None:
         with contextlib.suppress(NoMatches):
             self.query_one("#chat-title", Static).update(title)
+        with contextlib.suppress(NoMatches):
             self.query_one("#chat-overlay-session-badge", Static).update(title)
         self._refresh_status()
 
@@ -401,6 +407,7 @@ class ChatPanel(Vertical):
             indicator = self.query_one("#chat-overlay-session-indicator", Static)
             for css_kind in SessionKind:
                 indicator.set_class(css_kind == kind, f"session-kind-{css_kind}")
+        with contextlib.suppress(NoMatches):
             badge = self.query_one("#chat-overlay-session-badge", Static)
             for css_kind in SessionKind:
                 badge.set_class(css_kind == kind, f"session-kind-{css_kind}")

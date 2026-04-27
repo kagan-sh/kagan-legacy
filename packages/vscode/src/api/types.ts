@@ -1,7 +1,26 @@
-export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
-export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
-export type ReviewVerdictState = "PASS" | "FAIL" | "SKIP";
+// Re-export shared consts — canonical definitions live in @kagan/shared-api-client.
+// Import locally so interface declarations and const initialisers below can reference them.
+import { SSE_TYPE } from "@kagan/shared-api-client";
+import type {
+  EventType,
+  Priority,
+  ReviewVerdictState,
+  SessionStatus,
+  TaskStatus,
+} from "@kagan/shared-api-client";
+
+export {
+  EVENT_TYPE,
+  SSE_TYPE,
+  TASK_COLUMNS,
+  type EventType,
+  type SSEType,
+  type TaskStatus,
+  type Priority,
+  type SessionStatus,
+  type ReviewVerdictState,
+} from "@kagan/shared-api-client";
+
 export type LauncherBackend =
   | "tmux"
   | "nvim"
@@ -10,30 +29,6 @@ export type LauncherBackend =
   | "windsurf"
   | "kiro"
   | "antigravity";
-
-export const EVENT_TYPE = {
-  OUTPUT_CHUNK: "OUTPUT_CHUNK",
-  AGENT_STATUS: "AGENT_STATUS",
-  TOOL_CALL_START: "TOOL_CALL_START",
-  TOOL_CALL_UPDATE: "TOOL_CALL_UPDATE",
-  AGENT_COMPLETED: "AGENT_COMPLETED",
-  AGENT_FAILED: "AGENT_FAILED",
-  PLAN_UPDATE: "PLAN_UPDATE",
-  TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
-  MERGE_COMPLETED: "MERGE_COMPLETED",
-  MERGE_FAILED: "MERGE_FAILED",
-} as const;
-
-export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
-
-export const SSE_TYPE = {
-  TASK_UPDATED: "TASK_UPDATED",
-  SESSION_EVENT: "SESSION_EVENT",
-} as const;
-
-export type SSEType = (typeof SSE_TYPE)[keyof typeof SSE_TYPE];
-
-export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
 
 export const PRIORITY_ICONS: Record<Priority, string> = {
   LOW: "arrow-down",

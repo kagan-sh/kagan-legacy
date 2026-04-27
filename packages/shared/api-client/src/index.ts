@@ -18,7 +18,21 @@
 // Core Client
 // ----------------------------------------------------------------------------
 
-export { KaganApiClient, KaganClient } from "./client.js";
+export { KaganApiClient, KaganClient } from "./client";
+
+// ----------------------------------------------------------------------------
+// Event Rendering
+// ----------------------------------------------------------------------------
+
+export {
+  renderEvent,
+  formatToolName,
+  extractToolTitle,
+  extractToolStatus,
+  type RenderableEvent,
+  type RenderableKind,
+  type Severity,
+} from "./event-rendering";
 
 // ----------------------------------------------------------------------------
 // SSE/Event Handling
@@ -31,7 +45,7 @@ export {
   type SSEManagerOptions,
   type SSEEventMap,
   type SSEEventListener,
-} from "./events.js";
+} from "./events";
 
 // ----------------------------------------------------------------------------
 // Errors
@@ -42,7 +56,7 @@ export {
   SSEError,
   ConfigurationError,
   type ApiErrorDetail,
-} from "./errors.js";
+} from "./errors";
 
 // ----------------------------------------------------------------------------
 // Types (Everything from types.ts)
@@ -125,10 +139,10 @@ export type {
   // Client config
   KaganClientConfig,
   RequestOptions,
-} from "./types.js";
+} from "./types";
 
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
 
-export { EVENT_TYPE, SSE_TYPE, TASK_COLUMNS } from "./types.js";
+export { EVENT_TYPE, SSE_TYPE, TASK_COLUMNS } from "./types";

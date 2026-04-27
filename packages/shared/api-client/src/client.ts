@@ -40,8 +40,8 @@ import type {
   PresenceHeartbeatInput,
   TaskCountsResponse,
   ChatStreamEvent,
-} from "./types.js";
-import { ApiError } from "./errors.js";
+} from "./types";
+import { ApiError } from "./errors";
 
 // ----------------------------------------------------------------------------
 // Configuration & Utilities

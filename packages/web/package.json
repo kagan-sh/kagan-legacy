@@ -15,6 +15,7 @@
     "check:raw-colors": "node scripts/check_raw_colors.mjs"
   },
   "dependencies": {
+    "@kagan/shared-api-client": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource/ibm-plex-sans": "^5.2.8",

@@ -83,11 +83,11 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
-  acceptance_criteria: AcceptanceCriterion[];
+  acceptance_criteria?: AcceptanceCriterion[];
   agent_backend: string | null;
   launcher: string | null;
-  review_approved: boolean;
-  review_verdicts: ReviewVerdict[];
+  review_approved?: boolean;
+  review_verdicts?: ReviewVerdict[];
   updated_at: string | null;
   last_event_at: string | null;
   has_workspace: boolean;

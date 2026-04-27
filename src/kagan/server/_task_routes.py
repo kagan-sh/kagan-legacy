@@ -435,7 +435,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     async def review_status(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
-        review_approved = ctx.client.reviews.is_approved(task_id)
+        review_approved = await asyncio.to_thread(ctx.client.reviews.is_approved, task_id)
         return _ok(
             {
                 "task_id": task_id,

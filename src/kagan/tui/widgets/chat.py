@@ -333,18 +333,22 @@ class ChatPanel(Vertical):
         self.set_class(fullscreen, "expanded")
         self.set_class(not fullscreen, "docked")
         self.set_class(not fullscreen, "default")
-        badge = self.query_one("#chat-overlay-mode-badge", Static)
-        heading = self.query_one("#chat-overlay-empty-heading", Static)
-        if fullscreen:
-            badge.update("Expanded")
-            badge.set_class(True, "mode-expanded")
-            badge.set_class(False, "mode-docked")
-            heading.update(self._EXPANDED_EMPTY_HEADING)
-        else:
-            badge.update("Docked")
-            badge.set_class(False, "mode-expanded")
-            badge.set_class(True, "mode-docked")
-            heading.update(self._DOCKED_EMPTY_HEADING)
+        with contextlib.suppress(NoMatches):
+            badge = self.query_one("#chat-overlay-mode-badge", Static)
+            if fullscreen:
+                badge.update("Expanded")
+                badge.set_class(True, "mode-expanded")
+                badge.set_class(False, "mode-docked")
+            else:
+                badge.update("Docked")
+                badge.set_class(False, "mode-expanded")
+                badge.set_class(True, "mode-docked")
+        with contextlib.suppress(NoMatches):
+            heading = self.query_one("#chat-overlay-empty-heading", Static)
+            if fullscreen:
+                heading.update(self._EXPANDED_EMPTY_HEADING)
+            else:
+                heading.update(self._DOCKED_EMPTY_HEADING)
         self._refresh_status()
 
     def set_mode_title(self, title: str) -> None:
@@ -378,6 +382,12 @@ class ChatPanel(Vertical):
             self._switch_session(next_key, emit=False)
         else:
             self._selected_session_key = next_key
+            self.set_session_kind(self._infer_session_kind(next_key))
+            self._sync_session_label()
+            # _render_current_session is intentionally skipped here: it requires
+            # the streaming surface to be mounted, which is not the case when
+            # set_sessions is called before _on_mount.  The render will fire once
+            # the widget mounts via _on_mount → set_visible / set_sessions path.
         if self.is_mounted:
             self.call_after_refresh(self._release_session_change_suspension)
         else:
@@ -1160,10 +1170,7 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def _dom_ready(self) -> bool:
-        return (
-            self.query("#chat-inline-surface").first() is not None
-            and self.query("#chat-messages").first() is not None
-        )
+        return bool(self.query("#chat-inline-surface")) and bool(self.query("#chat-messages"))
 
     def _render_entry(self, stream: StreamingOutput, kind: str, payload: dict[str, Any]) -> None:
         raw_text = str(payload.get("text") or "")
@@ -1439,7 +1446,8 @@ class ChatPanel(Vertical):
     def _sync_session_label(self) -> None:
         by_key = {key: label for label, key in self._session_options}
         label = by_key.get(self._selected_session_key, "Orchestrator")
-        self.query_one("#chat-overlay-session-current", Static).update(label)
+        with contextlib.suppress(NoMatches):
+            self.query_one("#chat-overlay-session-current", Static).update(label)
         self._refresh_status()
 
     def _refresh_status(self) -> None:

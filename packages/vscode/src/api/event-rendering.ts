@@ -175,11 +175,13 @@ export function renderEvent(
 
   if (eventType === "CRITERION_VERDICT") {
     const verdict = String(payload.verdict ?? "");
-    const isPass = verdict === "PASS";
     const reason = String(payload.reason ?? "");
-    return make("verdict", isPass ? "PASS" : "FAIL", {
+    const verdictLabel = verdict === "PASS" ? "PASS" : verdict === "SKIP" ? "SKIP" : "FAIL";
+    const verdictSeverity: Severity =
+      verdict === "PASS" ? "success" : verdict === "SKIP" ? "info" : "warning";
+    return make("verdict", verdictLabel, {
       body: reason,
-      severity: isPass ? "success" : "warning",
+      severity: verdictSeverity,
       metadata: { verdict, reason },
       ...ids,
     });

@@ -1,7 +1,7 @@
 """honest review gate
 
 - CASCADE FK deletes on Session, Worktree, SessionEvent, TaskNote → tasks
-- CASCADE FK deletes on SessionEvent → sessions, ReviewVerdict → sessions
+- SET NULL FK on SessionEvent.session_id → sessions, ReviewVerdict.session_id → sessions (preserves history when a session is deleted)
 - New AcceptanceCriterion table (migrates Task.acceptance_criteria JSON)
 - New ReviewVerdict table with `created_at` for portable insertion ordering
   (migrates Task.review_verdicts JSON)

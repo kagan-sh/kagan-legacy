@@ -71,7 +71,7 @@ async def approve_review(
     pass verdicts for every criterion so that is_review_approved() returns True.
     Criteria that already have a pass as their latest verdict are left unchanged.
     """
-    task = await get_task(task_id)
+    await get_task(task_id)
 
     def op(s) -> None:
         criteria = list(
@@ -95,7 +95,7 @@ async def approve_review(
         s.commit()
 
     await _db_async(engine, op)
-    return task
+    return await get_task(task_id)
 
 
 async def reject_review(

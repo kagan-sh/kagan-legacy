@@ -180,6 +180,22 @@ async def test_approve_review_stamps_pass_on_all_criteria(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_approve_review_returns_post_write_task(tmp_path: Path) -> None:
+    """approve_review must return the task object *after* verdicts are committed,
+    so callers can rely on is_review_approved being True when they inspect the
+    returned task's criteria state via a fresh DB read."""
+    engine = _make_engine(tmp_path)
+    task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
+    returned_task = await approve_review(
+        engine, task_id, get_task=_fake_get_task(task_id, engine=engine)
+    )
+    # The returned task must be the post-write object; verify via round-trip.
+    assert returned_task.id == task_id
+    assert is_review_approved(task_id, engine) is True
+    engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_approve_review_is_idempotent(tmp_path: Path) -> None:
     """Re-running approve_review when latest verdicts are already pass
     should not insert duplicate rows."""

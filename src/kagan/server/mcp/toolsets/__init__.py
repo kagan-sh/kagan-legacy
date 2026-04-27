@@ -42,7 +42,7 @@ def mcp_error_boundary[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awa
                 app = get_context(ctx)
                 session_id = app.bound_session_id or app.opts.session_id
                 role = app.opts.role.value if app.opts.role else None
-            except (RuntimeError, AttributeError):
+            except (ValueError, AttributeError):
                 # Lifespan not running (e.g. tests without a live server);
                 # degrade gracefully — audit metadata is best-effort only.
                 pass

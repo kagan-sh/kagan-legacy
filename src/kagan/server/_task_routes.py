@@ -223,8 +223,7 @@ def register_task_routes(mcp: FastMCP) -> None:
             launcher=body.launcher,
             repo_id=body.repo_id,
         )
-        runtime = await ctx.client.tasks.runtime_summary(task.id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task.id, task=task))
 
     @mcp.custom_route("/api/tasks/counts", methods=["GET"])
     @require_context(mcp)
@@ -257,8 +256,7 @@ def register_task_routes(mcp: FastMCP) -> None:
                 value = parse_priority(value)
             update_args[field] = value
         task = await ctx.client.tasks.update(task_id, **update_args)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["DELETE"])
     @require_context(mcp)
@@ -283,8 +281,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskStatusRequest)
         task = await ctx.client.tasks.set_status(task_id, TaskStatus(body.status))
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}/run", methods=["POST"])
     @require_context(mcp)
@@ -323,11 +320,10 @@ def register_task_routes(mcp: FastMCP) -> None:
             persona=body.persona,
         )
 
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
 
         # Include selection metadata in response
-        wire_dict = task_to_wire_dict(task, runtime=runtime)
+        wire_dict = await task_wire_dict(ctx, task_id, task=task)
         wire_dict["backend_selection"] = {
             "selected_backend": selection_metadata.get("backend"),
             "backend_confidence": selection_metadata.get("confidence"),
@@ -348,9 +344,8 @@ def register_task_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         await ctx.client.tasks.cancel(task_id)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}/detach", methods=["POST"])
     @require_context(mcp)
@@ -477,16 +472,16 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action == "approve":
             task = await ctx.client.reviews.approve(task_id)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "reject":
             feedback = body.feedback
             if not feedback:
                 raise ValueError("feedback is required for reject action")
             task = await ctx.client.reviews.reject(task_id, feedback=feedback)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "merge":
             task = await ctx.client.reviews.merge(task_id)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "rebase":
             await ctx.client.reviews.rebase(task_id)
             return _ok({"task_id": task_id, "action": action})
@@ -629,10 +624,9 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         await ctx.client.tasks.run(task_id, agent_backend=agent_backend)
 
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
 
-        wire_dict = task_to_wire_dict(task, runtime=runtime)
+        wire_dict = await task_wire_dict(ctx, task_id, task=task)
         wire_dict["backend_selection"] = {
             "selected_backend": selection_metadata.get("backend"),
             "backend_confidence": selection_metadata.get("confidence"),

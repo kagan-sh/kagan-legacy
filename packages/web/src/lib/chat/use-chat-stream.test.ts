@@ -5,6 +5,8 @@ import {
   addNote,
   addToolStart,
   appendChunk,
+  asChatStreamMessage,
+  CHAT_STREAM_EVENT,
   updateToolProgress,
 } from './use-chat-stream';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
@@ -103,5 +105,42 @@ describe('useChatStream pure reducers', () => {
       const result = addError([], 'boom');
       expect(result).toEqual([{ kind: 'error', message: 'boom' }]);
     });
+  });
+});
+
+describe('asChatStreamMessage field validation', () => {
+  it('returns null for unknown event type', () => {
+    expect(asChatStreamMessage({ t: 'UNKNOWN' })).toBeNull();
+  });
+
+  it('returns null when t is not a string', () => {
+    expect(asChatStreamMessage({ t: 42 })).toBeNull();
+  });
+
+  it('rejects CHAT_CHUNK when content is a number instead of string', () => {
+    expect(asChatStreamMessage({ t: CHAT_STREAM_EVENT.CHUNK, content: 42 })).toBeNull();
+  });
+
+  it('rejects CHAT_CHUNK when thought is a string instead of boolean', () => {
+    expect(asChatStreamMessage({ t: CHAT_STREAM_EVENT.CHUNK, content: 'hi', thought: 'yes' })).toBeNull();
+  });
+
+  it('accepts CHAT_CHUNK with valid string content', () => {
+    const msg = asChatStreamMessage({ t: CHAT_STREAM_EVENT.CHUNK, content: 'hello' });
+    expect(msg).not.toBeNull();
+    expect(msg?.t).toBe(CHAT_STREAM_EVENT.CHUNK);
+  });
+
+  it('rejects CHAT_TOOL_START when tool is not a string', () => {
+    expect(asChatStreamMessage({ t: CHAT_STREAM_EVENT.TOOL_START, tool: 99 })).toBeNull();
+  });
+
+  it('accepts CHAT_DONE with no extra fields', () => {
+    const msg = asChatStreamMessage({ t: CHAT_STREAM_EVENT.DONE });
+    expect(msg?.t).toBe(CHAT_STREAM_EVENT.DONE);
+  });
+
+  it('rejects CHAT_SESSION_UPDATED when label is a number', () => {
+    expect(asChatStreamMessage({ t: CHAT_STREAM_EVENT.SESSION_UPDATED, label: 123 })).toBeNull();
   });
 });

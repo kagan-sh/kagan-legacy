@@ -271,7 +271,7 @@ def _drop_and_recreate_review_verdicts(bind: sa.engine.Connection) -> None:
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             FOREIGN KEY (criterion_id) REFERENCES acceptance_criteria (id) ON DELETE CASCADE,
-            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+            FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE SET NULL
         )
         """
     )
@@ -421,7 +421,7 @@ def upgrade() -> None:
                     PRIMARY KEY (id),
                     FOREIGN KEY (criterion_id) REFERENCES acceptance_criteria (id)
                         ON DELETE CASCADE,
-                    FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+                    FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE SET NULL
                 )
                 """
             )
@@ -498,6 +498,14 @@ def upgrade() -> None:
                         (task_id, criterion_index),
                     ).fetchone()
                     if crit_row is None:
+                        continue
+                    # Idempotency: skip if a matching verdict already exists
+                    existing_verdict = bind.exec_driver_sql(
+                        "SELECT 1 FROM review_verdicts "
+                        "WHERE criterion_id = ? AND verdict = ? AND reason = ?",
+                        (crit_row[0], verdict_val, reason),
+                    ).fetchone()
+                    if existing_verdict is not None:
                         continue
                     bind.exec_driver_sql(
                         "INSERT INTO review_verdicts "

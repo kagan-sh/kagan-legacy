@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ReviewVerdict, WireTask } from "../api/types.js";
+import type { ReviewVerdict, ReviewVerdictState, WireTask } from "../api/types.js";
 import { buildReviewDocument } from "./review.document.js";
 
 const REVIEW_SCHEME = "kagan-review";
@@ -73,7 +73,7 @@ export class ReviewCommentProvider implements vscode.Disposable {
       const thread = this.controller.createCommentThread(uri, range, [comment]);
       thread.label = `Criterion ${criterionLabels.get(verdict.criterion_id) ?? "?"}`;
       thread.state =
-        verdict.verdict === "PASS"
+        verdict.verdict === "PASS" || verdict.verdict === "SKIP"
           ? vscode.CommentThreadState.Resolved
           : vscode.CommentThreadState.Unresolved;
       this.threads.push(thread);
@@ -88,9 +88,21 @@ function reviewUri(taskId: string): vscode.Uri {
   });
 }
 
+export function iconForVerdict(verdict: ReviewVerdictState | string): string {
+  switch (verdict) {
+    case "PASS":
+      return "$(pass)";
+    case "FAIL":
+      return "$(error)";
+    case "SKIP":
+      return "$(circle-slash)";
+    default:
+      return "$(question)";
+  }
+}
+
 function buildCommentBody(verdict: ReviewVerdict): vscode.MarkdownString {
-  const icon = verdict.verdict === "PASS" ? "$(pass)" : "$(error)";
-  return new vscode.MarkdownString(`${icon} ${verdict.reason}`);
+  return new vscode.MarkdownString(`${iconForVerdict(verdict.verdict)} ${verdict.reason}`);
 }
 
 function taskIdFromUri(uri: vscode.Uri): string {

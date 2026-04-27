@@ -7,7 +7,7 @@ from sqlalchemy import Engine
 from sqlmodel import select
 
 from kagan.core import git
-from kagan.core._db_helpers import _db_async, _db_sync, _setting_enabled, _utc_now
+from kagan.core._db_helpers import _col, _db_async, _db_sync, _setting_enabled, _utc_now
 from kagan.core._prompts import build_conflict_resolution_feedback
 from kagan.core._settings import get_settings
 from kagan.core._transitions import validate_merge_move
@@ -45,7 +45,7 @@ def is_review_approved(task_id: str, engine: Engine) -> bool:
             latest = s.exec(
                 select(ReviewVerdict)
                 .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(ReviewVerdict.created_at.desc())  # type: ignore[attr-defined]
+                .order_by(_col(ReviewVerdict.created_at).desc())
             ).first()
             if latest is None:
                 return False
@@ -81,7 +81,7 @@ async def approve_review(
             latest = s.exec(
                 select(ReviewVerdict)
                 .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(ReviewVerdict.created_at.desc())  # type: ignore[attr-defined]
+                .order_by(_col(ReviewVerdict.created_at).desc())
             ).first()
             if latest is not None and latest.verdict.lower() == "pass":
                 continue  # already approved

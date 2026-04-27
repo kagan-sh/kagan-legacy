@@ -12,7 +12,17 @@ import {
 } from "@/lib/utils/editor-links";
 import { Button } from "@/components/ui/button";
 import { AttachedInstructionsDialog, skipAttachedGuidanceAtom } from "@/components/board/attached-instructions-dialog";
-import { useAtomValue as useJotaiValue } from "jotai";
+
+// ---------------------------------------------------------------------------
+// Module-scope debounce guard — 500 ms minimum between actions per ref slot
+// ---------------------------------------------------------------------------
+
+function debounce(lastActionRef: { current: number }): boolean {
+    const now = Date.now();
+    if (now - lastActionRef.current < 500) return false;
+    lastActionRef.current = now;
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // Terminal attach helpers
@@ -81,7 +91,7 @@ export function AgentControl({
     taskLauncher,
 }: AgentControlProps) {
     const sseConnected = useAtomValue(sseConnectedAtom);
-    const skipGuidance = useJotaiValue(skipAttachedGuidanceAtom);
+    const skipGuidance = useAtomValue(skipAttachedGuidanceAtom);
 
     const isRunning = status === "IN_PROGRESS";
     const hasInteractiveSession = Boolean(activeSessionLauncher);
@@ -123,13 +133,6 @@ export function AgentControl({
         return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
     };
 
-    const debounce = () => {
-        const now = Date.now();
-        if (now - lastActionRef.current < 500) return false;
-        lastActionRef.current = now;
-        return true;
-    };
-
     const startAttachedSession = useCallback(async (launcher: LauncherBackend) => {
         setPending("starting");
         try {
@@ -154,7 +157,7 @@ export function AgentControl({
     }, [taskId, worktreePath]);
 
     const handleStart = useCallback(async () => {
-        if (!debounce()) return;
+        if (!debounce(lastActionRef)) return;
         setPending("starting");
         apiClient.runTask(taskId).then(() => setPending(null)).catch((err) => {
             setPending(null);
@@ -163,7 +166,7 @@ export function AgentControl({
     }, [taskId]);
 
     const handleStop = useCallback(async () => {
-        if (!debounce()) return;
+        if (!debounce(lastActionRef)) return;
         setPending("stopping");
         if (hasInteractiveSession) {
             apiClient.detachTask(taskId).catch((err) => {
@@ -179,7 +182,7 @@ export function AgentControl({
     }, [taskId, hasInteractiveSession]);
 
     const handleAttach = useCallback(async () => {
-        if (!debounce()) return;
+        if (!debounce(lastActionRef)) return;
         try {
             const settings = await apiClient.getSettings();
             const launcherNorm = normalizeLauncher(

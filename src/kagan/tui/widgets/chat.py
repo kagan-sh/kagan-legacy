@@ -41,6 +41,8 @@ _SLASH_ALIASES: Final[dict[str, str]] = {
 }
 
 
+# Overrides Textual private methods to suppress NoMatches during early-mount
+# rendering before the option list widget is attached. Pinned to textual>=7.0.0,<8.0.0.
 class _SessionSelect(Select[str]):
     def _setup_options_renderables(self) -> None:
         with contextlib.suppress(NoMatches):
@@ -311,13 +313,18 @@ class ChatPanel(Vertical):
             self._refresh_status()
 
     def set_visible(self, visible: bool) -> None:
+        if not self.is_mounted:
+            return
         self.set_class(visible, "visible")
-        session_select = self.query_one("#chat-overlay-session-select", Select)
-        session_select.disabled = not visible
+        with contextlib.suppress(NoMatches):
+            session_select = self.query_one("#chat-overlay-session-select", Select)
+            session_select.disabled = not visible
         self._sync_input_enabled_state()
         if not visible:
             self._flush_deferred()
-            self._current_state().draft = self._input_widget().value
+            input_widget = self._input_widget_safe()
+            if input_widget is not None:
+                self._current_state().draft = input_widget.value
             self._hide_overlays()
         self._refresh_status()
 
@@ -694,7 +701,9 @@ class ChatPanel(Vertical):
         if event.key == "escape" and not self._input_has_focus():
             event.prevent_default()
             event.stop()
-            self._input_widget().focus()
+            input_widget = self._input_widget_safe()
+            if input_widget is not None:
+                input_widget.focus()
             return
 
         if not self._input_has_focus():
@@ -1400,7 +1409,9 @@ class ChatPanel(Vertical):
         else:
             selected = self._mention_matches[highlighted]
 
-        input_widget = self._input_widget()
+        input_widget = self._input_widget_safe()
+        if input_widget is None:
+            return
         mention = self._mention_span(input_widget.value)
         if mention is None:
             self._hide_mention_complete()
@@ -1498,7 +1509,8 @@ class ChatPanel(Vertical):
         return True
 
     def _input_has_focus(self) -> bool:
-        return self._input_widget().has_focus
+        input_widget = self._input_widget_safe()
+        return input_widget is not None and input_widget.has_focus
 
     def _consume_session_prefix(self, text: str) -> tuple[str | None, str]:
         stripped = text.lstrip()

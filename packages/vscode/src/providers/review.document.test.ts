@@ -35,6 +35,45 @@ function task(overrides: Partial<WireTask> = {}): WireTask {
   };
 }
 
+// markerForVerdict is an internal helper but its behaviour is observable
+// through buildReviewDocument — drive it through the public surface.
+describe("markerForVerdict (via buildReviewDocument)", () => {
+  it("renders [SKIP] for a SKIP verdict", () => {
+    const document = buildReviewDocument(
+      task({
+        review_verdicts: [
+          {
+            id: "verdict-a",
+            criterion_id: "criterion-a",
+            session_id: null,
+            verdict: "SKIP",
+            reason: "Skipped intentionally.",
+          },
+        ],
+      }),
+    );
+    expect(document.text).toContain("1. [SKIP] Show verdicts");
+  });
+
+  it("renders [?] for an unrecognised verdict value", () => {
+    const document = buildReviewDocument(
+      task({
+        review_verdicts: [
+          {
+            id: "verdict-a",
+            criterion_id: "criterion-a",
+            session_id: null,
+            // Cast to simulate an unknown wire value arriving at runtime.
+            verdict: "UNKNOWN" as "PASS",
+            reason: "Unknown verdict from wire.",
+          },
+        ],
+      }),
+    );
+    expect(document.text).toContain("1. [?] Show verdicts");
+  });
+});
+
 describe("buildReviewDocument", () => {
   it("renders acceptance criteria and exposes stable comment line metadata", () => {
     const document = buildReviewDocument(task());

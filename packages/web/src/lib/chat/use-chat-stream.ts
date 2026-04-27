@@ -57,17 +57,35 @@ type ChatStreamMessage =
   | ChatDoneMsg
   | ChatSessionUpdatedMsg;
 
-function asChatStreamMessage(raw: Record<string, unknown>): ChatStreamMessage | null {
+export function asChatStreamMessage(raw: Record<string, unknown>): ChatStreamMessage | null {
   const t = raw.t;
   if (typeof t !== 'string') return null;
   switch (t) {
-    case CHAT_STREAM_EVENT.CHUNK:
-    case CHAT_STREAM_EVENT.TOOL_START:
-    case CHAT_STREAM_EVENT.TOOL_PROGRESS:
-    case CHAT_STREAM_EVENT.ERROR:
+    case CHAT_STREAM_EVENT.CHUNK: {
+      // content must be a string when present; thought is an optional boolean
+      if (raw.content !== undefined && typeof raw.content !== 'string') return null;
+      if (raw.thought !== undefined && typeof raw.thought !== 'boolean') return null;
+      return { t, content: raw.content, thought: raw.thought };
+    }
+    case CHAT_STREAM_EVENT.TOOL_START: {
+      if (raw.tool !== undefined && typeof raw.tool !== 'string') return null;
+      return { t, tool: raw.tool };
+    }
+    case CHAT_STREAM_EVENT.TOOL_PROGRESS: {
+      if (raw.tool !== undefined && typeof raw.tool !== 'string') return null;
+      if (raw.status !== undefined && typeof raw.status !== 'string') return null;
+      return { t, tool: raw.tool, status: raw.status };
+    }
+    case CHAT_STREAM_EVENT.ERROR: {
+      if (raw.error !== undefined && typeof raw.error !== 'string') return null;
+      return { t, error: raw.error };
+    }
     case CHAT_STREAM_EVENT.DONE:
-    case CHAT_STREAM_EVENT.SESSION_UPDATED:
-      return raw as unknown as ChatStreamMessage;
+      return { t };
+    case CHAT_STREAM_EVENT.SESSION_UPDATED: {
+      if (raw.label !== undefined && typeof raw.label !== 'string') return null;
+      return { t, label: raw.label };
+    }
     default:
       return null;
   }

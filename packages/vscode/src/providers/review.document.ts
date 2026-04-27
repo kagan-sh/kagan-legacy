@@ -29,8 +29,7 @@ export function buildReviewDocument(task: WireTask | null): ReviewDocument {
   } else {
     for (const criterion of task.acceptance_criteria) {
       const verdict = task.review_verdicts.find((item) => item.criterion_id === criterion.id);
-      const marker =
-        verdict?.verdict === "PASS" ? "[PASS]" : verdict?.verdict === "FAIL" ? "[FAIL]" : "[ ]";
+      const marker = markerForVerdict(verdict?.verdict);
       criterionLines.set(criterion.id, lines.length);
       criterionLabels.set(criterion.id, `${criterion.ordinal + 1}`);
       lines.push(`${criterion.ordinal + 1}. ${marker} ${criterion.text}`);
@@ -48,4 +47,24 @@ export function buildReviewDocument(task: WireTask | null): ReviewDocument {
   }
 
   return { text: lines.join("\n"), criterionLines, criterionLabels };
+}
+
+/**
+ * Marker prefix for an acceptance criterion line, derived from the latest
+ * verdict's value. An unrecognised verdict renders as `[?]` so a wire-shape
+ * drift is visible to reviewers instead of silently appearing as "not yet
+ * decided".
+ */
+function markerForVerdict(verdict: string | undefined): string {
+  if (verdict === undefined) return "[ ]";
+  switch (verdict) {
+    case "PASS":
+      return "[PASS]";
+    case "FAIL":
+      return "[FAIL]";
+    case "SKIP":
+      return "[SKIP]";
+    default:
+      return "[?]";
+  }
 }

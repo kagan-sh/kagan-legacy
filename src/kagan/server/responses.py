@@ -11,7 +11,7 @@ models (see ``scripts/generate_wire_types.py``).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -93,12 +93,28 @@ class AcceptanceCriterionResponse(_OrmBase):
 # ── Review verdict ────────────────────────────────────────────────────────────
 
 
+ReviewVerdictState = Literal["PASS", "FAIL", "SKIP"]
+
+
 class ReviewVerdictResponse(_OrmBase):
     id: str
     criterion_id: str
     session_id: str | None = None
-    verdict: str
+    verdict: ReviewVerdictState
     reason: str
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _normalize_verdict(cls, v: Any) -> str:
+        # The DB stores lowercase pass/fail/skip; the wire shape (and existing
+        # TS clients) standardise on uppercase. Normalise here so neither side
+        # has to care about casing.
+        if v is None:
+            return "FAIL"
+        normalized = str(v).strip().upper()
+        if normalized not in {"PASS", "FAIL", "SKIP"}:
+            return "FAIL"
+        return normalized
 
 
 # ── Task ──────────────────────────────────────────────────────────────────────

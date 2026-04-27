@@ -86,9 +86,7 @@ async def fetch_project_learnings(engine: Engine, project_id: str) -> list[str]:
     """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
     stmt = (
         select(TaskNote)
-        .where(
-            _col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id))
-        )
+        .where(_col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id)))
         .where(_col(TaskNote.content).like("[LEARNING]%"))
         .order_by(desc(_col(TaskNote.created_at)))
         .limit(30)
@@ -147,9 +145,7 @@ async def list_task_sessions(engine: Engine, task_id: str) -> list[Session]:
         engine,
         lambda s: list(
             s.exec(
-                select(Session)
-                .where(Session.task_id == task_id)
-                .order_by(_col(Session.started_at))
+                select(Session).where(Session.task_id == task_id).order_by(_col(Session.started_at))
             ).all()
         ),
     )

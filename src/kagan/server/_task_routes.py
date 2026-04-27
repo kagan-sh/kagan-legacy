@@ -5,10 +5,13 @@ import re
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
+from sqlmodel import select
 
 from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
 from kagan.core._backend_selector import BackendSelector
+from kagan.core._db_helpers import _db_async
 from kagan.core._utils import utc_iso
+from kagan.core.models import AcceptanceCriterion
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
@@ -461,17 +464,11 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
-            # Load criteria via the relationship (async DB call)
-            from sqlmodel import select as _select
-
-            from kagan.core._db_helpers import _db_async
-            from kagan.core.models import AcceptanceCriterion
-
             criteria_list = await _db_async(
                 ctx.client.engine,
                 lambda s: list(
                     s.exec(
-                        _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
                     ).all()
                 ),
             )

@@ -134,7 +134,7 @@ async def test_review_decide_returns_structured_manual_review_block(
     monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
     # Stub _db_async so the criteria lookup returns an empty list (no criteria → blocked)
     monkeypatch.setattr(
-        "kagan.core._db_helpers._db_async",
+        "kagan.server._task_routes._db_async",
         lambda _engine, _fn: asyncio.sleep(0, result=[]),
     )
 

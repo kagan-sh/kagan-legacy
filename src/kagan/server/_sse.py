@@ -184,6 +184,11 @@ async def _poll_db_changes(
 
     When *project_id* is provided, only tasks belonging to that project are
     tracked — events for other projects are never emitted.
+
+    Accepts either a server `ctx` (production) or a bare `Tasks`-like object
+    (unit tests). When called without a ctx the emitted update message omits
+    the inline task payload — that mode is *only* for tests; production code
+    must pass a ctx so SSE clients receive the full board update.
     """
     ctx = ctx_or_tasks if hasattr(ctx_or_tasks, "client") else None
     tasks: Tasks = ctx.client.tasks if ctx is not None else ctx_or_tasks
@@ -197,7 +202,7 @@ async def _poll_db_changes(
     try:
         snapshot = _scoped(await tasks.list())
         known = {t.id: t.updated_at.isoformat() for t in snapshot}
-    except Exception:
+    except (KaganError, OSError, RuntimeError):
         logger.warning("SSE poll: initial snapshot failed", exc_info=True)
 
     try:
@@ -205,7 +210,7 @@ async def _poll_db_changes(
             await asyncio.sleep(_DB_POLL_SECONDS)
             try:
                 snapshot = _scoped(await tasks.list())
-            except Exception:
+            except (KaganError, OSError, RuntimeError):
                 logger.warning("SSE poll: failed to list tasks", exc_info=True)
                 continue
 
@@ -228,7 +233,7 @@ async def _poll_db_changes(
             known = current
     except asyncio.CancelledError:
         raise
-    except Exception:
+    except (KaganError, OSError, RuntimeError):
         logger.warning("SSE DB poll stopped due to error", exc_info=True)
 
 

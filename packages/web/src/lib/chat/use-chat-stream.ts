@@ -8,6 +8,72 @@ import type { WireChatMessage } from '@/lib/api/types';
 import type { Attachment } from '@/components/chat/chat-input-bar';
 
 // ---------------------------------------------------------------------------
+// SSE event discriminator — keep the wire string in one place so a server
+// rename surfaces as a TS error instead of silently ignoring chunks.
+// ---------------------------------------------------------------------------
+
+export const CHAT_STREAM_EVENT = {
+  CHUNK: 'CHAT_CHUNK',
+  TOOL_START: 'CHAT_TOOL_START',
+  TOOL_PROGRESS: 'CHAT_TOOL_PROGRESS',
+  ERROR: 'CHAT_ERROR',
+  DONE: 'CHAT_DONE',
+  SESSION_UPDATED: 'CHAT_SESSION_UPDATED',
+} as const;
+
+export type ChatStreamEventType = (typeof CHAT_STREAM_EVENT)[keyof typeof CHAT_STREAM_EVENT];
+
+interface ChatChunkMsg {
+  t: typeof CHAT_STREAM_EVENT.CHUNK;
+  content?: string;
+  thought?: boolean;
+}
+interface ChatToolStartMsg {
+  t: typeof CHAT_STREAM_EVENT.TOOL_START;
+  tool?: string;
+}
+interface ChatToolProgressMsg {
+  t: typeof CHAT_STREAM_EVENT.TOOL_PROGRESS;
+  tool?: string;
+  status?: string;
+}
+interface ChatErrorMsg {
+  t: typeof CHAT_STREAM_EVENT.ERROR;
+  error?: string;
+}
+interface ChatDoneMsg {
+  t: typeof CHAT_STREAM_EVENT.DONE;
+}
+interface ChatSessionUpdatedMsg {
+  t: typeof CHAT_STREAM_EVENT.SESSION_UPDATED;
+  label?: string;
+}
+
+type ChatStreamMessage =
+  | ChatChunkMsg
+  | ChatToolStartMsg
+  | ChatToolProgressMsg
+  | ChatErrorMsg
+  | ChatDoneMsg
+  | ChatSessionUpdatedMsg;
+
+function asChatStreamMessage(raw: Record<string, unknown>): ChatStreamMessage | null {
+  const t = raw.t;
+  if (typeof t !== 'string') return null;
+  switch (t) {
+    case CHAT_STREAM_EVENT.CHUNK:
+    case CHAT_STREAM_EVENT.TOOL_START:
+    case CHAT_STREAM_EVENT.TOOL_PROGRESS:
+    case CHAT_STREAM_EVENT.ERROR:
+    case CHAT_STREAM_EVENT.DONE:
+    case CHAT_STREAM_EVENT.SESSION_UPDATED:
+      return raw as unknown as ChatStreamMessage;
+    default:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Pure reducer helpers — no closures over component state
 // ---------------------------------------------------------------------------
 
@@ -216,34 +282,43 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
   );
 
   const handleSSEMsg = useCallback(
-    (data: Record<string, unknown>) => {
-      const t = data.t as string;
-      if (t === 'CHAT_CHUNK') {
-        setIsStreaming(true);
-        const content = (data.content as string) ?? '';
-        const thought = Boolean(data.thought);
-        if (content) setStreamEntries((prev) => appendChunk(prev, { content, thought }));
-      } else if (t === 'CHAT_TOOL_START') {
-        setIsStreaming(true);
-        setStreamEntries((prev) => addToolStart(prev, (data.tool as string) ?? 'tool'));
-      } else if (t === 'CHAT_TOOL_PROGRESS') {
-        setStreamEntries((prev) =>
-          updateToolProgress(prev, {
-            tool: (data.tool as string) ?? 'tool',
-            status: (data.status as string) ?? undefined,
-          }),
-        );
-      } else if (t === 'CHAT_ERROR') {
-        setStreamEntries((prev) => addError(prev, (data.error as string) ?? 'An error occurred'));
-        setIsStreaming(false);
-      } else if (t === 'CHAT_DONE') {
-        setStreamEntries([]);
-        setIsStreaming(false);
-        if (sessionId) {
-          apiClient.getChatSession(sessionId).then((session) => setMessages(session.messages)).catch(() => {});
+    (raw: Record<string, unknown>) => {
+      const msg = asChatStreamMessage(raw);
+      if (msg === null) return;
+      switch (msg.t) {
+        case CHAT_STREAM_EVENT.CHUNK: {
+          setIsStreaming(true);
+          const content = msg.content ?? '';
+          if (content)
+            setStreamEntries((prev) => appendChunk(prev, { content, thought: Boolean(msg.thought) }));
+          return;
         }
-      } else if (t === 'CHAT_SESSION_UPDATED') {
-        if (typeof data.label === 'string') setLabel(data.label);
+        case CHAT_STREAM_EVENT.TOOL_START:
+          setIsStreaming(true);
+          setStreamEntries((prev) => addToolStart(prev, msg.tool ?? 'tool'));
+          return;
+        case CHAT_STREAM_EVENT.TOOL_PROGRESS:
+          setStreamEntries((prev) =>
+            updateToolProgress(prev, { tool: msg.tool ?? 'tool', status: msg.status }),
+          );
+          return;
+        case CHAT_STREAM_EVENT.ERROR:
+          setStreamEntries((prev) => addError(prev, msg.error ?? 'An error occurred'));
+          setIsStreaming(false);
+          return;
+        case CHAT_STREAM_EVENT.DONE:
+          setStreamEntries([]);
+          setIsStreaming(false);
+          if (sessionId) {
+            apiClient
+              .getChatSession(sessionId)
+              .then((session) => setMessages(session.messages))
+              .catch(() => {});
+          }
+          return;
+        case CHAT_STREAM_EVENT.SESSION_UPDATED:
+          if (msg.label !== undefined) setLabel(msg.label);
+          return;
       }
     },
     [sessionId, setIsStreaming],
@@ -302,16 +377,26 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
   const handleInterrupt = useCallback(
     (opts?: { pendingText: string | null }) => {
       if (!sessionId || !isStreamingRef.current) return;
+      const pendingText = opts?.pendingText ?? null;
+
       chatAbortRef.current?.abort();
-      apiClient.interruptChatSession(sessionId).catch(() => {});
       setStreamEntries((prev) => addNote(prev, 'Interrupted by user.'));
       setIsStreaming(false);
 
-      if (opts?.pendingText) {
-        setTimeout(() => handleSend(opts.pendingText!), 50);
-      } else {
-        setEditPrefill(lastSentText);
-      }
+      // Await the server-side interrupt before re-sending so the next turn
+      // doesn't race the previous one (50 ms setTimeout was a flaky proxy).
+      void (async () => {
+        try {
+          await apiClient.interruptChatSession(sessionId);
+        } catch {
+          // best-effort — server may already have torn the stream down
+        }
+        if (pendingText) {
+          handleSend(pendingText);
+        } else {
+          setEditPrefill(lastSentText);
+        }
+      })();
     },
     [sessionId, setIsStreaming, lastSentText, handleSend],
   );

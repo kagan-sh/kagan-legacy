@@ -11,7 +11,11 @@ if TYPE_CHECKING:
 
 from kagan.core._db import create_db_engine
 from kagan.core._db_helpers import _db_sync
-from kagan.core._reviews import is_review_approved
+from kagan.core._reviews import (
+    approve_review,
+    clear_review_verdicts,
+    is_review_approved,
+)
 from kagan.core.models import (
     AcceptanceCriterion,
     Project,
@@ -133,3 +137,79 @@ def test_skip_verdict_is_not_approved(tmp_path: Path) -> None:
     _add_verdict(engine, crit_ids[0], "skip")
     assert is_review_approved(task_id, engine) is False
     engine.dispose()
+
+
+# ── approve_review ────────────────────────────────────────────────────
+
+
+def _fake_get_task(task_id: str, *, engine):
+    async def _get(_id: str):
+        def op(s):
+            return s.get(Task, _id)
+
+        return _db_sync(engine, op)
+
+    return _get
+
+
+@pytest.mark.asyncio
+async def test_approve_review_with_zero_criteria_is_noop(tmp_path: Path) -> None:
+    """A task with no acceptance criteria cannot be approved; approve_review
+    should not raise but is_review_approved must continue to return False
+    so callers cannot accidentally treat the empty case as success."""
+    engine = _make_engine(tmp_path)
+    task_id, _ = _seed_task_with_criteria(engine, [])
+    await approve_review(engine, task_id, get_task=_fake_get_task(task_id, engine=engine))
+    # No verdicts inserted, no criteria → still not approved.
+    assert is_review_approved(task_id, engine) is False
+
+    def _count(s):
+        return len(list(s.exec(_select_all_verdicts()).all()))
+
+    assert _db_sync(engine, _count) == 0
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_approve_review_stamps_pass_on_all_criteria(tmp_path: Path) -> None:
+    engine = _make_engine(tmp_path)
+    task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
+    await approve_review(engine, task_id, get_task=_fake_get_task(task_id, engine=engine))
+    assert is_review_approved(task_id, engine) is True
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_approve_review_is_idempotent(tmp_path: Path) -> None:
+    """Re-running approve_review when latest verdicts are already pass
+    should not insert duplicate rows."""
+    engine = _make_engine(tmp_path)
+    task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
+
+    get_task = _fake_get_task(task_id, engine=engine)
+    await approve_review(engine, task_id, get_task=get_task)
+    await approve_review(engine, task_id, get_task=get_task)
+
+    def _count(s):
+        return len(list(s.exec(_select_all_verdicts()).all()))
+
+    assert _db_sync(engine, _count) == 2
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_clear_review_verdicts_round_trip(tmp_path: Path) -> None:
+    engine = _make_engine(tmp_path)
+    task_id, _ = _seed_task_with_criteria(engine, ["A"])
+    get_task = _fake_get_task(task_id, engine=engine)
+    await approve_review(engine, task_id, get_task=get_task)
+    assert is_review_approved(task_id, engine) is True
+    await clear_review_verdicts(engine, task_id, get_task=get_task)
+    assert is_review_approved(task_id, engine) is False
+    engine.dispose()
+
+
+def _select_all_verdicts():
+    from sqlmodel import select
+
+    return select(ReviewVerdict)

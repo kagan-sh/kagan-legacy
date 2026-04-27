@@ -10,7 +10,7 @@
 export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
-export type ReviewVerdictState = "PASS" | "FAIL";
+export type ReviewVerdictState = "PASS" | "FAIL" | "SKIP";
 
 export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
 
@@ -157,6 +157,11 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: Priority;
   base_branch?: string;
+  /**
+   * Plain text per criterion on input. The server expands these into rows
+   * in the `acceptance_criteria` table; the response type uses the richer
+   * `AcceptanceCriterion` shape.
+   */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string;
@@ -167,6 +172,7 @@ export interface UpdateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
+  /** See {@link CreateTaskInput.acceptance_criteria} — input is text-only. */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string | null;
@@ -386,6 +392,12 @@ export interface PresenceHeartbeatInput {
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;
+  /**
+   * Inline task payload — present when the server can build it (the common
+   * case). Absent on the cross-process DB-poll fallback path; clients should
+   * fall back to refetching when it's missing.
+   */
+  task?: WireTask;
 }
 
 export interface SSESessionEvent {

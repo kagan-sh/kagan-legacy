@@ -1,3 +1,4 @@
+from contextlib import AbstractContextManager, suppress
 from typing import Protocol
 
 from textual.app import ComposeResult
@@ -208,7 +209,5 @@ class TaskInspector(Widget):
         with self._ignore_unmounted_children():
             self.query_one("#inspector-scroll", VerticalScroll).scroll_home(animate=False)
 
-    def _ignore_unmounted_children(self):
-        from contextlib import suppress
-
+    def _ignore_unmounted_children(self) -> AbstractContextManager[None]:
         return suppress(NoMatches)

@@ -34,7 +34,7 @@ export interface ReviewVerdictResponse {
   id: string;
   criterion_id: string;
   session_id?: string | null;
-  verdict: string;
+  verdict: 'PASS' | 'FAIL' | 'SKIP';
   reason: string;
 }
 

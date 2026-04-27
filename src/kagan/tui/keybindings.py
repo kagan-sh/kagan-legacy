@@ -389,16 +389,6 @@ class FooterBuilder:
         ]
 
     @staticmethod
-    def welcome() -> list[tuple[str, str]]:
-        return [
-            ("Enter", "open"),
-            ("c", "create here"),
-            ("n", "new"),
-            ("o", "folder"),
-            ("Ctrl+,", "settings"),
-        ]
-
-    @staticmethod
     def settings() -> list[tuple[str, str]]:
         return [("/", "search"), ("Esc", "close")]
 

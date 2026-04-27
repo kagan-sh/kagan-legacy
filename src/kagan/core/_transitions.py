@@ -9,6 +9,10 @@ from loguru import logger
 from kagan.core.enums import TaskStatus
 from kagan.core.errors import InvalidTransitionError
 
+# Triggers and statuses are both StrEnum subclasses (i.e. concrete `str` values),
+# so passing either to InvalidTransitionError is type-safe at runtime even though
+# the parameter is named `to_status`.
+
 
 class Trigger(StrEnum):
     """Named lifecycle events that drive task status transitions."""
@@ -65,7 +69,7 @@ def transition(from_status: TaskStatus, trigger: Trigger) -> TaskStatus:
     """
     targets = _TRANSITIONS.get(from_status, {})
     if trigger not in targets:
-        raise InvalidTransitionError(from_status, trigger)  # type: ignore[arg-type]
+        raise InvalidTransitionError(from_status, trigger)
     return targets[trigger]
 
 
@@ -81,7 +85,13 @@ def validate_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
 
 
 def validate_merge_move(from_status: TaskStatus, to_status: TaskStatus) -> None:
-    if (from_status, to_status) not in _MOVE_ALLOWED | _MERGE_ALLOWED:
+    """Validate a merge action (REVIEW → DONE).
+
+    This guard is for the merge code path *only*; ordinary status moves go
+    through `validate_move`. Accepting `_MOVE_ALLOWED` here would silently
+    let `merge_task` accept arbitrary moves like REVIEW → IN_PROGRESS.
+    """
+    if (from_status, to_status) not in _MERGE_ALLOWED:
         logger.warning("Invalid merge transition: {} -> {}", from_status.value, to_status.value)
         raise InvalidTransitionError(from_status, to_status)
 

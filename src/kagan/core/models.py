@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+import sqlalchemy.exc
 from pydantic import field_serializer
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel
@@ -81,11 +82,16 @@ class Task(SQLModel, table=True):
 
         Reads from the eagerly-loaded `criteria` relationship. Callers that
         go through _tasks.py list/get/create operations have this pre-loaded.
+        Returns [] when the relationship cannot be resolved (e.g. detached
+        instance, session closed) so callers don't have to special-case.
         """
         try:
-            return [c.text for c in sorted(self.criteria, key=lambda c: c.ordinal)]
-        except Exception:
+            criteria = self.criteria
+        except (AttributeError, sqlalchemy.exc.SQLAlchemyError):
             return []
+        if not criteria:
+            return []
+        return [c.text for c in sorted(criteria, key=lambda c: c.ordinal)]
 
 
 class AcceptanceCriterion(SQLModel, table=True):
@@ -112,6 +118,7 @@ class ReviewVerdict(SQLModel, table=True):
     session_id: str | None = Field(default=None, foreign_key="sessions.id", index=True)
     verdict: str = Field(description="pass, fail, or skip")
     reason: str = Field(default="")
+    created_at: datetime = Field(default_factory=_utc_now, index=True)
 
     # Relationships
     criterion: AcceptanceCriterion | None = Relationship(back_populates="verdicts")

@@ -33,9 +33,10 @@ export class ReviewCommentProvider implements vscode.Disposable {
 
   async showTaskReview(task: WireTask): Promise<void> {
     this.documents.setTask(task);
-    const uri = buildReviewUri(task);
+    const uri = reviewUri(task.id);
+    const document = buildReviewDocument(task);
     await vscode.window.showTextDocument(uri, { preview: false });
-    this.showVerdicts(task, uri);
+    this.renderVerdictThreads(task, uri, document);
   }
 
   clear(): void {
@@ -50,10 +51,14 @@ export class ReviewCommentProvider implements vscode.Disposable {
     this.controller.dispose();
   }
 
-  private showVerdicts(task: WireTask, uri: vscode.Uri): void {
+  private renderVerdictThreads(
+    task: WireTask,
+    uri: vscode.Uri,
+    document: ReturnType<typeof buildReviewDocument>,
+  ): void {
     this.clear();
 
-    const { criterionLabels, criterionLines } = buildReviewDocument(task);
+    const { criterionLabels, criterionLines } = document;
 
     for (const verdict of task.review_verdicts) {
       const line = criterionLines.get(verdict.criterion_id);
@@ -74,10 +79,6 @@ export class ReviewCommentProvider implements vscode.Disposable {
       this.threads.push(thread);
     }
   }
-}
-
-function buildReviewUri(task: WireTask): vscode.Uri {
-  return reviewUri(task.id);
 }
 
 function reviewUri(taskId: string): vscode.Uri {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import {
     ChevronDown,
@@ -80,15 +80,27 @@ export function OrchestratorChatPanel({
     // Progressive message rendering
     const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
+    // Refs hold the latest callback identity so the effect can re-run only on
+    // sessionId change without ESLint flagging stale-closure risk.
+    const onSessionUpdatedRef = useRef(onSessionUpdated);
+    const setLabelRef = useRef(setLabel);
+    useEffect(() => {
+        onSessionUpdatedRef.current = onSessionUpdated;
+    }, [onSessionUpdated]);
+    useEffect(() => {
+        setLabelRef.current = setLabel;
+    }, [setLabel]);
+
     // Notify parent when session metadata updates
     useEffect(() => {
-        if (!sessionId || !onSessionUpdated) return;
-        apiClient.getChatSession(sessionId).then((session) => {
-            onSessionUpdated(toSessionSummary(session));
-            setLabel(session.label || "Orchestrator Chat");
-        }).catch(() => {});
-    // Only run on mount and sessionId change; label/messages are managed by hook
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!sessionId) return;
+        apiClient
+            .getChatSession(sessionId)
+            .then((session) => {
+                onSessionUpdatedRef.current?.(toSessionSummary(session));
+                setLabelRef.current(session.label || "Orchestrator Chat");
+            })
+            .catch(() => {});
     }, [sessionId]);
 
     // Fetch active project context for the header

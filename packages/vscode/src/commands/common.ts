@@ -20,7 +20,11 @@ interface ResolveTaskOptions {
 }
 
 export function isTaskItem(item: unknown): item is TaskItem {
-  return typeof item === "object" && item !== null && "kind" in item && (item as TaskItem).kind === "task";
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    (item as { kind?: unknown }).kind === "task"
+  );
 }
 
 export function taskPickItems(

@@ -129,12 +129,15 @@ export function ChatView({
               </button>
             ) : null}
 
-            {visibleMessages.map((message, index) => (
-              <ChatMessage
-                key={`${sessionId}-${messages.length - visibleMessages.length + index}-${message.role}-${message.content.slice(0, 24)}`}
-                message={message}
-              />
-            ))}
+            {visibleMessages.map((message, index) => {
+              const absoluteIndex = messages.length - visibleMessages.length + index;
+              return (
+                <ChatMessage
+                  key={`${sessionId}-msg-${absoluteIndex}-${message.role}`}
+                  message={message}
+                />
+              );
+            })}
 
             {streamEntries.length > 0 ? (
               <div className="pt-0">

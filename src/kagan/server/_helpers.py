@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import defaultdict
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from pydantic import BaseModel, ValidationError
+from sqlmodel import select
 from starlette.responses import JSONResponse
 
 from kagan.core import TaskStatus
+from kagan.core._db_helpers import _db_async
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
+from kagan.core.models import AcceptanceCriterion, ReviewVerdict
 from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.server._envelope import WireEnvelope
 from kagan.server.mcp.server import get_server_context
@@ -110,8 +114,11 @@ def task_to_wire_dict(
     if review_verdicts is not None:
         resp.review_verdicts = [ReviewVerdictResponse(**v) for v in review_verdicts]
         if review_approved is None:
+            # Latest verdict per criterion is what review_verdicts already
+            # contains (one row per criterion), so the membership check is
+            # straightforward. Compare against the model's normalised value.
             verdict_by_criterion = {
-                str(v.get("criterion_id")): str(v.get("verdict"))
+                str(v.get("criterion_id")): str(v.get("verdict", "")).strip().upper()
                 for v in review_verdicts
             }
             criteria = getattr(task, "criteria", []) or []
@@ -152,64 +159,99 @@ async def review_diff_summaries(
 
 async def task_review_verdicts(ctx: Any, task_id: str) -> list[dict[str, str | None]]:
     """Return the latest ReviewVerdict row per criterion for a task."""
-    import sqlalchemy as sa
-    from sqlmodel import select
-
-    from kagan.core._db_helpers import _db_async
-    from kagan.core.models import AcceptanceCriterion, ReviewVerdict
-
-    def op(session: Any) -> list[dict[str, str | None]]:
-        criteria = list(
-            session.exec(
-                select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
-            ).all()
-        )
-        rows: list[dict[str, str | None]] = []
-        for criterion in criteria:
-            latest = session.exec(
-                select(ReviewVerdict)
-                .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(sa.text("rowid DESC"))
-            ).first()
-            if latest is not None:
-                rows.append(
-                    {
-                        "id": latest.id,
-                        "criterion_id": latest.criterion_id,
-                        "session_id": latest.session_id,
-                        "verdict": latest.verdict,
-                        "reason": latest.reason,
-                    }
-                )
-        return rows
-
-    with contextlib.suppress(Exception):
-        return await _db_async(ctx.client.engine, op)
-    return []
+    bulk = await bulk_task_review_verdicts(ctx, [task_id])
+    return bulk.get(task_id, [])
 
 
 async def bulk_task_review_verdicts(
     ctx: Any, task_ids: list[str]
 ) -> dict[str, list[dict[str, str | None]]]:
+    """Latest verdict per criterion for each task, in a single DB round-trip.
+
+    The previous implementation fanned out one DB session per task and an
+    inner per-criterion query inside that — O(tasks * criteria) round-trips
+    per board refresh. This version issues two queries total: one for the
+    criteria, one for their verdicts.
+    """
     if not task_ids:
         return {}
-    results = await asyncio.gather(
-        *(task_review_verdicts(ctx, task_id) for task_id in task_ids),
-        return_exceptions=False,
-    )
-    return dict(zip(task_ids, results, strict=True))
+    unique_ids = list(dict.fromkeys(task_ids))
+
+    def op(session: Any) -> dict[str, list[dict[str, str | None]]]:
+        criteria = list(
+            session.exec(
+                select(AcceptanceCriterion).where(
+                    AcceptanceCriterion.task_id.in_(unique_ids)  # type: ignore[attr-defined]
+                )
+            ).all()
+        )
+        if not criteria:
+            return {tid: [] for tid in unique_ids}
+
+        criterion_ids = [c.id for c in criteria]
+        criterion_to_task = {c.id: c.task_id for c in criteria}
+
+        # One ordered query — group in Python and pick the most recent row
+        # per criterion. created_at is portable across SQLite/Postgres.
+        verdict_rows = list(
+            session.exec(
+                select(ReviewVerdict)
+                .where(
+                    ReviewVerdict.criterion_id.in_(criterion_ids)  # type: ignore[attr-defined]
+                )
+                .order_by(ReviewVerdict.created_at.asc())  # type: ignore[attr-defined]
+            ).all()
+        )
+        latest: dict[str, ReviewVerdict] = {}
+        for row in verdict_rows:
+            latest[row.criterion_id] = row  # later rows overwrite earlier
+
+        grouped: dict[str, list[dict[str, str | None]]] = defaultdict(list)
+        for criterion in criteria:
+            row = latest.get(criterion.id)
+            if row is None:
+                continue
+            grouped[criterion_to_task[criterion.id]].append(
+                {
+                    "id": row.id,
+                    "criterion_id": row.criterion_id,
+                    "session_id": row.session_id,
+                    "verdict": row.verdict,
+                    "reason": row.reason,
+                }
+            )
+        return {tid: grouped.get(tid, []) for tid in unique_ids}
+
+    try:
+        return await _db_async(ctx.client.engine, op)
+    except (KaganError, RuntimeError, OSError, AttributeError) as exc:
+        logger.debug("bulk_task_review_verdicts failed: {}", exc, exc_info=True)
+        return {tid: [] for tid in unique_ids}
 
 
 async def task_wire_dict(ctx: Any, task_id: str, *, task: Any | None = None) -> dict[str, Any]:
-    """Load one task with the runtime fields used by board and SSE clients."""
-    task = task if task is not None else await ctx.client.tasks.get(task_id)
-    runtime = await ctx.client.tasks.runtime_summary(task_id)
+    """Load one task with the runtime fields used by board and SSE clients.
+
+    Issues runtime + verdicts in parallel (and optionally diff stats) so an
+    SSE TASK_UPDATED event waits on at most one round-trip rather than three.
+    """
+    if task is None:
+        task, runtime, verdicts = await asyncio.gather(
+            ctx.client.tasks.get(task_id),
+            ctx.client.tasks.runtime_summary(task_id),
+            task_review_verdicts(ctx, task_id),
+        )
+    else:
+        runtime, verdicts = await asyncio.gather(
+            ctx.client.tasks.runtime_summary(task_id),
+            task_review_verdicts(ctx, task_id),
+        )
+
     diff_summary = None
     if getattr(task.status, "value", task.status) == TaskStatus.REVIEW.value and runtime.get(
         "has_workspace", False
     ):
         diff_summary = await safe_diff_stats(ctx, task_id)
-    verdicts = await task_review_verdicts(ctx, task_id)
     return task_to_wire_dict(
         task,
         runtime=runtime,

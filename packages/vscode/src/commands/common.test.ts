@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WireTask } from "../api/types.js";
 
-vi.mock("vscode", () => ({}));
+const showErrorMessage = vi.fn();
+const showWarningMessage = vi.fn();
 
-import { formatCommandError, isTaskItem, taskPickItems } from "./common.js";
+vi.mock("vscode", () => ({
+  window: {
+    showErrorMessage: (...args: unknown[]) => showErrorMessage(...args),
+    showWarningMessage: (...args: unknown[]) => showWarningMessage(...args),
+  },
+}));
+
+import {
+  confirmAction,
+  formatCommandError,
+  isTaskItem,
+  taskPickItems,
+  withErrors,
+} from "./common.js";
 
 function task(overrides: Partial<WireTask> = {}): WireTask {
   return {
@@ -52,5 +66,46 @@ describe("command helpers", () => {
       "Failed to run task: server offline",
     );
     expect(formatCommandError("run task", "unknown")).toBe("Failed to run task: unknown");
+  });
+
+  describe("withErrors", () => {
+    it("calls run() and surfaces nothing when it succeeds", async () => {
+      showErrorMessage.mockClear();
+      const ran = vi.fn().mockResolvedValue(undefined);
+      await withErrors("run task", ran);
+      expect(ran).toHaveBeenCalledTimes(1);
+      expect(showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it("shows a formatted error toast when run() throws", async () => {
+      showErrorMessage.mockClear();
+      const ran = vi.fn().mockRejectedValue(new Error("boom"));
+      await withErrors("delete task", ran);
+      expect(showErrorMessage).toHaveBeenCalledWith("Failed to delete task: boom");
+    });
+
+    it("swallows the rejection so the caller never sees it", async () => {
+      showErrorMessage.mockClear();
+      await expect(
+        withErrors("flaky", () => Promise.reject(new Error("nope"))),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe("confirmAction", () => {
+    it("returns true when the user picks the action label", async () => {
+      showWarningMessage.mockResolvedValueOnce("Delete");
+      await expect(confirmAction("Are you sure?", "Delete")).resolves.toBe(true);
+      expect(showWarningMessage).toHaveBeenCalledWith(
+        "Are you sure?",
+        { modal: true },
+        "Delete",
+      );
+    });
+
+    it("returns false when the user dismisses the prompt", async () => {
+      showWarningMessage.mockResolvedValueOnce(undefined);
+      await expect(confirmAction("Are you sure?", "Delete")).resolves.toBe(false);
+    });
   });
 });

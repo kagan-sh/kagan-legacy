@@ -618,9 +618,7 @@ class Tasks:
 
     async def list_notes(self, task_id: str) -> builtins.list[TaskNote]:
         stmt = (
-            select(TaskNote)
-            .where(TaskNote.task_id == task_id)
-            .order_by(_col(TaskNote.created_at))
+            select(TaskNote).where(TaskNote.task_id == task_id).order_by(_col(TaskNote.created_at))
         )
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 

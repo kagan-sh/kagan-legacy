@@ -14,9 +14,11 @@ class NotFoundError(KaganError):
 
 class InvalidTransitionError(KaganError):
     def __init__(self, from_status: str, to_status: str) -> None:
-        self.from_status = from_status
-        self.to_status = to_status
-        super().__init__(f"Cannot transition from {from_status!r} to {to_status!r}")
+        # `to_status` may also be a Trigger name when raised from the
+        # trigger-keyed state machine; both are StrEnum / str.
+        self.from_status = str(from_status)
+        self.to_status = str(to_status)
+        super().__init__(f"Cannot transition from {self.from_status!r} to {self.to_status!r}")
 
 
 class WorktreeError(KaganError):

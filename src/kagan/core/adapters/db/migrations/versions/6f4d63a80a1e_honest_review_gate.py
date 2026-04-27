@@ -3,8 +3,10 @@
 - CASCADE FK deletes on Session, Worktree, SessionEvent, TaskNote → tasks
 - CASCADE FK deletes on SessionEvent → sessions, ReviewVerdict → sessions
 - New AcceptanceCriterion table (migrates Task.acceptance_criteria JSON)
-- New ReviewVerdict table (migrates Task.review_verdicts JSON)
+- New ReviewVerdict table with `created_at` for portable insertion ordering
+  (migrates Task.review_verdicts JSON)
 - Drop Task.review_approved, Task.review_verdicts, Task.acceptance_criteria
+- Drop Task.execution_mode (auto/pair distinction now lives in settings)
 - Add Session.fail_reason column
 """
 
@@ -243,13 +245,19 @@ def _drop_and_recreate_review_verdicts(bind: sa.engine.Connection) -> None:
     """
     if not _has_table("review_verdicts"):
         return
-    # Save all existing rows before dropping
+    has_created_at = _has_column_in("review_verdicts", "created_at", bind)
+    select_cols = (
+        "id, criterion_id, session_id, verdict, reason, created_at"
+        if has_created_at
+        else "id, criterion_id, session_id, verdict, reason, NULL AS created_at"
+    )
     saved = bind.exec_driver_sql(
-        "SELECT id, criterion_id, session_id, verdict, reason FROM review_verdicts"
+        f"SELECT {select_cols} FROM review_verdicts"
     ).fetchall()
     # Drop indexes and table
     bind.exec_driver_sql("DROP INDEX IF EXISTS ix_review_verdicts_session_id")
     bind.exec_driver_sql("DROP INDEX IF EXISTS ix_review_verdicts_criterion_id")
+    bind.exec_driver_sql("DROP INDEX IF EXISTS ix_review_verdicts_created_at")
     bind.exec_driver_sql("DROP TABLE review_verdicts")
     # Recreate with correct FK references
     bind.exec_driver_sql(
@@ -260,6 +268,7 @@ def _drop_and_recreate_review_verdicts(bind: sa.engine.Connection) -> None:
             session_id VARCHAR,
             verdict VARCHAR NOT NULL,
             reason VARCHAR NOT NULL DEFAULT '',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             FOREIGN KEY (criterion_id) REFERENCES acceptance_criteria (id) ON DELETE CASCADE,
             FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
@@ -274,19 +283,33 @@ def _drop_and_recreate_review_verdicts(bind: sa.engine.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_review_verdicts_session_id "
         "ON review_verdicts (session_id)"
     )
-    # Restore saved rows (omit any whose session_id no longer exists)
-    for row_id, criterion_id, session_id, verdict, reason in saved:
+    bind.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_review_verdicts_created_at "
+        "ON review_verdicts (created_at)"
+    )
+    # Restore saved rows (omit any whose session_id no longer exists; preserve
+    # original created_at when present so insertion order survives the rebuild)
+    for row_id, criterion_id, session_id, verdict, reason, created_at in saved:
         if session_id is not None:
             exists = bind.exec_driver_sql(
                 "SELECT 1 FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
             if not exists:
                 session_id = None
-        bind.exec_driver_sql(
-            "INSERT INTO review_verdicts (id, criterion_id, session_id, verdict, reason) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row_id, criterion_id, session_id, verdict, reason or ""),
-        )
+        if created_at is None:
+            bind.exec_driver_sql(
+                "INSERT INTO review_verdicts "
+                "(id, criterion_id, session_id, verdict, reason) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (row_id, criterion_id, session_id, verdict, reason or ""),
+            )
+        else:
+            bind.exec_driver_sql(
+                "INSERT INTO review_verdicts "
+                "(id, criterion_id, session_id, verdict, reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (row_id, criterion_id, session_id, verdict, reason or "", created_at),
+            )
 
 
 def _drop_and_recreate_acceptance_criteria(bind: sa.engine.Connection) -> None:
@@ -394,6 +417,7 @@ def upgrade() -> None:
                     session_id VARCHAR,
                     verdict VARCHAR NOT NULL,
                     reason VARCHAR NOT NULL DEFAULT '',
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     FOREIGN KEY (criterion_id) REFERENCES acceptance_criteria (id)
                         ON DELETE CASCADE,
@@ -408,6 +432,10 @@ def upgrade() -> None:
             bind.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_review_verdicts_session_id "
                 "ON review_verdicts (session_id)"
+            )
+            bind.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_review_verdicts_created_at "
+                "ON review_verdicts (created_at)"
             )
 
         # ── 7. Migrate Task.acceptance_criteria JSON → table rows ──────────────
@@ -490,18 +518,43 @@ def downgrade() -> None:
     bind.exec_driver_sql("PRAGMA foreign_keys=OFF")
 
     try:
-        # Restore data from acceptance_criteria rows → JSON before dropping table
+        # Restore data from acceptance_criteria rows → JSON before dropping table.
+        # Track ordinals per task so we can map verdicts back to criterion_index.
         task_crit: dict[str, list[str]] = {}
+        criterion_to_task_ord: dict[str, tuple[str, int]] = {}
         if _has_table("acceptance_criteria"):
             rows = bind.exec_driver_sql(
-                "SELECT task_id, ordinal, text FROM acceptance_criteria "
+                "SELECT id, task_id, ordinal, text FROM acceptance_criteria "
                 "ORDER BY task_id, ordinal"
             ).fetchall()
-            for task_id, _ordinal, text in rows:
+            for crit_id, task_id, ordinal, text in rows:
                 task_crit.setdefault(task_id, []).append(text)
+                criterion_to_task_ord[crit_id] = (task_id, int(ordinal or 0))
+
+        # Restore review_verdicts → tasks.review_verdicts JSON before dropping the table.
+        task_verdicts: dict[str, list[dict[str, object]]] = {}
+        if _has_table("review_verdicts"):
+            verdict_rows = bind.exec_driver_sql(
+                "SELECT criterion_id, verdict, reason FROM review_verdicts"
+            ).fetchall()
+            for criterion_id, verdict, reason in verdict_rows:
+                mapping = criterion_to_task_ord.get(criterion_id)
+                if mapping is None:
+                    continue
+                task_id, ordinal = mapping
+                task_verdicts.setdefault(task_id, []).append(
+                    {
+                        "criterion_index": ordinal,
+                        "verdict": verdict,
+                        "reason": reason or "",
+                    }
+                )
 
         # Drop new tables first (while acceptance_criteria data is still read)
         if _has_table("review_verdicts"):
+            op.drop_index(
+                op.f("ix_review_verdicts_created_at"), table_name="review_verdicts"
+            )
             op.drop_index(
                 op.f("ix_review_verdicts_session_id"), table_name="review_verdicts"
             )
@@ -536,6 +589,14 @@ def downgrade() -> None:
             bind.exec_driver_sql(
                 "UPDATE tasks SET acceptance_criteria = ? WHERE id = ?",
                 (json.dumps(texts), task_id),
+            )
+
+        # Backfill review_verdicts JSON so a downgrade does not silently
+        # discard human review history.
+        for task_id, verdicts in task_verdicts.items():
+            bind.exec_driver_sql(
+                "UPDATE tasks SET review_verdicts = ? WHERE id = ?",
+                (json.dumps(verdicts), task_id),
             )
 
     finally:

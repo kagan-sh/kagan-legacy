@@ -1,7 +1,7 @@
 export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
-export type ReviewVerdictState = "PASS" | "FAIL";
+export type ReviewVerdictState = "PASS" | "FAIL" | "SKIP";
 export type LauncherBackend =
   | "tmux"
   | "nvim"
@@ -76,6 +76,12 @@ export interface AcceptanceCriterion {
   text: string;
 }
 
+export interface DiffSummary {
+  files_changed: number;
+  additions: number;
+  deletions: number;
+}
+
 export interface WireTask {
   id: string;
   title: string;
@@ -93,6 +99,7 @@ export interface WireTask {
   has_workspace: boolean;
   review_running: boolean;
   active_session: ActiveSession | null;
+  diff_summary?: DiffSummary | null;
 }
 
 export interface WireEvent {
@@ -160,6 +167,10 @@ export interface CreateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
+  /**
+   * Plain text per criterion on input. The server expands these into rows
+   * in the `acceptance_criteria` table; the response uses {@link AcceptanceCriterion}.
+   */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string;
@@ -170,6 +181,7 @@ export interface UpdateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
+  /** See {@link CreateTaskInput.acceptance_criteria} — input is text-only. */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string | null;
@@ -285,6 +297,12 @@ export interface AnalyticsExport {
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;
+  /**
+   * Inline task payload — present when the server can build it (the common
+   * case). Absent on the cross-process DB-poll fallback path; clients should
+   * fall back to refetching when it's missing.
+   */
+  task?: WireTask;
 }
 
 export interface SSESessionEvent {

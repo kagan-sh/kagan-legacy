@@ -305,9 +305,7 @@ class ChatPanel(Vertical):
             input_widget.disabled = True
             input_widget.can_focus = False
             session_select.disabled = True
-            self.query_one("#chat-overlay-empty-heading", Static).update(
-                self._DOCKED_EMPTY_HEADING
-            )
+            self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
             self._sync_input_enabled_state()
             self._render_current_session()
             self._refresh_status()
@@ -1268,6 +1266,12 @@ class ChatPanel(Vertical):
     def _input_widget(self) -> Input:
         return self.query_one("#chat-overlay-input", Input)
 
+    def _input_widget_safe(self) -> Input | None:
+        try:
+            return self._input_widget()
+        except NoMatches:
+            return None
+
     def _stream_output(self) -> StreamingOutput | None:
         try:
             return self.query_one("#chat-overlay-output", StreamingOutput)
@@ -1441,8 +1445,9 @@ class ChatPanel(Vertical):
         close_key = self._overlay_close_key
         is_active = self._runtime_status in {"thinking", "initializing", "waiting"}
         if is_active:
-            input_widget = self._input_widget()
-            has_pending = bool(normalize_chat_input(input_widget.value))
+            input_widget = self._input_widget_safe()
+            value = input_widget.value if input_widget is not None else ""
+            has_pending = bool(normalize_chat_input(value))
             esc_hint = "Esc stop+send" if has_pending else "Esc stop & edit last"
         else:
             esc_hint = f"{close_key} close"

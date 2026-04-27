@@ -68,8 +68,7 @@ class AgentPickerModal(ModalScreen[str | None]):
             visible = all_registered
         else:
             visible = [
-                a for a in all_registered
-                if a in _PROMINENT_BACKENDS or a == self._current_agent
+                a for a in all_registered if a in _PROMINENT_BACKENDS or a == self._current_agent
             ]
 
         available = [a for a in visible if availability.get(a, True)]

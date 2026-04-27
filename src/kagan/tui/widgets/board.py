@@ -290,13 +290,17 @@ class BoardView(Widget):
                 return
 
     def _refresh_columns(self) -> None:
+        if not self.is_mounted:
+            return
         grouped = self._tasks_by_status()
         self._normalize_selection()
         for status in _COLUMN_ORDER:
             try:
                 column = self.query_one(f"#column-{status.value.lower()}", BoardColumn)
             except NoMatches:
-                return
+                # A single missing column shouldn't blank every later column;
+                # skip and continue so partial mounts produce partial updates.
+                continue
             column.set_tasks(grouped[status], self.selected_task_id)
 
     def _update_selection_only(self) -> None:

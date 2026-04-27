@@ -2,13 +2,12 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
-import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy import Engine
 from sqlmodel import select
 
 from kagan.core import git
-from kagan.core._db_helpers import _db_async, _setting_enabled, _utc_now
+from kagan.core._db_helpers import _db_async, _db_sync, _setting_enabled, _utc_now
 from kagan.core._prompts import build_conflict_resolution_feedback
 from kagan.core._settings import get_settings
 from kagan.core._transitions import validate_merge_move
@@ -43,22 +42,16 @@ def is_review_approved(task_id: str, engine: Engine) -> bool:
         if not criteria:
             return False
         for criterion in criteria:
-            verdicts = list(
-                s.exec(
-                    select(ReviewVerdict)
-                    .where(ReviewVerdict.criterion_id == criterion.id)
-                    .order_by(sa.text("rowid ASC"))
-                ).all()
-            )
-            if not verdicts:
+            latest = s.exec(
+                select(ReviewVerdict)
+                .where(ReviewVerdict.criterion_id == criterion.id)
+                .order_by(ReviewVerdict.created_at.desc())  # type: ignore[attr-defined]
+            ).first()
+            if latest is None:
                 return False
-            # Latest verdict wins (last inserted = highest rowid)
-            latest = verdicts[-1]
             if latest.verdict.lower() != "pass":
                 return False
         return True
-
-    from kagan.core._db_helpers import _db_sync
 
     return _db_sync(engine, op)
 
@@ -85,11 +78,10 @@ async def approve_review(
             s.exec(select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
         )
         for criterion in criteria:
-            # Read latest verdict via rowid ordering (insertion order)
             latest = s.exec(
                 select(ReviewVerdict)
                 .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(sa.text("rowid DESC"))
+                .order_by(ReviewVerdict.created_at.desc())  # type: ignore[attr-defined]
             ).first()
             if latest is not None and latest.verdict.lower() == "pass":
                 continue  # already approved

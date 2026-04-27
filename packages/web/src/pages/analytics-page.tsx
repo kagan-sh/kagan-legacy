@@ -683,9 +683,9 @@ export function Component() {
       const [stats, tl, roles, taskTypes, combined] = await Promise.all([
         apiClient.getBackendStats(),
         apiClient.getSessionTimeline({ days: range }),
-        apiClient.getStatsByRole(),
-        apiClient.getStatsByTaskType(),
-        apiClient.getCombinedStats(),
+        apiClient.getAnalyticsByRole().then((g) => Object.values(g).flat()),
+        apiClient.getAnalyticsByTaskType().then((g) => Object.values(g).flat()),
+        apiClient.getAnalyticsByRoleAndTaskType(),
       ]);
       setBackendStats(stats);
       setTimeline(tl);

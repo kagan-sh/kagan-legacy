@@ -10,14 +10,15 @@ from sqlmodel import select
 from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
 from kagan.core._backend_selector import BackendSelector
 from kagan.core._db_helpers import _db_async
-from kagan.core._utils import utc_iso
 from kagan.core.models import AcceptanceCriterion
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
+    _manual_review_payload,
     _ok,
     _require_access,
     bulk_task_review_verdicts,
+    event_to_wire,
     handle_errors,
     parse_body,
     require_context,
@@ -33,16 +34,12 @@ from kagan.server.requests import (
     UpdateTaskRequest,
     UpdateTaskStatusRequest,
 )
-from kagan.server.responses import EventResponse
+from kagan.server.responses import TaskSessionResponse
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
     from starlette.responses import JSONResponse
-
-
-def _event_dict(event: Any) -> dict[str, Any]:
-    return EventResponse.model_validate(event).model_dump(mode="json")
 
 
 async def _select_backend_intelligently(
@@ -134,15 +131,17 @@ async def _select_backend_intelligently(
         }
 
 
+def _backend_selection_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "selected_backend": meta.get("backend"),
+        "backend_confidence": meta.get("confidence"),
+        "backend_reason": meta.get("reason"),
+        "alternatives": meta.get("alternatives", []),
+    }
+
+
 def _manual_review_required(task_id: str) -> JSONResponse:
-    return _ok(
-        {
-            "task_id": task_id,
-            "action": "blocked",
-            "reason_code": "MANUAL_REVIEW_REQUIRED",
-            "reason": "This task has no acceptance criteria. Manual human review is required.",
-        }
-    )
+    return _ok(_manual_review_payload(task_id))
 
 
 async def _load_task_branch_commits(
@@ -322,14 +321,8 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         task = await ctx.client.tasks.get(task_id)
 
-        # Include selection metadata in response
         wire_dict = await task_wire_dict(ctx, task_id, task=task)
-        wire_dict["backend_selection"] = {
-            "selected_backend": selection_metadata.get("backend"),
-            "backend_confidence": selection_metadata.get("confidence"),
-            "backend_reason": selection_metadata.get("reason"),
-            "alternatives": selection_metadata.get("alternatives", []),
-        }
+        wire_dict["backend_selection"] = _backend_selection_payload(selection_metadata)
 
         return _ok(wire_dict)
 
@@ -408,7 +401,7 @@ def register_task_routes(mcp: FastMCP) -> None:
                 limit=max(limit, 1),
                 session_id=session_id,
             )
-        return _ok([_event_dict(event) for event in events])
+        return _ok([event_to_wire(event) for event in events])
 
     @mcp.custom_route("/api/tasks/{task_id}/sessions", methods=["GET"])
     @require_context(mcp)
@@ -418,14 +411,8 @@ def register_task_routes(mcp: FastMCP) -> None:
         sessions = await ctx.client.tasks.sessions.list_for_task(task_id)
         return _ok(
             [
-                {
-                    "id": session.id,
-                    "launcher": session.launcher,
-                    "status": session.status.value,
-                    "agent_backend": session.agent_backend,
-                    "started_at": utc_iso(session.started_at) or "",
-                }
-                for session in sessions
+                TaskSessionResponse.model_validate(s).model_dump(mode="json")
+                for s in sessions
             ]
         )
 
@@ -627,11 +614,6 @@ def register_task_routes(mcp: FastMCP) -> None:
         task = await ctx.client.tasks.get(task_id)
 
         wire_dict = await task_wire_dict(ctx, task_id, task=task)
-        wire_dict["backend_selection"] = {
-            "selected_backend": selection_metadata.get("backend"),
-            "backend_confidence": selection_metadata.get("confidence"),
-            "backend_reason": selection_metadata.get("reason"),
-            "alternatives": selection_metadata.get("alternatives", []),
-        }
+        wire_dict["backend_selection"] = _backend_selection_payload(selection_metadata)
 
         return _ok(wire_dict)

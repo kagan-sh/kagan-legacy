@@ -37,19 +37,3 @@ def http_forbidden(*, operation: str, minimum_tier: AccessTier) -> JSONResponse:
     return JSONResponse(payload, status_code=403)
 
 
-def websocket_forbidden(
-    *,
-    event_type: str,
-    operation: str,
-    minimum_tier: AccessTier,
-    extra: dict[str, object] | None = None,
-) -> dict[str, object]:
-    label = minimum_tier.name.lower()
-    payload: dict[str, object] = {
-        "t": event_type,
-        "error": f"{operation} requires {label} access.",
-        "error_code": "ACCESS_TIER_FORBIDDEN",
-    }
-    if extra:
-        payload.update(extra)
-    return payload

@@ -1,6 +1,5 @@
 import { atom } from 'jotai';
 import { boardDialogAtom } from '@/lib/atoms/board';
-import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
 
 /**
  * Right-rail panel mode.
@@ -23,6 +22,9 @@ export const sessionPickerOpenAtom = atom(false);
 
 export const helpOverlayOpenAtom = atom(false);
 
+/** Command palette (Cmd+K) open state. */
+export const commandPaletteOpenAtom = atom(false);
+
 /** Plugin import dialog open state. */
 export const pluginImportOpenAtom = atom(false);
 
@@ -35,7 +37,7 @@ export const isAnyDialogOpenAtom = atom((get) => {
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
     get(pluginImportOpenAtom) ||
-    get(commandPaletteSpineOpenAtom) ||
+    get(commandPaletteOpenAtom) ||
     get(boardDialogAtom).kind !== 'none'
   );
 });

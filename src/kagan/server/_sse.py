@@ -12,9 +12,8 @@ from loguru import logger
 from starlette.responses import StreamingResponse
 
 from kagan.core.errors import KaganError
-from kagan.server._helpers import task_wire_dict
+from kagan.server._helpers import event_to_wire, task_wire_dict
 from kagan.server.mcp.server import get_server_context
-from kagan.server.responses import EventResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -22,17 +21,12 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from kagan.core._tasks import Tasks
-    from kagan.core.models import SessionEvent
 
 _SSE_KEEPALIVE_SECONDS = 25.0
 # Safety-net fallback interval — the event bus delivers most mutations
 # instantly; this poll only catches cross-process writes the bus cannot see.
 _DB_POLL_SECONDS = 10.0
 _TASK_UPDATE_MIN_INTERVAL_SECONDS = 0.2
-
-
-def _event_to_wire(event: SessionEvent) -> dict[str, Any]:
-    return EventResponse.model_validate(event).model_dump(mode="json")
 
 
 def _queue_put_lossy(queue: asyncio.Queue[dict[str, Any]], data: dict[str, Any]) -> None:
@@ -105,7 +99,7 @@ async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]
                 {
                     "type": "SESSION_EVENT",
                     "task_id": task_id,
-                    "event": _event_to_wire(event),
+                    "event": event_to_wire(event),
                 },
             )
     except asyncio.CancelledError:
@@ -163,11 +157,6 @@ async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIter
             yield f"data: {json.dumps(data)}\n\n"
         except TimeoutError:
             yield ": keepalive\n\n"
-
-
-async def _poll_db_for_external_changes(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
-    project_id = getattr(ctx, "bound_project_id", None)
-    await _poll_db_changes(ctx, queue, project_id=project_id)
 
 
 async def _poll_db_changes(
@@ -260,7 +249,9 @@ async def _sse_event_generator(
     tasks = (
         asyncio.create_task(_forward_session_events(ctx, queue)),
         asyncio.create_task(_forward_board_events(ctx, queue)),
-        asyncio.create_task(_poll_db_for_external_changes(ctx, queue)),
+        asyncio.create_task(
+            _poll_db_changes(ctx, queue, project_id=getattr(ctx, "bound_project_id", None))
+        ),
     )
 
     try:

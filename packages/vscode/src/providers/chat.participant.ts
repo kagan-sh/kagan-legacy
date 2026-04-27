@@ -219,13 +219,6 @@ function isNewConversation(chatCtx: vscode.ChatContext): boolean {
   return chatCtx.history.length === 0;
 }
 
-function renderHistoryEntry(
-  event: WireEvent,
-): ReturnType<typeof renderEvent> {
-  if (event.type === "AGENT_STATUS") return null;
-  return renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
-}
-
 // ── /watch ─────────────────────────────────────────────────────────────────
 
 async function handleWatch(
@@ -321,7 +314,7 @@ function renderHistory(events: WireEvent[], stream: vscode.ChatResponseStream): 
   };
 
   for (const event of events) {
-    const rendered = renderHistoryEntry(event);
+    const rendered = renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
     if (!rendered) continue;
 
     switch (rendered.kind) {
@@ -398,7 +391,7 @@ function streamLive(
       if (msg.type !== SSE_TYPE.SESSION_EVENT) return;
       if (msg.task_id !== taskId) return;
 
-      const rendered = renderHistoryEntry(msg.event);
+      const rendered = renderEvent(msg.event.type, msg.event.payload ?? {}, msg.event.id, msg.event.session_id ?? "");
       if (!rendered) return;
 
       switch (rendered.kind) {

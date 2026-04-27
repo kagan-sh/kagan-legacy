@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSetAtom } from 'jotai';
-import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
+import { commandPaletteOpenAtom } from '@/lib/atoms/ui';
 
 /**
  * Wires every global shortcut that the command-palette spine owns. Currently
@@ -19,7 +19,7 @@ import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
  * scattered across feature components.
  */
 export function useGlobalShortcuts(): void {
-  const setOpen = useSetAtom(commandPaletteSpineOpenAtom);
+  const setOpen = useSetAtom(commandPaletteOpenAtom);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

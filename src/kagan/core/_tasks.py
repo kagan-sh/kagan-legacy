@@ -69,29 +69,6 @@ def _record_task_audit(
     )
 
 
-async def backfill_task_types(engine: Engine) -> int:
-    """Backfill task_type for all tasks without classification.
-
-    Classifies all unclassified tasks using classify_task() based on their
-    title and description. Returns the count of tasks updated.
-    """
-
-    def op(s) -> int:
-        unclassified = list(s.exec(select(Task).where(Task.task_type.is_(None))).all())
-        updated_count = 0
-        for task in unclassified:
-            task_type = classify_task(task.title, task.description)
-            task.task_type = task_type.value
-            s.add(task)
-            updated_count += 1
-        if updated_count > 0:
-            s.commit()
-        logger.info("Backfilled task_type for {} tasks", updated_count)
-        return updated_count
-
-    return await _db_async(engine, op)
-
-
 # ── Tasks class ─────────────────────────────────────────────────────
 
 

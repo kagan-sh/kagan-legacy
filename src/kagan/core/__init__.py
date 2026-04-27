@@ -87,15 +87,11 @@ from kagan.core._reviews import (
     set_criterion_verdict,
 )
 from kagan.core._security import (
-    AttackVector,
     InjectionDetector,
-    PayloadLibrary,
-    PayloadTemplate,
     scan_text_for_injection,
 )
 from kagan.core._sessions import (
     active_session_summaries,
-    backfill_agent_roles,
     fetch_project_learnings,
     get_latest_session,
     get_latest_task_session,
@@ -106,7 +102,7 @@ from kagan.core._sessions import (
 )
 from kagan.core._settings import get_settings, set_settings
 from kagan.core._task_classification import classify_task
-from kagan.core._tasks import Tasks, backfill_task_types
+from kagan.core._tasks import Tasks
 from kagan.core._worktrees import (
     cleanup_orphan_worktrees,
     cleanup_worktree,
@@ -176,7 +172,6 @@ __all__ = [
     "AcceptanceCriterion",
     "AgentError",
     "AgentRole",
-    "AttackVector",
     "AuditEntry",
     "BackendCapability",
     "BackendCommand",
@@ -192,8 +187,6 @@ __all__ = [
     "MergeConflictError",
     "MultiRepoUnsupportedError",
     "NotFoundError",
-    "PayloadLibrary",
-    "PayloadTemplate",
     "PreflightCheckResult",
     "PreflightError",
     "Priority",
@@ -221,8 +214,6 @@ __all__ = [
     "active_session_summaries",
     "add_repo",
     "approve_review",
-    "backfill_agent_roles",
-    "backfill_task_types",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",

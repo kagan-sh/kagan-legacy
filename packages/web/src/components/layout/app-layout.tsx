@@ -12,15 +12,17 @@ import { OrchestratorChatPanel } from "@/components/session/orchestrator-chat-pa
 import { SessionPicker } from "@/components/session/session-picker";
 import { PluginImportDialog } from "@/components/board/plugin-import-dialog";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { toast } from "sonner";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
-import { useOrchestratorSession } from "@/lib/hooks/use-orchestrator-session";
 import { apiClient } from "@/lib/api/client";
+import type { WireChatSessionSummary } from "@/lib/api/types";
 import {
     fetchTasksAtom,
     projectSwitchVersionAtom,
 } from "@/lib/atoms/board";
 import {
+    commandPaletteOpenAtom,
     helpOverlayOpenAtom,
     pluginImportOpenAtom,
     rightRailChatSessionIdAtom,
@@ -28,7 +30,6 @@ import {
     rightRailTaskIdAtom,
     sessionPickerOpenAtom,
 } from "@/lib/atoms/ui";
-import { commandPaletteSpineOpenAtom } from "@/lib/commands/open-atom";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { isEditableTarget, hasOpenOverlay } from "@/lib/utils/dom";
@@ -45,8 +46,7 @@ function AppLayout() {
     const isMobile = useIsMobile();
     const location = useLocation();
     const navigate = useNavigate();
-    const { createOrGetSession } = useOrchestratorSession();
-    const setCommandOpen = useSetAtom(commandPaletteSpineOpenAtom);
+    const setCommandOpen = useSetAtom(commandPaletteOpenAtom);
     const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
     const [pluginImportOpen, setPluginImportOpen] =
@@ -68,6 +68,31 @@ function AppLayout() {
     const MIN_RAIL = 280;
     const MAX_RAIL_W = 800;
     const MAX_RAIL_H = 600;
+
+    const createOrGetSession = useCallback(
+        async (sessions: WireChatSessionSummary[]): Promise<string | null> => {
+            try {
+                const orchestratorSessions = sessions
+                    .filter((s) =>
+                        ['orchestrator', 'web'].includes(s.source.toLowerCase()),
+                    )
+                    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+
+                const sessionId =
+                    orchestratorSessions.length > 0
+                        ? orchestratorSessions[0]!.id
+                        : (await apiClient.createChatSession({})).id;
+
+                return sessionId;
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to create session';
+                toast.error(message);
+                return null;
+            }
+        },
+        [],
+    );
 
     // Reset project check when project switches (e.g. from welcome page)
     const prevProjectVersionRef2 = useRef(projectVersion);

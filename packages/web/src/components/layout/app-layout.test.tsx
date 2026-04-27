@@ -4,11 +4,11 @@ import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { Component as AppLayout } from '@/components/layout/app-layout';
 import {
+  commandPaletteOpenAtom,
   rightRailModeAtom,
   rightRailTaskIdAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
-import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
 
 vi.mock('@/lib/hooks/use-event-stream', () => ({
   useEventStream: () => undefined,
@@ -42,12 +42,12 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('AppLayout', () => {
-  it('Cmd+Shift+P sets commandPaletteSpineOpenAtom to true', async () => {
+  it('Cmd+Shift+P sets commandPaletteOpenAtom to true', async () => {
     const store = createStore();
     renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
 
     fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
-    expect(store.get(commandPaletteSpineOpenAtom)).toBe(true);
+    expect(store.get(commandPaletteOpenAtom)).toBe(true);
   });
 
   it('Space does not cycle chat rail; Escape closes it', async () => {
@@ -90,9 +90,9 @@ describe('AppLayout', () => {
     renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
 
     fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
-    expect(store.get(commandPaletteSpineOpenAtom)).toBe(true);
+    expect(store.get(commandPaletteOpenAtom)).toBe(true);
 
-    store.set(commandPaletteSpineOpenAtom, false);
+    store.set(commandPaletteOpenAtom, false);
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true, shiftKey: true });
     expect(store.get(sessionPickerOpenAtom)).toBe(true);
 

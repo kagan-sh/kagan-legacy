@@ -234,32 +234,6 @@ def _infer_agent_role(task_status: TaskStatus) -> AgentRole:
     return AgentRole.WORKER
 
 
-async def backfill_agent_roles(engine: Engine) -> int:
-    """Backfill agent_role for all sessions without role assignment.
-
-    Infers agent_role for all unassigned sessions based on the associated
-    task's status. Returns the count of sessions updated.
-    """
-
-    def op(s) -> int:
-        unassigned = list(s.exec(select(Session).where(Session.agent_role.is_(None))).all())
-        updated_count = 0
-        for session in unassigned:
-            task = s.get(Task, session.task_id)
-            if task is None:
-                continue
-            role = _infer_agent_role(task.status)
-            session.agent_role = role.value
-            s.add(session)
-            updated_count += 1
-        if updated_count > 0:
-            s.commit()
-        logger.info("Backfilled agent_role for {} sessions", updated_count)
-        return updated_count
-
-    return await _db_async(engine, op)
-
-
 # ---------------------------------------------------------------------------
 # Module-level sync DB helpers
 # ---------------------------------------------------------------------------

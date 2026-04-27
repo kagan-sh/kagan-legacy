@@ -158,10 +158,8 @@ export function renderEvent(
   }
 
   if (eventType === "AGENT_STATUS") {
-    return make("note", "Agent status", {
-      metadata: { ...payload },
-      ...ids,
-    });
+    // Skipped — internal heartbeat; not meaningful to display in any client.
+    return null;
   }
 
   if (eventType === "TASK_STATUS_CHANGED") {

@@ -295,6 +295,10 @@
           "when": "kagan.connected"
         },
         {
+          "command": "kagan.task.open",
+          "when": "kagan.connected"
+        },
+        {
           "command": "kagan.events.show",
           "when": "kagan.connected"
         },

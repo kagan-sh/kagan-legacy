@@ -18,10 +18,7 @@ import type {
   WireChatSession,
   WireEnvelope,
   WireEvent,
-  WireProject,
-  WireRepository,
   WireTask,
-  WireTaskSession,
 } from "./types.js";
 
 export class ApiError extends Error {
@@ -35,12 +32,6 @@ export class ApiError extends Error {
   }
 }
 
-export interface KaganClientConfig {
-  baseUrl: string;
-  protocol?: "http" | "https";
-  token?: string;
-}
-
 export class KaganClient {
   private token: string | undefined;
 
@@ -51,14 +42,6 @@ export class KaganClient {
   ) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.token = token;
-  }
-
-  /**
-   * Create a KaganClient from a config object.
-   * Enables clean separation of protocol/auth concerns.
-   */
-  static fromConfig(config: KaganClientConfig): KaganClient {
-    return new KaganClient(config.baseUrl, config.protocol ?? "http", config.token);
   }
 
   getBaseUrl(): string {
@@ -158,10 +141,6 @@ export class KaganClient {
     return this.get<WireEvent[]>(`/api/tasks/${taskId}/events${withQuery(params)}`);
   }
 
-  getTaskSessions(taskId: string): Promise<WireTaskSession[]> {
-    return this.get<WireTaskSession[]>(`/api/tasks/${taskId}/sessions`);
-  }
-
   async getDiffStats(taskId: string): Promise<DiffStats> {
     const stats = await this.get<{
       files_changed?: number;
@@ -197,14 +176,6 @@ export class KaganClient {
 
   reviewDecide(taskId: string, input: ReviewDecisionInput): Promise<ReviewDecisionResponse> {
     return this.post<ReviewDecisionResponse>(`/api/tasks/${taskId}/review/decide`, input);
-  }
-
-  getProjects(): Promise<WireProject[]> {
-    return this.get<WireProject[]>("/api/projects");
-  }
-
-  getProjectRepos(projectId: string): Promise<WireRepository[]> {
-    return this.get<WireRepository[]>(`/api/projects/${projectId}/repos`);
   }
 
   getSettings(): Promise<SettingsResponse> {

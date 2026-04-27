@@ -38,7 +38,6 @@ __all__ = [
     "TMUX_GATEWAY_BINDINGS",
     "TOOL_CALL_VIEW_BINDINGS",
     "USER_INPUT_BINDINGS",
-    "WELCOME_BINDINGS",
     "WORKSPACE_BINDINGS",
     "FooterBuilder",
     "get_global_shortcut_help_rows",
@@ -146,28 +145,6 @@ CHAT_BINDINGS: list[BindingType] = [
     Binding("ctrl+c", "clear_input", "Clear", key_display="Ctrl+C"),
     Binding("escape", "dismiss", "Stop / Edit", key_display="Esc"),
     Binding("ctrl+k", "open_session_picker", "Session Switcher", key_display="Ctrl+K"),
-]
-
-WELCOME_BINDINGS: list[BindingType] = [
-    Binding("enter", "open_selected", "Open"),
-    Binding("c", "create_from_here", "Create Here"),
-    Binding("n", "new_project", "New"),
-    Binding("o", "open_folder", "Open Folder"),
-    Binding("x", "delete_project", "Delete"),
-    Binding("escape", "quit", "Quit"),
-    Binding("j,down", "move_down", "Down", show=False),
-    Binding("k,up", "move_up", "Up", show=False),
-    Binding("tab", "focus_next", "Next", show=False),
-    Binding("shift+tab", "focus_prev", "Prev", show=False),
-    Binding("1", "open_project_1", "Quick Open", show=False),
-    Binding("2", "open_project_2", "Quick Open", show=False),
-    Binding("3", "open_project_3", "Quick Open", show=False),
-    Binding("4", "open_project_4", "Quick Open", show=False),
-    Binding("5", "open_project_5", "Quick Open", show=False),
-    Binding("6", "open_project_6", "Quick Open", show=False),
-    Binding("7", "open_project_7", "Quick Open", show=False),
-    Binding("8", "open_project_8", "Quick Open", show=False),
-    Binding("9", "open_project_9", "Quick Open", show=False),
 ]
 
 SETTINGS_BINDINGS: list[BindingType] = [

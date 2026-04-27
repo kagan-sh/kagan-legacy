@@ -21,6 +21,7 @@ from kagan.server.mcp.server import get_server_context
 from kagan.server.responses import (
     ActiveSessionResponse,
     DiffSummaryResponse,
+    EventResponse,
     ReviewVerdictResponse,
     TaskResponse,
 )
@@ -31,6 +32,22 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from kagan.server._access import AccessTier
+
+
+def event_to_wire(event: Any) -> dict[str, Any]:
+    return EventResponse.model_validate(event).model_dump(mode="json")
+
+
+def _manual_review_payload(task_id: str) -> dict[str, str]:
+    return {
+        "task_id": task_id,
+        "action": "blocked",
+        "reason_code": "MANUAL_REVIEW_REQUIRED",
+        "reason": (
+            "This task has no acceptance criteria. "
+            "Cannot auto-approve — manual human review required."
+        ),
+    }
 
 
 def _ok(data: Any, status: int = 200) -> JSONResponse:
@@ -157,12 +174,6 @@ async def review_diff_summaries(
     return dict(zip(review_ids, results, strict=True))
 
 
-async def task_review_verdicts(ctx: Any, task_id: str) -> list[dict[str, str | None]]:
-    """Return the latest ReviewVerdict row per criterion for a task."""
-    bulk = await bulk_task_review_verdicts(ctx, [task_id])
-    return bulk.get(task_id, [])
-
-
 async def bulk_task_review_verdicts(
     ctx: Any, task_ids: list[str]
 ) -> dict[str, list[dict[str, str | None]]]:
@@ -236,16 +247,18 @@ async def task_wire_dict(ctx: Any, task_id: str, *, task: Any | None = None) -> 
     SSE TASK_UPDATED event waits on at most one round-trip rather than three.
     """
     if task is None:
-        task, runtime, verdicts = await asyncio.gather(
+        task, runtime, _bulk = await asyncio.gather(
             ctx.client.tasks.get(task_id),
             ctx.client.tasks.runtime_summary(task_id),
-            task_review_verdicts(ctx, task_id),
+            bulk_task_review_verdicts(ctx, [task_id]),
         )
+        verdicts: list[dict[str, str | None]] = _bulk.get(task_id, [])
     else:
-        runtime, verdicts = await asyncio.gather(
+        runtime, _bulk = await asyncio.gather(
             ctx.client.tasks.runtime_summary(task_id),
-            task_review_verdicts(ctx, task_id),
+            bulk_task_review_verdicts(ctx, [task_id]),
         )
+        verdicts = _bulk.get(task_id, [])
 
     diff_summary = None
     if getattr(task.status, "value", task.status) == TaskStatus.REVIEW.value and runtime.get(

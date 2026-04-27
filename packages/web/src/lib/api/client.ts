@@ -19,12 +19,10 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
-  RoleStats,
   SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
   TaskStatus,
-  TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
   UpdateTaskInput,
@@ -106,8 +104,8 @@ export class KaganApiClient {
 
   // -- Core request ---------------------------------------------------------
 
-  /** Perform the actual HTTP fetch and unwrap the WireEnvelope. Throws ApiError on failure. */
-  private async _doRequest<T>(path: string, options: RequestOptions): Promise<T> {
+  /** Perform the HTTP fetch and unwrap the WireEnvelope. Throws ApiError on failure. */
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -137,14 +135,6 @@ export class KaganApiClient {
       throw new ApiError(response.status, 'Response missing data');
     }
     return envelope.data as T;
-  }
-
-  /**
-   * All server responses are wrapped in {@link WireEnvelope}.
-   * This method unwraps the envelope, throwing on errors.
-   */
-  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    return this._doRequest<T>(path, options);
   }
 
   // -- Tasks ----------------------------------------------------------------
@@ -267,37 +257,17 @@ export class KaganApiClient {
   }
 
   async getDiffStats(taskId: string): Promise<DiffStats> {
-    const parseStats = (stats: {
+    const stats = await this.request<{
       files_changed?: number;
       files?: number;
       insertions?: number;
       deletions?: number;
-    }): DiffStats => ({
+    }>(`/api/tasks/${taskId}/diff`);
+    return {
       files_changed: stats.files_changed ?? stats.files ?? 0,
       insertions: stats.insertions ?? 0,
       deletions: stats.deletions ?? 0,
-    });
-
-    try {
-      const stats = await this.request<{
-        files_changed?: number;
-        files?: number;
-        insertions?: number;
-        deletions?: number;
-      }>(`/api/tasks/${taskId}/diff/stats`);
-      return parseStats(stats);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        const stats = await this.request<{
-          files_changed?: number;
-          files?: number;
-          insertions?: number;
-          deletions?: number;
-        }>(`/api/tasks/${taskId}/diff`);
-        return parseStats(stats);
-      }
-      throw error;
-    }
+    };
   }
 
   async getDiffFiles(taskId: string): Promise<DiffFile[]> {
@@ -467,7 +437,7 @@ export class KaganApiClient {
   /**
    * GET /health — auth-exempt, returns server status and package version.
    * The health endpoint returns plain JSON (not a WireEnvelope), so this
-   * uses a private raw-fetch helper rather than `_doRequest`.
+   * uses `_rawRequest` rather than `request` (no WireEnvelope).
    */
   async getHealth(): Promise<{ status: string; version: string }> {
     return this._rawRequest<{ status: string; version: string }>('/health', 'Health check failed');
@@ -483,7 +453,7 @@ export class KaganApiClient {
 
   /**
    * Perform a raw fetch for endpoints that return plain JSON (no WireEnvelope).
-   * Auth-exempt paths (e.g. /health) use this instead of `_doRequest`.
+   * Auth-exempt paths (e.g. /health) use this instead of `request`.
    */
   private async _rawRequest<T>(path: string, errorMessage: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
@@ -611,23 +581,6 @@ export class KaganApiClient {
     if (params.description) qs.set('description', params.description);
     if (params.role) qs.set('role', params.role);
     return this.request<BackendTaskRecommendation>(`/api/analytics/recommend-for-task?${qs.toString()}`);
-  }
-
-  /** GET /api/analytics/by-role (legacy) */
-  async getStatsByRole(): Promise<RoleStats[]> {
-    const grouped = await this.getAnalyticsByRole();
-    return Object.values(grouped).flat();
-  }
-
-  /** GET /api/analytics/by-task-type (legacy) */
-  async getStatsByTaskType(): Promise<TaskTypeStats[]> {
-    const grouped = await this.getAnalyticsByTaskType();
-    return Object.values(grouped).flat();
-  }
-
-  /** GET /api/analytics/combined (legacy) */
-  async getCombinedStats(): Promise<CombinedStats[]> {
-    return this.getAnalyticsByRoleAndTaskType();
   }
 
   /** GET /api/plugins */

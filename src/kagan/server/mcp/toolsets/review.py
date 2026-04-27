@@ -12,21 +12,10 @@ from kagan.core import build_conflict_resolution_feedback
 from kagan.core._db_helpers import _db_async
 from kagan.core.errors import MergeConflictError, ValidationError
 from kagan.core.models import AcceptanceCriterion, Task
+from kagan.server._helpers import _manual_review_payload
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerContext, ServerOptions, get_context
 from kagan.server.mcp.toolsets import mcp_error_boundary
-
-
-def _manual_review_block(task_id: str) -> dict[str, str]:
-    return {
-        "task_id": task_id,
-        "action": "blocked",
-        "reason_code": "MANUAL_REVIEW_REQUIRED",
-        "reason": (
-            "This task has no acceptance criteria. "
-            "Cannot auto-approve — manual human review required."
-        ),
-    }
 
 
 async def _has_acceptance_criteria(task_id: str, engine: object) -> bool:
@@ -56,7 +45,7 @@ async def _review_decide(task_id: str, verdict: str, ctx: Context, feedback: str
 
     if normalized_verdict == "approve":
         if not await _has_acceptance_criteria(task_id, app.client.engine):
-            return _manual_review_block(task_id)
+            return _manual_review_payload(task_id)
         await app.client.reviews.approve(task_id)
         return {"task_id": task_id, "action": "approve"}
 
@@ -73,7 +62,7 @@ async def _review_merge(task_id: str, ctx: Context) -> dict:
     app = get_context(ctx)
     task = await app.client.tasks.get(task_id)
     if not await _has_acceptance_criteria(task_id, app.client.engine):
-        return _manual_review_block(task_id)
+        return _manual_review_payload(task_id)
     return await _handle_merge(app, task_id, task)
 
 

@@ -478,6 +478,17 @@ ConfirmModal .confirm-hint {
     padding-top: 1;
 }
 
+ConfirmModal .confirm-detail {
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+ConfirmModal .confirm-warning {
+    color: $text;
+    padding-bottom: 1;
+}
+
 /* === BASE BRANCH MODAL === */
 
 BaseBranchModal {

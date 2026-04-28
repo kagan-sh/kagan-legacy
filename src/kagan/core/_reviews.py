@@ -1,5 +1,4 @@
 import asyncio
-from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
@@ -19,7 +18,7 @@ from kagan.core.errors import (
     SessionError,
     WorktreeError,
 )
-from kagan.core.models import AcceptanceCriterion, Repository, ReviewVerdict, Task, Worktree
+from kagan.core.models import AcceptanceCriterion, ReviewVerdict, Task
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
@@ -63,7 +62,7 @@ async def approve_review(
     engine: Engine,
     task_id: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
+    client: "KaganCore",
 ) -> Task:
     """Approve a task by stamping 'pass' verdicts on all acceptance criteria.
 
@@ -71,7 +70,7 @@ async def approve_review(
     pass verdicts for every criterion so that is_review_approved() returns True.
     Criteria that already have a pass as their latest verdict are left unchanged.
     """
-    await get_task(task_id)
+    await client.tasks.get(task_id)
 
     def op(s) -> None:
         criteria = list(
@@ -95,7 +94,7 @@ async def approve_review(
         s.commit()
 
     await _db_async(engine, op)
-    return await get_task(task_id)
+    return await client.tasks.get(task_id)
 
 
 async def reject_review(
@@ -103,16 +102,13 @@ async def reject_review(
     task_id: str,
     feedback: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
-    add_note: Callable[[str, str], Awaitable[Any]],
-    set_status: Callable[[str, TaskStatus], Task],
-    emit_event: Callable[[str, SessionEventType, dict], Awaitable[Any]],
+    client: "KaganCore",
 ) -> Task:
-    task = await get_task(task_id)
-    await add_note(task_id, f"Review rejected: {feedback}")
+    task = await client.tasks.get(task_id)
+    await client.tasks.add_note(task_id, f"Review rejected: {feedback}")
     if task.status == TaskStatus.REVIEW:
-        moved = await asyncio.to_thread(set_status, task_id, TaskStatus.IN_PROGRESS)
-        await emit_event(
+        moved = await asyncio.to_thread(client.tasks._set_status, task_id, TaskStatus.IN_PROGRESS)
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.TASK_STATUS_CHANGED,
             {"from": TaskStatus.REVIEW.value, "to": TaskStatus.IN_PROGRESS.value},
@@ -128,8 +124,7 @@ async def set_criterion_verdict(
     verdict: str,
     reason: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
-    emit_event: Callable[[str, SessionEventType, dict], Awaitable[Any]],
+    client: "KaganCore",
     session_id: str | None = None,
 ) -> Task:
     allowed = {"pass", "fail", "skip"}
@@ -139,7 +134,7 @@ async def set_criterion_verdict(
         raise ValueError(f"verdict must be one of {sorted(allowed)}, got {verdict!r}")
 
     # Validate task exists before entering the sync op
-    await get_task(task_id)
+    await client.tasks.get(task_id)
 
     def op(s) -> Task:
         db_task = cast("Task | None", s.get(Task, task_id))
@@ -176,7 +171,7 @@ async def set_criterion_verdict(
         return db_task
 
     updated = await _db_async(engine, op)
-    await emit_event(
+    await client.tasks.events.emit(
         task_id,
         SessionEventType.CRITERION_VERDICT,
         {
@@ -192,10 +187,10 @@ async def clear_review_verdicts(
     engine: Engine,
     task_id: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
+    client: "KaganCore",
 ) -> Task:
     # Validate task exists before entering the sync op
-    await get_task(task_id)
+    await client.tasks.get(task_id)
 
     def op(s) -> Task:
         db_task = cast("Task | None", s.get(Task, task_id))
@@ -229,21 +224,16 @@ async def merge_task(
     engine: Engine,
     task_id: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
-    get_worktree: Callable[[str], Awaitable[Worktree | None]],
-    get_repo: Callable[[str], Repository | None],
-    cleanup_worktree: Callable[[str], Awaitable[None]],
-    set_status: Callable[[str, TaskStatus], Task],
-    emit_event: Callable[[str, SessionEventType, dict], Awaitable[Any]],
+    client: "KaganCore",
 ) -> Task:
-    task = await get_task(task_id)
+    task = await client.tasks.get(task_id)
     validate_merge_move(task.status, TaskStatus.DONE)
 
-    ws = await get_worktree(task_id)
+    ws = await client.worktrees.get(task_id)
     if ws is None:
         raise SessionError(None, f"No workspace for task {task_id!r}.")
 
-    repo = await asyncio.to_thread(get_repo, ws.repo_id)
+    repo = await asyncio.to_thread(client.worktrees._get_repo, ws.repo_id)
     if repo is None:
         raise SessionError(None, f"Repository not found for workspace of task {task_id!r}.")
 
@@ -256,7 +246,7 @@ async def merge_task(
     )
     if require_review_approval and not await asyncio.to_thread(is_review_approved, task_id, engine):
         error = "Cannot merge task branch: review approval is required."
-        await emit_event(
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.MERGE_FAILED,
             {
@@ -270,7 +260,7 @@ async def merge_task(
     has_pending_changes = await git.has_pending_changes(ws.worktree_path)
     if has_pending_changes:
         error = "Cannot merge while workspace has uncommitted or untracked changes."
-        await emit_event(
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.MERGE_FAILED,
             {
@@ -284,7 +274,7 @@ async def merge_task(
     has_commits_to_merge = await git.has_commits_since(ws.worktree_path, target_branch)
     if not has_commits_to_merge:
         error = "Cannot merge task branch: no commits ahead of target branch."
-        await emit_event(
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.MERGE_FAILED,
             {
@@ -313,7 +303,7 @@ async def merge_task(
             target_branch=target_branch,
             task_title=task.title,
         )
-        await emit_event(
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.MERGE_FAILED,
             {
@@ -325,15 +315,15 @@ async def merge_task(
         )
         raise
 
-    await cleanup_worktree(task_id)
+    await client.worktrees.cleanup(task_id)
 
-    done_task = await asyncio.to_thread(set_status, task_id, TaskStatus.DONE)
-    await emit_event(
+    done_task = await asyncio.to_thread(client.tasks._set_status, task_id, TaskStatus.DONE)
+    await client.tasks.events.emit(
         task_id,
         SessionEventType.TASK_STATUS_CHANGED,
         {"from": task.status.value, "to": TaskStatus.DONE.value},
     )
-    await emit_event(
+    await client.tasks.events.emit(
         task_id,
         SessionEventType.MERGE_COMPLETED,
         {
@@ -350,21 +340,18 @@ async def rebase_task(
     engine: Engine,
     task_id: str,
     *,
-    get_task: Callable[[str], Awaitable[Task]],
-    get_worktree: Callable[[str], Awaitable[Worktree | None]],
-    get_repo: Callable[[str], Repository | None],
-    emit_event: Callable[[str, SessionEventType, dict], Awaitable[Any]],
+    client: "KaganCore",
 ) -> None:
-    ws = await get_worktree(task_id)
+    ws = await client.worktrees.get(task_id)
     if ws is None:
         raise SessionError(None, f"No workspace for task {task_id!r}.")
-    task = await get_task(task_id)
-    repo = await asyncio.to_thread(get_repo, ws.repo_id)
+    task = await client.tasks.get(task_id)
+    repo = await asyncio.to_thread(client.worktrees._get_repo, ws.repo_id)
     target = task.base_branch or (repo.default_branch if repo else "main")
     try:
         await git.rebase(ws.worktree_path, target_branch=target)
     except WorktreeError as exc:
-        await emit_event(
+        await client.tasks.events.emit(
             task_id,
             SessionEventType.AGENT_FAILED,
             {
@@ -376,7 +363,7 @@ async def rebase_task(
         )
         raise
 
-    await emit_event(
+    await client.tasks.events.emit(
         task_id,
         SessionEventType.PLAN_UPDATE,
         {"op": "rebase", "status": "completed", "target_branch": target},
@@ -387,9 +374,9 @@ async def continue_rebase(
     engine: Engine,
     task_id: str,
     *,
-    get_worktree: Callable[[str], Awaitable[Worktree | None]],
+    client: "KaganCore",
 ) -> None:
-    ws = await get_worktree(task_id)
+    ws = await client.worktrees.get(task_id)
     if ws is None:
         raise SessionError(None, f"No workspace for task {task_id!r}.")
     await git.continue_rebase(ws.worktree_path)
@@ -399,9 +386,9 @@ async def get_conflicts(
     engine: Engine,
     task_id: str,
     *,
-    get_worktree: Callable[[str], Awaitable[Worktree | None]],
+    client: "KaganCore",
 ) -> dict[str, Any]:
-    ws = await get_worktree(task_id)
+    ws = await client.worktrees.get(task_id)
     if ws is None:
         return {
             "task_id": task_id,
@@ -423,42 +410,28 @@ async def abort_rebase(
     engine: Engine,
     task_id: str,
     *,
-    get_worktree: Callable[[str], Awaitable[Worktree | None]],
+    client: "KaganCore",
 ) -> None:
-    ws = await get_worktree(task_id)
+    ws = await client.worktrees.get(task_id)
     if ws is None:
         return
     await git.abort_rebase(ws.worktree_path)
 
 
-# ── Class wrapper (backward compat) ───────────────────────────────
+# ── Namespace factory (replaces wrapper class) ─────────────────────────────
 
 
-class Reviews:
-    def __init__(self, engine: Engine, client: "KaganCore") -> None:
-        self._engine = engine
-        self._client = client
+def _make_reviews_ns(engine: Engine, client: "KaganCore") -> Any:
+    """Build a SimpleNamespace whose attributes delegate to module functions."""
+    from types import SimpleNamespace
 
-    async def approve(self, task_id: str) -> Task:
-        return await approve_review(
-            self._engine,
-            task_id,
-            get_task=self._client.tasks.get,
-        )
+    async def _approve(task_id: str) -> Task:
+        return await approve_review(engine, task_id, client=client)
 
-    async def reject(self, task_id: str, *, feedback: str) -> Task:
-        return await reject_review(
-            self._engine,
-            task_id,
-            feedback,
-            get_task=self._client.tasks.get,
-            add_note=self._client.tasks.add_note,
-            set_status=self._client.tasks._set_status,
-            emit_event=self._client.tasks.events.emit,
-        )
+    async def _reject(task_id: str, *, feedback: str) -> Task:
+        return await reject_review(engine, task_id, feedback, client=client)
 
-    async def set_criterion_verdict(
-        self,
+    async def _set_criterion_verdict(
         task_id: str,
         criterion_index: int,
         verdict: str,
@@ -467,72 +440,46 @@ class Reviews:
         session_id: str | None = None,
     ) -> Task:
         return await set_criterion_verdict(
-            self._engine,
-            task_id,
-            criterion_index,
-            verdict,
-            reason,
-            get_task=self._client.tasks.get,
-            emit_event=self._client.tasks.events.emit,
-            session_id=session_id,
+            engine, task_id, criterion_index, verdict, reason,
+            client=client, session_id=session_id,
         )
 
-    async def clear_verdicts(self, task_id: str) -> Task:
-        return await clear_review_verdicts(
-            self._engine,
-            task_id,
-            get_task=self._client.tasks.get,
-        )
+    async def _clear_verdicts(task_id: str) -> Task:
+        return await clear_review_verdicts(engine, task_id, client=client)
 
-    def is_approved(self, task_id: str) -> bool:
-        return is_review_approved(task_id, self._engine)
+    def _is_approved(task_id: str) -> bool:
+        return is_review_approved(task_id, engine)
 
-    async def merge(self, task_id: str) -> Task:
-        return await merge_task(
-            self._engine,
-            task_id,
-            get_task=self._client.tasks.get,
-            get_worktree=self._client.worktrees.get,
-            get_repo=self._client.worktrees._get_repo,
-            cleanup_worktree=self._client.worktrees.cleanup,
-            set_status=self._client.tasks._set_status,
-            emit_event=self._client.tasks.events.emit,
-        )
+    async def _merge(task_id: str) -> Task:
+        return await merge_task(engine, task_id, client=client)
 
-    async def rebase(self, task_id: str) -> None:
-        await rebase_task(
-            self._engine,
-            task_id,
-            get_task=self._client.tasks.get,
-            get_worktree=self._client.worktrees.get,
-            get_repo=self._client.worktrees._get_repo,
-            emit_event=self._client.tasks.events.emit,
-        )
+    async def _rebase(task_id: str) -> None:
+        await rebase_task(engine, task_id, client=client)
 
-    async def continue_rebase(self, task_id: str) -> None:
-        await continue_rebase(
-            self._engine,
-            task_id,
-            get_worktree=self._client.worktrees.get,
-        )
+    async def _continue_rebase(task_id: str) -> None:
+        await continue_rebase(engine, task_id, client=client)
 
-    async def conflicts(self, task_id: str) -> dict[str, Any]:
-        return await get_conflicts(
-            self._engine,
-            task_id,
-            get_worktree=self._client.worktrees.get,
-        )
+    async def _conflicts(task_id: str) -> dict[str, Any]:
+        return await get_conflicts(engine, task_id, client=client)
 
-    async def abort_rebase(self, task_id: str) -> None:
-        await abort_rebase(
-            self._engine,
-            task_id,
-            get_worktree=self._client.worktrees.get,
-        )
+    async def _abort_rebase(task_id: str) -> None:
+        await abort_rebase(engine, task_id, client=client)
+
+    return SimpleNamespace(
+        approve=_approve,
+        reject=_reject,
+        set_criterion_verdict=_set_criterion_verdict,
+        clear_verdicts=_clear_verdicts,
+        is_approved=_is_approved,
+        merge=_merge,
+        rebase=_rebase,
+        continue_rebase=_continue_rebase,
+        conflicts=_conflicts,
+        abort_rebase=_abort_rebase,
+    )
 
 
 __all__ = [
-    "Reviews",
     "abort_rebase",
     "approve_review",
     "clear_review_verdicts",

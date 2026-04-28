@@ -35,6 +35,7 @@ from kagan.tui.keybindings import (
     get_keys_for_action,
 )
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
 from kagan.tui.screens.kanban_chat import (
     apply_task_chat_event,
@@ -43,10 +44,7 @@ from kagan.tui.screens.kanban_chat import (
     send_orchestrator_message as send_chat_message,
 )
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
-from kagan.tui.screens.task_editor_modal import (
-    TaskDeleteConfirmModal,
-    TaskEditorModal,
-)
+from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
 from kagan.tui.widgets.board import BoardView
 from kagan.tui.widgets.card import TaskCard
@@ -2100,11 +2098,18 @@ class KanbanScreen(Screen[None]):
                 exit_on_error=False,
             )
 
+        warning_lines = ["This removes the task from the board and its persisted state."]
+        if has_active_session:
+            warning_lines.append("⚠ An active agent session will be stopped.")
+        if has_worktree:
+            warning_lines.append("⚠ The git worktree and branch will be removed.")
         self.app.push_screen(
-            TaskDeleteConfirmModal(
-                task,
-                has_worktree=has_worktree,
-                has_active_session=has_active_session,
+            ConfirmModal(
+                title="Delete Task",
+                message=f"Delete #{task.id[:8]} · {task.title}?",
+                detail="\n".join(warning_lines),
+                confirm_label="Delete",
+                cancel_label="Cancel",
             ),
             callback=_on_result,
         )

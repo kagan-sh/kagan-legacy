@@ -1,6 +1,9 @@
 """Settings key-value store."""
 
+import functools
 from collections.abc import Mapping
+from types import SimpleNamespace
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlmodel import select
@@ -34,18 +37,15 @@ async def set_settings(engine: Engine, updates: Mapping[str, str]) -> None:
     await _db_async(engine, op, commit=True)
 
 
-# ── Class wrapper (backward compat) ───────────────────────────────
+# ── Namespace factory (replaces Settings wrapper class) ────────────────────────
 
 
-class Settings:
-    def __init__(self, engine: Engine) -> None:
-        self._engine = engine
-
-    async def get(self) -> dict[str, str]:
-        return await get_settings(self._engine)
-
-    async def set(self, updates: Mapping[str, str]) -> None:
-        await set_settings(self._engine, updates)
+def _make_settings_ns(engine: Engine) -> Any:
+    """Build a SimpleNamespace whose attributes delegate to module functions."""
+    return SimpleNamespace(
+        get=functools.partial(get_settings, engine),
+        set=functools.partial(set_settings, engine),
+    )
 
 
-__all__ = ["Settings", "get_settings", "set_settings"]
+__all__ = ["get_settings", "set_settings"]

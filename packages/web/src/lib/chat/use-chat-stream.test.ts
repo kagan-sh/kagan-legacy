@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { createStore } from 'jotai';
+import { Provider } from 'jotai';
+import { createElement, type ReactNode } from 'react';
 
 import {
   addError,
@@ -8,8 +12,42 @@ import {
   asChatStreamMessage,
   CHAT_STREAM_EVENT,
   updateToolProgress,
+  useChatStream,
 } from './use-chat-stream';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
+import { isStreamingAtom } from '@/lib/atoms/chat';
+
+// ---------------------------------------------------------------------------
+// Module-level mocks — vi.mock is hoisted; factories must be self-contained.
+// ---------------------------------------------------------------------------
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
+vi.mock('@/lib/api/client', () => ({
+  apiClient: {
+    getBaseUrl: () => 'http://localhost',
+    getChatSession: vi.fn().mockResolvedValue({ messages: [], label: 'Test', agent_backend: null }),
+    getTurnStatus: vi.fn().mockResolvedValue({ active: false }),
+    getChatAgents: vi.fn().mockResolvedValue({ backends: [] }),
+    interruptChatSession: vi.fn().mockResolvedValue(undefined),
+    updateChatSession: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+// streamSSE is replaced per-test below; default is a no-op generator.
+vi.mock('@/lib/api/sse', () => ({
+  streamSSE: vi.fn(async function* () {}),
+}));
+
+// Helper: wrap renderHook in a jotai Provider backed by a known store.
+function renderWithStore<T>(
+  hook: () => T,
+  store: ReturnType<typeof createStore>,
+) {
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(Provider, { store }, children);
+  return renderHook(hook, { wrapper });
+}
 
 describe('useChatStream pure reducers', () => {
   describe('appendChunk', () => {
@@ -105,6 +143,81 @@ describe('useChatStream pure reducers', () => {
       const result = addError([], 'boom');
       expect(result).toEqual([{ kind: 'error', message: 'boom' }]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isStreamingAtom transitions driven by the hook
+// ---------------------------------------------------------------------------
+
+describe('useChatStream isStreaming atom transitions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('atom is false initially', async () => {
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatStream('session-1'), store);
+    // Wait for session load effect to settle.
+    await act(async () => {});
+    expect(store.get(isStreamingAtom)).toBe(false);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it('atom transitions to true on first CHAT_CHUNK and back to false on CHAT_DONE', async () => {
+    const { streamSSE } = await import('@/lib/api/sse');
+    vi.mocked(streamSSE).mockImplementation(async function* () {
+      yield { t: CHAT_STREAM_EVENT.CHUNK, content: 'hello' };
+      yield { t: CHAT_STREAM_EVENT.DONE };
+    });
+
+    const store = createStore();
+    const { result } = renderWithStore(() => useChatStream('session-2'), store);
+    await act(async () => {});
+
+    await act(async () => {
+      result.current.handleSend('test message');
+      // Flush microtasks so the async generator resolves.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // After CHAT_DONE the atom must be false again.
+    expect(store.get(isStreamingAtom)).toBe(false);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it('atom transitions to false when handleInterrupt is called while streaming', async () => {
+    const store = createStore();
+    // Manually seed the atom to true (simulates an active stream).
+    store.set(isStreamingAtom, true);
+
+    const { result } = renderWithStore(() => useChatStream('session-3'), store);
+    await act(async () => {});
+
+    await act(async () => {
+      result.current.handleInterrupt({ pendingText: null });
+    });
+
+    expect(store.get(isStreamingAtom)).toBe(false);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it('handleInterrupt is a no-op when atom is false', async () => {
+    const store = createStore();
+    const { apiClient } = await import('@/lib/api/client');
+
+    const { result } = renderWithStore(() => useChatStream('session-4'), store);
+    await act(async () => {});
+
+    await act(async () => {
+      result.current.handleInterrupt({ pendingText: null });
+    });
+
+    // interruptChatSession must not be called when not streaming.
+    expect(vi.mocked(apiClient.interruptChatSession)).not.toHaveBeenCalled();
+    expect(store.get(isStreamingAtom)).toBe(false);
   });
 });
 

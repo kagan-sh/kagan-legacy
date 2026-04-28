@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from loguru import logger
 
@@ -19,10 +19,6 @@ from kagan.core._prompts import (
 )
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.runtime_env import build_sanitized_subprocess_environment
-
-if TYPE_CHECKING:
-    from kagan.core._audit import AuditLog
-    from kagan.core._settings import Settings
 
 
 @dataclass(frozen=True)
@@ -52,7 +48,7 @@ class TrustAssessment:
 
 
 class PersonaPresetOps:
-    def __init__(self, settings_ops: "Settings", audit_ops: "AuditLog") -> None:
+    def __init__(self, settings_ops: Any, audit_ops: Any) -> None:
         self._settings = settings_ops
         self._audit = audit_ops
 

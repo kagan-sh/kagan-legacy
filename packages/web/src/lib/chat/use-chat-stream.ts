@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type MutableRefObject } from 'react';
-import { useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
@@ -177,8 +177,9 @@ export interface SlashCommandExtra {
 export function useChatStream(sessionId: string | undefined): UseChatStreamResult {
   const [messages, setMessages] = useState<WireChatMessage[]>([]);
   const [streamEntries, setStreamEntries] = useState<ChatStreamEntry[]>([]);
-  const [isStreamingLocal, setIsStreamingLocal] = useState(false);
-  const setIsStreamingAtom = useSetAtom(isStreamingAtom);
+  const isStreaming = useAtomValue(isStreamingAtom);
+  const setIsStreaming = useSetAtom(isStreamingAtom);
+  const store = useStore();
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
   const [agentBackend, setAgentBackend] = useState<string | null>(null);
@@ -188,24 +189,6 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null) as MutableRefObject<ReturnType<typeof setInterval> | null>;
-
-  // Keep jotai atom in sync so ChatInputBar reads it across the tree
-  const setIsStreaming = useCallback(
-    (value: boolean | ((prev: boolean) => boolean)) => {
-      setIsStreamingLocal((prev) => {
-        const next = typeof value === 'function' ? value(prev) : value;
-        setIsStreamingAtom(next);
-        return next;
-      });
-    },
-    [setIsStreamingAtom],
-  );
-
-  // Use local state directly for reads (avoids stale-closure in handlers)
-  const isStreamingRef = useRef(false);
-  useEffect(() => {
-    isStreamingRef.current = isStreamingLocal;
-  }, [isStreamingLocal]);
 
   // Poll for turn completion after reconnect
   const pollForTurnCompletion = useCallback(
@@ -394,7 +377,7 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
 
   const handleInterrupt = useCallback(
     (opts?: { pendingText: string | null }) => {
-      if (!sessionId || !isStreamingRef.current) return;
+      if (!sessionId || !store.get(isStreamingAtom)) return;
       const pendingText = opts?.pendingText ?? null;
 
       chatAbortRef.current?.abort();
@@ -416,7 +399,7 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
         }
       })();
     },
-    [sessionId, setIsStreaming, lastSentText, handleSend],
+    [sessionId, store, setIsStreaming, lastSentText, handleSend],
   );
 
   const handleSlashCommand = useCallback(
@@ -477,7 +460,7 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
   return {
     messages,
     streamEntries,
-    isStreaming: isStreamingLocal,
+    isStreaming,
     loading,
     label,
     agentBackend,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -84,6 +85,19 @@ def _add_verdict(engine, criterion_id: str, verdict: str, reason: str = "") -> N
     _db_sync(engine, op)
 
 
+def _fake_client(engine) -> SimpleNamespace:
+    """Minimal fake KaganCore that satisfies the 'client' parameter contract."""
+
+    async def _get_task(task_id: str) -> Task:
+        def op(s):
+            return s.get(Task, task_id)
+
+        return _db_sync(engine, op)
+
+    tasks_ns = SimpleNamespace(get=_get_task)
+    return SimpleNamespace(tasks=tasks_ns)
+
+
 def test_no_criteria_is_not_approved(tmp_path: Path) -> None:
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, [])
@@ -142,16 +156,6 @@ def test_skip_verdict_is_not_approved(tmp_path: Path) -> None:
 # ── approve_review ────────────────────────────────────────────────────
 
 
-def _fake_get_task(task_id: str, *, engine):
-    async def _get(_id: str):
-        def op(s):
-            return s.get(Task, _id)
-
-        return _db_sync(engine, op)
-
-    return _get
-
-
 @pytest.mark.asyncio
 async def test_approve_review_with_zero_criteria_is_noop(tmp_path: Path) -> None:
     """A task with no acceptance criteria cannot be approved; approve_review
@@ -159,7 +163,8 @@ async def test_approve_review_with_zero_criteria_is_noop(tmp_path: Path) -> None
     so callers cannot accidentally treat the empty case as success."""
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, [])
-    await approve_review(engine, task_id, get_task=_fake_get_task(task_id, engine=engine))
+    client = _fake_client(engine)
+    await approve_review(engine, task_id, client=client)
     # No verdicts inserted, no criteria → still not approved.
     assert is_review_approved(task_id, engine) is False
 
@@ -174,7 +179,8 @@ async def test_approve_review_with_zero_criteria_is_noop(tmp_path: Path) -> None
 async def test_approve_review_stamps_pass_on_all_criteria(tmp_path: Path) -> None:
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
-    await approve_review(engine, task_id, get_task=_fake_get_task(task_id, engine=engine))
+    client = _fake_client(engine)
+    await approve_review(engine, task_id, client=client)
     assert is_review_approved(task_id, engine) is True
     engine.dispose()
 
@@ -186,9 +192,8 @@ async def test_approve_review_returns_post_write_task(tmp_path: Path) -> None:
     returned task's criteria state via a fresh DB read."""
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
-    returned_task = await approve_review(
-        engine, task_id, get_task=_fake_get_task(task_id, engine=engine)
-    )
+    client = _fake_client(engine)
+    returned_task = await approve_review(engine, task_id, client=client)
     # The returned task must be the post-write object; verify via round-trip.
     assert returned_task.id == task_id
     assert is_review_approved(task_id, engine) is True
@@ -202,9 +207,9 @@ async def test_approve_review_is_idempotent(tmp_path: Path) -> None:
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, ["A", "B"])
 
-    get_task = _fake_get_task(task_id, engine=engine)
-    await approve_review(engine, task_id, get_task=get_task)
-    await approve_review(engine, task_id, get_task=get_task)
+    client = _fake_client(engine)
+    await approve_review(engine, task_id, client=client)
+    await approve_review(engine, task_id, client=client)
 
     def _count(s):
         return len(list(s.exec(_select_all_verdicts()).all()))
@@ -217,10 +222,10 @@ async def test_approve_review_is_idempotent(tmp_path: Path) -> None:
 async def test_clear_review_verdicts_round_trip(tmp_path: Path) -> None:
     engine = _make_engine(tmp_path)
     task_id, _ = _seed_task_with_criteria(engine, ["A"])
-    get_task = _fake_get_task(task_id, engine=engine)
-    await approve_review(engine, task_id, get_task=get_task)
+    client = _fake_client(engine)
+    await approve_review(engine, task_id, client=client)
     assert is_review_approved(task_id, engine) is True
-    await clear_review_verdicts(engine, task_id, get_task=get_task)
+    await clear_review_verdicts(engine, task_id, client=client)
     assert is_review_approved(task_id, engine) is False
     engine.dispose()
 

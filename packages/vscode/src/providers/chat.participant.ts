@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
 import { SSE_TYPE } from "../api/types.js";
-import { formatToolName, renderEvent } from "@kagan/shared-api-client";
+import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
 import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 
@@ -317,53 +317,15 @@ function renderHistory(events: WireEvent[], stream: vscode.ChatResponseStream): 
     const rendered = renderEvent(event.type, event.payload ?? {}, event.id, event.session_id ?? "");
     if (!rendered) continue;
 
-    switch (rendered.kind) {
-      case "text":
-      case "thought": {
-        const text = rendered.body;
-        const thought = rendered.kind === "thought";
-        if (textBuf && thought !== lastThought) flushText();
-        if (thought && !lastThought) textBuf += "\n\n> *Thinking:* ";
-        textBuf += text;
-        lastThought = thought;
-        break;
-      }
-      case "tool_start": {
-        flushText();
-        stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-        break;
-      }
-      case "status_change": {
-        flushText();
-        stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
-        break;
-      }
-      case "error": {
-        flushText();
-        stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
-        break;
-      }
-      case "note": {
-        flushText();
-        stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
-        break;
-      }
-      case "plan": {
-        flushText();
-        stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-        break;
-      }
-      case "verdict": {
-        flushText();
-        stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
-        break;
-      }
-      case "merge": {
-        flushText();
-        const suffix = rendered.body ? `: ${rendered.body}` : "";
-        stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
-        break;
-      }
+    if (rendered.kind === "text" || rendered.kind === "thought") {
+      const thought = rendered.kind === "thought";
+      if (textBuf && thought !== lastThought) flushText();
+      if (thought && !lastThought) textBuf += "\n\n> *Thinking:* ";
+      textBuf += rendered.body;
+      lastThought = thought;
+    } else {
+      flushText();
+      dispatchRenderable(rendered, stream);
     }
   }
 
@@ -394,46 +356,64 @@ function streamLive(
       const rendered = renderEvent(msg.event.type, msg.event.payload ?? {}, msg.event.id, msg.event.session_id ?? "");
       if (!rendered) return;
 
-      switch (rendered.kind) {
-        case "text":
-        case "thought": {
-          if (rendered.body) stream.markdown(rendered.body);
-          break;
-        }
-        case "tool_start":
-          stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-          break;
-        case "tool_update":
-          break;
-        case "status_change":
-          stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
-          break;
-        case "note":
-          stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
-          if (msg.event.type === "AGENT_COMPLETED") done();
-          break;
-        case "error":
-          stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
-          done();
-          break;
-        case "plan":
-          stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
-          break;
-        case "verdict": {
-          stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
-          break;
-        }
-        case "merge": {
-          const suffix = rendered.body ? `: ${rendered.body}` : "";
-          stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
-          done();
-          break;
-        }
+      if (rendered.kind === "text" || rendered.kind === "thought") {
+        if (rendered.body) stream.markdown(rendered.body);
+        return;
       }
+
+      if (rendered.kind === "tool_update") return;
+
+      const isTerminal =
+        rendered.kind === "error" ||
+        rendered.kind === "merge" ||
+        (rendered.kind === "note" && msg.event.type === "AGENT_COMPLETED");
+
+      dispatchRenderable(rendered, stream);
+      if (isTerminal) done();
     });
 
     token.onCancellationRequested(done);
   });
+}
+
+// ── Shared renderable dispatcher ───────────────────────────────────────────
+
+/**
+ * Write a non-text, non-thought {@link RenderableEvent} to the chat stream.
+ *
+ * Callers are responsible for handling `text`, `thought`, and `tool_update`
+ * before reaching this helper — those three kinds have caller-specific logic
+ * (buffering in renderHistory, body-guard + no-op in streamLive).
+ */
+function dispatchRenderable(
+  rendered: RenderableEvent,
+  stream: vscode.ChatResponseStream,
+): void {
+  switch (rendered.kind) {
+    case "tool_start":
+      stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
+      break;
+    case "status_change":
+      stream.markdown(`\n\n---\n*${rendered.title}*\n\n`);
+      break;
+    case "note":
+      stream.markdown(`\n\n---\n**${rendered.title}**\n\n`);
+      break;
+    case "error":
+      stream.markdown(`\n\n---\n**${rendered.title}:** ${rendered.body || "unknown error"}\n\n`);
+      break;
+    case "plan":
+      stream.markdown(`\n\n\`${rendered.title}\`\n\n`);
+      break;
+    case "verdict":
+      stream.markdown(`\n- **[${rendered.title}]** ${rendered.body}\n`);
+      break;
+    case "merge": {
+      const suffix = rendered.body ? `: ${rendered.body}` : "";
+      stream.markdown(`\n\n---\n**${rendered.title}**${suffix}\n\n`);
+      break;
+    }
+  }
 }
 
 // ── Action buttons ─────────────────────────────────────────────────────────

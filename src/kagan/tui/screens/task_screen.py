@@ -396,14 +396,19 @@ class TaskScreen(Screen[None]):
         if task is None:
             return
 
-        from kagan.tui.screens.task_editor_modal import TaskDeleteConfirmModal
+        from kagan.tui.screens.confirm import ConfirmModal
 
         worktree = await self.kagan_app.core.worktrees.get(task.id)
+        warning_lines = ["This removes the task from the board and its persisted state."]
+        if worktree is not None:
+            warning_lines.append("⚠ The git worktree and branch will be removed.")
         confirmed = await self.app.push_screen_wait(
-            TaskDeleteConfirmModal(
-                task,
-                has_worktree=worktree is not None,
-                has_active_session=False,
+            ConfirmModal(
+                title="Delete Task",
+                message=f"Delete #{task.id[:8]} · {task.title}?",
+                detail="\n".join(warning_lines),
+                confirm_label="Delete",
+                cancel_label="Cancel",
             )
         )
         if confirmed is not True:

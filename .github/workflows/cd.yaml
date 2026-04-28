@@ -81,6 +81,9 @@ jobs:
       - name: Install JavaScript workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared API client
+        run: pnpm --filter @kagan/shared-api-client run build
+
       - name: Build bundled web UI
         run: uv run poe web-build
 

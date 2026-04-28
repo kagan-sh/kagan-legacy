@@ -64,7 +64,7 @@ function summarizeEvent(event: WireEvent): { text: string; status: StreamedStatu
   }
 
   if (renderable) {
-    const bodyLine = renderable.body.split('\n').find((line) => line.trim().length > 0);
+    const bodyLine = renderable.body.split('\n').find((line: string) => line.trim().length > 0);
     text = bodyLine?.trim() ?? renderable.title;
   } else {
     text = event.type;

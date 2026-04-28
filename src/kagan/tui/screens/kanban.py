@@ -691,7 +691,10 @@ class KanbanScreen(Screen[None]):
         branch = await git.current_branch(repo.path)
         if not branch:
             return
-        header = self.query_one(KaganHeader)
+        try:
+            header = self.query_one(KaganHeader)
+        except NoMatches:
+            return
         if branch == header.git_branch:
             return
         header.update_branch(branch)

@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.13 (2026-04-28)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Defer on_mount widget queries to call_after_refresh
+  ([`5e69a52`](https://github.com/kagan-sh/kagan/commit/5e69a523267682ae8380c07e30532ad3e6a78191))
+
+
+
+
+
 ## v0.19.0-beta.12 (2026-04-28)
 
 

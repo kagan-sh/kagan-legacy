@@ -352,7 +352,6 @@ async def _run_chat_stream(
         turn_task = asyncio.create_task(_run_turn_and_persist())
         _chat_turn_tasks[session_id] = turn_task
 
-        disconnected = False
         try:
             while True:
                 item = await chunk_queue.get()
@@ -367,14 +366,8 @@ async def _run_chat_stream(
             yield f"data: {json.dumps(done_event)}\n\n"
 
         except (asyncio.CancelledError, GeneratorExit, ConnectionError):
-            disconnected = True
             logger.debug("Client disconnected during chat stream for session {}", session_id)
             return
-        finally:
-            if disconnected and not turn_task.done():
-                turn_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await turn_task
 
     except asyncio.CancelledError:
         return
@@ -409,6 +402,16 @@ async def _maybe_generate_title(
 # ---------------------------------------------------------------------------
 # Route registration
 # ---------------------------------------------------------------------------
+
+
+def _teardown_session_state(session_id: str) -> None:
+    """Cancel any in-flight turn and remove all in-process state for a session."""
+    running_turn = _chat_turn_tasks.pop(session_id, None)
+    if running_turn is not None and not running_turn.done():
+        running_turn.cancel()
+    _chat_subscribers.pop(session_id, None)
+    _chat_partial_buffers.pop(session_id, None)
+    _chat_turn_started_at.pop(session_id, None)
 
 
 def _register_crud_routes(mcp: FastMCP) -> None:
@@ -532,10 +535,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         deleted = await delete_chat_session(ctx.client, session_id)
         if not deleted:
             return _err("Session not found", status=404)
-        # Clean up any in-process state for this session
-        _chat_subscribers.pop(session_id, None)
-        _chat_partial_buffers.pop(session_id, None)
-        _chat_turn_started_at.pop(session_id, None)
+        _teardown_session_state(session_id)
         return _ok({"session_id": session_id, "deleted": True})
 
     @mcp.custom_route("/api/chat/agents", methods=["GET"])

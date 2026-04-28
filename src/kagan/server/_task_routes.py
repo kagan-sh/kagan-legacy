@@ -140,10 +140,6 @@ def _backend_selection_payload(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _manual_review_required(task_id: str) -> JSONResponse:
-    return _ok(_manual_review_payload(task_id))
-
-
 async def _load_task_branch_commits(
     worktree_path: str,
     base_branch: str,
@@ -455,7 +451,7 @@ def register_task_routes(mcp: FastMCP) -> None:
                 ),
             )
             if not criteria_list:
-                return _manual_review_required(task_id)
+                return _ok(_manual_review_payload(task_id))
 
         if action == "approve":
             task = await ctx.client.reviews.approve(task_id)

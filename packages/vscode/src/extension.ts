@@ -19,11 +19,17 @@ import { StatusBar } from "./status/bar.js";
 import { SSE_TYPE, type SSEMessage } from "./api/types.js";
 import { LocalServerSupervisor } from "./server/supervisor.js";
 
+function readConnectionConfig(): { serverUrl: string; protocol: "http" | "https"; authToken: string } {
+  const cfg = vscode.workspace.getConfiguration("kagan");
+  return {
+    serverUrl: cfg.get<string>("serverUrl", "localhost:8765").replace(/^(https?:\/\/)/, ""),
+    protocol: cfg.get<"http" | "https">("protocol", "http"),
+    authToken: cfg.get<string>("authToken", ""),
+  };
+}
+
 export function activate(context: vscode.ExtensionContext): void {
-  const config = vscode.workspace.getConfiguration("kagan");
-  const serverUrl = config.get<string>("serverUrl", "localhost:8765").replace(/^(https?:\/\/)/, "");
-  const protocol = config.get<"http" | "https">("protocol", "http");
-  const token = config.get<string>("authToken", "");
+  const { serverUrl, protocol, authToken: token } = readConnectionConfig();
 
   const client = new KaganClient(serverUrl, protocol, token || undefined);
   const sse = new SSEStream(client.getHostPort());
@@ -125,10 +131,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    const cfg = vscode.workspace.getConfiguration("kagan");
-    const nextUrl = cfg.get<string>("serverUrl", "localhost:8765").replace(/^(https?:\/\/)/, "");
-    const nextProtocol = cfg.get<"http" | "https">("protocol", "http");
-    const nextToken = cfg.get<string>("authToken", "");
+    const { serverUrl: nextUrl, protocol: nextProtocol, authToken: nextToken } = readConnectionConfig();
 
     client.setBaseUrl(nextUrl);
     client.setProtocol(nextProtocol);
@@ -170,7 +173,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void (async () => {
     await doctorStatus.runPreflight();
 
-    if (config.get<boolean>("autoConnect", true)) {
+    if (vscode.workspace.getConfiguration("kagan").get<boolean>("autoConnect", true)) {
       void connect(
         client,
         sse,

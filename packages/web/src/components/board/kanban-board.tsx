@@ -147,19 +147,9 @@ export function KanbanBoard() {
     navigate(`/task/${selectedTask.id}?lane=worker`);
   }, [navigate, selectedTask]);
 
-  const openCreateDialog = useCallback(() => {
-    setBoardDialog({ kind: 'create' });
-  }, [setBoardDialog]);
-
-  const editingTask = useMemo(
-    () => (boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
-
-  const deleteTask = useMemo(
-    () => (boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
+  const openCreateDialog = () => setBoardDialog({ kind: 'create' });
+  const editingTask = boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
+  const deleteTask = boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
 
   const moveSelectedTaskToAdjacentLane = useCallback(
     async (direction: -1 | 1) => {
@@ -189,19 +179,13 @@ export function KanbanBoard() {
 
   const isAnyDialogOpen = boardDialog.kind !== 'none';
 
-  const openEditDialog = useCallback((task: WireTask) => {
-    setBoardDialog({ kind: 'edit', taskId: task.id });
-  }, [setBoardDialog]);
-
-  const openDeleteDialog = useCallback((task: WireTask) => {
-    setBoardDialog({ kind: 'delete', taskId: task.id });
-  }, [setBoardDialog]);
-
-  const closeDialog = useCallback((): BoardDialog => {
+  const openEditDialog = (task: WireTask) => setBoardDialog({ kind: 'edit', taskId: task.id });
+  const openDeleteDialog = (task: WireTask) => setBoardDialog({ kind: 'delete', taskId: task.id });
+  const closeDialog = (): BoardDialog => {
     const dialog: BoardDialog = { kind: 'none' };
     setBoardDialog(dialog);
     return dialog;
-  }, [setBoardDialog]);
+  };
 
   const handleEditingTask = useCallback(
     (task: WireTask | null) => {

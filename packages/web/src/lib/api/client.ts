@@ -199,10 +199,6 @@ export class KaganApiClient {
     });
   }
 
-  async runReview(taskId: string, options?: { agent_backend?: string }): Promise<WireTask> {
-    return this.runTask(taskId, options);
-  }
-
   /** POST /api/tasks/:taskId/cancel — Cancel/stop a running session */
   async cancelTask(taskId: string): Promise<WireTask> {
     return this.request<WireTask>(`/api/tasks/${taskId}/cancel`, {

@@ -38,7 +38,7 @@ export function ReviewPanel({ taskId, task, className, enableHotkeys = false }: 
       setLoading(true);
       try {
         if (action === 'run_review') {
-          await apiClient.runReview(taskId);
+          await apiClient.runTask(taskId);
           toast.success('AI review started');
         } else {
           await apiClient.reviewDecide(taskId, {

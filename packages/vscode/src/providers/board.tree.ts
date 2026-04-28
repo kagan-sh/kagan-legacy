@@ -141,26 +141,29 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
 
   // ── Data fetching ─────────────────────────────────────────────────────
 
-  private async fetchAllTasks(): Promise<WireTask[]> {
+  private async safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try {
-      const tasks = await this.client.getTasks();
-      this.tasksByStatus = groupTasksByStatus(tasks);
-      return tasks;
+      return await fn();
     } catch {
       vscode.window.showErrorMessage("Kagan: Failed to load tasks");
-      return [];
+      return fallback;
     }
   }
 
+  private async fetchAllTasks(): Promise<WireTask[]> {
+    return this.safeFetch(async () => {
+      const tasks = await this.client.getTasks();
+      this.tasksByStatus = groupTasksByStatus(tasks);
+      return tasks;
+    }, []);
+  }
+
   private async fetchTasksByStatus(status: TaskStatus): Promise<WireTask[]> {
-    try {
+    return this.safeFetch(async () => {
       const tasks = await this.client.getTasks(status);
       const sorted = sortTasksByTitle(tasks);
       this.tasksByStatus.set(status, sorted);
       return sorted;
-    } catch {
-      vscode.window.showErrorMessage("Kagan: Failed to load tasks");
-      return [];
-    }
+    }, []);
   }
 }

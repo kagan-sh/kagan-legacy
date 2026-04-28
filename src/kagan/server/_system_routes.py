@@ -60,10 +60,6 @@ def _parse_wip_limits(raw: str | None) -> dict[str, int]:
     return limits
 
 
-async def _resolve_project_repo_path(client: Any, settings: dict[str, str]) -> Path | None:
-    return await client.projects.resolve_repo_path(settings=settings)
-
-
 def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/settings", methods=["GET"])
     @require_context(mcp)
@@ -98,7 +94,7 @@ def register_system_routes(mcp: FastMCP) -> None:
 
         git_name, git_email = await get_git_user_identity(settings)
 
-        project_path = await _resolve_project_repo_path(ctx.client, settings)
+        project_path = await ctx.client.projects.resolve_repo_path(settings=settings)
         overrides = detect_dotfile_overrides(project_path)
 
         return _ok(

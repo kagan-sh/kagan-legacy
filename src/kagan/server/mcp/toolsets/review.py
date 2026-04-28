@@ -114,61 +114,55 @@ async def _review_rebase(task_id: str, action: str, ctx: Context) -> dict:
         raise ValidationError("action", f"Must be 'start', 'continue', or 'abort', got {action!r}")
 
 
-def _register_review_conflicts(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_conflicts(task_id: str, ctx: Context) -> dict:
-        """Return merge or rebase conflict details for a task."""
-        app = get_context(ctx)
-        return await app.client.reviews.conflicts(task_id)
+@mcp_error_boundary
+async def _review_conflicts(task_id: str, ctx: Context) -> dict:
+    """Return merge or rebase conflict details for a task."""
+    app = get_context(ctx)
+    return await app.client.reviews.conflicts(task_id)
 
 
-def _register_review_verdict(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_verdict(
-        task_id: str,
-        criterion_index: int,
-        verdict: str,
-        reason: str,
-        ctx: Context,
-    ) -> dict:
-        """Record a pass or fail verdict for a single acceptance criterion.
+@mcp_error_boundary
+async def _review_verdict(
+    task_id: str,
+    criterion_index: int,
+    verdict: str,
+    reason: str,
+    ctx: Context,
+) -> dict:
+    """Record a pass or fail verdict for a single acceptance criterion.
 
-        Call this once per criterion during review, BEFORE calling review_decide.
-        verdict must be 'pass' or 'fail'. reason is a one-line justification.
-        """
-        from sqlmodel import select as _select
+    Call this once per criterion during review, BEFORE calling review_decide.
+    verdict must be 'pass' or 'fail'. reason is a one-line justification.
+    """
+    from sqlmodel import select as _select
 
-        app = get_context(ctx)
-        await app.client.reviews.set_criterion_verdict(task_id, criterion_index, verdict, reason)
-        total = len(
-            await _db_async(
-                app.client.engine,
-                lambda s: list(
-                    s.exec(
-                        _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
-                    ).all()
-                ),
-            )
+    app = get_context(ctx)
+    await app.client.reviews.set_criterion_verdict(task_id, criterion_index, verdict, reason)
+    total = len(
+        await _db_async(
+            app.client.engine,
+            lambda s: list(
+                s.exec(
+                    _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            ),
         )
-        return {
-            "task_id": task_id,
-            "criterion_index": criterion_index,
-            "verdict": verdict,
-            "reason": reason,
-            "total_criteria": total,
-        }
+    )
+    return {
+        "task_id": task_id,
+        "criterion_index": criterion_index,
+        "verdict": verdict,
+        "reason": reason,
+        "total_criteria": total,
+    }
 
 
-def _register_review_clear_verdicts(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_clear_verdicts(task_id: str, ctx: Context) -> dict:
-        """Clear all AI review verdicts for a task. Call before starting a new review."""
-        app = get_context(ctx)
-        await app.client.reviews.clear_verdicts(task_id)
-        return {"task_id": task_id, "verdicts_cleared": True}
+@mcp_error_boundary
+async def _review_clear_verdicts(task_id: str, ctx: Context) -> dict:
+    """Clear all AI review verdicts for a task. Call before starting a new review."""
+    app = get_context(ctx)
+    await app.client.reviews.clear_verdicts(task_id)
+    return {"task_id": task_id, "verdicts_cleared": True}
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
@@ -177,15 +171,10 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("review_decide", _review_decide),
         ("review_merge", _review_merge),
         ("review_rebase", _review_rebase),
-    ]
-    wrapped_tools = [
-        ("review_conflicts", _register_review_conflicts),
-        ("review_verdict", _register_review_verdict),
-        ("review_clear_verdicts", _register_review_clear_verdicts),
+        ("review_conflicts", _review_conflicts),
+        ("review_verdict", _review_verdict),
+        ("review_clear_verdicts", _review_clear_verdicts),
     ]
     for name, fn in plain_tools:
         if is_tool_allowed(name, opts):
             mcp.tool(name=name)(fn)
-    for name, registrar in wrapped_tools:
-        if is_tool_allowed(name, opts):
-            registrar(mcp)

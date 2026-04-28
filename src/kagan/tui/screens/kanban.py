@@ -1343,9 +1343,6 @@ class KanbanScreen(Screen[None]):
             return
         await self._confirm_delete_task(task)
 
-    async def action_delete_task_direct(self) -> None:
-        await self.action_delete_task()
-
     async def action_duplicate_task(self) -> None:
         if not self._require_inspector(action_label="Duplicate"):
             return

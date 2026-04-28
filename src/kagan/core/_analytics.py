@@ -263,24 +263,22 @@ class Analytics:
         def _run(s):
             rows = s.exec(stmt).all()
             results = []
-            col_idx = 0
 
             for row in rows:
-                result = {"agent_backend": row[col_idx]}
-                col_idx += 1
+                mapping = row._mapping
+                result: dict[str, Any] = {"agent_backend": mapping["agent_backend"]}
 
                 if group_by_role:
-                    result["agent_role"] = row[col_idx]
-                    col_idx += 1
+                    result["agent_role"] = mapping["agent_role"]
 
                 if group_by_task_type:
-                    result["task_type"] = row[col_idx]
-                    col_idx += 1
+                    result["task_type"] = mapping["task_type"]
 
-                result["count"] = row[col_idx]
-                result["success_rate"] = round(float(row[col_idx + 1] or 0), 4)
+                result["count"] = mapping["count"]
+                result["success_rate"] = round(float(mapping["success_rate"] or 0), 4)
+                raw_duration = mapping["avg_duration_seconds"]
                 result["avg_duration_seconds"] = (
-                    round(float(row[col_idx + 2]), 1) if row[col_idx + 2] is not None else None
+                    round(float(raw_duration), 1) if raw_duration is not None else None
                 )
                 results.append(result)
 

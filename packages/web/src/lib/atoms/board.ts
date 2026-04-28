@@ -13,8 +13,6 @@ export type BoardDialog =
 export const boardDialogAtom = atom<BoardDialog>({ kind: 'none' });
 
 type TaskGroups = Record<TaskStatus, WireTask[]>;
-type TaskCounts = Record<TaskStatus, number>;
-
 export interface BoardFilters {
   query: string;
   status: TaskStatus | 'ALL';
@@ -24,10 +22,6 @@ export interface BoardFilters {
 
 function createEmptyGroups(): TaskGroups {
   return { BACKLOG: [], IN_PROGRESS: [], REVIEW: [], DONE: [] };
-}
-
-function createEmptyCounts(): TaskCounts {
-  return { BACKLOG: 0, IN_PROGRESS: 0, REVIEW: 0, DONE: 0 };
 }
 
 export const tasksAtom = atom<WireTask[]>([]);
@@ -79,15 +73,6 @@ export const groupedTasksAtom = atom((get) => {
     }
   }
   return groups;
-});
-
-export const taskCountsAtom = atom((get) => {
-  const grouped = get(groupedTasksAtom);
-  const counts = createEmptyCounts();
-  for (const status of COLUMN_ORDER) {
-    counts[status] = grouped[status].length;
-  }
-  return counts;
 });
 
 const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };

@@ -43,12 +43,6 @@ async def _get_latest_session(client: Any, task_id: str) -> Any:
     return await client.tasks.sessions.get_latest(task_id)
 
 
-def _attached_session_or_none(session: Any) -> Any:
-    if session is None or session.launcher is None:
-        return None
-    return session
-
-
 # ---------------------------------------------------------------------------
 # Verification helpers
 # ---------------------------------------------------------------------------
@@ -63,8 +57,12 @@ _VALID_VERDICTS = frozenset(v.value for v in StepVerdict)
 async def _resolve_worktree_path(app: Any, task_id: str) -> Path:
     """Resolve task_id to a validated worktree Path.
 
-    Raises RewindError if the task has no provisioned worktree.
+    Raises RewindError if the task does not exist or has no provisioned worktree.
     """
+    try:
+        await app.client.tasks.get(task_id)
+    except NotFoundError as exc:
+        raise RewindError(task_id, f"task not found: {exc}") from exc
     ws = await app.client.worktrees.get(task_id)
     if ws is None:
         raise RewindError(task_id, "no worktree provisioned for this task")
@@ -198,7 +196,10 @@ async def _run_get(task_id: str, ctx: Context) -> dict[str, Any]:
 
     app = get_context(ctx)
     task = await app.client.tasks.get(task_id)
-    session = _attached_session_or_none(await app.client.tasks.sessions.get_latest(task_id))
+    raw_session = await app.client.tasks.sessions.get_latest(task_id)
+    session = (
+        raw_session if (raw_session is not None and raw_session.launcher is not None) else None
+    )
 
     result: dict[str, Any] = {
         "task_id": task_id,
@@ -434,12 +435,6 @@ async def _checkpoint_create(
     tag_name, description, created_at.
     """
     app = get_context(ctx)
-
-    try:
-        await app.client.tasks.get(task_id)
-    except NotFoundError as exc:
-        raise RewindError(task_id, f"task not found: {exc}") from exc
-
     worktree_path = await _resolve_worktree_path(app, task_id)
     session_id = app.bound_session_id or app.opts.session_id
 
@@ -484,12 +479,6 @@ async def _checkpoint_list(
     Returns dict with: task_id, session_id, checkpoints (list of checkpoint dicts).
     """
     app = get_context(ctx)
-
-    try:
-        await app.client.tasks.get(task_id)
-    except NotFoundError as exc:
-        raise RewindError(task_id, f"task not found: {exc}") from exc
-
     worktree_path = await _resolve_worktree_path(app, task_id)
     session_id = app.bound_session_id or app.opts.session_id
 
@@ -522,12 +511,6 @@ async def _session_rewind(
     Returns dict with: task_id, session_id, step_index, commit_sha.
     """
     app = get_context(ctx)
-
-    try:
-        await app.client.tasks.get(task_id)
-    except NotFoundError as exc:
-        raise RewindError(task_id, f"task not found: {exc}") from exc
-
     worktree_path = await _resolve_worktree_path(app, task_id)
     session_id = app.bound_session_id or app.opts.session_id
 

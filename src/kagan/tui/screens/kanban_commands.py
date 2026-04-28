@@ -24,7 +24,7 @@ KANBAN_COMMANDS: tuple[KanbanCommandSpec, ...] = (
         "task.details", "View selected task details", "open_session", requires_task=True
     ),
     KanbanCommandSpec(
-        "task.delete", "Delete selected task", "delete_task_direct", requires_task=True
+        "task.delete", "Delete selected task", "delete_task", requires_task=True
     ),
     KanbanCommandSpec(
         "task.duplicate", "Duplicate selected task", "duplicate_task", requires_task=True

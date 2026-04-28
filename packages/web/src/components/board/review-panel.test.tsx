@@ -7,7 +7,7 @@ import { mockCriterion } from '@/test/mocks';
 import type { WireTask } from '@/lib/api/types';
 
 vi.mock('@/lib/api/client', () => ({
-  apiClient: { reviewDecide: vi.fn().mockResolvedValue({}), runReview: vi.fn().mockResolvedValue({}), getTasks: vi.fn().mockResolvedValue([]) },
+  apiClient: { reviewDecide: vi.fn().mockResolvedValue({}), runTask: vi.fn().mockResolvedValue({}), getTasks: vi.fn().mockResolvedValue([]) },
 }));
 
 describe('ReviewPanel', () => {
@@ -72,7 +72,7 @@ describe('ReviewPanel', () => {
     const user = userEvent.setup();
     renderWithProviders(<ReviewPanel taskId="t1" task={reviewTask} />);
     await user.click(screen.getByText('Run AI Review'));
-    expect(apiClient.runReview).toHaveBeenCalledWith('t1');
+    expect(apiClient.runTask).toHaveBeenCalledWith('t1');
   });
 
   it('supports review hotkeys', async () => {

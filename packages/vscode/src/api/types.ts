@@ -105,29 +105,6 @@ export interface WireEvent {
   created_at: string;
 }
 
-export interface WireTaskSession {
-  id: string;
-  launcher: string | null;
-  status: SessionStatus | string;
-  agent_backend: string;
-  started_at: string;
-}
-
-export interface WireProject {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-export interface WireRepository {
-  id: string;
-  project_id: string;
-  name: string;
-  path: string;
-  default_branch: string;
-  selected: boolean;
-}
-
 export interface DiffFile {
   path: string;
   status: string;
@@ -213,8 +190,6 @@ export interface ChatAgentsResponse {
   backends: AgentBackendResponse[];
   default: string;
 }
-
-export type AgentBackend = AgentBackendResponse;
 
 // ── Chat / Orchestrator ───────────────────────────────────────────────────
 

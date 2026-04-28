@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import type { WireChatSessionSummary } from '@/lib/api/types';
 import { apiClient } from '@/lib/api/client';
-import { taskCountsAtom } from '@/lib/atoms/board';
+import { tasksAtom } from '@/lib/atoms/board';
 import {
   rightRailChatSessionIdAtom,
   rightRailModeAtom,
@@ -29,14 +29,12 @@ export function Component() {
   const setRailMode = useSetAtom(rightRailModeAtom);
   const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
   const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
-  const taskCounts = useAtomValue(taskCountsAtom);
+  const tasks = useAtomValue(tasksAtom);
   const [sessions, setSessions] = useState<WireChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const bootstrappedRef = useRef(false);
-
-  const sortedSessions = useMemo(() => sortOrchestratorSessions(sessions), [sessions]);
 
   const upsertSession = useCallback((session: WireChatSessionSummary) => {
     setSessions((prev) => {
@@ -118,18 +116,22 @@ export function Component() {
   useEffect(() => {
     if (loading) return;
 
-    if (sortedSessions.length === 0 && !bootstrappedRef.current) {
+    if (sessions.length === 0 && !bootstrappedRef.current) {
       bootstrappedRef.current = true;
       void createSession();
       return;
     }
 
-    if (!selectedSessionId || !sortedSessions.some((session) => session.id === selectedSessionId)) {
-      setSelectedSessionId(sortedSessions[0]?.id ?? null);
+    if (!selectedSessionId || !sessions.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(sessions[0]?.id ?? null);
     }
-  }, [loading, sortedSessions, selectedSessionId, setSelectedSessionId, createSession]);
+  }, [loading, sessions, selectedSessionId, setSelectedSessionId, createSession]);
 
-  const totalTasks = taskCounts.BACKLOG + taskCounts.IN_PROGRESS + taskCounts.REVIEW + taskCounts.DONE;
+  const totalTasks = tasks.length;
+  const inProgressCount = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  const reviewCount = tasks.filter((t) => t.status === 'REVIEW').length;
+  const doneCount = tasks.filter((t) => t.status === 'DONE').length;
+  const backlogCount = tasks.filter((t) => t.status === 'BACKLOG').length;
 
   // When a session is active, show the full chat view
   if (selectedSessionId) {
@@ -150,7 +152,7 @@ export function Component() {
               </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-              {sortedSessions.map((session) => (
+              {sessions.map((session) => (
                 <SessionItem
                   key={session.id}
                   session={session}
@@ -169,10 +171,10 @@ export function Component() {
             <NativeSelect
               value={selectedSessionId ?? ''}
               onChange={(event) => setSelectedSessionId(event.target.value || null)}
-              disabled={loading || sortedSessions.length === 0}
+              disabled={loading || sessions.length === 0}
             >
-              {sortedSessions.length > 0 ? (
-                sortedSessions.map((session) => (
+              {sessions.length > 0 ? (
+                sessions.map((session) => (
                   <NativeSelectOption key={session.id} value={session.id}>
                     {session.label || 'Untitled conversation'}
                   </NativeSelectOption>
@@ -224,26 +226,26 @@ export function Component() {
         {/* Mini stats card */}
         {totalTasks > 0 ? (
           <div className="mx-auto flex max-w-sm items-center justify-center gap-6 py-2 text-center font-code text-xs text-[var(--muted-foreground)]">
-            {taskCounts.IN_PROGRESS > 0 ? (
+            {inProgressCount > 0 ? (
               <span className="flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-[var(--kagan-rail-running)]" />
-                {taskCounts.IN_PROGRESS} active
+                {inProgressCount} active
               </span>
             ) : null}
-            {taskCounts.REVIEW > 0 ? (
+            {reviewCount > 0 ? (
               <span className="flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-[var(--kagan-rail-review)]" />
-                {taskCounts.REVIEW} review
+                {reviewCount} review
               </span>
             ) : null}
-            {taskCounts.DONE > 0 ? (
+            {doneCount > 0 ? (
               <span className="flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-[var(--kagan-success)]" />
-                {taskCounts.DONE} done
+                {doneCount} done
               </span>
             ) : null}
-            {taskCounts.BACKLOG > 0 ? (
-              <span>{taskCounts.BACKLOG} backlog</span>
+            {backlogCount > 0 ? (
+              <span>{backlogCount} backlog</span>
             ) : null}
           </div>
         ) : null}
@@ -265,13 +267,13 @@ export function Component() {
         ) : null}
 
         {/* Recent sessions */}
-        {sortedSessions.length > 0 ? (
+        {sessions.length > 0 ? (
           <div className="space-y-3 pt-4">
             <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
               Recent
             </p>
             <div className="space-y-1">
-              {sortedSessions.slice(0, 6).map((session) => (
+              {sessions.slice(0, 6).map((session) => (
                 <button
                   key={session.id}
                   type="button"

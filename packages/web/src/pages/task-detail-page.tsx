@@ -12,7 +12,7 @@ import {
 import { useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import type { TaskStatus, WireTask } from "@/lib/api/types";
+import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@/lib/api/types";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import {
     rightRailChatSessionIdAtom,
@@ -340,83 +340,10 @@ export function Component() {
                                     </InspectorSection>
 
                                     <InspectorSection title="Acceptance Criteria">
-                                        {criteria.length > 0 ? (
-                                            <ul className="space-y-1">
-                                                {criteria.map(
-                                                    (criterion) => {
-                                                        const verdict =
-                                                            displayTask.review_verdicts?.find(
-                                                                (v) =>
-                                                                    v.criterion_id ===
-                                                                    criterion.id,
-                                                            );
-                                                        return (
-                                                            <li
-                                                                key={criterion.id}
-                                                            >
-                                                                <Collapsible
-                                                                    disabled={
-                                                                        !verdict
-                                                                    }
-                                                                >
-                                                                    <div className="flex items-center gap-2 py-1">
-                                                                        {verdict?.verdict ===
-                                                                        "PASS" ? (
-                                                                            <CheckCircle className="size-3.5 shrink-0 text-[var(--kagan-success)]" />
-                                                                        ) : verdict?.verdict ===
-                                                                          "FAIL" ? (
-                                                                            <XCircle className="size-3.5 shrink-0 text-[var(--destructive)]" />
-                                                                        ) : (
-                                                                            <ListChecks className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
-                                                                        )}
-                                                                        <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
-                                                                            {
-                                                                                criterion.text
-                                                                            }
-                                                                        </span>
-                                                                        {verdict ? (
-                                                                            <CollapsibleTrigger
-                                                                                asChild
-                                                                            >
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="icon-xs"
-                                                                                    className="size-5"
-                                                                                    aria-label="Toggle verdict details"
-                                                                                >
-                                                                                    <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
-                                                                                </Button>
-                                                                            </CollapsibleTrigger>
-                                                                        ) : null}
-                                                                    </div>
-                                                                    {verdict ? (
-                                                                        <CollapsibleContent>
-                                                                            <p className="pb-1 pl-5.5 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                                                                                AI:{" "}
-                                                                                {
-                                                                                    verdict.verdict
-                                                                                }{" "}
-                                                                                —{" "}
-                                                                                {
-                                                                                    verdict.reason
-                                                                                }
-                                                                            </p>
-                                                                        </CollapsibleContent>
-                                                                    ) : null}
-                                                                </Collapsible>
-                                                            </li>
-                                                        );
-                                                    },
-                                                )}
-                                            </ul>
-                                        ) : (
-                                            <Empty className="min-h-[14rem] border-0">
-                                                <EmptyHeader>
-                                                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
-                                                    <EmptyDescription>The agent can still work, but review quality will be stronger if you define concrete success checks.</EmptyDescription>
-                                                </EmptyHeader>
-                                            </Empty>
-                                        )}
+                                        <CriteriaList
+                                            criteria={criteria}
+                                            verdicts={displayTask.review_verdicts}
+                                        />
                                     </InspectorSection>
                                 </div>
                             </TabsContent>
@@ -478,5 +405,73 @@ export function Component() {
                 }}
             />
         </div>
+    );
+}
+
+function CriteriaList({
+    criteria,
+    verdicts,
+}: {
+    criteria: AcceptanceCriterionResponse[];
+    verdicts: ReviewVerdictResponse[] | undefined;
+}) {
+    if (criteria.length === 0) {
+        return (
+            <Empty className="min-h-[14rem] border-0">
+                <EmptyHeader>
+                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
+                    <EmptyDescription>
+                        The agent can still work, but review quality will be
+                        stronger if you define concrete success checks.
+                    </EmptyDescription>
+                </EmptyHeader>
+            </Empty>
+        );
+    }
+    return (
+        <ul className="space-y-1">
+            {criteria.map((criterion) => {
+                const verdict = verdicts?.find(
+                    (v) => v.criterion_id === criterion.id,
+                );
+                return (
+                    <li key={criterion.id}>
+                        <Collapsible disabled={!verdict}>
+                            <div className="flex items-center gap-2 py-1">
+                                {verdict?.verdict === "PASS" ? (
+                                    <CheckCircle className="size-3.5 shrink-0 text-[var(--kagan-success)]" />
+                                ) : verdict?.verdict === "FAIL" ? (
+                                    <XCircle className="size-3.5 shrink-0 text-[var(--destructive)]" />
+                                ) : (
+                                    <ListChecks className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                                )}
+                                <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
+                                    {criterion.text}
+                                </span>
+                                {verdict ? (
+                                    <CollapsibleTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="size-5"
+                                            aria-label="Toggle verdict details"
+                                        >
+                                            <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
+                                        </Button>
+                                    </CollapsibleTrigger>
+                                ) : null}
+                            </div>
+                            {verdict ? (
+                                <CollapsibleContent>
+                                    <p className="pb-1 pl-5.5 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                                        AI: {verdict.verdict} — {verdict.reason}
+                                    </p>
+                                </CollapsibleContent>
+                            ) : null}
+                        </Collapsible>
+                    </li>
+                );
+            })}
+        </ul>
     );
 }

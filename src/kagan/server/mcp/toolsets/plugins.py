@@ -17,6 +17,15 @@ def _public_plugins(available: list[str]) -> list[str]:
     return sorted(name for name in available if name in _OFFICIAL_PLUGIN_ALLOWLIST)
 
 
+async def _load_public_manager(app: Any) -> tuple[Any, list[str]]:
+    """Instantiate PluginManager, load plugins, and return (manager, public_names)."""
+    from kagan.core.plugins import PluginManager
+
+    manager = PluginManager(app.client)
+    await manager.load()
+    return manager, _public_plugins(manager.available)
+
+
 @mcp_error_boundary
 async def _plugins_preview(
     ctx: Context,
@@ -46,11 +55,7 @@ async def _plugins_preview(
     if "/" not in repo:
         raise ValidationError("", "repo must be in owner/repo format (e.g. 'octocat/hello-world')")
 
-    from kagan.core.plugins import PluginManager
-
-    manager = PluginManager(app.client)
-    await manager.load()
-    available_public = _public_plugins(manager.available)
+    _manager, available_public = await _load_public_manager(app)
     if plugin not in available_public:
         available = ", ".join(available_public) or "(none)"
         raise ValidationError("Unknown plugin", f"{plugin!r}. Installed: {available}")
@@ -100,14 +105,7 @@ async def _plugins_sync(
     if "/" not in repo:
         raise ValidationError("", "repo must be in owner/repo format (e.g. 'octocat/hello-world')")
 
-    # Lazy import — plugins module never loaded unless tool is called
-    from kagan.core.plugins import PluginManager
-
-    manager = PluginManager(app.client)
-    await manager.load()
-
-    available_public = _public_plugins(manager.available)
-
+    manager, available_public = await _load_public_manager(app)
     if plugin not in available_public:
         available = ", ".join(available_public) or "(none)"
         raise ValidationError("Unknown plugin", f"{plugin!r}. Installed: {available}")
@@ -160,13 +158,7 @@ async def _plugins_preflight(ctx: Context, plugin: str | None = None) -> dict[st
     """
     app = get_context(ctx)
 
-    from kagan.core.plugins import PluginManager
-
-    manager = PluginManager(app.client)
-    await manager.load()
-
-    available_public = _public_plugins(manager.available)
-
+    manager, available_public = await _load_public_manager(app)
     if plugin is not None and plugin not in available_public:
         available = ", ".join(available_public) or "(none)"
         raise ValidationError("Unknown plugin", f"{plugin!r}. Installed: {available}")

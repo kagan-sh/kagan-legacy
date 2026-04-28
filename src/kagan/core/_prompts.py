@@ -256,8 +256,6 @@ def _apply_settings(base: str, settings: dict[str, str]) -> str:
             "- Only create explicit task plans for multi-task requests. For single tasks, "
             "proceed directly to execution."
         )
-    elif depth == "never":
-        notes.append("- Skip formal planning. Proceed directly to execution for all requests.")
     if settings.get(AUTO_CONFIRM_SINGLE_KEY, "false").strip().lower() == "true":
         notes.append(
             "- For single-task requests, skip the confirmation step and proceed directly to "

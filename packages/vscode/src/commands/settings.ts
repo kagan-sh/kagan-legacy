@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { AgentBackend } from "../api/types.js";
+import type { AgentBackendResponse } from "../api/types.js";
 import { withErrors } from "./common.js";
 
 const REVIEW_STRICTNESS_OPTIONS = [
@@ -15,7 +15,7 @@ const PLANNING_DEPTH_OPTIONS = [
   { label: "Never", description: "Skip explicit planning", value: "never" },
 ];
 
-export function sortBackends(backends: AgentBackend[]): AgentBackend[] {
+export function sortBackends(backends: AgentBackendResponse[]): AgentBackendResponse[] {
   return [...backends].sort((a, b) => {
     if (a.reference !== b.reference) return a.reference ? -1 : 1;
     if (a.available !== b.available) return a.available ? -1 : 1;
@@ -24,7 +24,7 @@ export function sortBackends(backends: AgentBackend[]): AgentBackend[] {
 }
 
 export function describeBackendStatus(
-  backend: AgentBackend,
+  backend: AgentBackendResponse,
   currentBackend: string,
 ): string | undefined {
   const parts: string[] = [];
@@ -40,6 +40,28 @@ export function describeBackendStatus(
   }
 
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+async function pickSetting(
+  client: KaganClient,
+  key: string,
+  options: { label: string; description: string; value: string }[],
+  displayName: string,
+): Promise<void> {
+  const current = await client.getSettings();
+  const currentValue = current[key] ?? options[0].value;
+
+  const picked = await vscode.window.showQuickPick(
+    options.map((opt) => ({
+      ...opt,
+      description: opt.value === currentValue ? `${opt.description} (Current)` : opt.description,
+    })),
+    { placeHolder: `Select ${displayName} (current: ${currentValue})` },
+  );
+  if (!picked) return;
+
+  await client.updateSettings({ [key]: picked.value });
+  vscode.window.showInformationMessage(`${displayName} set to ${picked.value}`);
 }
 
 export function registerSettingsCommands(
@@ -73,44 +95,15 @@ export function registerSettingsCommands(
     }),
 
     vscode.commands.registerCommand("kagan.settings.reviewStrictness", async () => {
-      await withErrors("set review strictness", async () => {
-        const current = await client.getSettings();
-        const currentStrictness = current.review_strictness ?? "balanced";
-
-        const picked = await vscode.window.showQuickPick(
-          REVIEW_STRICTNESS_OPTIONS.map((opt) => ({
-            ...opt,
-            description:
-              opt.value === currentStrictness
-                ? `${opt.description} (Current)`
-                : opt.description,
-          })),
-          { placeHolder: `Select review strictness (current: ${currentStrictness})` },
-        );
-        if (!picked) return;
-
-        await client.updateSettings({ review_strictness: picked.value });
-        vscode.window.showInformationMessage(`Review strictness set to ${picked.value}`);
-      });
+      await withErrors("set review strictness", () =>
+        pickSetting(client, "review_strictness", REVIEW_STRICTNESS_OPTIONS, "review strictness"),
+      );
     }),
 
     vscode.commands.registerCommand("kagan.settings.planningDepth", async () => {
-      await withErrors("set planning depth", async () => {
-        const current = await client.getSettings();
-        const currentDepth = current.planning_depth ?? "always";
-
-        const picked = await vscode.window.showQuickPick(
-          PLANNING_DEPTH_OPTIONS.map((opt) => ({
-            ...opt,
-            description: opt.value === currentDepth ? `${opt.description} (Current)` : opt.description,
-          })),
-          { placeHolder: `Select planning depth (current: ${currentDepth})` },
-        );
-        if (!picked) return;
-
-        await client.updateSettings({ planning_depth: picked.value });
-        vscode.window.showInformationMessage(`Planning depth set to ${picked.value}`);
-      });
+      await withErrors("set planning depth", () =>
+        pickSetting(client, "planning_depth", PLANNING_DEPTH_OPTIONS, "planning depth"),
+      );
     }),
   );
 }

@@ -67,33 +67,50 @@ async def _build_project_task_ids(ctx: Any) -> set[str] | None:
         return None
 
 
+_REFRESH_INTERVAL = 50  # rebuild the allowed set every N events
+
+
+async def _check_task_allowed(
+    ctx: Any,
+    task_id: str,
+    allowed_task_ids: set[str] | None,
+    events_since_refresh: int,
+    refresh_interval: int,
+) -> tuple[bool, set[str] | None, int]:
+    """Return (allowed, refreshed_allowed_set, new_counter).
+
+    Increments the counter and rebuilds the allowed set when the interval is
+    reached.  If the task is not in the set, performs one immediate refresh
+    before making the final allow/deny decision.
+    """
+    events_since_refresh += 1
+    if events_since_refresh >= refresh_interval:
+        allowed_task_ids = await _build_project_task_ids(ctx)
+        events_since_refresh = 0
+
+    if allowed_task_ids is not None and task_id not in allowed_task_ids:
+        allowed_task_ids = await _build_project_task_ids(ctx)
+        if allowed_task_ids is not None and task_id not in allowed_task_ids:
+            return False, allowed_task_ids, events_since_refresh
+
+    return True, allowed_task_ids, events_since_refresh
+
+
 async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
     # Scope events to the bound project context so that SSE clients only
     # receive events for tasks they are authorized to see.  The task set is
     # rebuilt periodically to pick up newly-created tasks.
     allowed_task_ids = await _build_project_task_ids(ctx)
-
     events_since_refresh = 0
-    _REFRESH_INTERVAL = 50  # rebuild the allowed set every N events
 
     try:
         async for event in ctx.client.tasks.events.stream_all(replay=False):
             task_id = str(event.task_id)
-
-            # Refresh the allowed set periodically to capture new tasks
-            events_since_refresh += 1
-            if events_since_refresh >= _REFRESH_INTERVAL:
-                allowed_task_ids = await _build_project_task_ids(ctx)
-                events_since_refresh = 0
-
-            # Filter: skip events for tasks outside the bound project
-            if allowed_task_ids is not None and task_id not in allowed_task_ids:
-                # Task may have been created after last refresh — do one
-                # immediate refresh before dropping the event.
-                allowed_task_ids = await _build_project_task_ids(ctx)
-                if allowed_task_ids is not None and task_id not in allowed_task_ids:
-                    continue
-
+            allowed, allowed_task_ids, events_since_refresh = await _check_task_allowed(
+                ctx, task_id, allowed_task_ids, events_since_refresh, _REFRESH_INTERVAL
+            )
+            if not allowed:
+                continue
             _queue_put_lossy(
                 queue,
                 {
@@ -112,22 +129,16 @@ async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) 
     # Board events are also scoped to the bound project context.
     allowed_task_ids = await _build_project_task_ids(ctx)
     events_since_refresh = 0
-    _REFRESH_INTERVAL = 50
     last_sent_at: dict[str, float] = {}
 
     try:
         async for event in ctx.client.tasks.events.stream_board():
             task_id = event.task_id
-
-            events_since_refresh += 1
-            if events_since_refresh >= _REFRESH_INTERVAL:
-                allowed_task_ids = await _build_project_task_ids(ctx)
-                events_since_refresh = 0
-
-            if allowed_task_ids is not None and task_id not in allowed_task_ids:
-                allowed_task_ids = await _build_project_task_ids(ctx)
-                if allowed_task_ids is not None and task_id not in allowed_task_ids:
-                    continue
+            allowed, allowed_task_ids, events_since_refresh = await _check_task_allowed(
+                ctx, task_id, allowed_task_ids, events_since_refresh, _REFRESH_INTERVAL
+            )
+            if not allowed:
+                continue
 
             now = time.monotonic()
             if now - last_sent_at.get(task_id, 0.0) < _TASK_UPDATE_MIN_INTERVAL_SECONDS:

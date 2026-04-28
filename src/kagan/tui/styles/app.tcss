@@ -13,13 +13,6 @@ $space-lg: 3;
 $space-xl: 4;
 
 /* Semantic Status Colors */
-$status-running: $secondary;
-$status-success: $success;
-$status-warning: $warning;
-$status-error: $error;
-$status-idle: $text-muted;
-
-/* Fallback semantic status aliases for standalone stylesheet parsing paths. */
 $status-running: $success;
 $status-success: $success;
 $status-warning: $warning;
@@ -438,75 +431,6 @@ BaseBranchInput {
 
 BaseBranchInput:focus {
     border: solid $primary;
-}
-/* Full-screen description editor modal */
-
-DescriptionEditorModal {
-    align: center middle;
-}
-
-DescriptionEditorModal #description-editor-container {
-    width: 90%;
-    height: 90%;
-    border: round $primary;
-    background: $surface;
-    padding: 0;
-}
-
-DescriptionEditorModal #description-editor-header {
-    width: 100%;
-    height: 3;
-    padding: 1 2;
-    background: $panel;
-}
-
-DescriptionEditorModal #editor-title {
-    width: auto;
-    text-style: bold;
-    color: $primary;
-}
-
-DescriptionEditorModal #header-spacer {
-    width: 1fr;
-}
-
-DescriptionEditorModal #editor-hint {
-    width: auto;
-    color: $primary;
-}
-
-DescriptionEditorModal #description-textarea {
-    width: 100%;
-    height: 1fr;
-    background: $background;
-    color: $text;
-    border: none;
-    padding: 0;
-}
-
-DescriptionEditorModal #description-textarea:focus {
-    border: none;
-}
-
-DescriptionEditorModal #description-editor-status {
-    width: 100%;
-    height: 1;
-    padding: 0 2;
-    background: $panel;
-}
-
-DescriptionEditorModal #cursor-position {
-    width: auto;
-    color: $text-muted;
-}
-
-DescriptionEditorModal #status-spacer {
-    width: 1fr;
-}
-
-DescriptionEditorModal #line-count {
-    width: auto;
-    color: $text-muted;
 }
 /* Empty state */
 
@@ -3330,27 +3254,3 @@ SettingsModal {
     scrollbar-gutter: stable;
 }
 
-TaskOutputScreen,
-#task-output-screen-root {
-    background: $background;
-}
-
-#task-output-screen-root {
-    layout: vertical;
-    height: 1fr;
-}
-
-#task-output-top {
-    height: 1fr;
-    min-height: 10;
-}
-
-#task-output-diff-view {
-    height: 1fr;
-    min-height: 12;
-}
-
-#task-output-chat-overlay {
-    width: 100%;
-    min-height: 0;
-}

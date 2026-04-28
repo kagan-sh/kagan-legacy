@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
 import { SSE_TYPE } from "../api/types.js";
-import { formatToolName, renderEvent } from "../api/event-rendering.js";
+import { formatToolName, renderEvent } from "@kagan/shared-api-client";
 import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
 import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 

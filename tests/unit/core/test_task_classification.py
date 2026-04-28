@@ -7,7 +7,7 @@ Tests cover:
 - Batch classification
 """
 
-from kagan.core._task_classification import classify_task, classify_tasks_by_type
+from kagan.core._task_classification import classify_task
 from kagan.core.enums import TaskType
 
 
@@ -178,66 +178,6 @@ class TestClassifyTaskIndividual:
         )
         assert task_type == TaskType.INVESTIGATION
 
-
-class TestClassifyTasksBatch:
-    """Test batch task classification."""
-
-    def test_classify_tasks_by_type_multiple(self) -> None:
-        """Test batch classification of multiple tasks."""
-        tasks = [
-            {"id": "1", "title": "Fix login bug", "description": "Production issue"},
-            {"id": "2", "title": "Implement feature", "description": "New feature"},
-            {"id": "3", "title": "Documentation", "description": "Update the README"},
-        ]
-
-        result = classify_tasks_by_type(tasks)
-
-        assert result["1"] == TaskType.BUG_FIX
-        assert result["2"] == TaskType.CODE_IMPLEMENTATION
-        assert result["3"] == TaskType.DOCUMENTATION
-
-    def test_classify_tasks_empty_list(self) -> None:
-        """Test batch classification with empty list."""
-        result = classify_tasks_by_type([])
-        assert result == {}
-
-    def test_classify_tasks_without_description(self) -> None:
-        """Test batch classification when description is missing."""
-        tasks = [
-            {"id": "1", "title": "Fix bug"},
-            {"id": "2", "title": "Implement feature"},
-        ]
-
-        result = classify_tasks_by_type(tasks)
-
-        assert result["1"] == TaskType.BUG_FIX
-        assert result["2"] == TaskType.CODE_IMPLEMENTATION
-
-    def test_classify_tasks_without_title(self) -> None:
-        """Test batch classification when title is missing."""
-        tasks = [
-            {"id": "1", "description": "Fix critical bug"},
-            {"id": "2", "description": "Implement new feature"},
-        ]
-
-        result = classify_tasks_by_type(tasks)
-
-        assert result["1"] == TaskType.BUG_FIX
-        assert result["2"] == TaskType.CODE_IMPLEMENTATION
-
-    def test_classify_tasks_preserves_ids(self) -> None:
-        """Test that classification preserves task IDs."""
-        tasks = [
-            {"id": "uuid-1", "title": "Task 1", "description": ""},
-            {"id": "uuid-2", "title": "Task 2", "description": ""},
-            {"id": "uuid-3", "title": "Task 3", "description": ""},
-        ]
-
-        result = classify_tasks_by_type(tasks)
-
-        assert "uuid-1" in result
-        assert "uuid-2" in result
-        assert "uuid-3" in result
 
 
 class TestClassificationEdgeCases:

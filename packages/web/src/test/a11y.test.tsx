@@ -18,7 +18,6 @@ vi.mock('@/lib/api/client', () => ({
     getProjects: vi.fn().mockResolvedValue([]),
     getProjectRepos: vi.fn().mockResolvedValue([]),
     reviewDecide: vi.fn().mockResolvedValue({}),
-    runReview: vi.fn().mockResolvedValue({}),
     runTask: vi.fn().mockResolvedValue({}),
     cancelTask: vi.fn().mockResolvedValue({}),
     getTasks: vi.fn().mockResolvedValue([]),

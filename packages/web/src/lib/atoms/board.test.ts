@@ -9,7 +9,6 @@ import {
   boardStatusFilterAtom,
   boardSortAtom,
   resetBoardFiltersAtom,
-  taskCountsAtom,
   fetchTasksAtom,
   boardLoadingAtom,
 } from '@/lib/atoms/board';
@@ -51,10 +50,10 @@ describe('board atoms', () => {
     ];
     store.set(tasksAtom, tasks);
 
-    const counts = store.get(taskCountsAtom);
-    expect(counts.BACKLOG).toBe(1);
-    expect(counts.DONE).toBe(2);
-    expect(counts.IN_PROGRESS).toBe(0);
+    const grouped = store.get(groupedTasksAtom);
+    expect(grouped.BACKLOG).toHaveLength(1);
+    expect(grouped.DONE).toHaveLength(2);
+    expect(grouped.IN_PROGRESS).toHaveLength(0);
   });
 
   it('filters tasks by search query', () => {

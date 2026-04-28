@@ -2,7 +2,19 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { BoardTreeProvider } from "../providers/board.tree.js";
 import type { ReviewCommentProvider } from "../providers/review.comments.js";
+import type { ReviewDecisionResponse } from "../api/types.js";
 import { confirmAction, resolveTask, type TaskItem, withErrors } from "./common.js";
+
+function applyReviewResult(
+  result: ReviewDecisionResponse,
+  boardProvider: BoardTreeProvider,
+  reviewProvider: ReviewCommentProvider,
+): void {
+  boardProvider.refresh();
+  if (result.task) {
+    void reviewProvider.showTaskReview(result.task);
+  }
+}
 
 const REVIEW_RESOLVE_OPTIONS = {
   status: "REVIEW",
@@ -24,11 +36,7 @@ export function registerReviewCommands(
         if (!task) return;
 
         const result = await client.reviewDecide(task.id, { action: "approve" });
-        boardProvider.refresh();
-
-        if (result.task) {
-          await reviewProvider.showTaskReview(result.task);
-        }
+        applyReviewResult(result, boardProvider, reviewProvider);
       });
     }),
 
@@ -47,11 +55,7 @@ export function registerReviewCommands(
           action: "reject",
           feedback: feedback.trim(),
         });
-        boardProvider.refresh();
-
-        if (result.task) {
-          await reviewProvider.showTaskReview(result.task);
-        }
+        applyReviewResult(result, boardProvider, reviewProvider);
       });
     }),
 

@@ -9,16 +9,20 @@ export function registerAnalyticsCommands(
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("kagan.analytics.show", async () => {
-      await withErrors("show analytics", async () => {
+      await withErrors("show analytics summary", async () => {
+        const range = await pickAnalyticsRange();
+        if (!range) return;
+
         const [stats, timeline] = await Promise.all([
-          client.getBackendStats(),
-          client.getSessionTimeline({ days: 30 }),
+          client.getBackendStats({ days: range.days }),
+          client.getSessionTimeline({ days: range.days }),
         ]);
 
         const lines: string[] = [];
 
         // Backend performance table
-        lines.push("# Backend Performance\n");
+        lines.push(`# Analytics Summary (${range.label})\n`);
+        lines.push("## Backend Performance\n");
         if (stats.length === 0) {
           lines.push("No backend data yet. Run some sessions to see metrics.\n");
         } else {
@@ -33,7 +37,7 @@ export function registerAnalyticsCommands(
         }
 
         // Session activity summary
-        lines.push("# Session Activity (30 days)\n");
+        lines.push(`## Session Activity (${range.label})\n`);
         if (timeline.length === 0) {
           lines.push("No session activity in this period.\n");
         } else {
@@ -74,4 +78,16 @@ export function registerAnalyticsCommands(
       });
     }),
   );
+}
+
+async function pickAnalyticsRange(): Promise<{ label: string; days: number } | undefined> {
+  const picked = await vscode.window.showQuickPick(
+    [
+      { label: "Last 30 days", days: 30 },
+      { label: "Last 7 days", days: 7 },
+      { label: "Last 90 days", days: 90 },
+    ],
+    { placeHolder: "Select analytics summary range" },
+  );
+  return picked;
 }

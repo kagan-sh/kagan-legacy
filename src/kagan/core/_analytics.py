@@ -26,8 +26,9 @@ class Analytics:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
-    async def backend_stats(self, project_id: str) -> list[dict[str, Any]]:
+    async def backend_stats(self, project_id: str, days: int | None = None) -> list[dict[str, Any]]:
         """Per-backend aggregates: count, success rate, avg duration, etc."""
+        cutoff = datetime.now(UTC) - timedelta(days=days) if days is not None else None
         completed_case = case(
             (Session.status == SessionStatus.COMPLETED, 1),
             else_=0,
@@ -37,6 +38,10 @@ class Analytics:
             else_=0,
         )
         duration_expr = func.julianday(Session.ended_at) - func.julianday(Session.started_at)
+
+        where_conditions = [Task.project_id == project_id]
+        if cutoff is not None:
+            where_conditions.append(Session.started_at >= cutoff)
 
         stmt = (
             select(
@@ -49,7 +54,7 @@ class Analytics:
                 func.avg(retry_case).label("retry_rate"),
             )
             .join(Task, Task.id == Session.task_id)
-            .where(Task.project_id == project_id)
+            .where(*where_conditions)
             .group_by(Session.agent_backend)
             .order_by(func.count(Session.id).desc())
         )
@@ -71,7 +76,7 @@ class Analytics:
 
     async def export(self, project_id: str, days: int = 30) -> dict[str, Any]:
         """Bundle backend stats + session timeline into a single export dict."""
-        stats = await self.backend_stats(project_id)
+        stats = await self.backend_stats(project_id, days=days)
         timeline = await self.session_timeline(project_id, days=days)
         return {
             "exported_at": utc_iso(datetime.now(UTC)),
@@ -207,6 +212,7 @@ class Analytics:
         project_id: str,
         group_by_role: bool = False,
         group_by_task_type: bool = False,
+        days: int | None = None,
     ) -> list[dict[str, Any]]:
         """Unified aggregation across dimensions: backend, role, task_type.
 
@@ -214,11 +220,13 @@ class Analytics:
             project_id: Project to aggregate for
             group_by_role: Include agent_role in grouping and results
             group_by_task_type: Include task_type in grouping and results
+            days: Optional rolling window, in days, based on session start time
 
         Returns:
             List of dicts with agent_backend, optional agent_role, optional task_type,
             count, success_rate, and avg_duration_seconds
         """
+        cutoff = datetime.now(UTC) - timedelta(days=days) if days is not None else None
         completed_case = case(
             (Session.status == SessionStatus.COMPLETED, 1),
             else_=0,
@@ -252,10 +260,14 @@ class Analytics:
             ]
         )
 
+        where_conditions = [Task.project_id == project_id]
+        if cutoff is not None:
+            where_conditions.append(Session.started_at >= cutoff)
+
         stmt = (
             select(*select_cols)
             .join(Task, Task.id == Session.task_id)
-            .where(Task.project_id == project_id)
+            .where(*where_conditions)
             .group_by(*group_cols)
             .order_by(func.count(Session.id).desc())
         )
@@ -286,14 +298,22 @@ class Analytics:
 
         return await _db_async(self._engine, _run)
 
-    async def backend_by_role_stats(self, project_id: str) -> list[dict[str, Any]]:
+    async def backend_by_role_stats(
+        self, project_id: str, days: int | None = None
+    ) -> list[dict[str, Any]]:
         """Per-backend, per-agent-role aggregates."""
-        return await self._aggregate_stats(project_id, group_by_role=True)
+        return await self._aggregate_stats(project_id, group_by_role=True, days=days)
 
-    async def backend_by_task_type_stats(self, project_id: str) -> list[dict[str, Any]]:
+    async def backend_by_task_type_stats(
+        self, project_id: str, days: int | None = None
+    ) -> list[dict[str, Any]]:
         """Per-backend, per-task-type aggregates."""
-        return await self._aggregate_stats(project_id, group_by_task_type=True)
+        return await self._aggregate_stats(project_id, group_by_task_type=True, days=days)
 
-    async def backend_role_task_stats(self, project_id: str) -> list[dict[str, Any]]:
+    async def backend_role_task_stats(
+        self, project_id: str, days: int | None = None
+    ) -> list[dict[str, Any]]:
         """Per-backend, per-agent-role, per-task-type aggregates (fully dimensional)."""
-        return await self._aggregate_stats(project_id, group_by_role=True, group_by_task_type=True)
+        return await self._aggregate_stats(
+            project_id, group_by_role=True, group_by_task_type=True, days=days
+        )

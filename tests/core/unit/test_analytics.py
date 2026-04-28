@@ -5,9 +5,10 @@ after the col_idx bug fix (col_idx was never reset between rows, corrupting all
 rows after the first when more than one backend is present).
 """
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest  # noqa: F401 (pytestmark)
+import pytest
 
 from kagan.core._analytics import Analytics
 from kagan.core._db import create_db_engine
@@ -70,6 +71,50 @@ def _seed_sessions(engine, project_id: str) -> None:
     _db_sync(engine, _write)
 
 
+def _seed_sessions_across_time(engine, project_id: str) -> None:
+    recent = datetime.now(UTC) - timedelta(days=1)
+    old = datetime.now(UTC) - timedelta(days=45)
+
+    def _write(s) -> None:
+        recent_task = Task(project_id=project_id, title="Recent task", task_type="bug_fix")
+        old_task = Task(project_id=project_id, title="Old task", task_type="design")
+        s.add(recent_task)
+        s.add(old_task)
+        s.flush()
+
+        sessions = [
+            Session(
+                task_id=recent_task.id,
+                agent_backend="alpha",
+                status=SessionStatus.COMPLETED,
+                started_at=recent,
+                ended_at=recent + timedelta(minutes=5),
+                agent_role="worker",
+            ),
+            Session(
+                task_id=recent_task.id,
+                agent_backend="beta",
+                status=SessionStatus.FAILED,
+                started_at=recent,
+                ended_at=recent + timedelta(minutes=3),
+                agent_role="reviewer",
+            ),
+            Session(
+                task_id=old_task.id,
+                agent_backend="beta",
+                status=SessionStatus.COMPLETED,
+                started_at=old,
+                ended_at=old + timedelta(minutes=2),
+                agent_role="worker",
+            ),
+        ]
+        for sess in sessions:
+            s.add(sess)
+        s.commit()
+
+    _db_sync(engine, _write)
+
+
 @pytest.fixture
 def analytics_engine(tmp_path: Path):
     db_path = tmp_path / "analytics_test.db"
@@ -121,3 +166,33 @@ async def test_backend_by_role_stats_multi_row_correct_values(
     assert by_backend["alpha"]["agent_role"] == "worker"
     assert by_backend["beta"]["agent_role"] == "worker"
     assert by_backend["gamma"]["agent_role"] == "reviewer"
+
+
+async def test_backend_aggregates_honor_days_window(analytics_engine, project_id: str) -> None:
+    _seed_sessions_across_time(analytics_engine, project_id)
+
+    analytics = Analytics(analytics_engine)
+
+    lifetime_stats = await analytics.backend_stats(project_id)
+    lifetime_counts = {row["agent_backend"]: row["count"] for row in lifetime_stats}
+    assert lifetime_counts == {"beta": 2, "alpha": 1}
+
+    windowed_stats = await analytics.backend_stats(project_id, days=30)
+    windowed_counts = {row["agent_backend"]: row["count"] for row in windowed_stats}
+    assert windowed_counts == {"alpha": 1, "beta": 1}
+
+    by_role = await analytics.backend_by_role_stats(project_id, days=30)
+    assert {(row["agent_backend"], row["agent_role"], row["count"]) for row in by_role} == {
+        ("alpha", "worker", 1),
+        ("beta", "reviewer", 1),
+    }
+
+    by_task_type = await analytics.backend_by_task_type_stats(project_id, days=30)
+    assert {(row["agent_backend"], row["task_type"], row["count"]) for row in by_task_type} == {
+        ("alpha", "bug_fix", 1),
+        ("beta", "bug_fix", 1),
+    }
+
+    exported = await analytics.export(project_id, days=30)
+    exported_counts = {row["agent_backend"]: row["count"] for row in exported["backend_stats"]}
+    assert exported_counts == {"alpha": 1, "beta": 1}

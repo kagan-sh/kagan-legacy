@@ -161,7 +161,7 @@
       },
       {
         "command": "kagan.events.show",
-        "title": "Show Agent Output",
+        "title": "Show Diagnostic Agent Log",
         "category": "Kagan",
         "icon": "$(output)"
       },
@@ -173,7 +173,7 @@
       },
       {
         "command": "kagan.chat.open",
-        "title": "Open in Chat",
+        "title": "Watch in Chat",
         "category": "Kagan",
         "icon": "$(comment-discussion)"
       },
@@ -194,7 +194,7 @@
       },
       {
         "command": "kagan.analytics.show",
-        "title": "Show Analytics",
+        "title": "Show Analytics Summary",
         "category": "Kagan"
       },
       {
@@ -365,12 +365,12 @@
         "kagan.autoConnect": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically connect to server on startup"
+          "description": "Automatically connect on startup only when the workspace contains Kagan context"
         },
         "kagan.autoStartServer": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically start `kagan serve` when serverUrl points to localhost and no Kagan server is running"
+          "description": "Automatically start `kagan serve` for explicit connects or workspaces with Kagan context when serverUrl points to localhost and no Kagan server is running"
         },
         "kagan.serverCommand": {
           "type": "string",

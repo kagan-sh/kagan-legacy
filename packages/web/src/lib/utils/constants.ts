@@ -24,10 +24,10 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 export const STATUS_COLORS: Record<TaskStatus, string> = {
-  BACKLOG: '#B5AC9F',
-  IN_PROGRESS: '#3fb58e',
-  REVIEW: '#C27C4E',
-  DONE: '#3fb58e'
+  BACKLOG: 'var(--kagan-rail-idle)',
+  IN_PROGRESS: 'var(--kagan-rail-warning)',
+  REVIEW: 'var(--kagan-rail-review)',
+  DONE: 'var(--kagan-rail-running)'
 };
 
 export function getAllowedTaskTransitions(status: TaskStatus): TaskStatus[] {

@@ -41,16 +41,17 @@ def make_request(
     path_params: dict[str, str] | None = None,
 ) -> Request:
     """Build a Starlette Request for direct route handler invocation."""
+    path_only, separator, query = path.partition("?")
     payload = json.dumps(body).encode() if body is not None else b""
     raw_headers = [(key.lower().encode(), value.encode()) for key, value in (headers or {}).items()]
     scope = {
         "type": "http",
         "http_version": "1.1",
         "method": method,
-        "path": path,
-        "raw_path": path.encode(),
+        "path": path_only,
+        "raw_path": path_only.encode(),
         "headers": raw_headers,
-        "query_string": b"",
+        "query_string": query.encode() if separator else b"",
         "scheme": "http",
         "server": ("127.0.0.1", 8765),
         "client": ("127.0.0.1", 12345),

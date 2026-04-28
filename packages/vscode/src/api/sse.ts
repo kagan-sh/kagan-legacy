@@ -9,6 +9,7 @@ export class SSEStream implements vscode.Disposable {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
   private disposed = false;
+  private connected = false;
   private protocol: "http" | "https" = "http";
   private token: string | undefined;
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
@@ -49,6 +50,14 @@ export class SSEStream implements vscode.Disposable {
     this.connect();
   }
 
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  isStarted(): boolean {
+    return this.controller !== null || this.reconnectTimer !== null;
+  }
+
   /** Register a callback to poll when SSE is disconnected (10s interval). */
   setPollingFallback(callback: () => void): void {
     this.pollingCallback = callback;
@@ -59,6 +68,7 @@ export class SSEStream implements vscode.Disposable {
     this.stopPolling();
     this.controller?.abort();
     this.controller = null;
+    this.connected = false;
     this._onConnected.fire(false);
   }
 
@@ -105,6 +115,7 @@ export class SSEStream implements vscode.Disposable {
         throw new Error(`SSE failed: ${response.status}`);
       }
 
+      this.connected = true;
       this._onConnected.fire(true);
       this.stopPolling();
       this.reconnectDelay = 1000;
@@ -137,6 +148,13 @@ export class SSEStream implements vscode.Disposable {
       }
     } catch (err) {
       if (signal.aborted) return; // Intentional disconnect
+      this.connected = false;
+      this._onConnected.fire(false);
+      this.startPolling();
+    }
+
+    if (!signal.aborted && this.connected) {
+      this.connected = false;
       this._onConnected.fire(false);
       this.startPolling();
     }

@@ -13,9 +13,9 @@ from loguru import logger
 from sqlalchemy import Connection, Engine, event
 from sqlmodel import create_engine
 
-_HEAD_REVISION = "6f4d63a80a1e"
+_HEAD_REVISION = "a3f9d1c2e4b5"
 _LEGACY_REVISION_REMAP = {
-    "5b95758fdb4d": "0001_v060_to_latest",
+    "5b95758fdb4d": "base",
     "0001_v060_to_latest": "0001_v060_to_latest",
 }
 
@@ -110,12 +110,18 @@ def create_db_engine(db_path: str | Path | None = None) -> Engine:
         url = "sqlite:///:memory:"
 
     engine = create_engine(url, echo=False, connect_args={"check_same_thread": False})
+    _is_memory = resolved == ":memory:"
 
     @event.listens_for(engine, "connect")
     def _set_pragmas(dbapi_connection, _connection_record) -> None:
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
+        if not _is_memory:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-64000")
+        cursor.execute("PRAGMA mmap_size=268435456")
         cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
     if resolved == ":memory:":

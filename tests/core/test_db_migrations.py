@@ -311,7 +311,7 @@ def test_known_legacy_alembic_revision_is_remapped_to_head(tmp_path: Path) -> No
         conn = sqlite3.connect(db_path)
         try:
             head = conn.execute("SELECT version_num FROM alembic_version").fetchone()
-            assert head == ("6f4d63a80a1e",)
+            assert head == ("a3f9d1c2e4b5",)
         finally:
             conn.close()
     finally:

@@ -388,7 +388,7 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
       // doesn't race the previous one (50 ms setTimeout was a flaky proxy).
       void (async () => {
         try {
-          await apiClient.interruptChatSession(sessionId);
+          await apiClient.interruptChatTurn(sessionId, 'user');
         } catch {
           // best-effort — server may already have torn the stream down
         }

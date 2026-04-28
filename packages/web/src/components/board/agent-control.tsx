@@ -223,7 +223,7 @@ export function AgentControl({
         <div className={cn("flex items-center gap-2", className)}>
             {isRunning || pending === "starting" ? (
                 <>
-                    <Button size={buttonSize} onClick={handleStop} disabled={!sseConnected || isBusy}>
+                    <Button variant="destructive" size={buttonSize} onClick={handleStop} disabled={!sseConnected || isBusy}>
                         {pending === "stopping" ? <Loader2 className="size-3 animate-spin" /> : <Square className="size-3" />}
                         {pending === "stopping" ? "Stopping..." : hasInteractiveSession ? "Detach" : "Stop"}
                     </Button>
@@ -232,7 +232,7 @@ export function AgentControl({
                         Attach
                     </Button>
                     {isRunning && (
-                        <span className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
+                        <span className="flex items-center gap-1 text-xs text-[var(--kagan-rail-warning)]">
                             <Clock className="size-3" aria-hidden="true" />
                             <span role="timer" aria-label={`Running for ${formatTime(elapsed)}`}>{formatTime(elapsed)}</span>
                         </span>

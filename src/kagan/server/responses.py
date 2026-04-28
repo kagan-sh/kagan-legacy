@@ -285,6 +285,24 @@ class ChatSessionResponse(ChatSessionSummaryResponse):
     messages: list[ChatMessageResponse]
 
 
+class TurnInProgressResponse(BaseModel):
+    ok: bool = False
+    data: None = None
+    error: str = "A turn is already in progress for this session"
+    error_code: str = "TURN_IN_PROGRESS"
+    running_since: str | None = None
+    partial_chars: int = 0
+
+
+class ChatMessageDetailResponse(BaseModel):
+    id: int
+    session_id: str
+    role: str
+    content: str
+    terminated_at_user_request: bool
+    created_at: str
+
+
 # ── Filesystem browser ───────────────────────────────────────────────────────
 
 
@@ -348,8 +366,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "AgentBackendResponse": AgentBackendResponse,
     "ChatAgentsResponse": ChatAgentsResponse,
     "ChatMessageResponse": ChatMessageResponse,
+    "ChatMessageDetailResponse": ChatMessageDetailResponse,
     "ChatSessionSummaryResponse": ChatSessionSummaryResponse,
     "ChatSessionResponse": ChatSessionResponse,
+    "TurnInProgressResponse": TurnInProgressResponse,
     "DoctorCheckResponse": DoctorCheckResponse,
     "DoctorReportResponse": DoctorReportResponse,
     "FsEntryResponse": FsEntryResponse,

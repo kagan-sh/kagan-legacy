@@ -172,7 +172,12 @@ def _has_any_verdicts(task: Task) -> bool:
     return any(c.verdicts for c in task.criteria)
 
 
-def build_merge_readiness_text(task: Task | None, *, last_merge_blocker: str | None) -> str:
+def build_merge_readiness_text(
+    task: Task | None,
+    *,
+    human_approved: bool = False,
+    last_merge_blocker: str | None,
+) -> str:
     if task is None:
         return ""
     if task.status is TaskStatus.DONE and _has_any_verdicts(task):
@@ -184,19 +189,19 @@ def build_merge_readiness_text(task: Task | None, *, last_merge_blocker: str | N
         return ""
 
     lines: list[str] = []
-    approved = all(
+    ai_passed_all = all(
         c.verdicts
         and _latest_verdict(c.verdicts) is not None
         and _latest_verdict(c.verdicts).verdict.lower() == "pass"  # type: ignore[union-attr]
         for c in task.criteria
     ) and bool(task.criteria)
-    if approved:
-        lines.append("  ✓ Approved")
+    if human_approved:
+        lines.append("  ✓ Human approved")
     else:
         if task.criteria:
-            lines.append("  ✗ Not approved  →  a to approve")
+            lines.append("  ✗ Human approval pending  →  a to approve")
         else:
-            lines.append("  ✗ Not approved (no criteria)  →  a for options")
+            lines.append("  ✗ Human approval pending (no criteria)  →  a for options")
 
     if last_merge_blocker:
         lines.append(f"  ✗ {last_merge_blocker}")
@@ -209,7 +214,7 @@ def build_merge_readiness_text(task: Task | None, *, last_merge_blocker: str | N
         pass_count = sum(1 for v in verdicts.values() if v.verdict.lower() == "pass")
         fail_count = sum(1 for v in verdicts.values() if v.verdict.lower() == "fail")
         total = criteria_count
-        if fail_count == 0 and pass_count == total:
+        if ai_passed_all and fail_count == 0 and pass_count == total:
             lines.append(f"  ✓ AI review: all {total} criteria passed")
         elif fail_count:
             lines.append(f"  ✗ AI review: {fail_count}/{total} criteria failed")

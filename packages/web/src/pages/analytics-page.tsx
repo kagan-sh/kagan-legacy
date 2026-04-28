@@ -53,11 +53,11 @@ import {
 // ---------------------------------------------------------------------------
 
 const CHART_COLORS = {
-  completed: 'var(--status-running, #22c55e)',
-  failed: 'var(--status-error, #ef4444)',
+  completed: 'var(--kagan-rail-running, #22c55e)',
+  failed: 'var(--kagan-rail-error, #ef4444)',
   cancelled: 'var(--muted-foreground, #6b7280)',
-  pending: 'var(--status-idle, #3b82f6)',
-  running: 'var(--status-warning, #f59e0b)',
+  pending: 'var(--kagan-rail-idle, #3b82f6)',
+  running: 'var(--kagan-rail-warning, #f59e0b)',
   accent: 'var(--primary, #d4a84b)',
 };
 
@@ -681,11 +681,11 @@ export function Component() {
     setError(null);
     try {
       const [stats, tl, roles, taskTypes, combined] = await Promise.all([
-        apiClient.getBackendStats(),
+        apiClient.getBackendStats({ days: range }),
         apiClient.getSessionTimeline({ days: range }),
-        apiClient.getAnalyticsByRole().then((g) => Object.values(g).flat()),
-        apiClient.getAnalyticsByTaskType().then((g) => Object.values(g).flat()),
-        apiClient.getAnalyticsByRoleAndTaskType(),
+        apiClient.getAnalyticsByRole({ days: range }).then((g) => Object.values(g).flat()),
+        apiClient.getAnalyticsByTaskType({ days: range }).then((g) => Object.values(g).flat()),
+        apiClient.getAnalyticsByRoleAndTaskType({ days: range }),
       ]);
       setBackendStats(stats);
       setTimeline(tl);
@@ -735,6 +735,8 @@ export function Component() {
     return { totalSessions: total, avgSuccessRate: avgSuccess, avgDuration: avgDur };
   }, [backendStats]);
 
+  const rangeLabel = `Last ${days} days`;
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 sm:px-6">
       {/* Header */}
@@ -783,7 +785,7 @@ export function Component() {
       </header>
 
       {error && (
-        <div className="mt-3 rounded-md border border-[var(--status-error)] bg-[var(--status-error)]/10 px-4 py-3 text-sm text-[var(--status-error)]">
+        <div className="mt-3 rounded-md border border-[var(--kagan-rail-error)] bg-[var(--kagan-rail-error)]/10 px-4 py-3 text-sm text-[var(--kagan-rail-error)]">
           {error}
         </div>
       )}
@@ -800,19 +802,19 @@ export function Component() {
               label="Total Sessions"
               value={totalSessions.toLocaleString()}
               icon={Activity}
-              subtitle={`Across ${backendStats.length} backend${backendStats.length !== 1 ? 's' : ''}`}
+              subtitle={`${rangeLabel} across ${backendStats.length} backend${backendStats.length !== 1 ? 's' : ''}`}
             />
             <KpiCard
               label="Avg Success Rate"
               value={formatPercentage(avgSuccessRate)}
               icon={TrendingUp}
-              subtitle="Weighted by session count"
+              subtitle={`${rangeLabel}, weighted by session count`}
             />
             <KpiCard
               label="Avg Duration"
               value={formatDuration(avgDuration)}
               icon={Clock}
-              subtitle="Weighted by session count"
+              subtitle={`${rangeLabel}, weighted by session count`}
             />
           </div>
 
@@ -847,6 +849,9 @@ export function Component() {
                   >
                     <BarChart3 className="size-4 text-[var(--muted-foreground)]" />
                     Backend Performance
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -875,6 +880,9 @@ export function Component() {
                     >
                       <Clock className="size-4 text-[var(--muted-foreground)]" />
                       Duration by Backend
+                      <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                        {rangeLabel}
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -890,6 +898,9 @@ export function Component() {
                     >
                       <Activity className="size-4 text-[var(--muted-foreground)]" />
                       Session Activity
+                      <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                        {rangeLabel}
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -906,6 +917,9 @@ export function Component() {
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Users className="size-4 text-[var(--muted-foreground)]" />
                     Performance by Agent Role
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
                   </CardTitle>
                   <p className="text-xs text-[var(--muted-foreground)] mt-2">
                     Success rate and duration metrics for each agent role across backends.
@@ -918,7 +932,12 @@ export function Component() {
 
               <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
                 <CardHeader>
-                  <CardTitle className="text-sm">Role Comparison by Backend</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    Role Comparison by Backend
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <RoleComparisonChart data={roleStats} />
@@ -930,7 +949,12 @@ export function Component() {
             <TabsContent value="tasktype" className="space-y-4">
               <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
                 <CardHeader>
-                  <CardTitle className="text-sm">Performance by Task Type</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    Performance by Task Type
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
+                  </CardTitle>
                   <p className="text-xs text-[var(--muted-foreground)] mt-2">
                     Success rates for different task classifications. Showing top types by frequency.
                   </p>
@@ -942,7 +966,12 @@ export function Component() {
 
               <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
                 <CardHeader>
-                  <CardTitle className="text-sm">Backend × Task Type Matrix</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    Backend × Task Type Matrix
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TaskTypeTable data={taskTypeStats} />
@@ -954,7 +983,12 @@ export function Component() {
             <TabsContent value="combined" className="space-y-4">
               <Card className="border-[color:var(--border-subtle)] bg-[color:var(--surface-0)]">
                 <CardHeader>
-                  <CardTitle className="text-sm">Combined Analytics (Backend × Role × Task Type)</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    Combined Analytics (Backend × Role × Task Type)
+                    <Badge variant="secondary" className="ml-auto font-code text-[10px]">
+                      {rangeLabel}
+                    </Badge>
+                  </CardTitle>
                   <p className="text-xs text-[var(--muted-foreground)] mt-2">
                     Three-dimensional breakdown showing how each backend performs across all roles and task types.
                   </p>

@@ -23,6 +23,8 @@ import {
 } from "@/lib/atoms/board";
 import {
     commandPaletteOpenAtom,
+    clearRightRailDismissalAtom,
+    dismissRightRailContextAtom,
     helpOverlayOpenAtom,
     pluginImportOpenAtom,
     rightRailChatSessionIdAtom,
@@ -32,7 +34,6 @@ import {
 } from "@/lib/atoms/ui";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { isEditableTarget, hasOpenOverlay } from "@/lib/utils/dom";
 
 type DockedChatRailMode = "chat-right" | "chat-bottom";
 
@@ -56,6 +57,8 @@ function AppLayout() {
     const railChatSessionId = useAtomValue(rightRailChatSessionIdAtom);
     const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
     const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
+    const dismissRightRailContext = useSetAtom(dismissRightRailContextAtom);
+    const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
     const projectVersion = useAtomValue(projectSwitchVersionAtom);
     const fetchTasks = useSetAtom(fetchTasksAtom);
     const [projectChecked, setProjectChecked] = useState(false);
@@ -143,26 +146,35 @@ function AppLayout() {
     }, [location.pathname]);
     const workspaceRoute = location.pathname.startsWith("/workspace");
 
-    const closeChatRail = () => {
+    const closeChatRail = useCallback(() => {
+        dismissRightRailContext();
         setRailMode("none");
-    };
+    }, [dismissRightRailContext, setRailMode]);
 
-    const openChatRail = (mode: DockedChatRailMode = "chat-right") => {
+    const openChatRail = useCallback((mode: DockedChatRailMode = "chat-right") => {
         const nextTaskId = currentTaskId ?? railTaskId;
         if (!nextTaskId) return;
+        clearRightRailDismissal({ kind: "task", id: nextTaskId });
         setRailTaskId(nextTaskId);
         setRailChatSessionId(null);
         setRailMode(mode);
-    };
+    }, [
+        clearRightRailDismissal,
+        currentTaskId,
+        railTaskId,
+        setRailChatSessionId,
+        setRailMode,
+        setRailTaskId,
+    ]);
 
-    const setChatRailLayout = (
+    const setChatRailLayout = useCallback((
         mode: "chat-right" | "chat-bottom" | "chat-fullscreen",
     ) => {
         if (mode === "chat-right" || mode === "chat-bottom") {
             lastDockModeRef.current = mode;
         }
         setRailMode(mode);
-    };
+    }, [setRailMode]);
 
     const toggleAIPanel = useCallback(async () => {
         if (workspaceRoute) return;
@@ -188,6 +200,7 @@ function AppLayout() {
                 const sessions = await apiClient.getChatSessions();
                 const sessionId = await createOrGetSession(sessions);
                 if (sessionId) {
+                    clearRightRailDismissal({ kind: "session", id: sessionId });
                     setRailTaskId(null);
                     setRailChatSessionId(sessionId);
                     setRailMode("chat-right");
@@ -199,6 +212,7 @@ function AppLayout() {
     }, [
         closeChatRail,
         createOrGetSession,
+        clearRightRailDismissal,
         currentTaskId,
         openChatRail,
         railChatSessionId,
@@ -243,6 +257,7 @@ function AppLayout() {
     }, [
         projectVersion,
         isMobile,
+        createOrGetSession,
         railMode,
         setRailChatSessionId,
         setRailMode,
@@ -251,147 +266,19 @@ function AppLayout() {
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
-            const lowerKey = event.key.toLowerCase();
-            const dialogOpen = hasOpenOverlay();
             const railOpen =
                 railMode !== "none" && Boolean(railTaskId || railChatSessionId);
-            const hasTask = Boolean(currentTaskId ?? railTaskId);
-
-            // Cmd/Ctrl+Shift+P — open command palette (alias for Cmd+K)
-            if (
-                (event.metaKey || event.ctrlKey) &&
-                event.shiftKey &&
-                lowerKey === "p"
-            ) {
-                event.preventDefault();
-                setSessionPickerOpen(false);
-                setHelpOverlayOpen(false);
-                setCommandOpen(true);
-                return;
-            }
-
-            // Cmd/Ctrl+I — AI Panel cycle (right → bottom → close)
-            if (
-                (event.metaKey || event.ctrlKey) &&
-                !event.shiftKey &&
-                lowerKey === "i"
-            ) {
-                event.preventDefault();
-                if (workspaceRoute) return;
-                if (
-                    railOpen &&
-                    (railMode === "chat-right" || railMode === "chat-bottom")
-                ) {
-                    const next = cycleDockMode(railMode);
-                    if (next === "none") {
-                        closeChatRail();
-                    } else {
-                        setChatRailLayout(next);
-                    }
-                } else if (railOpen) {
-                    closeChatRail();
-                } else if (hasTask) {
-                    openChatRail("chat-right");
-                } else {
-                    // No task context — open orchestrator chat directly
-                    void (async () => {
-                        try {
-                            const sessions = await apiClient.getChatSessions();
-                            const sessionId = await createOrGetSession(sessions);
-                            if (sessionId) {
-                                setRailTaskId(null);
-                                setRailChatSessionId(sessionId);
-                                setRailMode("chat-right");
-                            }
-                        } catch {
-                            // Fallback: open session picker on error
-                            setSessionPickerOpen(true);
-                        }
-                    })();
-                }
-                return;
-            }
-
-            // Cmd/Ctrl+Shift+F — Toggle AI Panel fullscreen
-            if (
-                (event.metaKey || event.ctrlKey) &&
-                event.shiftKey &&
-                lowerKey === "f"
-            ) {
-                event.preventDefault();
-                if (railOpen && railMode === "chat-fullscreen") {
-                    setChatRailLayout(lastDockModeRef.current);
-                } else if (railOpen) {
-                    setChatRailLayout("chat-fullscreen");
-                }
-                return;
-            }
-
-            // Cmd/Ctrl+Shift+K — Session Switcher (canonical)
-            if (
-                (event.metaKey || event.ctrlKey) &&
-                event.shiftKey &&
-                lowerKey === "k"
-            ) {
-                event.preventDefault();
-                setCommandOpen(false);
-                setHelpOverlayOpen(false);
-                setSessionPickerOpen(true);
-                return;
-            }
-
-            if (
-                !isEditableTarget(event.target) &&
-                (event.key === "?" || event.key === "F1")
-            ) {
-                event.preventDefault();
-                setCommandOpen(false);
-                setSessionPickerOpen(false);
-                setHelpOverlayOpen(true);
-                return;
-            }
-
-            if (isMobile || dialogOpen) return;
-
-            // Cmd/Ctrl+Shift+W — Toggle between board and workspace
-            if (
-                (event.metaKey || event.ctrlKey) &&
-                event.shiftKey &&
-                lowerKey === "w"
-            ) {
-                event.preventDefault();
-                const isWorkspace =
-                    location.pathname.startsWith("/workspace");
-                navigateRef.current(
-                    isWorkspace ? "/board" : "/workspace",
-                );
-                return;
-            }
 
             // Esc — close chat rail (interrupt-first: chat-input-bar stops propagation when busy)
             if (event.key === "Escape" && railOpen) {
                 event.preventDefault();
                 closeChatRail();
-                return;
             }
         };
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [
-        closeChatRail,
-        currentTaskId,
-        isMobile,
-        openChatRail,
-        railChatSessionId,
-        railMode,
-        railTaskId,
-        setCommandOpen,
-        setHelpOverlayOpen,
-        setChatRailLayout,
-        setSessionPickerOpen,
-        workspaceRoute,
-    ]);
+    }, [closeChatRail, railChatSessionId, railMode, railTaskId]);
 
     if (!projectChecked) {
         return (

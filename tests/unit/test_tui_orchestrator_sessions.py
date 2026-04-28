@@ -33,10 +33,41 @@ class _FakeSettingsOps:
         self._store.update(updates)
 
 
+def _make_test_engine(*, seed_project_id: str | None = None):  # type: ignore[return]
+    """File-based SQLite engine so asyncio.to_thread can access it across threads.
+
+    If seed_project_id is given, a minimal project row is inserted so that
+    chat_sessions FK(project_id) constraints pass.
+    """
+    import sqlite3
+    import tempfile
+    from pathlib import Path
+
+    from kagan.core._db import create_db_engine
+
+    tmpdir = tempfile.mkdtemp()
+    db_path = Path(tmpdir) / "test.db"
+    engine = create_db_engine(db_path)
+    if seed_project_id is not None:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                "INSERT OR IGNORE INTO projects (id, name, description, created_at, updated_at) "
+                "VALUES (?, ?, '', datetime('now'), datetime('now'))",
+                (seed_project_id, seed_project_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return engine
+
+
 class _FakeClient:
     def __init__(self, *, active_project_id: str | None = None) -> None:
         self.settings = _FakeSettingsOps()
         self.active_project_id = active_project_id
+        self._engine = _make_test_engine(seed_project_id=active_project_id)
 
 
 @pytest.mark.asyncio

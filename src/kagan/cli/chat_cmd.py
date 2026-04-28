@@ -24,10 +24,12 @@ except ModuleNotFoundError:
     epilog=(
         "Examples:\n"
         "  kagan chat                         Interactive REPL\n"
+        "  kagan chat 'fix the bug'           Single-shot prompt\n"
         "  kagan chat --prompt 'fix the bug'  Single-shot prompt\n"
         "  kagan chat --session-id abc123     Resume a session"
     ),
 )
+@click.argument("prompt_argument", metavar="PROMPT", required=False)
 @click.option(
     "--prompt",
     "prompt_text",
@@ -45,13 +47,26 @@ except ModuleNotFoundError:
 @click.option(
     "--agent", "agent", type=str, default=None, help="Override the default agent backend."
 )
-def chat(prompt_text: str | None, session_id: str | None, agent: str | None) -> None:
+def chat(
+    prompt_argument: str | None,
+    prompt_text: str | None,
+    session_id: str | None,
+    agent: str | None,
+) -> None:
     """Start an interactive chat or run a single prompt."""
     logger.debug("Chat command invoked")
+    if prompt_argument is not None and prompt_text is not None:
+        raise click.UsageError("Use either PROMPT or --prompt, not both.")
 
     from kagan.cli.chat import run_chat_async
 
     try:
-        run_async(run_chat_async(prompt=prompt_text, session_id=session_id, agent=agent))
+        run_async(
+            run_chat_async(
+                prompt=prompt_text if prompt_text is not None else prompt_argument,
+                session_id=session_id,
+                agent=agent,
+            )
+        )
     except KeyboardInterrupt:
         raise click.Abort() from None

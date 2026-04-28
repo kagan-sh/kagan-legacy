@@ -35,15 +35,16 @@ from kagan.tui.keybindings import (
     get_keys_for_action,
 )
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
-from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
 from kagan.tui.screens.kanban_chat import (
     apply_task_chat_event,
+    watch_chat_session,
 )
 from kagan.tui.screens.kanban_chat import (
     send_orchestrator_message as send_chat_message,
 )
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
 from kagan.tui.widgets.board import BoardView
@@ -166,6 +167,7 @@ class KanbanScreen(Screen[None]):
         self._chat_session_switch_token = 0
         self._chat_message_task: asyncio.Task[None] | None = None
         self._chat_stream_task: asyncio.Task[None] | None = None
+        self._chat_watch_task: asyncio.Task[None] | None = None
         self._watcher: DBWatcher | None = None
         self._watcher_reload_task: asyncio.Task[None] | None = None
         self._branch_sync_task: asyncio.Task[None] | None = None
@@ -180,12 +182,6 @@ class KanbanScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield KaganHeader()
         yield SearchBar(id="search-bar").data_bind(is_visible=KanbanScreen.search_visible)
-        yield Static(
-            "No project open — press [bold]n[/bold] to create one,"
-            " or [bold]Ctrl+O[/bold] to open a folder.",
-            id="kanban-no-project-hint",
-            classes="kanban-no-project-hint",
-        )
         with Container(classes="board-container kanban-board-container"):
             with Container(classes="kanban-content-pane"):
                 with Container(classes="kanban-main-pane"):
@@ -205,7 +201,12 @@ class KanbanScreen(Screen[None]):
 
     async def on_mount(self) -> None:
         self._refresh_header()
-        self._update_no_project_hint()
+        panel = self.query_one(ChatPanel)
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
+        await self.kagan_app.orchestrator_sessions.ensure_loaded()
+        await self._load_orchestrator_panel_state(panel)
+        panel.set_mode_title("Orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
         self._set_tutorial_visible(False)
         self._chat_auto_opened = False
         self._update_search_bar_state()
@@ -232,14 +233,6 @@ class KanbanScreen(Screen[None]):
             exclusive=True,
             exit_on_error=False,
         )
-
-    async def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
-        panel = self.query_one(ChatPanel)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
-        await self.kagan_app.orchestrator_sessions.ensure_loaded()
-        await self._load_orchestrator_panel_state(panel)
-        panel.set_mode_title("Orchestrator")
-        panel.set_session_kind(SessionKind.ORCHESTRATOR)
 
     async def _maybe_show_first_boot_tutorial(self) -> None:
         settings = await self.kagan_app.core.settings.get()
@@ -306,6 +299,11 @@ class KanbanScreen(Screen[None]):
             self._branch_sync_task = None
 
     async def on_unmount(self) -> None:
+        if self._chat_watch_task is not None:
+            self._chat_watch_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_watch_task
+            self._chat_watch_task = None
         if self._watcher_reload_task is not None:
             self._watcher_reload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -367,14 +365,7 @@ class KanbanScreen(Screen[None]):
         return None
 
     def _sync_layout_state(self) -> None:
-        try:
-            panel = self.query_one(ChatPanel)
-        except NoMatches:
-            self.set_class(False, "chat-overlay-visible")
-            self.set_class(False, "chat-overlay-expanded")
-            self.set_class(False, "chat-overlay-vertical")
-            self.set_class(False, "chat-overlay-horizontal")
-            return
+        panel = self.query_one(ChatPanel)
         visible = panel.has_class("visible")
         fullscreen = visible and panel.has_class("fullscreen")
         if not self._all_tasks and visible and not fullscreen:
@@ -653,11 +644,6 @@ class KanbanScreen(Screen[None]):
         self._inline_action_message = message.strip() if message else None
         self._update_hint_bar()
 
-    def _update_no_project_hint(self) -> None:
-        with contextlib.suppress(NoMatches):
-            hint = self.query_one("#kanban-no-project-hint", Static)
-            hint.display = self.kagan_app.project is None
-
     def _refresh_header(self) -> None:
         with contextlib.suppress(NoMatches):
             header = self.query_one(KaganHeader)
@@ -716,12 +702,8 @@ class KanbanScreen(Screen[None]):
         stop_key = get_key_for_action(KANBAN_BINDINGS, "stop_agent", default="Shift+S")
         attach_key = get_key_for_action(KANBAN_BINDINGS, "attach_agent", default="a")
         start_agent_key = get_key_for_action(KANBAN_BINDINGS, "start_agent", default="s")
-        try:
-            panel = self.query_one(ChatPanel)
-        except NoMatches:
-            overlay_open = False
-        else:
-            overlay_open = panel.has_class("visible")
+        panel = self.query_one(ChatPanel)
+        overlay_open = panel.has_class("visible")
         fullscreen_key = get_key_for_action(
             KANBAN_BINDINGS, "expand_chat_overlay", default="Ctrl+F"
         )
@@ -1341,6 +1323,9 @@ class KanbanScreen(Screen[None]):
             return
         await self._confirm_delete_task(task)
 
+    async def action_delete_task_direct(self) -> None:
+        await self.action_delete_task()
+
     async def action_duplicate_task(self) -> None:
         if not self._require_inspector(action_label="Duplicate"):
             return
@@ -1764,6 +1749,7 @@ class KanbanScreen(Screen[None]):
                     name="tui-chat-title-gen",
                 )
         except asyncio.CancelledError:
+            panel.add_system_message("⚡ Turn interrupted")
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
             raise
@@ -1831,6 +1817,28 @@ class KanbanScreen(Screen[None]):
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
             panel.set_preferred_agent_backend(session_backend)
+        session_id = self.kagan_app.orchestrator_sessions.current_session_id()
+        if session_id:
+            self._start_chat_watch_task(session_id, panel)
+
+    def _start_chat_watch_task(self, session_id: str, panel: ChatPanel) -> None:
+        """Start (or restart) the background SSE watch task for a chat session.
+
+        The task monitors the server-side /watch endpoint for takeover events.
+        In the default local-core configuration there is no HTTP client, so
+        ``watch_chat_session`` exits immediately — no overhead in the common case.
+        """
+        if self._chat_watch_task is not None and not self._chat_watch_task.done():
+            self._chat_watch_task.cancel()
+        http_client = getattr(self.kagan_app, "_chat_http_client", None)
+        self._chat_watch_task = asyncio.create_task(
+            watch_chat_session(
+                session_id=session_id,
+                panel=panel,
+                http_client=http_client,
+            ),
+            name=f"kanban-chat-watch:{session_id}",
+        )
 
     def _task_session_options(self, task: Task) -> list[tuple[str, str]]:
         ticket = task.title.strip() or f"Ticket #{task.id[:8]}"
@@ -1937,7 +1945,6 @@ class KanbanScreen(Screen[None]):
         self.call_after_refresh(self._on_screen_resume_deferred)
 
     async def _on_screen_resume_deferred(self) -> None:
-        self._update_no_project_hint()
         await self._reload_tasks()
         self._sync_layout_state()
         self._auto_focus_board()

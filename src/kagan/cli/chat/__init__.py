@@ -45,10 +45,6 @@ from kagan.cli.chat.repl import (
 from kagan.cli.chat.sessions import (
     CHAT_LAST_SESSION_PREFIX,
     CHAT_SCOPE_PREFIX,
-    CHAT_SESSIONS_SETTING_KEY,
-    MAX_STORED_HISTORY,
-    MAX_STORED_MESSAGES,
-    MAX_STORED_SESSIONS,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
@@ -63,10 +59,6 @@ from kagan.cli.chat.sessions import (
 __all__ = [
     "CHAT_LAST_SESSION_PREFIX",
     "CHAT_SCOPE_PREFIX",
-    "CHAT_SESSIONS_SETTING_KEY",
-    "MAX_STORED_HISTORY",
-    "MAX_STORED_MESSAGES",
-    "MAX_STORED_SESSIONS",
     "SLASH_COMMAND_REGISTRY",
     "ChatController",
     "SlashAction",

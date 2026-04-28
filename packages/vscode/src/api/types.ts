@@ -1,26 +1,7 @@
-// Re-export shared consts — canonical definitions live in @kagan/shared-api-client.
-// Import locally so interface declarations and const initialisers below can reference them.
-import { SSE_TYPE } from "@kagan/shared-api-client";
-import type {
-  EventType,
-  Priority,
-  ReviewVerdictState,
-  SessionStatus,
-  TaskStatus,
-} from "@kagan/shared-api-client";
-
-export {
-  EVENT_TYPE,
-  SSE_TYPE,
-  TASK_COLUMNS,
-  type EventType,
-  type SSEType,
-  type TaskStatus,
-  type Priority,
-  type SessionStatus,
-  type ReviewVerdictState,
-} from "@kagan/shared-api-client";
-
+export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
+export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type ReviewVerdictState = "PASS" | "FAIL";
 export type LauncherBackend =
   | "tmux"
   | "nvim"
@@ -29,6 +10,30 @@ export type LauncherBackend =
   | "windsurf"
   | "kiro"
   | "antigravity";
+
+export const EVENT_TYPE = {
+  OUTPUT_CHUNK: "OUTPUT_CHUNK",
+  AGENT_STATUS: "AGENT_STATUS",
+  TOOL_CALL_START: "TOOL_CALL_START",
+  TOOL_CALL_UPDATE: "TOOL_CALL_UPDATE",
+  AGENT_COMPLETED: "AGENT_COMPLETED",
+  AGENT_FAILED: "AGENT_FAILED",
+  PLAN_UPDATE: "PLAN_UPDATE",
+  TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
+  MERGE_COMPLETED: "MERGE_COMPLETED",
+  MERGE_FAILED: "MERGE_FAILED",
+} as const;
+
+export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
+
+export const SSE_TYPE = {
+  TASK_UPDATED: "TASK_UPDATED",
+  SESSION_EVENT: "SESSION_EVENT",
+} as const;
+
+export type SSEType = (typeof SSE_TYPE)[keyof typeof SSE_TYPE];
+
+export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
 
 export const PRIORITY_ICONS: Record<Priority, string> = {
   LOW: "arrow-down",
@@ -57,24 +62,9 @@ export interface ActiveSession {
 }
 
 export interface ReviewVerdict {
-  id: string;
-  criterion_id: string;
-  session_id?: string | null;
+  criterion_index: number;
   verdict: ReviewVerdictState;
   reason: string;
-}
-
-export interface AcceptanceCriterion {
-  id: string;
-  task_id: string;
-  ordinal: number;
-  text: string;
-}
-
-export interface DiffSummary {
-  files_changed: number;
-  additions: number;
-  deletions: number;
 }
 
 export interface WireTask {
@@ -84,7 +74,7 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
-  acceptance_criteria: AcceptanceCriterion[];
+  acceptance_criteria: string[];
   agent_backend: string | null;
   launcher: string | null;
   review_approved: boolean;
@@ -94,7 +84,6 @@ export interface WireTask {
   has_workspace: boolean;
   review_running: boolean;
   active_session: ActiveSession | null;
-  diff_summary?: DiffSummary | null;
 }
 
 export interface WireEvent {
@@ -103,6 +92,29 @@ export interface WireEvent {
   type: EventType | string;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export interface WireTaskSession {
+  id: string;
+  launcher: string | null;
+  status: SessionStatus | string;
+  agent_backend: string;
+  started_at: string;
+}
+
+export interface WireProject {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface WireRepository {
+  id: string;
+  project_id: string;
+  name: string;
+  path: string;
+  default_branch: string;
+  selected: boolean;
 }
 
 export interface DiffFile {
@@ -139,10 +151,6 @@ export interface CreateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
-  /**
-   * Plain text per criterion on input. The server expands these into rows
-   * in the `acceptance_criteria` table; the response uses {@link AcceptanceCriterion}.
-   */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string;
@@ -153,7 +161,6 @@ export interface UpdateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
-  /** See {@link CreateTaskInput.acceptance_criteria} — input is text-only. */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string | null;
@@ -190,6 +197,8 @@ export interface ChatAgentsResponse {
   backends: AgentBackendResponse[];
   default: string;
 }
+
+export type AgentBackend = AgentBackendResponse;
 
 // ── Chat / Orchestrator ───────────────────────────────────────────────────
 
@@ -267,12 +276,6 @@ export interface AnalyticsExport {
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;
-  /**
-   * Inline task payload — present when the server can build it (the common
-   * case). Absent on the cross-process DB-poll fallback path; clients should
-   * fall back to refetching when it's missing.
-   */
-  task?: WireTask;
 }
 
 export interface SSESessionEvent {
@@ -300,3 +303,115 @@ export interface DoctorReportResponse {
   fail_count: number;
   warn_count: number;
 }
+
+// ── Chat multi-client / watch types ──────────────────────────────────────────
+
+export const CHAT_WATCH_TYPE = {
+  CHAT_CHUNK: "CHAT_CHUNK",
+  CHAT_TOOL_START: "CHAT_TOOL_START",
+  CHAT_TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
+  CHAT_DONE: "CHAT_DONE",
+  CHAT_USER_MESSAGE: "CHAT_USER_MESSAGE",
+  CHAT_ASSISTANT_MESSAGE: "CHAT_ASSISTANT_MESSAGE",
+  CHAT_TURN_STARTED: "CHAT_TURN_STARTED",
+  CHAT_TURN_TERMINATED: "CHAT_TURN_TERMINATED",
+  CHAT_SESSION_UPDATED: "CHAT_SESSION_UPDATED",
+  CHAT_ERROR: "CHAT_ERROR",
+} as const;
+
+export type ChatWatchType = (typeof CHAT_WATCH_TYPE)[keyof typeof CHAT_WATCH_TYPE];
+
+/** A persisted chat message returned by GET /api/chat/sessions/{id}/messages */
+export interface ChatMessageDetailResponse {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  terminated_at_user_request: boolean;
+  created_at: string;
+}
+
+/** Body returned by POST /api/chat/{id}/stream when status 409 */
+export interface TurnInProgressResponse {
+  ok: false;
+  error_code: "TURN_IN_PROGRESS";
+  running_since: string;
+  partial_chars: number;
+}
+
+/** Full turn status returned by GET /api/chat/{id}/turn-status */
+export interface TurnStatusResponse {
+  active: boolean;
+  partial_chars: number | null;
+  running_since: string | null;
+}
+
+// Watch event shapes from GET /api/chat/sessions/{id}/watch
+
+export interface ChatWatchChunk {
+  t: "CHAT_CHUNK";
+  content: string;
+  thought?: boolean;
+}
+
+export interface ChatWatchToolStart {
+  t: "CHAT_TOOL_START";
+  tool: string;
+}
+
+export interface ChatWatchToolProgress {
+  t: "CHAT_TOOL_PROGRESS";
+  tool: string;
+  status: string | null;
+}
+
+export interface ChatWatchDone {
+  t: "CHAT_DONE";
+  full_response: string;
+}
+
+export interface ChatWatchUserMessage {
+  t: "CHAT_USER_MESSAGE";
+  message_id: number;
+  content: string;
+}
+
+export interface ChatWatchAssistantMessage {
+  t: "CHAT_ASSISTANT_MESSAGE";
+  message_id: number;
+  content: string;
+  terminated: boolean;
+}
+
+export interface ChatWatchTurnStarted {
+  t: "CHAT_TURN_STARTED";
+  at: string;
+  by_source: string | null;
+}
+
+export interface ChatWatchTurnTerminated {
+  t: "CHAT_TURN_TERMINATED";
+  reason: "user" | "takeover" | string;
+}
+
+export interface ChatWatchSessionUpdated {
+  t: "CHAT_SESSION_UPDATED";
+  session: WireChatSession;
+}
+
+export interface ChatWatchError {
+  t: "CHAT_ERROR";
+  error: string;
+}
+
+export type ChatWatchEvent =
+  | ChatWatchChunk
+  | ChatWatchToolStart
+  | ChatWatchToolProgress
+  | ChatWatchDone
+  | ChatWatchUserMessage
+  | ChatWatchAssistantMessage
+  | ChatWatchTurnStarted
+  | ChatWatchTurnTerminated
+  | ChatWatchSessionUpdated
+  | ChatWatchError;

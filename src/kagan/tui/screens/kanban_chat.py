@@ -1,9 +1,11 @@
+import asyncio
 import contextlib
 import json
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
+from loguru import logger
 
 from kagan.cli.chat import (
     build_orchestrator_prompt,
@@ -15,6 +17,12 @@ from kagan.core import KaganCore
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import KaganError
 from kagan.tui.widgets.chat import ChatPanel
+
+if TYPE_CHECKING:
+    import httpx
+
+_WATCH_RETRY_DELAY = 5.0
+_WATCH_EVENT_TAKEOVER = "CHAT_TURN_TERMINATED"
 
 StreamChunkKind = Literal["assistant", "thought", "note", "user"]
 
@@ -291,3 +299,67 @@ async def stream_task_chat(
 
         payload = event.payload or {}
         apply_task_chat_event(panel, event.event_type, payload)
+
+
+async def watch_chat_session(
+    *,
+    session_id: str,
+    panel: ChatPanel,
+    http_client: "httpx.AsyncClient | None",
+) -> None:
+    """Subscribe to the /watch SSE endpoint for a chat session.
+
+    Delivers a Textual notification when another client takes over the session
+    (``CHAT_TURN_TERMINATED`` with ``reason=="takeover"``).
+
+    If ``http_client`` is ``None`` the function returns immediately — the TUI
+    runs against a local ``KaganCore`` and has no HTTP connection to the server.
+    Retry after ``_WATCH_RETRY_DELAY`` seconds on any connection error.
+    """
+    if http_client is None:
+        return
+
+    watch_url = f"/api/chat/sessions/{session_id}/watch"
+
+    while True:
+        try:
+            async with http_client.stream("GET", watch_url) as response:
+                if response.status_code == 404:
+                    # Endpoint not yet implemented on this server version.
+                    logger.debug(
+                        "Chat watch endpoint not available for session {}; skipping", session_id
+                    )
+                    return
+                response.raise_for_status()
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if not line or line.startswith(":"):
+                        # keepalive or empty line — ignore
+                        continue
+                    if not line.startswith("data: "):
+                        continue
+                    try:
+                        event = json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+                    if (
+                        event.get("t") == _WATCH_EVENT_TAKEOVER
+                        and str(event.get("reason") or "") == "takeover"
+                        and panel.is_mounted
+                    ):
+                        panel.app.notify(
+                            "Session taken over by another client. Your turn was interrupted.",
+                            severity="warning",
+                        )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.debug("Chat watch connection lost for session {}: {}", session_id, exc)
+
+        # Brief pause before retry so we don't spin on persistent errors.
+        try:
+            await asyncio.sleep(_WATCH_RETRY_DELAY)
+        except asyncio.CancelledError:
+            raise

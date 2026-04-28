@@ -36,6 +36,11 @@ def _filter_by_params(
     ]
 
 
+def _optional_days(request: Request) -> int | None:
+    days = request.query_params.get("days")
+    return int(days) if days else None
+
+
 def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/backend-stats", methods=["GET"])
     @require_context(mcp)
@@ -44,7 +49,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
-        stats = await ctx.client.analytics.backend_stats(project_id)
+        stats = await ctx.client.analytics.backend_stats(project_id, days=_optional_days(request))
         return _ok(stats)
 
     @mcp.custom_route("/api/analytics/session-timeline", methods=["GET"])
@@ -104,7 +109,9 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
-        raw_stats = await ctx.client.analytics.backend_by_role_stats(project_id)
+        raw_stats = await ctx.client.analytics.backend_by_role_stats(
+            project_id, days=_optional_days(request)
+        )
         grouped = _group_by_key(raw_stats, "agent_role")
         return _ok(grouped)
 
@@ -115,7 +122,9 @@ def register_analytics_routes(mcp: FastMCP) -> None:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
-        raw_stats = await ctx.client.analytics.backend_by_task_type_stats(project_id)
+        raw_stats = await ctx.client.analytics.backend_by_task_type_stats(
+            project_id, days=_optional_days(request)
+        )
         grouped = _group_by_key(raw_stats, "task_type")
         return _ok(grouped)
 
@@ -128,7 +137,9 @@ def register_analytics_routes(mcp: FastMCP) -> None:
             return _ok([])
         filter_role = request.query_params.get("role")
         filter_task_type = request.query_params.get("task_type")
-        raw_stats = await ctx.client.analytics.backend_role_task_stats(project_id)
+        raw_stats = await ctx.client.analytics.backend_role_task_stats(
+            project_id, days=_optional_days(request)
+        )
         filtered = _filter_by_params(raw_stats, filter_role, filter_task_type)
         return _ok(filtered)
 

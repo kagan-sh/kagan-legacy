@@ -494,6 +494,64 @@ class CoreDriver:
         """Update a configuration setting."""
         await self._ctx.settings.set({f"{section}.{key}": str(value)})
 
+    # -- Chat sessions ------------------------------------------------------
+
+    async def chat_create_session(
+        self,
+        *,
+        source: str = "test",
+        label: str | None = None,
+        agent_backend: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        from kagan.cli.chat.sessions import create_chat_session
+
+        return await create_chat_session(
+            self._ctx,
+            source=source,
+            label=label,
+            agent_backend=agent_backend,
+            project_id=project_id,
+        )
+
+    async def chat_get_session(self, session_id: str) -> dict[str, Any] | None:
+        from kagan.cli.chat.sessions import get_chat_session
+
+        return await get_chat_session(self._ctx, session_id)
+
+    async def chat_list_sessions(
+        self,
+        *,
+        source: str | None = None,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        from kagan.cli.chat.sessions import list_chat_sessions
+
+        return await list_chat_sessions(self._ctx, source=source, project_id=project_id)
+
+    async def chat_delete_session(self, session_id: str) -> bool:
+        from kagan.cli.chat.sessions import delete_chat_session
+
+        return await delete_chat_session(self._ctx, session_id)
+
+    async def chat_append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        *,
+        terminated: bool = False,
+    ) -> Any:
+        from kagan.cli.chat.sessions import append_chat_message
+
+        return await append_chat_message(
+            self._ctx,
+            session_id,
+            role,
+            content,
+            terminated=terminated,
+        )
+
     # -- Audit --------------------------------------------------------------
 
     async def audit_list(

@@ -141,8 +141,11 @@ export function activate(context: vscode.ExtensionContext): void {
     sse.setProtocol(nextProtocol);
     sse.setToken(nextToken || undefined);
 
+    const wasStarted = sse.isStarted();
     sse.stop();
-    sse.start();
+    if (wasStarted) {
+      sse.start();
+    }
   });
 
   context.subscriptions.push(
@@ -173,7 +176,11 @@ export function activate(context: vscode.ExtensionContext): void {
   void (async () => {
     await doctorStatus.runPreflight();
 
-    if (vscode.workspace.getConfiguration("kagan").get<boolean>("autoConnect", true)) {
+    const hasKaganContext = await workspaceHasKaganContext();
+    if (
+      hasKaganContext &&
+      vscode.workspace.getConfiguration("kagan").get<boolean>("autoConnect", true)
+    ) {
       void connect(
         client,
         sse,
@@ -185,7 +192,9 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }
 
-    void detectAttachContext(client, sse);
+    if (hasKaganContext) {
+      void detectAttachContext(client, sse);
+    }
   })();
 
   function getServerLaunchSettings(): { autoStartServer: boolean; serverCommand: string } {
@@ -259,6 +268,22 @@ async function refreshCounts(client: KaganClient, statusBar: StatusBar): Promise
     const message = error instanceof Error ? error.message : String(error);
     statusBar.showError(message);
   }
+}
+
+async function workspaceHasKaganContext(): Promise<boolean> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return false;
+
+  for (const folder of folders) {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.joinPath(folder.uri, ".kagan"));
+      return true;
+    } catch {
+      // Keep checking remaining workspace folders.
+    }
+  }
+
+  return false;
 }
 
 async function detectAttachContext(client: KaganClient, sse: SSEStream): Promise<void> {

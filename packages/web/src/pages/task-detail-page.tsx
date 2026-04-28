@@ -9,12 +9,15 @@ import {
     MoveRight,
     XCircle,
 } from "lucide-react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@/lib/api/types";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import {
+    clearRightRailDismissalAtom,
+    rightRailDismissalKey,
+    rightRailDismissalsAtom,
     rightRailChatSessionIdAtom,
     rightRailModeAtom,
     rightRailTaskIdAtom,
@@ -69,10 +72,11 @@ export function Component() {
     const setRailMode = useSetAtom(rightRailModeAtom);
     const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
     const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
+    const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
+    const rightRailDismissals = useAtomValue(rightRailDismissalsAtom);
     const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
-    const [userClosedRail, setUserClosedRail] = useState(false);
 
     const [worktreePath, setWorktreePath] = useState<string | null>(null);
     const [attachedLauncher, setAttachedLauncher] = useState<string | null>(null);
@@ -110,7 +114,9 @@ export function Component() {
     useEffect(() => {
         if (!id || !task) return;
         if (task.active_session?.launcher) return;
-        if (userClosedRail) return;
+        if (rightRailDismissals[rightRailDismissalKey({ kind: "task", id })]) {
+            return;
+        }
         if (task.active_session || task.status === "IN_PROGRESS") {
             setRailTaskId(id);
             setRailChatSessionId(null);
@@ -119,9 +125,13 @@ export function Component() {
     }, [
         id,
         task?.active_session?.id,
+        task?.active_session?.launcher,
         task?.status,
-        userClosedRail,
-    ]); // eslint-disable-line react-hooks/exhaustive-deps
+        rightRailDismissals,
+        setRailChatSessionId,
+        setRailMode,
+        setRailTaskId,
+    ]);
 
     const displayTask = task;
 
@@ -180,11 +190,17 @@ export function Component() {
 
     const handleOpenTaskChat = useCallback(() => {
         if (!task) return;
-        setUserClosedRail(false);
+        clearRightRailDismissal({ kind: "task", id: task.id });
         setRailTaskId(task.id);
         setRailChatSessionId(null);
         setRailMode("chat-right");
-    }, [setRailChatSessionId, setRailMode, setRailTaskId, task]);
+    }, [
+        clearRightRailDismissal,
+        setRailChatSessionId,
+        setRailMode,
+        setRailTaskId,
+        task,
+    ]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {

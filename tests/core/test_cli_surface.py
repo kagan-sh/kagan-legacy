@@ -437,6 +437,40 @@ def test_chat_prompt_single_shot_prints_response(monkeypatch, tmp_path: Path) ->
     assert "project" in result.output.lower() or "hello" in result.output
 
 
+def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, str | None] = {}
+
+    async def _fake_run_chat_async(
+        *,
+        prompt: str | None = None,
+        session_id: str | None = None,
+        agent: str | None = None,
+    ) -> None:
+        captured["prompt"] = prompt
+        captured["session_id"] = session_id
+        captured["agent"] = agent
+
+    monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chat", "fix the bug"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert captured == {"prompt": "fix the bug", "session_id": None, "agent": None}
+
+
+def test_chat_rejects_positional_prompt_with_prompt_option(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["chat", "fix the bug", "--prompt", "other"],
+        env=_runner_env(tmp_path),
+    )
+
+    assert result.exit_code != 0
+    assert "Use either PROMPT or --prompt" in result.output
+
+
 def test_chat_ctrl_c_exits_one(monkeypatch, tmp_path: Path) -> None:
     def _raise_keyboard_interrupt(*_args, **_kwargs):
         raise KeyboardInterrupt

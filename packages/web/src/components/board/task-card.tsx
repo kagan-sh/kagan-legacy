@@ -106,11 +106,15 @@ function TaskCardBody({
                     {task.title}
                 </p>
                 {task.active_session ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[color:var(--foreground)]" data-testid="live-indicator">
+                    <span
+                        className="inline-flex shrink-0 items-center gap-1 font-code text-[9px] uppercase tracking-[0.14em] text-[color:var(--kagan-rail-warning)]"
+                        data-testid="live-indicator"
+                    >
                         <span
-                            className="size-1.5 animate-pulse rounded-full bg-[var(--primary)]"
+                            className="size-1.5 animate-pulse rounded-full bg-[var(--kagan-rail-warning)]"
                             aria-hidden="true"
                         />
+                        Live
                     </span>
                 ) : null}
             </div>

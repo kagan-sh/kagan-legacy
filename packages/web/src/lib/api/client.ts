@@ -6,6 +6,7 @@ import type {
   BackendStats,
   BackendTaskRecommendation,
   ChatAgentsResponse,
+  ChatMessageDetailResponse,
   ClientPresence,
   CombinedStats,
   CreateChatSessionInput,
@@ -19,12 +20,15 @@ import type {
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
+  RoleStats,
   SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
   TaskStatus,
+  TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
+  TurnStatusResponse,
   UpdateTaskInput,
   WorkflowResolvedSettings,
   WireChatSession,
@@ -104,8 +108,8 @@ export class KaganApiClient {
 
   // -- Core request ---------------------------------------------------------
 
-  /** Perform the HTTP fetch and unwrap the WireEnvelope. Throws ApiError on failure. */
-  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  /** Perform the actual HTTP fetch and unwrap the WireEnvelope. Throws ApiError on failure. */
+  private async _doRequest<T>(path: string, options: RequestOptions): Promise<T> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -135,6 +139,14 @@ export class KaganApiClient {
       throw new ApiError(response.status, 'Response missing data');
     }
     return envelope.data as T;
+  }
+
+  /**
+   * All server responses are wrapped in {@link WireEnvelope}.
+   * This method unwraps the envelope, throwing on errors.
+   */
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    return this._doRequest<T>(path, options);
   }
 
   // -- Tasks ----------------------------------------------------------------
@@ -199,6 +211,10 @@ export class KaganApiClient {
     });
   }
 
+  async runReview(taskId: string, options?: { agent_backend?: string }): Promise<WireTask> {
+    return this.runTask(taskId, options);
+  }
+
   /** POST /api/tasks/:taskId/cancel — Cancel/stop a running session */
   async cancelTask(taskId: string): Promise<WireTask> {
     return this.request<WireTask>(`/api/tasks/${taskId}/cancel`, {
@@ -253,17 +269,37 @@ export class KaganApiClient {
   }
 
   async getDiffStats(taskId: string): Promise<DiffStats> {
-    const stats = await this.request<{
+    const parseStats = (stats: {
       files_changed?: number;
       files?: number;
       insertions?: number;
       deletions?: number;
-    }>(`/api/tasks/${taskId}/diff`);
-    return {
+    }): DiffStats => ({
       files_changed: stats.files_changed ?? stats.files ?? 0,
       insertions: stats.insertions ?? 0,
       deletions: stats.deletions ?? 0,
-    };
+    });
+
+    try {
+      const stats = await this.request<{
+        files_changed?: number;
+        files?: number;
+        insertions?: number;
+        deletions?: number;
+      }>(`/api/tasks/${taskId}/diff/stats`);
+      return parseStats(stats);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        const stats = await this.request<{
+          files_changed?: number;
+          files?: number;
+          insertions?: number;
+          deletions?: number;
+        }>(`/api/tasks/${taskId}/diff`);
+        return parseStats(stats);
+      }
+      throw error;
+    }
   }
 
   async getDiffFiles(taskId: string): Promise<DiffFile[]> {
@@ -430,33 +466,13 @@ export class KaganApiClient {
     });
   }
 
-  /**
-   * GET /health — auth-exempt, returns server status and package version.
-   * The health endpoint returns plain JSON (not a WireEnvelope), so this
-   * uses `_rawRequest` rather than `request` (no WireEnvelope).
-   */
+  /** GET /health — auth-exempt, returns server status and package version. */
   async getHealth(): Promise<{ status: string; version: string }> {
-    return this._rawRequest<{ status: string; version: string }>('/health', 'Health check failed');
-  }
-
-  /** POST /api/chat/:sessionId/interrupt — signal the server to stop the current turn. */
-  async interruptChatSession(sessionId: string): Promise<{ session_id: string; interrupted: boolean }> {
-    return this.request<{ session_id: string; interrupted: boolean }>(
-      `/api/chat/${sessionId}/interrupt`,
-      { method: 'POST' },
-    );
-  }
-
-  /**
-   * Perform a raw fetch for endpoints that return plain JSON (no WireEnvelope).
-   * Auth-exempt paths (e.g. /health) use this instead of `request`.
-   */
-  private async _rawRequest<T>(path: string, errorMessage: string): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetch(`${this.baseUrl}/health`, {
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new ApiError(response.status, errorMessage);
-    return response.json() as Promise<T>;
+    if (!response.ok) throw new ApiError(response.status, 'Health check failed');
+    return response.json() as Promise<{ status: string; version: string }>;
   }
 
   /** GET /api/preflight?agent_backend=... */
@@ -508,8 +524,22 @@ export class KaganApiClient {
   }
 
   /** GET /api/chat/:sessionId/turn-status — check if a turn is still running */
-  async getTurnStatus(sessionId: string): Promise<{ active: boolean }> {
-    return this.request<{ active: boolean }>(`/api/chat/${sessionId}/turn-status`);
+  async getTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
+    return this.request<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
+  }
+
+  /** POST /api/chat/:sessionId/interrupt — cancel the running turn */
+  async interruptChatTurn(sessionId: string, reason: 'user' | 'takeover'): Promise<void> {
+    await this.request(`/api/chat/${sessionId}/interrupt`, {
+      method: 'POST',
+      body: { reason },
+    });
+  }
+
+  /** GET /api/chat/sessions/:sessionId/messages?after_id=N — cursor-tail for missed messages */
+  async getChatMessages(sessionId: string, afterId?: number): Promise<ChatMessageDetailResponse[]> {
+    const query = afterId !== undefined ? `?after_id=${afterId}` : '';
+    return this.request<ChatMessageDetailResponse[]>(`/api/chat/sessions/${sessionId}/messages${query}`);
   }
 
   /** GET /api/chat/agents */
@@ -530,8 +560,9 @@ export class KaganApiClient {
   // -- Analytics -------------------------------------------------------------
 
   /** GET /api/analytics/backend-stats */
-  async getBackendStats(): Promise<BackendStats[]> {
-    return this.request<BackendStats[]>('/api/analytics/backend-stats');
+  async getBackendStats(params?: { days?: number }): Promise<BackendStats[]> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<BackendStats[]>(`/api/analytics/backend-stats${query}`);
   }
 
   /** GET /api/analytics/session-timeline?days=... */
@@ -552,20 +583,23 @@ export class KaganApiClient {
   }
 
   /** GET /api/analytics/by-role - Returns backend stats grouped by agent role */
-  async getAnalyticsByRole(): Promise<AnalyticsByRole> {
-    return this.request<AnalyticsByRole>('/api/analytics/by-role');
+  async getAnalyticsByRole(params?: { days?: number }): Promise<AnalyticsByRole> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<AnalyticsByRole>(`/api/analytics/by-role${query}`);
   }
 
   /** GET /api/analytics/by-task-type - Returns backend stats grouped by task type */
-  async getAnalyticsByTaskType(): Promise<AnalyticsByTaskType> {
-    return this.request<AnalyticsByTaskType>('/api/analytics/by-task-type');
+  async getAnalyticsByTaskType(params?: { days?: number }): Promise<AnalyticsByTaskType> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<AnalyticsByTaskType>(`/api/analytics/by-task-type${query}`);
   }
 
   /** GET /api/analytics/by-role-and-task-type - Returns filtered backend stats */
-  async getAnalyticsByRoleAndTaskType(params?: { role?: string; task_type?: string }): Promise<CombinedStats[]> {
+  async getAnalyticsByRoleAndTaskType(params?: { role?: string; task_type?: string; days?: number }): Promise<CombinedStats[]> {
     const qs = new URLSearchParams();
     if (params?.role) qs.set('role', params.role);
     if (params?.task_type) qs.set('task_type', params.task_type);
+    if (params?.days) qs.set('days', String(params.days));
     const query = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<CombinedStats[]>(`/api/analytics/by-role-and-task-type${query}`);
   }
@@ -577,6 +611,23 @@ export class KaganApiClient {
     if (params.description) qs.set('description', params.description);
     if (params.role) qs.set('role', params.role);
     return this.request<BackendTaskRecommendation>(`/api/analytics/recommend-for-task?${qs.toString()}`);
+  }
+
+  /** GET /api/analytics/by-role (legacy) */
+  async getStatsByRole(): Promise<RoleStats[]> {
+    const grouped = await this.getAnalyticsByRole();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/by-task-type (legacy) */
+  async getStatsByTaskType(): Promise<TaskTypeStats[]> {
+    const grouped = await this.getAnalyticsByTaskType();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/combined (legacy) */
+  async getCombinedStats(): Promise<CombinedStats[]> {
+    return this.getAnalyticsByRoleAndTaskType();
   }
 
   /** GET /api/plugins */

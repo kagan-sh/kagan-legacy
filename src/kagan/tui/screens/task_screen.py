@@ -1534,6 +1534,7 @@ class TaskScreen(Screen[None]):
         widget.update(
             build_merge_readiness_text(
                 self._task_model,
+                human_approved=self._review_approved,
                 last_merge_blocker=self._last_merge_blocker,
             )
         )

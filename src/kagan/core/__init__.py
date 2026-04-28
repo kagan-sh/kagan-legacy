@@ -139,6 +139,8 @@ from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME, get_system_git_i
 from kagan.core.models import (
     AcceptanceCriterion,
     AuditEntry,
+    ChatMessage,
+    ChatSession,
     Project,
     Repository,
     ReviewVerdict,
@@ -177,6 +179,8 @@ __all__ = [
     "BackendCommand",
     "BackendSpec",
     "BranchRefStrategy",
+    "ChatMessage",
+    "ChatSession",
     "CheckStatus",
     "ConfigurationError",
     "DBWatcher",

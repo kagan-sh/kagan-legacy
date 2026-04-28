@@ -45,6 +45,41 @@ if (typeof window !== 'undefined' && !('matchMedia' in window)) {
   });
 }
 
+function createStorageMock(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => {
+      values.set(key, String(value));
+    },
+  };
+}
+
+let localStorageAvailable = false;
+try {
+  localStorageAvailable = typeof window.localStorage?.getItem === 'function';
+} catch {
+  localStorageAvailable = false;
+}
+
+if (typeof window !== 'undefined' && !localStorageAvailable) {
+  const storage = createStorageMock();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: storage,
+  });
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: storage,
+  });
+}
+
 // Suppress jsdom HTMLCanvasElement.getContext() warnings
 HTMLCanvasElement.prototype.getContext = (() => null) as never;
 

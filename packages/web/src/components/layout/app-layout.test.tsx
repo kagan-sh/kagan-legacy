@@ -4,10 +4,10 @@ import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { Component as AppLayout } from '@/components/layout/app-layout';
 import {
-  commandPaletteOpenAtom,
+  rightRailDismissalKey,
+  rightRailDismissalsAtom,
   rightRailModeAtom,
   rightRailTaskIdAtom,
-  sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
 
 vi.mock('@/lib/hooks/use-event-stream', () => ({
@@ -42,14 +42,6 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 describe('AppLayout', () => {
-  it('Cmd+Shift+P sets commandPaletteOpenAtom to true', async () => {
-    const store = createStore();
-    renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
-
-    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
-  });
-
   it('Space does not cycle chat rail; Escape closes it', async () => {
     const store = createStore();
     store.set(rightRailModeAtom, 'chat-right');
@@ -64,40 +56,23 @@ describe('AppLayout', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(store.get(rightRailModeAtom)).toBe('none');
+    expect(store.get(rightRailDismissalsAtom)).toEqual({
+      [rightRailDismissalKey({ kind: 'task', id: 'task-123' })]: true,
+    });
   });
 
-  it('Mod+I cycles chat-right → chat-bottom → closed (no fullscreen)', async () => {
+  it('records task dismissal when the chat panel close button is used', async () => {
     const store = createStore();
+    store.set(rightRailModeAtom, 'chat-right');
     store.set(rightRailTaskIdAtom, 'task-456');
 
     renderWithProviders(<AppLayout />, { store, initialEntries: ['/task/task-456'] });
 
-    // Mod+I when closed → open chat-right
-    fireEvent.keyDown(window, { key: 'i', ctrlKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-right');
+    fireEvent.click(await screen.findByRole('button', { name: 'Close chat' }));
 
-    // Mod+I when chat-right → switch to chat-bottom
-    fireEvent.keyDown(window, { key: 'i', ctrlKey: true });
-    expect(store.get(rightRailModeAtom)).toBe('chat-bottom');
-
-    // Mod+I when chat-bottom → close
-    fireEvent.keyDown(window, { key: 'i', ctrlKey: true });
     expect(store.get(rightRailModeAtom)).toBe('none');
-  });
-
-  it('uses canonical global shortcuts and disables removed legacy aliases', async () => {
-    const store = createStore();
-    renderWithProviders(<AppLayout />, { store, initialEntries: ['/board'] });
-
-    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
-    expect(store.get(commandPaletteOpenAtom)).toBe(true);
-
-    store.set(commandPaletteOpenAtom, false);
-    fireEvent.keyDown(window, { key: 'k', ctrlKey: true, shiftKey: true });
-    expect(store.get(sessionPickerOpenAtom)).toBe(true);
-
-    store.set(sessionPickerOpenAtom, false);
-    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
-    expect(store.get(sessionPickerOpenAtom)).toBe(false);
+    expect(store.get(rightRailDismissalsAtom)).toEqual({
+      [rightRailDismissalKey({ kind: 'task', id: 'task-456' })]: true,
+    });
   });
 });

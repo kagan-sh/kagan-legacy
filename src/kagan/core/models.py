@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import sqlalchemy.exc
 from pydantic import field_serializer
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Boolean, Column, Index
 from sqlmodel import Field, Relationship, SQLModel
 
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
@@ -208,9 +208,54 @@ class AuditEntry(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class ChatSession(SQLModel, table=True):
+    __tablename__ = "chat_sessions"  # type: ignore[assignment]
+    __table_args__ = (
+        Index("ix_chat_sessions_project_id_updated_at", "project_id", "updated_at"),
+    )
+
+    id: str = Field(default_factory=_new_id, primary_key=True)
+    label: str
+    source: str
+    agent_backend: str | None = Field(default=None)
+    project_id: str | None = Field(default=None, foreign_key="projects.id", index=True)
+    created_at: datetime = Field(default_factory=_utc_now, index=True)
+    updated_at: datetime = Field(default_factory=_utc_now, index=True)
+
+    messages: list["ChatMessage"] = Relationship(
+        back_populates="session",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "lazy": "select",
+            "order_by": "ChatMessage.id",
+        },
+    )
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_messages"  # type: ignore[assignment]
+    __table_args__ = (
+        Index("ix_chat_messages_session_id_id", "session_id", "id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)  # autoincrement
+    session_id: str = Field(foreign_key="chat_sessions.id", index=True)
+    role: str  # "user" | "assistant" | "system"
+    content: str
+    terminated_at_user_request: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="0"),
+    )
+    created_at: datetime = Field(default_factory=_utc_now, index=True)
+
+    session: ChatSession | None = Relationship(back_populates="messages")
+
+
 __all__ = [
     "AcceptanceCriterion",
     "AuditEntry",
+    "ChatMessage",
+    "ChatSession",
     "Project",
     "Repository",
     "ReviewVerdict",

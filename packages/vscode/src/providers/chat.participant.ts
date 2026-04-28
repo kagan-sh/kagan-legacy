@@ -3,10 +3,11 @@
 
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
+import { ApiError } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
-import { SSE_TYPE } from "../api/types.js";
+import { SSE_TYPE, CHAT_WATCH_TYPE } from "../api/types.js";
 import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
+import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
 import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 
 // ── Registration ───────────────────────────────────────────────────────────
@@ -17,6 +18,58 @@ let sessionCreating: Promise<string> | null = null;
 
 /** Task ID being watched — enables follow-up messages. */
 let watchingTaskId: string | null = null;
+
+/** Dispose function for the active /watch SSE subscription. */
+let watchUnsubscribe: (() => void) | null = null;
+
+/** Buffer for chunks from another client's turn (cleared on CHAT_DONE / CHAT_ASSISTANT_MESSAGE). */
+let remoteChunkBuffer = "";
+
+function stopWatchSubscription(): void {
+  if (watchUnsubscribe) {
+    watchUnsubscribe();
+    watchUnsubscribe = null;
+  }
+  remoteChunkBuffer = "";
+}
+
+function subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
+  stopWatchSubscription();
+  watchUnsubscribe = client.watchChatSession(
+    sessionId,
+    (event: ChatWatchEvent) => handleWatchEvent(event),
+    (err: Error) => console.warn("[kagan] /watch error:", err.message),
+  );
+}
+
+function handleWatchEvent(event: ChatWatchEvent): void {
+  switch (event.t) {
+    case CHAT_WATCH_TYPE.CHAT_CHUNK:
+      remoteChunkBuffer += event.content;
+      break;
+    case CHAT_WATCH_TYPE.CHAT_DONE:
+      remoteChunkBuffer = "";
+      break;
+    case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE:
+      if (event.terminated) {
+        const preview = event.content.slice(0, 80).replace(/\n/g, " ");
+        void vscode.window.showInformationMessage(
+          `Kagan: assistant response was interrupted — "${preview}..."`,
+        );
+      }
+      remoteChunkBuffer = "";
+      break;
+    case CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED:
+      if (event.reason === "takeover") {
+        void vscode.window.showInformationMessage(
+          "This Kagan chat session was taken over by another client.",
+        );
+      }
+      break;
+    default:
+      break;
+  }
+}
 
 async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatContext): Promise<string> {
   if (activeChatSessionId && !isNewConversation(chatCtx)) return activeChatSessionId;
@@ -69,7 +122,7 @@ export function registerChatParticipant(
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
   });
 
-  context.subscriptions.push(participant, openChat);
+  context.subscriptions.push(participant, openChat, { dispose: stopWatchSubscription });
 }
 
 // ── Request handler ────────────────────────────────────────────────────────
@@ -149,6 +202,7 @@ async function handleChat(
 
   stream.progress("Starting orchestrator session...");
   activeChatSessionId = await getOrCreateSession(client, chatCtx);
+  subscribeToSessionWatch(client, activeChatSessionId);
 
   stream.progress("Thinking...");
 
@@ -160,6 +214,26 @@ async function handleChat(
     await streamChatResponse(response, stream, abort.signal);
   } catch (err) {
     if (abort.signal.aborted) return;
+    if (err instanceof ApiError && err.errorCode === "TURN_IN_PROGRESS") {
+      const choice = await vscode.window.showWarningMessage(
+        "A turn is already running in this session. Interrupt it?",
+        "Interrupt & take over",
+        "Cancel",
+      );
+      if (choice === "Interrupt & take over") {
+        await client.interruptChatTurn(activeChatSessionId, "takeover");
+        // Small delay so the server processes the interrupt before retry
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        try {
+          const retryResponse = await client.chatStream(activeChatSessionId, text, abort.signal);
+          await streamChatResponse(retryResponse, stream, abort.signal);
+          return;
+        } catch {
+          // fall through to generic error
+        }
+      }
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`\n\n**Error:** ${message}\n`);
     // Session may be stale — clear it so next turn creates a fresh one

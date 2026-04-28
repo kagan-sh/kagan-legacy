@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.12 (2026-04-28)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Guard _inspector_visible against NoMatches before mount
+  ([`37576d0`](https://github.com/kagan-sh/kagan/commit/37576d044b3937b1a8feae116b7582716ba20f7b))
+
+
+
+
+
 ## v0.19.0-beta.11 (2026-04-28)
 
 

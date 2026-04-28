@@ -22,6 +22,9 @@ let watchingTaskId: string | null = null;
 /** Dispose function for the active /watch SSE subscription. */
 let watchUnsubscribe: (() => void) | null = null;
 
+/** Session ID the current /watch subscription is open for. */
+let watchedSessionId: string | null = null;
+
 /** Buffer for chunks from another client's turn (cleared on CHAT_DONE / CHAT_ASSISTANT_MESSAGE). */
 let remoteChunkBuffer = "";
 
@@ -30,11 +33,16 @@ function stopWatchSubscription(): void {
     watchUnsubscribe();
     watchUnsubscribe = null;
   }
+  watchedSessionId = null;
   remoteChunkBuffer = "";
 }
 
 function subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
+  // Skip if already watching this session — avoids tearing down and reopening
+  // the SSE connection on every chat turn for the same session.
+  if (watchedSessionId === sessionId && watchUnsubscribe) return;
   stopWatchSubscription();
+  watchedSessionId = sessionId;
   watchUnsubscribe = client.watchChatSession(
     sessionId,
     (event: ChatWatchEvent) => handleWatchEvent(event),

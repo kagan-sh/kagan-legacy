@@ -114,6 +114,15 @@ export interface ChatMessageResponse {
   content: string;
 }
 
+export interface ChatMessageDetailResponse {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  terminated_at_user_request: boolean;
+  created_at: string;
+}
+
 export interface ChatSessionSummaryResponse {
   id: string;
   label: string;
@@ -133,6 +142,15 @@ export interface ChatSessionResponse {
   updated_at: string;
   message_count: number;
   messages: ChatMessageResponse[];
+}
+
+export interface TurnInProgressResponse {
+  ok?: boolean;
+  data?: null;
+  error?: string;
+  error_code?: string;
+  running_since?: string | null;
+  partial_chars?: number;
 }
 
 export interface DoctorCheckResponse {

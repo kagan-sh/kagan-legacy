@@ -49,6 +49,10 @@ export function useChatWatch(
   // Sentinel: set to true when the effect cleans up so the reconnect loop exits.
   const unmountedRef = useRef(false);
 
+  // Pending reconnect timer — must be cancelled on cleanup so a stale timer
+  // from a previous sessionId doesn't fire after the effect re-runs.
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const connect = useCallback(async () => {
     if (!sessionId || unmountedRef.current) return;
 
@@ -127,7 +131,8 @@ export function useChatWatch(
     if (!unmountedRef.current) {
       const delay = Math.min(BACKOFF_BASE_MS * 2 ** attemptRef.current, BACKOFF_MAX_MS);
       attemptRef.current += 1;
-      setTimeout(() => {
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
         if (!unmountedRef.current) {
           void connect();
         }
@@ -146,6 +151,10 @@ export function useChatWatch(
 
     return () => {
       unmountedRef.current = true;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       abortRef.current?.abort();
       abortRef.current = null;
     };

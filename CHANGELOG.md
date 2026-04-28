@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.15 (2026-04-28)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Guard _sync_branch query_one(KaganHeader) against NoMatches
+  ([`9447785`](https://github.com/kagan-sh/kagan/commit/94477858f37a09035d3de6f5ef500c93007f510b))
+
+
+
+
+
 ## v0.19.0-beta.14 (2026-04-28)
 
 

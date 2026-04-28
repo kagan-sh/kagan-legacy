@@ -17,7 +17,7 @@ test.describe('Board', () => {
     await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
   });
 
-  test('supports desktop inspect and peek flow', async ({ page }) => {
+  test('supports desktop inspect and task-open flow', async ({ page }) => {
     const title = `Inspector parity ${Date.now()}`;
 
     await page.getByRole('button', { name: 'New', exact: true }).click();
@@ -30,13 +30,6 @@ test.describe('Board', () => {
     await taskCard.click();
     await expect(page.getByText('Task Inspector', { exact: true })).toBeVisible();
     await expect(page.getByText('Open task', { exact: true })).toBeVisible();
-
-    await page.keyboard.press('p');
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByText('Quick task preview for board-first triage and keyboard-driven inspection.')).toBeVisible();
-
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toBeHidden();
 
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/task\//);
@@ -52,8 +45,8 @@ test.describe('Board', () => {
     const taskCard = page.getByRole('button', { name: title });
     await expect(taskCard).toBeVisible();
 
-    await taskCard.click();
-    await page.keyboard.press('x');
+    await taskCard.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toBeVisible();

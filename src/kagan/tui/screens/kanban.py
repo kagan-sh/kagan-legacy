@@ -201,20 +201,7 @@ class KanbanScreen(Screen[None]):
 
     async def on_mount(self) -> None:
         self._refresh_header()
-        panel = self.query_one(ChatPanel)
-        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
-        await self.kagan_app.orchestrator_sessions.ensure_loaded()
-        await self._load_orchestrator_panel_state(panel)
-        panel.set_mode_title("Orchestrator")
-        panel.set_session_kind(SessionKind.ORCHESTRATOR)
-        self._set_tutorial_visible(False)
-        self._chat_auto_opened = False
-        self._update_search_bar_state()
-        self._check_screen_size()
-        self._sync_layout_state()
-        self._update_hint_bar()
-        self._update_review_queue_hint()
-        self.call_after_refresh(self._focus_default_widget)
+        self.call_after_refresh(self._on_mount_deferred)
         self.run_worker(
             self._bootstrap_initial_state(),
             group="kanban-bootstrap",
@@ -233,6 +220,25 @@ class KanbanScreen(Screen[None]):
             exclusive=True,
             exit_on_error=False,
         )
+
+    async def _on_mount_deferred(self) -> None:
+        """Deferred on_mount work — runs after the first refresh so all child
+        widgets are guaranteed to be in the DOM (mirrors the on_screen_resume
+        call_after_refresh pattern that fixed xdist NoMatches races in #122)."""
+        panel = self.query_one(ChatPanel)
+        panel.set_overlay_shortcuts(split="Space", fullscreen="Ctrl+F")
+        await self.kagan_app.orchestrator_sessions.ensure_loaded()
+        await self._load_orchestrator_panel_state(panel)
+        panel.set_mode_title("Orchestrator")
+        panel.set_session_kind(SessionKind.ORCHESTRATOR)
+        self._set_tutorial_visible(False)
+        self._chat_auto_opened = False
+        self._update_search_bar_state()
+        self._check_screen_size()
+        self._sync_layout_state()
+        self._update_hint_bar()
+        self._update_review_queue_hint()
+        self._focus_default_widget()
 
     async def _maybe_show_first_boot_tutorial(self) -> None:
         settings = await self.kagan_app.core.settings.get()

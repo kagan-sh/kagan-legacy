@@ -564,7 +564,10 @@ class KanbanScreen(Screen[None]):
         return self.query_one(TaskInspector)
 
     def _inspector_visible(self) -> bool:
-        return self._inspector().is_open
+        try:
+            return self._inspector().is_open
+        except NoMatches:
+            return False
 
     def _show_inspector_for_selected(self) -> None:
         task = self._selected_task()

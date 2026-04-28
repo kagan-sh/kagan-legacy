@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
-    from starlette.responses import JSONResponse, Response
+    from starlette.responses import Response
 
 # ---------------------------------------------------------------------------
 # In-process pub/sub state
@@ -205,7 +205,10 @@ async def _run_chat_stream(
         session["agent_backend"] = backend
         await save_chat_session(ctx.client, session)
 
-        _broadcast(session_id, {"t": "CHAT_USER_MESSAGE", "message_id": user_msg_id, "content": text})
+        _broadcast(
+            session_id,
+            {"t": "CHAT_USER_MESSAGE", "message_id": user_msg_id, "content": text},
+        )
 
         started_at = datetime.now(UTC)
         _chat_turn_started_at[session_id] = started_at

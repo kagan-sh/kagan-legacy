@@ -35,6 +35,7 @@ from kagan.tui.keybindings import (
     get_keys_for_action,
 )
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
 from kagan.tui.screens.kanban_chat import (
     apply_task_chat_event,
@@ -44,7 +45,6 @@ from kagan.tui.screens.kanban_chat import (
     send_orchestrator_message as send_chat_message,
 )
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
-from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
 from kagan.tui.widgets.board import BoardView

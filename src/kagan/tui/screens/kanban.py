@@ -35,18 +35,17 @@ from kagan.tui.keybindings import (
     get_keys_for_action,
 )
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
 from kagan.tui.screens.kanban_chat import (
     apply_task_chat_event,
+    watch_chat_session,
 )
 from kagan.tui.screens.kanban_chat import (
     send_orchestrator_message as send_chat_message,
 )
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
-from kagan.tui.screens.task_editor_modal import (
-    TaskDeleteConfirmModal,
-    TaskEditorModal,
-)
+from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
 from kagan.tui.widgets.board import BoardView
 from kagan.tui.widgets.card import TaskCard
@@ -168,11 +167,13 @@ class KanbanScreen(Screen[None]):
         self._chat_session_switch_token = 0
         self._chat_message_task: asyncio.Task[None] | None = None
         self._chat_stream_task: asyncio.Task[None] | None = None
+        self._chat_watch_task: asyncio.Task[None] | None = None
         self._watcher: DBWatcher | None = None
         self._watcher_reload_task: asyncio.Task[None] | None = None
         self._branch_sync_task: asyncio.Task[None] | None = None
         self._inline_action_message: str | None = None
         self._session_summary_by_task: dict[str, _TaskSessionSummary] = {}
+        self._review_approved_by_task: dict[str, bool] = {}
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -298,6 +299,11 @@ class KanbanScreen(Screen[None]):
             self._branch_sync_task = None
 
     async def on_unmount(self) -> None:
+        if self._chat_watch_task is not None:
+            self._chat_watch_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._chat_watch_task
+            self._chat_watch_task = None
         if self._watcher_reload_task is not None:
             self._watcher_reload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -380,7 +386,10 @@ class KanbanScreen(Screen[None]):
         self._update_review_queue_hint()
 
     async def _reload_tasks(self) -> None:
-        tasks = await self.kagan_app.core.tasks.list(repo_id=self.kagan_app.selected_repo_id)
+        if self.kagan_app.project is None:
+            tasks = []
+        else:
+            tasks = await self.kagan_app.core.tasks.list(repo_id=self.kagan_app.selected_repo_id)
         if not self.is_mounted:
             return
         self._all_tasks = sorted(
@@ -388,6 +397,7 @@ class KanbanScreen(Screen[None]):
             key=lambda task: (str(getattr(task, "created_at", "") or ""), task.id),
         )
         self._session_summary_by_task = await self._collect_session_summaries(self._all_tasks)
+        self._review_approved_by_task = await self._collect_review_approvals(self._all_tasks)
         self._apply_filter()
 
     async def _collect_session_summaries(self, tasks: list[Task]) -> dict[str, _TaskSessionSummary]:
@@ -408,6 +418,23 @@ class KanbanScreen(Screen[None]):
 
         return summaries
 
+    async def _collect_review_approvals(self, tasks: list[Task]) -> dict[str, bool]:
+        """Fetch review approval state for all tasks that are in REVIEW status."""
+        review_tasks = [t for t in tasks if t.status is TaskStatus.REVIEW]
+        if not review_tasks:
+            return {}
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(self.kagan_app.core.reviews.is_approved, t.id)
+                for t in review_tasks
+            ),
+            return_exceptions=True,
+        )
+        return {
+            t.id: bool(result) if not isinstance(result, BaseException) else False
+            for t, result in zip(review_tasks, results, strict=True)
+        }
+
     def _board_tasks(self, tasks: list[Task]) -> list[_BoardTaskView]:
         views: list[_BoardTaskView] = []
         for task in tasks:
@@ -419,7 +446,7 @@ class KanbanScreen(Screen[None]):
                     description=task.description,
                     priority=task.priority,
                     status=task.status,
-                    review_approved=task.review_approved,
+                    review_approved=self._review_approved_by_task.get(task.id, False),
                     acceptance_criteria=list(task.acceptance_criteria),
                     updated_at=task.updated_at,
                     agent_backend=task.agent_backend,
@@ -1722,6 +1749,7 @@ class KanbanScreen(Screen[None]):
                     name="tui-chat-title-gen",
                 )
         except asyncio.CancelledError:
+            panel.add_system_message("⚡ Turn interrupted")
             panel.set_runtime_status("ready")
             panel.set_stream_action("Waiting for prompt", confidence="certain")
             raise
@@ -1789,6 +1817,28 @@ class KanbanScreen(Screen[None]):
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
             panel.set_preferred_agent_backend(session_backend)
+        session_id = self.kagan_app.orchestrator_sessions.current_session_id()
+        if session_id:
+            self._start_chat_watch_task(session_id, panel)
+
+    def _start_chat_watch_task(self, session_id: str, panel: ChatPanel) -> None:
+        """Start (or restart) the background SSE watch task for a chat session.
+
+        The task monitors the server-side /watch endpoint for takeover events.
+        In the default local-core configuration there is no HTTP client, so
+        ``watch_chat_session`` exits immediately — no overhead in the common case.
+        """
+        if self._chat_watch_task is not None and not self._chat_watch_task.done():
+            self._chat_watch_task.cancel()
+        http_client = getattr(self.kagan_app, "_chat_http_client", None)
+        self._chat_watch_task = asyncio.create_task(
+            watch_chat_session(
+                session_id=session_id,
+                panel=panel,
+                http_client=http_client,
+            ),
+            name=f"kanban-chat-watch:{session_id}",
+        )
 
     def _task_session_options(self, task: Task) -> list[tuple[str, str]]:
         ticket = task.title.strip() or f"Ticket #{task.id[:8]}"
@@ -2055,11 +2105,18 @@ class KanbanScreen(Screen[None]):
                 exit_on_error=False,
             )
 
+        warning_lines = ["This removes the task from the board and its persisted state."]
+        if has_active_session:
+            warning_lines.append("⚠ An active agent session will be stopped.")
+        if has_worktree:
+            warning_lines.append("⚠ The git worktree and branch will be removed.")
         self.app.push_screen(
-            TaskDeleteConfirmModal(
-                task,
-                has_worktree=has_worktree,
-                has_active_session=has_active_session,
+            ConfirmModal(
+                title="Delete Task",
+                message=f"Delete #{task.id[:8]} · {task.title}?",
+                detail="\n".join(warning_lines),
+                confirm_label="Delete",
+                cancel_label="Cancel",
             ),
             callback=_on_result,
         )

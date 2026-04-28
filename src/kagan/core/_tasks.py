@@ -3,7 +3,7 @@ import builtins
 import contextlib
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
 from loguru import logger
 from sqlalchemy import Engine, desc
@@ -12,21 +12,22 @@ from sqlmodel import select
 
 from kagan.core._db_helpers import (
     _add_and_refresh,
+    _col,
     _db_async,
     _db_sync,
-    _delete_task_children,
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events, list_events
 from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
-from kagan.core._sessions import Sessions
+from kagan.core._sessions import Sessions, fetch_project_learnings
 from kagan.core._task_classification import classify_task
 from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
 from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError
 from kagan.core.models import (
+    AcceptanceCriterion,
     AuditEntry,
     Project,
     Repository,
@@ -66,29 +67,6 @@ def _record_task_audit(
             detail=detail or {},
         )
     )
-
-
-async def backfill_task_types(engine: Engine) -> int:
-    """Backfill task_type for all tasks without classification.
-
-    Classifies all unclassified tasks using classify_task() based on their
-    title and description. Returns the count of tasks updated.
-    """
-
-    def op(s) -> int:
-        unclassified = list(s.exec(select(Task).where(Task.task_type.is_(None))).all())
-        updated_count = 0
-        for task in unclassified:
-            task_type = classify_task(task.title, task.description)
-            task.task_type = task_type.value
-            s.add(task)
-            updated_count += 1
-        if updated_count > 0:
-            s.commit()
-        logger.info("Backfilled task_type for {} tasks", updated_count)
-        return updated_count
-
-    return await _db_async(engine, op)
 
 
 # ── Tasks class ─────────────────────────────────────────────────────
@@ -267,7 +245,6 @@ class Tasks:
             description=description,
             priority=priority,
             base_branch=base_branch,
-            acceptance_criteria=acceptance_criteria or [],
             agent_backend=agent_backend,
             launcher=launcher,
             repo_id=repo_id,
@@ -275,13 +252,27 @@ class Tasks:
         # Classify task for analytics
         task_type = classify_task(title, description)
         task.task_type = task_type.value
+        criteria_texts = acceptance_criteria or []
 
         def op(s):
             try:
                 s.add(task)
                 s.add(AuditEntry(action="task.create", entity_type="task", entity_id=task.id))
+                s.flush()
+                # Create AcceptanceCriterion rows
+                for ordinal, text in enumerate(criteria_texts):
+                    if text and str(text).strip():
+                        s.add(
+                            AcceptanceCriterion(
+                                task_id=task.id,
+                                ordinal=ordinal,
+                                text=str(text).strip()[:500],
+                            )
+                        )
                 s.commit()
                 s.refresh(task)
+                # Eagerly load the criteria relationship while the session is open
+                _ = list(task.criteria)
                 logger.debug("Task created id={} type={}", task.id, task.task_type)
                 return task
             except IntegrityError as exc:
@@ -303,7 +294,13 @@ class Tasks:
         return created
 
     async def get(self, task_id: str) -> Task:
-        task = await _db_async(self._engine, lambda s: s.get(Task, task_id))
+        def _get_with_criteria(s) -> Task | None:
+            t = s.get(Task, task_id)
+            if t is not None:
+                _ = list(t.criteria)  # Eagerly load criteria while session is open
+            return t
+
+        task = await _db_async(self._engine, _get_with_criteria)
         if task is None:
             raise NotFoundError("Task", task_id)
         return task
@@ -320,7 +317,14 @@ class Tasks:
             stmt = stmt.where(Task.status == status)
         if repo_id is not None:
             stmt = stmt.where(Task.repo_id == repo_id)
-        return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
+
+        def _list_with_criteria(s) -> list[Task]:
+            tasks = list(s.exec(stmt).all())
+            for t in tasks:
+                _ = list(t.criteria)  # Eagerly load criteria while session is open
+            return tasks
+
+        return await _db_async(self._engine, _list_with_criteria)
 
     async def update(
         self,
@@ -336,12 +340,11 @@ class Tasks:
         repo_id: str | None | object = _UNSET,
     ) -> Task:
         task = await self.get(task_id)
-        updates = {
+        scalar_updates = {
             "title": title,
             "description": description,
             "priority": priority,
             "base_branch": base_branch,
-            "acceptance_criteria": acceptance_criteria,
             "agent_backend": agent_backend,
             "launcher": launcher,
             "repo_id": repo_id,
@@ -354,7 +357,7 @@ class Tasks:
             db_task = s.get(Task, task.id)
             if db_task is None:
                 raise NotFoundError("Task", task.id)
-            for field, value in updates.items():
+            for field, value in scalar_updates.items():
                 if value is _UNSET:
                     continue
                 if field == "launcher":
@@ -372,6 +375,28 @@ class Tasks:
                 if value is not None:
                     setattr(db_task, field, value)
                     changed_fields[field] = _serialize_value(value)
+
+            # Update acceptance_criteria rows if provided
+            if acceptance_criteria is not None:
+                # Delete existing criteria rows then re-insert
+                existing = list(
+                    s.exec(
+                        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task.id)
+                    ).all()
+                )
+                for crit in existing:
+                    s.delete(crit)
+                s.flush()
+                for ordinal, text in enumerate(acceptance_criteria):
+                    if text and str(text).strip():
+                        s.add(
+                            AcceptanceCriterion(
+                                task_id=task.id,
+                                ordinal=ordinal,
+                                text=str(text).strip()[:500],
+                            )
+                        )
+                changed_fields["acceptance_criteria"] = acceptance_criteria
 
             # Re-classify task if title or description changed
             if should_reclassify:
@@ -393,6 +418,7 @@ class Tasks:
             s.add(db_task)
             s.commit()
             s.refresh(db_task)
+            _ = list(db_task.criteria)  # Eagerly load criteria while session is open
             return db_task
 
         updated = await _db_async(self._engine, op)
@@ -426,8 +452,6 @@ class Tasks:
                 raise NotFoundError("Task", task_id)
             from_status = task.status
             task.status = status
-            if status is not TaskStatus.DONE:
-                task.review_approved = False
             task.updated_at = _utc_now()
             _record_task_audit(
                 s,
@@ -438,6 +462,7 @@ class Tasks:
             s.add(task)
             s.commit()
             s.refresh(task)
+            _ = list(task.criteria)  # Eagerly load criteria while session is open
             logger.info("Task {} moved to {}", task_id, status.value)
             return task
 
@@ -460,7 +485,6 @@ class Tasks:
         await self._client.worktrees.cleanup(task_id)
 
         def op(s):
-            _delete_task_children(s, task_id)
             db_task = s.get(Task, task_id)
             if db_task:
                 _record_task_audit(
@@ -469,6 +493,8 @@ class Tasks:
                     task_id=task_id,
                     detail={"status": db_task.status.value, "title": db_task.title},
                 )
+                # CASCADE delete handles all child rows (sessions, worktrees,
+                # task_events, notes, acceptance_criteria, review_verdicts)
                 s.delete(db_task)
 
         await _db_async(self._engine, op, commit=True)
@@ -502,23 +528,23 @@ class Tasks:
             worktrees = {
                 worktree.task_id
                 for worktree in s.exec(
-                    select(Worktree).where(cast("Any", Worktree.task_id).in_(task_ids))
+                    select(Worktree).where(_col(Worktree.task_id).in_(task_ids))
                 ).all()
             }
 
             latest_events: dict[str, str] = {}
             for event in s.exec(
                 select(SessionEvent)
-                .where(cast("Any", SessionEvent.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", SessionEvent.created_at)))
+                .where(_col(SessionEvent.task_id).in_(task_ids))
+                .order_by(desc(_col(SessionEvent.created_at)))
             ).all():
                 latest_events.setdefault(event.task_id, utc_iso(event.created_at) or "")
 
             active_sessions: dict[str, dict[str, Any]] = {}
             for session in s.exec(
                 select(Session)
-                .where(cast("Any", Session.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_col(Session.started_at)))
             ).all():
                 if session.status not in running_statuses or session.task_id in active_sessions:
                     continue
@@ -569,9 +595,7 @@ class Tasks:
 
     async def list_notes(self, task_id: str) -> builtins.list[TaskNote]:
         stmt = (
-            select(TaskNote)
-            .where(TaskNote.task_id == task_id)
-            .order_by(cast("Any", TaskNote.created_at))
+            select(TaskNote).where(TaskNote.task_id == task_id).order_by(_col(TaskNote.created_at))
         )
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 
@@ -593,30 +617,7 @@ class Tasks:
         Notes are ordered newest-first and deduplicated by content after stripping the prefix.
         Only notes whose content starts with "[LEARNING]" are included.
         """
-        stmt = (
-            select(TaskNote)
-            .where(
-                cast("Any", TaskNote.task_id).in_(
-                    select(Task.id).where(Task.project_id == project_id)
-                )
-            )
-            .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
-            .order_by(desc(cast("Any", TaskNote.created_at)))
-            .limit(30)
-        )
-        notes: builtins.list[TaskNote] = await _db_async(
-            self._engine, lambda s: list(s.exec(stmt).all())
-        )
-        seen: set[str] = set()
-        result: builtins.list[str] = []
-        for note in notes:
-            text = note.content.removeprefix("[LEARNING]").strip()
-            if text and text not in seen:
-                seen.add(text)
-                result.append(text)
-                if len(result) >= 20:
-                    break
-        return result
+        return await fetch_project_learnings(self._engine, project_id)
 
 
 __all__ = [

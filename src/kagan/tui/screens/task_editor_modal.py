@@ -4,7 +4,7 @@ from loguru import logger
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Static
+from textual.widgets import Static
 
 from kagan.cli.chat import list_registered_agent_backends
 from kagan.core.models import Task
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from textual.timer import Timer
 
     from kagan.tui.app import KaganApp
-from kagan.tui.keybindings import CONFIRM_BINDINGS, TASK_EDITOR_BINDINGS
+from kagan.tui.keybindings import TASK_EDITOR_BINDINGS
 from kagan.tui.messages import TaskSubmitted
 from kagan.tui.widgets.task_editor import TaskEditor
 
@@ -163,83 +163,3 @@ class TaskEditorModal(ModalScreen[None]):
 
     async def action_dismiss(self, result: None = None) -> None:
         self.dismiss(result)
-
-
-class TaskDeleteConfirmModal(ModalScreen[bool]):
-    BINDINGS = CONFIRM_BINDINGS
-
-    DEFAULT_CSS = """
-    TaskDeleteConfirmModal {
-        align: center middle;
-    }
-
-    TaskDeleteConfirmModal #task-delete-confirm {
-        width: 60;
-        max-width: 90%;
-        height: auto;
-        background: $surface;
-        border: round $error;
-        padding: 1 2;
-    }
-
-    TaskDeleteConfirmModal .task-details-title {
-        text-style: bold;
-        text-align: center;
-        color: $error;
-        padding-bottom: 1;
-    }
-
-    TaskDeleteConfirmModal .task-details-meta {
-        text-align: center;
-        color: $text-muted;
-        padding-bottom: 1;
-    }
-
-    TaskDeleteConfirmModal .task-details-body {
-        color: $text;
-        padding-bottom: 1;
-    }
-    """
-
-    def __init__(
-        self,
-        task: Task,
-        *,
-        has_worktree: bool = False,
-        has_active_session: bool = False,
-    ) -> None:
-        super().__init__(id="task-delete-confirm-modal")
-        self._task = task
-        self._has_worktree = has_worktree
-        self._has_active_session = has_active_session
-
-    def compose(self) -> ComposeResult:
-        with Container(id="task-delete-confirm"):
-            yield Static("Delete Task", classes="task-details-title")
-            yield Static(
-                f"Delete #{self._task.id[:8]} · {self._task.title}?",
-                classes="task-details-meta",
-            )
-            yield Static(
-                self._build_warning_message(),
-                classes="task-details-body",
-            )
-            yield Static(
-                "[bold]Enter[/] delete  [bold]Esc[/] cancel  [bold]y[/] yes  [bold]n[/] no",
-                classes="modal-action-hint",
-            )
-        yield Footer(show_command_palette=False)
-
-    def _build_warning_message(self) -> str:
-        lines = ["This removes the task from the board and its persisted state."]
-        if self._has_active_session:
-            lines.append("\n⚠ An active agent session will be stopped.")
-        if self._has_worktree:
-            lines.append("⚠ The git worktree and branch will be removed.")
-        return "\n".join(lines)
-
-    def action_confirm(self) -> None:
-        self.dismiss(True)
-
-    def action_cancel(self) -> None:
-        self.dismiss(False)

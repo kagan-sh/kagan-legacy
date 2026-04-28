@@ -104,6 +104,7 @@ class TaskScreen(Screen[None]):
         super().__init__(id="task-screen")
         self._task_id = task_id
         self._task_model: Task | None = None
+        self._review_approved: bool = False
         self._running = False
         self._status_override: str | None = None
         self._stream_task: asyncio.Task[None] | None = None
@@ -184,7 +185,6 @@ class TaskScreen(Screen[None]):
             self._task_id = app_task_id if isinstance(app_task_id, str) else None
 
         if self._task_id is None:
-            self._configure_overlay_chat()
             self._refresh_header()
             self._refresh_header_labels()
             self._set_status("Idle")
@@ -203,13 +203,11 @@ class TaskScreen(Screen[None]):
 
         with contextlib.suppress(NotFoundError):
             self._task_model = await self.kagan_app.core.tasks.get(self._task_id)
-        self._configure_overlay_chat()
         self._refresh_header()
         self._refresh_header_labels()
         self._select_initial_tab()
         await self._hydrate_workspace_panels()
         await self._load_review_context()
-        self._ensure_stream_worker()
         self._sync_action_bar()
         self._sync_overlay_layout_class()
         self.run_worker(
@@ -228,6 +226,10 @@ class TaskScreen(Screen[None]):
             )
         self._sync_stream_source_indicator()
         self._runtime_poll_timer = self.set_interval(1.0, self._schedule_runtime_refresh)
+
+    def on_chat_panel_ready(self, _: ChatPanel.Ready) -> None:
+        self._configure_overlay_chat()
+        self._ensure_stream_worker()
 
     def on_unmount(self) -> None:
         if self._stream_task is not None:
@@ -319,7 +321,7 @@ class TaskScreen(Screen[None]):
         task = self._task_model
 
         def _approve_or_merge() -> None:
-            if task is not None and task.review_approved:
+            if task is not None and self._review_approved:
                 self.action_merge()
             else:
                 self.action_approve()
@@ -394,14 +396,19 @@ class TaskScreen(Screen[None]):
         if task is None:
             return
 
-        from kagan.tui.screens.task_editor_modal import TaskDeleteConfirmModal
+        from kagan.tui.screens.confirm import ConfirmModal
 
         worktree = await self.kagan_app.core.worktrees.get(task.id)
+        warning_lines = ["This removes the task from the board and its persisted state."]
+        if worktree is not None:
+            warning_lines.append("⚠ The git worktree and branch will be removed.")
         confirmed = await self.app.push_screen_wait(
-            TaskDeleteConfirmModal(
-                task,
-                has_worktree=worktree is not None,
-                has_active_session=False,
+            ConfirmModal(
+                title="Delete Task",
+                message=f"Delete #{task.id[:8]} · {task.title}?",
+                detail="\n".join(warning_lines),
+                confirm_label="Delete",
+                cancel_label="Cancel",
             )
         )
         if confirmed is not True:
@@ -1086,12 +1093,14 @@ class TaskScreen(Screen[None]):
         branch = task.base_branch or "main"
         self.query_one("#ts-branch", Label).update(f"task-{task.id[:8]} \u2192 {branch}")
         status_label = task.status.value.replace("_", " ").title()
-        if task.review_approved:
+        if self._review_approved:
             status_label += " \u00b7 APPROVED"
         status = self._status_override or status_label
         self.query_one("#ts-status", Static).update(status)
 
-        self.query_one(TaskDetailPane).task_data = task
+        detail_pane = self.query_one(TaskDetailPane)
+        detail_pane.task_data = task
+        detail_pane.review_approved = self._review_approved
         self._sync_stream_source_indicator()
 
     def _refresh_header(self) -> None:
@@ -1287,7 +1296,7 @@ class TaskScreen(Screen[None]):
             return
         if self._task_model.status is not TaskStatus.REVIEW:
             return
-        if not self._task_model.review_approved:
+        if not self._review_approved:
             self.app.notify("Approve the task before merging", severity="warning")
             return
 
@@ -1437,13 +1446,16 @@ class TaskScreen(Screen[None]):
         try:
             task = await self.kagan_app.core.tasks.get(self._task_id)
             self._task_model = task
+            self._review_approved = await asyncio.to_thread(
+                self.kagan_app.core.reviews.is_approved, self._task_id
+            )
             return task
         except (KaganError, OSError, RuntimeError, ValueError) as exc:
             self._set_status(f"Unable to load task: {exc}")
             return None
 
     async def _render_task_summary(self, task: Task) -> str:
-        if task.review_approved:
+        if self._review_approved:
             badge = "APPROVED"
         elif task.status is TaskStatus.REVIEW and self._running:
             badge = "REVIEWING..."
@@ -1483,7 +1495,7 @@ class TaskScreen(Screen[None]):
 
         if diff_text and task.status is TaskStatus.REVIEW:
             with contextlib.suppress(NoMatches):
-                if task.review_approved:
+                if self._review_approved:
                     badge = "APPROVED"
                 elif self._running:
                     badge = "REVIEWING..."
@@ -1522,6 +1534,7 @@ class TaskScreen(Screen[None]):
         widget.update(
             build_merge_readiness_text(
                 self._task_model,
+                human_approved=self._review_approved,
                 last_merge_blocker=self._last_merge_blocker,
             )
         )
@@ -1646,6 +1659,7 @@ class TaskScreen(Screen[None]):
         action_bar.active_tab = self._active_tab()
         action_bar.task_data = task
         action_bar.task_running = self._running
+        action_bar.review_approved = self._review_approved
         action_bar.chat_visible = panel.has_class("visible")
         action_bar.chat_fullscreen = panel.has_class("visible") and panel.has_class("fullscreen")
         criteria = (

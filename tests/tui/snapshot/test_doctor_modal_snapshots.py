@@ -1,8 +1,8 @@
-"""Snapshot-style tests for DoctorModal and degraded banner visual states.
+"""Snapshot-style tests for DoctorModal startup routing.
 
 These tests verify the three visible states:
-1. All-green: no banner, welcome shown directly.
-2. WARN-only: WelcomeScreen with amber degraded banner visible.
+1. All-green: no modal, kanban shown directly.
+2. WARN-only: kanban shown with a toast notification.
 3. FAIL: DoctorModal with N check rows visible.
 """
 
@@ -26,13 +26,11 @@ def _make_check(name: str, status: str, fix_hint: str = "") -> DoctorCheck:
     )
 
 
-# ── State 1: all-green (no banner, direct welcome) ────────────────────────
+# ── State 1: all-green (no modal, kanban shown directly) ──────────────────
 
 
-async def test_snapshot_all_green_welcome_no_banner(tmp_path) -> None:
-    """All-pass checks: WelcomeScreen shown, degraded banner hidden."""
-    from textual.containers import Horizontal
-
+async def test_snapshot_all_green_routes_to_kanban(tmp_path) -> None:
+    """All-pass checks: KanbanScreen shown, no DoctorModal."""
     from kagan.tui import KaganApp
 
     all_pass_checks = [
@@ -45,26 +43,18 @@ async def test_snapshot_all_green_welcome_no_banner(tmp_path) -> None:
         await pilot.pause()
         await pilot.pause()
 
-        # Confirm on WelcomeScreen
-        assert app.screen.id == "welcome-screen"
-
-        # Confirm banner is hidden
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" in banner.classes
+        assert app.screen.id == "kanban-screen"
 
         # Confirm DoctorModal is NOT in screen stack
         screen_ids = [s.id for s in app.screen_stack]
         assert "doctor-modal" not in screen_ids
 
 
-# ── State 2: WARN-only (welcome + amber banner visible) ───────────────────
+# ── State 2: WARN-only (kanban shown, notification emitted) ───────────────
 
 
-async def test_snapshot_warn_only_welcome_with_banner(tmp_path) -> None:
-    """WARN-only checks: WelcomeScreen with degraded banner visible, no modal."""
-    from textual.containers import Horizontal
-    from textual.widgets import Static
-
+async def test_snapshot_warn_only_routes_to_kanban(tmp_path) -> None:
+    """WARN-only checks: KanbanScreen shown, no blocking modal."""
     from kagan.tui import KaganApp
 
     warn_checks = [
@@ -74,18 +64,9 @@ async def test_snapshot_warn_only_welcome_with_banner(tmp_path) -> None:
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=warn_checks)
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.pause()  # let call_after_refresh fire
+        await pilot.pause()
 
-        assert app.screen.id == "welcome-screen"
-
-        # Banner visible
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" not in banner.classes
-
-        # Banner text is present
-        banner_texts = banner.query(Static)
-        text_contents = [str(w.content) for w in banner_texts]
-        assert any("kagan doctor" in t.lower() for t in text_contents)
+        assert app.screen.id == "kanban-screen"
 
         # No doctor-modal on stack
         screen_ids = [s.id for s in app.screen_stack]
@@ -336,9 +317,7 @@ async def test_snapshot_single_backend_available_default_fail(tmp_path) -> None:
 
 
 async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
-    """All-ready: default backend installed, all pass → no DoctorModal shown."""
-    from textual.containers import Horizontal
-
+    """All-ready: default backend installed, all pass → kanban shown, no DoctorModal."""
     from kagan.tui import KaganApp
 
     # Summary row PASS (default installed)
@@ -378,15 +357,11 @@ async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
         await pilot.pause()
         await pilot.pause()
 
-        # No modal — all checks pass
-        assert app.screen.id == "welcome-screen"
+        # No modal — all checks pass, land on kanban
+        assert app.screen.id == "kanban-screen"
 
         screen_ids = [s.id for s in app.screen_stack]
         assert "doctor-modal" not in screen_ids
-
-        # No degraded banner either
-        banner = app.screen.query_one("#degraded-banner", Horizontal)
-        assert "hidden" in banner.classes
 
 
 # ── Wave 3c: auto-promote snapshot tests ─────────────────────────────────────
@@ -446,8 +421,8 @@ async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> 
 
             await _wait_for(lambda: app.screen.id != "doctor-modal", pump_delay=0.05)
 
-        # After dismiss we should be on welcome-screen (no FAILs)
-        assert app.screen.id == "welcome-screen"
+        # After dismiss we should be on kanban-screen (no FAILs)
+        assert app.screen.id == "kanban-screen"
 
 
 async def test_snapshot_modal_stays_open_when_other_fails_remain(tmp_path) -> None:

@@ -124,7 +124,8 @@ function make(
  * Map a raw event into a {@link RenderableEvent}.
  *
  * Returns `null` for events that should be silently skipped (e.g. a
- * `TOOL_CALL_UPDATE` whose status is `"completed"` or `"done"`).
+ * `TOOL_CALL_UPDATE` whose status is `"completed"` or `"done"`, or
+ * `AGENT_STATUS` which is an internal heartbeat not meaningful to display).
  */
 export function renderEvent(
   eventType: string,
@@ -158,10 +159,8 @@ export function renderEvent(
   }
 
   if (eventType === "AGENT_STATUS") {
-    return make("note", "Agent status", {
-      metadata: { ...payload },
-      ...ids,
-    });
+    // Skipped — internal heartbeat; not meaningful to display in any client.
+    return null;
   }
 
   if (eventType === "TASK_STATUS_CHANGED") {
@@ -175,11 +174,13 @@ export function renderEvent(
 
   if (eventType === "CRITERION_VERDICT") {
     const verdict = String(payload.verdict ?? "");
-    const isPass = verdict === "PASS";
     const reason = String(payload.reason ?? "");
-    return make("verdict", isPass ? "PASS" : "FAIL", {
+    const verdictLabel = verdict === "PASS" ? "PASS" : verdict === "SKIP" ? "SKIP" : "FAIL";
+    const verdictSeverity: Severity =
+      verdict === "PASS" ? "success" : verdict === "SKIP" ? "info" : "warning";
+    return make("verdict", verdictLabel, {
       body: reason,
-      severity: isPass ? "success" : "warning",
+      severity: verdictSeverity,
       metadata: { verdict, reason },
       ...ids,
     });

@@ -4,7 +4,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import { CommandPalette } from '@/components/command-palette/command-palette';
-import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
+import { commandPaletteOpenAtom } from '@/lib/atoms/ui';
 import {
   __resetRegistryForTests,
   registerCommand,
@@ -12,7 +12,7 @@ import {
 import { __resetBuiltinRegistrationForTests } from '@/lib/commands/commands';
 
 function openPalette(store: ReturnType<typeof createStore>) {
-  store.set(commandPaletteSpineOpenAtom, true);
+  store.set(commandPaletteOpenAtom, true);
 }
 
 describe('CommandPalette', () => {
@@ -104,7 +104,7 @@ describe('CommandPalette', () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(store.get(commandPaletteSpineOpenAtom)).toBe(false);
+      expect(store.get(commandPaletteOpenAtom)).toBe(false);
     });
   });
 
@@ -190,7 +190,7 @@ describe('CommandPalette', () => {
     await user.keyboard('{Escape}');
 
     await waitFor(() => {
-      expect(store.get(commandPaletteSpineOpenAtom)).toBe(false);
+      expect(store.get(commandPaletteOpenAtom)).toBe(false);
     });
   });
 

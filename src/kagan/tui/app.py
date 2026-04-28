@@ -26,7 +26,6 @@ from kagan.tui.screens.session_dashboard import SessionDashboardScreen
 from kagan.tui.screens.settings import SettingsModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_screen import TaskScreen
-from kagan.tui.screens.welcome import WelcomeScreen
 from kagan.tui.screens.workspace import WorkspaceScreen
 from kagan.tui.textual_compat import (
     apply_textual_compat_workarounds,
@@ -55,7 +54,6 @@ class KaganApp(App[None]):
     ]
 
     SCREENS = {
-        "welcome-screen": WelcomeScreen,
         "kanban-screen": KanbanScreen,
         "session-dashboard-screen": SessionDashboardScreen,
         "repo-picker-modal": RepoPickerModal,
@@ -88,8 +86,6 @@ class KaganApp(App[None]):
         self.selected_repo_name: str | None = None
         # Startup doctor checks (None = skip_preflight was True or tests; [] = no issues)
         self._startup_checks: list[DoctorCheck] | None = startup_checks
-        # Session-level degraded banner dismissed flag
-        self._doctor_banner_dismissed: bool = False
 
         self.register_theme(KAGAN_THEME)
         self.register_theme(KAGAN_THEME_256)
@@ -141,43 +137,32 @@ class KaganApp(App[None]):
                 )
                 return
             if has_warn:
-                await self._push_welcome_with_banner(checks)
+                warn_count = sum(1 for c in checks if c.status == "warn")
+                self.push_screen("kanban-screen")
+                noun = "check" if warn_count == 1 else "checks"
+                self.notify(
+                    f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
+                    "Run 'kagan doctor' to fix.",
+                    severity="warning",
+                    timeout=8,
+                )
                 return
 
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")
-        open_last_project = _is_enabled(
-            settings.get("open_last_project_on_startup"),
-            default=False,
-        )
-        if open_last_project and last_project_id:
+        if last_project_id:
             try:
                 project = await self.core.projects.get(last_project_id)
             except NotFoundError:
                 await self.core.settings.set({"ui.last_project_id": None})
-                self.push_screen("welcome-screen")
+                self.push_screen("kanban-screen")
                 return
             except KaganError as exc:
                 logger.warning("Failed to load last project: {}", exc)
-                self.push_screen("welcome-screen")
+                self.push_screen("kanban-screen")
                 return
             await self.activate_project(project)
-            self.push_screen("kanban-screen")
-            return
-        self.push_screen("welcome-screen")
-
-    async def _push_welcome_with_banner(self, checks: list[DoctorCheck]) -> None:
-        """Push WelcomeScreen then show the degraded WARN banner on it."""
-        self.push_screen("welcome-screen")
-        # Give the screen time to mount before showing the banner
-        self.call_after_refresh(self._show_degraded_banner, checks)
-
-    def _show_degraded_banner(self, checks: list[DoctorCheck]) -> None:
-        """Show the degraded-mode amber banner on the current WelcomeScreen."""
-        if not isinstance(self.screen, WelcomeScreen):
-            return
-        warn_count = sum(1 for c in checks if c.status == "warn")
-        self.screen.show_degraded_banner(warn_count=warn_count)
+        self.push_screen("kanban-screen")
 
     def _on_doctor_modal_dismissed(self, _skipped: bool) -> None:
         """Called when DoctorModal is dismissed (user clicked Skip anyway)."""
@@ -256,10 +241,10 @@ class KaganApp(App[None]):
     def action_new_task(self) -> None:
         screen = self._kanban_screen()
         if screen is not None:
-            screen.action_new_task()
-            return
-        if isinstance(self.screen, WelcomeScreen):
-            self.screen.action_new_project()
+            if self.project is None:
+                self.push_screen(OnboardingFlow(mode="new-project"))
+            else:
+                screen.action_new_task()
 
     def action_help_quit(self) -> None:
         from kagan.tui.widgets.chat import ChatPanel
@@ -344,7 +329,7 @@ class KaganApp(App[None]):
         self.push_screen(HelpModal(context_sections=tuple(sections)))
 
     async def action_open_project_selector(self) -> None:
-        self.switch_screen("welcome-screen")
+        self.push_screen(OnboardingFlow(mode="open-folder"))
 
     async def action_open_repo_selector(self) -> None:
         await self._open_repo_picker()

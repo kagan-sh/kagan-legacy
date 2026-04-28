@@ -260,6 +260,7 @@ jobs:
       - run: uv tool install --editable --force .
         working-directory: ${{ github.workspace }}
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kagan/shared-api-client run build
       - run: pnpm run web:test
       - run: uv run poe web-build
         working-directory: ${{ github.workspace }}

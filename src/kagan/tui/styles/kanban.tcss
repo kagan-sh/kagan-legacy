@@ -542,6 +542,19 @@ SearchPresets .preset-pill.focused {
     color: $primary;
     background: $primary 15%;
 }
+/* No-project empty-state hint */
+
+#kanban-no-project-hint {
+    display: none;
+    width: 100%;
+    height: auto;
+    padding: 1 2;
+    text-align: center;
+    color: $text-muted;
+    background: $surface;
+    border-bottom: solid $border;
+}
+
 /* Review queue hint */
 
 #review-queue-hint {

@@ -1,6 +1,6 @@
 ---
-title: Kagan Docs — AI Agent Orchestration
-description: 'Documentation for Kagan: orchestrate AI coding agents with a terminal Kanban board, MCP server, and CLI.'
+title: Kagan Docs — Kanban TUI with structural human review gate
+description: 'Documentation for Kagan: a Kanban TUI for AI coding agents with a structural human review gate enforced by the state machine.'
 hide:
   - navigation
   - toc
@@ -8,9 +8,9 @@ hide:
 
 # Your agents work. You decide.
 
-14+ AI agents. One board. Every task tracked from backlog to merge -- while you keep your hands on the wheel.
+Kagan is a Kanban TUI for AI coding agents with a structural human review gate. No agent-authored task reaches your main branch without an explicit approval — the state machine enforces it.
 
-Kagan is a keyboard-first Kanban TUI that orchestrates coding agents across the full task lifecycle. Plan. Run. Review. Merge. No context lost between steps, no state scattered across terminals.
+The agent runs in an isolated git worktree. When it finishes, the task card moves to REVIEW. You read the diff, check the acceptance criteria, press approve. Then merge fires. REVIEW → DONE cannot be automated away. It is not a setting.
 
 ```bash
 uvx kagan
@@ -18,19 +18,15 @@ uvx kagan
 
 <div class="collection-cards" markdown>
 
+- [:material-source-branch: **The review gate**](concepts/task-lifecycle.md)
+
 - [:material-lightning-bolt: **60-second start**](quickstart.md)
 
 - [:material-robot: **Managed runs and interactive attach**](guides/managed-vs-interactive.md)
 
-- [:material-server-network: **Run from your editor**](guides/mcp-setup.md)
-
-- [:material-microsoft-visual-studio-code: **VS Code extension**](guides/vscode-extension.md)
-
-- [:material-source-branch: **Review before merge**](concepts/task-lifecycle.md)
+- [:material-server-network: **Run from your editor (MCP)**](guides/mcp-setup.md)
 
 - [:material-chat: **Chat orchestrator**](guides/chat.md)
-
-- [:material-monitor-dashboard: **Web dashboard**](guides/web-dashboard.md)
 
 - [:material-chart-line: **Analytics & metrics**](guides/analytics.md)
 
@@ -40,13 +36,11 @@ ______________________________________________________________________
 
 ## Supported agents
 
-Kagan works with the agents you already use. Bring one or bring all — they share the same board, the same state, the same review gate.
+Tested and documented: **Claude Code** · **Codex** · **Gemini CLI**
 
-**Claude Code** · **OpenCode** · **Codex** · **Gemini CLI** · **Kimi CLI** · **GitHub Copilot** · **Goose** · **OpenHands** · **Auggie** · **Amp** · **Docker cagent** · **Stakpak** · **Mistral Vibe** · **VT Code**
+11 more backends supported — see [`concepts/architecture-overview.md`](concepts/architecture-overview.md#supported-agents).
 
 Set `default_worker_agent` in config or pick per task. Kagan detects what's installed automatically.
-
-[:octicons-arrow-right-24: Full agent list with install commands](concepts/architecture-overview.md#supported-agents)
 
 ______________________________________________________________________
 
@@ -68,21 +62,32 @@ Any editor or tool that speaks MCP can drive Kagan without the TUI. Tested confi
 
 ______________________________________________________________________
 
+## Companion surfaces
+
+The TUI is the primary operator surface. Two companions exist for specific workflows:
+
+- **Web dashboard** (`kagan web`) — browser-based board; useful for remote access or a second monitor
+- **VS Code extension** — sidebar panel and `@kagan` chat participant inside VS Code
+
+Both share the same state as the TUI via the same API server.
+
+______________________________________________________________________
+
 ## Find what you need
 
 | Goal                          | Page                                                       |
 | ----------------------------- | ---------------------------------------------------------- |
 | First run in under 5 minutes  | [Quickstart](quickstart.md)                                |
-| Install the VS Code extension | [VS Code extension](guides/vscode-extension.md)            |
-| Understand the task flow      | [Task lifecycle](concepts/task-lifecycle.md)               |
+| Understand the review gate    | [Task lifecycle](concepts/task-lifecycle.md)               |
 | Understand start vs attach    | [Managed vs interactive](guides/managed-vs-interactive.md) |
+| Connect an AI client via MCP  | [MCP setup](guides/mcp-setup.md)                           |
 | Use chat REPL or TUI overlay  | [Chat guide](guides/chat.md)                               |
 | Understand ACP chat sessions  | [ACP session lifecycle](guides/acp-session-lifecycle.md)   |
-| Connect an AI client via MCP  | [MCP setup](guides/mcp-setup.md)                           |
 | Work across multiple repos    | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo)   |
 | Import tasks from GitHub      | [Import from GitHub](guides/github.md)                     |
-| Extend with plugins           | [Plugins](reference/plugins.md) (early stage)              |
 | Use the web dashboard         | [Web dashboard](guides/web-dashboard.md)                   |
+| Install the VS Code extension | [VS Code extension](guides/vscode-extension.md)            |
+| Extend with plugins           | [Plugins](reference/plugins.md) (early stage)              |
 | View analytics & metrics      | [Analytics](guides/analytics.md)                           |
 | Fix a known issue             | [Troubleshooting](troubleshooting.md)                      |
 | All CLI flags                 | [CLI reference](reference/cli.md)                          |

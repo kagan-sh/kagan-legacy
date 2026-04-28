@@ -29,7 +29,6 @@ from kagan.tui.keybindings import (
     SETTINGS_BINDINGS,
     TASK_SCREEN_BINDINGS,
     TMUX_GATEWAY_BINDINGS,
-    WELCOME_BINDINGS,
 )
 from kagan.tui.widgets.diff import (
     DIFF_CONTENT_PANE_BINDINGS,
@@ -94,7 +93,6 @@ class HelpModal(ModalScreen[None]):
         sections: tuple[HelpSection, ...] = (
             *self._context_sections,
             ("Global", tuple(self._rows_from_bindings(APP_BINDINGS))),
-            ("Welcome Screen", tuple(self._rows_from_bindings(WELCOME_BINDINGS))),
             ("Kanban Board", tuple(self._rows_from_bindings(KANBAN_BINDINGS))),
             ("Task Screen", tuple(self._rows_from_bindings(TASK_SCREEN_BINDINGS))),
             ("Session Dashboard", tuple(self._rows_from_bindings(SESSION_DASHBOARD_BINDINGS))),

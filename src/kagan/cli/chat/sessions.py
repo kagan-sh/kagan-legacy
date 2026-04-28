@@ -1,26 +1,37 @@
-"""Session CRUD, history normalization, and persistence constants."""
+"""Session CRUD backed by the chat_sessions / chat_messages tables.
+
+Public API (signatures unchanged from the JSON-blob era):
+
+    list_chat_sessions(client, *, source, project_id) -> list[dict]
+    get_chat_session(client, session_id) -> dict | None
+    create_chat_session(client, *, source, label, agent_backend, project_id) -> dict
+    save_chat_session(client, session) -> None
+    delete_chat_session(client, session_id) -> bool
+    append_chat_message(client, session_id, role, content, *, terminated) -> ChatMessage
+
+The dict shape returned to callers preserves the legacy keys:
+    id, label, source, agent_backend, orchestrator_history,
+    messages_rendered, updated_at, project_id
+so _chat_routes.py and the REPL do not need changes.
+"""
 
 import asyncio
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from sqlmodel import Session as DBSession
+from sqlmodel import select
 
+from kagan.core.models import ChatMessage, ChatSession, Task
 from kagan.core.models import Session as TaskSession
-from kagan.core.models import Task
 
-CHAT_SESSIONS_SETTING_KEY = "chat_sessions_v1"
 CHAT_SCOPE_PREFIX = "chat_scope_state_"
 CHAT_LAST_SESSION_PREFIX = "chat_last_session_"
-MAX_STORED_SESSIONS = 30
-MAX_STORED_MESSAGES = 300
-MAX_STORED_HISTORY = 120
-_SESSION_TITLE_MAX_LENGTH = 80
 
+_SESSION_TITLE_MAX_LENGTH = 80
 
 type ChatSessionRecord = dict[str, Any]
 
@@ -38,8 +49,13 @@ class ChatSessionListItem:
     is_current: bool
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _format_relative_time(iso_timestamp: str) -> str:
@@ -83,172 +99,90 @@ def _clean_generated_title(raw: str) -> str:
     return cleaned
 
 
-def _normalize_history(value: Any) -> list[list[str]]:
-    if not isinstance(value, list):
-        return []
-    normalized: list[list[str]] = []
-    for item in value:
-        if not isinstance(item, list | tuple) or len(item) != 2:
-            continue
-        role = str(item[0]).strip()
-        text = str(item[1]).strip()
-        if not role or not text:
-            continue
-        normalized.append([role, text])
-    return normalized[-MAX_STORED_HISTORY:]
-
-
-def _normalize_rendered_messages(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    messages = [str(item).rstrip() for item in value if str(item).strip()]
-    return messages[-MAX_STORED_MESSAGES:]
-
-
-def _normalize_session(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    session_id = str(raw.get("id") or "").strip()
-    if not session_id:
-        return None
-    label = str(raw.get("label") or f"Session {session_id[:8]}").strip()
-    source = str(raw.get("source") or "unknown").strip() or "unknown"
-    agent_backend = raw.get("agent_backend")
-    backend_value = str(agent_backend).strip() if isinstance(agent_backend, str) else None
-    updated_at = str(raw.get("updated_at") or _utc_now())
+def _session_to_dict(row: ChatSession, messages: list[ChatMessage]) -> dict[str, Any]:
+    """Convert a ChatSession ORM row + messages list to the legacy dict shape."""
+    history = [[m.role, m.content] for m in messages]
+    updated_at = (
+        row.updated_at.isoformat()
+        if isinstance(row.updated_at, datetime)
+        else str(row.updated_at)
+    )
     return {
-        "id": session_id,
-        "label": label,
-        "source": source,
-        "agent_backend": backend_value,
-        "orchestrator_history": _normalize_history(raw.get("orchestrator_history")),
-        "messages_rendered": _normalize_rendered_messages(raw.get("messages_rendered")),
+        "id": row.id,
+        "label": row.label,
+        "source": row.source,
+        "agent_backend": row.agent_backend,
+        "orchestrator_history": history,
+        "messages_rendered": [],  # UI concern — no longer stored
         "updated_at": updated_at,
-        "project_id": raw.get("project_id"),
+        "project_id": row.project_id,
     }
 
 
-def _normalize_sessions_collection(value: Any) -> list[ChatSessionRecord]:
-    if not isinstance(value, list):
-        return []
-
-    sessions: list[ChatSessionRecord] = []
-    for item in value:
-        normalized = _normalize_session(item)
-        if normalized is not None:
-            sessions.append(normalized)
-
-    sessions.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
-
-    unique: list[ChatSessionRecord] = []
-    seen: set[str] = set()
-    for session in sessions:
-        session_id = session["id"]
-        if session_id in seen:
-            continue
-        seen.add(session_id)
-        unique.append(session)
-
-    return unique[:MAX_STORED_SESSIONS]
+def _engine_from(client: Any):  # type: ignore[return]
+    return getattr(client, "_engine", None)
 
 
-def _parse_sessions_blob(raw: str | None) -> list[dict[str, Any]]:
-    if not raw:
-        return []
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(payload, dict):
-        return []
-    sessions_raw = payload.get("sessions")
-    if not isinstance(sessions_raw, list):
-        return []
-
-    return _normalize_sessions_collection(sessions_raw)
-
-
-def _serialize_sessions_blob(sessions: list[dict[str, Any]]) -> str:
-    normalized = _normalize_sessions_collection(sessions)
-    payload = {"version": 1, "sessions": normalized}
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
-
-
-def build_chat_session_list_items(
-    sessions: Sequence[ChatSessionRecord],
-    *,
-    current_session_id: str | None = None,
-) -> list[ChatSessionListItem]:
-    normalized = _normalize_sessions_collection(list(sessions))
-    items: list[ChatSessionListItem] = []
-    for idx, session in enumerate(normalized, start=1):
-        sid = str(session.get("id") or "").strip()
-        label = str(session.get("label") or sid).strip() or sid
-        source = str(session.get("source") or "unknown").strip() or "unknown"
-        agent_backend = session.get("agent_backend")
-        backend_value = str(agent_backend).strip() if isinstance(agent_backend, str) else None
-        updated_at = str(session.get("updated_at") or "")
-        updated_relative = _format_relative_time(updated_at) if updated_at else ""
-
-        items.append(
-            ChatSessionListItem(
-                index=idx,
-                session_id=sid,
-                label=label,
-                source=source,
-                agent_backend=backend_value,
-                project_id=session.get("project_id"),
-                updated_at=updated_at,
-                updated_relative=updated_relative,
-                is_current=bool(current_session_id) and sid == current_session_id,
-            )
-        )
-    return items
-
-
-def resolve_chat_session_selector(
-    items: Sequence[ChatSessionListItem],
-    query: str | None,
-) -> ChatSessionListItem | None:
-    if not query:
-        return None
-    normalized = query.strip()
-    if not normalized:
-        return None
-
-    if normalized.isdigit():
-        index = int(normalized) - 1
-        if 0 <= index < len(items):
-            return items[index]
-        return None
-
-    for item in items:
-        if item.session_id == normalized or item.session_id.startswith(normalized):
-            return item
-    return None
+# ---------------------------------------------------------------------------
+# Core table CRUD
+# ---------------------------------------------------------------------------
 
 
 async def list_chat_sessions(
     client: Any, *, source: str | None = None, project_id: str | None = None
 ) -> list[dict[str, Any]]:
-    settings = await client.settings.get()
-    sessions = _parse_sessions_blob(settings.get(CHAT_SESSIONS_SETTING_KEY))
-    if source is not None:
-        sessions = [s for s in sessions if s.get("source") == source]
-    if project_id is not None:
-        sessions = [s for s in sessions if s.get("project_id") == project_id]
-    return sessions
+    engine = _engine_from(client)
+    if engine is None:
+        return []
+
+    def _read() -> list[dict[str, Any]]:
+        with DBSession(engine) as db:
+            stmt = select(ChatSession)
+            if source is not None:
+                stmt = stmt.where(ChatSession.source == source)  # type: ignore[arg-type]
+            if project_id is not None:
+                stmt = stmt.where(ChatSession.project_id == project_id)  # type: ignore[arg-type]
+            # Newest first
+            stmt = stmt.order_by(ChatSession.updated_at.desc())  # type: ignore[attr-defined]
+            sessions = db.exec(stmt).all()
+            result: list[dict[str, Any]] = []
+            for row in sessions:
+                msgs = (
+                    db.exec(
+                        select(ChatMessage)
+                        .where(ChatMessage.session_id == row.id)  # type: ignore[arg-type]
+                        .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+                    ).all()
+                )
+                result.append(_session_to_dict(row, list(msgs)))
+            return result
+
+    return await asyncio.to_thread(_read)
 
 
 async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | None:
     normalized_id = session_id.strip()
     if not normalized_id:
         return None
-    sessions = await list_chat_sessions(client)
-    for session in sessions:
-        if session.get("id") == normalized_id:
-            return session
-    return None
+    engine = _engine_from(client)
+    if engine is None:
+        return None
+
+    def _read() -> dict[str, Any] | None:
+        with DBSession(engine) as db:
+            row = db.get(ChatSession, normalized_id)
+            if row is None:
+                return None
+            msgs = list(
+                db.exec(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == normalized_id)  # type: ignore[arg-type]
+                    .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+                ).all()
+            )
+            return _session_to_dict(row, msgs)
+
+    return await asyncio.to_thread(_read)
 
 
 async def resolve_task_session_binding(client: Any, session_id: str) -> dict[str, Any] | None:
@@ -256,7 +190,7 @@ async def resolve_task_session_binding(client: Any, session_id: str) -> dict[str
     if not normalized_id:
         return None
 
-    engine = getattr(client, "_engine", None)
+    engine = _engine_from(client)
     if engine is None:
         return None
 
@@ -292,49 +226,271 @@ async def create_chat_session(
     project_id: str | None = None,
 ) -> dict[str, Any]:
     session_id = uuid4().hex[:16]
-    session = {
+    engine = _engine_from(client)
+    now = _utc_now()
+
+    record = {
         "id": session_id,
         "label": (label or f"Session {session_id}").strip(),
         "source": source,
         "agent_backend": agent_backend,
         "orchestrator_history": [],
         "messages_rendered": [],
-        "updated_at": _utc_now(),
+        "updated_at": now.isoformat(),
         "project_id": project_id,
     }
-    await save_chat_session(client, session)
-    return session
+
+    if engine is None:
+        return record
+
+    def _create() -> None:
+        with DBSession(engine) as db:
+            row = ChatSession(
+                id=session_id,
+                label=(label or f"Session {session_id}").strip(),
+                source=source,
+                agent_backend=agent_backend,
+                project_id=project_id,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(row)
+            db.commit()
+
+    await asyncio.to_thread(_create)
+    return record
 
 
 async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
-    normalized = _normalize_session(session)
-    if normalized is None:
+    """Upsert session metadata and replace its messages from orchestrator_history."""
+    session_id = str(session.get("id") or "").strip()
+    if not session_id:
         return
-    normalized["updated_at"] = _utc_now()
-    sessions = await list_chat_sessions(client)
-    merged = [item for item in sessions if item.get("id") != normalized["id"]]
-    merged.append(normalized)
-    await client.settings.set(
-        {
-            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(merged),
-        }
-    )
+    engine = _engine_from(client)
+    if engine is None:
+        return
+
+    label = str(session.get("label") or f"Session {session_id[:8]}").strip()
+    source = str(session.get("source") or "unknown").strip() or "unknown"
+    agent_backend = session.get("agent_backend")
+    if not isinstance(agent_backend, str) or not agent_backend.strip():
+        agent_backend = None
+    project_id = session.get("project_id")
+    if not isinstance(project_id, str) or not project_id.strip():
+        project_id = None
+
+    history: list[list[str]] = []
+    for pair in (session.get("orchestrator_history") or []):
+        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+            role = str(pair[0]).strip()
+            content = str(pair[1]).strip()
+            if role and content:
+                history.append([role, content])
+
+    now = _utc_now()
+
+    def _upsert() -> None:
+        with DBSession(engine) as db:
+            row = db.get(ChatSession, session_id)
+            if row is None:
+                row = ChatSession(
+                    id=session_id,
+                    label=label,
+                    source=source,
+                    agent_backend=agent_backend,
+                    project_id=project_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(row)
+            else:
+                row.label = label
+                row.source = source
+                row.agent_backend = agent_backend
+                row.project_id = project_id
+                row.updated_at = now
+                db.add(row)
+
+            # Replace all messages with the current history list
+            # (legacy save_chat_session semantics: full overwrite)
+            existing = db.exec(
+                select(ChatMessage).where(ChatMessage.session_id == session_id)  # type: ignore[arg-type]
+            ).all()
+            for msg in existing:
+                db.delete(msg)
+
+            for role, content in history:
+                db.add(
+                    ChatMessage(
+                        session_id=session_id,
+                        role=role,
+                        content=content,
+                        terminated_at_user_request=False,
+                        created_at=now,
+                    )
+                )
+            db.commit()
+
+    await asyncio.to_thread(_upsert)
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:
     normalized_id = session_id.strip()
     if not normalized_id:
         return False
-    sessions = await list_chat_sessions(client)
-    filtered = [s for s in sessions if s.get("id") != normalized_id]
-    if len(filtered) == len(sessions):
+    engine = _engine_from(client)
+    if engine is None:
         return False
-    await client.settings.set(
-        {
-            CHAT_SESSIONS_SETTING_KEY: _serialize_sessions_blob(filtered),
-        }
+
+    def _delete() -> bool:
+        with DBSession(engine) as db:
+            row = db.get(ChatSession, normalized_id)
+            if row is None:
+                return False
+            db.delete(row)
+            db.commit()
+            return True
+
+    return await asyncio.to_thread(_delete)
+
+
+async def append_chat_message(
+    client: Any,
+    session_id: str,
+    role: str,
+    content: str,
+    *,
+    terminated: bool = False,
+) -> ChatMessage:
+    """Append a single turn to the session and update session.updated_at.
+
+    This is the preferred write path for T3 / streaming completions.
+    Returns the persisted ChatMessage instance (detached from DB session).
+    """
+    normalized_id = session_id.strip()
+    engine = _engine_from(client)
+    now = _utc_now()
+
+    msg = ChatMessage(
+        session_id=normalized_id,
+        role=role,
+        content=content,
+        terminated_at_user_request=terminated,
+        created_at=now,
     )
-    return True
+
+    if engine is None:
+        return msg
+
+    def _append() -> ChatMessage:
+        with DBSession(engine) as db:
+            db.add(msg)
+            # Touch updated_at on the parent session
+            row = db.get(ChatSession, normalized_id)
+            if row is not None:
+                row.updated_at = now
+                db.add(row)
+            db.commit()
+            db.refresh(msg)
+            return msg
+
+    return await asyncio.to_thread(_append)
+
+
+async def get_messages_after(
+    client: Any,
+    session_id: str,
+    *,
+    after_id: int,
+    limit: int = 200,
+) -> list[ChatMessage]:
+    """Return messages for a session with id > after_id (cursor-tail query).
+
+    Used by the /messages?after_id=N endpoint so reconnecting clients can
+    catch up on messages they missed during a /watch disconnect.
+    """
+    normalized_id = session_id.strip()
+    engine = _engine_from(client)
+    if engine is None:
+        return []
+
+    def _read() -> list[ChatMessage]:
+        with DBSession(engine) as db:
+            stmt = (
+                select(ChatMessage)
+                .where(ChatMessage.session_id == normalized_id)  # type: ignore[arg-type]
+                .where(ChatMessage.id > after_id)  # type: ignore[operator]
+                .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+                .limit(limit)
+            )
+            rows = db.exec(stmt).all()
+            # Detach from session before returning
+            return [ChatMessage.model_validate(r.model_dump()) for r in rows]
+
+    return await asyncio.to_thread(_read)
+
+
+# ---------------------------------------------------------------------------
+# List helpers (unchanged from legacy)
+# ---------------------------------------------------------------------------
+
+
+def build_chat_session_list_items(
+    sessions: list[ChatSessionRecord],
+    *,
+    current_session_id: str | None = None,
+) -> list[ChatSessionListItem]:
+    items: list[ChatSessionListItem] = []
+    for idx, session in enumerate(sessions, start=1):
+        sid = str(session.get("id") or "").strip()
+        label = str(session.get("label") or sid).strip() or sid
+        source = str(session.get("source") or "unknown").strip() or "unknown"
+        agent_backend = session.get("agent_backend")
+        backend_value = str(agent_backend).strip() if isinstance(agent_backend, str) else None
+        updated_at = str(session.get("updated_at") or "")
+        updated_relative = _format_relative_time(updated_at) if updated_at else ""
+
+        items.append(
+            ChatSessionListItem(
+                index=idx,
+                session_id=sid,
+                label=label,
+                source=source,
+                agent_backend=backend_value,
+                project_id=session.get("project_id"),
+                updated_at=updated_at,
+                updated_relative=updated_relative,
+                is_current=bool(current_session_id) and sid == current_session_id,
+            )
+        )
+    return items
+
+
+def resolve_chat_session_selector(
+    items: list[ChatSessionListItem],
+    query: str | None,
+) -> ChatSessionListItem | None:
+    if not query:
+        return None
+    normalized = query.strip()
+    if not normalized:
+        return None
+
+    if normalized.isdigit():
+        index = int(normalized) - 1
+        if 0 <= index < len(items):
+            return items[index]
+        return None
+
+    for item in items:
+        if item.session_id == normalized or item.session_id.startswith(normalized):
+            return item
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Scope / last-session state (unchanged — still lives in settings)
+# ---------------------------------------------------------------------------
 
 
 async def get_last_session_id(client: Any, *, scope: str) -> str | None:

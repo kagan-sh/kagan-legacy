@@ -1,21 +1,8 @@
 """Context compaction — summarize conversation history to free context space."""
 
-from dataclasses import dataclass
-
 from loguru import logger
 
 COMPACTION_THRESHOLD = 0.80
-
-
-@dataclass(slots=True)
-class CompactionResult:
-    """Result of a compaction operation."""
-
-    triggered: bool
-    context_before: int
-    context_after: int | None = None
-    summary_length: int | None = None
-    error: str | None = None
 
 
 class ContextCompactor:

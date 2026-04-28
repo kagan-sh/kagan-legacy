@@ -26,7 +26,6 @@ from kagan.core._agent import (
     OPENCODE_BACKEND,
     OS,
     REFERENCE_BACKENDS,
-    AgentBackendConfig,
     BackendCapability,
     BackendCommand,
     BackendSpec,
@@ -44,6 +43,7 @@ from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filt
 from kagan.core._audit import list_audit, record_audit
 from kagan.core._db import default_db_path
 from kagan.core._launchers import resolve_launcher
+from kagan.core._orphan_reap import reap_orphan_sessions
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._projects import (
     add_repo,
@@ -80,36 +80,29 @@ from kagan.core._reviews import (
     clear_review_verdicts,
     continue_rebase,
     get_conflicts,
+    is_review_approved,
     merge_task,
     rebase_task,
     reject_review,
     set_criterion_verdict,
 )
 from kagan.core._security import (
-    AttackVector,
     InjectionDetector,
-    PayloadLibrary,
-    PayloadTemplate,
     scan_text_for_injection,
 )
 from kagan.core._sessions import (
     active_session_summaries,
-    backfill_agent_roles,
-    complete_session,
-    fail_session,
     fetch_project_learnings,
     get_latest_session,
     get_latest_task_session,
     has_active_session,
     list_active_sessions,
     list_task_sessions,
-    mark_session_running,
     resolve_session_binding,
-    update_session_pid,
 )
 from kagan.core._settings import get_settings, set_settings
 from kagan.core._task_classification import classify_task
-from kagan.core._tasks import Tasks, backfill_task_types
+from kagan.core._tasks import Tasks
 from kagan.core._worktrees import (
     cleanup_orphan_worktrees,
     cleanup_worktree,
@@ -144,9 +137,13 @@ from kagan.core.errors import (
 )
 from kagan.core.git import KAGAN_AGENT_EMAIL, KAGAN_AGENT_NAME, get_system_git_identity
 from kagan.core.models import (
+    AcceptanceCriterion,
     AuditEntry,
+    ChatMessage,
+    ChatSession,
     Project,
     Repository,
+    ReviewVerdict,
     Session,
     SessionEvent,
     Setting,
@@ -174,15 +171,16 @@ __all__ = [
     "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
     "ACPClientBase",
-    "AgentBackendConfig",
+    "AcceptanceCriterion",
     "AgentError",
     "AgentRole",
-    "AttackVector",
     "AuditEntry",
     "BackendCapability",
     "BackendCommand",
     "BackendSpec",
     "BranchRefStrategy",
+    "ChatMessage",
+    "ChatSession",
     "CheckStatus",
     "ConfigurationError",
     "DBWatcher",
@@ -193,13 +191,12 @@ __all__ = [
     "MergeConflictError",
     "MultiRepoUnsupportedError",
     "NotFoundError",
-    "PayloadLibrary",
-    "PayloadTemplate",
     "PreflightCheckResult",
     "PreflightError",
     "Priority",
     "Project",
     "Repository",
+    "ReviewVerdict",
     "Session",
     "SessionError",
     "SessionEvent",
@@ -221,8 +218,6 @@ __all__ = [
     "active_session_summaries",
     "add_repo",
     "approve_review",
-    "backfill_agent_roles",
-    "backfill_task_types",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
@@ -230,14 +225,12 @@ __all__ = [
     "cleanup_orphan_worktrees",
     "cleanup_worktree",
     "clear_review_verdicts",
-    "complete_session",
     "continue_rebase",
     "create_project",
     "create_worktree",
     "default_db_path",
     "delete_project",
     "detect_dotfile_overrides",
-    "fail_session",
     "fetch_project_learnings",
     "find_project_by_name",
     "find_project_by_repo",
@@ -255,6 +248,7 @@ __all__ = [
     "get_worktree_diff_stats",
     "has_active_session",
     "install_asyncio_subprocess_exception_filter",
+    "is_review_approved",
     "list_active_sessions",
     "list_audit",
     "list_available_backends",
@@ -264,9 +258,9 @@ __all__ = [
     "list_repos",
     "list_task_sessions",
     "load_persona_definitions",
-    "mark_session_running",
     "merge_task",
     "parse_priority",
+    "reap_orphan_sessions",
     "rebase_task",
     "record_audit",
     "reject_review",
@@ -284,5 +278,4 @@ __all__ = [
     "set_criterion_verdict",
     "set_repo_default_branch",
     "set_settings",
-    "update_session_pid",
 ]

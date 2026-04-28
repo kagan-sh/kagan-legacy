@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 
 async def _enter_project(pilot) -> None:
+    # App now starts directly on kanban — just give the bootstrap time to run.
     await pilot.pause()
-    await pilot.press("enter")
     await pilot.pause()
 
 

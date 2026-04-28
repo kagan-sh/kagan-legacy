@@ -17,13 +17,50 @@ export const rightRailTaskIdAtom = atom<string | null>(null);
 
 export const rightRailChatSessionIdAtom = atom<string | null>(null);
 
-/** Command palette open state. */
-export const commandPaletteOpenAtom = atom(false);
+export type RightRailDismissalContext = { kind: 'task' | 'session'; id: string };
+
+export function rightRailDismissalKey(context: RightRailDismissalContext): string {
+  return `${context.kind}:${context.id}`;
+}
+
+export const rightRailDismissalsAtom = atom<Record<string, true>>({});
+
+export const dismissRightRailContextAtom = atom(
+  null,
+  (get, set, context?: RightRailDismissalContext | null) => {
+    const target =
+      context ??
+      (get(rightRailTaskIdAtom)
+        ? ({ kind: 'task', id: get(rightRailTaskIdAtom)! } satisfies RightRailDismissalContext)
+        : get(rightRailChatSessionIdAtom)
+          ? ({ kind: 'session', id: get(rightRailChatSessionIdAtom)! } satisfies RightRailDismissalContext)
+          : null);
+    if (!target) return;
+    const key = rightRailDismissalKey(target);
+    set(rightRailDismissalsAtom, (prev) => ({ ...prev, [key]: true }));
+  },
+);
+
+export const clearRightRailDismissalAtom = atom(
+  null,
+  (_get, set, context: RightRailDismissalContext) => {
+    const key = rightRailDismissalKey(context);
+    set(rightRailDismissalsAtom, (prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  },
+);
 
 /** Session picker overlay open state. */
 export const sessionPickerOpenAtom = atom(false);
 
 export const helpOverlayOpenAtom = atom(false);
+
+/** Command palette (Cmd+K) open state. */
+export const commandPaletteOpenAtom = atom(false);
 
 /** Plugin import dialog open state. */
 export const pluginImportOpenAtom = atom(false);
@@ -34,10 +71,10 @@ export const workspaceSessionIdAtom = atom<string | null>(null);
 /** Derived atom: true if any dialog/overlay is open. */
 export const isAnyDialogOpenAtom = atom((get) => {
   return (
-    get(commandPaletteOpenAtom) ||
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
     get(pluginImportOpenAtom) ||
+    get(commandPaletteOpenAtom) ||
     get(boardDialogAtom).kind !== 'none'
   );
 });

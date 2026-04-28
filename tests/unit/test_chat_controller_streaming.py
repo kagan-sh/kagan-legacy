@@ -1,5 +1,5 @@
 import pytest
-from acp.schema import AgentMessageChunk, TextContentBlock, ToolCallStart
+from acp.schema import AgentMessageChunk, PermissionOption, TextContentBlock, ToolCallStart
 
 import kagan.cli.chat._chat_acp as chat_acp_module
 import kagan.cli.chat.controller as chat_controller
@@ -143,3 +143,80 @@ async def test_flush_timer_cancelled_on_start_turn(
     client.start_turn()
     assert client._output_flusher._flush_handle is None
     assert client._output_flusher._pending_chunks == []
+
+
+async def test_permission_request_denies_in_noninteractive_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_console = _FakeConsole()
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: False)
+
+    client = chat_controller._OrchestratorACPClient()
+    response = await client.request_permission(
+        [
+            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
+            PermissionOption(kind="allow_always", name="Allow always", option_id="allow-all"),
+        ],
+        session_id="session-1",
+        tool_call=ToolCallStart(
+            title="Edit file",
+            tool_call_id="tool-1",
+            session_update="tool_call",
+        ),
+    )
+
+    assert response.outcome.outcome == "cancelled"
+
+
+async def test_permission_request_selects_interactive_allow_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_console = _FakeConsole()
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "2")
+
+    client = chat_controller._OrchestratorACPClient()
+    response = await client.request_permission(
+        [
+            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
+            PermissionOption(kind="allow_always", name="Allow always", option_id="allow-all"),
+            PermissionOption(kind="reject_once", name="Deny", option_id="deny-1"),
+        ],
+        session_id="session-1",
+        tool_call=ToolCallStart(
+            title="Run command",
+            tool_call_id="tool-1",
+            session_update="tool_call",
+        ),
+    )
+
+    assert response.outcome.outcome == "selected"
+    assert response.outcome.option_id == "allow-all"
+
+
+async def test_permission_request_can_select_deny_option_from_acp_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_console = _FakeConsole()
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "deny")
+
+    client = chat_controller._OrchestratorACPClient()
+    response = await client.request_permission(
+        [
+            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
+            PermissionOption(kind="reject_once", name="Deny", option_id="deny-1"),
+        ],
+        session_id="session-1",
+        tool_call=ToolCallStart(
+            title="Run command",
+            tool_call_id="tool-1",
+            session_update="tool_call",
+        ),
+    )
+
+    assert response.outcome.outcome == "selected"
+    assert response.outcome.option_id == "deny-1"

@@ -1,8 +1,6 @@
 """Generic wire envelopes for request / response framing."""
 
-from uuid import uuid4
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class WireEnvelope[T](BaseModel):
@@ -11,11 +9,3 @@ class WireEnvelope[T](BaseModel):
     ok: bool = True
     data: T | None = None
     error: str | None = None
-
-
-class WireRequest(BaseModel):
-    version: str = "1"
-    trace_id: str = Field(default_factory=lambda: uuid4().hex)
-
-
-WireResponse = WireEnvelope

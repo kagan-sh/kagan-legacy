@@ -6,7 +6,6 @@ import { AgentControl } from '@/components/board/agent-control';
 import { TaskMetadataPanel } from '@/components/board/task-metadata-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { InspectorSection, Panel } from '@/components/shared/workspace';
 import { cn } from '@/lib/utils';
@@ -22,13 +21,6 @@ interface BoardTaskInspectorProps extends BoardTaskActions {
   className?: string;
   onClose?: () => void;
 }
-
-interface BoardTaskPeekDialogProps extends BoardTaskActions {
-  task: WireTask | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
 
 /** Event types worth surfacing in the board-level activity summary. */
 const INSPECTOR_EVENT_TYPES = new Set([
@@ -142,10 +134,10 @@ function TaskSnapshotBody({ task, onOpenTask, onOpenStream, onEdit }: BoardTaskI
           <div className="space-y-2">
             {criteria.map((criterion) => (
               <div
-                key={criterion}
+                key={criterion.id}
                 className=" border border-[color:var(--border-subtle)] bg-[color:var(--surface-0)] px-3 py-2 text-sm text-[var(--muted-foreground)]"
               >
-                {criterion}
+                {criterion.text}
               </div>
             ))}
           </div>
@@ -223,7 +215,7 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
             <span>{task.id}</span>
             <button
               type="button"
-              className="inline-flex size-5 items-center justify-center text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="inline-flex size-5 items-center justify-center text-[var(--muted-foreground)] opacity-50 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
               onClick={() => {
                 void navigator.clipboard.writeText(task.id).then(() => undefined, () => undefined);
               }}
@@ -251,39 +243,3 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
   );
 }
 
-export function BoardTaskPeekDialog({ task, open, onOpenChange, onOpenTask, onOpenStream, onEdit }: BoardTaskPeekDialogProps) {
-  if (!task) {
-    return null;
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden p-0">
-        <DialogHeader className="border-b border-[color:var(--border-subtle)] px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center bg-[color:var(--surface-1)] text-[var(--primary)]">
-              <Activity className="size-4" />
-            </div>
-            <div className="space-y-2">
-              <DialogTitle className="text-xl">{task.title}</DialogTitle>
-              <DialogDescription>
-                Quick task preview for board-first triage and keyboard-driven inspection.
-              </DialogDescription>
-              <TaskStatusBadge task={task} />
-            </div>
-          </div>
-        </DialogHeader>
-        <ScrollArea className="max-h-[75vh]">
-          <div className="space-y-4 px-6 py-5">
-            <TaskSnapshotBody
-              task={task}
-              onOpenTask={onOpenTask}
-              onOpenStream={onOpenStream}
-              onEdit={onEdit}
-            />
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
-  );
-}

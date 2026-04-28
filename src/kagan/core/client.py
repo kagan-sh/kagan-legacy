@@ -21,15 +21,15 @@ from sqlmodel import SQLModel
 
 from kagan.core._agent import cleanup_all_spawned_processes
 from kagan.core._analytics import Analytics
-from kagan.core._audit import AuditLog
+from kagan.core._audit import _make_audit_log_ns
 from kagan.core._db import create_db_engine, default_db_path, get_db_version
 from kagan.core._events import Events
 from kagan.core._persona import PersonaPresetOps
 from kagan.core._preflight import PreflightCheckResult, run_all_checks
 from kagan.core._projects import Projects
-from kagan.core._reviews import Reviews
+from kagan.core._reviews import _make_reviews_ns
 from kagan.core._sessions import Sessions
-from kagan.core._settings import Settings
+from kagan.core._settings import _make_settings_ns
 from kagan.core._tasks import Tasks
 from kagan.core._watcher import DBWatcher
 from kagan.core._worktrees import Worktrees
@@ -44,13 +44,14 @@ class KaganCore:
         self.tasks = Tasks(self._engine, self._signals, client=self, db_path=resolved)
         self.projects = Projects(self._engine, self)
         self.worktrees = Worktrees(self._engine, self)
-        self.reviews = Reviews(self._engine, self)
-        self.settings = Settings(self._engine)
-        self.audit_log = AuditLog(self._engine)
+        self.settings = _make_settings_ns(self._engine)
+        self.audit_log = _make_audit_log_ns(self._engine)
         self.analytics = Analytics(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
 
         self.active_project_id: str | None = None
+        # reviews namespace must be built after tasks/worktrees are set
+        self.reviews = _make_reviews_ns(self._engine, self)
         logger.info("KaganCore initialized")
 
     @property
@@ -108,14 +109,11 @@ class KaganCore:
 
 
 __all__ = [
-    "AuditLog",
     "DBWatcher",
     "Events",
     "KaganCore",
     "Projects",
-    "Reviews",
     "Sessions",
-    "Settings",
     "Tasks",
     "Worktrees",
 ]

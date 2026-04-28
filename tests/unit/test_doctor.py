@@ -132,13 +132,6 @@ def test_run_doctor_check_for_backend_returns_check_for_known_backend(
     """Returns a DoctorCheck (pass) when the backend executable is on PATH."""
     import shutil
 
-    import kagan.core._agent as agent_mod
-
-    fake_backends = {
-        CLAUDE_CODE_BACKEND: {"executable": "claude"},
-    }
-    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
-    # Patch shutil.which directly — the new impl calls it exactly once.
     monkeypatch.setattr(shutil, "which", lambda _x: "/usr/local/bin/claude")
 
     result = doctor_module.run_doctor_check_for_backend(CLAUDE_CODE_BACKEND)
@@ -150,7 +143,7 @@ def test_run_doctor_check_for_backend_returns_check_for_known_backend(
 
 
 def test_run_doctor_check_for_backend_returns_none_for_unknown_backend() -> None:
-    """Returns None when the backend name is not in AGENT_BACKENDS."""
+    """Returns None when the backend name is not registered."""
     result = doctor_module.run_doctor_check_for_backend("nonexistent-backend-xyz")
     assert result is None
 
@@ -158,15 +151,8 @@ def test_run_doctor_check_for_backend_returns_none_for_unknown_backend() -> None
 def test_run_doctor_check_for_backend_fires_exactly_one_shutil_which(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exactly one shutil.which call fires — no full 14-backend survey."""
+    """Exactly one shutil.which call fires — no full backend survey."""
     import shutil
-
-    import kagan.core._agent as agent_mod
-
-    fake_backends = {
-        CODEX_BACKEND: {"executable": "codex"},
-    }
-    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
 
     calls: list[str] = []
     monkeypatch.setattr(shutil, "which", lambda x: (calls.append(x), None)[1])
@@ -186,12 +172,6 @@ def test_run_doctor_check_for_backend_does_not_call_environment_or_plugin_checks
     """run_doctor_check_for_backend must not invoke environment, plugin, or IDE checks."""
     import shutil
 
-    import kagan.core._agent as agent_mod
-
-    fake_backends = {
-        CODEX_BACKEND: {"executable": "codex"},
-    }
-    monkeypatch.setattr(agent_mod, "AGENT_BACKENDS", fake_backends)
     monkeypatch.setattr(shutil, "which", lambda _x: None)
 
     env_called: list[bool] = []

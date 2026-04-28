@@ -142,7 +142,7 @@ class TestWorktreeAddValidation:
         with (
             patch("kagan.core.git.validate_ref_name") as mock_validate,
             patch("kagan.core.git._run_git") as mock_run_git,
-            patch("pathlib.Path.mkdir") as mock_mkdir,
+            patch("pathlib.Path.mkdir"),
         ):
             mock_validate.return_value = True
             mock_run_git.return_value = ("", "")

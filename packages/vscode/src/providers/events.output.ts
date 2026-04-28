@@ -6,7 +6,7 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import { SSE_TYPE } from "../api/types.js";
-import { renderEvent } from "../api/event-rendering.js";
+import { renderEvent } from "@kagan/shared-api-client";
 import type { WireEvent, WireTask, SSEMessage } from "../api/types.js";
 
 // ── Output Channel ──────────────────────────────────────────────────────────

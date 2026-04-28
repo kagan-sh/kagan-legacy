@@ -219,21 +219,3 @@ def classify_task(title: str, description: str = "") -> TaskType:
 
     best_match = max(scores, key=scores.get)
     return best_match
-
-
-def classify_tasks_by_type(tasks: list[dict]) -> dict[str, TaskType]:
-    """Batch classify multiple tasks.
-
-    Args:
-        tasks: List of task dicts with 'id', 'title', and optional 'description'
-
-    Returns:
-        Dict mapping task IDs to inferred TaskTypes
-    """
-    return {
-        task["id"]: classify_task(
-            task.get("title", ""),
-            task.get("description", ""),
-        )
-        for task in tasks
-    }

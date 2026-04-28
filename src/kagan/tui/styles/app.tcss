@@ -13,13 +13,6 @@ $space-lg: 3;
 $space-xl: 4;
 
 /* Semantic Status Colors */
-$status-running: $secondary;
-$status-success: $success;
-$status-warning: $warning;
-$status-error: $error;
-$status-idle: $text-muted;
-
-/* Fallback semantic status aliases for standalone stylesheet parsing paths. */
 $status-running: $success;
 $status-success: $success;
 $status-warning: $warning;
@@ -439,75 +432,6 @@ BaseBranchInput {
 BaseBranchInput:focus {
     border: solid $primary;
 }
-/* Full-screen description editor modal */
-
-DescriptionEditorModal {
-    align: center middle;
-}
-
-DescriptionEditorModal #description-editor-container {
-    width: 90%;
-    height: 90%;
-    border: round $primary;
-    background: $surface;
-    padding: 0;
-}
-
-DescriptionEditorModal #description-editor-header {
-    width: 100%;
-    height: 3;
-    padding: 1 2;
-    background: $panel;
-}
-
-DescriptionEditorModal #editor-title {
-    width: auto;
-    text-style: bold;
-    color: $primary;
-}
-
-DescriptionEditorModal #header-spacer {
-    width: 1fr;
-}
-
-DescriptionEditorModal #editor-hint {
-    width: auto;
-    color: $primary;
-}
-
-DescriptionEditorModal #description-textarea {
-    width: 100%;
-    height: 1fr;
-    background: $background;
-    color: $text;
-    border: none;
-    padding: 0;
-}
-
-DescriptionEditorModal #description-textarea:focus {
-    border: none;
-}
-
-DescriptionEditorModal #description-editor-status {
-    width: 100%;
-    height: 1;
-    padding: 0 2;
-    background: $panel;
-}
-
-DescriptionEditorModal #cursor-position {
-    width: auto;
-    color: $text-muted;
-}
-
-DescriptionEditorModal #status-spacer {
-    width: 1fr;
-}
-
-DescriptionEditorModal #line-count {
-    width: auto;
-    color: $text-muted;
-}
 /* Empty state */
 
 .empty-state {
@@ -552,6 +476,17 @@ ConfirmModal .confirm-message {
 
 ConfirmModal .confirm-hint {
     padding-top: 1;
+}
+
+ConfirmModal .confirm-detail {
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+ConfirmModal .confirm-warning {
+    color: $text;
+    padding-bottom: 1;
 }
 
 /* === BASE BRANCH MODAL === */
@@ -713,329 +648,6 @@ DiffModal {
     background: $surface;
     border-top: solid $border;
     text-align: center;
-}
-/* === Welcome Screen Styles — WELCOME SCREEN === */
-
-WelcomeScreen {
-    align: center middle;
-    background: $background;
-}
-
-#welcome-container {
-    width: 95%;
-    max-width: 70;
-    height: auto;
-    max-height: 90%;
-    padding: 1 2;
-    border: round $primary;
-    background: $surface;
-    overflow-y: auto;
-}
-
-#logo {
-    width: 100%;
-    text-align: center;
-    color: $primary;
-    padding: 0 0 1 0;
-}
-
-
-.section-label {
-    margin-top: 1;
-    color: $text-muted;
-}
-
-#base-branch-select {
-    width: 100%;
-    margin: 0 0 1 0;
-}
-
-.info-label {
-    color: $text-muted;
-}
-
-.settings-header {
-    margin-top: 1;
-}
-
-.toggle-row {
-    width: 100%;
-    min-height: 1;
-    height: auto;
-    padding: 0;
-    margin-bottom: 1;
-    align: left middle;
-}
-
-.toggle-row .toggle-checkbox {
-    width: auto;
-}
-
-#git-init-hint {
-    text-align: center;
-    margin: 1 0 0 0;
-    width: 100%;
-}
-
-/* Welcome screen hint bar — inside the container, not docked */
-
-#welcome-hint {
-    display: block;
-    dock: none;
-    width: 100%;
-    height: auto;
-    padding: 1 1 0 1;
-    margin-top: 1;
-    color: $text-muted;
-    text-align: center;
-    border-top: solid $border;
-}
-
-.hidden {
-    display: none;
-}
-/* === Welcome Screen Project Picker === */
-
-#recent-header {
-    padding: 1 0;
-    margin-top: 1;
-    text-style: bold;
-    color: $text-muted;
-    border-top: solid $border;
-}
-
-#projects-loading {
-    width: 100%;
-    color: $text-muted;
-    padding: 1 0;
-}
-
-
-#project-list {
-    height: auto;
-    max-height: 14;
-    min-height: 3;
-    margin-bottom: 1;
-    padding: 0;
-}
-
-#project-list > ListItem {
-    background: $surface;
-    border-left: solid $surface;
-    padding: 0;
-    height: auto;
-}
-
-#project-list > ListItem.-hovered,
-#project-list > ListItem.-highlight {
-    background: $panel;
-    border-left: solid $primary;
-}
-
-#project-list:focus > ListItem.-highlight {
-    background: $primary 18%;
-    border-left: thick $primary;
-}
-
-#project-list > ListItem.-highlight .project-name,
-#project-list > ListItem.-highlight .project-time {
-    color: $text;
-}
-
-#project-list > ListItem.-highlight .project-repos,
-#project-list > ListItem.-highlight .project-tasks {
-    color: $text-muted;
-    text-opacity: 100%;
-}
-
-#empty-state {
-    text-align: center;
-    color: $text-muted;
-    padding: 2;
-}
-
-#first-launch-welcome {
-    display: none;
-    text-align: center;
-    color: $primary;
-    text-style: bold;
-    padding: 2;
-}
-
-.project-item {
-    padding: 0 1;
-    height: 1;
-}
-
-.project-name {
-    text-style: bold;
-    color: $text;
-    height: 1;
-    width: 22;
-}
-
-.project-repos {
-    color: $text-muted;
-    height: 1;
-    width: 1fr;
-}
-
-.project-tasks {
-    color: $text-muted;
-    height: 1;
-    width: 20;
-}
-
-.project-time {
-    width: 8;
-    color: $text-muted;
-    text-align: right;
-}
-
-
-/* === TASK OUTPUT SCREEN === */
-
-TaskOutputScreen {
-    background: $background;
-}
-
-#task-output-screen-root {
-    width: 100%;
-    height: 1fr;
-    layout: vertical;
-}
-
-#task-output-top {
-    width: 100%;
-    height: 1fr;
-    min-height: 10;
-    margin: 1 1 0 1;
-    padding: 1 2;
-    background: $panel;
-    border: round $border;
-}
-
-#task-output-title {
-    width: 100%;
-    text-style: bold;
-    color: $primary;
-    padding-bottom: 0;
-}
-
-#task-output-branch {
-    width: 100%;
-    color: $text-muted;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#task-output-status {
-    width: 100%;
-    color: $text-muted;
-    padding-bottom: 1;
-}
-
-#task-output-stream {
-    width: 100%;
-    height: 12;
-    min-height: 6;
-    margin-bottom: 1;
-    background: $surface;
-    border: round $border;
-}
-
-#task-output-workspace-snapshot {
-    width: 100%;
-    height: auto;
-    min-height: 4;
-    max-height: 12;
-    overflow-y: auto;
-    margin-bottom: 1;
-    padding: 1;
-    background: $surface;
-    border: round $border;
-    color: $text;
-}
-
-#task-output-workspace-snapshot.loading {
-    color: $text-muted;
-    text-style: italic;
-}
-
-TaskOutputScreen Rule {
-    margin: 0 0 1 0;
-    color: $border;
-    text-opacity: 100%;
-}
-
-#task-output-diff-stats {
-    width: 100%;
-    color: $text;
-    padding: 0 1;
-    margin-top: 1;
-    margin-bottom: 1;
-    background: $surface;
-    border: round $border;
-}
-
-#task-output-files {
-    width: 100%;
-    height: auto;
-    min-height: 3;
-    overflow-y: auto;
-    color: $text-muted;
-    padding: 1;
-    background: $surface;
-    border: round $border;
-}
-
-#task-output-diff-view {
-    width: 100%;
-    height: 1fr;
-    min-height: 12;
-    margin-top: 1;
-}
-
-#task-output-diff-empty {
-    width: 100%;
-    margin-top: 1;
-    padding: 1 2;
-    color: $text-muted;
-    background: $surface;
-    border: round $border;
-}
-
-TaskOutputScreen.task-output-terminal-fullscreen #task-output-top {
-    display: none;
-    height: 0;
-    min-height: 0;
-}
-/* Task Output action bar — shown for REVIEW-status tasks */
-
-#task-output-action-bar {
-    dock: bottom;
-    width: 100%;
-    height: auto;
-    padding: 1 2;
-    align: center middle;
-    border-top: solid $border;
-    background: $surface;
-}
-
-#task-output-action-bar.hidden {
-    display: none;
-}
-
-#task-output-action-hint {
-    color: $text-disabled;
-    width: 1fr;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-
-TaskOutputScreen #task-output-screen-root {
-    /* ensure room for docked action bar */
 }
 /* === REJECTION INPUT MODAL === */
 
@@ -2080,7 +1692,6 @@ DiffModal .diff-header {
 }
 /* === ONBOARDING / SETUP SCREEN === */
 
-OnboardingScreen,
 OnboardingFlow {
     align: center middle;
     background: $background;
@@ -2256,33 +1867,6 @@ OnboardingFlow {
     padding-top: 1;
     border-top: solid $border;
 }
-/* === CWD SUGGESTION BANNER (Inside Welcome Container) === */
-
-#cwd-suggestion-banner {
-    width: 100%;
-    height: auto;
-    background: $primary 10%;
-    border: solid $primary;
-    padding: 1 2;
-    margin: 1 0;
-}
-
-#cwd-title {
-    text-style: bold;
-    color: $primary;
-}
-
-#cwd-path {
-    color: $text-muted;
-    margin-left: 2;
-    margin-bottom: 1;
-}
-
-#cwd-actions {
-    height: auto;
-    margin-left: 2;
-}
-
 /* === OFFLINE BANNER === */
 
 OfflineBanner {
@@ -3553,26 +3137,18 @@ SettingsModal {
     layout: horizontal;
 }
 
-WelcomeScreen {
-    align: center middle;
-}
-
-#welcome-title,
 #repo-picker-title,
 #agent-picker-title,
-#review-title,
-#task-output-status {
+#review-title {
     text-style: bold;
     color: $primary;
 }
 
-#welcome-subtitle,
 #repo-picker-subtitle,
 #agent-picker-subtitle {
     color: $text-muted;
 }
 
-#welcome-details,
 #repo-picker-detail,
 #agent-picker-detail,
 #review-status {
@@ -3594,102 +3170,9 @@ WelcomeScreen {
 #agent-picker-shell {
     width: 84;
     max-width: 98%;
-    border: round $border;
-    background: $surface;
-    padding: 1 2;
-}
-
-TaskOutputScreen {
-    layout: vertical;
-    background: $background;
-}
-
-#task-output-status {
-    padding: 0 1;
-    border-bottom: solid $panel;
-    background: $surface;
-}
-
-/* === WAVE 2 VISUAL PARITY (welcome/setup/task-output aliases) === */
-
-WelcomeScreen,
-OnboardingScreen {
-    align: center middle;
-    background: $background;
-}
-
-#welcome-container,
-#repo-picker-shell,
-#agent-picker-shell {
-    background: $surface;
     border: round $primary;
-    padding: 1 2;
-}
-
-#welcome-title,
-#repo-picker-title,
-#agent-picker-title,
-#review-title,
-#task-output-title,
-#task-output-status {
-    text-style: bold;
-    color: $primary;
-}
-
-#welcome-subtitle,
-#repo-picker-subtitle,
-#agent-picker-subtitle,
-#task-output-branch {
-    color: $text-muted;
-}
-
-#welcome-details,
-#repo-picker-detail,
-#agent-picker-detail,
-#review-status,
-#task-output-workspace-snapshot,
-#task-output-diff-stats,
-#task-output-files,
-#task-output-diff-empty {
-    border: round $border;
     background: $surface;
-    color: $text;
-    padding: 1;
-}
-
-#repo-picker-actions,
-#agent-picker-actions,
-#task-output-action-bar {
-    width: 100%;
-    height: auto;
-    align: center middle;
-}
-
-
-#task-output-action-hint {
-    color: $text-muted;
-}
-
-TaskOutputScreen,
-#task-output-screen-root,
-#task-output-shell {
-    background: $background;
-}
-
-#task-output-top,
-#task-output-panel {
-    margin: 1 1 0 1;
     padding: 1 2;
-    background: $panel;
-    border: round $border;
-}
-
-#task-output-action-bar,
-#task-output-actions {
-    dock: bottom;
-    padding: 1 2;
-    border-top: solid $border;
-    background: $surface;
 }
 
 /* === LEGACY PARITY OVERRIDES (board/chat/task-output/settings) === */
@@ -3782,27 +3265,3 @@ TaskOutputScreen,
     scrollbar-gutter: stable;
 }
 
-TaskOutputScreen,
-#task-output-screen-root {
-    background: $background;
-}
-
-#task-output-screen-root {
-    layout: vertical;
-    height: 1fr;
-}
-
-#task-output-top {
-    height: 1fr;
-    min-height: 10;
-}
-
-#task-output-diff-view {
-    height: 1fr;
-    min-height: 12;
-}
-
-#task-output-chat-overlay {
-    width: 100%;
-    min-height: 0;
-}

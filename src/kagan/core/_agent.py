@@ -1,7 +1,6 @@
 """Agent backend registry and launcher for kagan.core.
 
-AGENT_BACKENDS maps backend name ->
-{executable, prompt_flag, workdir_flag, env_vars, supports_acp}.
+BackendSpec is the typed source of truth; get_backend_spec() looks them up by name.
 spawn_agent() writes .mcp.json to the worktree and spawns a detached OS process.
 """
 
@@ -17,7 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, Literal, TypedDict, cast
+from typing import Any, Final, Literal, cast
 
 from loguru import logger
 
@@ -46,9 +45,7 @@ _AGENT_TIMEOUT_GRACE_SECONDS: Final[float] = 5.0
 def _force_kill(proc: asyncio.subprocess.Process) -> None:
     """Kill the process unconditionally after the grace period expires."""
     pid = proc.pid
-    logger.warning(
-        "Agent pid={} did not exit after terminate grace period, force-killing", pid
-    )
+    logger.warning("Agent pid={} did not exit after terminate grace period, force-killing", pid)
     if proc.returncode is None:
         with contextlib.suppress(OSError, ProcessLookupError):
             proc.kill()
@@ -76,12 +73,12 @@ def _kill_agent(proc: asyncio.subprocess.Process) -> None:
         _force_kill(proc)
 
 
-async def register_spawned_process(session_id: str, proc: asyncio.subprocess.Process) -> None:
+def register_spawned_process(session_id: str, proc: asyncio.subprocess.Process) -> None:
     """Register a spawned process for tracking."""
     _spawned_processes[session_id] = proc
 
 
-async def unregister_spawned_process(session_id: str) -> None:
+def unregister_spawned_process(session_id: str) -> None:
     """Unregister a process when it exits naturally.
 
     Also cancels any pending timeout timer so the kill callback does not fire
@@ -152,19 +149,6 @@ class BackendCommand:
     """Whether the command requires uv to be bootstrapped first."""
 
 
-class AgentBackendConfig(TypedDict, total=False):
-    """Schema for an agent backend registry entry."""
-
-    capabilities: tuple[str, ...]
-    executable: str
-    prompt_flag: str | None
-    workdir_flag: str | None
-    env_vars: dict[str, str]
-    supports_acp: bool
-    acp_command: list[str]
-    acp_args: list[str]
-
-
 class BackendCapability(StrEnum):
     """Capabilities that backend specs can declare."""
 
@@ -194,8 +178,8 @@ class BackendSpec:
     install: Mapping[OS, BackendCommand] | None = None
     auth: Mapping[OS, BackendCommand] | None = None
 
-    def to_legacy_config(self) -> AgentBackendConfig:
-        """Project the typed spec into the legacy mapping contract."""
+    def to_legacy_config(self) -> dict[str, Any]:
+        """Project the typed spec into a dict mapping (legacy compat)."""
         return {
             "capabilities": tuple(sorted(cap.value for cap in self.capabilities)),
             "executable": self.executable,
@@ -544,8 +528,7 @@ _BACKEND_SPECS: dict[str, BackendSpec] = {
             "*": BackendCommand(
                 description="Install Amp and ACP adapter",
                 command=(
-                    "curl -fsSL https://ampcode.com/install.sh | bash"
-                    " && npm install -g amp-acp"
+                    "curl -fsSL https://ampcode.com/install.sh | bash && npm install -g amp-acp"
                 ),
             ),
         },
@@ -656,13 +639,6 @@ _AGENT_BACKEND_ALIASES: dict[str, str] = {
 }
 
 
-def _build_legacy_backend_registry() -> dict[str, AgentBackendConfig]:
-    return {name: spec.to_legacy_config() for name, spec in _BACKEND_SPECS.items()}
-
-
-AGENT_BACKENDS: dict[str, AgentBackendConfig] = _build_legacy_backend_registry()
-
-
 def normalize_backend_name(name: str) -> str:
     """Normalize user-provided backend names to canonical registry keys."""
     normalized = name.strip().lower()
@@ -684,25 +660,20 @@ def list_backend_specs() -> dict[str, BackendSpec]:
     return dict(_BACKEND_SPECS)
 
 
-def get_backend(name: str) -> AgentBackendConfig:
-    """Return the registry entry for *name*, raising AgentError if unknown."""
-    resolved = normalize_backend_name(name)
-    try:
-        return AGENT_BACKENDS[resolved]
-    except KeyError:
-        known = ", ".join(sorted(AGENT_BACKENDS))
-        raise AgentError(f"unknown agent backend {name!r}. Known: {known}") from None
+def get_backend(name: str) -> dict[str, Any]:
+    """Return the legacy config dict for *name*, raising AgentError if unknown."""
+    return get_backend_spec(name).to_legacy_config()
 
 
 def list_backends() -> list[str]:
     """Return all registered backend names."""
-    return list(AGENT_BACKENDS)
+    return list(_BACKEND_SPECS)
 
 
 def list_available_backends() -> dict[str, bool]:
     """Return {backend_name: is_installed} for all registered backends."""
     return {
-        name: shutil.which(cfg["executable"]) is not None for name, cfg in AGENT_BACKENDS.items()
+        name: shutil.which(spec.executable) is not None for name, spec in _BACKEND_SPECS.items()
     }
 
 
@@ -731,10 +702,8 @@ def _copilot_builtin_acp_supported() -> bool:
 
 def resolve_acp_command(backend_name: str) -> list[str]:
     """Resolve the ACP launch command for a backend on the current machine."""
-    entry = get_backend(backend_name)
-    executable = entry.get("executable")
-    fallback = [executable] if isinstance(executable, str) and executable else []
-    acp_cmd = list(entry.get("acp_command", fallback))
+    spec = get_backend_spec(backend_name)
+    acp_cmd = list(spec.acp_command) if spec.acp_command else [spec.executable]
     if not acp_cmd:
         raise AgentError(f"No ACP command configured for backend {backend_name!r}")
 
@@ -807,7 +776,7 @@ async def _prepare_spawn(
     *,
     write_mcp_manifest: bool = True,
 ) -> tuple[list[str], dict[str, str], dict[str, object], str]:
-    entry = get_backend(backend_name)
+    spec = get_backend_spec(backend_name)
 
     mcp_content = build_mcp_manifest(
         session_id=session_id, db_path=db_path, role="WORKER", project_id=project_id
@@ -824,14 +793,14 @@ async def _prepare_spawn(
                 ) from exc
             raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
 
-    cmd: list[str] = list(resolve_spawn_command(entry["executable"]))
-    if entry["workdir_flag"]:
-        cmd += [entry["workdir_flag"], str(worktree_path)]
+    cmd: list[str] = list(resolve_spawn_command(spec.executable))
+    if spec.workdir_flag:
+        cmd += [spec.workdir_flag, str(worktree_path)]
 
     env = build_agent_environment(
         session_id=session_id,
         task_id=task_id,
-        backend_env_vars=entry.get("env_vars", {}),
+        backend_env_vars=dict(spec.env_vars),
     )
 
     base_kwargs: dict[str, object] = {
@@ -860,7 +829,7 @@ async def spawn_agent(
             *timeout_seconds* elapse.  ``None`` means no timeout (default).
     """
     logger.info("Spawning agent backend={}", backend_name)
-    entry = get_backend(backend_name)
+    spec = get_backend_spec(backend_name)
     cmd, _env, kwargs, _mcp_content = await _prepare_spawn(
         backend_name,
         worktree_path,
@@ -870,8 +839,8 @@ async def spawn_agent(
         db_path,
         project_id,
     )
-    if entry["prompt_flag"] and prompt:
-        cmd += [entry["prompt_flag"], prompt]
+    if spec.prompt_flag and prompt:
+        cmd += [spec.prompt_flag, prompt]
     kwargs["stdin"] = asyncio.subprocess.DEVNULL
     kwargs["stdout"] = asyncio.subprocess.DEVNULL
     kwargs["stderr"] = asyncio.subprocess.DEVNULL
@@ -886,10 +855,10 @@ async def spawn_agent(
     except (FileNotFoundError, PermissionError) as exc:
         logger.error("Failed to spawn agent backend={}: {}", backend_name, exc)
         raise AgentError(
-            f"Failed to spawn agent {backend_name!r} ({entry['executable']!r}): {exc}"
+            f"Failed to spawn agent {backend_name!r} ({spec.executable!r}): {exc}"
         ) from exc
 
-    await register_spawned_process(session_id, proc)  # Track for cleanup
+    register_spawned_process(session_id, proc)  # Track for cleanup
 
     # Schedule a timeout kill if requested
     if timeout_seconds is not None and proc.pid is not None:

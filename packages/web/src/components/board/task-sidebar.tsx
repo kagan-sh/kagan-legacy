@@ -47,7 +47,7 @@ export function TaskSidebar({ task }: TaskSidebarProps) {
 }
 
 function buildReviewSidebarSummary(task: WireTask): ReviewSidebarSummary {
-  const criteriaCount = (task.acceptance_criteria ?? []).filter((criterion) => criterion.trim()).length;
+  const criteriaCount = (task.acceptance_criteria ?? []).filter((c) => c.text.trim()).length;
   const verdicts = task.review_verdicts ?? [];
   const reviewedCount = Math.min(verdicts.length, criteriaCount);
   const passedCount = verdicts.filter((verdict) => verdict.verdict === 'PASS').length;

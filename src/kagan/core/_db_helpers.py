@@ -1,11 +1,21 @@
 import asyncio
 from collections.abc import Callable, Mapping
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlmodel import Session as DBSession
-from sqlmodel import select
 
-from kagan.core.models import Session, SessionEvent, TaskNote, Worktree, _utc_now
+from kagan.core.models import _utc_now
+
+
+def _col(x: Any) -> Any:
+    """Typed passthrough for SQLModel column expressions.
+
+    SQLModel's Mapped[...] columns trip pyrefly when used with
+    .like / .in_ / .desc — historically wrapped in cast("Any", x).
+    Centralised here so changes (e.g. an SQLModel bump) touch one place.
+    """
+    return x
 
 
 def _setting_enabled(settings: Mapping[str, str], key: str, *, default: bool) -> bool:
@@ -42,22 +52,11 @@ def _add_and_refresh(s, obj):
     return obj
 
 
-def _delete_task_children(session, task_id: str) -> None:
-    for note in session.exec(select(TaskNote).where(TaskNote.task_id == task_id)).all():
-        session.delete(note)
-    for event in session.exec(select(SessionEvent).where(SessionEvent.task_id == task_id)).all():
-        session.delete(event)
-    for run in session.exec(select(Session).where(Session.task_id == task_id)).all():
-        session.delete(run)
-    for ws in session.exec(select(Worktree).where(Worktree.task_id == task_id)).all():
-        session.delete(ws)
-
-
 __all__ = [
     "_add_and_refresh",
+    "_col",
     "_db_async",
     "_db_sync",
-    "_delete_task_children",
     "_setting_branch",
     "_setting_enabled",
     "_utc_now",

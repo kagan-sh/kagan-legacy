@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-pytestmark = [pytest.mark.unit]
-
 from kagan.core._worktrees import Worktrees
 from kagan.core.errors import ValidationError, WorktreeError
+
+pytestmark = [pytest.mark.unit]
 
 # Sample valid UUIDs for testing
 VALID_UUIDS = [

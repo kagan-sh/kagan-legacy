@@ -5,19 +5,26 @@ import re
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
+from sqlmodel import select
 
 from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
 from kagan.core._backend_selector import BackendSelector
-from kagan.core._utils import utc_iso
+from kagan.core._db_helpers import _db_async
+from kagan.core.models import AcceptanceCriterion
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
+    _manual_review_payload,
     _ok,
     _require_access,
+    bulk_task_review_verdicts,
+    event_to_wire,
     handle_errors,
     parse_body,
     require_context,
+    review_diff_summaries,
     task_to_wire_dict,
+    task_wire_dict,
 )
 from kagan.server.requests import (
     CreateTaskRequest,
@@ -27,18 +34,12 @@ from kagan.server.requests import (
     UpdateTaskRequest,
     UpdateTaskStatusRequest,
 )
-from kagan.server.responses import EventResponse
+from kagan.server.responses import TaskSessionResponse
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from starlette.requests import Request
     from starlette.responses import JSONResponse
-
-
-def _event_dict(event: Any) -> dict[str, Any]:
-    return EventResponse.model_validate(event).model_dump(mode="json")
-
-
 
 
 async def _select_backend_intelligently(
@@ -130,15 +131,13 @@ async def _select_backend_intelligently(
         }
 
 
-def _manual_review_required(task_id: str) -> JSONResponse:
-    return _ok(
-        {
-            "task_id": task_id,
-            "action": "blocked",
-            "reason_code": "MANUAL_REVIEW_REQUIRED",
-            "reason": "This task has no acceptance criteria. Manual human review is required.",
-        }
-    )
+def _backend_selection_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "selected_backend": meta.get("backend"),
+        "backend_confidence": meta.get("confidence"),
+        "backend_reason": meta.get("reason"),
+        "alternatives": meta.get("alternatives", []),
+    }
 
 
 async def _load_task_branch_commits(
@@ -185,7 +184,19 @@ def register_task_routes(mcp: FastMCP) -> None:
         repo_id = request.query_params.get("repo_id") or None
         tasks = await ctx.client.tasks.list(status=status_enum, repo_id=repo_id)
         runtime = await ctx.client.tasks.runtime_summaries([task.id for task in tasks])
-        return _ok([task_to_wire_dict(task, runtime=runtime.get(task.id)) for task in tasks])
+        diff_summaries = await review_diff_summaries(ctx, tasks, runtime)
+        verdict_map = await bulk_task_review_verdicts(ctx, [task.id for task in tasks])
+        return _ok(
+            [
+                task_to_wire_dict(
+                    task,
+                    runtime=runtime.get(task.id),
+                    diff_summary=diff_summaries.get(task.id),
+                    review_verdicts=verdict_map.get(task.id),
+                )
+                for task in tasks
+            ]
+        )
 
     @mcp.custom_route("/api/tasks", methods=["POST"])
     @require_context(mcp)
@@ -207,8 +218,7 @@ def register_task_routes(mcp: FastMCP) -> None:
             launcher=body.launcher,
             repo_id=body.repo_id,
         )
-        runtime = await ctx.client.tasks.runtime_summary(task.id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task.id, task=task))
 
     @mcp.custom_route("/api/tasks/counts", methods=["GET"])
     @require_context(mcp)
@@ -223,9 +233,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def get_task(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
-        task = await ctx.client.tasks.get(task_id)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["PATCH"])
     @require_context(mcp)
@@ -243,8 +251,7 @@ def register_task_routes(mcp: FastMCP) -> None:
                 value = parse_priority(value)
             update_args[field] = value
         task = await ctx.client.tasks.update(task_id, **update_args)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["DELETE"])
     @require_context(mcp)
@@ -269,8 +276,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskStatusRequest)
         task = await ctx.client.tasks.set_status(task_id, TaskStatus(body.status))
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}/run", methods=["POST"])
     @require_context(mcp)
@@ -309,17 +315,10 @@ def register_task_routes(mcp: FastMCP) -> None:
             persona=body.persona,
         )
 
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
 
-        # Include selection metadata in response
-        wire_dict = task_to_wire_dict(task, runtime=runtime)
-        wire_dict["backend_selection"] = {
-            "selected_backend": selection_metadata.get("backend"),
-            "backend_confidence": selection_metadata.get("confidence"),
-            "backend_reason": selection_metadata.get("reason"),
-            "alternatives": selection_metadata.get("alternatives", []),
-        }
+        wire_dict = await task_wire_dict(ctx, task_id, task=task)
+        wire_dict["backend_selection"] = _backend_selection_payload(selection_metadata)
 
         return _ok(wire_dict)
 
@@ -334,9 +333,8 @@ def register_task_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         await ctx.client.tasks.cancel(task_id)
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
-        return _ok(task_to_wire_dict(task, runtime=runtime))
+        return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}/detach", methods=["POST"])
     @require_context(mcp)
@@ -399,7 +397,7 @@ def register_task_routes(mcp: FastMCP) -> None:
                 limit=max(limit, 1),
                 session_id=session_id,
             )
-        return _ok([_event_dict(event) for event in events])
+        return _ok([event_to_wire(event) for event in events])
 
     @mcp.custom_route("/api/tasks/{task_id}/sessions", methods=["GET"])
     @require_context(mcp)
@@ -409,14 +407,8 @@ def register_task_routes(mcp: FastMCP) -> None:
         sessions = await ctx.client.tasks.sessions.list_for_task(task_id)
         return _ok(
             [
-                {
-                    "id": session.id,
-                    "launcher": session.launcher,
-                    "status": session.status.value,
-                    "agent_backend": session.agent_backend,
-                    "started_at": utc_iso(session.started_at) or "",
-                }
-                for session in sessions
+                TaskSessionResponse.model_validate(s).model_dump(mode="json")
+                for s in sessions
             ]
         )
 
@@ -426,11 +418,12 @@ def register_task_routes(mcp: FastMCP) -> None:
     async def review_status(request: Request, *, ctx: Any) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
+        review_approved = await asyncio.to_thread(ctx.client.reviews.is_approved, task_id)
         return _ok(
             {
                 "task_id": task_id,
                 "status": task.status.value,
-                "review_approved": getattr(task, "review_approved", False),
+                "review_approved": review_approved,
             }
         )
 
@@ -449,22 +442,29 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
-            criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
-            if not criteria:
-                return _manual_review_required(task_id)
+            criteria_list = await _db_async(
+                ctx.client.engine,
+                lambda s: list(
+                    s.exec(
+                        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                    ).all()
+                ),
+            )
+            if not criteria_list:
+                return _ok(_manual_review_payload(task_id))
 
         if action == "approve":
             task = await ctx.client.reviews.approve(task_id)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "reject":
             feedback = body.feedback
             if not feedback:
                 raise ValueError("feedback is required for reject action")
             task = await ctx.client.reviews.reject(task_id, feedback=feedback)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "merge":
             task = await ctx.client.reviews.merge(task_id)
-            return _ok({"task": task_to_wire_dict(task), "action": action})
+            return _ok({"task": await task_wire_dict(ctx, task_id, task=task), "action": action})
         if action == "rebase":
             await ctx.client.reviews.rebase(task_id)
             return _ok({"task_id": task_id, "action": action})
@@ -607,15 +607,9 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         await ctx.client.tasks.run(task_id, agent_backend=agent_backend)
 
-        runtime = await ctx.client.tasks.runtime_summary(task_id)
         task = await ctx.client.tasks.get(task_id)
 
-        wire_dict = task_to_wire_dict(task, runtime=runtime)
-        wire_dict["backend_selection"] = {
-            "selected_backend": selection_metadata.get("backend"),
-            "backend_confidence": selection_metadata.get("confidence"),
-            "backend_reason": selection_metadata.get("reason"),
-            "alternatives": selection_metadata.get("alternatives", []),
-        }
+        wire_dict = await task_wire_dict(ctx, task_id, task=task)
+        wire_dict["backend_selection"] = _backend_selection_payload(selection_metadata)
 
         return _ok(wire_dict)

@@ -417,7 +417,7 @@ class TestCalculateTrustAssessment:
         now = datetime.now(UTC)
         created_at = (now - timedelta(days=500)).isoformat().replace("+00:00", "Z")
 
-        for stars, expected_star_score in test_cases:
+        for stars, _expected_star_score in test_cases:
             repo_meta = {
                 "stargazers_count": stars,
                 "created_at": created_at,
@@ -441,7 +441,7 @@ class TestCalculateTrustAssessment:
             (365, 0.9),  # 365+ days = 0.9
         ]
 
-        for days, expected_age_score in test_cases:
+        for days, _expected_age_score in test_cases:
             created_at = (now - timedelta(days=days)).isoformat().replace("+00:00", "Z")
             repo_meta = {
                 "stargazers_count": 1000,

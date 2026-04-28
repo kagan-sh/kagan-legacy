@@ -1,8 +1,9 @@
 import builtins
 import contextlib
+import functools
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from sqlalchemy import Engine
@@ -13,7 +14,6 @@ from kagan.core import git
 from kagan.core._db_helpers import (
     _add_and_refresh,
     _db_async,
-    _delete_task_children,
     _setting_branch,
     _setting_enabled,
 )
@@ -118,10 +118,11 @@ async def delete_project(
                 )
 
     # DB transaction: delete remaining rows
+    # CASCADE FK deletes handle child rows (sessions, worktrees, task_events,
+    # notes, acceptance_criteria, review_verdicts) when the Task row is deleted.
     def op(s):
         tasks = list(s.exec(select(Task).where(Task.project_id == project_id)).all())
         for task in tasks:
-            _delete_task_children(s, task.id)
             s.delete(task)
         for repo in s.exec(select(Repository).where(Repository.project_id == project_id)).all():
             s.delete(repo)
@@ -307,13 +308,35 @@ async def resolve_repo_path(
     return repo_path if repo_path.is_dir() else None
 
 
-# ── Thin class wrapper (backward compatibility) ──────────────────────
+# ── Slim class wrapper (state-mutating methods only) ──────────────────────
+
+# Read-only passthroughs resolved via __getattr__:
+_PASSTHROUGH_MAP: dict[str, Any] = {
+    "get": get_project,
+    "list": list_projects,
+    "add_repo": add_repo,
+    "repos": list_repos,
+    "set_repo_default_branch": set_repo_default_branch,
+    "find_by_repo": find_project_by_repo,
+    "find_by_name": find_project_by_name,
+    "resolve_repo": resolve_repo,
+}
 
 
 class Projects:
     def __init__(self, engine: Engine, client: "KaganCore") -> None:
         self._engine = engine
         self._client = client
+
+    # ── Module-function passthroughs bound at attribute access time ────────
+
+    def __getattr__(self, name: str) -> Any:
+        fn = _PASSTHROUGH_MAP.get(name)
+        if fn is None:
+            raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
+        return functools.partial(fn, self._engine)
+
+    # ── Methods that mutate client state ────────────────────────────────────
 
     async def create(self, name: str, *, repo_paths: list[str] | None = None) -> Project:
         return await create_project(
@@ -323,12 +346,6 @@ class Projects:
             cancel_session=self._client.tasks.sessions.cancel,
             cleanup_worktree=self._client.worktrees.cleanup,
         )
-
-    async def get(self, project_id: str) -> Project:
-        return await get_project(self._engine, project_id)
-
-    async def list(self) -> list[Project]:
-        return await list_projects(self._engine)
 
     async def set_active(self, project_id: str) -> None:
         """Set the active project by ID. Validates the project exists."""
@@ -358,31 +375,6 @@ class Projects:
         if cleared:
             self._client.active_project_id = None
             self._client.tasks._active_project_id = None
-
-    async def add_repo(self, project_id: str, repo_path: str) -> Repository:
-        return await add_repo(self._engine, project_id, repo_path)
-
-    async def repos(self, project_id: str) -> builtins.list[Repository]:
-        return await list_repos(self._engine, project_id)
-
-    async def set_repo_default_branch(
-        self, project_id: str, repo_id: str, branch: str
-    ) -> Repository:
-        return await set_repo_default_branch(self._engine, project_id, repo_id, branch)
-
-    async def find_by_repo(self, repo_path: str) -> Project | None:
-        return await find_project_by_repo(self._engine, repo_path)
-
-    async def find_by_name(self, name: str) -> Project | None:
-        return await find_project_by_name(self._engine, name)
-
-    async def resolve_repo(
-        self,
-        project_id: str,
-        *,
-        selected_repo_id: str | None = None,
-    ) -> Repository:
-        return await resolve_repo(self._engine, project_id, selected_repo_id=selected_repo_id)
 
     async def resolve_repo_path(
         self,

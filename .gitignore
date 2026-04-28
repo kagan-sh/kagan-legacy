@@ -253,3 +253,10 @@ src/kagan/server/_web_static/*
 packages/web/.svelte-kit/
 
 .results/
+
+# Local debug artifacts (playwright snapshots, ad-hoc dumps)
+.playwright-mcp/
+/board.yml
+/board-deep.yml
+/board-full.yml
+/diff-in-board.png

@@ -231,14 +231,34 @@ class _FakeSettingsOps:
         self._store.update(updates)
 
 
+def _make_test_engine():  # type: ignore[return]
+    """Create a fully-migrated file-based SQLite engine for unit tests.
+
+    File-based so asyncio.to_thread can access the same DB across threads.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from kagan.core._db import create_db_engine
+
+    tmpdir = tempfile.mkdtemp()
+    return create_db_engine(Path(tmpdir) / "test.db")
+
+
 class _FakeClient:
     def __init__(self) -> None:
         self.settings = _FakeSettingsOps()
         self.active_project_id: str | None = None
+        self._engine = _make_test_engine()
 
 
 @pytest.mark.asyncio
-async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) -> None:
+async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
+    """Reopening a session attaches it and restores orchestrator_history.
+
+    messages_rendered is no longer stored so no transcript is reprinted —
+    only the "Attached session" confirmation line is printed.
+    """
     client = _FakeClient()
     await save_chat_session(
         client,
@@ -248,7 +268,7 @@ async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) ->
             "source": "repl",
             "agent_backend": "claude-code",
             "orchestrator_history": [["user", "hi"]],
-            "messages_rendered": ["You: hi", "Agent: hello"],
+            "messages_rendered": [],
         },
     )
 
@@ -265,8 +285,11 @@ async def test_open_sessions_reattach_prints_restored_transcript(monkeypatch) ->
     should_restart = await controller._open_sessions("cfcee6c1")
 
     assert should_restart is False
-    assert any("Resumed transcript" in line for line in lines)
-    assert any("You: hi" in line for line in lines)
+    assert controller._chat_session_id == "cfcee6c1"
+    # Session is confirmed as attached
+    assert any("Attached session" in line for line in lines)
+    # History is loaded (1 user turn)
+    assert len(controller._chat_history) == 1
 
 
 @pytest.mark.asyncio

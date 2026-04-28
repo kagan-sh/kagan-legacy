@@ -17,6 +17,7 @@ class TaskActionBar(Widget):
     has_criteria: reactive[bool] = reactive(False)
     chat_visible: reactive[bool] = reactive(False)
     chat_fullscreen: reactive[bool] = reactive(False)
+    review_approved: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     TaskActionBar {
@@ -48,6 +49,9 @@ class TaskActionBar(Widget):
         self._sync_hints()
 
     def watch_chat_fullscreen(self, _value: bool) -> None:
+        self._sync_hints()
+
+    def watch_review_approved(self, _value: bool) -> None:
         self._sync_hints()
 
     def _sync_hints(self) -> None:
@@ -142,7 +146,7 @@ class TaskActionBar(Widget):
                 self._update_hint_text(hint, format_hint(hints))
                 return
 
-            if task.review_approved:
+            if self.review_approved:
                 specs = [
                     (("primary_action", "merge"), "merge"),
                     ("reject", "reject+feedback"),

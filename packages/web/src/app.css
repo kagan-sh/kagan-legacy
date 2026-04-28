@@ -125,95 +125,108 @@
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  --card: #111111;
-  --card-foreground: #ededed;
-  --popover: #171717;
-  --popover-foreground: #ededed;
+  /* ─── Base layer: off-pure-black, slight blue-tint ─────────────────────────
+     Surface stack (each ~2–4% lighter, HSL 240 family):
+       bg       240 6%  6%  → #0e0e10
+       card     240 5%  9%  → #161618  (surface lifted)
+       popover  240 5%  11% → #1b1b1d  (overlay one step up)
+       muted    240 4%  13% → #202022  (recessed UI areas)
+       accent   240 4%  16% → #272729  (hover / selection fills)
+       border   240 4%  18% → #2c2c30  (visible separation)
+     Text contrast:
+       foreground on background  17.54:1  (AAA ✓)
+       muted-fg on background     7.42:1  (AA  ✓ — exceeds 4.5:1 target)
+  ─────────────────────────────────────────────────────────────────────────── */
+  --background: hsl(240 6% 6%);
+  --foreground: hsl(240 5% 96%);
+  --card: hsl(240 5% 9%);
+  --card-foreground: hsl(240 5% 96%);
+  --popover: hsl(240 5% 11%);
+  --popover-foreground: hsl(240 5% 96%);
   --primary: #d4a84b;
   --primary-foreground: #0b0a09;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ededed;
-  --muted: #171717;
-  --muted-foreground: #888888;
-  --accent: #1a1a1a;
-  --accent-foreground: #ededed;
-  --destructive: #dc2626;
-  --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.08);
-  --input: #262626;
+  --secondary: hsl(240 4% 14%);
+  --secondary-foreground: hsl(240 4% 80%);
+  --muted: hsl(240 4% 13%);
+  --muted-foreground: hsl(240 4% 64%);
+  --accent: hsl(240 4% 16%);
+  --accent-foreground: hsl(240 5% 96%);
+  --destructive: hsl(0 72% 51%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(240 4% 18%);
+  --input: hsl(240 4% 18%);
   --ring: #d4a84b;
 
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #ededed;
+  --sidebar: hsl(240 6% 6%);
+  --sidebar-foreground: hsl(240 5% 96%);
   --sidebar-primary: #d4a84b;
   --sidebar-primary-foreground: #0b0a09;
-  --sidebar-accent: #171717;
-  --sidebar-accent-foreground: #ededed;
-  --sidebar-border: #1f1f1f;
+  --sidebar-accent: hsl(240 5% 11%);
+  --sidebar-accent-foreground: hsl(240 5% 96%);
+  --sidebar-border: hsl(240 4% 20%);
   --sidebar-ring: #d4a84b;
 
-  --surface-0: #0a0a0a;
-  --surface-1: #111111;
-  --surface-2: #171717;
-  --surface-3: #1f1f1f;
-  --surface-overlay: rgba(0, 0, 0, 0.72);
-  --panel-border: rgba(255, 255, 255, 0.06);
-  --panel-border-strong: rgba(255, 255, 255, 0.10);
-  --border-subtle: rgba(255, 255, 255, 0.06);
+  /* Surface stack — parallel tokens for components that reference these directly */
+  --surface-0: hsl(240 6% 6%);   /* = background */
+  --surface-1: hsl(240 5% 9%);   /* = card */
+  --surface-2: hsl(240 5% 11%);  /* = popover */
+  --surface-3: hsl(240 4% 13%);  /* = muted */
+  --surface-overlay: rgb(0 0 0 / 0.72);
+  --panel-border: hsl(240 4% 18%);
+  --panel-border-strong: hsl(240 4% 22%);
+  --border-subtle: hsl(240 4% 18% / 0.6);
   --focus-ring: rgb(212 168 75 / 0.25);
-  --soft-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-  --ambient-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
-  --grid-line: rgba(255, 255, 255, 0.04);
+  --soft-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -4px rgb(0 0 0 / 0.4);
+  --ambient-shadow: 0 0 0 1px hsl(240 5% 96% / 0.04), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.4);
+  --grid-line: hsl(240 5% 96% / 0.04);
 
-  --glass-bg: rgba(17, 17, 17, 0.80);
-  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-bg: hsl(240 5% 9% / 0.80);
+  --glass-border: hsl(240 5% 96% / 0.07);
 
   --kagan-success: #5ea87a;
   --kagan-warning: #c4993c;
   --kagan-info: #6a8fba;
   --kagan-accent-copper: #b0846a;
-  --kagan-kanban-bg: #0a0a0a;
+  --kagan-kanban-bg: hsl(240 6% 6%);
   --kagan-rail-running: #3fb58e;
   --kagan-rail-error: #ef4444;
   --kagan-rail-warning: #e6c07b;
   --kagan-rail-review: #c27c4e;
-  --kagan-rail-idle: #666666;
+  --kagan-rail-idle: #777777;
 
-  --border-blurred: rgba(255, 255, 255, 0.04);
-  --text-muted: #888888;
-  --text-disabled: #848484;
+  --border-blurred: hsl(240 4% 18% / 0.4);
+  --text-muted: hsl(240 4% 64%);
+  --text-disabled: hsl(240 4% 55%);
   --link-color: #d4a84b;
   --link-hover-color: #e0be6e;
-  --scrollbar: #1f1f1f;
-  --scrollbar-hover: #333333;
+  --scrollbar: hsl(240 4% 16%);
+  --scrollbar-hover: hsl(240 4% 26%);
   --scrollbar-active: #d4a84b;
   --input-cursor-background: #d4a84b;
-  --input-selection-background: rgba(212, 168, 75, 0.20);
-  --footer-key-foreground: #888888;
-  --footer-description-foreground: #808080;
+  --input-selection-background: rgb(212 168 75 / 0.20);
+  --footer-key-foreground: hsl(240 4% 64%);
+  --footer-description-foreground: hsl(240 4% 58%);
   --priority-high-background: #dc2626;
   --priority-high-foreground: #ffffff;
   --priority-medium-background: #e6c07b;
   --priority-medium-foreground: #0b0a09;
-  --priority-low-background: #1f1f1f;
-  --priority-low-foreground: #999999;
+  --priority-low-background: hsl(240 4% 18%);
+  --priority-low-foreground: hsl(240 4% 64%);
 
   /* Depth tokens — minimal in dark mode */
-  --inset-shadow: inset 0 1px 2px rgb(0 0 0 / 0.3);
+  --inset-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35);
   --raised-highlight: 0 0 0 transparent;
-  --pressed-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4);
+  --pressed-shadow: inset 0 1px 2px rgb(0 0 0 / 0.45);
   --edge-highlight: 0 0 0 transparent;
 
   /* A11y: inverted for dark mode — light ring on dark backdrop */
-  --a11y-focus-ring: #f5f0e4;
-  --a11y-focus-ring-offset: #0a0a0a;
+  --a11y-focus-ring: hsl(240 5% 96%);
+  --a11y-focus-ring-offset: hsl(240 6% 6%);
 
   /* AAA-contrast palette for dark mode */
   --contrast-aaa-foreground: #f5f0e4;
   --contrast-aaa-muted-foreground: #c7bfb0;
-  --contrast-aaa-background: #000000;
+  --contrast-aaa-background: hsl(240 6% 4%);
   --contrast-aaa-primary: #f0c868;
   --contrast-aaa-primary-foreground: #0a0a0a;
   --contrast-aaa-destructive: #ff7a6f;
@@ -472,6 +485,32 @@ textarea {
   :root {
     --motion-fast: 0ms;
     --motion-base: 0ms;
+  }
+}
+
+/* A11y: theme transitions only when the user has not requested reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .dark {
+    transition:
+      background-color var(--motion-base) ease,
+      color var(--motion-base) ease,
+      border-color var(--motion-base) ease;
+  }
+}
+
+/* A11y: high-contrast mode — boost text legibility for users who need it */
+@media (prefers-contrast: more) {
+  .dark {
+    --foreground: hsl(240 5% 100%);
+    --muted-foreground: hsl(240 4% 75%);
+    --border: hsl(240 4% 28%);
+    --panel-border: hsl(240 4% 28%);
+    --panel-border-strong: hsl(240 4% 36%);
+    --sidebar-border: hsl(240 4% 30%);
+    --text-muted: hsl(240 4% 75%);
+    --text-disabled: hsl(240 4% 65%);
+    --footer-key-foreground: hsl(240 4% 75%);
+    --footer-description-foreground: hsl(240 4% 70%);
   }
 }
 

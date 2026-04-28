@@ -2,6 +2,9 @@ import type {
   AnalyticsExport,
   BackendStats,
   ChatAgentsResponse,
+  ChatMessageDetailResponse,
+  TurnStatusResponse,
+  ChatWatchEvent,
   CreateTaskInput,
   DiffFile,
   DiffStats,
@@ -14,6 +17,7 @@ import type {
   SettingsResponse,
   TaskStatus,
   TaskWorktreeResponse,
+  TurnInProgressResponse,
   UpdateTaskInput,
   WireChatSession,
   WireEnvelope,
@@ -238,7 +242,12 @@ export class KaganClient {
     });
   }
 
-  /** POST to chat stream endpoint and return the raw SSE Response for streaming. */
+  /**
+   * POST to chat stream endpoint and return the raw SSE Response for streaming.
+   * Throws ApiError for non-2xx responses EXCEPT 409 (TURN_IN_PROGRESS) — that
+   * is returned as a TurnInProgressResponse via a rejected ApiError with
+   * errorCode === "TURN_IN_PROGRESS". Callers should check for that code.
+   */
   async chatStream(
     sessionId: string,
     text: string,
@@ -254,16 +263,167 @@ export class KaganClient {
       body: JSON.stringify({ text }),
       signal,
     });
+
+    if (response.status === 409) {
+      const rawBody = await response.text();
+      let body: TurnInProgressResponse | null = null;
+      try { body = JSON.parse(rawBody) as TurnInProgressResponse; } catch { /* ignore */ }
+      throw new ApiError(
+        409,
+        body?.error_code ?? "TURN_IN_PROGRESS",
+        body?.error_code ?? "TURN_IN_PROGRESS",
+      );
+    }
+
     if (!response.ok || !response.body) {
       throw new ApiError(response.status, `Chat stream failed: ${response.status}`);
     }
     return response;
   }
 
+  /**
+   * Subscribe to the per-session SSE watch stream.
+   * Returns a dispose function; call it to unsubscribe and close the stream.
+   * On unexpected disconnects, waits 3 s then reconnects automatically.
+   * After reconnect, catches up via GET /messages?after_id=lastSeenId.
+   */
+  watchChatSession(
+    sessionId: string,
+    onEvent: (event: ChatWatchEvent) => void,
+    onError?: (err: Error) => void,
+  ): () => void {
+    let disposed = false;
+    let controller = new AbortController();
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastSeenId = 0;
+
+    const clearReconnect = () => {
+      if (reconnectTimer !== null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
+
+    const scheduleReconnect = () => {
+      if (disposed) return;
+      clearReconnect();
+      reconnectTimer = setTimeout(() => void reconnect(), 3_000);
+    };
+
+    const reconnect = async () => {
+      if (disposed) return;
+      // Catch up on missed messages before resuming the watch stream
+      try {
+        const missed = await this.getChatMessages(sessionId, lastSeenId);
+        for (const msg of missed) {
+          lastSeenId = Math.max(lastSeenId, msg.id);
+          const event: ChatWatchEvent = msg.role === "user"
+            ? { t: "CHAT_USER_MESSAGE", message_id: msg.id, content: msg.content }
+            : {
+                t: "CHAT_ASSISTANT_MESSAGE",
+                message_id: msg.id,
+                content: msg.content,
+                terminated: msg.terminated_at_user_request,
+              };
+          onEvent(event);
+        }
+      } catch {
+        // Best-effort — don't block reconnect on catch-up failure
+      }
+      if (!disposed) void startWatch();
+    };
+
+    const startWatch = async () => {
+      if (disposed) return;
+      controller = new AbortController();
+      const { signal } = controller;
+
+      try {
+        const response = await fetch(
+          this.getFullUrl(`/api/chat/sessions/${sessionId}/watch`),
+          {
+            headers: { Accept: "text/event-stream", ...this.getAuthHeaders() },
+            signal,
+          },
+        );
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Watch stream failed: ${response.status}`);
+        }
+
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
+
+        try {
+          while (!disposed) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += value;
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop()!;
+
+            for (const part of parts) {
+              const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+              if (!dataLine) continue;
+              try {
+                const event = JSON.parse(dataLine.slice(6)) as ChatWatchEvent;
+                if ("id" in event && typeof (event as Record<string, unknown>).id === "number") {
+                  lastSeenId = Math.max(lastSeenId, (event as Record<string, unknown>).id as number);
+                }
+                onEvent(event);
+              } catch {
+                // Malformed JSON or keepalive — skip
+              }
+            }
+          }
+        } finally {
+          await reader.cancel().catch(() => {});
+        }
+      } catch (err) {
+        if (signal.aborted) return; // Intentional — no reconnect
+        onError?.(err instanceof Error ? err : new Error(String(err)));
+        scheduleReconnect();
+        return;
+      }
+
+      // Natural EOF — reconnect
+      scheduleReconnect();
+    };
+
+    void startWatch();
+
+    return () => {
+      disposed = true;
+      clearReconnect();
+      controller.abort();
+    };
+  }
+
+  /** POST /api/chat/{sessionId}/interrupt */
+  interruptChatTurn(sessionId: string, reason: "user" | "takeover"): Promise<void> {
+    return this.post<void>(`/api/chat/${sessionId}/interrupt`, { reason });
+  }
+
+  /** GET /api/chat/sessions/{sessionId}/messages?after_id=N */
+  getChatMessages(sessionId: string, afterId: number): Promise<ChatMessageDetailResponse[]> {
+    return this.get<ChatMessageDetailResponse[]>(
+      `/api/chat/sessions/${sessionId}/messages?after_id=${afterId}`,
+    );
+  }
+
+  /** GET /api/chat/{sessionId}/turn-status */
+  getChatTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
+    return this.get<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
+  }
+
+  /** GET /api/chat/sessions/{sessionId} */
+  getChatSession(sessionId: string): Promise<WireChatSession> {
+    return this.get<WireChatSession>(`/api/chat/sessions/${sessionId}`);
+  }
+
   // ── Analytics ──────────────────────────────────────────────────────
 
-  getBackendStats(): Promise<BackendStats[]> {
-    return this.get<BackendStats[]>("/api/analytics/backend-stats");
+  getBackendStats(params?: { days?: number }): Promise<BackendStats[]> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.get<BackendStats[]>(`/api/analytics/backend-stats${query}`);
   }
 
   getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {

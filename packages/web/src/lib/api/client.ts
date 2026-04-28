@@ -6,6 +6,7 @@ import type {
   BackendStats,
   BackendTaskRecommendation,
   ChatAgentsResponse,
+  ChatMessageDetailResponse,
   ClientPresence,
   CombinedStats,
   CreateChatSessionInput,
@@ -27,6 +28,7 @@ import type {
   TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
+  TurnStatusResponse,
   UpdateTaskInput,
   WorkflowResolvedSettings,
   WireChatSession,
@@ -522,8 +524,22 @@ export class KaganApiClient {
   }
 
   /** GET /api/chat/:sessionId/turn-status — check if a turn is still running */
-  async getTurnStatus(sessionId: string): Promise<{ active: boolean }> {
-    return this.request<{ active: boolean }>(`/api/chat/${sessionId}/turn-status`);
+  async getTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
+    return this.request<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
+  }
+
+  /** POST /api/chat/:sessionId/interrupt — cancel the running turn */
+  async interruptChatTurn(sessionId: string, reason: 'user' | 'takeover'): Promise<void> {
+    await this.request(`/api/chat/${sessionId}/interrupt`, {
+      method: 'POST',
+      body: { reason },
+    });
+  }
+
+  /** GET /api/chat/sessions/:sessionId/messages?after_id=N — cursor-tail for missed messages */
+  async getChatMessages(sessionId: string, afterId?: number): Promise<ChatMessageDetailResponse[]> {
+    const query = afterId !== undefined ? `?after_id=${afterId}` : '';
+    return this.request<ChatMessageDetailResponse[]>(`/api/chat/sessions/${sessionId}/messages${query}`);
   }
 
   /** GET /api/chat/agents */
@@ -544,8 +560,9 @@ export class KaganApiClient {
   // -- Analytics -------------------------------------------------------------
 
   /** GET /api/analytics/backend-stats */
-  async getBackendStats(): Promise<BackendStats[]> {
-    return this.request<BackendStats[]>('/api/analytics/backend-stats');
+  async getBackendStats(params?: { days?: number }): Promise<BackendStats[]> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<BackendStats[]>(`/api/analytics/backend-stats${query}`);
   }
 
   /** GET /api/analytics/session-timeline?days=... */
@@ -566,20 +583,23 @@ export class KaganApiClient {
   }
 
   /** GET /api/analytics/by-role - Returns backend stats grouped by agent role */
-  async getAnalyticsByRole(): Promise<AnalyticsByRole> {
-    return this.request<AnalyticsByRole>('/api/analytics/by-role');
+  async getAnalyticsByRole(params?: { days?: number }): Promise<AnalyticsByRole> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<AnalyticsByRole>(`/api/analytics/by-role${query}`);
   }
 
   /** GET /api/analytics/by-task-type - Returns backend stats grouped by task type */
-  async getAnalyticsByTaskType(): Promise<AnalyticsByTaskType> {
-    return this.request<AnalyticsByTaskType>('/api/analytics/by-task-type');
+  async getAnalyticsByTaskType(params?: { days?: number }): Promise<AnalyticsByTaskType> {
+    const query = params?.days ? `?days=${params.days}` : '';
+    return this.request<AnalyticsByTaskType>(`/api/analytics/by-task-type${query}`);
   }
 
   /** GET /api/analytics/by-role-and-task-type - Returns filtered backend stats */
-  async getAnalyticsByRoleAndTaskType(params?: { role?: string; task_type?: string }): Promise<CombinedStats[]> {
+  async getAnalyticsByRoleAndTaskType(params?: { role?: string; task_type?: string; days?: number }): Promise<CombinedStats[]> {
     const qs = new URLSearchParams();
     if (params?.role) qs.set('role', params.role);
     if (params?.task_type) qs.set('task_type', params.task_type);
+    if (params?.days) qs.set('days', String(params.days));
     const query = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<CombinedStats[]>(`/api/analytics/by-role-and-task-type${query}`);
   }

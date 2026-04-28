@@ -506,7 +506,10 @@ class StreamingOutput(Vertical):
         *,
         confidence: ConfidenceLevel = "certain",
     ) -> None:
-        current = self.query_one("#stream-current-action", Static)
+        try:
+            current = self.query_one("#stream-current-action", Static)
+        except NoMatches:
+            return
         current.update(action)
         current.set_class(confidence == "certain", "confidence-certain")
         current.set_class(confidence == "assumption", "confidence-assumption")
@@ -519,7 +522,10 @@ class StreamingOutput(Vertical):
         self._lines.clear()
         self._line_order_by_key.clear()
         self._line_key_by_widget_id.clear()
-        content = self.query_one("#streaming-body-content", Vertical)
+        try:
+            content = self.query_one("#streaming-body-content", Vertical)
+        except NoMatches:
+            return
         for child in list(content.children):
             if child.id != "load-more-bar":
                 child.remove()

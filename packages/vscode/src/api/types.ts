@@ -303,3 +303,115 @@ export interface DoctorReportResponse {
   fail_count: number;
   warn_count: number;
 }
+
+// ── Chat multi-client / watch types ──────────────────────────────────────────
+
+export const CHAT_WATCH_TYPE = {
+  CHAT_CHUNK: "CHAT_CHUNK",
+  CHAT_TOOL_START: "CHAT_TOOL_START",
+  CHAT_TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
+  CHAT_DONE: "CHAT_DONE",
+  CHAT_USER_MESSAGE: "CHAT_USER_MESSAGE",
+  CHAT_ASSISTANT_MESSAGE: "CHAT_ASSISTANT_MESSAGE",
+  CHAT_TURN_STARTED: "CHAT_TURN_STARTED",
+  CHAT_TURN_TERMINATED: "CHAT_TURN_TERMINATED",
+  CHAT_SESSION_UPDATED: "CHAT_SESSION_UPDATED",
+  CHAT_ERROR: "CHAT_ERROR",
+} as const;
+
+export type ChatWatchType = (typeof CHAT_WATCH_TYPE)[keyof typeof CHAT_WATCH_TYPE];
+
+/** A persisted chat message returned by GET /api/chat/sessions/{id}/messages */
+export interface ChatMessageDetailResponse {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  terminated_at_user_request: boolean;
+  created_at: string;
+}
+
+/** Body returned by POST /api/chat/{id}/stream when status 409 */
+export interface TurnInProgressResponse {
+  ok: false;
+  error_code: "TURN_IN_PROGRESS";
+  running_since: string;
+  partial_chars: number;
+}
+
+/** Full turn status returned by GET /api/chat/{id}/turn-status */
+export interface TurnStatusResponse {
+  active: boolean;
+  partial_chars: number | null;
+  running_since: string | null;
+}
+
+// Watch event shapes from GET /api/chat/sessions/{id}/watch
+
+export interface ChatWatchChunk {
+  t: "CHAT_CHUNK";
+  content: string;
+  thought?: boolean;
+}
+
+export interface ChatWatchToolStart {
+  t: "CHAT_TOOL_START";
+  tool: string;
+}
+
+export interface ChatWatchToolProgress {
+  t: "CHAT_TOOL_PROGRESS";
+  tool: string;
+  status: string | null;
+}
+
+export interface ChatWatchDone {
+  t: "CHAT_DONE";
+  full_response: string;
+}
+
+export interface ChatWatchUserMessage {
+  t: "CHAT_USER_MESSAGE";
+  message_id: number;
+  content: string;
+}
+
+export interface ChatWatchAssistantMessage {
+  t: "CHAT_ASSISTANT_MESSAGE";
+  message_id: number;
+  content: string;
+  terminated: boolean;
+}
+
+export interface ChatWatchTurnStarted {
+  t: "CHAT_TURN_STARTED";
+  at: string;
+  by_source: string | null;
+}
+
+export interface ChatWatchTurnTerminated {
+  t: "CHAT_TURN_TERMINATED";
+  reason: "user" | "takeover" | string;
+}
+
+export interface ChatWatchSessionUpdated {
+  t: "CHAT_SESSION_UPDATED";
+  session: WireChatSession;
+}
+
+export interface ChatWatchError {
+  t: "CHAT_ERROR";
+  error: string;
+}
+
+export type ChatWatchEvent =
+  | ChatWatchChunk
+  | ChatWatchToolStart
+  | ChatWatchToolProgress
+  | ChatWatchDone
+  | ChatWatchUserMessage
+  | ChatWatchAssistantMessage
+  | ChatWatchTurnStarted
+  | ChatWatchTurnTerminated
+  | ChatWatchSessionUpdated
+  | ChatWatchError;

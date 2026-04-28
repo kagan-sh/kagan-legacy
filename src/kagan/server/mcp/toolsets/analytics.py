@@ -13,13 +13,13 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
 
         @mcp.tool()
         @mcp_error_boundary
-        async def analytics_backend_stats(ctx: Context) -> dict:
+        async def analytics_backend_stats(ctx: Context, days: int = 30) -> dict:
             """Per-backend session stats: count, success rate, avg duration, retry rate."""
             app = get_context(ctx)
             project_id = app.client.active_project_id
             if not project_id:
                 return {"backends": []}
-            stats = await app.client.analytics.backend_stats(project_id)
+            stats = await app.client.analytics.backend_stats(project_id, days=days)
             return {"backends": stats}
 
     if is_tool_allowed("analytics_session_timeline", opts):

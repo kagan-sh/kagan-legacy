@@ -153,7 +153,7 @@ def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResu
         A list of PreflightCheckResult, one per registered backend,
         with the default backend listed first.
     """
-    from kagan.core._agent import AGENT_BACKENDS, list_available_backends
+    from kagan.core._agent import get_backend_spec, list_available_backends
 
     availability = list_available_backends()
     any_installed = any(availability.values())
@@ -163,16 +163,17 @@ def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResu
     results: list[PreflightCheckResult] = []
 
     # --- Default backend slot ---
-    default_executable = AGENT_BACKENDS.get(resolved_default, {}).get(
-        "executable", resolved_default
-    )
+    try:
+        _default_spec = get_backend_spec(resolved_default)
+        default_executable = _default_spec.executable
+    except Exception:
+        default_executable = resolved_default
     default_installed = availability.get(resolved_default, False)
 
     if default_installed:
         default_status = CheckStatus.PASS
         default_msg = (
-            f"Default agent backend '{resolved_default}' found"
-            f" (executable: {default_executable})"
+            f"Default agent backend '{resolved_default}' found (executable: {default_executable})"
         )
         default_hint = ""
     elif any_installed:
@@ -208,15 +209,16 @@ def check_agent_backends(default_backend: str | None) -> list[PreflightCheckResu
             fix_hint=default_hint,
         )
     )
-    logger.debug(
-        "Preflight backend (default) {}: {}", resolved_default, default_status
-    )
+    logger.debug("Preflight backend (default) {}: {}", resolved_default, default_status)
 
     # --- Non-default backend slots ---
     for name, installed in availability.items():
         if name == resolved_default:
             continue
-        executable = AGENT_BACKENDS.get(name, {}).get("executable", name)
+        try:
+            executable = get_backend_spec(name).executable
+        except Exception:
+            executable = name
         if installed:
             status = CheckStatus.PASS
             msg = f"Agent backend '{name}' (executable: {executable}) found"

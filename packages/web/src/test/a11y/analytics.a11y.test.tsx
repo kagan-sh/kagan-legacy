@@ -15,9 +15,9 @@ vi.mock('@/lib/api/client', () => ({
   apiClient: {
     getBackendStats: vi.fn().mockResolvedValue([]),
     getSessionTimeline: vi.fn().mockResolvedValue([]),
-    getStatsByRole: vi.fn().mockResolvedValue([]),
-    getStatsByTaskType: vi.fn().mockResolvedValue([]),
-    getCombinedStats: vi.fn().mockResolvedValue([]),
+    getAnalyticsByRole: vi.fn().mockResolvedValue({}),
+    getAnalyticsByTaskType: vi.fn().mockResolvedValue({}),
+    getAnalyticsByRoleAndTaskType: vi.fn().mockResolvedValue([]),
     getAnalyticsExport: vi.fn().mockResolvedValue({}),
     getRecommendedBackend: vi.fn().mockResolvedValue({ backend: 'claude-code' }),
   },

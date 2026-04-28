@@ -25,6 +25,18 @@ from kagan.core import (
 )
 from kagan.core.models import Repository, Worktree
 
+
+def _safe_criteria_texts(task: Any) -> list[str]:
+    """Extract criteria texts from a Task ORM object, handling detached instances."""
+    from sqlalchemy.orm.exc import DetachedInstanceError
+
+    try:
+        criteria = getattr(task, "criteria", None) or []
+        return [c.text for c in sorted(criteria, key=lambda c: c.ordinal)]
+    except DetachedInstanceError:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Result types (protocol-independent DTOs for test assertions)
 # ---------------------------------------------------------------------------
@@ -92,6 +104,8 @@ class CoreDriver:
         str_paths = [str(p) for p in repo_paths] if repo_paths else None
         project = await self._ctx.projects.create(name, repo_paths=str_paths)
         await self._ctx.projects.set_active(project.id)
+        # Persist so TUI instances using the same DB auto-restore this project.
+        await self._ctx.settings.set({"ui.last_project_id": project.id})
         return project.id
 
     async def add_repo(self, repo_path: str | Path) -> str:
@@ -480,6 +494,64 @@ class CoreDriver:
         """Update a configuration setting."""
         await self._ctx.settings.set({f"{section}.{key}": str(value)})
 
+    # -- Chat sessions ------------------------------------------------------
+
+    async def chat_create_session(
+        self,
+        *,
+        source: str = "test",
+        label: str | None = None,
+        agent_backend: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        from kagan.cli.chat.sessions import create_chat_session
+
+        return await create_chat_session(
+            self._ctx,
+            source=source,
+            label=label,
+            agent_backend=agent_backend,
+            project_id=project_id,
+        )
+
+    async def chat_get_session(self, session_id: str) -> dict[str, Any] | None:
+        from kagan.cli.chat.sessions import get_chat_session
+
+        return await get_chat_session(self._ctx, session_id)
+
+    async def chat_list_sessions(
+        self,
+        *,
+        source: str | None = None,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        from kagan.cli.chat.sessions import list_chat_sessions
+
+        return await list_chat_sessions(self._ctx, source=source, project_id=project_id)
+
+    async def chat_delete_session(self, session_id: str) -> bool:
+        from kagan.cli.chat.sessions import delete_chat_session
+
+        return await delete_chat_session(self._ctx, session_id)
+
+    async def chat_append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        *,
+        terminated: bool = False,
+    ) -> Any:
+        from kagan.cli.chat.sessions import append_chat_message
+
+        return await append_chat_message(
+            self._ctx,
+            session_id,
+            role,
+            content,
+            terminated=terminated,
+        )
+
     # -- Audit --------------------------------------------------------------
 
     async def audit_list(
@@ -509,7 +581,7 @@ class CoreDriver:
             agent_backend=task.agent_backend,
             launcher=getattr(task, "launcher", None),
             base_branch=task.base_branch,
-            acceptance_criteria=task.acceptance_criteria or [],
+            acceptance_criteria=_safe_criteria_texts(task),
             project_id=task.project_id,
             repo_id=getattr(task, "repo_id", None),
         )

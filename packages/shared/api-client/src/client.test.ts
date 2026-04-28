@@ -11,7 +11,7 @@ import type {
   WireEvent,
   SSEMessage,
   KaganClientConfig,
-} from "./index.js";
+} from "./index";
 
 // Type tests - these should compile without errors
 type TestApiClient = InstanceType<typeof KaganApiClient>;

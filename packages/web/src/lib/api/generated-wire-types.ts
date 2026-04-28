@@ -11,22 +11,37 @@ export interface BackendSelectionResponse {
 }
 
 export interface ActiveSessionResponse {
-  id: string;
   status: string;
+  started_at: string;
+  id: string;
   launcher?: string | null;
   agent_backend: string;
   agent_role?: string | null;
-  started_at: string;
   context_window_used?: number | null;
   context_window_size?: number | null;
   cost_amount?: number | null;
   cost_currency?: string | null;
 }
 
+export interface AcceptanceCriterionResponse {
+  id: string;
+  task_id: string;
+  ordinal: number;
+  text: string;
+}
+
 export interface ReviewVerdictResponse {
-  criterion_index: number;
-  verdict: 'PASS' | 'FAIL';
+  id: string;
+  criterion_id: string;
+  session_id?: string | null;
+  verdict: 'PASS' | 'FAIL' | 'SKIP';
   reason: string;
+}
+
+export interface DiffSummaryResponse {
+  files_changed: number;
+  additions: number;
+  deletions: number;
 }
 
 export interface TaskResponse {
@@ -37,26 +52,27 @@ export interface TaskResponse {
   priority: string;
   base_branch?: string | null;
   repo_id?: string | null;
-  acceptance_criteria?: string[];
+  acceptance_criteria?: AcceptanceCriterionResponse[];
   agent_backend?: string | null;
   launcher?: string | null;
   review_approved?: boolean;
-  review_verdicts?: ReviewVerdictResponse[];
   updated_at?: string | null;
   last_event_at?: string | null;
   has_workspace?: boolean;
   review_running?: boolean;
+  review_verdicts?: ReviewVerdictResponse[];
   active_session?: ActiveSessionResponse | null;
   backend_selection?: BackendSelectionResponse | null;
+  diff_summary?: DiffSummaryResponse | null;
 }
 
 export interface TaskSessionResponse {
+  status: string;
+  started_at: string;
   id: string;
   launcher?: string | null;
-  status: string;
   agent_backend: string;
   agent_role?: string | null;
-  started_at: string;
 }
 
 export interface ProjectResponse {
@@ -98,6 +114,15 @@ export interface ChatMessageResponse {
   content: string;
 }
 
+export interface ChatMessageDetailResponse {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  terminated_at_user_request: boolean;
+  created_at: string;
+}
+
 export interface ChatSessionSummaryResponse {
   id: string;
   label: string;
@@ -117,6 +142,15 @@ export interface ChatSessionResponse {
   updated_at: string;
   message_count: number;
   messages: ChatMessageResponse[];
+}
+
+export interface TurnInProgressResponse {
+  ok?: boolean;
+  data?: null;
+  error?: string;
+  error_code?: string;
+  running_since?: string | null;
+  partial_chars?: number;
 }
 
 export interface DoctorCheckResponse {

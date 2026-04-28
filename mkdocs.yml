@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
 
 site_name: KAGAN
-site_description: AI-powered Kanban TUI for autonomous development workflows
+site_description: Kanban TUI for AI coding agents with a structural human review gate
 site_url: https://docs.kagan.sh
 docs_dir: docs
 site_dir: site
@@ -160,20 +160,18 @@ exclude_docs: |
 nav:
     - Home: index.md
     - Quickstart: quickstart.md
-    - Concepts:
-          - Architecture: concepts/architecture-overview.md
-          - Task lifecycle: concepts/task-lifecycle.md
-    - Guides:
+    - The review gate: concepts/task-lifecycle.md
+    - Backends: concepts/architecture-overview.md
+    - TUI & CLI:
           - Managed runs & interactive attach: guides/managed-vs-interactive.md
           - Chat & REPL: guides/chat.md
-          - VS Code extension: guides/vscode-extension.md
           - ACP session lifecycle: guides/acp-session-lifecycle.md
-          - MCP setup: guides/mcp-setup.md
+    - Web:
           - Web dashboard: guides/web-dashboard.md
-          - GitHub import: guides/github.md
-          - GitHub Models: guides/github-models.md
           - Remote access: guides/remote-access.md
+    - VS Code: guides/vscode-extension.md
     - Reference:
+          - MCP setup: guides/mcp-setup.md
           - CLI: reference/cli.md
           - Configuration: reference/configuration.md
           - Security: security.md
@@ -181,4 +179,7 @@ nav:
           - Keybindings: reference/keybindings.md
           - MCP tools: reference/mcp-tools.md
           - Plugins: reference/plugins.md
+          - GitHub import: guides/github.md
+          - GitHub Models: guides/github-models.md
+          - Analytics: guides/analytics.md
     - Troubleshooting: troubleshooting.md

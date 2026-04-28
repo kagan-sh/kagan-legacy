@@ -3,8 +3,8 @@
 // Supports automatic reconnection with exponential backoff
 // ============================================================================
 
-import type { SSEMessage } from "./types.js";
-import { SSEError } from "./errors.js";
+import type { SSEMessage } from "./types";
+import { SSEError } from "./errors";
 
 export interface SSEEventMap {
   message: SSEMessage;

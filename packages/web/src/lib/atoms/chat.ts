@@ -110,3 +110,21 @@ export const resetStreamAtom = atom(null, (_get, set) => {
   set(streamEntriesAtom, []);
   set(isStreamingAtom, false);
 });
+
+// ---------------------------------------------------------------------------
+// Multi-client / watch state
+// ---------------------------------------------------------------------------
+
+/** Non-null when another client took over the session and interrupted this tab. */
+export const takeoverBannerAtom = atom<string | null>(null);
+
+/** Non-null when POST /stream returned 409 — holds the conflict details. */
+export interface TurnConflict {
+  runningSince: string;
+  partialChars: number;
+  /** The text the user wanted to send (so we can retry after interrupt). */
+  pendingText: string;
+  pendingAttachments?: unknown[];
+}
+
+export const turnConflictAtom = atom<TurnConflict | null>(null);

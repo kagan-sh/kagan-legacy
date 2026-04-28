@@ -11,18 +11,19 @@ models (see ``scripts/generate_wire_types.py``).
 from __future__ import annotations
 
 from datetime import datetime
-from enum import IntEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+from kagan.core.enums import Priority, SessionStatus, TaskStatus
 
 # ── Tiny helpers ──────────────────────────────────────────────────────────────
 
 
 def _enum_name(v: Any) -> str:
-    """Coerce StrEnum/IntEnum to a wire-safe string."""
-    if isinstance(v, IntEnum):
-        return v.name
+    """Coerce StrEnum/IntEnum to a wire-safe string name."""
+    if hasattr(v, "name"):
+        return str(v.name)
     if hasattr(v, "value"):
         return str(v.value)
     return str(v)
@@ -43,31 +44,77 @@ class _OrmBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class _SessionSummaryBase(_OrmBase):
+    status: SessionStatus
+    started_at: str
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _coerce_status(cls, v: Any) -> SessionStatus:
+        if isinstance(v, SessionStatus):
+            return v
+        return SessionStatus(str(v))
+
+    @field_validator("started_at", mode="before")
+    @classmethod
+    def _coerce_started_at(cls, v: Any) -> str:
+        result = _dt_iso(v)
+        return result or ""
+
+    @field_serializer("status")
+    def _serialize_status(self, v: SessionStatus) -> str:
+        return v.value
+
+
 # ── Active-session sub-shape ──────────────────────────────────────────────────
 
 
-class ActiveSessionResponse(_OrmBase):
+class ActiveSessionResponse(_SessionSummaryBase):
     id: str
-    status: str
     launcher: str | None = None
     agent_backend: str
     agent_role: str | None = None
-    started_at: str
     context_window_used: int | None = None
     context_window_size: int | None = None
     cost_amount: float | None = None
     cost_currency: str | None = None
 
-    @field_validator("status", mode="before")
-    @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
 
-    @field_validator("started_at", mode="before")
+# ── Acceptance criterion ──────────────────────────────────────────────────────
+
+
+class AcceptanceCriterionResponse(_OrmBase):
+    id: str
+    task_id: str
+    ordinal: int
+    text: str
+
+
+# ── Review verdict ────────────────────────────────────────────────────────────
+
+
+ReviewVerdictState = Literal["PASS", "FAIL", "SKIP"]
+
+
+class ReviewVerdictResponse(_OrmBase):
+    id: str
+    criterion_id: str
+    session_id: str | None = None
+    verdict: ReviewVerdictState
+    reason: str
+
+    @field_validator("verdict", mode="before")
     @classmethod
-    def _coerce_dt(cls, v: Any) -> str:
-        result = _dt_iso(v)
-        return result or ""
+    def _normalize_verdict(cls, v: Any) -> str:
+        # The DB stores lowercase pass/fail/skip; the wire shape (and existing
+        # TS clients) standardise on uppercase. Normalise here so neither side
+        # has to care about casing.
+        if v is None:
+            return "FAIL"
+        normalized = str(v).strip().upper()
+        if normalized not in {"PASS", "FAIL", "SKIP"}:
+            return "FAIL"
+        return normalized
 
 
 # ── Task ──────────────────────────────────────────────────────────────────────
@@ -82,66 +129,83 @@ class BackendSelectionResponse(BaseModel):
     alternatives: list[str] = Field(default_factory=list)
 
 
-class ReviewVerdictResponse(BaseModel):
-    criterion_index: int
-    verdict: Literal["PASS", "FAIL"]
-    reason: str
+class DiffSummaryResponse(BaseModel):
+    """Inline diff statistics attached to REVIEW-status tasks that have a worktree."""
+
+    files_changed: int
+    additions: int
+    deletions: int
 
 
 class TaskResponse(_OrmBase):
     id: str
     title: str
     description: str = ""
-    status: str
-    priority: str
+    status: TaskStatus
+    priority: Priority
     base_branch: str | None = None
     repo_id: str | None = None
-    acceptance_criteria: list[str] = Field(default_factory=list)
+    # criteria is the ORM relationship name; acceptance_criteria is the wire name
+    acceptance_criteria: list[AcceptanceCriterionResponse] = Field(
+        default_factory=list, validation_alias="criteria"
+    )
     agent_backend: str | None = None
     launcher: str | None = None
+    # Computed server-side from ReviewVerdict table (no stored field)
     review_approved: bool = False
-    review_verdicts: list[ReviewVerdictResponse] = Field(default_factory=list)
     updated_at: str | None = None
 
     # Runtime-computed (not on ORM — injected after construction)
     last_event_at: str | None = None
     has_workspace: bool = False
     review_running: bool = False
+    review_verdicts: list[ReviewVerdictResponse] = Field(default_factory=list)
     active_session: ActiveSessionResponse | None = None
     backend_selection: BackendSelectionResponse | None = None
+    diff_summary: DiffSummaryResponse | None = None
 
-    @field_validator("status", "priority", mode="before")
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator("status", mode="before")
     @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
+    def _coerce_status(cls, v: Any) -> TaskStatus:
+        if isinstance(v, TaskStatus):
+            return v
+        return TaskStatus(str(v))
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _coerce_priority(cls, v: Any) -> Priority:
+        if isinstance(v, Priority):
+            return v
+        # Handle int values (stored as IntEnum)
+        try:
+            return Priority(int(v))
+        except (ValueError, TypeError):
+            return Priority[str(v)]
 
     @field_validator("updated_at", mode="before")
     @classmethod
     def _coerce_dt(cls, v: Any) -> str | None:
         return _dt_iso(v)
 
+    @field_serializer("status")
+    def _serialize_status(self, v: TaskStatus) -> str:
+        return v.value
+
+    @field_serializer("priority")
+    def _serialize_priority(self, v: Priority) -> str:
+        return v.name
+
 
 # ── Task session (inline in /tasks/{id}/sessions) ────────────────────────────
 
 
-class TaskSessionResponse(_OrmBase):
+class TaskSessionResponse(_SessionSummaryBase):
     id: str
     launcher: str | None = None
-    status: str
     agent_backend: str
     agent_role: str | None = None
-    started_at: str
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _coerce_enum(cls, v: Any) -> str:
-        return _enum_name(v)
-
-    @field_validator("started_at", mode="before")
-    @classmethod
-    def _coerce_dt(cls, v: Any) -> str:
-        result = _dt_iso(v)
-        return result or ""
 
 
 # ── Project ───────────────────────────────────────────────────────────────────
@@ -221,6 +285,24 @@ class ChatSessionResponse(ChatSessionSummaryResponse):
     messages: list[ChatMessageResponse]
 
 
+class TurnInProgressResponse(BaseModel):
+    ok: bool = False
+    data: None = None
+    error: str = "A turn is already in progress for this session"
+    error_code: str = "TURN_IN_PROGRESS"
+    running_since: str | None = None
+    partial_chars: int = 0
+
+
+class ChatMessageDetailResponse(BaseModel):
+    id: int
+    session_id: str
+    role: str
+    content: str
+    terminated_at_user_request: bool
+    created_at: str
+
+
 # ── Filesystem browser ───────────────────────────────────────────────────────
 
 
@@ -273,7 +355,9 @@ class DoctorReportResponse(BaseModel):
 # All response models that map to TS interfaces.
 RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "ActiveSessionResponse": ActiveSessionResponse,
+    "AcceptanceCriterionResponse": AcceptanceCriterionResponse,
     "ReviewVerdictResponse": ReviewVerdictResponse,
+    "DiffSummaryResponse": DiffSummaryResponse,
     "TaskResponse": TaskResponse,
     "TaskSessionResponse": TaskSessionResponse,
     "ProjectResponse": ProjectResponse,
@@ -282,8 +366,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "AgentBackendResponse": AgentBackendResponse,
     "ChatAgentsResponse": ChatAgentsResponse,
     "ChatMessageResponse": ChatMessageResponse,
+    "ChatMessageDetailResponse": ChatMessageDetailResponse,
     "ChatSessionSummaryResponse": ChatSessionSummaryResponse,
     "ChatSessionResponse": ChatSessionResponse,
+    "TurnInProgressResponse": TurnInProgressResponse,
     "DoctorCheckResponse": DoctorCheckResponse,
     "DoctorReportResponse": DoctorReportResponse,
     "FsEntryResponse": FsEntryResponse,

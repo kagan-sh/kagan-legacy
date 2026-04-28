@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 from sqlmodel import SQLModel, create_engine

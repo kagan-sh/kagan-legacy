@@ -9,9 +9,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from starlette.responses import JSONResponse
 
+from kagan.server._analytics_routes import register_analytics_routes
 from kagan.server._chat_routes import register_chat_routes
 from kagan.server._plugin_routes import register_plugin_routes
-from kagan.server._routes import register_routes
+from kagan.server._project_routes import register_project_routes
+from kagan.server._system_routes import register_system_routes
+from kagan.server._task_routes import register_task_routes
 from kagan.server._web_ui import register_web_ui
 from kagan.server.mcp.server import ServerContext, ServerOptions, _set_server_context, create_server
 
@@ -80,7 +83,10 @@ def create_api_server(opts: ApiServerOptions) -> FastMCP:
         asyncio.get_event_loop().create_task(_deferred_kill())
         return JSONResponse({"status": "shutting_down"})
 
-    register_routes(mcp)
+    register_task_routes(mcp)
+    register_project_routes(mcp)
+    register_system_routes(mcp)
+    register_analytics_routes(mcp)
     register_chat_routes(mcp)
     register_plugin_routes(mcp)
 
@@ -126,9 +132,15 @@ async def serve_http(
 
     # Initialise KaganCore for REST API routes.
     from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
+    from kagan.core._orphan_reap import reap_orphan_sessions
 
     install_asyncio_subprocess_exception_filter()
     client = KaganCore(db_path=opts.mcp_opts.db_path)
+
+    # Reap any sessions that were RUNNING when the previous server process died.
+    reaped = await reap_orphan_sessions(client.engine)
+    if reaped:
+        logger.info("Server startup: reaped {} orphan session(s)", reaped)
 
     project_id = opts.mcp_opts.project_id
     if project_id:

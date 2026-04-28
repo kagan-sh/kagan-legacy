@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from acp.schema import ToolCallStart, UsageUpdate
 from loguru import logger
@@ -26,7 +26,14 @@ from kagan.core._agent_monitor import (
 from kagan.core._analytics import emit_telemetry
 from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
-from kagan.core._db_helpers import _add_and_refresh, _db_async, _db_sync, _setting_enabled, _utc_now
+from kagan.core._db_helpers import (
+    _add_and_refresh,
+    _col,
+    _db_async,
+    _db_sync,
+    _setting_enabled,
+    _utc_now,
+)
 from kagan.core._events import BoardEvent, Events
 from kagan.core._hooks import HookAction, HookContext, HookEvent, HookRunner
 from kagan.core._launchers import get_launcher
@@ -58,8 +65,10 @@ from kagan.core.errors import (
     WorktreeError,
 )
 from kagan.core.models import (
+    AcceptanceCriterion,
     Project,
     Repository,
+    ReviewVerdict,
     Session,
     SessionEvent,
     Setting,
@@ -77,11 +86,9 @@ async def fetch_project_learnings(engine: Engine, project_id: str) -> list[str]:
     """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
     stmt = (
         select(TaskNote)
-        .where(
-            cast("Any", TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id))
-        )
-        .where(cast("Any", TaskNote.content).like("[LEARNING]%"))
-        .order_by(desc(cast("Any", TaskNote.created_at)))
+        .where(_col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id)))
+        .where(_col(TaskNote.content).like("[LEARNING]%"))
+        .order_by(desc(_col(TaskNote.created_at)))
         .limit(30)
     )
     notes: list[TaskNote] = await _db_async(engine, lambda s: list(s.exec(stmt).all()))
@@ -103,7 +110,7 @@ async def get_latest_session(engine: Engine, task_id: str) -> Session | None:
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(cast("Any", Session.started_at)))
+            .order_by(desc(_col(Session.started_at)))
         ).first(),
     )
 
@@ -138,9 +145,7 @@ async def list_task_sessions(engine: Engine, task_id: str) -> list[Session]:
         engine,
         lambda s: list(
             s.exec(
-                select(Session)
-                .where(Session.task_id == task_id)
-                .order_by(cast("Any", Session.started_at))
+                select(Session).where(Session.task_id == task_id).order_by(_col(Session.started_at))
             ).all()
         ),
     )
@@ -152,7 +157,7 @@ async def get_latest_task_session(engine: Engine, task_id: str) -> Session | Non
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(cast("Any", Session.started_at)))
+            .order_by(desc(_col(Session.started_at)))
         ).first(),
     )
 
@@ -163,7 +168,7 @@ async def has_active_session(engine: Engine, task_id: str) -> bool:
         lambda s: s.exec(
             select(Session).where(
                 Session.task_id == task_id,
-                cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
             )
         ).first(),
     )
@@ -181,8 +186,8 @@ async def active_session_summaries(
         lambda s: list(
             s.exec(
                 select(Session)
-                .where(cast("Any", Session.task_id).in_(task_ids))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_col(Session.started_at)))
             ).all()
         ),
     )
@@ -229,100 +234,8 @@ def _infer_agent_role(task_status: TaskStatus) -> AgentRole:
     return AgentRole.WORKER
 
 
-async def backfill_agent_roles(engine: Engine) -> int:
-    """Backfill agent_role for all sessions without role assignment.
-
-    Infers agent_role for all unassigned sessions based on the associated
-    task's status. Returns the count of sessions updated.
-    """
-
-    def op(s) -> int:
-        unassigned = list(s.exec(select(Session).where(Session.agent_role.is_(None))).all())
-        updated_count = 0
-        for session in unassigned:
-            task = s.get(Task, session.task_id)
-            if task is None:
-                continue
-            role = _infer_agent_role(task.status)
-            session.agent_role = role.value
-            s.add(session)
-            updated_count += 1
-        if updated_count > 0:
-            s.commit()
-        logger.info("Backfilled agent_role for {} sessions", updated_count)
-        return updated_count
-
-    return await _db_async(engine, op)
-
-
 # ---------------------------------------------------------------------------
 # Module-level sync DB helpers
-# ---------------------------------------------------------------------------
-
-
-def update_session_pid(engine: Engine, session_id: str, pid: int) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj:
-            obj.pid = pid
-            obj.status = SessionStatus.RUNNING
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def mark_session_running(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status == SessionStatus.PENDING:
-            obj.status = SessionStatus.RUNNING
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def complete_session(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-            obj.status = SessionStatus.COMPLETED
-            obj.ended_at = _utc_now()
-
-            # Populate context window fields from the latest UsageUpdate event
-            usage_event = s.exec(
-                select(SessionEvent)
-                .where(
-                    SessionEvent.session_id == session_id,
-                    SessionEvent.event_type == SessionEventType.AGENT_STATUS,
-                )
-                .order_by(desc(SessionEvent.created_at))
-            ).first()
-            if usage_event and isinstance(usage_event.payload, dict):
-                usage = usage_event.payload.get("usage")
-                if isinstance(usage, dict):
-                    obj.context_window_used = usage.get("used")
-                    obj.context_window_size = usage.get("size")
-                    obj.cost_amount = usage.get("cost")
-                    obj.cost_currency = usage.get("cost_currency")
-
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-def fail_session(engine: Engine, session_id: str) -> None:
-    def op(s):
-        obj = s.get(Session, session_id)
-        if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
-            obj.status = SessionStatus.FAILED
-            obj.ended_at = _utc_now()
-            s.add(obj)
-
-    _db_sync(engine, op, commit=True)
-
-
-# ---------------------------------------------------------------------------
-# Thin class wrapper for backward compatibility
 # ---------------------------------------------------------------------------
 
 
@@ -373,16 +286,61 @@ class Sessions:
     # -- Sync DB helper delegates -------------------------------------------
 
     def _update_session_pid(self, session_id: str, pid: int) -> None:
-        update_session_pid(self._engine, session_id, pid)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj:
+                obj.pid = pid
+                obj.status = SessionStatus.RUNNING
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _mark_session_running(self, session_id: str) -> None:
-        mark_session_running(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status == SessionStatus.PENDING:
+                obj.status = SessionStatus.RUNNING
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _complete_session(self, session_id: str) -> None:
-        complete_session(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+                obj.status = SessionStatus.COMPLETED
+                obj.ended_at = _utc_now()
+
+                # Populate context window fields from the latest UsageUpdate event
+                usage_event = s.exec(
+                    select(SessionEvent)
+                    .where(
+                        SessionEvent.session_id == session_id,
+                        SessionEvent.event_type == SessionEventType.AGENT_STATUS,
+                    )
+                    .order_by(desc(SessionEvent.created_at))
+                ).first()
+                if usage_event and isinstance(usage_event.payload, dict):
+                    usage = usage_event.payload.get("usage")
+                    if isinstance(usage, dict):
+                        obj.context_window_used = usage.get("used")
+                        obj.context_window_size = usage.get("size")
+                        obj.cost_amount = usage.get("cost")
+                        obj.cost_currency = usage.get("cost_currency")
+
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     def _fail_session(self, session_id: str) -> None:
-        fail_session(self._engine, session_id)
+        def op(s):
+            obj = s.get(Session, session_id)
+            if obj and obj.status in {SessionStatus.PENDING, SessionStatus.RUNNING}:
+                obj.status = SessionStatus.FAILED
+                obj.ended_at = _utc_now()
+                s.add(obj)
+
+        _db_sync(self._engine, op, commit=True)
 
     # -- Orchestration methods (kept on class) ------------------------------
 
@@ -459,7 +417,24 @@ class Sessions:
                 prompt = resolve_review_prompt(task_id, settings_dict, project_path)
             else:
                 learnings = await self._fetch_project_learnings(task.project_id)
-                prompt = resolve_task_prompt(task, settings_dict, project_path, learnings=learnings)
+                task_criteria_texts = await _db_async(
+                    self._engine,
+                    lambda s: [
+                        c.text
+                        for c in s.exec(
+                            select(AcceptanceCriterion).where(
+                                AcceptanceCriterion.task_id == task_id
+                            )
+                        ).all()
+                    ],
+                )
+                prompt = resolve_task_prompt(
+                    task,
+                    settings_dict,
+                    project_path,
+                    learnings=learnings,
+                    criteria_texts=task_criteria_texts,
+                )
 
             persona_prompt: str | None = None
             if persona:
@@ -508,7 +483,16 @@ class Sessions:
         launch_fn = get_launcher(launcher or "")
         db_path_str = str(self._db_path or default_db_path())
         backend_spec = get_backend_spec(agent_backend)
-        startup_prompt = build_attached_startup_prompt(task)
+        criteria_texts = await _db_async(
+            self._engine,
+            lambda s: [
+                c.text
+                for c in s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            ],
+        )
+        startup_prompt = build_attached_startup_prompt(task, criteria_texts)
         agent_cmd = backend_spec.executable
         launch_kwargs: dict[str, Any] = {
             "worktree_path": Path(ws.worktree_path),
@@ -542,8 +526,8 @@ class Sessions:
             self._engine,
             lambda s: s.exec(
                 select(Session)
-                .where(Session.task_id == task_id, cast("Any", Session.launcher).is_not(None))
-                .order_by(desc(cast("Any", Session.started_at)))
+                .where(Session.task_id == task_id, _col(Session.launcher).is_not(None))
+                .order_by(desc(_col(Session.started_at)))
             ).first(),
         )
 
@@ -613,7 +597,7 @@ class Sessions:
             lambda s: s.exec(
                 select(Session).where(
                     Session.task_id == task_id,
-                    cast("Any", Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                    _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
                 )
             ).first(),
         )
@@ -629,7 +613,7 @@ class Sessions:
                     active.pid,
                 )
         if active:
-            await unregister_spawned_process(active.id)
+            unregister_spawned_process(active.id)
 
             def cancel_op(s):
                 obj = s.get(Session, active.id)
@@ -894,7 +878,7 @@ class Sessions:
                 if not process_exists(pid):
                     raise ProcessLookupError(pid)
             except ProcessLookupError:
-                await unregister_spawned_process(session_id)
+                unregister_spawned_process(session_id)
                 await asyncio.to_thread(self._complete_session, session_id)
                 task = await self._get_task(task_id)
                 detached_session = await _db_async(
@@ -988,16 +972,42 @@ class Sessions:
             return
 
         task = await self._get_task(task_id)
-        criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+
+        # Load criteria from the new table
+        criteria = await _db_async(
+            self._engine,
+            lambda s: [
+                c.text.strip()
+                for c in s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+                if c.text.strip()
+            ],
+        )
         if not criteria:
             logger.info("Skipping auto-review for task={}: no acceptance criteria", task_id)
             return
 
         # Clear stale verdicts before starting fresh review
         def clear_verdicts(s) -> None:
+            crit_rows = list(
+                s.exec(
+                    select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            )
+            criterion_ids = {c.id for c in crit_rows}
+            if criterion_ids:
+                verdict_rows = list(
+                    s.exec(
+                        select(ReviewVerdict).where(
+                            ReviewVerdict.criterion_id.in_(criterion_ids)  # type: ignore[attr-defined]
+                        )
+                    ).all()
+                )
+                for v in verdict_rows:
+                    s.delete(v)
             db_task = s.get(Task, task_id)
             if db_task is not None:
-                db_task.review_verdicts = []
                 db_task.updated_at = _utc_now()
                 s.add(db_task)
 
@@ -1027,15 +1037,11 @@ __all__ = [
     "DetachResult",
     "Sessions",
     "active_session_summaries",
-    "complete_session",
-    "fail_session",
     "fetch_project_learnings",
     "get_latest_session",
     "get_latest_task_session",
     "has_active_session",
     "list_active_sessions",
     "list_task_sessions",
-    "mark_session_running",
     "resolve_session_binding",
-    "update_session_pid",
 ]

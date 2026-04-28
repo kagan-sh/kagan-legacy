@@ -6,13 +6,13 @@ from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from loguru import logger
 from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
-from kagan.core._db_helpers import _add_and_refresh, _db_async
+from kagan.core._db_helpers import _add_and_refresh, _col, _db_async
 from kagan.core.enums import SessionEventType, TaskStatus
 from kagan.core.models import SessionEvent
 
@@ -159,7 +159,7 @@ async def list_events(
         stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
         if session_id is not None:
             stmt = stmt.where(SessionEvent.session_id == session_id)
-        stmt = stmt.order_by(cast("Any", SessionEvent.created_at)).offset(offset).limit(limit)
+        stmt = stmt.order_by(_col(SessionEvent.created_at)).offset(offset).limit(limit)
         return list(s.exec(stmt).all())
 
     return await _db_async(engine, _query)
@@ -188,18 +188,18 @@ async def list_events_recent(
             if before_id:
                 stmt = stmt.where(
                     or_(
-                        cast("Any", SessionEvent.created_at) < cutoff,
+                        _col(SessionEvent.created_at) < cutoff,
                         and_(
-                            cast("Any", SessionEvent.created_at) == cutoff,
-                            cast("Any", SessionEvent.id) < before_id,
+                            _col(SessionEvent.created_at) == cutoff,
+                            _col(SessionEvent.id) < before_id,
                         ),
                     )
                 )
             else:
-                stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+                stmt = stmt.where(_col(SessionEvent.created_at) < cutoff)
         stmt = stmt.order_by(
-            desc(cast("Any", SessionEvent.created_at)),
-            desc(cast("Any", SessionEvent.id)),
+            desc(_col(SessionEvent.created_at)),
+            desc(_col(SessionEvent.id)),
         ).limit(bounded)
         return list(s.exec(stmt).all())
 
@@ -228,20 +228,20 @@ async def list_events_before(
         if before_id:
             stmt = stmt.where(
                 or_(
-                    cast("Any", SessionEvent.created_at) < cutoff,
+                    _col(SessionEvent.created_at) < cutoff,
                     and_(
-                        cast("Any", SessionEvent.created_at) == cutoff,
-                        cast("Any", SessionEvent.id) < before_id,
+                        _col(SessionEvent.created_at) == cutoff,
+                        _col(SessionEvent.id) < before_id,
                     ),
                 )
             )
         else:
-            stmt = stmt.where(cast("Any", SessionEvent.created_at) < cutoff)
+            stmt = stmt.where(_col(SessionEvent.created_at) < cutoff)
         if session_id is not None:
             stmt = stmt.where(SessionEvent.session_id == session_id)
         stmt = stmt.order_by(
-            desc(cast("Any", SessionEvent.created_at)),
-            desc(cast("Any", SessionEvent.id)),
+            desc(_col(SessionEvent.created_at)),
+            desc(_col(SessionEvent.id)),
         ).limit(bounded)
         return list(s.exec(stmt).all())
 
@@ -269,18 +269,18 @@ async def list_events_after(
         stmt = select(SessionEvent).where(
             SessionEvent.task_id == task_id,
             or_(
-                cast("Any", SessionEvent.created_at) > cutoff,
+                _col(SessionEvent.created_at) > cutoff,
                 and_(
-                    cast("Any", SessionEvent.created_at) == cutoff,
-                    cast("Any", SessionEvent.id) > after_id,
+                    _col(SessionEvent.created_at) == cutoff,
+                    _col(SessionEvent.id) > after_id,
                 ),
             ),
         )
         if session_id is not None:
             stmt = stmt.where(SessionEvent.session_id == session_id)
         stmt = stmt.order_by(
-            cast("Any", SessionEvent.created_at),
-            cast("Any", SessionEvent.id),
+            _col(SessionEvent.created_at),
+            _col(SessionEvent.id),
         ).limit(bounded)
         return list(s.exec(stmt).all())
 
@@ -297,7 +297,7 @@ async def latest_event(
         stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
         if event_type is not None:
             stmt = stmt.where(SessionEvent.event_type == event_type)
-        stmt = stmt.order_by(desc(cast("Any", SessionEvent.created_at)))
+        stmt = stmt.order_by(desc(_col(SessionEvent.created_at)))
         return s.exec(stmt).first()
 
     return await _db_async(engine, op)
@@ -492,7 +492,7 @@ class Events:
             lambda s: list(
                 s.exec(
                     select(SessionEvent)
-                    .order_by(cast("Any", SessionEvent.created_at))
+                    .order_by(_col(SessionEvent.created_at))
                     .offset(offset)
                     .limit(limit)
                 ).all()

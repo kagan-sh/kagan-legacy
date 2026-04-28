@@ -9,12 +9,15 @@ import {
     MoveRight,
     XCircle,
 } from "lucide-react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import type { TaskStatus, WireTask } from "@/lib/api/types";
+import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@/lib/api/types";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import {
+    clearRightRailDismissalAtom,
+    rightRailDismissalKey,
+    rightRailDismissalsAtom,
     rightRailChatSessionIdAtom,
     rightRailModeAtom,
     rightRailTaskIdAtom,
@@ -56,8 +59,7 @@ export type WorkspaceTab = "overview" | "changes" | "review";
 export function defaultTabForTask(task: WireTask): WorkspaceTab {
     if (task.status === "BACKLOG") return "overview";
     if (task.status === "REVIEW" && task.has_workspace) return "review";
-    if (task.status === "DONE" && (task.review_verdicts?.length ?? 0) > 0)
-        return "review";
+    if (task.status === "DONE" && task.review_approved) return "review";
     if (task.has_workspace) return "changes";
     return "overview";
 }
@@ -70,10 +72,11 @@ export function Component() {
     const setRailMode = useSetAtom(rightRailModeAtom);
     const setRailTaskId = useSetAtom(rightRailTaskIdAtom);
     const setRailChatSessionId = useSetAtom(rightRailChatSessionIdAtom);
+    const clearRightRailDismissal = useSetAtom(clearRightRailDismissalAtom);
+    const rightRailDismissals = useAtomValue(rightRailDismissalsAtom);
     const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
-    const [userClosedRail, setUserClosedRail] = useState(false);
 
     const [worktreePath, setWorktreePath] = useState<string | null>(null);
     const [attachedLauncher, setAttachedLauncher] = useState<string | null>(null);
@@ -111,7 +114,9 @@ export function Component() {
     useEffect(() => {
         if (!id || !task) return;
         if (task.active_session?.launcher) return;
-        if (userClosedRail) return;
+        if (rightRailDismissals[rightRailDismissalKey({ kind: "task", id })]) {
+            return;
+        }
         if (task.active_session || task.status === "IN_PROGRESS") {
             setRailTaskId(id);
             setRailChatSessionId(null);
@@ -120,9 +125,13 @@ export function Component() {
     }, [
         id,
         task?.active_session?.id,
+        task?.active_session?.launcher,
         task?.status,
-        userClosedRail,
-    ]); // eslint-disable-line react-hooks/exhaustive-deps
+        rightRailDismissals,
+        setRailChatSessionId,
+        setRailMode,
+        setRailTaskId,
+    ]);
 
     const displayTask = task;
 
@@ -181,11 +190,17 @@ export function Component() {
 
     const handleOpenTaskChat = useCallback(() => {
         if (!task) return;
-        setUserClosedRail(false);
+        clearRightRailDismissal({ kind: "task", id: task.id });
         setRailTaskId(task.id);
         setRailChatSessionId(null);
         setRailMode("chat-right");
-    }, [setRailChatSessionId, setRailMode, setRailTaskId, task]);
+    }, [
+        clearRightRailDismissal,
+        setRailChatSessionId,
+        setRailMode,
+        setRailTaskId,
+        task,
+    ]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -233,10 +248,9 @@ export function Component() {
     }
 
     const criteria = displayTask.acceptance_criteria ?? [];
-    const hasVerdicts = (displayTask.review_verdicts?.length ?? 0) > 0;
     const showReviewTab =
         displayTask.status === "REVIEW" ||
-        (displayTask.status === "DONE" && hasVerdicts);
+        (displayTask.status === "DONE" && displayTask.review_approved);
 
     return (
         <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-4 sm:px-6">
@@ -342,83 +356,10 @@ export function Component() {
                                     </InspectorSection>
 
                                     <InspectorSection title="Acceptance Criteria">
-                                        {criteria.length > 0 ? (
-                                            <ul className="space-y-1">
-                                                {criteria.map(
-                                                    (criterion, index) => {
-                                                        const verdict =
-                                                            displayTask.review_verdicts?.find(
-                                                                (v) =>
-                                                                    v.criterion_index ===
-                                                                    index,
-                                                            );
-                                                        return (
-                                                            <li
-                                                                key={criterion}
-                                                            >
-                                                                <Collapsible
-                                                                    disabled={
-                                                                        !verdict
-                                                                    }
-                                                                >
-                                                                    <div className="flex items-center gap-2 py-1">
-                                                                        {verdict?.verdict ===
-                                                                        "PASS" ? (
-                                                                            <CheckCircle className="size-3.5 shrink-0 text-[var(--kagan-success)]" />
-                                                                        ) : verdict?.verdict ===
-                                                                          "FAIL" ? (
-                                                                            <XCircle className="size-3.5 shrink-0 text-[var(--destructive)]" />
-                                                                        ) : (
-                                                                            <ListChecks className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
-                                                                        )}
-                                                                        <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
-                                                                            {
-                                                                                criterion
-                                                                            }
-                                                                        </span>
-                                                                        {verdict ? (
-                                                                            <CollapsibleTrigger
-                                                                                asChild
-                                                                            >
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="icon-xs"
-                                                                                    className="size-5"
-                                                                                    aria-label="Toggle verdict details"
-                                                                                >
-                                                                                    <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
-                                                                                </Button>
-                                                                            </CollapsibleTrigger>
-                                                                        ) : null}
-                                                                    </div>
-                                                                    {verdict ? (
-                                                                        <CollapsibleContent>
-                                                                            <p className="pb-1 pl-5.5 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                                                                                AI:{" "}
-                                                                                {
-                                                                                    verdict.verdict
-                                                                                }{" "}
-                                                                                —{" "}
-                                                                                {
-                                                                                    verdict.reason
-                                                                                }
-                                                                            </p>
-                                                                        </CollapsibleContent>
-                                                                    ) : null}
-                                                                </Collapsible>
-                                                            </li>
-                                                        );
-                                                    },
-                                                )}
-                                            </ul>
-                                        ) : (
-                                            <Empty className="min-h-[14rem] border-0">
-                                                <EmptyHeader>
-                                                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
-                                                    <EmptyDescription>The agent can still work, but review quality will be stronger if you define concrete success checks.</EmptyDescription>
-                                                </EmptyHeader>
-                                            </Empty>
-                                        )}
+                                        <CriteriaList
+                                            criteria={criteria}
+                                            verdicts={displayTask.review_verdicts}
+                                        />
                                     </InspectorSection>
                                 </div>
                             </TabsContent>
@@ -480,5 +421,73 @@ export function Component() {
                 }}
             />
         </div>
+    );
+}
+
+function CriteriaList({
+    criteria,
+    verdicts,
+}: {
+    criteria: AcceptanceCriterionResponse[];
+    verdicts: ReviewVerdictResponse[] | undefined;
+}) {
+    if (criteria.length === 0) {
+        return (
+            <Empty className="min-h-[14rem] border-0">
+                <EmptyHeader>
+                    <EmptyTitle>No acceptance criteria yet</EmptyTitle>
+                    <EmptyDescription>
+                        The agent can still work, but review quality will be
+                        stronger if you define concrete success checks.
+                    </EmptyDescription>
+                </EmptyHeader>
+            </Empty>
+        );
+    }
+    return (
+        <ul className="space-y-1">
+            {criteria.map((criterion) => {
+                const verdict = verdicts?.find(
+                    (v) => v.criterion_id === criterion.id,
+                );
+                return (
+                    <li key={criterion.id}>
+                        <Collapsible disabled={!verdict}>
+                            <div className="flex items-center gap-2 py-1">
+                                {verdict?.verdict === "PASS" ? (
+                                    <CheckCircle className="size-3.5 shrink-0 text-[var(--kagan-success)]" />
+                                ) : verdict?.verdict === "FAIL" ? (
+                                    <XCircle className="size-3.5 shrink-0 text-[var(--destructive)]" />
+                                ) : (
+                                    <ListChecks className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                                )}
+                                <span className="min-w-0 flex-1 text-sm text-[var(--muted-foreground)]">
+                                    {criterion.text}
+                                </span>
+                                {verdict ? (
+                                    <CollapsibleTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="size-5"
+                                            aria-label="Toggle verdict details"
+                                        >
+                                            <ChevronRight className="size-3 transition-transform duration-150 [[data-state=open]_&]:rotate-90" />
+                                        </Button>
+                                    </CollapsibleTrigger>
+                                ) : null}
+                            </div>
+                            {verdict ? (
+                                <CollapsibleContent>
+                                    <p className="pb-1 pl-5.5 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                                        AI: {verdict.verdict} — {verdict.reason}
+                                    </p>
+                                </CollapsibleContent>
+                            ) : null}
+                        </Collapsible>
+                    </li>
+                );
+            })}
+        </ul>
     );
 }

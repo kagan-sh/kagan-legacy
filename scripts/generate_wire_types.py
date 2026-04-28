@@ -64,11 +64,23 @@ def _ts_type(schema: dict, defs: dict) -> str:  # noqa: C901
     return "unknown"
 
 
-def _generate_interface(name: str, schema: dict, defs: dict) -> list[str]:
-    """Generate lines for a single TypeScript interface."""
+def _generate_definition(name: str, schema: dict, defs: dict) -> list[str]:
+    """Generate lines for a single TypeScript definition.
+
+    Pure enum schemas (no properties) become type aliases; object schemas
+    become interfaces; schemas that extend another become interface extends.
+    """
     lines: list[str] = []
 
-    # Detect extends (allOf with $ref + properties)
+    # Pure enum schema — emit as string type alias.
+    # Both StrEnum and IntEnum are serialized as strings on the wire (StrEnum values,
+    # IntEnum names).  Downstream code in types.ts can re-export narrower unions.
+    schema_type = schema.get("type")
+    if "enum" in schema and "properties" not in schema and "allOf" not in schema:
+        lines.append(f"export type {name} = string;")
+        return lines
+
+    # Object schema (interface)
     extends_name = None
     props: dict = {}
     required: set[str] = set()
@@ -128,14 +140,14 @@ def generate_ts(*, include_header: bool = True) -> str:
     # Emit dependency defs first
     for name in list(all_defs):
         if name not in root_order and name not in emitted:
-            output_lines.extend(_generate_interface(name, all_defs[name], all_defs))
+            output_lines.extend(_generate_definition(name, all_defs[name], all_defs))
             output_lines.append("")
             emitted.add(name)
 
     # Emit root models in declaration order
     for name in root_order:
         if name not in emitted:
-            output_lines.extend(_generate_interface(name, all_defs[name], all_defs))
+            output_lines.extend(_generate_definition(name, all_defs[name], all_defs))
             output_lines.append("")
             emitted.add(name)
 

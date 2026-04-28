@@ -10,7 +10,7 @@
 export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
-export type ReviewVerdictState = "PASS" | "FAIL";
+export type ReviewVerdictState = "PASS" | "FAIL" | "SKIP";
 
 export const TASK_COLUMNS: TaskStatus[] = ["BACKLOG", "IN_PROGRESS", "REVIEW", "DONE"];
 
@@ -47,6 +47,7 @@ export interface ActiveSession {
   status: SessionStatus | string;
   launcher: string | null;
   agent_backend: string;
+  agent_role?: string | null;
   started_at: string;
   context_window_used: number | null;
   context_window_size: number | null;
@@ -55,9 +56,24 @@ export interface ActiveSession {
 }
 
 export interface ReviewVerdict {
-  criterion_index: number;
+  id: string;
+  criterion_id: string;
+  session_id?: string | null;
   verdict: ReviewVerdictState;
   reason: string;
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  task_id: string;
+  ordinal: number;
+  text: string;
+}
+
+export interface DiffSummary {
+  files_changed: number;
+  additions: number;
+  deletions: number;
 }
 
 export interface WireTask {
@@ -67,16 +83,17 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
-  acceptance_criteria: string[];
+  acceptance_criteria?: AcceptanceCriterion[];
   agent_backend: string | null;
   launcher: string | null;
-  review_approved: boolean;
-  review_verdicts: ReviewVerdict[];
+  review_approved?: boolean;
+  review_verdicts?: ReviewVerdict[];
   updated_at: string | null;
   last_event_at: string | null;
   has_workspace: boolean;
   review_running: boolean;
   active_session: ActiveSession | null;
+  diff_summary?: DiffSummary | null;
 }
 
 export interface WireEvent {
@@ -140,6 +157,11 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: Priority;
   base_branch?: string;
+  /**
+   * Plain text per criterion on input. The server expands these into rows
+   * in the `acceptance_criteria` table; the response type uses the richer
+   * `AcceptanceCriterion` shape.
+   */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string;
@@ -150,6 +172,7 @@ export interface UpdateTaskInput {
   description?: string;
   priority?: Priority;
   base_branch?: string;
+  /** See {@link CreateTaskInput.acceptance_criteria} — input is text-only. */
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string | null;
@@ -369,6 +392,12 @@ export interface PresenceHeartbeatInput {
 export interface SSETaskUpdated {
   type: typeof SSE_TYPE.TASK_UPDATED;
   task_id: string;
+  /**
+   * Inline task payload — present when the server can build it (the common
+   * case). Absent on the cross-process DB-poll fallback path; clients should
+   * fall back to refetching when it's missing.
+   */
+  task?: WireTask;
 }
 
 export interface SSESessionEvent {

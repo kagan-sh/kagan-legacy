@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createStore } from 'jotai';
 import {
+  clearRightRailDismissalAtom,
+  dismissRightRailContextAtom,
+  rightRailDismissalKey,
+  rightRailDismissalsAtom,
   rightRailModeAtom,
   rightRailTaskIdAtom,
 } from '@/lib/atoms/ui';
@@ -43,6 +47,26 @@ describe('ui atoms', () => {
 
       expect(store.get(rightRailModeAtom)).toBe('none');
       expect(store.get(rightRailTaskIdAtom)).toBeNull();
+    });
+  });
+
+  describe('right-rail dismissal state', () => {
+    it('records dismissal for the current task rail context', () => {
+      store.set(rightRailTaskIdAtom, 'task-123');
+
+      store.set(dismissRightRailContextAtom);
+
+      expect(store.get(rightRailDismissalsAtom)).toEqual({
+        [rightRailDismissalKey({ kind: 'task', id: 'task-123' })]: true,
+      });
+    });
+
+    it('clears dismissal for explicit task chat opens', () => {
+      store.set(dismissRightRailContextAtom, { kind: 'task', id: 'task-123' });
+
+      store.set(clearRightRailDismissalAtom, { kind: 'task', id: 'task-123' });
+
+      expect(store.get(rightRailDismissalsAtom)).toEqual({});
     });
   });
 });

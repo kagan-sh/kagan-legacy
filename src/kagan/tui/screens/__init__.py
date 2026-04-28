@@ -12,7 +12,6 @@ from kagan.tui.screens.settings import SettingsModal
 from kagan.tui.screens.setup import OnboardingFlow
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.task_screen import TaskScreen
-from kagan.tui.screens.welcome import WelcomeScreen
 from kagan.tui.screens.workspace import WorkspaceScreen
 
 __all__ = [
@@ -30,6 +29,5 @@ __all__ = [
     "SettingsModal",
     "TaskEditorModal",
     "TaskScreen",
-    "WelcomeScreen",
     "WorkspaceScreen",
 ]

@@ -6,7 +6,7 @@ without requiring complex setup.
 
 import pytest
 
-from kagan.core._task_classification import classify_task, classify_tasks_by_type
+from kagan.core._task_classification import classify_task
 from kagan.core.enums import TaskType
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
@@ -33,17 +33,6 @@ class TestClassificationSmoke:
         """Test basic implementation classification."""
         result = classify_task("Implement", "feature")
         assert result in [TaskType.CODE_IMPLEMENTATION, TaskType.UNKNOWN]
-
-    def test_classify_batch_function_exists(self) -> None:
-        """Verify batch classification function exists."""
-        assert callable(classify_tasks_by_type)
-
-    def test_classify_batch_returns_dict(self) -> None:
-        """Verify batch classification returns dict."""
-        tasks = [{"id": "1", "title": "Fix bug", "description": ""}]
-        result = classify_tasks_by_type(tasks)
-        assert isinstance(result, dict)
-        assert "1" in result
 
     def test_classify_all_enum_values_creatable(self) -> None:
         """Verify all TaskType enum values exist."""

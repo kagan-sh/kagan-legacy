@@ -85,9 +85,10 @@ def classify_agent_error(exc: BaseException) -> str:
     return "unknown"
 
 
-def build_attached_startup_prompt(task: Task) -> str:
+def build_attached_startup_prompt(task: Task, criteria_texts: list[str] | None = None) -> str:
     description = (task.description or "").strip()
-    criteria = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
+    # criteria_texts is loaded separately from AcceptanceCriterion table
+    criteria = [item.strip() for item in (criteria_texts or []) if item and item.strip()]
 
     lines = [
         f"# Interactive Task: {task.id} — {task.title}",

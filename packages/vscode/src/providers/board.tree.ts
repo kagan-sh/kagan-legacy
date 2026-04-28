@@ -12,6 +12,7 @@ import {
   type TaskStatus,
   type SSEMessage,
 } from "../api/types.js";
+import { groupTasksByStatus, sortTasksByTitle, TASK_COLUMN_LABELS } from "./board.tree.helpers.js";
 
 // ── Item types ──────────────────────────────────────────────────────────────
 
@@ -27,15 +28,6 @@ interface TaskItem {
 }
 
 export type BoardItem = ColumnItem | TaskItem;
-
-// ── Column labels ───────────────────────────────────────────────────────────
-
-const COLUMN_LABELS: Record<TaskStatus, string> = {
-  BACKLOG: "Backlog",
-  IN_PROGRESS: "In Progress",
-  REVIEW: "Review",
-  DONE: "Done",
-};
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -79,11 +71,11 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
   // ── Root columns ──────────────────────────────────────────────────────
 
   private async getRootColumns(): Promise<ColumnItem[]> {
-    const tasks = await this.fetchAllTasks();
+    await this.fetchAllTasks();
     return TASK_COLUMNS.map((status) => ({
       kind: "column" as const,
       status,
-      count: tasks.filter((t) => t.status === status).length,
+      count: this.tasksByStatus.get(status)?.length ?? 0,
     }));
   }
 
@@ -98,7 +90,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
   // ── Tree item builders ────────────────────────────────────────────────
 
   private buildColumnItem(column: ColumnItem): vscode.TreeItem {
-    const label = `${COLUMN_LABELS[column.status]} (${column.count})`;
+    const label = `${TASK_COLUMN_LABELS[column.status]} (${column.count})`;
     const state =
       column.count > 0
         ? vscode.TreeItemCollapsibleState.Expanded
@@ -149,32 +141,29 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
 
   // ── Data fetching ─────────────────────────────────────────────────────
 
-  private async fetchAllTasks(): Promise<WireTask[]> {
+  private async safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try {
-      const tasks = await this.client.getTasks();
-      this.tasksByStatus.clear();
-      for (const status of TASK_COLUMNS) {
-        this.tasksByStatus.set(
-          status,
-          tasks.filter((t) => t.status === status),
-        );
-      }
-      return tasks;
+      return await fn();
     } catch {
       vscode.window.showErrorMessage("Kagan: Failed to load tasks");
-      return [];
+      return fallback;
     }
   }
 
+  private async fetchAllTasks(): Promise<WireTask[]> {
+    return this.safeFetch(async () => {
+      const tasks = await this.client.getTasks();
+      this.tasksByStatus = groupTasksByStatus(tasks);
+      return tasks;
+    }, []);
+  }
+
   private async fetchTasksByStatus(status: TaskStatus): Promise<WireTask[]> {
-    try {
+    return this.safeFetch(async () => {
       const tasks = await this.client.getTasks(status);
-      const sorted = [...tasks].sort((left, right) => left.title.localeCompare(right.title));
+      const sorted = sortTasksByTitle(tasks);
       this.tasksByStatus.set(status, sorted);
       return sorted;
-    } catch {
-      vscode.window.showErrorMessage("Kagan: Failed to load tasks");
-      return [];
-    }
+    }, []);
   }
 }

@@ -1,7 +1,9 @@
+from contextlib import AbstractContextManager, suppress
 from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
+from textual.css.query import NoMatches
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
@@ -106,7 +108,8 @@ class TaskInspector(Widget):
         self._render_message()
 
     def on_mount(self) -> None:
-        self.query_one("#inspector-scroll", VerticalScroll).can_focus = False
+        with self._ignore_unmounted_children():
+            self.query_one("#inspector-scroll", VerticalScroll).can_focus = False
 
     def show_task(self, task: _TaskData) -> None:
         self.task_data = task
@@ -126,11 +129,14 @@ class TaskInspector(Widget):
         self.message_level = "info"
 
     def _render_task_data(self) -> None:
-        head = self.query_one("#inspector-head", Static)
-        meta = self.query_one("#inspector-meta", Static)
-        description = self.query_one("#inspector-description", Static)
-        criteria = self.query_one("#inspector-criteria", Static)
-        actions = self.query_one("#inspector-actions", Static)
+        try:
+            head = self.query_one("#inspector-head", Static)
+            meta = self.query_one("#inspector-meta", Static)
+            description = self.query_one("#inspector-description", Static)
+            criteria = self.query_one("#inspector-criteria", Static)
+            actions = self.query_one("#inspector-actions", Static)
+        except NoMatches:
+            return
 
         task = self.task_data
         if task is None:
@@ -185,7 +191,10 @@ class TaskInspector(Widget):
         self._render_message()
 
     def _render_message(self) -> None:
-        message = self.query_one("#inspector-message", Static)
+        try:
+            message = self.query_one("#inspector-message", Static)
+        except NoMatches:
+            return
         message.update(self.message)
         message.display = bool(self.message)
         message.remove_class("is-warning", "is-error", "is-info")
@@ -197,4 +206,8 @@ class TaskInspector(Widget):
             message.add_class("is-info")
 
     def _scroll_to_top(self) -> None:
-        self.query_one("#inspector-scroll", VerticalScroll).scroll_home(animate=False)
+        with self._ignore_unmounted_children():
+            self.query_one("#inspector-scroll", VerticalScroll).scroll_home(animate=False)
+
+    def _ignore_unmounted_children(self) -> AbstractContextManager[None]:
+        return suppress(NoMatches)

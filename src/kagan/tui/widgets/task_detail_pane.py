@@ -10,6 +10,7 @@ from kagan.core.models import Task
 
 class TaskDetailPane(Widget):
     task_data: reactive[Task | None] = reactive(None)
+    review_approved: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     TaskDetailPane {
@@ -72,6 +73,9 @@ class TaskDetailPane(Widget):
     def watch_task_data(self, task: Task | None) -> None:
         self._render_overview(task)
 
+    def watch_review_approved(self, _value: bool) -> None:
+        self._render_overview(self.task_data)
+
     def _render_overview(self, task: Task | None) -> None:
         if task is None:
             self._render_empty()
@@ -111,7 +115,7 @@ class TaskDetailPane(Widget):
             criteria_w.add_class("ts-empty")
 
         status_label = task.status.value.replace("_", " ").title()
-        if task.review_approved:
+        if self.review_approved:
             status_label += " | APPROVED"
         meta = " | ".join(
             [

@@ -13,7 +13,7 @@ import {
 import { LiveRegion } from '@/components/a11y/live-region';
 import { CommandPaletteFooter } from '@/components/command-palette/command-palette-footer';
 import { CommandPaletteItem } from '@/components/command-palette/command-palette-item';
-import { commandPaletteSpineOpenAtom } from '@/lib/commands/open-atom';
+import { commandPaletteOpenAtom } from '@/lib/atoms/ui';
 import { getCommands } from '@/lib/commands/registry';
 import { registerBuiltinCommands } from '@/lib/commands/commands';
 import type {
@@ -57,14 +57,14 @@ function groupBySection(actions: CommandAction[]): Map<CommandSection, CommandAc
 
 /**
  * Global command palette. Mounts once at the app root and opens via the
- * `commandPaletteSpineOpenAtom` atom (toggled by the Cmd+K shortcut hook).
+ * `commandPaletteOpenAtom` atom (toggled by the Cmd+K shortcut hook).
  *
  * Builds on the shadcn/ui `CommandDialog` primitive which wraps `cmdk` —
  * cmdk handles fuzzy matching, keyboard navigation, and aria-selected
  * state, so we don't reinvent that logic.
  */
 export function CommandPalette({ onCommandExecute }: CommandPaletteProps = {}) {
-  const [open, setOpen] = useAtom(commandPaletteSpineOpenAtom);
+  const [open, setOpen] = useAtom(commandPaletteOpenAtom);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [version, setVersion] = useState(0);

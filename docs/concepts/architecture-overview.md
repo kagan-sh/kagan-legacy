@@ -38,7 +38,9 @@ The bundled dashboard is served by `kagan web` and talks to the same same-origin
 
 ## Supported agents
 
-Kagan orchestrates 14 coding agents. Every task uses one run model: start a managed background run or launch an interactive session in your preferred tool. Install one agent or install them all -- they share the board and compete on merit.
+Kagan orchestrates 14 coding agents. Every task uses one run model: start a managed background run or launch an interactive session in your preferred tool. Install one or install them all — they share the same board and the same review gate.
+
+Tested and documented: **Claude Code** · **Codex** · **Gemini CLI** — the three backends most users start with. The remaining 11 are supported and appear in `kagan doctor` output.
 
 Agents that support OpenAI-compatible endpoints can use alternative LLM providers including [GitHub Models](../guides/github-models.md) — 40+ models, free tier included.
 

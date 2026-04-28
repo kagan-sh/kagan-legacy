@@ -9,27 +9,24 @@ import asyncio
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import build_conflict_resolution_feedback
+from kagan.core._db_helpers import _db_async
 from kagan.core.errors import MergeConflictError, ValidationError
-from kagan.core.models import Task
+from kagan.core.models import AcceptanceCriterion, Task
+from kagan.server._helpers import _manual_review_payload
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerContext, ServerOptions, get_context
 from kagan.server.mcp.toolsets import mcp_error_boundary
 
 
-def _manual_review_block(task_id: str) -> dict[str, str]:
-    return {
-        "task_id": task_id,
-        "action": "blocked",
-        "reason_code": "MANUAL_REVIEW_REQUIRED",
-        "reason": (
-            "This task has no acceptance criteria. "
-            "Cannot auto-approve — manual human review required."
+async def _has_acceptance_criteria(task_id: str, engine: object) -> bool:
+    from sqlmodel import select as _select
+
+    criteria = await _db_async(
+        engine,  # type: ignore[arg-type]
+        lambda s: list(
+            s.exec(_select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
         ),
-    }
-
-
-def _has_acceptance_criteria(task: Task) -> bool:
-    criteria = [c.strip() for c in (task.acceptance_criteria or []) if c and c.strip()]
+    )
     return bool(criteria)
 
 
@@ -47,9 +44,8 @@ async def _review_decide(task_id: str, verdict: str, ctx: Context, feedback: str
         raise ValidationError("verdict", f"Must be 'approve' or 'reject', got {verdict!r}")
 
     if normalized_verdict == "approve":
-        task = await app.client.tasks.get(task_id)
-        if not _has_acceptance_criteria(task):
-            return _manual_review_block(task_id)
+        if not await _has_acceptance_criteria(task_id, app.client.engine):
+            return _manual_review_payload(task_id)
         await app.client.reviews.approve(task_id)
         return {"task_id": task_id, "action": "approve"}
 
@@ -65,8 +61,8 @@ async def _review_merge(task_id: str, ctx: Context) -> dict:
     """Merge an approved task into its base branch."""
     app = get_context(ctx)
     task = await app.client.tasks.get(task_id)
-    if not _has_acceptance_criteria(task):
-        return _manual_review_block(task_id)
+    if not await _has_acceptance_criteria(task_id, app.client.engine):
+        return _manual_review_payload(task_id)
     return await _handle_merge(app, task_id, task)
 
 
@@ -118,51 +114,55 @@ async def _review_rebase(task_id: str, action: str, ctx: Context) -> dict:
         raise ValidationError("action", f"Must be 'start', 'continue', or 'abort', got {action!r}")
 
 
-def _register_review_conflicts(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_conflicts(task_id: str, ctx: Context) -> dict:
-        """Return merge or rebase conflict details for a task."""
-        app = get_context(ctx)
-        return await app.client.reviews.conflicts(task_id)
+@mcp_error_boundary
+async def _review_conflicts(task_id: str, ctx: Context) -> dict:
+    """Return merge or rebase conflict details for a task."""
+    app = get_context(ctx)
+    return await app.client.reviews.conflicts(task_id)
 
 
-def _register_review_verdict(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_verdict(
-        task_id: str,
-        criterion_index: int,
-        verdict: str,
-        reason: str,
-        ctx: Context,
-    ) -> dict:
-        """Record a PASS or FAIL verdict for a single acceptance criterion.
+@mcp_error_boundary
+async def _review_verdict(
+    task_id: str,
+    criterion_index: int,
+    verdict: str,
+    reason: str,
+    ctx: Context,
+) -> dict:
+    """Record a pass or fail verdict for a single acceptance criterion.
 
-        Call this once per criterion during review, BEFORE calling review_decide.
-        verdict must be 'PASS' or 'FAIL'. reason is a one-line justification.
-        """
-        app = get_context(ctx)
-        task = await app.client.reviews.set_criterion_verdict(
-            task_id, criterion_index, verdict, reason
+    Call this once per criterion during review, BEFORE calling review_decide.
+    verdict must be 'pass' or 'fail'. reason is a one-line justification.
+    """
+    from sqlmodel import select as _select
+
+    app = get_context(ctx)
+    await app.client.reviews.set_criterion_verdict(task_id, criterion_index, verdict, reason)
+    total = len(
+        await _db_async(
+            app.client.engine,
+            lambda s: list(
+                s.exec(
+                    _select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)
+                ).all()
+            ),
         )
-        return {
-            "task_id": task_id,
-            "criterion_index": criterion_index,
-            "verdict": verdict,
-            "reason": reason,
-            "total_criteria": len(task.acceptance_criteria or []),
-        }
+    )
+    return {
+        "task_id": task_id,
+        "criterion_index": criterion_index,
+        "verdict": verdict,
+        "reason": reason,
+        "total_criteria": total,
+    }
 
 
-def _register_review_clear_verdicts(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @mcp_error_boundary
-    async def review_clear_verdicts(task_id: str, ctx: Context) -> dict:
-        """Clear all AI review verdicts for a task. Call before starting a new review."""
-        app = get_context(ctx)
-        await app.client.reviews.clear_verdicts(task_id)
-        return {"task_id": task_id, "verdicts_cleared": True}
+@mcp_error_boundary
+async def _review_clear_verdicts(task_id: str, ctx: Context) -> dict:
+    """Clear all AI review verdicts for a task. Call before starting a new review."""
+    app = get_context(ctx)
+    await app.client.reviews.clear_verdicts(task_id)
+    return {"task_id": task_id, "verdicts_cleared": True}
 
 
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
@@ -171,15 +171,10 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         ("review_decide", _review_decide),
         ("review_merge", _review_merge),
         ("review_rebase", _review_rebase),
-    ]
-    wrapped_tools = [
-        ("review_conflicts", _register_review_conflicts),
-        ("review_verdict", _register_review_verdict),
-        ("review_clear_verdicts", _register_review_clear_verdicts),
+        ("review_conflicts", _review_conflicts),
+        ("review_verdict", _review_verdict),
+        ("review_clear_verdicts", _review_clear_verdicts),
     ]
     for name, fn in plain_tools:
         if is_tool_allowed(name, opts):
             mcp.tool(name=name)(fn)
-    for name, registrar in wrapped_tools:
-        if is_tool_allowed(name, opts):
-            registrar(mcp)

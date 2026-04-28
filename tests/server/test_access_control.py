@@ -123,12 +123,20 @@ async def test_admin_server_allows_task_deletion(monkeypatch: pytest.MonkeyPatch
 async def test_review_decide_returns_structured_manual_review_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import asyncio
+
     mcp = _make_api_server(ServerOptions())
     endpoint = get_http_endpoint(mcp, "/api/tasks/{task_id}/review/decide", "POST")
     tasks = _FakeTasksClient()
-    fake_client = SimpleNamespace(tasks=tasks, reviews=SimpleNamespace())
+    fake_engine = object()
+    fake_client = SimpleNamespace(tasks=tasks, reviews=SimpleNamespace(), engine=fake_engine)
     fake_ctx = SimpleNamespace(client=fake_client, opts=ServerOptions())
     monkeypatch.setattr(server_helpers, "get_server_context", lambda _mcp: fake_ctx)
+    # Stub _db_async so the criteria lookup returns an empty list (no criteria → blocked)
+    monkeypatch.setattr(
+        "kagan.server._task_routes._db_async",
+        lambda _engine, _fn: asyncio.sleep(0, result=[]),
+    )
 
     response = await endpoint(
         make_request(

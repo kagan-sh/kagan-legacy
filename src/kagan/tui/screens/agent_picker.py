@@ -14,6 +14,9 @@ from kagan.tui.keybindings import AGENT_PICKER_BINDINGS
 if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
+# Backends shown in the default (compact) view
+_PROMINENT_BACKENDS: frozenset[str] = frozenset({"claude-code", "codex"})
+
 
 class AgentPickerModal(ModalScreen[str | None]):
     BINDINGS = AGENT_PICKER_BINDINGS
@@ -28,6 +31,8 @@ class AgentPickerModal(ModalScreen[str | None]):
         self._agents: list[str] = []
         self._current_agent = resolve_default_agent_backend({})
         self._separator_index: int | None = None
+        # When True all backends are shown; default is prominent-only
+        self._show_all: bool = False
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -50,12 +55,24 @@ class AgentPickerModal(ModalScreen[str | None]):
         normalized_configured = self._BACKEND_ALIASES.get(configured or "", configured)
         self._current_agent = normalized_configured or resolve_default_agent_backend(settings)
 
-        all_agents = sorted({self._current_agent, *list_registered_agent_backends()})
+        await self._rebuild_list()
+
+    async def _rebuild_list(self) -> None:
+        all_registered = sorted({self._current_agent, *list_registered_agent_backends()})
         availability = list_available_backends()
         specs = list_backend_specs()
 
-        available = [a for a in all_agents if availability.get(a, True)]
-        unavailable = [a for a in all_agents if not availability.get(a, True)]
+        # Filter by prominence unless show-all is active.
+        # Always include the current agent regardless of the filter.
+        if self._show_all:
+            visible = all_registered
+        else:
+            visible = [
+                a for a in all_registered if a in _PROMINENT_BACKENDS or a == self._current_agent
+            ]
+
+        available = [a for a in visible if availability.get(a, True)]
+        unavailable = [a for a in visible if not availability.get(a, True)]
         self._agents = available + unavailable
 
         option_list = self.query_one("#agent-picker-options", OptionList)
@@ -83,9 +100,22 @@ class AgentPickerModal(ModalScreen[str | None]):
                     reference=spec.reference if spec is not None else False,
                 )
                 option_list.add_option(Option(label, id=agent))
+        else:
+            self._separator_index = None
+
+        if not self._show_all:
+            hidden_count = len(all_registered) - len(visible)
+            if hidden_count > 0:
+                noun = "backend" if hidden_count == 1 else "backends"
+                hint = (
+                    f"[dim]── {hidden_count} more {noun}"
+                    f" — press [bold]a[/bold] to show all ──[/dim]"
+                )
+                option_list.add_option(Option(hint, disabled=True))
 
         option_list.focus()
 
+        # Restore highlight to current agent
         selected_index = 0
         for index, agent in enumerate(self._agents):
             if agent == self._current_agent:
@@ -93,6 +123,10 @@ class AgentPickerModal(ModalScreen[str | None]):
                 selected_index = index + 1 if after_sep else index
                 break
         option_list.highlighted = selected_index
+
+    async def action_toggle_all_backends(self) -> None:
+        self._show_all = not self._show_all
+        await self._rebuild_list()
 
     async def action_select_agent(self) -> None:
         option_list = self.query_one("#agent-picker-options", OptionList)

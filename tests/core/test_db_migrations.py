@@ -201,10 +201,10 @@ def test_v060_schema_is_upgraded_without_runtime_breakage(tmp_path: Path) -> Non
         conn = sqlite3.connect(db_path)
         try:
             task_row = conn.execute(
-                "SELECT launcher, review_approved FROM tasks WHERE id = ?",
+                "SELECT launcher FROM tasks WHERE id = ?",
                 ("task0001",),
             ).fetchone()
-            assert task_row == ("cursor", 0)
+            assert task_row == ("cursor",)
 
             task_columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
             assert "scratchpad" not in task_columns
@@ -311,7 +311,7 @@ def test_known_legacy_alembic_revision_is_remapped_to_head(tmp_path: Path) -> No
         conn = sqlite3.connect(db_path)
         try:
             head = conn.execute("SELECT version_num FROM alembic_version").fetchone()
-            assert head == ("8662c5d2f0ad",)
+            assert head == ("a3f9d1c2e4b5",)
         finally:
             conn.close()
     finally:

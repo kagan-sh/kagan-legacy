@@ -64,10 +64,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
         try:
             projects = await self.kagan_app.core.projects.list()
             project_names = {project.id: project.name for project in projects}
-            sessions = await list_chat_sessions(
-                self.kagan_app.core,
-                source="tui-orchestrator",
-            )
+            sessions = await list_chat_sessions(self.kagan_app.core)
         except (KaganError, OSError, RuntimeError, ValueError):
             self.query_one("#session-resume-status", Static).update(
                 "Recent sessions are unavailable right now."
@@ -87,7 +84,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
                 RecentSessionSelection(session_id=item.session_id, project_id=project_id)
             )
             label = self._format_session_label(
-                project_name, item.label, item.updated_relative, item.agent_backend
+                project_name, item.label, item.updated_relative, item.agent_backend, item.source
             )
             option_list.add_option(Option(label, id=item.session_id))
 
@@ -112,10 +109,14 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
         session_label: str,
         updated_relative: str,
         agent_backend: str | None,
+        source: str = "",
     ) -> str:
         backend = f" · {agent_backend}" if agent_backend else ""
         updated = f" · {updated_relative}" if updated_relative else ""
-        return f"{project_name} · {session_label}{backend}{updated}"
+        source_badge = (
+            f" [$secondary][{source}][/]" if source else ""
+        )
+        return f"{project_name} · {session_label}{backend}{updated}{source_badge}"
 
     def _selected_session(self) -> RecentSessionSelection | None:
         option_list = self.query_one("#session-resume-options", OptionList)

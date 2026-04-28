@@ -1,23 +1,23 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { BoardItem, BoardTreeProvider } from "../providers/board.tree.js";
+import type { BoardTreeProvider } from "../providers/board.tree.js";
 import type { AgentOutputProvider } from "../providers/events.output.js";
 import type { ReviewCommentProvider } from "../providers/review.comments.js";
 import type { TaskScmProvider } from "../providers/tasks.scm.js";
 import type { AgentTerminalProvider } from "../providers/tasks.terminal.js";
-import type { Priority, TaskStatus, WireTask } from "../api/types.js";
+import type { LauncherBackend, Priority, UpdateTaskInput, WireTask } from "../api/types.js";
 import { TASK_COLUMNS } from "../api/types.js";
-
-type TaskItem = Extract<BoardItem, { kind: "task" }>;
+import { confirmAction, resolveTask, type TaskItem, withErrors } from "./common.js";
+import { TASK_COLUMN_LABELS } from "../providers/board.tree.helpers.js";
+import { describeBackendStatus, sortBackends } from "./settings.js";
 
 const PRIORITIES: Priority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+const LAUNCHERS: LauncherBackend[] = ["vscode", "cursor", "windsurf", "kiro", "antigravity", "tmux", "nvim"];
 
-const COLUMN_LABELS: Record<TaskStatus, string> = {
-  BACKLOG: "Backlog",
-  IN_PROGRESS: "In Progress",
-  REVIEW: "Review",
-  DONE: "Done",
-};
+interface PickResult<T> {
+  cancelled: boolean;
+  value: T;
+}
 
 export function registerTaskCommands(
   context: vscode.ExtensionContext,
@@ -42,20 +42,26 @@ export function registerTaskCommands(
           prompt: "Description",
           placeHolder: "Optional context for the task",
         });
+        if (description === undefined) return;
 
         const priority = await pickPriority();
         const baseBranch = await vscode.window.showInputBox({
           prompt: "Base branch",
           placeHolder: "Optional target branch, e.g. main",
         });
+        if (baseBranch === undefined) return;
+
         const acceptanceCriteria = await vscode.window.showInputBox({
           prompt: "Acceptance criteria",
-          placeHolder: "Optional; separate multiple items with |",
+          placeHolder: "Optional; separate multiple items with |, e.g. Tests pass | Docs updated",
         });
-        const agentBackend = await vscode.window.showInputBox({
-          prompt: "Agent backend",
-          placeHolder: "Optional; leave blank to use the default backend",
-        });
+        if (acceptanceCriteria === undefined) return;
+
+        const agentBackend = await pickAgentBackend(client);
+        if (agentBackend.cancelled) return;
+
+        const launcher = await pickLauncher();
+        if (launcher.cancelled) return;
 
         await client.createTask({
           title: title.trim(),
@@ -63,7 +69,8 @@ export function registerTaskCommands(
           priority: priority ?? undefined,
           base_branch: baseBranch?.trim() || undefined,
           acceptance_criteria: parseAcceptanceCriteria(acceptanceCriteria),
-          agent_backend: agentBackend?.trim() || undefined,
+          agent_backend: agentBackend.value,
+          launcher: launcher.value ?? undefined,
         });
         boardProvider.refresh();
       });
@@ -71,26 +78,25 @@ export function registerTaskCommands(
 
     vscode.commands.registerCommand("kagan.task.run", async (item?: TaskItem) => {
       await withErrors("run task", async () => {
-        const task = await resolveTask(client, item, "BACKLOG");
+        const task = await resolveTask(client, item, { status: "BACKLOG" });
         if (!task) return;
 
         const updated = await client.runTask(task.id);
         boardProvider.refresh();
-        await outputProvider.showTask(updated);
+        await vscode.commands.executeCommand("kagan.chat.open", { kind: "task", task: updated });
       });
     }),
 
     vscode.commands.registerCommand("kagan.task.cancel", async (item?: TaskItem) => {
       await withErrors("cancel task", async () => {
-        const task = await resolveTask(client, item, "IN_PROGRESS");
+        const task = await resolveTask(client, item, { status: "IN_PROGRESS" });
         if (!task) return;
 
-        const confirmed = await vscode.window.showWarningMessage(
+        const confirmed = await confirmAction(
           `Cancel "${task.title}"?`,
-          { modal: true },
           "Cancel Task",
         );
-        if (confirmed !== "Cancel Task") return;
+        if (!confirmed) return;
 
         await client.cancelTask(task.id);
         boardProvider.refresh();
@@ -120,12 +126,11 @@ export function registerTaskCommands(
         const task = await resolveTask(client, item);
         if (!task) return;
 
-        const confirmed = await vscode.window.showWarningMessage(
+        const confirmed = await confirmAction(
           `Delete "${task.title}"?`,
-          { modal: true },
           "Delete Task",
         );
-        if (confirmed !== "Delete Task") return;
+        if (!confirmed) return;
 
         await client.deleteTask(task.id);
         boardProvider.refresh();
@@ -139,7 +144,7 @@ export function registerTaskCommands(
 
         const picked = await vscode.window.showQuickPick(
           TASK_COLUMNS.map((status) => ({
-            label: COLUMN_LABELS[status],
+            label: TASK_COLUMN_LABELS[status],
             description: status === task.status ? "Current" : undefined,
             status,
           })),
@@ -168,14 +173,44 @@ export function registerTaskCommands(
           prompt: "Description",
           value: task.description,
         });
+        if (description === undefined) return;
 
         const priority = await pickPriority();
+        const baseBranch = await vscode.window.showInputBox({
+          prompt: "Base branch",
+          value: task.base_branch ?? "",
+          placeHolder: "Optional target branch, e.g. main",
+        });
+        if (baseBranch === undefined) return;
 
-        await client.updateTask(task.id, {
+        const acceptanceCriteria = await vscode.window.showInputBox({
+          prompt: "Acceptance criteria",
+          value: task.acceptance_criteria.join(" | "),
+          placeHolder: "Optional; separate multiple items with |",
+        });
+        if (acceptanceCriteria === undefined) return;
+
+        const agentBackend = await pickAgentBackend(client, task.agent_backend);
+        if (agentBackend.cancelled) return;
+
+        const launcher = await pickLauncher(task.launcher);
+        if (launcher.cancelled) return;
+
+        const update: UpdateTaskInput = {
           title: title.trim(),
           description: description?.trim() || "",
           priority: priority ?? task.priority,
-        });
+          base_branch: baseBranch?.trim() || undefined,
+          acceptance_criteria: parseAcceptanceCriteria(acceptanceCriteria) ?? [],
+        };
+        if (agentBackend.value) {
+          update.agent_backend = agentBackend.value;
+        }
+        if (launcher.value !== undefined) {
+          update.launcher = launcher.value;
+        }
+
+        await client.updateTask(task.id, update);
         boardProvider.refresh();
       });
     }),
@@ -198,7 +233,7 @@ export function registerTaskCommands(
 
     vscode.commands.registerCommand("kagan.terminal.attach", async (item?: TaskItem) => {
       await withErrors("attach terminal", async () => {
-        const task = await resolveTask(client, item, "IN_PROGRESS");
+        const task = await resolveTask(client, item, { status: "IN_PROGRESS" });
         if (!task) return;
         await terminalProvider.attachToTask(task);
       });
@@ -206,51 +241,10 @@ export function registerTaskCommands(
   );
 }
 
-function isTaskItem(item: unknown): item is TaskItem {
-  return typeof item === "object" && item !== null && "kind" in item && (item as TaskItem).kind === "task";
-}
-
-async function resolveTask(
-  client: KaganClient,
-  item?: TaskItem,
-  status?: TaskStatus,
-): Promise<WireTask | undefined> {
-  if (isTaskItem(item)) {
-    return client.getTask(item.task.id);
-  }
-
-  const tasks = await client.getTasks(status);
-  if (tasks.length === 0) {
-    vscode.window.showInformationMessage("No matching tasks found.");
-    return undefined;
-  }
-
-  const picked = await vscode.window.showQuickPick(
-    tasks.map((task) => ({
-      label: task.title,
-      description: `${task.status} · ${task.priority}`,
-      detail: task.description || undefined,
-      task,
-    })),
-    { placeHolder: "Select a task" },
-  );
-
-  return picked?.task;
-}
-
-async function withErrors(action: string, run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Failed to ${action}: ${message}`);
-  }
-}
-
 function renderTaskSummary(task: WireTask): string {
   const criteria =
     task.acceptance_criteria.length > 0
-      ? task.acceptance_criteria.map((item, index) => `${index + 1}. ${item}`).join("\n")
+      ? task.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
       : "None";
 
   return [
@@ -275,7 +269,7 @@ function renderTaskSummary(task: WireTask): string {
 function parseAcceptanceCriteria(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   const items = value
-    .split("|")
+    .split(/[|\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
   return items.length > 0 ? items : undefined;
@@ -287,4 +281,78 @@ async function pickPriority(): Promise<Priority | undefined> {
     { placeHolder: "Priority" },
   );
   return picked?.priority;
+}
+
+async function pickAgentBackend(
+  client: KaganClient,
+  currentBackend?: string | null,
+): Promise<PickResult<string | undefined>> {
+  const chatAgents = await client.getChatAgents();
+  const backends = sortBackends(chatAgents.backends);
+
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: currentBackend === undefined ? "Default backend" : "Keep current backend",
+        description: currentBackend === undefined
+          ? `Server default: ${chatAgents.default}`
+          : currentBackend ?? `Default (${chatAgents.default})`,
+        value: undefined,
+      },
+      ...backends.map((backend) => ({
+        label: backend.name,
+        description: describeBackendStatus(backend, currentBackend ?? chatAgents.default),
+        value: backend.name,
+      })),
+    ],
+    {
+      placeHolder: currentBackend === undefined
+        ? "Select agent backend"
+        : "Select agent backend for this task",
+    },
+  );
+
+  return { cancelled: !picked, value: picked?.value };
+}
+
+async function pickLauncher(currentLauncher?: string | null): Promise<PickResult<string | null | undefined>> {
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: currentLauncher === undefined ? "Default launcher" : "Keep current launcher",
+        description: currentLauncher === undefined ? "Use server or project default" : currentLauncher ?? "Default",
+        value: undefined,
+      },
+      ...(currentLauncher === undefined
+        ? []
+        : [{ label: "Default launcher", description: "Clear task-specific launcher", value: null }]),
+      ...LAUNCHERS.map((launcher) => ({
+        label: launcher,
+        description: launcherDescription(launcher),
+        value: launcher,
+      })),
+    ],
+    {
+      placeHolder: currentLauncher === undefined
+        ? "Select launcher"
+        : "Select launcher for this task",
+    },
+  );
+
+  return { cancelled: !picked, value: picked?.value };
+}
+
+function launcherDescription(launcher: LauncherBackend): string {
+  switch (launcher) {
+    case "vscode":
+    case "cursor":
+    case "windsurf":
+    case "kiro":
+    case "antigravity":
+      return "Attach in editor";
+    case "tmux":
+      return "Attach in tmux";
+    case "nvim":
+      return "Attach in Neovim";
+  }
 }

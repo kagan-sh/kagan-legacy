@@ -7,6 +7,16 @@ from tests.helpers.driver import KaganDriver
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
 
+def test_tui_chat_slash_surface_excludes_unhandled_cli_commands() -> None:
+    from kagan.tui.widgets.chat import _SLASH_ALIASES, _TUI_SLASH_COMMANDS
+
+    assert {"analytics", "project", "repo", "tool"}.isdisjoint(_TUI_SLASH_COMMANDS)
+    assert {"agents", "clear", "delete", "exit", "flow", "help", "new", "sessions", "status"} <= (
+        _TUI_SLASH_COMMANDS
+    )
+    assert _SLASH_ALIASES["a"] == "agents"
+
+
 @pytest.fixture
 async def board(tmp_path):
     driver = await KaganDriver.boot(tmp_path)

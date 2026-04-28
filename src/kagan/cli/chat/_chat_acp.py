@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import sys
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -101,6 +102,86 @@ async def _turn_wave_animation(
 @dataclass(frozen=True, slots=True)
 class _SendResult:
     was_cancelled: bool = False
+
+
+_PERMISSION_KIND_LABELS = {
+    "allow_once": "allow once",
+    "allow_always": "allow always",
+    "reject_once": "deny",
+    "reject_always": "deny always",
+}
+_PERMISSION_KIND_ALIASES = {
+    "allow_once": {"allow once", "once", "allow_once"},
+    "allow_always": {"allow always", "always", "allow_always"},
+    "reject_once": {"deny", "reject", "no", "reject once", "reject_once"},
+    "reject_always": {"deny always", "reject always", "reject_always"},
+}
+
+
+def _stdio_is_interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _cancelled_permission_response() -> Any:
+    from acp.schema import DeniedOutcome, RequestPermissionResponse
+
+    return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+
+
+def _selected_permission_response(option: Any) -> Any:
+    from acp.schema import AllowedOutcome, RequestPermissionResponse
+
+    return RequestPermissionResponse(
+        outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
+    )
+
+
+def _permission_choice_matches(value: str, option: Any, index: int) -> bool:
+    normalized = value.casefold().strip()
+    kind = str(getattr(option, "kind", "")).casefold()
+    aliases = {
+        str(index),
+        kind,
+        str(getattr(option, "name", "")).casefold(),
+        str(getattr(option, "option_id", "")).casefold(),
+        *_PERMISSION_KIND_ALIASES.get(kind, set()),
+    }
+    return normalized in {alias for alias in aliases if alias}
+
+
+def _format_permission_tool(tool_call: Any) -> str:
+    title = getattr(tool_call, "title", None) or getattr(tool_call, "name", None)
+    kind = getattr(tool_call, "kind", None)
+    if title and kind:
+        return f"{title} ({kind})"
+    if title:
+        return str(title)
+    return "tool call"
+
+
+def _prompt_for_permission_option(options: list[Any], tool_call: Any) -> Any | None:
+    _console.print()
+    _console.print("[bold yellow]Permission requested[/bold yellow]")
+    _console.print(f"[dim]{_rich_escape(_format_permission_tool(tool_call))}[/dim]")
+    for index, option in enumerate(options, start=1):
+        kind = str(getattr(option, "kind", ""))
+        label = _PERMISSION_KIND_LABELS.get(kind, kind.replace("_", " "))
+        name = str(getattr(option, "name", "") or label)
+        _console.print(f"  {index}. {name} [dim]({label})[/dim]")
+
+    try:
+        value = input("Select permission option [deny]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        _console.print("[yellow]Permission denied.[/yellow]")
+        return None
+
+    if not value:
+        return None
+    for index, option in enumerate(options, start=1):
+        if _permission_choice_matches(value, option, index):
+            return option
+    _console.print("[yellow]Unrecognized permission choice; denying.[/yellow]")
+    return None
 
 
 class _OrchestratorACPClient(ACPClientBase):
@@ -212,13 +293,22 @@ class _OrchestratorACPClient(ACPClientBase):
             self.last_usage = update
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):
-        from acp.schema import AllowedOutcome, RequestPermissionResponse
+        del session_id
+        permission_options = [
+            option
+            for option in list(options or ())
+            if getattr(option, "kind", None)
+            in {"allow_once", "allow_always", "reject_once", "reject_always"}
+        ]
+        if not permission_options:
+            return _cancelled_permission_response()
 
-        for option in options:
-            if option.kind in {"allow_always", "allow_once"}:
-                return RequestPermissionResponse(
-                    outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
-                )
-        from acp.schema import DeniedOutcome
+        self._output_flusher.flush(force=True)
+        if not _stdio_is_interactive():
+            _console.print("[yellow]Permission request denied in non-interactive mode.[/yellow]")
+            return _cancelled_permission_response()
 
-        return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+        selected = _prompt_for_permission_option(permission_options, tool_call)
+        if selected is None:
+            return _cancelled_permission_response()
+        return _selected_permission_response(selected)

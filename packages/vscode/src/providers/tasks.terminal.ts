@@ -4,6 +4,15 @@ import type { KaganClient } from "../api/client.js";
 import type { WireTask } from "../api/types.js";
 import { buildEditorLink, normalizeLauncher } from "./tasks.terminal.helpers.js";
 
+function createKaganTerminal(task: WireTask, cwd: string | null): vscode.Terminal {
+  const terminal = vscode.window.createTerminal({
+    name: `Kagan: ${task.title}`,
+    cwd: cwd ?? undefined,
+  });
+  terminal.show();
+  return terminal;
+}
+
 export class AgentTerminalProvider {
   constructor(private readonly client: KaganClient) {}
 
@@ -23,34 +32,19 @@ export class AgentTerminalProvider {
 
     if (launcher === "tmux") {
       const sessionName = `kagan-${task.active_session.id.replaceAll(":", "-")}`;
-      const terminal = vscode.window.createTerminal({
-        name: `Kagan: ${task.title}`,
-        cwd: worktreePath ?? undefined,
-      });
-      terminal.show();
-      terminal.sendText(`tmux attach-session -t '${sessionName}'`, true);
+      createKaganTerminal(task, worktreePath).sendText(`tmux attach-session -t '${sessionName}'`, true);
       return;
     }
 
     if (launcher === "nvim") {
-      const terminal = vscode.window.createTerminal({
-        name: `Kagan: ${task.title}`,
-        cwd: worktreePath ?? undefined,
-      });
-      terminal.show();
-      terminal.sendText("nvim .kagan/start_prompt.md", true);
+      createKaganTerminal(task, worktreePath).sendText("nvim .kagan/start_prompt.md", true);
       return;
     }
 
     if (launcher === "vscode" && worktreePath) {
       const promptUri = vscode.Uri.file(path.join(worktreePath, ".kagan", "start_prompt.md"));
       await vscode.window.showTextDocument(promptUri, { preview: false });
-
-      const terminal = vscode.window.createTerminal({
-        name: `Kagan: ${task.title}`,
-        cwd: worktreePath,
-      });
-      terminal.show();
+      createKaganTerminal(task, worktreePath);
       return;
     }
 

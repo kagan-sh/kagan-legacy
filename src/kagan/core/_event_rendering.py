@@ -184,7 +184,7 @@ def render_event(
 
     if event_type == "CRITERION_VERDICT":
         verdict = str(payload.get("verdict") or "")
-        is_pass = verdict == "PASS"
+        is_pass = verdict.lower() == "pass"
         reason = str(payload.get("reason") or "")
         return RenderableEvent(
             kind=RenderableKind.VERDICT,

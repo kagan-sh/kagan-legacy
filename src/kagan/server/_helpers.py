@@ -1,19 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from collections import defaultdict
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 from pydantic import BaseModel, ValidationError
+from sqlmodel import select
 from starlette.responses import JSONResponse
 
 from kagan.core import TaskStatus
+from kagan.core._db_helpers import _db_async
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
+from kagan.core.models import AcceptanceCriterion, ReviewVerdict
 from kagan.server._access import http_forbidden, is_access_allowed
 from kagan.server._envelope import WireEnvelope
 from kagan.server.mcp.server import get_server_context
-from kagan.server.responses import ActiveSessionResponse, TaskResponse
+from kagan.server.responses import (
+    ActiveSessionResponse,
+    DiffSummaryResponse,
+    EventResponse,
+    ReviewVerdictResponse,
+    TaskResponse,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -21,6 +32,22 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from kagan.server._access import AccessTier
+
+
+def event_to_wire(event: Any) -> dict[str, Any]:
+    return EventResponse.model_validate(event).model_dump(mode="json")
+
+
+def _manual_review_payload(task_id: str) -> dict[str, str]:
+    return {
+        "task_id": task_id,
+        "action": "blocked",
+        "reason_code": "MANUAL_REVIEW_REQUIRED",
+        "reason": (
+            "This task has no acceptance criteria. "
+            "Cannot auto-approve — manual human review required."
+        ),
+    }
 
 
 def _ok(data: Any, status: int = 200) -> JSONResponse:
@@ -74,7 +101,14 @@ def _error_response(exc: Exception) -> JSONResponse:
     return _err("Internal server error", status=500)
 
 
-def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> dict[str, Any]:
+def task_to_wire_dict(
+    task: Any,
+    *,
+    runtime: dict[str, Any] | None = None,
+    review_approved: bool | None = None,
+    diff_summary: dict[str, int] | None = None,
+    review_verdicts: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Serialize a Task ORM instance to a JSON-safe dict for the wire."""
     resp = TaskResponse.model_validate(task)
     runtime = runtime or {}
@@ -88,7 +122,155 @@ def task_to_wire_dict(task: Any, *, runtime: dict[str, Any] | None = None) -> di
     resp.active_session = (
         ActiveSessionResponse(**active_session) if isinstance(active_session, dict) else None
     )
+    if diff_summary is not None and is_review_task:
+        resp.diff_summary = DiffSummaryResponse(
+            files_changed=diff_summary.get("files", 0),
+            additions=diff_summary.get("insertions", 0),
+            deletions=diff_summary.get("deletions", 0),
+        )
+    if review_verdicts is not None:
+        resp.review_verdicts = [ReviewVerdictResponse(**v) for v in review_verdicts]
+        if review_approved is None:
+            # Latest verdict per criterion is what review_verdicts already
+            # contains (one row per criterion), so the membership check is
+            # straightforward. Compare against the model's normalised value.
+            verdict_by_criterion = {
+                str(v.get("criterion_id")): str(v.get("verdict", "")).strip().upper()
+                for v in review_verdicts
+            }
+            criteria = getattr(task, "criteria", []) or []
+            review_approved = bool(criteria) and all(
+                verdict_by_criterion.get(getattr(criterion, "id", "")) == "PASS"
+                for criterion in criteria
+            )
+    resp.review_approved = bool(review_approved)
     return resp.model_dump(mode="json")
+
+
+async def safe_diff_stats(ctx: Any, task_id: str) -> dict[str, int] | None:
+    """Fetch diff stats for a single task worktree; return None on transient failure."""
+    with contextlib.suppress(KaganError, OSError, RuntimeError, AttributeError):
+        stats = await ctx.client.worktrees.diff_stats(task_id)
+        return dict(stats)
+    return None
+
+
+async def review_diff_summaries(
+    ctx: Any, tasks: list[Any], runtime: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, int] | None]:
+    """Compute diff stats only for review tasks with workspaces."""
+    review_ids = [
+        task.id
+        for task in tasks
+        if getattr(task.status, "value", task.status) == TaskStatus.REVIEW.value
+        and runtime.get(task.id, {}).get("has_workspace", False)
+    ]
+    if not review_ids:
+        return {}
+    results = await asyncio.gather(
+        *(safe_diff_stats(ctx, task_id) for task_id in review_ids),
+        return_exceptions=False,
+    )
+    return dict(zip(review_ids, results, strict=True))
+
+
+async def bulk_task_review_verdicts(
+    ctx: Any, task_ids: list[str]
+) -> dict[str, list[dict[str, str | None]]]:
+    """Latest verdict per criterion for each task, in a single DB round-trip.
+
+    The previous implementation fanned out one DB session per task and an
+    inner per-criterion query inside that — O(tasks * criteria) round-trips
+    per board refresh. This version issues two queries total: one for the
+    criteria, one for their verdicts.
+    """
+    if not task_ids:
+        return {}
+    unique_ids = list(dict.fromkeys(task_ids))
+
+    def op(session: Any) -> dict[str, list[dict[str, str | None]]]:
+        criteria = list(
+            session.exec(
+                select(AcceptanceCriterion).where(
+                    AcceptanceCriterion.task_id.in_(unique_ids)  # type: ignore[attr-defined]
+                )
+            ).all()
+        )
+        if not criteria:
+            return {tid: [] for tid in unique_ids}
+
+        criterion_ids = [c.id for c in criteria]
+        criterion_to_task = {c.id: c.task_id for c in criteria}
+
+        # One ordered query — group in Python and pick the most recent row
+        # per criterion. created_at is portable across SQLite/Postgres.
+        verdict_rows = list(
+            session.exec(
+                select(ReviewVerdict)
+                .where(
+                    ReviewVerdict.criterion_id.in_(criterion_ids)  # type: ignore[attr-defined]
+                )
+                .order_by(ReviewVerdict.created_at.asc())  # type: ignore[attr-defined]
+            ).all()
+        )
+        latest: dict[str, ReviewVerdict] = {}
+        for row in verdict_rows:
+            latest[row.criterion_id] = row  # later rows overwrite earlier
+
+        grouped: dict[str, list[dict[str, str | None]]] = defaultdict(list)
+        for criterion in criteria:
+            row = latest.get(criterion.id)
+            if row is None:
+                continue
+            grouped[criterion_to_task[criterion.id]].append(
+                {
+                    "id": row.id,
+                    "criterion_id": row.criterion_id,
+                    "session_id": row.session_id,
+                    "verdict": row.verdict,
+                    "reason": row.reason,
+                }
+            )
+        return {tid: grouped.get(tid, []) for tid in unique_ids}
+
+    try:
+        return await _db_async(ctx.client.engine, op)
+    except (KaganError, RuntimeError, OSError, AttributeError) as exc:
+        logger.debug("bulk_task_review_verdicts failed: {}", exc, exc_info=True)
+        return {tid: [] for tid in unique_ids}
+
+
+async def task_wire_dict(ctx: Any, task_id: str, *, task: Any | None = None) -> dict[str, Any]:
+    """Load one task with the runtime fields used by board and SSE clients.
+
+    Issues runtime + verdicts in parallel (and optionally diff stats) so an
+    SSE TASK_UPDATED event waits on at most one round-trip rather than three.
+    """
+    if task is None:
+        task, runtime, _bulk = await asyncio.gather(
+            ctx.client.tasks.get(task_id),
+            ctx.client.tasks.runtime_summary(task_id),
+            bulk_task_review_verdicts(ctx, [task_id]),
+        )
+        verdicts: list[dict[str, str | None]] = _bulk.get(task_id, [])
+    else:
+        runtime, _bulk = await asyncio.gather(
+            ctx.client.tasks.runtime_summary(task_id),
+            bulk_task_review_verdicts(ctx, [task_id]),
+        )
+        verdicts = _bulk.get(task_id, [])
+
+    diff_summary = None
+    if getattr(task.status, "value", task.status) == TaskStatus.REVIEW.value and runtime.get(
+        "has_workspace", False
+    ):
+        diff_summary = await safe_diff_stats(ctx, task_id)
+    return task_to_wire_dict(
+        task,
+        runtime=runtime,
+        diff_summary=diff_summary,
+        review_verdicts=verdicts,
+    )
 
 
 def _require_access(

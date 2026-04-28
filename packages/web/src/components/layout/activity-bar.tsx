@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router';
-import { BarChart3, Home, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
+import { Home, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// Analytics is intentionally excluded from primary nav.
+// Access it via: command palette (Cmd+K → "Go to Analytics") or /settings#advanced.
 const ITEMS = [
   { to: '/home', label: 'Home', icon: Home },
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 

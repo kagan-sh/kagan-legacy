@@ -298,6 +298,56 @@ class KaganDriver:
         return await self._driver.close_exploratory(task_id)
 
     # ======================================================================
+    # Chat sessions
+    # ======================================================================
+
+    async def chat_create_session(
+        self,
+        *,
+        source: str = "test",
+        label: str | None = None,
+        agent_backend: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a chat session. Returns the session dict."""
+        return await self._driver.chat_create_session(
+            source=source,
+            label=label,
+            agent_backend=agent_backend,
+            project_id=project_id,
+        )
+
+    async def chat_get_session(self, session_id: str) -> dict[str, Any] | None:
+        """Fetch a chat session by ID. Returns None if not found."""
+        return await self._driver.chat_get_session(session_id)
+
+    async def chat_list_sessions(
+        self,
+        *,
+        source: str | None = None,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List chat sessions, optionally filtered by source or project_id."""
+        return await self._driver.chat_list_sessions(source=source, project_id=project_id)
+
+    async def chat_delete_session(self, session_id: str) -> bool:
+        """Delete a chat session. Returns True if it existed, False otherwise."""
+        return await self._driver.chat_delete_session(session_id)
+
+    async def chat_append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        *,
+        terminated: bool = False,
+    ) -> Any:
+        """Append a message to a chat session."""
+        return await self._driver.chat_append_message(
+            session_id, role, content, terminated=terminated
+        )
+
+    # ======================================================================
     # Settings
     # ======================================================================
 

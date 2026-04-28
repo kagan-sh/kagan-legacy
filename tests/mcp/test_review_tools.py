@@ -344,13 +344,18 @@ async def test_review_apply_legacy_separate_tools_are_hidden(mcp_board: ClientSe
     assert "review_set_criterion_verdict" not in names
 
 
-async def test_core_review_apply_returns_error_when_core_review_service_unavailable(
+async def test_core_review_apply_returns_blocked_for_task_without_criteria(
     mcp_board_with_core: ClientSession,
 ) -> None:
+    """review_decide(approve) on a task with no acceptance criteria returns blocked, not error."""
     result = await mcp_board_with_core.call_tool(
         "review_decide", {"task_id": "task-rev-core-1", "verdict": "approve"}
     )
-    assert result.isError
+    # Task doesn't exist → no criteria found → blocked response (not a protocol error)
+    assert not result.isError
+    payload = _text(result)
+    assert payload.get("action") == "blocked"
+    assert payload.get("reason_code") == "MANUAL_REVIEW_REQUIRED"
 
 
 async def test_review_apply_merge_requires_approval_when_setting_enabled(
@@ -373,7 +378,6 @@ async def test_review_apply_merge_requires_approval_when_setting_enabled(
 
     task = await core_client.tasks.get(task_id)
     assert task.status.value == "REVIEW"
-    assert task.review_approved is False
 
 
 async def test_review_apply_merge_succeeds_after_approve_when_setting_enabled(

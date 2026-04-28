@@ -251,7 +251,14 @@ export function EventStream({ events, userFollowUps, isRunning, className, hasMo
   return (
     <Panel className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
       {isRunning && <LiveIndicator />}
-      <div ref={containerRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={containerRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-label="Agent event stream"
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-4"
+      >
         {hasMore && onLoadEarlier ? (
           <button
             type="button"

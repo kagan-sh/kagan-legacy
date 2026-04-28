@@ -29,21 +29,14 @@ import { BoardDialogs } from '@/components/board/board-dialogs';
 import { BoardTaskInspector } from '@/components/board/board-task-inspector';
 import { BoardToolbar } from '@/components/board/board-toolbar';
 import { BacklogListView } from '@/components/board/backlog-list-view';
-import { FirstBootTutorialDialog } from '@/components/board/first-boot-tutorial-dialog';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@/lib/api/types';
-import { helpOverlayOpenAtom } from '@/lib/atoms/ui';
-import { sseConnectedAtom } from '@/lib/atoms/connection';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
 import { useBoardKeyboard } from '@/lib/hooks/use-board-keyboard';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import {
-  loadWebOnboardingTutorialSeen,
-  saveWebOnboardingTutorialSeen,
-} from '@/lib/utils/storage';
 
 const DEFAULT_WIP_LIMITS: Record<TaskStatus, number> = {
   BACKLOG: 0,
@@ -60,9 +53,7 @@ export function KanbanBoard() {
   const loading = useAtomValue(boardLoadingAtom);
   const error = useAtomValue(boardErrorAtom);
   const fetchTasks = useSetAtom(fetchTasksAtom);
-  const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
   const projectVersion = useAtomValue(projectSwitchVersionAtom);
-  const sseConnected = useAtomValue(sseConnectedAtom);
   const [query, setQuery] = useAtom(searchQueryAtom);
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
   const [sort, setSort] = useAtom(boardSortAtom);
@@ -71,7 +62,6 @@ export function KanbanBoard() {
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inspectorClosed, setInspectorClosed] = useState(false);
-  const [tutorialOpen, setTutorialOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const allFilteredTasks = useMemo(
@@ -157,84 +147,9 @@ export function KanbanBoard() {
     navigate(`/task/${selectedTask.id}?lane=worker`);
   }, [navigate, selectedTask]);
 
-  const startSelectedTask = useCallback(() => {
-    if (!selectedTask) return;
-    if (!sseConnected) {
-      toast.error('Not connected to server');
-      return;
-    }
-    if (selectedTask.status === 'DONE') {
-      toast.error('Done tasks cannot be started again');
-      return;
-    }
-    apiClient.runTask(selectedTask.id).catch((err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed to start task'),
-    );
-    toast.success(`Starting ${selectedTask.title}`);
-  }, [selectedTask, sseConnected]);
-
-  const stopSelectedTask = useCallback(() => {
-    if (!selectedTask) return;
-    if (!sseConnected) {
-      toast.error('Not connected to server');
-      return;
-    }
-    apiClient.cancelTask(selectedTask.id).catch((err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed to stop task'),
-    );
-    toast.success(`Stopping ${selectedTask.title}`);
-  }, [selectedTask, sseConnected]);
-
-  const openCreateDialog = useCallback(() => {
-    setBoardDialog({ kind: 'create' });
-  }, [setBoardDialog]);
-
-  const editingTask = useMemo(
-    () => (boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
-
-  const deleteTask = useMemo(
-    () => (boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
-
-  const peekTask = useMemo(
-    () => (boardDialog.kind === 'peek' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null),
-    [boardDialog, tasks],
-  );
-
-  useEffect(() => {
-    if (loading) return;
-    if (tasks.length > 0) return;
-    if (loadWebOnboardingTutorialSeen()) return;
-    setTutorialOpen(true);
-  }, [loading, tasks.length]);
-
-  const handleTutorialOpenChange = useCallback((open: boolean) => {
-    setTutorialOpen(open);
-    if (!open) {
-      saveWebOnboardingTutorialSeen(true);
-    }
-  }, []);
-
-  const startAttachedFlowFromTutorial = useCallback(() => {
-    saveWebOnboardingTutorialSeen(true);
-    setTutorialOpen(false);
-    openCreateDialog();
-  }, [openCreateDialog]);
-
-  const startDetachedFlowFromTutorial = useCallback(() => {
-    saveWebOnboardingTutorialSeen(true);
-    setTutorialOpen(false);
-    openCreateDialog();
-  }, [openCreateDialog]);
-
-  const openHelpFromTutorial = useCallback(() => {
-    saveWebOnboardingTutorialSeen(true);
-    setTutorialOpen(false);
-    setHelpOverlayOpen(true);
-  }, [setHelpOverlayOpen]);
+  const openCreateDialog = () => setBoardDialog({ kind: 'create' });
+  const editingTask = boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
+  const deleteTask = boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
 
   const moveSelectedTaskToAdjacentLane = useCallback(
     async (direction: -1 | 1) => {
@@ -264,46 +179,18 @@ export function KanbanBoard() {
 
   const isAnyDialogOpen = boardDialog.kind !== 'none';
 
-  const openEditDialog = useCallback((task: WireTask) => {
-    setBoardDialog({ kind: 'edit', taskId: task.id });
-  }, [setBoardDialog]);
-
-  const openDeleteDialog = useCallback((task: WireTask) => {
-    setBoardDialog({ kind: 'delete', taskId: task.id });
-  }, [setBoardDialog]);
-
-  const closeDialog = useCallback((): BoardDialog => {
+  const openEditDialog = (task: WireTask) => setBoardDialog({ kind: 'edit', taskId: task.id });
+  const openDeleteDialog = (task: WireTask) => setBoardDialog({ kind: 'delete', taskId: task.id });
+  const closeDialog = (): BoardDialog => {
     const dialog: BoardDialog = { kind: 'none' };
     setBoardDialog(dialog);
     return dialog;
-  }, [setBoardDialog]);
-
-  const handlePeekOpen = useCallback(
-    (open: boolean) => {
-      if (open && selectedTask) {
-        setBoardDialog({ kind: 'peek', taskId: selectedTask.id });
-      } else {
-        setBoardDialog({ kind: 'none' });
-      }
-    },
-    [selectedTask, setBoardDialog]
-  );
+  };
 
   const handleEditingTask = useCallback(
     (task: WireTask | null) => {
       if (task) {
         setBoardDialog({ kind: 'edit', taskId: task.id });
-      } else {
-        setBoardDialog({ kind: 'none' });
-      }
-    },
-    [setBoardDialog]
-  );
-
-  const handleDeleteTask = useCallback(
-    (task: WireTask | null) => {
-      if (task) {
-        setBoardDialog({ kind: 'delete', taskId: task.id });
       } else {
         setBoardDialog({ kind: 'none' });
       }
@@ -319,14 +206,9 @@ export function KanbanBoard() {
     view,
     query,
     setSelectedTaskId,
-    openCreateDialog,
-    setPeekOpen: handlePeekOpen,
     setEditingTask: handleEditingTask,
-    setDeleteTask: handleDeleteTask,
     setQuery,
     openTask,
-    startSelectedTask,
-    stopSelectedTask,
     moveSelectedTaskToAdjacentLane,
     searchInputRef,
     isAnyDialogOpen,
@@ -468,19 +350,8 @@ export function KanbanBoard() {
         closeDialog={closeDialog}
         editingTask={editingTask}
         deleteTask={deleteTask}
-        peekTask={peekTask}
         selectedTaskId={selectedTaskId}
         setSelectedTaskId={setSelectedTaskId}
-        onOpenTask={openTask}
-        onOpenStream={openSelectedStream}
-        onEditTask={openEditDialog}
-      />
-      <FirstBootTutorialDialog
-        open={tutorialOpen}
-        onOpenChange={handleTutorialOpenChange}
-        onStartAttachedFlow={startAttachedFlowFromTutorial}
-        onStartDetachedFlow={startDetachedFlowFromTutorial}
-        onOpenHelp={openHelpFromTutorial}
       />
     </div>
   );

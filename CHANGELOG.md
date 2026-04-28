@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.14 (2026-04-28)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Keep tutorial/state init in on_mount, defer only widget queries
+  ([`001bda6`](https://github.com/kagan-sh/kagan/commit/001bda6454aa73b21d32f851bac1abb22df61f93))
+
+
+
+
+
 ## v0.19.0-beta.13 (2026-04-28)
 
 

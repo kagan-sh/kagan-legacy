@@ -69,6 +69,49 @@ def _broadcast(session_id: str, event: dict[str, Any]) -> None:
             q.put_nowait(event)
 
 
+async def _claim_turn_slot(
+    client: Any,
+    session_id: str,
+    agent_backend: str | None,
+) -> tuple[dict[str, Any], str] | JSONResponse:
+    """Atomically claim a turn slot and return (session, backend) or an error response.
+
+    Registers a sentinel Future into ``_chat_turn_tasks`` *before* the first
+    ``await`` so that a concurrent POST cannot slip past the 409 guard while
+    this coroutine is suspended.  The sentinel is replaced by the real Task
+    when ``_run_chat_stream`` starts; error paths pop it explicitly.
+    """
+    running = _chat_turn_tasks.get(session_id)
+    if running is not None and not running.done():
+        partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
+        started_at = _chat_turn_started_at.get(session_id)
+        return JSONResponse(
+            TurnInProgressResponse(
+                running_since=started_at.isoformat() if started_at else None,
+                partial_chars=partial_chars,
+            ).model_dump(mode="json"),
+            status_code=409,
+        )
+
+    sentinel: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    _chat_turn_tasks[session_id] = sentinel
+    try:
+        session = await get_chat_session(client, session_id)
+        if session is None:
+            _chat_turn_tasks.pop(session_id, None)
+            return _err("Session not found", status=404)
+        settings = await client.settings.get()
+        backend = (
+            agent_backend
+            or session.get("agent_backend")
+            or resolve_default_agent_backend(settings)
+        )
+        return (session, backend)
+    except BaseException:
+        _chat_turn_tasks.pop(session_id, None)
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Wire helpers
 # ---------------------------------------------------------------------------
@@ -536,50 +579,20 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         agent_backend = cast("str | None", body.get("agent_backend"))
         attachments = _parse_attachments(body)
 
-        # 409 guard: reject if a turn is already running
-        running = _chat_turn_tasks.get(session_id)
-        if running is not None and not running.done():
-            partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
-            started_at = _chat_turn_started_at.get(session_id)
-            return JSONResponse(
-                TurnInProgressResponse(
-                    running_since=started_at.isoformat() if started_at else None,
-                    partial_chars=partial_chars,
-                ).model_dump(mode="json"),
-                status_code=409,
-            )
+        claimed = await _claim_turn_slot(ctx.client, session_id, agent_backend)
+        if isinstance(claimed, JSONResponse):
+            return claimed
+        session, backend = claimed
 
-        # Pre-register a sentinel Future *before* the first await so that a
-        # concurrent POST cannot slip past the 409 guard while this coroutine
-        # is suspended.  _run_chat_stream replaces it with the real Task once
-        # the turn starts; error paths pop it explicitly.
-        _sentinel: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
-        _chat_turn_tasks[session_id] = _sentinel
-        try:
-            session = await get_chat_session(ctx.client, session_id)
-            if session is None:
-                _chat_turn_tasks.pop(session_id, None)
-                return _err("Session not found", status=404)
-
-            settings = await ctx.client.settings.get()
-            backend = (
-                agent_backend
-                or session.get("agent_backend")
-                or resolve_default_agent_backend(settings)
-            )
-
-            return StreamingResponse(
-                _run_chat_stream(ctx, session_id, session, text, backend, attachments),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-        except BaseException:
-            _chat_turn_tasks.pop(session_id, None)
-            raise
+        return StreamingResponse(
+            _run_chat_stream(ctx, session_id, session, text, backend, attachments),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @mcp.custom_route("/api/chat/sessions/{session_id}/watch", methods=["GET"])
     @require_context(mcp)

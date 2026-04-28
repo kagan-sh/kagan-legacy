@@ -13,6 +13,528 @@
 
 
 
+## v0.19.0-beta.11 (2026-04-28)
+
+
+
+
+### Features
+
+- **chat**: Convergent live multi-client chat with per-session SSE watch
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Finish pmf-push polish + migrate to review-gate data model
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **server+web**: Inline task payloads in board SSE
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **server+web**: Live diff-in-board — the "oh moment"
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Progressive backend picker + a11y pass on settings/picker
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **branch**: Address first-pass review findings across all lanes
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **chat**: Address Greptile P1/P2 review findings
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **chat**: Address Greptile P2/P3 findings — delete teardown + keep-alive on disconnect
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **branch**: Address second-pass review findings
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **branch**: Address third-pass pre-existing review findings
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **vscode**: Align ReviewVerdict + AcceptanceCriterion to wire shape
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **ts**: Align shared review wire types ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Announce agent event stream to screen readers
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **ci**: Build @kagan/shared-api-client before web tests
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **cd**: Build @kagan/shared-api-client before web-build step
+  ([`fb9c339`](https://github.com/kagan-sh/kagan/commit/fb9c3393b4093234fa4ef41e396389c44b5fa6a2))
+
+- **tui**: Defer chat rendering until children mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui+web**: Drop unsupported OptionList tooltip; role=timer for elapsed span
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **server**: Extract _claim_turn_slot to keep _register_stream_routes ≤ C20
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Guard chat session switch before mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **core**: Honest review gate ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **core**: Keep MERGE trigger out of move_task allowed set
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **migrations**: Make 6f4d63a80a1e idempotent ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **lint**: Resolve TC004 duplicate import, E501 long line, I001 unsorted imports
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Stabilize chat session selector mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tighten suppress(NoMatches) scoping in chat panel
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tolerate early board reactive refresh
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tolerate early chat panel mount ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tolerate early kanban chat panel mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tolerate early peek overlay initialization
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Tolerate early task inspector rendering
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **e2e**: Update board tests to match current UX — drop peek/x bindings
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **core**: Centralize SQLModel column casts ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **server**: Consolidate response serialization
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Defer chat panel setup via ChatPanel.Ready message
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Demote analytics from primary nav ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Deterministic task-card layout ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Drop dead Peek dialog ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **core**: Drop Task.review_approved shim and route callers to real review state
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Land on board, drop welcome screen ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Layered dark theme, AA contrast ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **tui**: Progressive exposure on settings screen
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **vscode+tui**: Share board helpers and guard chat mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **vscode+tui**: Share command helpers and harden chat mount
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **vscode+core**: Simplify review documents and learnings lookup
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **core**: Single trigger-keyed state machine for task transitions
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Slim agent-control; extract instructions dialog
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Unify chat engine behind useChatStream + ChatView
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Use crypto.randomUUID for follow-up queue ids
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Documentation
+
+- Reposition around the review gate; demote companion surfaces
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- Purge dead modules and defensive junk ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Regenerate wire types ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- Remove temporary analytics artifacts ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- **web**: Remove unused frontend dependencies ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- Simplification wave A — delete dead code across all lanes
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- Simplification wave B — adopt @kagan/shared-api-client
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- Simplification wave D — tier 1 cleanups across all lanes
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+- Simplification wave E — tier 2 architectural collapses
+  ([#126](https://github.com/kagan-sh/kagan/pull/126),
+  [`7ab5666`](https://github.com/kagan-sh/kagan/commit/7ab566675caa28071bfcf28f9c7ba358248e3b55))
+
+
+
+
+
 ## v0.19.0-beta.10 (2026-04-23)
 
 

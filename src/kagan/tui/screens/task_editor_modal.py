@@ -46,11 +46,15 @@ class TaskEditorModal(ModalScreen[None]):
         editing_task = self._editing_task
         is_editing = editing_task is not None
         agent_backends = list_registered_agent_backends()
+        project_id = self.kagan_app.project.id if self.kagan_app.project is not None else None
+        client = self.kagan_app.core
         with Container(id="task-editor-container"):
             if editing_task is None:
                 yield TaskEditor(
                     available_agent_backends=agent_backends,
                     focus_field=self._focus_field,
+                    client=client,
+                    project_id=project_id,
                 )
             else:
                 yield TaskEditor(
@@ -65,6 +69,8 @@ class TaskEditorModal(ModalScreen[None]):
                     github_issue=editing_task.github_issue,
                     focus_field=self._focus_field,
                     editing=True,
+                    client=client,
+                    project_id=project_id,
                 )
             if is_editing:
                 yield Static(

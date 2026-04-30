@@ -7,8 +7,10 @@ from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Select, Static, TextArea
 
+from kagan.core import KaganCore
 from kagan.core.enums import Priority
 from kagan.tui.messages import TaskSubmitted
+from kagan.tui.widgets._mention_typeahead import MentionTypeahead, _move_textarea_cursor
 
 _PRIORITY_OPTIONS: list[tuple[str, int]] = [
     ("Low", int(Priority.LOW)),
@@ -72,8 +74,20 @@ class TaskEditor(Vertical):
         github_issue: str | None = None,
         focus_field: str | None = None,
         editing: bool = False,
+        client: KaganCore | None = None,
+        project_id: str | None = None,
     ) -> None:
         super().__init__()
+        self._client = client
+        self._project_id = project_id
+        # Typeahead instances, wired in on_mount when client/project_id available
+        self._desc_typeahead: MentionTypeahead | None = None
+        self._criteria_typeahead: MentionTypeahead | None = None
+        # Last-known hash positions per textarea host id, updated via on_text_area_changed.
+        # Used when inserting mention text because the typeahead clears _hash_position
+        # synchronously before the MentionSelected message is dispatched.
+        self._typeahead_hash_positions: dict[str, int] = {}
+        self._typeahead_cursor_positions: dict[str, int] = {}
         self._initial_title = title
         self._initial_description = description
         self._initial_priority = priority
@@ -210,6 +224,34 @@ class TaskEditor(Vertical):
         self.focus_preferred_field()
         self.call_after_refresh(self._restore_initial_title)
         self._set_title_error(None)
+        self._wire_mention_typeaheads()
+
+    def _wire_mention_typeaheads(self) -> None:
+        """Mount MentionTypeahead instances for description and criteria fields."""
+        if self._client is None or self._project_id is None:
+            return
+        desc_area = self.query_one("#task-description", TextArea)
+        self._desc_typeahead = MentionTypeahead(
+            host_id="task-description",
+            project_id=self._project_id,
+            client=self._client,
+        )
+        self.mount(self._desc_typeahead, after=desc_area)
+
+        criteria_area = self.query_one("#task-acceptance-criteria", TextArea)
+        self._criteria_typeahead = MentionTypeahead(
+            host_id="task-acceptance-criteria",
+            project_id=self._project_id,
+            client=self._client,
+        )
+        self.mount(self._criteria_typeahead, after=criteria_area)
+
+    def _typeahead_for_id(self, host_id: str) -> MentionTypeahead | None:
+        if host_id == "task-description":
+            return self._desc_typeahead
+        if host_id == "task-acceptance-criteria":
+            return self._criteria_typeahead
+        return None
 
     def _restore_initial_title(self) -> None:
         self.query_one("#task-title", Input).value = self._initial_title
@@ -290,9 +332,84 @@ class TaskEditor(Vertical):
         if self._editing:
             self.post_message(self.FieldChanged())
 
-    def on_text_area_changed(self, _: TextArea.Changed) -> None:
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
         if self._editing:
             self.post_message(self.FieldChanged())
+        # Notify the appropriate typeahead about the text change
+        ta = event.text_area
+        host_id = ta.id
+        typeahead = self._typeahead_for_id(host_id) if host_id else None
+        if typeahead is not None:
+            text = ta.text
+            row, col = ta.cursor_location
+            lines = text.splitlines(keepends=True)
+            pos = sum(len(lines[i]) for i in range(row)) + col
+            typeahead.notify_text_changed(text, pos)
+            # Snapshot current hash + cursor positions so the MentionSelected
+            # handler can safely insert text even after the typeahead deactivates.
+            if host_id and typeahead._active:
+                self._typeahead_hash_positions[host_id] = typeahead._hash_position
+                self._typeahead_cursor_positions[host_id] = pos
+
+    def on_key(self, event: events.Key) -> None:
+        """Route keyboard events to the active typeahead."""
+        # Find which TextArea has focus
+        for host_id in ("task-description", "task-acceptance-criteria"):
+            typeahead = self._typeahead_for_id(host_id)
+            if typeahead is None:
+                continue
+            try:
+                ta = self.query_one(f"#{host_id}", TextArea)
+            except Exception:  # quality-allow-broad-except
+                continue
+            if not ta.has_focus:
+                continue
+            # Snapshot hash + cursor positions before notify_key; the typeahead
+            # deactivates synchronously on accept, clearing _hash_position before
+            # the MentionSelected message is dispatched to this widget.
+            is_accept_key = event.key in ("enter", "tab")
+            if is_accept_key and typeahead._active and typeahead._hash_position >= 0:
+                text = ta.text
+                row, col = ta.cursor_location
+                lines = text.splitlines(keepends=True)
+                cursor_pos = sum(len(lines[i]) for i in range(row)) + col
+                self._typeahead_hash_positions[host_id] = typeahead._hash_position
+                self._typeahead_cursor_positions[host_id] = cursor_pos
+            if typeahead.notify_key(event.key):
+                event.prevent_default()
+                event.stop()
+                return
+
+    def on_mention_typeahead_mention_selected(
+        self, event: MentionTypeahead.MentionSelected
+    ) -> None:
+        """Insert the selected mention token into the appropriate TextArea."""
+        event.stop()
+        host_id = event.host_id
+        try:
+            ta = self.query_one(f"#{host_id}", TextArea)
+        except Exception:  # quality-allow-broad-except
+            return
+        insert_text = event.insert_text
+        text = ta.text
+        # Use the snapshot positions saved in on_text_area_changed; the typeahead
+        # clears _hash_position synchronously before MentionSelected is dispatched.
+        hash_pos = self._typeahead_hash_positions.get(host_id, -1)
+        cursor_pos = self._typeahead_cursor_positions.get(host_id, -1)
+        if cursor_pos < 0:
+            # Fall back to current cursor
+            row, col = ta.cursor_location
+            lines = text.splitlines(keepends=True)
+            cursor_pos = sum(len(lines[i]) for i in range(row)) + col
+        if hash_pos < 0:
+            return
+        new_text = text[:hash_pos] + insert_text + " " + text[cursor_pos:]
+        ta.load_text(new_text)
+        new_cursor_pos = hash_pos + len(insert_text) + 1
+        _move_textarea_cursor(ta, new_cursor_pos, new_text)
+        # Clear the snapshots
+        self._typeahead_hash_positions.pop(host_id, None)
+        self._typeahead_cursor_positions.pop(host_id, None)
 
     def scroll_form(self, delta_y: int) -> None:
         form = self.query_one(".task-form", VerticalScroll)

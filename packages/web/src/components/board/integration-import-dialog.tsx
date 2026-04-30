@@ -130,7 +130,7 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="overflow-hidden sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="size-4" />
@@ -182,8 +182,8 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Button variant="ghost" size="sm" onClick={() => setStep('filter')}>
                 <ArrowLeft className="size-3 mr-1" /> Filters
               </Button>
@@ -193,21 +193,23 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
               </div>
             </div>
 
-            <div className="max-h-72 overflow-y-auto space-y-1 border rounded-md p-2">
+            <div className="max-h-72 min-w-0 space-y-1 overflow-y-auto overflow-x-hidden rounded-md border p-2">
               {issues.map((issue) => (
-                <label key={issue.number} className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer hover:bg-[var(--accent)] ${issue.already_synced ? 'opacity-50' : ''}`}>
+                <label key={issue.number} className={`grid min-w-0 cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded px-2 py-1.5 text-sm hover:bg-[var(--accent)] md:grid-cols-[auto_auto_minmax(0,1fr)_minmax(12rem,0.9fr)] ${issue.already_synced ? 'opacity-50' : ''}`}>
                   <input
                     type="checkbox"
                     checked={selected.has(issue.number)}
                     onChange={() => toggleIssue(issue.number)}
-                    className="size-4 shrink-0"
+                    className="mt-0.5 size-4 shrink-0"
                   />
-                  <span className="font-mono text-xs text-[var(--muted-foreground)]">#{issue.number}</span>
-                  <span className="flex-1 truncate">{issue.title}</span>
-                  {issue.labels.map((lbl) => (
-                    <span key={lbl} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)] text-[var(--accent-foreground)]">{lbl}</span>
-                  ))}
-                  {issue.already_synced && <span className="text-[10px] text-[var(--muted-foreground)]">(synced)</span>}
+                  <span className="mt-0.5 font-mono text-xs text-[var(--muted-foreground)]">#{issue.number}</span>
+                  <span className="min-w-0 truncate leading-5">{issue.title}</span>
+                  <span className="col-start-3 flex min-w-0 flex-wrap gap-1 md:col-start-auto md:justify-end">
+                    {issue.labels.map((lbl) => (
+                      <span key={lbl} className="max-w-36 truncate rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[10px] text-[var(--accent-foreground)]">{lbl}</span>
+                    ))}
+                    {issue.already_synced && <span className="text-[10px] leading-5 text-[var(--muted-foreground)]">(synced)</span>}
+                  </span>
                 </label>
               ))}
               {issues.length === 0 && <p className="text-sm text-[var(--muted-foreground)] text-center py-4">No issues match the filters.</p>}

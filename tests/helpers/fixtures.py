@@ -10,6 +10,7 @@ from tests.helpers.helpers import make_git_repo
 async def board(tmp_path: Path) -> KaganDriver:
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Test Project")
+    await driver.settings_update({"open_last_project_on_startup": "true"})
     yield driver  # type: ignore[misc]
     await driver.teardown()
 
@@ -18,7 +19,9 @@ async def board(tmp_path: Path) -> KaganDriver:
 async def board_with_task(tmp_path: Path) -> KaganDriver:
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Test Project")
-    await driver.settings_update({"ui.tui_tutorial_seen": "true"})
+    await driver.settings_update(
+        {"ui.tui_tutorial_seen": "true", "open_last_project_on_startup": "true"}
+    )
     await driver.create_task("Test Task")
     yield driver  # type: ignore[misc]
     await driver.teardown()
@@ -31,5 +34,6 @@ async def git_board(tmp_path: Path) -> KaganDriver:
 
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Test Project", repo_path=str(repo_path))
+    await driver.settings_update({"open_last_project_on_startup": "true"})
     yield driver  # type: ignore[misc]
     await driver.teardown()

@@ -90,6 +90,17 @@ export interface RepositoryResponse {
   selected?: boolean;
 }
 
+export interface ProjectFolderResolutionResponse {
+  path: string;
+  repo_path: string;
+  suggested_project_name: string;
+  is_git_repo: boolean;
+  git_root?: string | null;
+  existing_project_id?: string | null;
+  existing_project_name?: string | null;
+  existing_repo_id?: string | null;
+}
+
 export interface EventResponse {
   id: string;
   session_id?: string | null;

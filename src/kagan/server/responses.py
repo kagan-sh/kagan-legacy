@@ -229,6 +229,19 @@ class RepositoryResponse(_OrmBase):
     selected: bool = False
 
 
+class ProjectFolderResolutionResponse(BaseModel):
+    """How a filesystem folder maps to Kagan project/repository state."""
+
+    path: str
+    repo_path: str
+    suggested_project_name: str
+    is_git_repo: bool
+    git_root: str | None = None
+    existing_project_id: str | None = None
+    existing_project_name: str | None = None
+    existing_repo_id: str | None = None
+
+
 # ── Session event ─────────────────────────────────────────────────────────────
 
 
@@ -382,6 +395,7 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "TaskSessionResponse": TaskSessionResponse,
     "ProjectResponse": ProjectResponse,
     "RepositoryResponse": RepositoryResponse,
+    "ProjectFolderResolutionResponse": ProjectFolderResolutionResponse,
     "EventResponse": EventResponse,
     "AgentBackendResponse": AgentBackendResponse,
     "ChatAgentsResponse": ChatAgentsResponse,

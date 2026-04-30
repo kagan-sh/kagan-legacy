@@ -32,6 +32,7 @@ export type {
     DiffSummaryResponse,
     EventResponse,
     ProjectResponse,
+    ProjectFolderResolutionResponse,
     RepositoryResponse,
     ReviewVerdictResponse,
     TaskResponse,

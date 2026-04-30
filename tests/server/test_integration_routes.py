@@ -6,12 +6,18 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from starlette.responses import Response
 
 from kagan.server.mcp.server import ServerOptions
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 
 pytestmark = [pytest.mark.smoke]
+
+
+def _status_code(response: object) -> int:
+    assert isinstance(response, Response)
+    return response.status_code
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +36,7 @@ class _FakeProjects:
 
 
 class _FakeClient:
-    active_project_id = "project-1"
+    active_project_id: str | None = "project-1"
     settings = _FakeSettings()
     projects = _FakeProjects()
 
@@ -46,14 +52,14 @@ def _make_ctx(client: Any = None):
 # ---------------------------------------------------------------------------
 
 
-def _make_server_with_ctx(mcp, client=None, *, admin: bool = False):
+def _make_server_with_ctx(mcp, client=None, *, admin: bool = False, readonly: bool = False):
     """Register a fake ServerContext so require_context passes."""
     from kagan.server._presence import PresenceTracker
     from kagan.server.mcp.server import ServerContext, _set_server_context
 
     ctx = ServerContext(
         client=client or _FakeClient(),
-        opts=ServerOptions(admin=admin),
+        opts=ServerOptions(admin=admin, readonly=readonly),
         presence=PresenceTracker(),
     )
     _set_server_context(mcp, ctx)
@@ -119,7 +125,7 @@ async def test_integration_preflight_unknown_returns_404() -> None:
     body = json_body(response)
 
     assert body["ok"] is False
-    assert response.status_code == 404  # type: ignore[attr-defined]
+    assert _status_code(response) == 404
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +174,7 @@ async def test_integration_preview_returns_items(
 @pytest.mark.asyncio
 async def test_integration_preview_missing_project_id() -> None:
     class _NoProjectClient(_FakeClient):
-        active_project_id = None  # type: ignore[assignment]
+        active_project_id: str | None = None
 
     mcp = make_api_server()
     _make_server_with_ctx(mcp, client=_NoProjectClient())
@@ -222,7 +228,7 @@ async def test_integration_sync_returns_counts(
     await real_client.projects.set_active(project.id)
 
     mcp = make_api_server()
-    _make_server_with_ctx(mcp, client=real_client, admin=True)
+    _make_server_with_ctx(mcp, client=real_client)
     endpoint = get_http_endpoint(mcp, "/api/integrations/{id}/sync", "POST")
     request = make_request(
         "POST",
@@ -243,8 +249,7 @@ async def test_integration_sync_returns_counts(
 @pytest.mark.asyncio
 async def test_integration_sync_unknown_integration() -> None:
     mcp = make_api_server()
-    # Use admin=True so access check passes; the integration lookup returns 404
-    _make_server_with_ctx(mcp, admin=True)
+    _make_server_with_ctx(mcp)
     endpoint = get_http_endpoint(mcp, "/api/integrations/{id}/sync", "POST")
     request = make_request(
         "POST",
@@ -256,4 +261,23 @@ async def test_integration_sync_unknown_integration() -> None:
     body = json_body(response)
 
     assert body["ok"] is False
-    assert response.status_code == 404  # type: ignore[attr-defined]
+    assert _status_code(response) == 404
+
+
+@pytest.mark.asyncio
+async def test_integration_sync_rejects_readonly() -> None:
+    mcp = make_api_server()
+    _make_server_with_ctx(mcp, readonly=True)
+    endpoint = get_http_endpoint(mcp, "/api/integrations/{id}/sync", "POST")
+    request = make_request(
+        "POST",
+        "/api/integrations/github/sync",
+        path_params={"id": "github"},
+        body={"repo_slug": "octocat/hello-world", "state": "open"},
+    )
+    response = await endpoint(request)
+    body = json_body(response)
+
+    assert body["ok"] is False
+    assert body["error_code"] == "ACCESS_TIER_FORBIDDEN"
+    assert _status_code(response) == 403

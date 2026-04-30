@@ -72,6 +72,7 @@ def _make_task(task_id: str, status: TaskStatus) -> Task:
 def _ctx(tasks_client: Any, worktrees_client: Any) -> SimpleNamespace:
     return SimpleNamespace(
         client=SimpleNamespace(
+            active_project_id="project-1",
             tasks=tasks_client,
             worktrees=worktrees_client,
             settings=SimpleNamespace(get=lambda: {}),

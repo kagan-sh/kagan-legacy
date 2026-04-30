@@ -161,13 +161,24 @@ async def _task_update_message(ctx: Any, task_id: str) -> dict[str, Any]:
         return {"type": "TASK_UPDATED", "task_id": task_id}
 
 
-async def _yield_sse_payloads(queue: asyncio.Queue[dict[str, Any]]) -> AsyncIterator[str]:
-    while True:
+async def _yield_sse_payloads(
+    queue: asyncio.Queue[dict[str, Any]],
+    *,
+    shutdown_event: asyncio.Event | None = None,
+) -> AsyncIterator[str]:
+    last_keepalive = time.monotonic()
+    while shutdown_event is None or not shutdown_event.is_set():
+        timeout = 0.5 if shutdown_event is not None else _SSE_KEEPALIVE_SECONDS
         try:
-            data = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
+            data = await asyncio.wait_for(queue.get(), timeout=timeout)
             yield f"data: {json.dumps(data)}\n\n"
         except TimeoutError:
-            yield ": keepalive\n\n"
+            if shutdown_event is not None and shutdown_event.is_set():
+                break
+            now = time.monotonic()
+            if now - last_keepalive >= _SSE_KEEPALIVE_SECONDS:
+                last_keepalive = now
+                yield ": keepalive\n\n"
 
 
 async def _poll_db_changes(
@@ -266,7 +277,10 @@ async def _sse_event_generator(
     )
 
     try:
-        async for payload in _yield_sse_payloads(queue):
+        async for payload in _yield_sse_payloads(
+            queue,
+            shutdown_event=getattr(ctx, "shutdown_event", None),
+        ):
             if tracker is not None:
                 tracker.heartbeat(sse_client_id, connection_token=connection_token)
             yield payload

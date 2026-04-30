@@ -29,7 +29,7 @@ vi.mock('@/lib/api/client', () => ({
     getChatSession: vi.fn().mockResolvedValue({ messages: [], label: 'Test', agent_backend: null }),
     getTurnStatus: vi.fn().mockResolvedValue({ active: false }),
     getChatAgents: vi.fn().mockResolvedValue({ backends: [] }),
-    interruptChatSession: vi.fn().mockResolvedValue(undefined),
+    interruptChatTurn: vi.fn().mockResolvedValue(undefined),
     updateChatSession: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -215,8 +215,8 @@ describe('useChatStream isStreaming atom transitions', () => {
       result.current.handleInterrupt({ pendingText: null });
     });
 
-    // interruptChatSession must not be called when not streaming.
-    expect(vi.mocked(apiClient.interruptChatSession)).not.toHaveBeenCalled();
+    // interruptChatTurn must not be called when not streaming.
+    expect(vi.mocked(apiClient.interruptChatTurn)).not.toHaveBeenCalled();
     expect(store.get(isStreamingAtom)).toBe(false);
   });
 });

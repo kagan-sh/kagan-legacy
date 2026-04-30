@@ -162,6 +162,47 @@ async def test_find_project_by_repo_path_normalizes_query_path(
     assert found.name == "Normalized Lookup Project"
 
 
+async def test_inspect_project_folder_resolves_git_root_and_existing_project(
+    board: KaganDriver, tmp_path
+) -> None:
+    repo_path = tmp_path / "inspect-repo"
+    nested = repo_path / "src" / "pkg"
+    await make_git_repo(repo_path)
+    nested.mkdir(parents=True)
+    project_id = await board.create_project("Inspectable Project")
+    repo_id = await board.add_repo(repo_path)
+
+    assert board._ctx is not None
+    resolution = await board._ctx.projects.inspect_folder(nested)
+
+    assert resolution.path == str(nested.resolve())
+    assert resolution.repo_path == str(repo_path.resolve())
+    assert resolution.git_root == str(repo_path.resolve())
+    assert resolution.is_git_repo is True
+    assert resolution.suggested_project_name == "inspect-repo"
+    assert resolution.existing_project_id == project_id
+    assert resolution.existing_project_name == "Inspectable Project"
+    assert resolution.existing_repo_id == repo_id
+
+
+async def test_inspect_project_folder_describes_empty_folder(
+    board: KaganDriver, tmp_path
+) -> None:
+    folder = tmp_path / "empty-folder"
+    folder.mkdir()
+
+    assert board._ctx is not None
+    resolution = await board._ctx.projects.inspect_folder(folder)
+
+    assert resolution.path == str(folder.resolve())
+    assert resolution.repo_path == str(folder.resolve())
+    assert resolution.git_root is None
+    assert resolution.is_git_repo is False
+    assert resolution.suggested_project_name == "empty-folder"
+    assert resolution.existing_project_id is None
+    assert resolution.existing_repo_id is None
+
+
 async def test_delete_project_removes_it_from_list(board: KaganDriver) -> None:
     project_id = await board.create_project("Doomed Project")
     await board.delete_project(project_id)

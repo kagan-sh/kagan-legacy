@@ -183,7 +183,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
 
         integration_id = cast("str", request.path_params["id"])
         forbidden = _require_access(
-            ctx, operation="Integration sync", minimum_tier=AccessTier.ADMIN
+            ctx, operation="Integration sync", minimum_tier=AccessTier.STANDARD
         )
         if forbidden is not None:
             return forbidden

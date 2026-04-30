@@ -2,9 +2,11 @@
 
 from types import SimpleNamespace
 
+import acp
 import pytest
 
 from kagan.cli.chat import acp as chat_acp
+from kagan.cli.chat._handshake import execute_handshake
 from kagan.core import BackendCapability, BackendSpec
 
 pytestmark = [pytest.mark.unit]
@@ -120,3 +122,113 @@ async def test_run_orchestrator_turn_uses_backend_spec_env_vars(
     assert env["TYPED_BACKEND_FLAG"] == "enabled"
     assert env["KAGAN_SESSION_ID"]
     assert env["KAGAN_MCP_CMD"] == "kagan mcp"
+
+
+@pytest.mark.asyncio
+async def test_run_orchestrator_turn_retries_without_mcp_servers_when_backend_rejects_them(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    spec = BackendSpec(
+        name="typed-backend",
+        executable="typed-backend",
+        acp_command=("typed-backend", "acp"),
+        capabilities=frozenset({BackendCapability.ACP_STREAMING}),
+    )
+    monkeypatch.setattr(chat_acp, "get_backend_spec", lambda _name: spec)
+    monkeypatch.setattr(chat_acp.shutil, "which", lambda _exe: "/usr/bin/typed-backend")
+
+    class _FakeSession:
+        session_id = "session-1"
+
+    class _FakeConn:
+        def __init__(self) -> None:
+            self.mcp_server_counts: list[int] = []
+
+        async def initialize(self, **_kwargs):
+            return None
+
+        async def new_session(self, **kwargs):
+            servers = kwargs["mcp_servers"]
+            self.mcp_server_counts.append(len(servers))
+            if servers:
+                raise acp.RequestError(
+                    -32603,
+                    "MCP servers not implemented in this version. Found 1 server(s).",
+                )
+            return _FakeSession()
+
+        async def prompt(self, **_kwargs):
+            return None
+
+    class _FakeProcess:
+        returncode = None
+        stderr = None
+
+    fake_conn = _FakeConn()
+
+    class _FakeSpawnContext:
+        async def __aenter__(self):
+            return fake_conn, _FakeProcess()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
+
+    monkeypatch.setattr(
+        chat_acp.acp,
+        "spawn_agent_process",
+        lambda *_args, **_kwargs: _FakeSpawnContext(),
+    )
+
+    client = SimpleNamespace(active_project_id=None)
+
+    result = await chat_acp.run_orchestrator_turn(
+        client,
+        prompt="",
+        agent_backend="typed-backend",
+        send_prompt=False,
+        cwd=tmp_path,
+    )
+
+    assert result == ""
+    assert fake_conn.mcp_server_counts == [1, 0]
+
+
+@pytest.mark.asyncio
+async def test_execute_handshake_retries_without_mcp_servers_when_backend_rejects_them(
+    tmp_path,
+) -> None:
+    class _FakeSession:
+        session_id = "session-1"
+
+    class _FakeConn:
+        def __init__(self) -> None:
+            self.mcp_server_counts: list[int] = []
+
+        async def initialize(self, **_kwargs):
+            return None
+
+        async def new_session(self, **kwargs):
+            servers = kwargs["mcp_servers"]
+            self.mcp_server_counts.append(len(servers))
+            if servers:
+                raise acp.RequestError(
+                    -32603,
+                    "MCP servers not implemented in this version. Found 1 server(s).",
+                )
+            return _FakeSession()
+
+    fake_conn = _FakeConn()
+
+    acp_session_id, error = await execute_handshake(
+        fake_conn,
+        "typed-backend",
+        "mcp-session",
+        None,
+        tmp_path,
+    )
+
+    assert error is None
+    assert acp_session_id == "session-1"
+    assert fake_conn.mcp_server_counts == [1, 0]

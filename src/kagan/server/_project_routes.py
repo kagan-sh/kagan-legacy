@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from kagan.server._access import AccessTier
@@ -12,7 +13,11 @@ from kagan.server._helpers import (
     require_context,
 )
 from kagan.server.requests import AddRepoRequest, CreateProjectRequest
-from kagan.server.responses import ProjectResponse, RepositoryResponse
+from kagan.server.responses import (
+    ProjectFolderResolutionResponse,
+    ProjectResponse,
+    RepositoryResponse,
+)
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -41,6 +46,19 @@ def register_project_routes(mcp: FastMCP) -> None:
         active_project_id = ctx.client.active_project_id
         return _ok(
             [_project_dict(project, active=project.id == active_project_id) for project in projects]
+        )
+
+    @mcp.custom_route("/api/projects/resolve-folder", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def resolve_project_folder(request: Request, *, ctx: Any) -> JSONResponse:
+        raw_path = request.query_params.get("path")
+        target = Path(raw_path).expanduser() if raw_path else Path.cwd()
+        resolution = await ctx.client.projects.inspect_folder(target)
+        return _ok(
+            ProjectFolderResolutionResponse.model_validate(
+                resolution, from_attributes=True
+            ).model_dump()
         )
 
     @mcp.custom_route("/api/projects", methods=["POST"])

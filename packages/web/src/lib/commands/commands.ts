@@ -16,7 +16,6 @@ import {
   HelpCircle,
   LayoutDashboard,
   MessageSquareText,
-  Home,
   PanelRight,
   Pencil,
   Play,
@@ -100,12 +99,12 @@ function errorMessage(err: unknown, fallback: string): string {
 export const BUILTIN_COMMANDS: CommandAction[] = [
   // ─── Navigate ────────────────────────────────────────────────────────────
   {
-    id: 'nav-home',
-    title: 'Go to Home',
+    id: 'nav-project-picker',
+    title: 'Open Project Picker',
     section: 'Navigate',
-    keywords: ['home', 'start', 'overview'],
-    icon: Home,
-    handler: ({ navigate }) => navigate('/'),
+    keywords: ['welcome', 'project', 'projects', 'start', 'open'],
+    icon: LayoutDashboard,
+    handler: ({ navigate }) => navigate('/welcome'),
   },
   {
     id: 'nav-board',

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from kagan.server._sse import _poll_db_changes
+from kagan.server._sse import _poll_db_changes, _yield_sse_payloads
 
 pytestmark = [pytest.mark.unit]
 
@@ -42,6 +42,18 @@ async def _collect_events(
     except TimeoutError:
         pass
     return events
+
+
+@pytest.mark.asyncio
+async def test_sse_payload_generator_exits_on_shutdown_event() -> None:
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    shutdown_event = asyncio.Event()
+    stream = _yield_sse_payloads(queue, shutdown_event=shutdown_event)
+
+    shutdown_event.set()
+
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(anext(stream), timeout=1.0)
 
 
 @pytest.mark.asyncio

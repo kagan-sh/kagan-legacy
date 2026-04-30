@@ -69,9 +69,10 @@ describe('KanbanBoard', () => {
       expect(await screen.findByText('Start your first task')).toBeVisible();
       expect(
         screen.getByText(
-          'Create a task, then Start to move it toward review and merge.',
+          'Create a task, or import existing issues from GitHub to get started.',
         ),
       ).toBeVisible();
+      expect(screen.getByRole('button', { name: /Import from GitHub/i })).toBeVisible();
     } finally {
       localStorage.removeItem(onboardingKey);
     }

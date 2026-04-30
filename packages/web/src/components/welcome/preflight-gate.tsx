@@ -13,6 +13,10 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
+function checkStatus(check: DoctorCheckResponse): string {
+  return check.status.toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // Copy button with transient "Copied" confirmation
 // ---------------------------------------------------------------------------
@@ -55,7 +59,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 // ---------------------------------------------------------------------------
 
 function CheckCard({ check }: { check: DoctorCheckResponse }) {
-  const statusColor = check.status === 'FAIL'
+  const status = checkStatus(check);
+  const statusColor = status === 'fail'
     ? 'border-l-[var(--destructive)]'
     : 'border-l-amber-500';
 
@@ -67,7 +72,7 @@ function CheckCard({ check }: { check: DoctorCheckResponse }) {
             <CardTitle className="text-sm">{check.name}</CardTitle>
             <CardDescription className="mt-0.5 text-xs">{check.message}</CardDescription>
           </div>
-          <span className={`shrink-0 font-code text-[10px] font-semibold uppercase tracking-wider ${check.status === 'FAIL' ? 'text-[var(--destructive)]' : 'text-amber-500'}`}>
+          <span className={`shrink-0 font-code text-[10px] font-semibold uppercase tracking-wider ${status === 'fail' ? 'text-[var(--destructive)]' : 'text-amber-500'}`}>
             {check.status}
           </span>
         </div>
@@ -162,7 +167,7 @@ function DegradedBanner({
   checks: DoctorCheckResponse[];
   onDismiss: () => void;
 }) {
-  const warnNames = checks.filter((c) => c.status === 'WARN').map((c) => c.name);
+  const warnNames = checks.filter((c) => checkStatus(c) === 'warn').map((c) => c.name);
 
   return (
     <Alert className="mb-6 border-amber-500/50 bg-amber-500/10 text-[var(--foreground)]">
@@ -225,9 +230,10 @@ export function PreflightGate() {
           return;
         }
 
-        const failing = report.checks.filter(
-          (c) => c.status === 'FAIL' || c.status === 'WARN',
-        );
+        const failing = report.checks.filter((c) => {
+          const status = checkStatus(c);
+          return status === 'fail' || status === 'warn';
+        });
         const hasFail = report.fail_count > 0;
 
         if (hasFail) {

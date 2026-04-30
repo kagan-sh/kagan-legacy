@@ -17,7 +17,9 @@ pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 async def board(tmp_path):
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Kanban Project")
-    await driver.settings_update({"ui.tui_tutorial_seen": "true"})
+    await driver.settings_update(
+        {"ui.tui_tutorial_seen": "true", "open_last_project_on_startup": "true"}
+    )
     await driver.create_task("Backlog A")
     await driver.create_task("Backlog B")
     yield driver
@@ -28,7 +30,9 @@ async def board(tmp_path):
 async def empty_board(tmp_path):
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Empty Board Project")
-    await driver.settings_update({"ui.tui_tutorial_seen": "true"})
+    await driver.settings_update(
+        {"ui.tui_tutorial_seen": "true", "open_last_project_on_startup": "true"}
+    )
     yield driver
     await driver.teardown()
 
@@ -423,7 +427,9 @@ async def test_first_boot_tutorial_overlay_is_shown_once(tmp_path) -> None:
 
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Tutorial Project")
-    await driver.settings_update({"ui.tui_tutorial_seen": "false"})
+    await driver.settings_update(
+        {"ui.tui_tutorial_seen": "false", "open_last_project_on_startup": "true"}
+    )
 
     app = KaganApp(db_path=driver.tmp_path / "kagan.db")
     async with app.run_test() as pilot:

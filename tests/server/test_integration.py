@@ -118,6 +118,25 @@ def _ctx(
 
 
 @pytest.mark.asyncio
+async def test_list_tasks_without_active_project_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp = make_api_server()
+    tasks = _FakeTasksClient()
+    monkeypatch.setattr(
+        server_helpers,
+        "get_server_context",
+        lambda _mcp: _ctx(tasks),
+    )
+
+    endpoint = get_http_endpoint(mcp, "/api/tasks", "GET")
+    body = json_body(await endpoint(make_request("GET", "/api/tasks")))
+
+    assert body["ok"] is True
+    assert body["data"] == []
+
+
+@pytest.mark.asyncio
 async def test_rest_lifecycle_create_update_transition_delete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,11 +1,10 @@
 import { NavLink } from 'react-router';
-import { Home, LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
+import { LayoutDashboard, MessageSquareText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Analytics is intentionally excluded from primary nav.
 // Access it via: command palette (Cmd+K → "Go to Analytics") or /settings#advanced.
 const ITEMS = [
-  { to: '/home', label: 'Home', icon: Home },
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/workspace', label: 'Workspace', icon: MessageSquareText },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -16,8 +15,8 @@ export function ActivityBar() {
     <aside className="hidden w-16 shrink-0 bg-[color:var(--surface-0)] lg:flex lg:flex-col">
       <div className="flex h-16 items-center justify-center">
         <NavLink
-          to="/"
-          aria-label="Kagan home"
+          to="/welcome"
+          aria-label="Project picker"
           className="inline-flex items-center gap-1 px-2 py-1 text-[var(--foreground)] transition-[color,transform] duration-[var(--motion-fast)] hover:text-[var(--primary)] active:scale-95"
         >
           <span className="font-code text-[12px] tracking-[0.08em]">ᘚᘛ</span>

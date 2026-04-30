@@ -8,7 +8,12 @@ import acp
 from acp.schema import ClientCapabilities, Implementation, McpServerStdio
 from loguru import logger
 
-from kagan.cli.chat.acp import _ACP_CLIENT_NAME, _ACP_CLIENT_TITLE, _ACP_CLIENT_VERSION
+from kagan.cli.chat.acp import (
+    _ACP_CLIENT_NAME,
+    _ACP_CLIENT_TITLE,
+    _ACP_CLIENT_VERSION,
+    _new_session_with_mcp_fallback,
+)
 from kagan.core import acp_handshake_timeout_seconds, default_db_path
 
 
@@ -68,9 +73,12 @@ async def execute_handshake(
     )
 
     try:
-        sess = await asyncio.wait_for(
-            conn.new_session(cwd=str(cwd), mcp_servers=[mcp_server]),
-            timeout=timeout_s,
+        sess = await _new_session_with_mcp_fallback(
+            conn,
+            cwd=str(cwd),
+            mcp_servers=[mcp_server],
+            timeout_s=timeout_s,
+            agent_backend=agent_backend,
         )
         acp_session_id = sess.session_id
         logger.info("ACP session created session_id={}", acp_session_id)

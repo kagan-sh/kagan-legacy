@@ -179,6 +179,8 @@ def register_task_routes(mcp: FastMCP) -> None:
     @require_context(mcp)
     @handle_errors
     async def list_tasks(request: Request, *, ctx: Any) -> JSONResponse:
+        if ctx.client.active_project_id is None:
+            return _ok([])
         status_value = request.query_params.get("status")
         status_enum = TaskStatus(status_value) if status_value else None
         repo_id = request.query_params.get("repo_id") or None

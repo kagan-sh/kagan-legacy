@@ -21,6 +21,7 @@ import type {
   ReviewDecisionInput,
   ReviewStatusResponse,
   RoleStats,
+  ProjectFolderResolutionResponse,
   SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
@@ -553,6 +554,24 @@ export class KaganApiClient {
   async browsePath(path?: string): Promise<FsBrowseResponse> {
     const query = path ? `?path=${encodeURIComponent(path)}` : '';
     return this.request<FsBrowseResponse>(`/api/fs/browse${query}`);
+  }
+
+  /**
+   * GET /api/projects/resolve-folder
+   *
+   * Optional endpoint for bundled `kg web` sessions. Older servers do not expose
+   * this yet, so callers can treat null as "no current-folder affordance".
+   */
+  async resolveProjectFolder(path?: string): Promise<ProjectFolderResolutionResponse | null> {
+    const query = path ? `?path=${encodeURIComponent(path)}` : '';
+    try {
+      return await this.request<ProjectFolderResolutionResponse>(
+        `/api/projects/resolve-folder${query}`,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
   }
 
   // -- Integrations ----------------------------------------------------------

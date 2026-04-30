@@ -14,6 +14,10 @@ from kagan.cli.chat import (
     save_chat_session,
     set_last_session_id,
 )
+from kagan.cli.chat.controller import (
+    _bootstrap_noninteractive_message,
+    _bootstrap_repository_status,
+)
 from kagan.cli.chat.sessions import _clean_generated_title, _format_relative_time
 from kagan.core import AgentError, BackendSpec
 
@@ -50,6 +54,48 @@ def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:
 
     with pytest.raises(AgentError, match="does not support ACP"):
         controller._resolve_acp_command()
+
+
+def test_bootstrap_status_mentions_detected_git_root(tmp_path) -> None:
+    git_root = tmp_path / "repo"
+    git_root.mkdir()
+
+    message = _bootstrap_repository_status(
+        repo_path=str(git_root),
+        git_root=git_root,
+        auto_init_git=True,
+    )
+
+    assert "Detected git root" in message
+    assert "Repository" in message
+    assert str(git_root) in message
+
+
+def test_bootstrap_status_mentions_core_git_init_for_non_git_folder(tmp_path) -> None:
+    message = _bootstrap_repository_status(
+        repo_path=str(tmp_path),
+        git_root=None,
+        auto_init_git=True,
+    )
+
+    assert "No git repository detected" in message
+    assert "core will initialize git" in message
+    assert "Project" in message
+    assert "Repository" in message
+
+
+def test_noninteractive_bootstrap_message_is_actionable(tmp_path) -> None:
+    message = _bootstrap_noninteractive_message(
+        repo_path=str(tmp_path),
+        git_root=None,
+        auto_init_git=True,
+    )
+
+    assert "No Kagan Project is linked" in message
+    assert "kg chat" in message
+    assert "kg tui" in message
+    assert "Open Folder" in message
+    assert "--project" not in message
 
 
 def test_resolve_agent_backend_selection_accepts_index_and_prefix() -> None:

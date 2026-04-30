@@ -1820,6 +1820,26 @@ OnboardingFlow {
     tint: $primary 4%;
 }
 
+.setup-section OptionList {
+    width: 100%;
+    height: auto;
+    max-height: 7;
+    background: $surface;
+    border: tall $border;
+    margin-bottom: 0;
+}
+
+.setup-section OptionList:focus {
+    border: tall $primary;
+    tint: $primary 4%;
+}
+
+#setup-project-detail {
+    color: $text-muted;
+    height: auto;
+    margin-top: 0;
+}
+
 /* --- Side-by-side fields --- */
 
 .setup-field-attached {
@@ -1963,10 +1983,24 @@ GitHubImportModal {
 
 #github-import-repo,
 #github-import-label,
-#github-import-state {
+#github-import-state,
+#github-import-limit {
     width: 100%;
     background: $panel;
     border: round $border;
+}
+
+#github-import-selection {
+    width: 100%;
+    height: auto;
+    max-height: 14;
+    background: $panel;
+    border: round $border;
+}
+
+#github-import-action-hint {
+    width: 100%;
+    text-align: center;
 }
 
 #repo-picker-container {
@@ -3226,4 +3260,3 @@ SettingsModal {
     overflow-y: auto;
     scrollbar-gutter: stable;
 }
-

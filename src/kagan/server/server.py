@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import signal
+import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import uvicorn
 from loguru import logger
 from starlette.responses import JSONResponse
+from uvicorn.server import HANDLED_SIGNALS
 
 from kagan.server._analytics_routes import register_analytics_routes
 from kagan.server._chat_routes import register_chat_routes
@@ -37,6 +43,39 @@ class ApiServerOptions:
     enable_tls: bool = False  # generate self-signed cert and serve HTTPS
     web_ui: bool = False  # mount bundled local web UI at /
     dev_mode: bool = False
+
+
+class _KaganUvicornServer(uvicorn.Server):
+    """Uvicorn server variant that exits cleanly after handled signals.
+
+    Uvicorn's default signal context restores the previous handlers and then
+    re-raises captured signals. That is correct for framework-level defaults,
+    but for the `kg web` CLI it turns a successful Ctrl-C shutdown into an
+    asyncio.run KeyboardInterrupt traceback. We keep uvicorn's `handle_exit`
+    behavior and skip only the signal replay.
+    """
+
+    def __init__(self, config: uvicorn.Config, *, shutdown_event: Any | None = None) -> None:
+        super().__init__(config)
+        self._kagan_shutdown_event = shutdown_event
+
+    def handle_exit(self, sig: int, frame: Any | None) -> None:
+        if self._kagan_shutdown_event is not None:
+            self._kagan_shutdown_event.set()
+        super().handle_exit(sig, frame)
+
+    @contextlib.contextmanager
+    def capture_signals(self):
+        if threading.current_thread() is not threading.main_thread():
+            yield
+            return
+
+        original_handlers = {sig: signal.signal(sig, self.handle_exit) for sig in HANDLED_SIGNALS}
+        try:
+            yield
+        finally:
+            for sig, handler in original_handlers.items():
+                signal.signal(sig, handler)
 
 
 def create_api_server(opts: ApiServerOptions) -> FastMCP:
@@ -152,7 +191,13 @@ async def serve_http(
 
     from kagan.server._presence import PresenceTracker
 
-    ctx = ServerContext(client=client, opts=opts.mcp_opts, presence=PresenceTracker())
+    shutdown_event = asyncio.Event()
+    ctx = ServerContext(
+        client=client,
+        opts=opts.mcp_opts,
+        presence=PresenceTracker(),
+        shutdown_event=shutdown_event,
+    )
     _set_server_context(mcp, ctx)
     # TLS: pass cert/key paths to uvicorn if enabled.
     ssl_certfile: str | None = None
@@ -173,8 +218,6 @@ async def serve_http(
     )
 
     try:
-        import uvicorn
-
         starlette_app = mcp.streamable_http_app()
 
         from kagan.server._middleware import install_security_middleware
@@ -190,7 +233,7 @@ async def serve_http(
             ssl_certfile=ssl_certfile,
             ssl_keyfile=ssl_keyfile,
         )
-        server = uvicorn.Server(config)
+        server = _KaganUvicornServer(config, shutdown_event=shutdown_event)
         await server.serve()
     except OSError as exc:
         is_addr_in_use = exc.errno in (48, 98) or "address already in use" in str(exc).lower()
@@ -203,5 +246,6 @@ async def serve_http(
             ) from None
         raise
     finally:
+        shutdown_event.set()
         _set_server_context(mcp, None)
         client.close()

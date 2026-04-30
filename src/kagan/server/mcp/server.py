@@ -38,6 +38,7 @@ class ServerContext:
     bound_task_id: str | None = None
     bound_project_id: str | None = None
     presence: Any | None = None
+    shutdown_event: Any | None = None
 
 
 _SERVER_OPTS: dict[int, ServerOptions] = {}

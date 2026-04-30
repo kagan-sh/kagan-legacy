@@ -3,6 +3,7 @@ import {
   LayoutGrid,
   ListTodo,
   Plus,
+  Download,
   Radar,
   Search,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ interface BoardToolbarProps {
   setView: (view: 'kanban' | 'backlog') => void;
   boardMetrics: BoardMetrics;
   onCreateTask: () => void;
+  onImportGitHub?: () => void;
   searchInputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -45,6 +47,7 @@ export function BoardToolbar({
   setView,
   boardMetrics,
   onCreateTask,
+  onImportGitHub,
   searchInputRef,
 }: BoardToolbarProps) {
   return (
@@ -123,6 +126,12 @@ export function BoardToolbar({
           />
         </div>
 
+        {onImportGitHub ? (
+          <Button variant="outline" size="sm" onClick={onImportGitHub}>
+            <Download className="size-3.5" />
+            Import
+          </Button>
+        ) : null}
         <Button size="sm" onClick={onCreateTask}>
           <Plus className="size-3.5" />
           New

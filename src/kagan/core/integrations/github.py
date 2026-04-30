@@ -73,6 +73,7 @@ class GitHubConfig:
     labels: tuple[str, ...] = ()
     limit: int = 100
     issue_numbers: tuple[int, ...] = ()
+    target_repo_id: str | None = None
 
     @property
     def repo_slug(self) -> str:
@@ -319,6 +320,34 @@ async def _save_sync_map(client: KaganCore, key: str, sync_map: dict[str, str]) 
     await client.settings.set({key: json.dumps(sync_map, separators=(",", ":"))})
 
 
+async def _resolve_task_repo_id(
+    client: KaganCore,
+    project_id: str,
+    configured_repo_id: str | None,
+) -> str | None:
+    """Pick the repo_id that imported tasks should belong to, when available."""
+    if configured_repo_id:
+        return configured_repo_id
+
+    try:
+        repos = await client.projects.repos(project_id)
+    except KaganError:
+        return None
+
+    if not repos:
+        return None
+
+    settings = await client.settings.get()
+    selected_repo_id = settings.get(f"ui.selected_repo.{project_id}")
+    if selected_repo_id and any(repo.id == selected_repo_id for repo in repos):
+        return selected_repo_id
+
+    if len(repos) == 1:
+        return repos[0].id
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # GitHubIntegration class
 # ---------------------------------------------------------------------------
@@ -433,11 +462,11 @@ class GitHubIntegration:
     async def _sync_single_issue(
         self,
         client: KaganCore,
-        project_id: str,
         number: str,
         issue: GitHubIssue,
         sync_map: dict[str, str],
         result: ImportResult,
+        repo_id: str | None,
     ) -> ImportResult:
         title = (issue.get("title") or "").strip()
 
@@ -462,6 +491,7 @@ class GitHubIntegration:
             title,
             description=description,
             priority=priority,
+            repo_id=repo_id,
         )
         sync_map[number] = task.id
         return ImportResult(
@@ -483,6 +513,7 @@ class GitHubIntegration:
         issues = await self._fetch_issues(config)
         settings_key = config.settings_key()
         sync_map = await _load_sync_map(client, settings_key)
+        repo_id = await _resolve_task_repo_id(client, project_id, config.target_repo_id)
         result = ImportResult()
 
         for issue in issues:
@@ -494,7 +525,7 @@ class GitHubIntegration:
 
             try:
                 result = await self._sync_single_issue(
-                    client, project_id, number, issue, sync_map, result
+                    client, number, issue, sync_map, result, repo_id
                 )
             except KaganError as exc:
                 result = result.with_error(f"Issue #{number}: {exc}")

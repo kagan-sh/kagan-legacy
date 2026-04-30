@@ -20,6 +20,7 @@ from kagan.core.integrations.github import (
     normalize_github_state,
     parse_github_repo_slug_from_remote_url,
 )
+from tests.helpers.helpers import make_git_repo
 
 pytestmark = [pytest.mark.integrations]
 
@@ -322,6 +323,31 @@ async def test_sync_creates_tasks_from_issues(
     # Verify label mapping
     bug_task = next(t for t in tasks if t.title == "Bug report")
     assert bug_task.priority == Priority.HIGH
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_sync_assigns_imported_tasks_to_selected_repo(
+    _mock_path, _mock_auth, mock_fetch, integration, config, client, tmp_path
+) -> None:
+    """Imported issues stay visible when the board is filtered to the selected repo."""
+    repo_path = tmp_path / "selected-repo"
+    await make_git_repo(repo_path)
+    project_id = client.active_project_id
+    assert project_id is not None
+    repo = await client.projects.add_repo(project_id, str(repo_path))
+    await client.settings.set({f"ui.selected_repo.{project_id}": repo.id})
+    mock_fetch.return_value = _make_gh_issues((1, "Repo-scoped bug", ["bug"]))
+
+    result = await integration.sync(client, config, project_id)
+
+    assert result.created == 1
+    tasks = await client.tasks.list(repo_id=repo.id)
+    assert len(tasks) == 1
+    assert tasks[0].title == "Repo-scoped bug"
 
 
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)

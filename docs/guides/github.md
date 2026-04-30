@@ -42,24 +42,16 @@ Kagan shows a summary with created, skipped, and error counts.
 
 ## Preview before import
 
-See what issues match your filters before committing to the import:
+There is no standalone CLI preview command for GitHub import. To preview which issues match your filters before importing, use one of the following:
 
-```bash
-kagan plugins preview github --repo octocat/hello-world
-```
-
-Optional flags:
-
-- `--state open|closed|all`
-- `--label <label>` (repeatable) — filter by one or more labels
-- `--limit <n>` — cap the number of issues returned (default 100)
-
-Output shows issue number, title, state, labels, and whether the issue is already synced.
+- **TUI:** Open your project board, press `.` for Actions, and run `github import` — the import modal shows a preview of matching issues before you confirm.
+- **Web dashboard:** Use the GitHub import flow in the web UI to review matching issues.
+- **MCP:** Use the GitHub import preview tool via your MCP client.
 
 ## Import from CLI
 
 ```bash
-kagan plugins sync github --repo octocat/hello-world
+kagan import github --repo octocat/hello-world
 ```
 
 Optional flags:
@@ -73,13 +65,13 @@ Examples:
 
 ```bash
 # Import only bug issues
-kagan plugins sync github --repo octocat/hello-world --label bug
+kagan import github --repo octocat/hello-world --label bug
 
 # Import multiple label filters
-kagan plugins sync github --repo octocat/hello-world --label bug --label priority:high
+kagan import github --repo octocat/hello-world --label bug --label priority:high
 
 # Import specific issues by number
-kagan plugins sync github --repo octocat/hello-world --issues 12,34,56
+kagan import github --repo octocat/hello-world --issues 12,34,56
 ```
 
 ## Label mapping

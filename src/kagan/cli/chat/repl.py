@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app
@@ -68,6 +68,7 @@ class ToolbarState:
     context_pct: float | None = None
     workspace_label: str = ""
     is_streaming: bool = False
+    yolo: bool = False
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -500,6 +501,8 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
 def _bottom_toolbar() -> FormattedText:
     status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
     status_right_parts: list[str] = []
+    if _TOOLBAR_STATE.yolo:
+        status_right_parts.append("YOLO")
     if _TOOLBAR_STATE.agent_backend:
         status_right_parts.append(_TOOLBAR_STATE.agent_backend)
     if _TOOLBAR_STATE.context_pct is not None:
@@ -609,7 +612,10 @@ WAVE_FRAMES = (
 
 
 def _write_boot_banner(
-    project_root: Path | None = None, *, agent_backend: str | None = None
+    project_root: Path | None = None,
+    *,
+    agent_backend: str | None = None,
+    yolo: bool = False,
 ) -> None:
     ver = version("kagan")
     cols = shutil.get_terminal_size().columns
@@ -622,11 +628,16 @@ def _write_boot_banner(
         (f" {_BOOT_TIP_TEXT}", "dim"),
     )
     safety = Text("Review agent output before you apply it.", style="dim")
+    body: list[Any] = [title, subtitle, tip, safety]
+    if yolo:
+        body.append(
+            Text("YOLO MODE — every tool call auto-approved.", style="bold red"),
+        )
 
     banner = Panel(
-        Group(title, subtitle, tip, safety),
+        Group(*body),
         box=box.ROUNDED,
-        border_style="green",
+        border_style="red" if yolo else "green",
         padding=(0, 2),
         expand=False,
         width=panel_width,
@@ -678,9 +689,14 @@ async def run_chat_async(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
+    yolo: bool = False,
 ) -> str | None:
+    from kagan.cli.chat._yolo import confirm_yolo_disclaimer
     from kagan.cli.chat.controller import ChatController
     from kagan.core import KaganCore, resolve_default_agent_backend
+
+    if yolo and not confirm_yolo_disclaimer(_console):
+        return None
 
     async with KaganCore() as client:
         backend = agent
@@ -693,6 +709,7 @@ async def run_chat_async(
             agent_backend=backend,
             mcp_session_id=session_id,
             prefer_session_backend=agent is None,
+            yolo=yolo,
         )
 
         if not await controller.ensure_project():
@@ -704,8 +721,9 @@ async def run_chat_async(
         _TOOLBAR_STATE.agent_backend = controller.agent_backend
         _TOOLBAR_STATE.turn_count = controller._turn_count
         _TOOLBAR_STATE.context_pct = None
+        _TOOLBAR_STATE.yolo = yolo
 
-        _write_boot_banner(Path.cwd(), agent_backend=controller.agent_backend)
+        _write_boot_banner(Path.cwd(), agent_backend=controller.agent_backend, yolo=yolo)
 
         await controller.run(prompt=prompt)
 
@@ -716,5 +734,6 @@ def run_chat(
     prompt: str | None = None,
     session_id: str | None = None,
     agent: str | None = None,
+    yolo: bool = False,
 ) -> str | None:
-    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent))
+    return asyncio.run(run_chat_async(prompt=prompt, session_id=session_id, agent=agent, yolo=yolo))

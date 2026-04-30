@@ -158,11 +158,13 @@ class ChatController:
         agent_backend: str = "claude-code",
         mcp_session_id: str | None = None,
         prefer_session_backend: bool = True,
+        yolo: bool = False,
     ) -> None:
         self.client = client
         self.agent_backend = agent_backend
         self._mcp_session_id = mcp_session_id
         self._prefer_session_backend = prefer_session_backend
+        self._yolo = yolo
         self._acp_conn: Any | None = None
         self._acp_client: _OrchestratorACPClient | None = None
         self._acp_session_id: str | None = None
@@ -669,7 +671,7 @@ class ChatController:
             backend_env_vars=backend.env_vars,
         )
 
-        self._acp_client = _OrchestratorACPClient()
+        self._acp_client = _OrchestratorACPClient(yolo=self._yolo)
 
         try:
             async with acp.spawn_agent_process(

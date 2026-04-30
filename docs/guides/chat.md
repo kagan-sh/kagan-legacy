@@ -21,9 +21,14 @@ kagan chat                         # interactive REPL
 kagan chat --prompt "Plan a refactor"  # single-shot (send, print, exit)
 kagan chat --session-id <id>       # resume a previous session
 kagan chat --agent opencode        # override agent backend
+kagan chat --yolo                  # auto-approve every tool call
 ```
 
 The REPL persists conversation history across restarts. Type a message and press Enter to send. `Ctrl+D` or `/exit` to quit.
+
+### Yolo mode
+
+`--yolo` skips the per-tool-call permission prompt and auto-approves every request for the session. On boot it shows a disclaimer and requires you to type `I ACCEPT` exactly; anything else aborts. The boot banner border turns red and a `YOLO` badge appears in the bottom toolbar while it is active. Each auto-approved call is still logged as `● yolo auto-approve: <tool>` so you can see what ran. Use only inside disposable worktrees or sandboxes you trust the agent to operate on unattended.
 
 ______________________________________________________________________
 

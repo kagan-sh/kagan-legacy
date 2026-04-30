@@ -185,9 +185,10 @@ def _prompt_for_permission_option(options: list[Any], tool_call: Any) -> Any | N
 
 
 class _OrchestratorACPClient(ACPClientBase):
-    def __init__(self) -> None:
+    def __init__(self, *, yolo: bool = False) -> None:
         self._conn: Any = None
         self._streaming = False
+        self._yolo = yolo
         self._show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
         self._tool_runs = ToolRunTracker()
         self._response_chunks = ResponseChunkBuffer()
@@ -304,6 +305,17 @@ class _OrchestratorACPClient(ACPClientBase):
             return _cancelled_permission_response()
 
         self._output_flusher.flush(force=True)
+
+        if self._yolo:
+            for option in permission_options:
+                if getattr(option, "kind", None) == "allow_once":
+                    title = _format_permission_tool(tool_call)
+                    _console.print(
+                        f"  [red]● yolo auto-approve:[/red] [dim]{_rich_escape(title)}[/dim]",
+                        highlight=False,
+                    )
+                    return _selected_permission_response(option)
+
         if not _stdio_is_interactive():
             _console.print("[yellow]Permission request denied in non-interactive mode.[/yellow]")
             return _cancelled_permission_response()

@@ -445,10 +445,12 @@ def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> N
         prompt: str | None = None,
         session_id: str | None = None,
         agent: str | None = None,
+        yolo: bool = False,
     ) -> None:
         captured["prompt"] = prompt
         captured["session_id"] = session_id
         captured["agent"] = agent
+        captured["yolo"] = yolo
 
     monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)
 
@@ -456,7 +458,12 @@ def test_chat_positional_prompt_is_single_shot(monkeypatch, tmp_path: Path) -> N
     result = runner.invoke(cli, ["chat", "fix the bug"], env=_runner_env(tmp_path))
 
     assert result.exit_code == 0
-    assert captured == {"prompt": "fix the bug", "session_id": None, "agent": None}
+    assert captured == {
+        "prompt": "fix the bug",
+        "session_id": None,
+        "agent": None,
+        "yolo": False,
+    }
 
 
 def test_chat_rejects_positional_prompt_with_prompt_option(tmp_path: Path) -> None:

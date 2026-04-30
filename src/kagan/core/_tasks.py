@@ -364,6 +364,7 @@ class Tasks:
         launcher: str | None = None,
         repo_id: str | None = None,
         github_issue: str | None = None,
+        _from_sync: bool = False,
     ) -> Task:
         active_project_id = self._require_project()
 
@@ -395,10 +396,15 @@ class Tasks:
             if not repo_ok:
                 raise NotFoundError("Repository", repo_id)
 
-        # Resolve github_issue link before creating the task
-        resolved_github_issue: str | None = await self._resolve_github_issue_link(
-            github_issue, title, description, active_project_id, repo_id
-        )
+        # Resolve github_issue link before creating the task. When called from
+        # the GitHub sync path, the link is already in canonical "slug#N" form
+        # and was just fetched from gh — skip the validation roundtrip.
+        if _from_sync:
+            resolved_github_issue: str | None = github_issue
+        else:
+            resolved_github_issue = await self._resolve_github_issue_link(
+                github_issue, title, description, active_project_id, repo_id
+            )
 
         task = Task(
             project_id=active_project_id,

@@ -897,6 +897,7 @@ class GitHubIntegration:
 
         task = await client.tasks.create(
             title,
+            _from_sync=True,
             description=body,
             priority=priority,
             repo_id=repo_id,

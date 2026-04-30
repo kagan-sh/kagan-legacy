@@ -48,7 +48,12 @@ __all__ = [
 
 APP_BINDINGS: list[BindingType] = [
     Binding("question_mark,f1", "show_help", "Help", key_display="?"),
-    Binding("ctrl+shift+p,f2", "command_palette", "Quick Actions", key_display="Ctrl+Shift+P"),
+    Binding(
+        "ctrl+shift+p,f2,full_stop",
+        "command_palette",
+        "Quick Actions",
+        key_display="Ctrl+Shift+P",
+    ),
     Binding("ctrl+o", "open_project_selector", "Projects", key_display="Ctrl+O"),
     Binding("ctrl+r", "open_repo_selector", "Repos", key_display="Ctrl+R"),
     Binding("ctrl+comma", "open_settings", "Settings", key_display="Ctrl+,"),

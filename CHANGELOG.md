@@ -13,6 +13,37 @@
 
 
 
+## v0.19.0-beta.18 (2026-04-30)
+
+
+
+
+### Features
+
+- **chat**: Add --yolo flag to auto-approve tool calls
+  ([`a78eb5b`](https://github.com/kagan-sh/kagan/commit/a78eb5bf3c34ff751b2591c7145297e8da4f17fd))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **integrations**: Require repo_id for GitHub issue import
+  ([`c2d0dfd`](https://github.com/kagan-sh/kagan/commit/c2d0dfd7112094a3156c38eae1f1383437979098))
+
+
+
+
+
 ## v0.19.0-beta.17 (2026-04-30)
 
 

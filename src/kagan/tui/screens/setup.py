@@ -227,14 +227,15 @@ class OnboardingFlow(ModalScreen[None]):
         default_agent = resolve_default_agent_backend(settings)
         if default_agent not in allowed_agents:
             default_agent = resolve_default_agent_backend({})
-        agent_select.value = default_agent
+        if agent_select.value != default_agent:
+            agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         launcher_select = self.query_one("#setup-attached-launcher", Select)
         allowed_launchers = {value for _, value in _LAUNCHER_OPTIONS}
-        launcher_select.value = (
-            attached_launcher if attached_launcher in allowed_launchers else "tmux"
-        )
+        launcher = attached_launcher if attached_launcher in allowed_launchers else "tmux"
+        if launcher_select.value != launcher:
+            launcher_select.value = launcher
 
         auto_review = settings.get("auto_review", "true").strip().lower()
         self.query_one("#setup-auto-review", Checkbox).value = auto_review not in {

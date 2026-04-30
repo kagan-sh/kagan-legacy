@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from kagan.cli.doctor import DoctorCheck
+from tests.helpers.async_utils import wait_for
 
 pytestmark = [pytest.mark.tui, pytest.mark.snapshot]
 
@@ -23,6 +24,19 @@ def _make_check(name: str, status: str, fix_hint: str = "") -> DoctorCheck:
         fix_hint=fix_hint if status != "pass" else "",
         verify_hint=f"{name} --version",
         category="core",
+    )
+
+
+async def _wait_for_setup_flow(app) -> None:
+    from textual.widgets._select import SelectOverlay
+
+    await wait_for(
+        lambda: (
+            app.screen.id == "setup-flow"
+            and bool(app.screen.query("#setup-project-list"))
+            and len(app.screen.query(SelectOverlay)) >= 2
+        ),
+        pump_delay=0.05,
     )
 
 
@@ -39,9 +53,8 @@ async def test_snapshot_all_green_routes_to_project_picker(tmp_path) -> None:
         _make_check("agent backend", "pass"),
     ]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=all_pass_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
         assert app.screen.id == "setup-flow"
 
@@ -62,9 +75,8 @@ async def test_snapshot_warn_only_routes_to_project_picker(tmp_path) -> None:
         _make_check("git", "pass"),
     ]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=warn_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
         assert app.screen.id == "setup-flow"
 
@@ -353,9 +365,8 @@ async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
     all_checks = [*core_checks, summary_check, detail_claude, detail_codex]
 
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=all_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
         # No modal: all checks pass, land on the project picker.
         assert app.screen.id == "setup-flow"
@@ -416,14 +427,8 @@ async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> 
             modal._on_command_finished(
                 _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
             )
-            # Wait for targeted recheck + auto-dismiss
-            from tests.helpers.async_utils import wait_for as _wait_for
-
-            await _wait_for(
-                lambda: app.screen.id == "setup-flow"
-                and bool(app.screen.query("#setup-project-list")),
-                pump_delay=0.05,
-            )
+            # Wait for targeted recheck + auto-dismiss.
+            await _wait_for_setup_flow(app)
 
         # After dismiss we should be at project selection (no FAILs)
         assert app.screen.id == "setup-flow"

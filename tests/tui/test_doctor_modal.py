@@ -22,8 +22,14 @@ def _make_check(name: str, status: str, fix_hint: str = "echo fix") -> DoctorChe
 
 
 async def _wait_for_setup_flow(app) -> None:
+    from textual.widgets._select import SelectOverlay
+
     await wait_for(
-        lambda: app.screen.id == "setup-flow" and bool(app.screen.query("#setup-project-list")),
+        lambda: (
+            app.screen.id == "setup-flow"
+            and bool(app.screen.query("#setup-project-list"))
+            and len(app.screen.query(SelectOverlay)) >= 2
+        ),
         pump_delay=0.05,
     )
 

@@ -420,6 +420,115 @@ async def _gh_create_issue(repo_slug: str, title: str, body: str) -> int:
     return int(match.group(1))
 
 
+async def _gh_edit_issue(
+    repo_slug: str,
+    number: int,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    add_labels: list[str] | None = None,
+    remove_labels: list[str] | None = None,
+) -> None:
+    """Edit a GitHub issue title, body, and/or labels via gh CLI.
+
+    Skips the call entirely when no arguments are set.
+    Raises KaganError on failure.
+    """
+    cmd: list[str] = ["gh", "issue", "edit", str(number), "--repo", repo_slug]
+    if title is not None:
+        cmd.extend(["--title", title])
+    if body is not None:
+        cmd.extend(["--body", body])
+    for lbl in add_labels or []:
+        cmd.extend(["--add-label", lbl])
+    for lbl in remove_labels or []:
+        cmd.extend(["--remove-label", lbl])
+
+    # Nothing to do — all args were None/empty
+    if len(cmd) == 6:  # only "gh issue edit <n> --repo <slug>"
+        return
+
+    resolved = resolve_spawn_command(cmd[0], *cmd[1:])
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh issue edit failed for {repo_slug}#{number}: {err}")
+
+
+async def _gh_ensure_label(repo_slug: str, name: str) -> None:
+    """Create a label in the repo, or update it if it already exists (--force).
+
+    Colors are chosen by a fixed palette keyed on the label name.
+    Raises KaganError on failure.
+    """
+    _LABEL_COLORS: dict[str, str] = {
+        "priority:critical": "B60205",
+        "priority:high": "D93F0B",
+        "priority:medium": "FBCA04",
+        "priority:low": "0E8A16",
+    }
+    color = _LABEL_COLORS.get(name, "EDEDED")
+    resolved = resolve_spawn_command(
+        "gh",
+        "label",
+        "create",
+        name,
+        "--repo",
+        repo_slug,
+        "--color",
+        color,
+        "--force",
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh label create failed for {repo_slug} / {name!r}: {err}")
+
+
+async def _gh_issue_labels(repo_slug: str, number: int) -> list[str]:
+    """Return the label names currently applied to a GitHub issue.
+
+    Returns an empty list on any failure (best-effort).
+    """
+    resolved = resolve_spawn_command(
+        "gh",
+        "issue",
+        "view",
+        str(number),
+        "--repo",
+        repo_slug,
+        "--json",
+        "labels",
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return []
+    try:
+        data = json.loads(stdout.decode("utf-8"))
+    except json.JSONDecodeError:
+        return []
+    labels = data.get("labels") or []
+    return [lbl["name"] for lbl in labels if isinstance(lbl, dict) and "name" in lbl]
+
+
 async def _search_issues(repo_slug: str, query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search GitHub issues in a repo by text query.
 
@@ -837,6 +946,72 @@ class GitHubIntegration:
         )
         return result
 
+    async def push_task_change(
+        self,
+        client: KaganCore,
+        task: Any,
+        *,
+        fields: set[str],
+    ) -> None:
+        """Push title / priority / description changes on a linked task back to GitHub.
+
+        Only the fields listed in *fields* are pushed.  Status is intentionally
+        excluded — call sites must never include it.  Failures are logged at
+        WARNING and never re-raised so the caller is unaffected.
+        """
+        github_issue: str | None = getattr(task, "github_issue", None)
+        if not github_issue or "#" not in github_issue:
+            return
+
+        push_fields = fields & {"title", "description", "priority"}
+        if not push_fields:
+            return
+
+        slug, number_str = github_issue.rsplit("#", 1)
+        try:
+            number = int(number_str)
+        except ValueError:
+            logger.warning("push_task_change: malformed github_issue link {!r}", github_issue)
+            return
+
+        _PRIORITY_LABEL_NAMES: dict[int, str] = {
+            Priority.CRITICAL: "priority:critical",
+            Priority.HIGH: "priority:high",
+            Priority.MEDIUM: "priority:medium",
+            Priority.LOW: "priority:low",
+        }
+        _ALL_PRIORITY_LABELS: frozenset[str] = frozenset(_PRIORITY_LABEL_NAMES.values())
+
+        try:
+            if "title" in push_fields:
+                await _gh_edit_issue(slug, number, title=task.title)
+
+            if "description" in push_fields:
+                await _gh_edit_issue(slug, number, body=task.description or "")
+
+            if "priority" in push_fields:
+                new_label = _PRIORITY_LABEL_NAMES.get(task.priority)
+                if new_label is not None:
+                    current_labels = await _gh_issue_labels(slug, number)
+                    add_labels = [new_label] if new_label not in current_labels else []
+                    remove_labels = [
+                        lbl for lbl in current_labels
+                        if lbl in _ALL_PRIORITY_LABELS and lbl != new_label
+                    ]
+                    await _gh_ensure_label(slug, new_label)
+                    if add_labels or remove_labels:
+                        await _gh_edit_issue(
+                            slug, number, add_labels=add_labels, remove_labels=remove_labels
+                        )
+        except Exception as exc:
+            logger.warning(
+                "push_task_change failed for {}#{} fields={}: {}",
+                slug,
+                number,
+                push_fields,
+                exc,
+            )
+
     async def preview(
         self,
         client: KaganCore,
@@ -874,6 +1049,9 @@ class GitHubIntegration:
 # ---------------------------------------------------------------------------
 
 github = GitHubIntegration()
+
+# Lazy-import alias used by _tasks.py for fire-and-forget push-back.
+_push_task_change = github.push_task_change
 
 
 # ---------------------------------------------------------------------------
@@ -944,11 +1122,15 @@ __all__ = [
     "GitHubIssue",
     "_gh_create_comment",
     "_gh_create_issue",
+    "_gh_edit_issue",
+    "_gh_ensure_label",
+    "_gh_issue_labels",
     "_gh_list_comments",
     "_gh_update_comment",
     "_gh_view_issue",
     "_parse_criteria_lines",
     "_pull_criteria_from_comment",
+    "_push_task_change",
     "_render_criteria_comment",
     "_search_issues",
     "_seed_criteria_from_body",

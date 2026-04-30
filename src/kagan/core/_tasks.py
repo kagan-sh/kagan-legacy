@@ -329,6 +329,27 @@ class Tasks:
         except RuntimeError:
             pass  # No running loop — skip silently
 
+    def _fire_github_push(self, task: Any, *, fields: set[str]) -> None:
+        """Schedule a fire-and-forget push of title/description/priority to GitHub."""
+        if self._client is None:
+            return
+
+        async def _run() -> None:
+            try:
+                from kagan.core.integrations.github import _push_task_change
+
+                await _push_task_change(self._client, task, fields=fields)  # type: ignore[arg-type]
+            except Exception as exc:
+                logger.warning(
+                    "GitHub push fire-and-forget failed for task {}: {}", task.id, exc
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run())
+        except RuntimeError:
+            pass  # No running loop — skip silently
+
     # ── Core task operations ───────────────────────────────────────────
 
     async def create(
@@ -484,6 +505,7 @@ class Tasks:
         agent_backend: str | None = None,
         launcher: str | None | object = _UNSET,
         repo_id: str | None | object = _UNSET,
+        _from_sync: bool = False,
     ) -> Task:
         task = await self.get(task_id)
         scalar_updates = {
@@ -569,9 +591,16 @@ class Tasks:
 
         updated = await _db_async(self._engine, op)
 
-        # Fire-and-forget criteria sync when criteria changed and task is linked
-        if acceptance_criteria is not None and updated.github_issue:
-            self._fire_github_criteria_sync(updated.id, updated.github_issue)
+        if not _from_sync:
+            # Fire-and-forget criteria sync when criteria changed and task is linked
+            if acceptance_criteria is not None and updated.github_issue:
+                self._fire_github_criteria_sync(updated.id, updated.github_issue)
+
+            # Fire-and-forget push-back for title / description / priority changes
+            if updated.github_issue:
+                push_fields = changed_fields.keys() & {"title", "description", "priority"}
+                if push_fields:
+                    self._fire_github_push(updated, fields=set(push_fields))
 
         self.events.publish_board(
             BoardEvent(

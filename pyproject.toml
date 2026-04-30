@@ -1,6 +1,6 @@
 [project]
 name = "kagan"
-version = "0.19.0-beta.16"
+version = "0.19.0-beta.17"
 description = "Kanban TUI for AI coding agents with a structural human review gate"
 license = "MIT"
 authors = [

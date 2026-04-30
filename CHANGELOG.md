@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.17 (2026-04-30)
+
+
+
+
+### Bug Fixes
+
+- **tui**: Bind . to command palette so kanban hint matches behavior
+  ([`f41d9cd`](https://github.com/kagan-sh/kagan/commit/f41d9cdbf49ae8db1e54731ad12e05781833c4ef))
+
+
+
+
+
 ## v0.19.0-beta.16 (2026-04-30)
 
 

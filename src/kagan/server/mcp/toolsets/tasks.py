@@ -489,6 +489,33 @@ async def _task_wait(
     latest_by_id: dict[str, Any] = {}
 
     if resolve_when_any:
+        if statuses:
+            for task_id in resolved_task_ids:
+                latest = await app.client.tasks.get(task_id)
+                latest_by_id[task_id] = latest
+                if latest.status in statuses:
+                    resolved = [task_id]
+                    timed_out = False
+                    break
+            if resolved:
+                for task_id in resolved_task_ids:
+                    if task_id not in latest_by_id:
+                        latest_by_id[task_id] = await app.client.tasks.get(task_id)
+                pending_task_ids = [
+                    task_id for task_id in resolved_task_ids if task_id not in set(resolved)
+                ]
+                return {
+                    "task_ids": resolved_task_ids,
+                    "tasks": [
+                        {"task_id": task_id, "status": latest_by_id[task_id].status.value}
+                        for task_id in resolved_task_ids
+                    ],
+                    "resolved_task_ids": resolved,
+                    "pending_task_ids": pending_task_ids,
+                    "resolve_when_any": resolve_when_any,
+                    "timed_out": False,
+                }
+
         waiters = {
             task_id: asyncio.create_task(
                 app.client.tasks.wait_for_completion(

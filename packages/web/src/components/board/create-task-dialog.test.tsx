@@ -9,6 +9,7 @@ vi.mock('@/lib/api/client', () => ({
     createTask: vi.fn().mockResolvedValue({}),
     getTasks: vi.fn().mockResolvedValue([]),
     getChatAgents: vi.fn().mockResolvedValue({ backends: [{ name: 'claude-code', available: true, reference: true }, { name: 'codex', available: true, reference: true }], default: 'claude-code' }),
+    detectIntegrationRepo: vi.fn().mockResolvedValue({ id: 'github', repo_slug: null }),
   },
 }));
 

@@ -52,6 +52,7 @@ export interface TaskResponse {
   priority: string;
   base_branch?: string | null;
   repo_id?: string | null;
+  github_issue?: string | null;
   acceptance_criteria?: AcceptanceCriterionResponse[];
   agent_backend?: string | null;
   launcher?: string | null;

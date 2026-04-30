@@ -19,6 +19,8 @@ import {
   type TaskFormValues,
   useBackendOptions,
   useCriteriaList,
+  useGithubRepoSlug,
+  resolveGithubIssue,
   TaskFormFields,
 } from '@/components/board/task-form';
 
@@ -32,20 +34,22 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [submitting, setSubmitting] = useState(false);
   const backends = useBackendOptions(open);
   const criteriaList = useCriteriaList();
+  const githubRepoSlug = useGithubRepoSlug(open);
 
   const {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<TaskFormValues>({
     resolver: zodResolver(taskSchema),
-    defaultValues: { priority: 'MEDIUM' },
+    defaultValues: { priority: 'MEDIUM', github_issue_mode: 'none' },
   });
 
   useEffect(() => {
     if (!open) return;
-    reset({ title: '', description: '', priority: 'MEDIUM', agent_backend: '', launcher: '', base_branch: '' });
+    reset({ title: '', description: '', priority: 'MEDIUM', agent_backend: '', launcher: '', base_branch: '', github_issue_mode: 'none', github_issue_number: '' });
     criteriaList.reset();
   }, [open, reset]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -58,6 +62,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         launcher: data.launcher || undefined,
         base_branch: data.base_branch?.trim() || undefined,
         acceptance_criteria: criteriaList.criteria.length > 0 ? criteriaList.criteria : undefined,
+        github_issue: resolveGithubIssue(data),
       });
       toast.success('Task created');
       fetchTasks();
@@ -81,6 +86,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <TaskFormFields
             register={register}
+            control={control}
             errors={errors}
             backends={backends}
             criteria={criteriaList.criteria}
@@ -88,6 +94,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             onCriterionInputChange={criteriaList.setInput}
             onAddCriterion={criteriaList.add}
             onRemoveCriterion={criteriaList.remove}
+            githubRepoSlug={githubRepoSlug}
           />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>

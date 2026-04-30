@@ -14,6 +14,7 @@ import type {
   DiffFile,
   DiffStats,
   FsBrowseResponse,
+  Mention,
   PreflightResponse,
   ProjectActivatedResponse,
   ProjectDeletedResponse,
@@ -22,6 +23,7 @@ import type {
   ReviewStatusResponse,
   RoleStats,
   ProjectFolderResolutionResponse,
+  SearchMentionsInput,
   SessionTimelineEntry,
   TaskCommitsResponse,
   TaskDeletedResponse,
@@ -575,6 +577,15 @@ export class KaganApiClient {
   }
 
   // -- Integrations ----------------------------------------------------------
+
+  /** GET /api/mentions/search?project_id=&q=&limit= */
+  async searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
+    const qs = new URLSearchParams();
+    qs.set('project_id', input.projectId);
+    qs.set('q', input.q);
+    if (input.limit !== undefined) qs.set('limit', String(input.limit));
+    return this.request<Mention[]>(`/api/mentions/search?${qs.toString()}`);
+  }
 
   // -- Analytics -------------------------------------------------------------
 

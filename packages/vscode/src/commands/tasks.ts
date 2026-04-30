@@ -63,6 +63,9 @@ export function registerTaskCommands(
         const launcher = await pickLauncher();
         if (launcher.cancelled) return;
 
+        const githubIssue = await pickGithubIssue(client);
+        if (githubIssue.cancelled) return;
+
         await client.createTask({
           title: title.trim(),
           description: description?.trim() || undefined,
@@ -71,6 +74,7 @@ export function registerTaskCommands(
           acceptance_criteria: parseAcceptanceCriteria(acceptanceCriteria),
           agent_backend: agentBackend.value,
           launcher: launcher.value ?? undefined,
+          github_issue: githubIssue.value,
         });
         boardProvider.refresh();
       });
@@ -355,4 +359,51 @@ function launcherDescription(launcher: LauncherBackend): string {
     case "nvim":
       return "Attach in Neovim";
   }
+}
+
+/**
+ * Prompt user to pick a GitHub issue link mode.
+ * Returns cancelled=true if user dismissed the picker.
+ * Returns value=undefined for "none", "new" for create-new, or "#N" for link.
+ * Skips entirely if no GitHub integration is configured (returns cancelled=false, value=undefined).
+ */
+export async function pickGithubIssue(client: KaganClient): Promise<PickResult<string | undefined>> {
+  let hasGithub = false;
+  try {
+    const result = await client.detectGithubRepo();
+    hasGithub = Boolean(result.repo_slug);
+  } catch {
+    // GitHub integration unavailable — skip silently
+    return { cancelled: false, value: undefined };
+  }
+
+  if (!hasGithub) {
+    return { cancelled: false, value: undefined };
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    [
+      { label: "None", description: "No GitHub issue link", value: undefined },
+      { label: "Link to existing issue (#N)", description: "Enter an issue number", value: "__link__" },
+      { label: "Create new issue from task", description: "Creates a GitHub issue on submit", value: "new" },
+    ],
+    { placeHolder: "GitHub issue (optional)" },
+  );
+
+  if (!picked) return { cancelled: true, value: undefined };
+  if (picked.value === undefined) return { cancelled: false, value: undefined };
+  if (picked.value === "new") return { cancelled: false, value: "new" };
+
+  // User wants to link an existing issue — ask for the number
+  const numberStr = await vscode.window.showInputBox({
+    prompt: "Issue number",
+    placeHolder: "e.g. 42",
+    validateInput: (v) => {
+      const n = Number(v.replace(/^#/, ""));
+      if (!Number.isInteger(n) || n <= 0) return "Enter a positive integer";
+      return undefined;
+    },
+  });
+  if (numberStr === undefined) return { cancelled: true, value: undefined };
+  return { cancelled: false, value: numberStr.replace(/^#/, "") };
 }

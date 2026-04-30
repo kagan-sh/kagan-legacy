@@ -79,6 +79,19 @@ export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 // Request bodies
 // ---------------------------------------------------------------------------
 
+export interface Mention {
+    source: "kagan" | "github";
+    id: string;
+    title: string;
+    state: string | null;
+}
+
+export interface SearchMentionsInput {
+    projectId: string;
+    q: string;
+    limit?: number;
+}
+
 export interface CreateTaskInput {
     title: string;
     description?: string;
@@ -89,6 +102,7 @@ export interface CreateTaskInput {
     agent_backend?: string;
     launcher?: string;
     repo_id?: string;
+    github_issue?: string;
 }
 
 export interface CreateChatSessionInput {
@@ -104,6 +118,7 @@ export interface UpdateTaskInput {
     acceptance_criteria?: string[];
     agent_backend?: string;
     launcher?: string;
+    github_issue?: string;
 }
 
 export interface TransitionStatusInput {

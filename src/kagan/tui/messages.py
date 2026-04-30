@@ -102,6 +102,7 @@ class TaskSubmitted(Message):
     agent_backend: str | None
     launcher: str | None
     base_branch: str | None
+    github_issue: str | None = None
 
 
 @dataclass

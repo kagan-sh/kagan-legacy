@@ -69,6 +69,7 @@ class TaskEditor(Vertical):
         available_agent_backends: list[str] | None = None,
         base_branch: str | None = None,
         acceptance_criteria: list[str] | None = None,
+        github_issue: str | None = None,
         focus_field: str | None = None,
         editing: bool = False,
     ) -> None:
@@ -78,6 +79,7 @@ class TaskEditor(Vertical):
         self._initial_priority = priority
         self._initial_agent_backend = agent_backend or ""
         self._initial_launcher = launcher or ""
+        self._initial_github_issue = github_issue or ""
         self._editing = editing
         backend_set = set(available_agent_backends or [])
         if self._initial_agent_backend:
@@ -95,6 +97,7 @@ class TaskEditor(Vertical):
             or self._initial_launcher
             or self._initial_base_branch
             or self._initial_acceptance_criteria
+            or self._initial_github_issue
         )
 
     def compose(self) -> ComposeResult:
@@ -172,6 +175,23 @@ class TaskEditor(Vertical):
                 )
                 branch_input.tooltip = "Git branch to base task on (default: project default)"
                 yield branch_input
+                yield Label("GitHub issue", classes="task-label")
+                github_issue_input = Input(
+                    value=self._initial_github_issue,
+                    placeholder="none / 42 / new",
+                    id="task-github-issue",
+                    classes="task-input",
+                )
+                github_issue_input.tooltip = (
+                    "Link to a GitHub issue: leave blank for none, enter a number to link an "
+                    "existing issue (e.g. 42 or #42 or owner/repo#42), or 'new' to create one."
+                )
+                yield github_issue_input
+                yield Static(
+                    "none · #42 · owner/repo#42 · new",
+                    id="task-github-issue-help",
+                    classes="task-field-help",
+                )
         if self._editing:
             yield Static(
                 "Auto-saved  ·  [bold]Ctrl+.[/] advanced  "
@@ -224,6 +244,7 @@ class TaskEditor(Vertical):
         "task-agent-backend",
         "task-launcher",
         "task-base-branch",
+        "task-github-issue",
     }
 
     def focus_preferred_field(self) -> None:
@@ -295,6 +316,7 @@ class TaskEditor(Vertical):
         backend_select = cast("Select[str]", self.query_one("#task-agent-backend", Select))
         launcher_select = cast("Select[str]", self.query_one("#task-launcher", Select))
         base_branch = self.query_one("#task-base-branch", Input).value.strip() or None
+        github_issue = self.query_one("#task-github-issue", Input).value.strip() or None
 
         priority_value = priority_select.value
         if priority_value is Select.BLANK or not isinstance(priority_value, int):
@@ -321,6 +343,7 @@ class TaskEditor(Vertical):
             agent_backend=agent_backend,
             launcher=launcher,
             base_branch=base_branch,
+            github_issue=github_issue,
         )
 
     def submit(self) -> None:

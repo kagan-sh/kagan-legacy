@@ -62,6 +62,7 @@ class TaskEditorModal(ModalScreen[None]):
                     available_agent_backends=agent_backends,
                     base_branch=editing_task.base_branch,
                     acceptance_criteria=list(editing_task.acceptance_criteria),
+                    github_issue=editing_task.github_issue,
                     focus_field=self._focus_field,
                     editing=True,
                 )
@@ -89,6 +90,7 @@ class TaskEditorModal(ModalScreen[None]):
                     agent_backend=message.agent_backend,
                     launcher=message.launcher,
                     acceptance_criteria=acceptance_criteria,
+                    github_issue=message.github_issue,
                 )
             else:
                 await self.kagan_app.core.tasks.update(

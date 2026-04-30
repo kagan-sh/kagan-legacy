@@ -185,3 +185,16 @@ export interface FsBrowseResponse {
   roots: string[];
   entries: FsEntryResponse[];
 }
+
+export interface IntegrationInfo {
+  id: string;
+  name: string;
+}
+
+export interface IntegrationSyncResult {
+  id: string;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors?: string[];
+}

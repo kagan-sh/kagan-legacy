@@ -63,9 +63,6 @@ dependencies = [
 kagan = "kagan.cli:cli"
 kg = "kagan.cli:cli"
 
-[project.entry-points."kagan.plugins"]
-github = "kagan.core.plugins._github:GitHubImporter"
-
 [project.urls]
 Homepage = "https://kagan.sh"
 Documentation = "https://docs.kagan.sh"
@@ -184,7 +181,7 @@ markers = [
   "core: tests scoped to kagan-core behaviors",
   "mcp: tests scoped to kagan-mcp protocol boundary",
   "tui: tests scoped to textual UI flows and rendering",
-  "plugins: tests scoped to plugin implementations",
+  "integrations: tests scoped to native integration implementations",
   "integration: tests scoped to real agent binary integration",
   "mock_platform_system(name): override platform.system() for the test",
 ]

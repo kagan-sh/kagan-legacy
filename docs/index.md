@@ -87,7 +87,6 @@ ______________________________________________________________________
 | Import tasks from GitHub      | [Import from GitHub](guides/github.md)                     |
 | Use the web dashboard         | [Web dashboard](guides/web-dashboard.md)                   |
 | Install the VS Code extension | [VS Code extension](guides/vscode-extension.md)            |
-| Extend with plugins           | [Plugins](reference/plugins.md) (early stage)              |
 | View analytics & metrics      | [Analytics](guides/analytics.md)                           |
 | Fix a known issue             | [Troubleshooting](troubleshooting.md)                      |
 | All CLI flags                 | [CLI reference](reference/cli.md)                          |

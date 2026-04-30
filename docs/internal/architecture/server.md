@@ -38,7 +38,7 @@ src/kagan/server/
 ├── server.py            # ApiServer factory, entry point
 ├── _routes.py           # Core REST API + SSE event stream (tasks, projects, settings)
 ├── _chat_routes.py      # Chat REST + SSE streaming routes (orchestrator sessions)
-├── _plugin_routes.py    # Plugin-specific REST routes (sync, preflight)
+├── _integration_routes.py  # Integration-specific REST routes (preflight, preview, sync)
 ├── _sse.py              # SSE streaming helpers (event generator, keepalive)
 ├── _access.py           # Access control helpers (HTTP access tiers for REST routes)
 ├── _helpers.py          # Route helper functions (JSON response builders, error formatting)
@@ -104,9 +104,10 @@ All responses are wrapped in a `WireEnvelope`: `{ ok: bool, data?: T, error?: st
 | `/api/chat/sessions/{id}`          | DELETE | Delete a chat session                 |
 | `/api/chat/sessions/{id}`          | DELETE | Delete a chat session                 |
 | `/api/chat/agents`                 | GET    | List available agent backends         |
-| `/api/plugins`                     | GET    | List installed plugins                |
-| `/api/plugins/{name}/preflight`    | GET    | Run plugin preflight checks           |
-| `/api/plugins/{name}/import`       | POST   | Import tasks from plugin              |
+| `/api/integrations`                | GET    | List enabled integrations             |
+| `/api/integrations/{name}/preflight` | GET  | Run integration preflight checks      |
+| `/api/integrations/{name}/preview` | GET    | Preview items without importing       |
+| `/api/integrations/{name}/sync`    | POST   | Sync items from integration           |
 
 ______________________________________________________________________
 

@@ -149,7 +149,6 @@ plugins:
               install.md: quickstart.md
               config.md: reference/configuration.md
               reference/index.md: reference/cli.md
-              reference/plugin-sdk.md: reference/plugins.md
               getting-started/commands.md: reference/cli.md
 
 exclude_docs: |
@@ -178,7 +177,6 @@ nav:
           - Security API: api/security.md
           - Keybindings: reference/keybindings.md
           - MCP tools: reference/mcp-tools.md
-          - Plugins: reference/plugins.md
           - GitHub import: guides/github.md
           - GitHub Models: guides/github-models.md
           - Analytics: guides/analytics.md

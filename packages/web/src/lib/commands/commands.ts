@@ -35,7 +35,7 @@ import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
 import { setThemeModeAtom, themeModeAtom } from '@/lib/atoms/theme';
 import {
   helpOverlayOpenAtom,
-  pluginImportOpenAtom,
+  integrationImportOpenAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
 import { registerCommand } from '@/lib/commands/registry';
@@ -200,9 +200,9 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
     id: 'create-github-import',
     title: 'Import from GitHub',
     section: 'Create',
-    keywords: ['github', 'import', 'plugin', 'issues'],
+    keywords: ['github', 'import', 'integration', 'issues'],
     icon: Download,
-    handler: () => store.set(pluginImportOpenAtom, true),
+    handler: () => store.set(integrationImportOpenAtom, true),
   },
 
   // ─── Run ─────────────────────────────────────────────────────────────────

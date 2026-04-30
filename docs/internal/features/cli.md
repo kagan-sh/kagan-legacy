@@ -97,27 +97,15 @@ ______________________________________________________________________
 - `--no-open`: suppress automatic browser launch
 - `--readonly`, `--admin`: mutually exclusive access tiers
 
-### `kagan plugins`
+### `kagan import github`
 
-Plugin management subgroup.
+Import GitHub issues into the active project.
 
-#### `kagan plugins sync`
-
-- `kagan plugins sync <name> --repo owner/repo` syncs external items into the active project
+- `kagan import github --repo owner/repo` syncs issues as kagan tasks
 - `--state`: issue state filter (open, closed, all). Default: open
 - `--label`: only sync issues with this label
 - Reports created/skipped/errors counts
-- Shows community plugin provenance warnings
-
-#### `kagan plugins list`
-
-- Lists installed plugins with built-in/community labels
-- Community plugins show package name and version
-
-#### `kagan plugins check`
-
-- `kagan plugins check [name]` runs preflight checks for one or all plugins
-- Displays PASS/WARN/FAIL per check with fix hints
+- Idempotent — re-running skips already-imported issues
 
 ### `kagan tools prompts`
 

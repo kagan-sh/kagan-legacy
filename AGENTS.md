@@ -21,8 +21,7 @@ kagan/
 │   ├── chat/            # CLI chat REPL: ACP streaming, commands, sessions
 │   ├── crypto/          # X25519 key exchange, TLS, tokens, QR
 │   ├── wire/            # (compat shim) Re-exports envelope types
-│   ├── integrations/    # GitHub integration
-│   └── plugins/         # Plugin system (entry-point based)
+│   └── integrations/    # Typed native integrations (GitHub, future: Jira/Linear)
 ├── packages/
 │   ├── vscode/          # VS Code extension: chat participant, tree view, SCM, reviews
 │   ├── web/             # React 19 + jotai + Tailwind CSS 4 web dashboard (SPA)
@@ -48,6 +47,7 @@ kagan/
 | Wire protocol change  | `src/kagan/server/responses.py`                           | Response models → JSON Schema → TypeScript via `scripts/generate_wire_types.py`   |
 | Web UI feature        | `packages/web/src/`                                       | React 19 + jotai + Tailwind CSS 4                                                 |
 | API endpoint          | `src/kagan/server/_routes.py`                             | Starlette routes via FastMCP                                                      |
+| Add integration       | `src/kagan/core/integrations/`                            | Implement Integration protocol, register in `all_enabled()`                       |
 | VS Code feature       | `packages/vscode/src/providers/`                          | One provider per VS Code API surface                                              |
 | VS Code command       | `packages/vscode/src/commands/`                           | Register in `extension.ts`                                                        |
 | Modify prompt system  | `src/kagan/core/_prompts.py`                              | Three-layer resolution: dotfile → defaults + behavioral → additional instructions |

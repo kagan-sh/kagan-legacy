@@ -90,15 +90,15 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## 10. Plugin Tools
+## 10. Integration Tools
 
-- `plugins_sync` (ORCHESTRATOR role) — sync issues via MCP, returns created/skipped/errors
-  - Accepts plugin name, repo (owner/repo format), optional state and label filters
-  - Returns created/skipped/errors counts and community warnings
-- `plugins_preflight` (WORKER role) — check if a plugin's external dependencies are satisfied
-  - Optional plugin name; checks all plugins if omitted
+- `integration_sync` (ORCHESTRATOR role) — sync issues via MCP, returns created/skipped/errors
+  - Accepts integration name, repo (owner/repo format), optional state and label filters
+  - Returns created/skipped/errors counts
+- `integration_preflight` (WORKER role) — check if an integration's external dependencies are satisfied
+  - Optional integration name; checks all integrations if omitted
   - Returns pass/warn/fail checks and readiness status
-- `plugins_preview` (WORKER role) — preview plugin import results without applying
+- `integration_preview` (WORKER role) — preview integration import results without applying
 
 ______________________________________________________________________
 

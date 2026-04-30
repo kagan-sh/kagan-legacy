@@ -29,9 +29,9 @@ _WORKER_TOOLS = frozenset(
         "review_conflicts",
         # settings (1 read tool)
         "settings_get",
-        # plugins (2 read tools)
-        "plugins_preflight",
-        "plugins_preview",
+        # integrations (2 read tools)
+        "integration_preflight",
+        "integration_preview",
         # verification (2 tools — session-scoped)
         "verify_step",
         "verification_summary",
@@ -76,8 +76,8 @@ _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
         "settings_set",
         # diagnostics (1 tool)
         "audit_list",
-        # plugins (1 write tool)
-        "plugins_sync",
+        # integrations (1 write tool)
+        "integration_sync",
         # personas (4 tools)
         "persona_inspect",
         "persona_import",

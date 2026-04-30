@@ -16,7 +16,7 @@ import { store } from '@/lib/atoms/store';
 import { tasksAtom, boardDialogAtom } from '@/lib/atoms/board';
 import {
   helpOverlayOpenAtom,
-  pluginImportOpenAtom,
+  integrationImportOpenAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
 import type { CommandAction } from '@/lib/commands/types';
@@ -283,7 +283,7 @@ describe('command handlers flip global atoms', () => {
     __resetRegistryForTests();
     __resetBuiltinRegistrationForTests();
     store.set(sessionPickerOpenAtom, false);
-    store.set(pluginImportOpenAtom, false);
+    store.set(integrationImportOpenAtom, false);
     store.set(helpOverlayOpenAtom, false);
     store.set(boardDialogAtom, { kind: 'none' });
   });
@@ -303,7 +303,7 @@ describe('command handlers flip global atoms', () => {
   it('opens the GitHub import dialog', () => {
     registerBuiltinCommands();
     invoke('create-github-import');
-    expect(store.get(pluginImportOpenAtom)).toBe(true);
+    expect(store.get(integrationImportOpenAtom)).toBe(true);
   });
 
   it('opens the help overlay', () => {

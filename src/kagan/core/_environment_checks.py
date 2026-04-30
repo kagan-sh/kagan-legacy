@@ -57,7 +57,7 @@ def _derive_category(name: str) -> str:
         return "backend"
     if name in _ENVIRONMENT_CHECK_NAMES:
         return "environment"
-    return "plugin"
+    return "integration"
 
 
 # ---------------------------------------------------------------------------

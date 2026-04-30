@@ -81,8 +81,8 @@ def test_derive_category_environment() -> None:
         assert _derive_category(name) == "environment", f"Expected 'environment' for '{name}'"
 
 
-def test_derive_category_unknown_becomes_plugin() -> None:
-    assert _derive_category("some custom plugin check") == "plugin"
+def test_derive_category_unknown_becomes_integration() -> None:
+    assert _derive_category("some custom integration check") == "integration"
 
 
 def test_doctor_check_has_category_field() -> None:

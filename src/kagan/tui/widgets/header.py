@@ -41,7 +41,6 @@ class KaganHeader(Horizontal):
     done_count: reactive[int] = reactive(0)
     active_sessions: reactive[int] = reactive(0)
     git_branch: reactive[str] = reactive("")
-    plugin_badges_text: reactive[str] = reactive("")
 
     def compose(self) -> ComposeResult:
         logo = Static(LOGO_SMALL, id="header-logo", classes="header-logo")
@@ -117,9 +116,6 @@ class KaganHeader(Horizontal):
     def update_repo(self, repo: str) -> None:
         self.repo_name = repo
 
-    def update_plugin_badges_text(self, text: str) -> None:
-        self.plugin_badges_text = text
-
     def watch_project_name(self, _: str) -> None:
         self._render_project()
 
@@ -151,9 +147,6 @@ class KaganHeader(Horizontal):
     def watch_git_branch(self, _: str) -> None:
         self._render_branch()
 
-    def watch_plugin_badges_text(self, _: str) -> None:
-        self._render_github_status()
-
     def _render_project(self) -> None:
         self._update_label("#header-project", self.project_name or "Kagan")
 
@@ -178,7 +171,7 @@ class KaganHeader(Horizontal):
         logo.set_class(not self.connected, "logo-disconnected")
 
     def _render_github_status(self) -> None:
-        text = self.plugin_badges_text or ("● GH" if self.connected else "")
+        text = "● GH" if self.connected else ""
         self._update_label("#header-github-status", text)
         self._set_visible("#header-github-status", bool(text))
         self._set_visible("#sep-github", bool(text))

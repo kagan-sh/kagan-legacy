@@ -23,7 +23,7 @@ Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolat
 - [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference
 - [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI keyboard shortcuts
 - [MCP Tools](https://docs.kagan.sh/reference/mcp-tools/): Full MCP tool catalog (23+ tools)
-- [Plugins](https://docs.kagan.sh/reference/plugins/): Plugin system and SDK
+- [Integrations](https://docs.kagan.sh/guides/github/): GitHub import and future trackers
 - [Troubleshooting](https://docs.kagan.sh/troubleshooting/): Common issues and fixes
 
 ## Links

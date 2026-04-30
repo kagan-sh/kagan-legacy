@@ -2170,44 +2170,6 @@ AgentChoiceModal {
     min-height: 1;
     color: $text-muted;
 }
-/* === PLUGIN FORM MODAL === */
-
-PluginFormModal {
-    align: center middle;
-}
-
-PluginFormModal #dialog {
-    width: 60;
-    height: auto;
-    border: round $primary;
-    background: $surface;
-    padding: 2 3;
-}
-
-PluginFormModal .dialog-title {
-    text-align: center;
-    text-style: bold;
-    color: $primary;
-    padding-bottom: 1;
-}
-
-PluginFormModal .field {
-    height: auto;
-    margin: 1 0 0 0;
-}
-
-PluginFormModal .field-label {
-    margin-bottom: 0;
-    color: $text;
-    text-style: bold;
-}
-
-PluginFormModal #dialog-actions {
-    height: auto;
-    margin-top: 2;
-    align: center middle;
-}
-
 /* === Core interaction language — DON DRAPER EDITORIAL POLISH === */
    /* Intent: */
    /* - Strong hierarchy */

@@ -21,12 +21,12 @@ interface GitHubIssuePreview {
   already_synced: boolean;
 }
 
-interface PluginImportDialogProps {
+interface IntegrationImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function PluginImportDialog({ open, onOpenChange }: PluginImportDialogProps) {
+export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImportDialogProps) {
   // Filter state
   const [repo, setRepo] = useState('');
   const [state, setState] = useState<'open' | 'closed' | 'all'>('open');
@@ -47,18 +47,18 @@ export function PluginImportDialog({ open, onOpenChange }: PluginImportDialogPro
     setDetecting(true);
     try {
       const [repoResult, preflight] = await Promise.all([
-        apiClient.detectPluginRepo('github'),
-        apiClient.getPluginPreflight('github'),
+        apiClient.detectIntegrationRepo('github'),
+        apiClient.getIntegrationPreflight('github'),
       ]);
       if (repoResult.repo_slug) setRepo(repoResult.repo_slug);
       setReady(preflight.ready);
       if (!preflight.ready) {
         const failing = preflight.checks.find((c) => !c.ok);
-        setPreflightMsg(failing?.message ?? 'Plugin not ready');
+        setPreflightMsg(failing?.message ?? 'Integration not ready');
       }
     } catch {
       setReady(null);
-      setPreflightMsg('Could not reach plugin API');
+      setPreflightMsg('Could not reach integration API');
     } finally {
       setDetecting(false);
     }
@@ -76,7 +76,7 @@ export function PluginImportDialog({ open, onOpenChange }: PluginImportDialogPro
     if (!repo.trim()) { toast.error('Repository slug is required'); return; }
     setPreviewing(true);
     try {
-      const result = await apiClient.previewPluginIssues('github', {
+      const result = await apiClient.previewIntegrationIssues('github', {
         repo_slug: repo.trim(),
         state,
         labels: labels.trim() || undefined,
@@ -104,7 +104,7 @@ export function PluginImportDialog({ open, onOpenChange }: PluginImportDialogPro
         limit,
       };
       if (labels.trim()) config.labels = labels.trim().split(',').map((l) => l.trim());
-      const result = await apiClient.runPluginImport('github', config);
+      const result = await apiClient.runIntegrationSync('github', config);
       const parts: string[] = [];
       if (result.created > 0) parts.push(`${result.created} created`);
       if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
@@ -150,35 +150,35 @@ export function PluginImportDialog({ open, onOpenChange }: PluginImportDialogPro
               {detecting ? (
                 <><Spinner className="size-3" /><span className="text-[var(--muted-foreground)]">Detecting repository…</span></>
               ) : ready === true ? (
-                <><span className="inline-block size-2 rounded-full bg-[var(--kagan-rail-running)]" /><span className="text-[var(--muted-foreground)]">GitHub plugin ready</span></>
+                <><span className="inline-block size-2 rounded-full bg-[var(--kagan-rail-running)]" /><span className="text-[var(--muted-foreground)]">GitHub integration ready</span></>
               ) : ready === false ? (
                 <><span className="inline-block size-2 rounded-full bg-amber-500" /><span className="text-[var(--muted-foreground)]">{preflightMsg}</span></>
               ) : null}
             </div>
 
             <div>
-              <Label htmlFor="plugin-repo" className="mb-1">Repository</Label>
-              <Input id="plugin-repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="font-mono text-sm" autoFocus />
+              <Label htmlFor="integration-repo" className="mb-1">Repository</Label>
+              <Input id="integration-repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="font-mono text-sm" autoFocus />
             </div>
 
             <div className="flex gap-4">
               <div className="flex-1">
-                <Label htmlFor="plugin-state" className="mb-1">State</Label>
-                <NativeSelect id="plugin-state" value={state} onChange={(e) => setState(e.target.value as 'open' | 'closed' | 'all')} className="w-full">
+                <Label htmlFor="integration-state" className="mb-1">State</Label>
+                <NativeSelect id="integration-state" value={state} onChange={(e) => setState(e.target.value as 'open' | 'closed' | 'all')} className="w-full">
                   <NativeSelectOption value="open">Open</NativeSelectOption>
                   <NativeSelectOption value="closed">Closed</NativeSelectOption>
                   <NativeSelectOption value="all">All</NativeSelectOption>
                 </NativeSelect>
               </div>
               <div className="flex-1">
-                <Label htmlFor="plugin-labels" className="mb-1">Labels</Label>
-                <Input id="plugin-labels" value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="bug, feature" />
+                <Label htmlFor="integration-labels" className="mb-1">Labels</Label>
+                <Input id="integration-labels" value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="bug, feature" />
               </div>
             </div>
 
             <div>
-              <Label htmlFor="plugin-limit" className="mb-1">Limit</Label>
-              <Input id="plugin-limit" type="number" min={1} max={500} value={limit} onChange={(e) => setLimit(Number(e.target.value) || 100)} className="w-24" />
+              <Label htmlFor="integration-limit" className="mb-1">Limit</Label>
+              <Input id="integration-limit" type="number" min={1} max={500} value={limit} onChange={(e) => setLimit(Number(e.target.value) || 100)} className="w-24" />
             </div>
           </div>
         ) : (

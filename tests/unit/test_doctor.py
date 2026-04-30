@@ -45,21 +45,11 @@ class _FakeClient:
         self.closed = True
 
 
-class _FakePluginManager:
-    def __init__(self, client: _FakeClient) -> None:
-        self.client = client
-
-    async def load(self) -> None:
-        return None
-
-    def preflight(self) -> list[PreflightCheckResult]:
-        return []
-
-
 def test_run_doctor_checks_uses_configured_default_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     monkeypatch.setattr(doctor_module, "make_client", lambda: client)
-    monkeypatch.setattr(doctor_module, "PluginManager", _FakePluginManager)
+    # Stub out integration checks so no gh CLI calls fire
+    monkeypatch.setattr(doctor_module, "all_enabled", lambda: [])
     monkeypatch.setenv("KAGAN_AGENT_BACKEND", "opencode")
     monkeypatch.delenv("ZELLIJ", raising=False)
 
@@ -108,7 +98,8 @@ def test_run_doctor_checks_adds_reference_backend_guidance(
         fix_hint="Install or configure a different agent backend",
     )
     monkeypatch.setattr(doctor_module, "make_client", lambda: client)
-    monkeypatch.setattr(doctor_module, "PluginManager", _FakePluginManager)
+    # Stub out integration checks so no gh CLI calls fire
+    monkeypatch.setattr(doctor_module, "all_enabled", lambda: [])
     monkeypatch.delenv("ZELLIJ", raising=False)
 
     checks = doctor_module.run_doctor_checks()
@@ -166,16 +157,16 @@ def test_run_doctor_check_for_backend_fires_exactly_one_shutil_which(
     assert result.status == "fail"
 
 
-def test_run_doctor_check_for_backend_does_not_call_environment_or_plugin_checks(
+def test_run_doctor_check_for_backend_does_not_call_environment_or_integration_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """run_doctor_check_for_backend must not invoke environment, plugin, or IDE checks."""
+    """run_doctor_check_for_backend must not invoke environment or integration checks."""
     import shutil
 
     monkeypatch.setattr(shutil, "which", lambda _x: None)
 
     env_called: list[bool] = []
-    plugin_called: list[bool] = []
+    integration_called: list[bool] = []
 
     monkeypatch.setattr(
         doctor_module,
@@ -184,14 +175,14 @@ def test_run_doctor_check_for_backend_does_not_call_environment_or_plugin_checks
     )
     monkeypatch.setattr(
         doctor_module,
-        "PluginManager",
-        lambda *_a, **_kw: (plugin_called.append(True), None)[1],
+        "all_enabled",
+        lambda *_a, **_kw: (integration_called.append(True), [])[1],
     )
 
     result = doctor_module.run_doctor_check_for_backend(CODEX_BACKEND)
 
     assert not env_called, "collect_environment_checks must not be called"
-    assert not plugin_called, "PluginManager must not be instantiated"
+    assert not integration_called, "all_enabled must not be called"
     # Backend not installed → fail status (hard failure in recheck path)
     assert result is not None
     assert result.status == "fail"

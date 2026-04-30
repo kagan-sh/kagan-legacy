@@ -94,6 +94,19 @@ kagan/core/
 
 ~42 files. Flat structure with private modules (underscore prefix) and adapters sub-package.
 
+## Integrations
+
+Native integrations live in `kagan.core.integrations`.  Each integration is a plain class that
+satisfies the `Integration` typing.Protocol (defined in `_base.py`): three methods — `preflight`,
+`preview`, and `sync`.  No ABCs, no metaclasses, no entry-point discovery.
+
+The module exports `all_enabled(client) -> list[Integration]`.  Today it returns `[github]`.
+Adding a new integration (Jira, Linear, Azure DevOps) means: create a submodule, implement the
+three methods, register in `all_enabled()`.  That is the complete API surface change required.
+
+The old entry-point plugin system (ABC hierarchy, dynamic discovery, community-plugin env flag)
+was removed in the `refactor/native-integrations` branch.  There are no backwards-compat shims.
+
 ## Frontend Construction
 
 Every frontend creates a `KaganCore` the same way. The constructor takes only `db_path`

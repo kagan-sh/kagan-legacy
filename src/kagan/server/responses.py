@@ -350,6 +350,26 @@ class DoctorReportResponse(BaseModel):
     warn_count: int
 
 
+# ── Integrations ─────────────────────────────────────────────────────────────
+
+
+class IntegrationInfo(BaseModel):
+    """Summary of a single native integration."""
+
+    id: str
+    name: str
+
+
+class IntegrationSyncResult(BaseModel):
+    """Result returned by POST /api/integrations/{id}/sync."""
+
+    id: str
+    created: int
+    updated: int
+    skipped: int
+    errors: list[str] = Field(default_factory=list)
+
+
 # ── Schema export helper ─────────────────────────────────────────────────────
 
 # All response models that map to TS interfaces.
@@ -374,4 +394,6 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "DoctorReportResponse": DoctorReportResponse,
     "FsEntryResponse": FsEntryResponse,
     "FsBrowseResponse": FsBrowseResponse,
+    "IntegrationInfo": IntegrationInfo,
+    "IntegrationSyncResult": IntegrationSyncResult,
 }

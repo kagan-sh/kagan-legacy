@@ -61,7 +61,7 @@ Match symptom text below.
 | Escaped tags like `&lt;input&gt;` in prompts | Expected. Kagan escapes control-tag syntax to reduce prompt-injection risk.                                                                               |
 | `[REDACTED]` in logs or agent output         | Expected. Kagan redacts high-confidence secrets before prompt send/log persistence. Use placeholders; inject credentials through secure runtime channels. |
 
-## GitHub plugin
+## GitHub integration
 
 | Code                               | Fix                                                                        |
 | ---------------------------------- | -------------------------------------------------------------------------- |

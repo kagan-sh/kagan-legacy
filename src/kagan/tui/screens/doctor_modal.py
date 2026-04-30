@@ -404,7 +404,7 @@ class DoctorModal(ModalScreen[bool]):
         """Re-verify a check after install.
 
         For backend checks: uses run_doctor_check_for_backend() — does NOT
-        invoke environment, plugin, or IDE checks (AC1 requirement).
+        invoke environment, integration, or IDE checks (AC1 requirement).
         For non-backend checks: uses run_doctor_checks() to refresh state.
         """
         backend_name = _extract_backend_name(check_name)

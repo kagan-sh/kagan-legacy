@@ -555,7 +555,7 @@ export class KaganApiClient {
     return this.request<FsBrowseResponse>(`/api/fs/browse${query}`);
   }
 
-  // -- Plugins ---------------------------------------------------------------
+  // -- Integrations ----------------------------------------------------------
 
   // -- Analytics -------------------------------------------------------------
 
@@ -630,37 +630,37 @@ export class KaganApiClient {
     return this.getAnalyticsByRoleAndTaskType();
   }
 
-  /** GET /api/plugins */
-  async getPlugins(): Promise<{ plugins: Array<{ name: string; builtin: boolean; package: string | null; version: string | null }> }> {
-    return this.request('/api/plugins');
+  /** GET /api/integrations */
+  async getIntegrations(): Promise<{ integrations: Array<{ id: string; name: string }> }> {
+    return this.request('/api/integrations');
   }
 
-  /** GET /api/plugins/:name/preflight */
-  async getPluginPreflight(name: string): Promise<{ plugin: string; checks: Array<{ ok: boolean; message: string; fix_hint: string | null }>; ready: boolean }> {
-    return this.request(`/api/plugins/${name}/preflight`);
+  /** GET /api/integrations/:id/preflight */
+  async getIntegrationPreflight(id: string): Promise<{ id: string; checks: Array<{ ok: boolean; message: string; fix_hint: string | null }>; ready: boolean }> {
+    return this.request(`/api/integrations/${id}/preflight`);
   }
 
-  /** GET /api/plugins/:name/detect-repo */
-  async detectPluginRepo(name: string): Promise<{ repo_slug: string | null }> {
-    return this.request(`/api/plugins/${name}/detect-repo`);
+  /** GET /api/integrations/:id/detect-repo */
+  async detectIntegrationRepo(id: string): Promise<{ id: string; repo_slug: string | null }> {
+    return this.request(`/api/integrations/${id}/detect-repo`);
   }
 
-  /** GET /api/plugins/:name/preview */
-  async previewPluginIssues(
-    name: string,
+  /** GET /api/integrations/:id/preview */
+  async previewIntegrationIssues(
+    id: string,
     params: { repo_slug: string; state?: string; labels?: string; limit?: number },
-  ): Promise<{ plugin: string; issues: Array<{ number: number; title: string; state: string; labels: string[]; url: string; already_synced: boolean }>; total: number }> {
+  ): Promise<{ id: string; issues: Array<{ number: number; title: string; state: string; labels: string[]; url: string; already_synced: boolean }>; total: number }> {
     const qs = new URLSearchParams();
     qs.set('repo_slug', params.repo_slug);
     if (params.state) qs.set('state', params.state);
     if (params.labels) qs.set('labels', params.labels);
     if (params.limit) qs.set('limit', String(params.limit));
-    return this.request(`/api/plugins/${name}/preview?${qs.toString()}`);
+    return this.request(`/api/integrations/${id}/preview?${qs.toString()}`);
   }
 
-  /** POST /api/plugins/:name/import */
-  async runPluginImport(name: string, config: Record<string, unknown>): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> {
-    return this.request(`/api/plugins/${name}/import`, { method: 'POST', body: config });
+  /** POST /api/integrations/:id/sync */
+  async runIntegrationSync(id: string, config: Record<string, unknown>): Promise<{ id: string; created: number; updated: number; skipped: number; errors: string[] }> {
+    return this.request(`/api/integrations/${id}/sync`, { method: 'POST', body: config });
   }
 
   // -- Doctor ---------------------------------------------------------------

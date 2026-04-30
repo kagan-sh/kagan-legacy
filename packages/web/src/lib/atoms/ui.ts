@@ -62,8 +62,8 @@ export const helpOverlayOpenAtom = atom(false);
 /** Command palette (Cmd+K) open state. */
 export const commandPaletteOpenAtom = atom(false);
 
-/** Plugin import dialog open state. */
-export const pluginImportOpenAtom = atom(false);
+/** Integration import dialog open state. */
+export const integrationImportOpenAtom = atom(false);
 
 /** Currently selected orchestrator session in workspace view. */
 export const workspaceSessionIdAtom = atom<string | null>(null);
@@ -73,7 +73,7 @@ export const isAnyDialogOpenAtom = atom((get) => {
   return (
     get(sessionPickerOpenAtom) ||
     get(helpOverlayOpenAtom) ||
-    get(pluginImportOpenAtom) ||
+    get(integrationImportOpenAtom) ||
     get(commandPaletteOpenAtom) ||
     get(boardDialogAtom).kind !== 'none'
   );

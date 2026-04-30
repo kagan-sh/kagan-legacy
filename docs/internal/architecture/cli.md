@@ -27,7 +27,6 @@ src/kagan/cli/
 ├── serve.py           # kagan serve [--port] [--host] [--readonly]
 ├── update.py          # kagan update [--check-only] [--prerelease]
 ├── tools.py           # kagan tools enhance [prompt]
-├── plugins.py         # kagan plugins sync|list|check
 ├── imports.py         # kagan import github (subgroup)
 └── web.py             # kagan web (dashboard wrapper)
 ```
@@ -59,7 +58,7 @@ src/kagan/cli/
 | `reset`    | Reset database/state                         | `--force` to skip confirmation           |
 | `update`   | Self-update via pipx/pip                     | `--check-only`, `--prerelease`           |
 | `tools`    | LLM tool utilities                           | Subgroup: `enhance`                      |
-| `plugins`  | Plugin management                            | Subgroup: `sync`, `list`, `check`        |
+
 | `import`   | Import from external sources                 | Subgroup: `github`                       |
 | `serve`    | Start HTTP API server                        | Blocks until stopped                     |
 | `web`      | Start server + open browser                  | Convenience wrapper around `serve`       |

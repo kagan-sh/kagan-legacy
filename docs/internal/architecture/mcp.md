@@ -34,7 +34,7 @@ There should be one obvious way to do it.
 
 1. **One `MCPServer` instance** — created with lifespan that owns a `KaganCore`
 1. **Tools are plain functions** — `@mcp.tool()` decorator, type hints drive the schema
-1. **Toolsets group by domain** — one file per domain (tasks, sessions, projects, review, settings, personas, diagnostics, plugins)
+1. **Toolsets group by domain** — one file per domain (tasks, sessions, projects, review, settings, personas, diagnostics, integrations)
 1. **Access control is a filter** — tools registered once, filtered at registration time
 1. **python-sdk is the framework** — no wrapper abstractions over `MCPServer`
 1. **STDIO transport only** — hosts launch `kagan mcp` as a subprocess
@@ -67,10 +67,10 @@ sessions.py settings.py personas.py
   verify_step               persona_trust
   checkpoint_create
   insight_add
-toolsets/   toolsets/
-diagnostics.py plugins.py
-  audit_list    plugins_sync
-                plugins_preflight
+toolsets/      toolsets/
+diagnostics.py integrations.py
+  audit_list     integration_sync
+               integration_preflight
                 │
                 ▼ (lifespan context)
         ┌───────────────┐
@@ -101,7 +101,7 @@ src/kagan/server/mcp/
     ├── settings.py    # settings_get, settings_set
     ├── personas.py    # persona_inspect, persona_import, persona_export, persona_trust
     ├── diagnostics.py # audit_list, diagnostics_get_instrumentation
-    └── plugins.py     # plugins_preview, plugins_sync, plugins_preflight
+    └── integrations.py  # integration_preview, integration_sync, integration_preflight
 ```
 
 ______________________________________________________________________

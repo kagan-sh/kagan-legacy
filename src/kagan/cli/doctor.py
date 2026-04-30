@@ -19,7 +19,7 @@ from kagan.core._environment_checks import (
 )
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import KaganError
-from kagan.core.plugins import PluginManager
+from kagan.core.integrations import all_enabled
 
 
 @dataclass(frozen=True)
@@ -178,9 +178,16 @@ def _collapse_backend_checks(
     return [*other_checks, summary_check, *detail_checks]
 
 
-async def _load_and_collect_plugin_checks(manager: PluginManager) -> list[PreflightCheckResult]:
-    await manager.load()
-    return manager.preflight()
+def _collect_integration_checks() -> list[PreflightCheckResult]:
+    """Collect preflight checks from all enabled integrations."""
+    try:
+        checks: list[PreflightCheckResult] = []
+        for integration in all_enabled():
+            checks.extend(integration.preflight())
+        return checks
+    except (ImportError, KaganError, RuntimeError):
+        logger.opt(exception=True).debug("Integration preflight collection failed")
+        return []
 
 
 def _collect_doctor_checks() -> list[DoctorCheck]:
@@ -212,23 +219,18 @@ def _collect_doctor_checks() -> list[DoctorCheck]:
                 )
             )
 
-        try:
-            plugin_manager = PluginManager(client)
-            plugin_checks = run_async(_load_and_collect_plugin_checks(plugin_manager))
-            for pc in plugin_checks:
-                name = pc.name.replace("_", " ")
-                checks.append(
-                    DoctorCheck(
-                        name=name,
-                        status=str(pc.status),
-                        message=pc.message,
-                        fix_hint=pc.fix_hint,
-                        verify_hint=_verify_hint(name),
-                        category="plugin",
-                    )
+        for pc in _collect_integration_checks():
+            name = pc.name.replace("_", " ")
+            checks.append(
+                DoctorCheck(
+                    name=name,
+                    status=str(pc.status),
+                    message=pc.message,
+                    fix_hint=pc.fix_hint,
+                    verify_hint=_verify_hint(name),
+                    category="integration",
                 )
-        except (ImportError, KaganError, RuntimeError):
-            logger.opt(exception=True).debug("Plugin preflight collection failed")
+            )
     finally:
         close = getattr(client, "close", None)
         if callable(close):
@@ -338,7 +340,7 @@ def run_doctor_check_for_backend(backend_name: str) -> DoctorCheck | None:
 
     Does NOT call check_agent_backends() or list_available_backends().
     Exactly one shutil.which() call fires, for the named backend only.
-    No environment, plugin, or IDE checks are invoked.
+    No environment, integration, or IDE checks are invoked.
 
     FAIL (not WARN) is deliberate here: this is called after an install
     attempt. If the binary is still missing, that is a hard failure for

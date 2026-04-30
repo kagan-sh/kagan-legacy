@@ -105,13 +105,13 @@ Review semantics:
 | `audit_list(...)`                   | `read-only` | List recent audit log entries                 |
 | `diagnostics_get_instrumentation()` | `read-only` | Return active sessions, DB stats (opt-in only) |
 
-### Plugin tools (`toolsets/plugins.py`)
+### Integration tools (`toolsets/integrations.py`)
 
-| Tool                     | Annotation    | Purpose                                  |
-| ------------------------ | ------------- | ---------------------------------------- |
-| `plugins_preview(...)`   | `read-only`   | Preview plugin import results            |
-| `plugins_sync(...)`      | `destructive` | Sync issues via plugin, returns counts   |
-| `plugins_preflight(...)` | `read-only`   | Check plugin prerequisites and readiness |
+| Tool                        | Annotation    | Purpose                                      |
+| --------------------------- | ------------- | -------------------------------------------- |
+| `integration_preview(...)`  | `read-only`   | Preview integration import results           |
+| `integration_sync(...)`     | `destructive` | Sync issues via integration, returns counts  |
+| `integration_preflight(...)`| `read-only`   | Check integration prerequisites and readiness|
 
 ### Analytics tools (`toolsets/analytics.py`)
 
@@ -330,8 +330,8 @@ same orchestrator-scoped MCP tool set.
 
 | Tier       | Visible tools |
 | ---------- | ------------- |
-| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `plugins_preflight`, `plugins_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`, `analytics_backend_stats`, `analytics_session_timeline`, `analytics_export`) |
-| `default`  | Orchestrator-scope tools (worker tools plus `task_create`, `task_update`, `task_delete`, `run_start`, `review_decide`, `review_merge`, `review_rebase`, `review_verdict`, `review_clear_verdicts`, `project_list`, `project_setup`, `project_update`, `settings_set`, `audit_list`, `plugins_sync`, `persona_inspect`, `persona_import`, `persona_export`, `persona_trust`, `insight_remove`) |
+| `readonly` | Worker-scope tools (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `integration_preflight`, `integration_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`, `analytics_backend_stats`, `analytics_session_timeline`, `analytics_export`) |
+| `default`  | Orchestrator-scope tools (worker tools plus `task_create`, `task_update`, `task_delete`, `run_start`, `review_decide`, `review_merge`, `review_rebase`, `review_verdict`, `review_clear_verdicts`, `project_list`, `project_setup`, `project_update`, `settings_set`, `audit_list`, `integration_sync`, `persona_inspect`, `persona_import`, `persona_export`, `persona_trust`, `insight_remove`) |
 | `admin`    | Alias of `default` for MCP; currently exposes the same tool surface |
 
 Unregistered tools are invisible to the host — it never knows they exist.

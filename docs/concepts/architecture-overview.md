@@ -79,9 +79,9 @@ Interactive runs open in your preferred editor or terminal multiplexer:
 
 Set globally via `attached_launcher`, or override per task.
 
-## Plugins
+## Integrations
 
-GitHub import is a native feature. A plugin system exists for third-party integrations but is early-stage — see [Plugins](../reference/plugins.md) for current status and how to request new integrations.
+GitHub import is a native integration ([guide](../guides/github.md)). New trackers (Jira, Linear, …) are added as new modules under `kagan.core.integrations`; there is no plugin system.
 
 ## Data
 

@@ -110,6 +110,7 @@ async def _import_github(
         )
         click.echo(
             f"Import complete: {result.created} created, "
+            f"{result.updated} updated, "
             f"{result.skipped} skipped, {len(result.errors)} errors"
         )
         for err in result.errors:

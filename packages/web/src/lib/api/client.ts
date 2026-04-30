@@ -584,7 +584,10 @@ export class KaganApiClient {
     qs.set('project_id', input.projectId);
     qs.set('q', input.q);
     if (input.limit !== undefined) qs.set('limit', String(input.limit));
-    return this.request<Mention[]>(`/api/mentions/search?${qs.toString()}`);
+    const envelope = await this.request<{ mentions: Mention[]; total: number }>(
+      `/api/mentions/search?${qs.toString()}`,
+    );
+    return envelope.mentions;
   }
 
   // -- Analytics -------------------------------------------------------------

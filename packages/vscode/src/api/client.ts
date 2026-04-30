@@ -439,12 +439,15 @@ export class KaganClient {
   }
 
   /** GET /api/mentions/search?project_id=&q=&limit= */
-  searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
+  async searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
     const params = new URLSearchParams();
     params.set("project_id", input.projectId);
     params.set("q", input.q);
     if (input.limit !== undefined) params.set("limit", String(input.limit));
-    return this.get<Mention[]>(`/api/mentions/search?${params.toString()}`);
+    const envelope = await this.get<{ mentions: Mention[]; total: number }>(
+      `/api/mentions/search?${params.toString()}`,
+    );
+    return envelope.mentions;
   }
 
   /** GET /api/integrations/github/preflight */

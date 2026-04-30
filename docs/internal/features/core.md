@@ -155,3 +155,17 @@ ______________________________________________________________________
 - Three MCP tools expose analytics: `analytics_backend_stats`, `analytics_session_timeline`, `analytics_export`
 - Export respects the same project-scoping as other operations (per active project)
 - Analytics queries are read-only; no effect on task state or events
+
+______________________________________________________________________
+
+## 14. GitHub Integration
+
+- Import open / closed / all GitHub issues into a project as kagan tasks; idempotent (re-runs skip already-imported issues, update existing ones with newer GitHub `updatedAt`)
+- Task ↔ issue link stored on `Task.github_issue` as `<owner>/<repo>#<number>`
+- Bidirectional metadata sync: title, body (verbatim — no scaffolding injected into description), priority labels, acceptance criteria
+- Acceptance criteria sync via a tagged comment (`<!-- kagan:acceptance-criteria -->`); first import seeds criteria from `- [ ]` / `- [x]` lines in the issue body, subsequent edits read/write the tagged comment instead of rewriting the body
+- Status lifecycles are decoupled — moving a task to DONE does not close the issue; closing the issue does not change task status
+- Create-and-link at task creation time: `github_issue` accepts `none` / `<number>` / `owner/repo#<number>` / `new` (creates the issue from task title + description)
+- `#`-mention autocomplete (dual-source) — typing `#` in any kagan text field opens a typeahead listing matching kagan tasks (local DB) and GitHub issues (`gh issue list --search`); selecting inserts `kagan#<short_id>` or `#<number>`
+- Cross-client parity: import + create-and-link + `#`-mention reachable from CLI, TUI, web, VS Code, MCP, chat
+- Auth via `gh` CLI — no token plumbing

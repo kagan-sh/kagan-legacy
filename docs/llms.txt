@@ -16,14 +16,14 @@ Kagan runs coding agents (Claude Code, Codex, Gemini CLI, and 11 more) in isolat
 - [MCP Setup](https://docs.kagan.sh/guides/mcp-setup/): Editor integration via MCP
 - [Web Dashboard](https://docs.kagan.sh/guides/web-dashboard/): Browser-based companion surface
 - [VS Code Extension](https://docs.kagan.sh/guides/vscode-extension/): VS Code companion surface
-- [GitHub Import](https://docs.kagan.sh/guides/github/): Import issues from GitHub
+- [GitHub integration](https://docs.kagan.sh/guides/github/): Two-way metadata sync (title, body, labels, criteria), create-and-link, `#`-mention autocomplete; status lifecycles stay independent
 - [GitHub Models](https://docs.kagan.sh/guides/github-models/): Use 40+ LLMs for free via GitHub Models
 - [Remote Access](https://docs.kagan.sh/guides/remote-access/): Access Kagan from web or phone
 - [CLI Reference](https://docs.kagan.sh/reference/cli/): All CLI commands and flags
 - [Configuration](https://docs.kagan.sh/reference/configuration/): Config.toml reference
 - [Keybindings](https://docs.kagan.sh/reference/keybindings/): TUI keyboard shortcuts
 - [MCP Tools](https://docs.kagan.sh/reference/mcp-tools/): Full MCP tool catalog (23+ tools)
-- [Integrations](https://docs.kagan.sh/guides/github/): GitHub import and future trackers
+- [Integrations](https://docs.kagan.sh/guides/github/): GitHub two-way sync; future: Jira, Linear
 - [Troubleshooting](https://docs.kagan.sh/troubleshooting/): Common issues and fixes
 
 ## Links

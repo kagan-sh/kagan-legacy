@@ -84,7 +84,7 @@ ______________________________________________________________________
 | Use chat REPL or TUI overlay  | [Chat guide](guides/chat.md)                               |
 | Understand ACP chat sessions  | [ACP session lifecycle](guides/acp-session-lifecycle.md)   |
 | Work across multiple repos    | [MCP setup — Multi-repo](guides/mcp-setup.md#multi-repo)   |
-| Import tasks from GitHub      | [Import from GitHub](guides/github.md)                     |
+| Sync tasks with GitHub Issues | [GitHub integration](guides/github.md)                     |
 | Use the web dashboard         | [Web dashboard](guides/web-dashboard.md)                   |
 | Install the VS Code extension | [VS Code extension](guides/vscode-extension.md)            |
 | View analytics & metrics      | [Analytics](guides/analytics.md)                           |

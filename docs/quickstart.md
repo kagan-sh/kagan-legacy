@@ -36,7 +36,7 @@ If your project already has GitHub issues, bring them in as tasks:
 kagan import github --repo owner/repo
 ```
 
-See [Import from GitHub](guides/github.md) for the full guide (TUI flow, labels, filtering).
+After import, title / body / labels / acceptance criteria stay synced both ways. Status lifecycles stay independent — closing a task in Kagan does not close the issue, and vice versa. See [GitHub integration](guides/github.md) for create-and-link and `#`-mention autocomplete.
 
 ## 3. Create and run a task
 

@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.16 (2026-04-30)
+
+
+
+
+### Features
+
+- **integrations**: Native GitHub integration
+  ([`4b6b6e0`](https://github.com/kagan-sh/kagan/commit/4b6b6e0e12bfabd4cc2a193f619b030386af47cb))
+
+
+
+
+
 ## v0.19.0-beta.15 (2026-04-28)
 
 

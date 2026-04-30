@@ -158,6 +158,7 @@ def test_slash_command_registry_is_canonical() -> None:
     assert names == [
         "agents",
         "analytics",
+        "approvals",
         "clear",
         "delete",
         "exit",

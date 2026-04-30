@@ -69,6 +69,9 @@ class ToolbarState:
     workspace_label: str = ""
     is_streaming: bool = False
     yolo: bool = False
+    pending_approvals: int = 0
+    current_tool: str = ""
+    token_used_k: float | None = None
 
 
 _TOOLBAR_STATE = ToolbarState()
@@ -505,11 +508,16 @@ def _bottom_toolbar() -> FormattedText:
         status_right_parts.append("YOLO")
     if _TOOLBAR_STATE.agent_backend:
         status_right_parts.append(_TOOLBAR_STATE.agent_backend)
-    if _TOOLBAR_STATE.context_pct is not None:
+    if _TOOLBAR_STATE.pending_approvals > 0:
+        status_right_parts.append(f"⚠ {_TOOLBAR_STATE.pending_approvals} approval(s) pending")
+    if _TOOLBAR_STATE.current_tool:
+        status_right_parts.append(f"tool: {_TOOLBAR_STATE.current_tool}")
+    if _TOOLBAR_STATE.token_used_k is not None:
+        status_right_parts.append(f"~{_TOOLBAR_STATE.token_used_k:.0f}k tok")
+    elif _TOOLBAR_STATE.context_pct is not None:
         status_right_parts.append(f"ctx {_TOOLBAR_STATE.context_pct:.0%}")
-    status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} msg")
-    if _TOOLBAR_STATE.turn_count != 1:
-        status_right_parts[-1] = f"{_TOOLBAR_STATE.turn_count} msgs"
+    msg_word = "msg" if _TOOLBAR_STATE.turn_count == 1 else "msgs"
+    status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} {msg_word}")
     status_right = " · ".join(status_right_parts)
 
     shortcut_left = _SHORTCUT_HINT_STREAMING if _TOOLBAR_STATE.is_streaming else _SHORTCUT_HINT_IDLE
@@ -599,16 +607,25 @@ def _get_prompt_session() -> PromptSession[str]:
     return _prompt_session
 
 
-WAVE_FRAMES = (
-    "ᘚᘚᘚᘚ",
-    "ᘛᘚᘚᘚ",
-    "ᘛᘛᘚᘚ",
-    "ᘛᘛᘛᘚ",
-    "ᘛᘛᘛᘛ",
-    "ᘚᘛᘛᘛ",
-    "ᘚᘚᘛᘛ",
-    "ᘚᘚᘚᘛ",
+def _ascii_spinner_active() -> bool:
+    """Return True when terminal cannot handle Unicode spinners."""
+    return bool(os.environ.get("NO_COLOR")) or os.environ.get("TERM", "") == "dumb"
+
+
+# Unicode frames (Canadian Syllabics) replaced with dots-style ASCII-safe fallback
+WAVE_FRAMES_UNICODE: tuple[str, ...] = (
+    "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
 )
+WAVE_FRAMES_ASCII: tuple[str, ...] = ("|", "/", "-", "\\")
+
+
+def _get_wave_frames() -> tuple[str, ...]:
+    return WAVE_FRAMES_ASCII if _ascii_spinner_active() else WAVE_FRAMES_UNICODE
+
+
+# WAVE_FRAMES is computed once at import time; callers that cache it will use
+# the resolved value.  Dynamic terminal detection happens in _get_wave_frames().
+WAVE_FRAMES = _get_wave_frames()
 
 
 def _write_boot_banner(

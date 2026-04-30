@@ -28,6 +28,16 @@ kagan
 
 First run shows a welcome screen. Open or create a project from the current directory. The board appears: BACKLOG → IN_PROGRESS → REVIEW → DONE.
 
+## Import existing issues (optional)
+
+If your project already has GitHub issues, bring them in as tasks:
+
+```bash
+kagan import github --repo owner/repo
+```
+
+After import, title / body / labels / acceptance criteria stay synced both ways. Status lifecycles stay independent — closing a task in Kagan does not close the issue, and vice versa. See [GitHub integration](guides/github.md) for create-and-link and `#`-mention autocomplete.
+
 ## 3. Create and run a task
 
 Press `n` to create a task. Give it a title and description — include acceptance criteria if you want AI-assisted review. Press `Ctrl+S` to save. The task appears in BACKLOG.

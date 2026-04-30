@@ -27,6 +27,7 @@ async def test_session_resume_modal_opens_and_resumes_project(
 
     driver = await KaganDriver.boot(tmp_path)
     project_id = await driver.create_project("Resume Project")
+    await driver.settings_update({"open_last_project_on_startup": "true"})
     assert driver._ctx is not None
     await save_chat_session(
         cast("Any", driver._ctx),

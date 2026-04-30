@@ -160,6 +160,15 @@ async def is_git_repo(repo_path: str | Path) -> bool:
     return bool(stdout)
 
 
+async def find_root(path: str | Path) -> Path | None:
+    """Return the containing git worktree root for *path*, if one exists."""
+    target = Path(path).expanduser().resolve()
+    if not target.exists() or not target.is_dir():
+        return None
+    stdout, _ = await _run_git("rev-parse", "--show-toplevel", cwd=target, check=False)
+    return Path(stdout).resolve() if stdout else None
+
+
 async def current_branch(repo_path: str | Path) -> str | None:
     repo = Path(repo_path)
     stdout, _ = await _run_git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=repo, check=False)

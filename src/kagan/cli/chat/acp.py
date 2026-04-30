@@ -65,6 +65,42 @@ _acp_process_exit_hint = acp_process_exit_hint
 _friendly_acp_error_message = friendly_acp_error_message
 
 
+def _is_mcp_server_unsupported_error(error: object) -> bool:
+    raw = str(error).lower()
+    return (
+        "mcp" in raw
+        and "server" in raw
+        and ("not implemented" in raw or "unsupported" in raw)
+    )
+
+
+async def _new_session_with_mcp_fallback(
+    conn: Any,
+    *,
+    cwd: str,
+    mcp_servers: list[Any],
+    timeout_s: float,
+    agent_backend: str,
+) -> Any:
+    try:
+        return await asyncio.wait_for(
+            conn.new_session(cwd=cwd, mcp_servers=mcp_servers),
+            timeout=timeout_s,
+        )
+    except acp.RequestError as exc:
+        if not mcp_servers or not _is_mcp_server_unsupported_error(exc):
+            raise
+        logger.warning(
+            "{} rejected ACP MCP server registration; retrying chat session without "
+            "registered MCP tools",
+            agent_backend,
+        )
+        return await asyncio.wait_for(
+            conn.new_session(cwd=cwd, mcp_servers=[]),
+            timeout=timeout_s,
+        )
+
+
 class _CaptureACPClient(ACPClientBase):
     def __init__(
         self,
@@ -257,9 +293,12 @@ async def run_orchestrator_turn(
                 ]
 
             try:
-                sess = await asyncio.wait_for(
-                    conn.new_session(cwd=str(resolved_cwd), mcp_servers=mcp_servers),
-                    timeout=timeout_s,
+                sess = await _new_session_with_mcp_fallback(
+                    conn,
+                    cwd=str(resolved_cwd),
+                    mcp_servers=mcp_servers,
+                    timeout_s=timeout_s,
+                    agent_backend=agent_backend,
                 )
             except TimeoutError as exc:
                 early_exit = await _acp_process_exit_message(

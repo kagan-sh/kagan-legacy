@@ -20,6 +20,8 @@ import {
   type TaskFormValues,
   useBackendOptions,
   useCriteriaList,
+  useGithubRepoSlug,
+  resolveGithubIssue,
   TaskFormFields,
 } from '@/components/board/task-form';
 
@@ -35,15 +37,17 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
   const [submitting, setSubmitting] = useState(false);
   const backends = useBackendOptions(open);
   const criteriaList = useCriteriaList();
+  const githubRepoSlug = useGithubRepoSlug(open);
 
   const {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<TaskFormValues>({
     resolver: zodResolver(taskSchema),
-    defaultValues: { title: '', description: '', priority: 'MEDIUM', agent_backend: '', launcher: '', base_branch: '' },
+    defaultValues: { title: '', description: '', priority: 'MEDIUM', agent_backend: '', launcher: '', base_branch: '', github_issue_mode: 'none' },
   });
 
   useEffect(() => {
@@ -77,6 +81,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         launcher: data.launcher || undefined,
         base_branch: data.base_branch?.trim() || undefined,
         acceptance_criteria: criteriaList.criteria,
+        github_issue: resolveGithubIssue(data),
       });
 
       toast.success('Task updated');
@@ -100,6 +105,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <TaskFormFields
             register={register}
+            control={control}
             errors={errors}
             backends={backends}
             criteria={criteriaList.criteria}
@@ -107,6 +113,7 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
             onCriterionInputChange={criteriaList.setInput}
             onAddCriterion={criteriaList.add}
             onRemoveCriterion={criteriaList.remove}
+            githubRepoSlug={githubRepoSlug}
             idPrefix="edit-"
           />
           <div className="flex justify-end gap-2 pt-2">

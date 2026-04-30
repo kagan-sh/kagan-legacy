@@ -37,6 +37,7 @@ class CreateTaskRequest(_CriteriaMixin):
     agent_backend: str | None = Field(default=None, max_length=255)
     launcher: str | None = Field(default=None, max_length=255)
     repo_id: str | None = Field(default=None, max_length=255)
+    github_issue: str | None = Field(default=None, max_length=255)
 
 
 class UpdateTaskRequest(_CriteriaMixin):
@@ -47,6 +48,7 @@ class UpdateTaskRequest(_CriteriaMixin):
     agent_backend: str | None = Field(default=None, max_length=255)
     launcher: str | None = Field(default=None, max_length=255)
     repo_id: str | None = Field(default=None, max_length=255)
+    github_issue: str | None = Field(default=None, max_length=255)
 
 
 class UpdateTaskStatusRequest(BaseModel):

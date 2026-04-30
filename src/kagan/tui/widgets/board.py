@@ -174,7 +174,10 @@ class BoardColumn(Vertical):
 
     def _empty_message(self) -> tuple[str, str]:
         if self.status == TaskStatus.BACKLOG:
-            return ("No backlog tasks", "Capture upcoming work here.")
+            return (
+                "No backlog tasks",
+                "Capture work here, or press Ctrl+Shift+P and run 'github import'.",
+            )
         if self.status == TaskStatus.IN_PROGRESS:
             return ("No active runs", "Launch a task to see progress.")
         if self.status == TaskStatus.REVIEW:

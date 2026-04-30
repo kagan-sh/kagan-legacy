@@ -39,6 +39,7 @@ class _FakeTasksClient:
         agent_backend: str | None = None,
         launcher: str | None = None,
         repo_id: str | None = None,
+        github_issue: str | None = None,
     ) -> Any:
         self._seq += 1
         task = Task(
@@ -53,6 +54,7 @@ class _FakeTasksClient:
             agent_backend=agent_backend,
             launcher=launcher,
             repo_id=repo_id,
+            github_issue=github_issue,
             review_approved=False,
         )
         self._tasks[task.id] = task
@@ -115,6 +117,25 @@ def _ctx(
         ),
         opts=opts or ServerOptions(),
     )
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_without_active_project_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mcp = make_api_server()
+    tasks = _FakeTasksClient()
+    monkeypatch.setattr(
+        server_helpers,
+        "get_server_context",
+        lambda _mcp: _ctx(tasks),
+    )
+
+    endpoint = get_http_endpoint(mcp, "/api/tasks", "GET")
+    body = json_body(await endpoint(make_request("GET", "/api/tasks")))
+
+    assert body["ok"] is True
+    assert body["data"] == []
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,29 @@ def _is_enabled(value: str | None, *, default: bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _any_backend_available(checks: list[DoctorCheck]) -> bool:
+    backend_detail = [
+        c
+        for c in checks
+        if c.category == "backend" and c.name.startswith(("backend:", "agent backend:"))
+    ]
+    if backend_detail:
+        return any(c.status == "pass" for c in backend_detail)
+    backend_summary = [
+        c
+        for c in checks
+        if c.category == "backend" and c.name in {"agent backends", "agent backend"}
+    ]
+    if not backend_summary:
+        return True
+    return any(
+        c.category == "backend"
+        and c.status == "pass"
+        and c.name in {"agent backends", "agent backend"}
+        for c in backend_summary
+    )
+
+
 class KaganApp(App[None]):
     BINDINGS = APP_BINDINGS
 
@@ -116,6 +139,7 @@ class KaganApp(App[None]):
 
     async def _route_startup(self) -> None:
         checks = self._startup_checks
+        pending_warning: str | None = None
         if checks is not None and len(checks) > 0:
             has_fail = any(c.status == "fail" for c in checks)
             has_warn = any(c.status == "warn" for c in checks)
@@ -132,37 +156,38 @@ class KaganApp(App[None]):
                 )
             if has_fail:
                 self.push_screen(
-                    DoctorModal(checks),
+                    DoctorModal(checks, allow_skip=_any_backend_available(checks)),
                     callback=self._on_doctor_modal_dismissed,
                 )
                 return
             if has_warn:
                 warn_count = sum(1 for c in checks if c.status == "warn")
-                self.push_screen("kanban-screen")
                 noun = "check" if warn_count == 1 else "checks"
-                self.notify(
+                pending_warning = (
                     f"Degraded mode: {warn_count} doctor {noun} returned warnings. "
-                    "Run 'kagan doctor' to fix.",
-                    severity="warning",
-                    timeout=8,
+                    "Run 'kagan doctor' to fix."
                 )
-                return
 
         settings = await self.core.settings.get()
         last_project_id = settings.get("ui.last_project_id")
-        if last_project_id:
+        open_last = _is_enabled(settings.get("open_last_project_on_startup"), default=False)
+        if open_last and last_project_id:
             try:
                 project = await self.core.projects.get(last_project_id)
             except NotFoundError:
                 await self.core.settings.set({"ui.last_project_id": None})
-                self.push_screen("kanban-screen")
-                return
             except KaganError as exc:
                 logger.warning("Failed to load last project: {}", exc)
+            else:
+                await self.activate_project(project)
                 self.push_screen("kanban-screen")
+                if pending_warning:
+                    self.notify(pending_warning, severity="warning", timeout=8)
                 return
-            await self.activate_project(project)
-        self.push_screen("kanban-screen")
+
+        self.push_screen(OnboardingFlow(mode="project-picker", dismissible=False))
+        if pending_warning:
+            self.notify(pending_warning, severity="warning", timeout=8)
 
     def _on_doctor_modal_dismissed(self, _skipped: bool) -> None:
         """Called when DoctorModal is dismissed (user clicked Skip anyway)."""

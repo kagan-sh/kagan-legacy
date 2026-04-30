@@ -52,6 +52,7 @@ export interface TaskResponse {
   priority: string;
   base_branch?: string | null;
   repo_id?: string | null;
+  github_issue?: string | null;
   acceptance_criteria?: AcceptanceCriterionResponse[];
   agent_backend?: string | null;
   launcher?: string | null;
@@ -88,6 +89,17 @@ export interface RepositoryResponse {
   path: string;
   default_branch: string;
   selected?: boolean;
+}
+
+export interface ProjectFolderResolutionResponse {
+  path: string;
+  repo_path: string;
+  suggested_project_name: string;
+  is_git_repo: boolean;
+  git_root?: string | null;
+  existing_project_id?: string | null;
+  existing_project_name?: string | null;
+  existing_repo_id?: string | null;
 }
 
 export interface EventResponse {
@@ -184,4 +196,24 @@ export interface FsBrowseResponse {
   separator: string;
   roots: string[];
   entries: FsEntryResponse[];
+}
+
+export interface IntegrationInfo {
+  id: string;
+  name: string;
+}
+
+export interface IntegrationSyncResult {
+  id: string;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors?: string[];
+}
+
+export interface MentionResponse {
+  source: string;
+  id: string;
+  title: string;
+  state?: string | null;
 }

@@ -10,7 +10,7 @@ import { ResizeHandle } from "@/components/layout/resize-handle";
 import { ChatSidePanel } from "@/components/session/chat-side-panel";
 import { OrchestratorChatPanel } from "@/components/session/orchestrator-chat-panel";
 import { SessionPicker } from "@/components/session/session-picker";
-import { PluginImportDialog } from "@/components/board/plugin-import-dialog";
+import { IntegrationImportDialog } from "@/components/board/integration-import-dialog";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { toast } from "sonner";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
@@ -26,7 +26,7 @@ import {
     clearRightRailDismissalAtom,
     dismissRightRailContextAtom,
     helpOverlayOpenAtom,
-    pluginImportOpenAtom,
+    integrationImportOpenAtom,
     rightRailChatSessionIdAtom,
     rightRailModeAtom,
     rightRailTaskIdAtom,
@@ -50,8 +50,8 @@ function AppLayout() {
     const setCommandOpen = useSetAtom(commandPaletteOpenAtom);
     const setHelpOverlayOpen = useSetAtom(helpOverlayOpenAtom);
     const setSessionPickerOpen = useSetAtom(sessionPickerOpenAtom);
-    const [pluginImportOpen, setPluginImportOpen] =
-        useAtom(pluginImportOpenAtom);
+    const [integrationImportOpen, setIntegrationImportOpen] =
+        useAtom(integrationImportOpenAtom);
     const [railMode, setRailMode] = useAtom(rightRailModeAtom);
     const railTaskId = useAtomValue(rightRailTaskIdAtom);
     const railChatSessionId = useAtomValue(rightRailChatSessionIdAtom);
@@ -490,9 +490,9 @@ function AppLayout() {
 
             <SessionPicker />
             <HelpOverlay />
-            <PluginImportDialog
-                open={pluginImportOpen}
-                onOpenChange={setPluginImportOpen}
+            <IntegrationImportDialog
+                open={integrationImportOpen}
+                onOpenChange={setIntegrationImportOpen}
             />
         </>
     );

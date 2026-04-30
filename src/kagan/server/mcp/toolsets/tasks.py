@@ -27,6 +27,7 @@ class _BatchTaskEntry(TypedDict, total=False):
     agent_backend: str | None
     launcher: str | None
     repo_id: str | None
+    github_issue: str | None
 
 
 def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
@@ -89,6 +90,7 @@ async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
         "repo_id": getattr(task, "repo_id", None),
+        "github_issue": getattr(task, "github_issue", None),
         "review_approved": approved,
     }
 
@@ -255,6 +257,7 @@ async def _task_create(
     agent_backend: str | None = None,
     launcher: str | None = None,
     repo_id: str | None = None,
+    github_issue: str | None = None,
 ) -> dict:
     """Create one or more tasks on the active board.
 
@@ -281,6 +284,7 @@ async def _task_create(
                 agent_backend=agent_backend,
                 launcher=launcher,
                 repo_id=repo_id,
+                github_issue=github_issue,
             )
         ]
 
@@ -306,6 +310,7 @@ async def _task_create(
                 agent_backend=entry.get("agent_backend"),
                 launcher=entry.get("launcher"),
                 repo_id=effective_repo_id,
+                github_issue=entry.get("github_issue"),
             )
             result = await _task_to_dict(task, app.client.engine)
             if app.bound_session_id is not None:
@@ -484,6 +489,33 @@ async def _task_wait(
     latest_by_id: dict[str, Any] = {}
 
     if resolve_when_any:
+        if statuses:
+            for task_id in resolved_task_ids:
+                latest = await app.client.tasks.get(task_id)
+                latest_by_id[task_id] = latest
+                if latest.status in statuses:
+                    resolved = [task_id]
+                    timed_out = False
+                    break
+            if resolved:
+                for task_id in resolved_task_ids:
+                    if task_id not in latest_by_id:
+                        latest_by_id[task_id] = await app.client.tasks.get(task_id)
+                pending_task_ids = [
+                    task_id for task_id in resolved_task_ids if task_id not in set(resolved)
+                ]
+                return {
+                    "task_ids": resolved_task_ids,
+                    "tasks": [
+                        {"task_id": task_id, "status": latest_by_id[task_id].status.value}
+                        for task_id in resolved_task_ids
+                    ],
+                    "resolved_task_ids": resolved,
+                    "pending_task_ids": pending_task_ids,
+                    "resolve_when_any": resolve_when_any,
+                    "timed_out": False,
+                }
+
         waiters = {
             task_id: asyncio.create_task(
                 app.client.tasks.wait_for_completion(

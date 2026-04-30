@@ -138,10 +138,8 @@ tests/
 │   ├── test_server.py                   # Health endpoint
 │   ├── test_sse_polling.py              # Cross-process DB polling
 │   └── test_web_ui.py                   # SPA static file serving
-├── plugins/                             # kagan.plugins (behavioral)
-│   ├── test_plugin_lifecycle.py          # Manager load/register/unregister, discovery
-│   ├── test_github_import.py            # GitHub sync: create, skip, re-import, labels
-│   └── test_github_integrations.py      # Slug canonicalization, state normalization, URL parsing
+├── integrations/                        # kagan.core.integrations (behavioral)
+│   └── test_github.py                    # GitHub sync: preflight, preview, create, skip, re-import, labels
 └── helpers/                             # DSL: KaganDriver, FakeAgent, fixtures
 ```
 

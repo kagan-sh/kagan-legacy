@@ -21,6 +21,7 @@ from kagan.tui.keybindings import (
     TOOL_CALL_VIEW_BINDINGS,
     USER_INPUT_BINDINGS,
 )
+from kagan.tui.widgets._mention_links import linkify_mentions
 
 ChunkKind = Literal["assistant", "thought", "note", "user"]
 AgentChunkKind = Literal["assistant", "thought", "note"]
@@ -344,8 +345,15 @@ class StreamingOutput(Vertical):
     _PRUNE_LOW_MARK: int = 100
     _MAX_LINE_HISTORY: int = 150
 
-    def __init__(self, *, id: str | None = None, classes: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        id: str | None = None,
+        classes: str | None = None,
+        github_repo_slug: str | None = None,
+    ) -> None:
         super().__init__(id=id, classes=classes)
+        self._github_repo_slug: str | None = github_repo_slug
         self._lines: OrderedDict[int, _Line] = OrderedDict()
         self._line_order_by_key: dict[str, int] = {}
         self._line_key_by_widget_id: dict[int, str] = {}
@@ -434,7 +442,12 @@ class StreamingOutput(Vertical):
                 )
             return self._last_chunk
 
-        chunk = UserInputWidget(text) if kind == "user" else OutputChunk(text, kind=kind)
+        linked_text = (
+            linkify_mentions(text, github_repo_slug=self._github_repo_slug)
+            if kind != "user"
+            else text
+        )
+        chunk = UserInputWidget(text) if kind == "user" else OutputChunk(linked_text, kind=kind)
         line_key = f"chunk:{self._counter + 1}"
         self._push_line(chunk.rendered_text(), key=line_key)
         self._append_widget(chunk, line_key=line_key)

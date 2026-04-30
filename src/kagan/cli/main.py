@@ -337,13 +337,6 @@ def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
         _dispatch_surface_choice(ctx, choice)
 
 
-def _plugins_cli_enabled() -> bool:
-    import os
-
-    value = os.environ.get("KAGAN_ENABLE_PLUGIN_CLI", "0").strip().lower()
-    return value in {"1", "true", "yes", "on"}
-
-
 def _register_commands() -> None:
     _sanitize_startup_environment()
     if getattr(cli, "_commands_registered", False):
@@ -354,7 +347,6 @@ def _register_commands() -> None:
     from kagan.cli.imports import import_cmd
     from kagan.cli.list_projects import list_projects
     from kagan.cli.mcp import mcp
-    from kagan.cli.plugins import plugins
     from kagan.cli.reset import reset
     from kagan.cli.serve import serve
     from kagan.cli.tools import tools
@@ -373,8 +365,6 @@ def _register_commands() -> None:
     cli.add_command(update)
     cli.add_command(tools)
     cli.add_command(web)
-    if _plugins_cli_enabled():
-        cli.add_command(plugins)
 
     _sync_rich_click_groups(cli)
     cli._commands_registered = True

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { useAtomValue, useSetAtom } from 'jotai';
 import {
+  AlertCircle,
   FolderGit2,
   FolderOpen,
   GitBranch,
@@ -11,7 +12,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import type { WireProject, WireRepository } from '@/lib/api/types';
+import type {
+  ProjectFolderResolutionResponse,
+  WireProject,
+  WireRepository,
+} from '@/lib/api/types';
 import { isAuthenticatedAtom, retryHealthCheckAtom } from '@/lib/atoms/auth';
 import { projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { Button } from '@/components/ui/button';
@@ -42,6 +47,26 @@ interface ProjectWithRepos {
   repos: WireRepository[];
 }
 
+type CurrentFolderState =
+  | { status: 'loading' | 'unavailable' }
+  | { status: 'available'; resolution: ProjectFolderResolutionResponse };
+
+function pathName(path: string): string {
+  const normalized = path.replace(/[\\/]+$/, '');
+  return normalized.split(/[\\/]/).filter(Boolean).at(-1) ?? normalized;
+}
+
+function parentPath(path: string): string {
+  const normalized = path.replace(/[\\/]+$/, '');
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 1) return path;
+  return normalized.slice(0, Math.max(0, normalized.length - parts.at(-1)!.length - 1));
+}
+
+function selectedRepo(repos: WireRepository[]): WireRepository | null {
+  return repos.find((repo) => repo.selected) ?? repos[0] ?? null;
+}
+
 export function Component() {
   const navigate = useNavigate();
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
@@ -50,6 +75,7 @@ export function Component() {
   const [retrying, setRetrying] = useState(false);
   const [projects, setProjects] = useState<ProjectWithRepos[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentFolder, setCurrentFolder] = useState<CurrentFolderState>({ status: 'loading' });
 
   // Expanded project for multi-repo selection
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -92,6 +118,29 @@ export function Component() {
     loadProjects();
   }, [loadProjects]);
 
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .resolveProjectFolder()
+      .then((folder) => {
+        if (cancelled) return;
+        if (!folder?.repo_path) {
+          setCurrentFolder({ status: 'unavailable' });
+          return;
+        }
+        setCurrentFolder({
+          status: 'available',
+          resolution: folder,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentFolder({ status: 'unavailable' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const activateAndNavigate = useCallback(
     async (projectId: string) => {
       try {
@@ -131,6 +180,53 @@ export function Component() {
       }
     },
     [bumpProjectVersion, navigate],
+  );
+
+  const openResolvedFolder = useCallback(
+    async (resolution: ProjectFolderResolutionResponse) => {
+      if (resolution.existing_project_id) {
+        await apiClient.activateProject(resolution.existing_project_id);
+        if (resolution.existing_repo_id) {
+          await apiClient.selectProjectRepo(
+            resolution.existing_project_id,
+            resolution.existing_repo_id,
+          );
+        }
+        bumpProjectVersion((v) => v + 1);
+        navigate('/board');
+        return;
+      }
+
+      try {
+        const projectName = resolution.suggested_project_name || pathName(resolution.repo_path);
+        const created = await apiClient.createProject(projectName || 'New project');
+        const repo = await apiClient.addProjectRepo(created.id, resolution.repo_path);
+        await apiClient.selectProjectRepo(created.id, repo.id);
+        await apiClient.activateProject(created.id);
+        bumpProjectVersion((v) => v + 1);
+        toast.success(`Created ${created.name}`);
+        navigate('/board');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to open folder');
+      }
+    },
+    [bumpProjectVersion, navigate],
+  );
+
+  const openRepositoryPath = useCallback(
+    async (folderPath: string) => {
+      try {
+        const resolution = await apiClient.resolveProjectFolder(folderPath);
+        if (!resolution) {
+          toast.error('Could not inspect folder');
+          return;
+        }
+        await openResolvedFolder(resolution);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to open folder');
+      }
+    },
+    [openResolvedFolder],
   );
 
   // Keyboard shortcuts: 1-9 quick-open, n = new, o = open folder
@@ -187,28 +283,9 @@ export function Component() {
 
   const handleOpenFolder = useCallback(
     async (folderPath: string) => {
-      // Check if a project already owns this path
-      for (const { project, repos } of projects) {
-        if (repos.some((r) => r.path === folderPath)) {
-          await activateAndNavigate(project.id);
-          return;
-        }
-      }
-      // Infer project name from folder
-      const folderName = folderPath.split('/').filter(Boolean).at(-1) ?? 'New project';
-      try {
-        const created = await apiClient.createProject(folderName);
-        const repo = await apiClient.addProjectRepo(created.id, folderPath);
-        await apiClient.selectProjectRepo(created.id, repo.id);
-        await apiClient.activateProject(created.id);
-        bumpProjectVersion((v) => v + 1);
-        toast.success(`Created ${created.name}`);
-        navigate('/board');
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to open folder');
-      }
+      await openRepositoryPath(folderPath);
     },
-    [projects, activateAndNavigate, bumpProjectVersion, navigate],
+    [openRepositoryPath],
   );
 
   const handleDelete = useCallback(async () => {
@@ -281,7 +358,7 @@ export function Component() {
         </div>
 
         {/* Actions */}
-        <div className="mb-8 flex justify-center gap-3">
+        <div className="mb-6 flex flex-wrap justify-center gap-3">
           <Button onClick={() => setCreateOpen(true)} className="">
             <Plus className="size-4" />
             New Project
@@ -292,13 +369,51 @@ export function Component() {
           </Button>
         </div>
 
+        {currentFolder.status === 'available' && (
+          <div className="mb-6 border border-[color:var(--border-subtle)] bg-[color:var(--surface-1)] px-4 py-3 shadow-[var(--ambient-shadow)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-code text-[10px] uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+                  Server folder
+                </p>
+                <p className="mt-1 truncate text-sm font-medium">
+                  {currentFolder.resolution.existing_project_name
+                    ?? currentFolder.resolution.suggested_project_name
+                    ?? pathName(currentFolder.resolution.repo_path)}
+                </p>
+                <p className="mt-0.5 truncate font-code text-[11px] text-[var(--muted-foreground)]">
+                  {currentFolder.resolution.repo_path}
+                </p>
+                {!currentFolder.resolution.is_git_repo && (
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    No git repository detected. Kagan can initialize this folder when opened.
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openResolvedFolder(currentFolder.resolution)}
+                title="Open the folder where kg web was started"
+              >
+                {currentFolder.resolution.is_git_repo ? (
+                  <FolderGit2 className="size-4" />
+                ) : (
+                  <FolderOpen className="size-4" />
+                )}
+                Open Current Folder
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Project list */}
         {isEmpty ? (
           <div className=" bg-[color:var(--surface-1)] p-8 text-center shadow-[var(--ambient-shadow)]">
             <FolderGit2 className="mx-auto mb-3 size-8 text-[var(--muted-foreground)]" />
-            <h2 className="mb-1.5 text-sm font-semibold">Welcome to Kagan</h2>
+            <h2 className="mb-1.5 text-sm font-semibold">No projects yet</h2>
             <p className="text-xs text-[var(--muted-foreground)]">
-              Create a new project or open an existing repository folder to get started.
+              Open a repository folder on the server or create a project and attach a repo.
             </p>
           </div>
         ) : (
@@ -327,12 +442,34 @@ export function Component() {
                             <span className="ml-2 inline-block bg-[var(--primary)] px-1.5 py-0.5 font-code text-[9px] uppercase tracking-[0.16em] text-[var(--primary-foreground)]">Active</span>
                           )}
                         </p>
-                        <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                          {repos.length} repo{repos.length !== 1 ? 's' : ''}
-                          {repos[0] ? ` \u00B7 ${repos[0].default_branch}` : ''}
-                        </p>
+                        {selectedRepo(repos) ? (
+                          <>
+                            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                              <GitBranch className="size-3" />
+                              <span className="truncate">
+                                {selectedRepo(repos)!.name}
+                                {selectedRepo(repos)!.selected ? ' (selected)' : ''}
+                                {' · '}
+                                {selectedRepo(repos)!.default_branch}
+                              </span>
+                            </p>
+                            <p className="mt-0.5 truncate font-code text-[11px] text-[var(--muted-foreground)]">
+                              {selectedRepo(repos)!.path}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                            <AlertCircle className="size-3" />
+                            No repository attached
+                          </p>
+                        )}
                       </div>
                     </button>
+                    {repos.length > 1 && (
+                      <span className="hidden shrink-0 bg-[color:var(--surface-2)] px-2 py-1 font-code text-[10px] uppercase tracking-[0.14em] text-[var(--muted-foreground)] sm:inline-flex">
+                        {repos.length} repos
+                      </span>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon-xs"
@@ -361,7 +498,12 @@ export function Component() {
                         >
                           <GitBranch className="size-3 text-[var(--muted-foreground)]" />
                           <span className="flex-1 truncate">{repo.name}</span>
-                          <span className="text-[10px] text-[var(--muted-foreground)]">{repo.default_branch}</span>
+                          <span className="hidden min-w-0 flex-1 truncate font-code text-[10px] text-[var(--muted-foreground)] sm:inline">
+                            {parentPath(repo.path)}
+                          </span>
+                          <span className="text-[10px] text-[var(--muted-foreground)]">
+                            {repo.selected ? 'selected' : repo.default_branch}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -451,8 +593,7 @@ export function Component() {
           }
         }}
         title="Select repository"
-        description="Navigate to a git repository on the server filesystem."
-        gitOnly
+        description="Navigate to a folder on the server filesystem. Empty folders can be initialized as git repositories."
       />
 
       {/* Folder picker for "Open Folder" */}
@@ -461,8 +602,7 @@ export function Component() {
         onOpenChange={setFolderPickerOpen}
         onSelect={handleOpenFolder}
         title="Open folder"
-        description="Select a repository folder to open as a project."
-        gitOnly
+        description="Select a folder to open as a Kagan Project. Git roots are detected automatically."
       />
 
       {/* Delete confirmation */}

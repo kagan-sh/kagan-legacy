@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 async def _enter_project(pilot) -> None:
-    # App now starts directly on kanban — just give the bootstrap time to run.
+    # The board fixture opts into restoring the last project; wait for bootstrap.
     await pilot.pause()
     await pilot.pause()
 

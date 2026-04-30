@@ -6,10 +6,11 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Checkbox, Footer, Input, Label, Select, Static
+from textual.widgets import Checkbox, Footer, Input, Label, OptionList, Select, Static
 
 from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import list_available_backends, list_backend_specs
+from kagan.core.models import Project, Repository
 from kagan.tui.keybindings import SETUP_FLOW_BINDINGS
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ _LAUNCHER_OPTIONS = [
     ("Antigravity", "antigravity"),
 ]
 
-SetupMode = Literal["onboarding", "new-project", "open-folder"]
+SetupMode = Literal["onboarding", "project-picker", "new-project", "open-folder"]
 
 
 def _build_agent_backend_options() -> list[tuple[str, str]]:
@@ -53,30 +54,49 @@ _MODE_COPY: dict[SetupMode, dict[str, str]] = {
     "onboarding": {
         "title": "First-Time Setup",
         "subtitle": (
-            "Choose your defaults and create the first project. The default path is "
+            "Choose your defaults and create the first Kagan Project. The default path is "
             "Create -> Start -> Review -> Merge; attach stays available when you need it."
         ),
-        "project_hint": "Pick the name shown on Welcome and the Board.",
+        "project_hint": "Pick the Kagan Project name shown on the Board.",
+        "path_label": "Repository Folder",
         "repo_hint": (
-            "Optional. Link a repository now or add one later; Kagan uses it for "
-            "worktrees and reviews."
+            "Optional. Link a git folder as the Repository now or add one later; "
+            "Kagan uses it for worktrees and reviews."
         ),
         "action": "Continue to Kagan",
     },
+    "project-picker": {
+        "title": "Open Kagan Project",
+        "subtitle": (
+            "Pick an existing Kagan Project, open the current folder, or create a new Project."
+        ),
+        "project_hint": "Optional. Used when creating a new Kagan Project.",
+        "path_label": "Folder Path",
+        "repo_hint": (
+            "Defaults to the folder where Kagan was launched. Existing Projects linked to "
+            "this folder open directly."
+        ),
+        "action": "Open",
+    },
     "new-project": {
         "title": "New Project",
-        "subtitle": "Create a new project and optionally attach a repository.",
-        "project_hint": "Required. This is the name used across the TUI.",
+        "subtitle": "Create a new Kagan Project and optionally link a Repository.",
+        "project_hint": "Required. This Kagan Project name is used across the TUI.",
+        "path_label": "Repository Folder",
         "repo_hint": (
-            "Optional. Leave empty to create the project first and add repositories later."
+            "Optional. Leave empty to create the Project first and add repositories later."
         ),
         "action": "Create Project",
     },
     "open-folder": {
         "title": "Open Folder",
-        "subtitle": "Open an existing project by repo path or create a project around it.",
-        "project_hint": "Optional. If left empty, Kagan infers a project name from the folder.",
-        "repo_hint": "Required. Existing projects linked to this path open directly.",
+        "subtitle": (
+            "Open a folder. If it is already linked as a Repository, Kagan opens "
+            "that Project; otherwise it creates a Project around the folder."
+        ),
+        "project_hint": "Optional. If left empty, Kagan infers a Project name from the folder.",
+        "path_label": "Folder Path",
+        "repo_hint": "Required. Existing Projects linked to this folder open directly.",
         "action": "Open Folder",
     },
 }
@@ -90,13 +110,18 @@ class OnboardingFlow(ModalScreen[None]):
         *,
         mode: SetupMode = "onboarding",
         initial_repo_path: str | None = None,
+        dismissible: bool = True,
     ) -> None:
         super().__init__(id="setup-flow")
         self._is_creating = False
         self._mode: SetupMode = mode
         self._initial_repo_path = initial_repo_path
+        self._dismissible = dismissible
         self._last_inferred_name: str | None = None
         self._debounce_timer: asyncio.TimerHandle | None = None
+        self._projects: list[Project] = []
+        self._repos_by_project_id: dict[str, list[Repository]] = {}
+        self._resolved_repo_path: str | None = None
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -114,6 +139,15 @@ class OnboardingFlow(ModalScreen[None]):
                 yield Label(self._copy["subtitle"], id="setup-subtitle")
 
                 with VerticalScroll(id="onboarding-form"):
+                    with Vertical(id="setup-section-existing", classes="setup-section"):
+                        yield Label("Existing Projects", classes="setup-section-title")
+                        yield Label(
+                            "Select a Project to open it, or use the folder fields below.",
+                            classes="form-hint",
+                        )
+                        yield OptionList(id="setup-project-list")
+                        yield Static("", id="setup-project-detail")
+
                     with Vertical(id="setup-section-project", classes="setup-section"):
                         yield Label("Project", classes="setup-section-title")
                         yield Label("Project Name", classes="form-label")
@@ -123,10 +157,10 @@ class OnboardingFlow(ModalScreen[None]):
                             id="new-project-name",
                         )
 
-                        yield Label("Repository Path", classes="form-label")
+                        yield Label(self._copy["path_label"], classes="form-label")
                         yield Label(self._copy["repo_hint"], classes="form-hint")
                         yield Input(
-                            placeholder="/path/to/repo",
+                            placeholder="/path/to/folder",
                             id="new-project-repo-path",
                         )
 
@@ -177,8 +211,11 @@ class OnboardingFlow(ModalScreen[None]):
                             )
 
                 with Horizontal(id="setup-actions"):
+                    dismiss_hint = (
+                        "[bold]Esc[/] close" if self._dismissible else "[bold]Ctrl+Q[/] quit"
+                    )
                     yield Static(
-                        "[bold]Enter[/] continue  [bold]Tab[/] next field  [bold]Esc[/] close",
+                        f"[bold]Enter[/] continue  [bold]Tab[/] next field  {dismiss_hint}",
                         classes="modal-action-hint",
                     )
         yield Footer(show_command_palette=False)
@@ -190,14 +227,15 @@ class OnboardingFlow(ModalScreen[None]):
         default_agent = resolve_default_agent_backend(settings)
         if default_agent not in allowed_agents:
             default_agent = resolve_default_agent_backend({})
-        agent_select.value = default_agent
+        if agent_select.value != default_agent:
+            agent_select.value = default_agent
 
         attached_launcher = settings.get("attached_launcher", "tmux")
         launcher_select = self.query_one("#setup-attached-launcher", Select)
         allowed_launchers = {value for _, value in _LAUNCHER_OPTIONS}
-        launcher_select.value = (
-            attached_launcher if attached_launcher in allowed_launchers else "tmux"
-        )
+        launcher = attached_launcher if attached_launcher in allowed_launchers else "tmux"
+        if launcher_select.value != launcher:
+            launcher_select.value = launcher
 
         auto_review = settings.get("auto_review", "true").strip().lower()
         self.query_one("#setup-auto-review", Checkbox).value = auto_review not in {
@@ -212,7 +250,15 @@ class OnboardingFlow(ModalScreen[None]):
         if self._initial_repo_path:
             repo_input.value = self._initial_repo_path
             self._infer_project_name(self._initial_repo_path)
-        if self._mode == "open-folder":
+
+        if not self._initial_repo_path and self._mode in {"project-picker", "open-folder"}:
+            await self._prefill_current_folder()
+
+        await self._load_projects()
+
+        if self._projects and self._mode in {"project-picker", "onboarding"}:
+            self.query_one("#setup-project-list", OptionList).focus()
+        elif self._mode == "open-folder":
             repo_input.focus()
         else:
             name_input.focus()
@@ -236,6 +282,12 @@ class OnboardingFlow(ModalScreen[None]):
         if self._is_creating:
             return
 
+        focused = self.app.focused
+        if isinstance(focused, OptionList) and focused.id == "setup-project-list":
+            opened = await self._open_highlighted_project()
+            if opened:
+                return
+
         selected_agent = self.query_one("#setup-default-agent", Select).value
         allowed_agents = {value for _, value in _build_agent_backend_options()}
         default_agent = (
@@ -258,7 +310,7 @@ class OnboardingFlow(ModalScreen[None]):
                 return
 
         if self._mode == "open-folder" and not repo_path:
-            self.app.notify("Folder path is required to open a repository.", severity="error")
+            self.app.notify("Folder path is required for Open Folder.", severity="error")
             return
 
         if not name and candidate_path is not None:
@@ -271,26 +323,28 @@ class OnboardingFlow(ModalScreen[None]):
         try:
             await self._persist_settings(default_agent, attached_launcher, auto_review)
 
-            if self._mode == "open-folder" and candidate_path is not None:
-                existing_project = await self.kagan_app.core.projects.find_by_repo(
-                    str(candidate_path.resolve())
-                )
-                if existing_project is not None:
-                    await self.kagan_app.activate_project(existing_project)
-                    repo_id = await self._repo_id_for_path(
-                        existing_project.id, candidate_path.resolve()
+            repo_path_for_create: str | None = None
+            if candidate_path is not None:
+                resolution = await self.kagan_app.core.projects.inspect_folder(candidate_path)
+                self._resolved_repo_path = resolution.repo_path
+                if resolution.existing_project_id:
+                    existing_project = await self.kagan_app.core.projects.get(
+                        resolution.existing_project_id
                     )
-                    if repo_id is not None:
-                        await self.kagan_app.remember_selected_repo(repo_id)
-                    self.dismiss(None)
-                    self.app.switch_screen("kanban-screen")
+                    await self._open_project(
+                        existing_project,
+                        repo_id=resolution.existing_repo_id,
+                    )
                     return
+                repo_path_for_create = resolution.repo_path
+                if not name:
+                    name = resolution.suggested_project_name
 
-            repo_paths = [str(candidate_path)] if candidate_path is not None else None
+            repo_paths = [repo_path_for_create] if repo_path_for_create is not None else None
             project = await self.kagan_app.core.projects.create(name, repo_paths=repo_paths)
             repo = None
-            if candidate_path is not None:
-                repo_id = await self._repo_id_for_path(project.id, candidate_path.resolve())
+            if repo_path_for_create is not None:
+                repo_id = await self._repo_id_for_path(project.id, Path(repo_path_for_create))
                 if repo_id is not None:
                     repos = await self.kagan_app.core.projects.repos(project.id)
                     repo = next((item for item in repos if item.id == repo_id), None)
@@ -299,7 +353,7 @@ class OnboardingFlow(ModalScreen[None]):
             if repo is not None:
                 await self.kagan_app.remember_selected_repo(repo.id)
             self.dismiss(None)
-            self.app.switch_screen("kanban-screen")
+            self.app.push_screen("kanban-screen")
         except Exception as exc:  # quality-allow-broad-except
             self.app.notify(f"Unable to save setup: {exc}", severity="error")
         finally:
@@ -327,6 +381,89 @@ class OnboardingFlow(ModalScreen[None]):
                 return repo.id
         return None
 
+    async def _prefill_current_folder(self) -> None:
+        try:
+            resolution = await self.kagan_app.core.projects.inspect_folder(Path.cwd())
+        except Exception:  # quality-allow-broad-except
+            return
+        self._resolved_repo_path = resolution.repo_path
+        repo_input = self.query_one("#new-project-repo-path", Input)
+        name_input = self.query_one("#new-project-name", Input)
+        repo_input.value = resolution.repo_path
+        if not name_input.value.strip():
+            name_input.value = resolution.suggested_project_name
+            self._last_inferred_name = resolution.suggested_project_name
+
+    async def _load_projects(self) -> None:
+        option_list = self.query_one("#setup-project-list", OptionList)
+        section = self.query_one("#setup-section-existing", Vertical)
+        option_list.clear_options()
+        self._projects = await self.kagan_app.core.projects.list()
+        self._repos_by_project_id = {}
+
+        if not self._projects:
+            section.display = False
+            return
+
+        section.display = True
+        for project in self._projects:
+            try:
+                repos = await self.kagan_app.core.projects.repos(project.id)
+            except Exception:  # quality-allow-broad-except
+                repos = []
+            self._repos_by_project_id[project.id] = repos
+            option_list.add_option(self._project_label(project, repos))
+
+        highlighted = self._project_highlight_index()
+        option_list.highlighted = highlighted
+        self._update_project_detail(highlighted)
+
+    def _project_label(self, project: Project, repos: list[Repository]) -> str:
+        repo_count = len(repos)
+        selected = any(repo.path == self._resolved_repo_path for repo in repos)
+        indicator = "●" if selected else "○"
+        suffix = "repo" if repo_count == 1 else "repos"
+        repo_name = repos[0].name if repo_count == 1 else f"{repo_count} {suffix}"
+        return f"{indicator} {project.name}  {repo_name}"
+
+    def _project_highlight_index(self) -> int:
+        if self._resolved_repo_path is not None:
+            for index, project in enumerate(self._projects):
+                repos = self._repos_by_project_id.get(project.id, [])
+                if any(repo.path == self._resolved_repo_path for repo in repos):
+                    return index
+        return 0
+
+    def _update_project_detail(self, index: int | None) -> None:
+        detail = self.query_one("#setup-project-detail", Static)
+        if index is None or index < 0 or index >= len(self._projects):
+            detail.update("Select a Project to see linked repositories.")
+            return
+        project = self._projects[index]
+        repos = self._repos_by_project_id.get(project.id, [])
+        if not repos:
+            detail.update("No repositories linked. Opens the Project only.")
+            return
+        repo_lines = [f"{repo.name}: {repo.path}" for repo in repos[:3]]
+        if len(repos) > 3:
+            repo_lines.append(f"+ {len(repos) - 3} more")
+        detail.update("\n".join(repo_lines))
+
+    async def _open_highlighted_project(self) -> bool:
+        option_list = self.query_one("#setup-project-list", OptionList)
+        index = option_list.highlighted
+        if index is None or index < 0 or index >= len(self._projects):
+            return False
+        await self._open_project(self._projects[index])
+        return True
+
+    async def _open_project(self, project: Project, *, repo_id: str | None = None) -> None:
+        await self.kagan_app.activate_project(project)
+        if repo_id is not None:
+            await self.kagan_app.remember_selected_repo(repo_id)
+        self.dismiss(None)
+        self.app.push_screen("kanban-screen")
+
     def _infer_project_name(self, raw_path: str) -> None:
         if not raw_path.strip():
             return
@@ -341,7 +478,18 @@ class OnboardingFlow(ModalScreen[None]):
         name_input.value = inferred_name
         self._last_inferred_name = inferred_name
 
+    @on(OptionList.OptionSelected, "#setup-project-list")
+    async def _on_project_selected(self, _: OptionList.OptionSelected) -> None:
+        await self._open_highlighted_project()
+
+    @on(OptionList.OptionHighlighted, "#setup-project-list")
+    def _on_project_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        self._update_project_detail(event.option_index)
+
     async def action_dismiss(self, result: None = None) -> None:
+        if not self._dismissible:
+            self.app.notify("Open or create a Kagan Project to continue.", severity="warning")
+            return
         # Clean up debounce timer to prevent callbacks after dismissal
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()

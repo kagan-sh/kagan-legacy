@@ -1,8 +1,8 @@
 """Snapshot-style tests for DoctorModal startup routing.
 
 These tests verify the three visible states:
-1. All-green: no modal, kanban shown directly.
-2. WARN-only: kanban shown with a toast notification.
+1. All-green: no modal, project picker shown.
+2. WARN-only: project picker shown with a toast notification.
 3. FAIL: DoctorModal with N check rows visible.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from kagan.cli.doctor import DoctorCheck
+from tests.helpers.async_utils import wait_for
 
 pytestmark = [pytest.mark.tui, pytest.mark.snapshot]
 
@@ -26,11 +27,24 @@ def _make_check(name: str, status: str, fix_hint: str = "") -> DoctorCheck:
     )
 
 
-# ── State 1: all-green (no modal, kanban shown directly) ──────────────────
+async def _wait_for_setup_flow(app) -> None:
+    from textual.widgets._select import SelectOverlay
+
+    await wait_for(
+        lambda: (
+            app.screen.id == "setup-flow"
+            and bool(app.screen.query("#setup-project-list"))
+            and len(app.screen.query(SelectOverlay)) >= 2
+        ),
+        pump_delay=0.05,
+    )
 
 
-async def test_snapshot_all_green_routes_to_kanban(tmp_path) -> None:
-    """All-pass checks: KanbanScreen shown, no DoctorModal."""
+# ── State 1: all-green (no modal, project picker shown) ───────────────────
+
+
+async def test_snapshot_all_green_routes_to_project_picker(tmp_path) -> None:
+    """All-pass checks: project picker shown, no DoctorModal."""
     from kagan.tui import KaganApp
 
     all_pass_checks = [
@@ -39,22 +53,21 @@ async def test_snapshot_all_green_routes_to_kanban(tmp_path) -> None:
         _make_check("agent backend", "pass"),
     ]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=all_pass_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
-        assert app.screen.id == "kanban-screen"
+        assert app.screen.id == "setup-flow"
 
         # Confirm DoctorModal is NOT in screen stack
         screen_ids = [s.id for s in app.screen_stack]
         assert "doctor-modal" not in screen_ids
 
 
-# ── State 2: WARN-only (kanban shown, notification emitted) ───────────────
+# ── State 2: WARN-only (project picker shown, notification emitted) ───────
 
 
-async def test_snapshot_warn_only_routes_to_kanban(tmp_path) -> None:
-    """WARN-only checks: KanbanScreen shown, no blocking modal."""
+async def test_snapshot_warn_only_routes_to_project_picker(tmp_path) -> None:
+    """WARN-only checks: project picker shown, no blocking modal."""
     from kagan.tui import KaganApp
 
     warn_checks = [
@@ -62,11 +75,10 @@ async def test_snapshot_warn_only_routes_to_kanban(tmp_path) -> None:
         _make_check("git", "pass"),
     ]
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=warn_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
-        assert app.screen.id == "kanban-screen"
+        assert app.screen.id == "setup-flow"
 
         # No doctor-modal on stack
         screen_ids = [s.id for s in app.screen_stack]
@@ -317,7 +329,7 @@ async def test_snapshot_single_backend_available_default_fail(tmp_path) -> None:
 
 
 async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
-    """All-ready: default backend installed, all pass → kanban shown, no DoctorModal."""
+    """All-ready: default backend installed, all pass -> project picker, no DoctorModal."""
     from kagan.tui import KaganApp
 
     # Summary row PASS (default installed)
@@ -353,12 +365,11 @@ async def test_snapshot_all_ready_no_modal(tmp_path) -> None:
     all_checks = [*core_checks, summary_check, detail_claude, detail_codex]
 
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=all_checks)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        await pilot.pause()
+    async with app.run_test():
+        await _wait_for_setup_flow(app)
 
-        # No modal — all checks pass, land on kanban
-        assert app.screen.id == "kanban-screen"
+        # No modal: all checks pass, land on the project picker.
+        assert app.screen.id == "setup-flow"
 
         screen_ids = [s.id for s in app.screen_stack]
         assert "doctor-modal" not in screen_ids
@@ -402,11 +413,11 @@ async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> 
 
         modal: DoctorModal = app.screen  # type: ignore[assignment]
 
-        # Verify skip button is enabled (auto-focus on mount)
+        # No usable backend is available yet, so the modal cannot be skipped.
         from textual.widgets import Button
 
         skip_btn = modal.query_one("#dm-skip-btn", Button)
-        assert skip_btn.disabled is False, "Skip (Continue) button must be enabled"
+        assert skip_btn.disabled is True
 
         # Inject rc=0 finish — row should be marked pass
         with patch(
@@ -416,13 +427,11 @@ async def test_snapshot_auto_promote_row_marked_pass_after_install(tmp_path) -> 
             modal._on_command_finished(
                 _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
             )
-            # Wait for targeted recheck + auto-dismiss
-            from tests.helpers.async_utils import wait_for as _wait_for
+            # Wait for targeted recheck + auto-dismiss.
+            await _wait_for_setup_flow(app)
 
-            await _wait_for(lambda: app.screen.id != "doctor-modal", pump_delay=0.05)
-
-        # After dismiss we should be on kanban-screen (no FAILs)
-        assert app.screen.id == "kanban-screen"
+        # After dismiss we should be at project selection (no FAILs)
+        assert app.screen.id == "setup-flow"
 
 
 async def test_snapshot_modal_stays_open_when_other_fails_remain(tmp_path) -> None:

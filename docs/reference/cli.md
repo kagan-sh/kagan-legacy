@@ -18,7 +18,7 @@ tags:
 | `import`  | Import tasks from external sources              |
 | `list`    | List projects with task counts                  |
 | `mcp`     | Run MCP server (stdio)                          |
-| `plugins` | Plugin management (requires opt-in, see below)  |
+| `import`  | Import tasks from external sources              |
 | `reset`   | Remove local state                              |
 | `serve`   | Run HTTP API server (no web UI)                 |
 | `tools`   | Stateless utilities and advanced prompt tooling |
@@ -118,8 +118,8 @@ Prefer `--role` when configuring MCP clients. `--readonly` and `--admin` are com
 
 | Tier       | Scope                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `plugins_preflight`, `plugins_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`) |
-| `default`  | Orchestrator-scope access (worker tools plus task creation/mutation/deletion, run orchestration, review decisions/merge/rebase, projects, settings, audit, plugins, personas, and insight removal)                                                                                                                                                                                                        |
+| `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `integration_preflight`, `integration_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`) |
+| `default`  | Orchestrator-scope access (worker tools plus task creation/mutation/deletion, run orchestration, review decisions/merge/rebase, projects, settings, audit, integrations, personas, and insight removal)                                                                                                                                                                                                    |
 | `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                                                                                                                                                      |
 
 ```bash
@@ -276,13 +276,6 @@ Persona preset import, export, and trust management.
 | Option | Description                       |
 | ------ | --------------------------------- |
 | `REPO` | Repository in `owner/repo` format |
-
-______________________________________________________________________
-
-## `kagan plugins`
-
-!!! note "Experimental — opt-in only"
-Requires `KAGAN_ENABLE_PLUGIN_CLI=1`. The plugin system is early-stage. See [Plugins](plugins.md) for details.
 
 ______________________________________________________________________
 

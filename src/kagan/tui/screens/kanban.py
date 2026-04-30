@@ -174,6 +174,7 @@ class KanbanScreen(Screen[None]):
         self._inline_action_message: str | None = None
         self._session_summary_by_task: dict[str, _TaskSessionSummary] = {}
         self._review_approved_by_task: dict[str, bool] = {}
+        self._github_import_hint_shown = False
 
     @property
     def kagan_app(self) -> "KaganApp":
@@ -281,6 +282,14 @@ class KanbanScreen(Screen[None]):
                     self._chat_overlay_layout_mode = "vertical"
                     self._chat_auto_opened = True
                     await self.action_open_orchestrator_chat()
+
+            if not self._all_tasks and not self._github_import_hint_shown:
+                self.app.notify(
+                    "No tasks yet. Press Ctrl+Shift+P and run"
+                    " 'github import' to import from GitHub.",
+                    severity="information",
+                )
+                self._github_import_hint_shown = True
 
             from kagan.core.client import DBWatcher
 

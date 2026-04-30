@@ -201,6 +201,12 @@
         "command": "kagan.analytics.export",
         "title": "Export Analytics to JSON",
         "category": "Kagan"
+      },
+      {
+        "command": "kagan.github.import",
+        "title": "Import from GitHub",
+        "category": "Kagan",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -212,6 +218,11 @@
         },
         {
           "command": "kagan.task.create",
+          "when": "view == kagan.board && kagan.connected",
+          "group": "navigation"
+        },
+        {
+          "command": "kagan.github.import",
           "when": "view == kagan.board && kagan.connected",
           "group": "navigation"
         }
@@ -328,6 +339,10 @@
         },
         {
           "command": "kagan.analytics.export",
+          "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.github.import",
           "when": "kagan.connected"
         }
       ]

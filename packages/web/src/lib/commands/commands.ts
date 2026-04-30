@@ -16,7 +16,6 @@ import {
   HelpCircle,
   LayoutDashboard,
   MessageSquareText,
-  Home,
   PanelRight,
   Pencil,
   Play,
@@ -35,7 +34,7 @@ import { boardDialogAtom, tasksAtom } from '@/lib/atoms/board';
 import { setThemeModeAtom, themeModeAtom } from '@/lib/atoms/theme';
 import {
   helpOverlayOpenAtom,
-  pluginImportOpenAtom,
+  integrationImportOpenAtom,
   sessionPickerOpenAtom,
 } from '@/lib/atoms/ui';
 import { registerCommand } from '@/lib/commands/registry';
@@ -100,12 +99,12 @@ function errorMessage(err: unknown, fallback: string): string {
 export const BUILTIN_COMMANDS: CommandAction[] = [
   // ─── Navigate ────────────────────────────────────────────────────────────
   {
-    id: 'nav-home',
-    title: 'Go to Home',
+    id: 'nav-project-picker',
+    title: 'Open Project Picker',
     section: 'Navigate',
-    keywords: ['home', 'start', 'overview'],
-    icon: Home,
-    handler: ({ navigate }) => navigate('/'),
+    keywords: ['welcome', 'project', 'projects', 'start', 'open'],
+    icon: LayoutDashboard,
+    handler: ({ navigate }) => navigate('/welcome'),
   },
   {
     id: 'nav-board',
@@ -200,9 +199,9 @@ export const BUILTIN_COMMANDS: CommandAction[] = [
     id: 'create-github-import',
     title: 'Import from GitHub',
     section: 'Create',
-    keywords: ['github', 'import', 'plugin', 'issues'],
+    keywords: ['github', 'import', 'integration', 'issues'],
     icon: Download,
-    handler: () => store.set(pluginImportOpenAtom, true),
+    handler: () => store.set(integrationImportOpenAtom, true),
   },
 
   // ─── Run ─────────────────────────────────────────────────────────────────

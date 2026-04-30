@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { UseFormRegister, FieldErrors } from 'react-hook-form';
+import type { UseFormRegister, FieldErrors, Control } from 'react-hook-form';
+import { useController } from 'react-hook-form';
 import { Plus, X } from 'lucide-react';
 import { z } from 'zod';
 import { apiClient } from '@/lib/api/client';
@@ -17,9 +18,31 @@ export const taskSchema = z.object({
   agent_backend: z.string().optional(),
   launcher: z.string().optional(),
   base_branch: z.string().optional(),
+  github_issue_mode: z.enum(['none', 'link', 'new']).optional(),
+  github_issue_number: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.github_issue_mode === 'link') {
+    const n = Number(data.github_issue_number);
+    if (!data.github_issue_number || !Number.isInteger(n) || n <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter a positive integer issue number',
+        path: ['github_issue_number'],
+      });
+    }
+  }
 });
 
 export type TaskFormValues = z.infer<typeof taskSchema>;
+
+/** Resolve form values to the github_issue wire value. */
+export function resolveGithubIssue(values: TaskFormValues): string | undefined {
+  if (values.github_issue_mode === 'new') return 'new';
+  if (values.github_issue_mode === 'link' && values.github_issue_number) {
+    return values.github_issue_number.replace(/^#/, '');
+  }
+  return undefined;
+}
 
 export function useBackendOptions(open: boolean) {
   const [backends, setBackends] = useState<string[]>([]);
@@ -30,6 +53,21 @@ export function useBackendOptions(open: boolean) {
   }, [open]);
 
   return backends;
+}
+
+/** Returns the detected GitHub repo slug for the active project, or null. */
+export function useGithubRepoSlug(open: boolean) {
+  const [slug, setSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setSlug(null);
+    apiClient.detectIntegrationRepo('github')
+      .then((r) => setSlug(r.repo_slug ?? null))
+      .catch(() => setSlug(null));
+  }, [open]);
+
+  return slug;
 }
 
 export function useCriteriaList(initial: string[] = []) {
@@ -57,6 +95,7 @@ export function useCriteriaList(initial: string[] = []) {
 
 interface TaskFormFieldsProps {
   register: UseFormRegister<TaskFormValues>;
+  control: Control<TaskFormValues>;
   errors: FieldErrors<TaskFormValues>;
   backends: string[];
   criteria: string[];
@@ -64,11 +103,13 @@ interface TaskFormFieldsProps {
   onCriterionInputChange: (value: string) => void;
   onAddCriterion: () => void;
   onRemoveCriterion: (index: number) => void;
+  githubRepoSlug?: string | null;
   idPrefix?: string;
 }
 
 export function TaskFormFields({
   register,
+  control,
   errors,
   backends,
   criteria,
@@ -76,9 +117,16 @@ export function TaskFormFields({
   onCriterionInputChange,
   onAddCriterion,
   onRemoveCriterion,
+  githubRepoSlug,
   idPrefix = '',
 }: TaskFormFieldsProps) {
   const id = (name: string) => `${idPrefix}${name}`;
+
+  const { field: issueModeField } = useController({
+    name: 'github_issue_mode',
+    control,
+    defaultValue: 'none',
+  });
 
   return (
     <>
@@ -185,6 +233,46 @@ export function TaskFormFields({
           </ul>
         )}
       </div>
+
+      {githubRepoSlug ? (
+        <div>
+          <Label htmlFor={id('github_issue_mode')} className="mb-1">GitHub Issue</Label>
+          <NativeSelect
+            id={id('github_issue_mode')}
+            value={issueModeField.value ?? 'none'}
+            onChange={(e) => issueModeField.onChange(e.target.value)}
+            className="w-full"
+            aria-label="GitHub issue link"
+          >
+            <NativeSelectOption value="none">None</NativeSelectOption>
+            <NativeSelectOption value="link">Link to existing issue (#N)</NativeSelectOption>
+            <NativeSelectOption value="new">Create new issue from task</NativeSelectOption>
+          </NativeSelect>
+          {issueModeField.value === 'link' && (
+            <div className="mt-2">
+              <Input
+                id={id('github_issue_number')}
+                {...register('github_issue_number')}
+                placeholder="Issue number, e.g. 42"
+                type="number"
+                min={1}
+                aria-describedby={errors.github_issue_number ? `${id('github_issue_number')}-error` : undefined}
+                aria-invalid={errors.github_issue_number ? 'true' : 'false'}
+              />
+              {errors.github_issue_number && (
+                <p id={`${id('github_issue_number')}-error`} className="mt-1 text-xs text-[var(--destructive)]">
+                  {errors.github_issue_number.message}
+                </p>
+              )}
+            </div>
+          )}
+          {issueModeField.value === 'new' && (
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              A new GitHub issue will be created from the task title and description.
+            </p>
+          )}
+        </div>
+      ) : null}
     </>
   );
 }

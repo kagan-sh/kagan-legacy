@@ -201,9 +201,10 @@ class DoctorModal(ModalScreen[bool]):
 
     CSS_PATH = "doctor_modal.tcss"
 
-    def __init__(self, checks: list[DoctorCheck]) -> None:
+    def __init__(self, checks: list[DoctorCheck], *, allow_skip: bool = True) -> None:
         super().__init__(id="doctor-modal")
         self._checks = checks
+        self._allow_skip = allow_skip
         # True once a _CheckRow has received focus (includes auto-focus on mount).
         # Skip becomes enabled at this point; Escape is always blocked.
         self._row_focused_once = False
@@ -247,7 +248,11 @@ class DoctorModal(ModalScreen[bool]):
                     disabled=True,
                 )
             yield Static(
-                "[dim]Tab[/] focus rows   [dim]Skip anyway[/] to continue",
+                (
+                    "[dim]Tab[/] focus rows   [dim]Skip anyway[/] to continue"
+                    if self._allow_skip
+                    else "[dim]Install or configure at least one agent backend to continue[/]"
+                ),
                 id="dm-hint",
             )
         yield Footer(show_command_palette=False)
@@ -268,7 +273,7 @@ class DoctorModal(ModalScreen[bool]):
 
     def _update_skip_button(self) -> None:
         skip_btn = self.query_one("#dm-skip-btn", Button)
-        skip_btn.disabled = not self._row_focused_once
+        skip_btn.disabled = (not self._allow_skip) or (not self._row_focused_once)
 
     def on_key(self, event: object) -> None:
         """Escape is always blocked on DoctorModal; use Skip anyway button."""
@@ -283,6 +288,12 @@ class DoctorModal(ModalScreen[bool]):
 
     @on(Button.Pressed, "#dm-skip-btn")
     def _on_skip(self) -> None:
+        if not self._allow_skip:
+            self.app.notify(
+                "Install or configure at least one agent backend before continuing.",
+                severity="error",
+            )
+            return
         self.dismiss(False)
 
     @on(Button.Pressed, "#dm-recheck-btn")
@@ -404,7 +415,7 @@ class DoctorModal(ModalScreen[bool]):
         """Re-verify a check after install.
 
         For backend checks: uses run_doctor_check_for_backend() — does NOT
-        invoke environment, plugin, or IDE checks (AC1 requirement).
+        invoke environment, integration, or IDE checks (AC1 requirement).
         For non-backend checks: uses run_doctor_checks() to refresh state.
         """
         backend_name = _extract_backend_name(check_name)

@@ -2,6 +2,7 @@ import builtins
 import contextlib
 import functools
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -32,6 +33,20 @@ if TYPE_CHECKING:
 
 
 # ── Module-level functions (canonical API) ────────────────────────────
+
+
+@dataclass(frozen=True)
+class ProjectFolderResolution:
+    """How a filesystem folder maps to Kagan's project/repository model."""
+
+    path: str
+    repo_path: str
+    suggested_project_name: str
+    is_git_repo: bool
+    git_root: str | None = None
+    existing_project_id: str | None = None
+    existing_project_name: str | None = None
+    existing_repo_id: str | None = None
 
 
 async def create_project(
@@ -260,6 +275,38 @@ async def find_project_by_repo(engine: Engine, repo_path: str) -> Project | None
     return await _db_async(engine, op)
 
 
+async def inspect_project_folder(
+    engine: Engine, folder_path: str | Path
+) -> ProjectFolderResolution:
+    """Resolve a folder as users expect when opening or bootstrapping a project.
+
+    The policy is intentionally shared by UI surfaces:
+    current folder -> containing git root -> known repository match -> new project candidate.
+    """
+    path = Path(folder_path).expanduser().resolve()
+    git_root = await git.find_root(path)
+    repo_path = git_root or path
+    normalized_repo_path = str(repo_path)
+
+    def op(s) -> tuple[Project | None, Repository | None]:
+        repo = s.exec(select(Repository).where(Repository.path == normalized_repo_path)).first()
+        if repo is None or repo.project_id is None:
+            return None, None
+        return cast("Project | None", s.get(Project, repo.project_id)), repo
+
+    project, repo = await _db_async(engine, op)
+    return ProjectFolderResolution(
+        path=str(path),
+        repo_path=normalized_repo_path,
+        git_root=str(git_root) if git_root is not None else None,
+        suggested_project_name=repo_path.name or path.name or "New project",
+        is_git_repo=git_root is not None,
+        existing_project_id=project.id if project is not None else None,
+        existing_project_name=project.name if project is not None else None,
+        existing_repo_id=repo.id if repo is not None else None,
+    )
+
+
 async def find_project_by_name(engine: Engine, name: str) -> Project | None:
     return await _db_async(
         engine,
@@ -319,6 +366,7 @@ _PASSTHROUGH_MAP: dict[str, Any] = {
     "set_repo_default_branch": set_repo_default_branch,
     "find_by_repo": find_project_by_repo,
     "find_by_name": find_project_by_name,
+    "inspect_folder": inspect_project_folder,
     "resolve_repo": resolve_repo,
 }
 

@@ -554,6 +554,58 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
 
 
+def _idle_interrupt_response(session_id: str) -> JSONResponse:
+    return _ok(
+        {
+            "session_id": session_id,
+            "interrupted": False,
+            "partial_persisted": False,
+            "partial_chars": 0,
+        }
+    )
+
+
+async def _interrupt_reason(request: Request) -> str:
+    try:
+        body = await request.json()
+    except Exception:
+        return "user"
+    if not isinstance(body, dict):
+        return "user"
+    reason = body.get("reason", "user")
+    return str(reason) if reason in {"user", "takeover"} else "user"
+
+
+async def _interrupt_running_turn(
+    session_id: str,
+    running_task: asyncio.Future[Any],
+    *,
+    reason: str,
+) -> JSONResponse:
+    partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
+
+    running_task.cancel()
+    interrupt_errors = (
+        asyncio.CancelledError,
+        TimeoutError,
+        KaganError,
+        RuntimeError,
+        ConnectionError,
+    )
+    with contextlib.suppress(*interrupt_errors):
+        await asyncio.wait_for(running_task, timeout=5.0)
+
+    _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
+    return _ok(
+        {
+            "session_id": session_id,
+            "interrupted": True,
+            "partial_persisted": partial_chars > 0,
+            "partial_chars": partial_chars,
+        }
+    )
+
+
 def _register_stream_routes(mcp: FastMCP) -> None:
     """Register chat streaming, watch, and interrupt endpoints."""
 
@@ -612,15 +664,22 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
         async def _event_stream() -> AsyncIterator[str]:
             q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=128)
+            shutdown_event = getattr(ctx, "shutdown_event", None)
+            last_keepalive = datetime.now(UTC)
             _chat_subscribers[session_id].append(q)
             try:
-                while True:
+                while shutdown_event is None or not shutdown_event.is_set():
+                    timeout = 0.5 if shutdown_event is not None else 25.0
                     try:
-                        event = await asyncio.wait_for(q.get(), timeout=25.0)
+                        event = await asyncio.wait_for(q.get(), timeout=timeout)
                         yield f"data: {json.dumps(event)}\n\n"
                     except TimeoutError:
-                        # SSE keepalive comment
-                        yield ": keepalive\n\n"
+                        if shutdown_event is not None and shutdown_event.is_set():
+                            break
+                        now = datetime.now(UTC)
+                        if (now - last_keepalive).total_seconds() >= 25.0:
+                            last_keepalive = now
+                            yield ": keepalive\n\n"
             except (GeneratorExit, asyncio.CancelledError, ConnectionError):
                 pass
             finally:
@@ -668,58 +727,11 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         session_id = cast("str", request.path_params["session_id"])
         running_task = _chat_turn_tasks.get(session_id)
         if running_task is None or running_task.done():
-            return _ok(
-                {
-                    "session_id": session_id,
-                    "interrupted": False,
-                    "partial_persisted": False,
-                    "partial_chars": 0,
-                }
-            )
-
-        # Parse reason from body — default to "user"
-        reason = "user"
-        try:
-            body = await request.json()
-            if isinstance(body, dict):
-                raw_reason = body.get("reason", "user")
-                if raw_reason in {"user", "takeover"}:
-                    reason = str(raw_reason)
-        except Exception:
-            pass
-
-        # Capture partial buffer length before cancel (turn task clears it on cancel)
-        partial_before = list(_chat_partial_buffers.get(session_id, []))
-        partial_chars = sum(len(c) for c in partial_before)
-
-        running_task.cancel()
-        _interrupt_errors = (
-            asyncio.CancelledError,
-            TimeoutError,
-            KaganError,
-            RuntimeError,
-            ConnectionError,
-        )
-        with contextlib.suppress(*_interrupt_errors):
-            await asyncio.wait_for(running_task, timeout=5.0)
-
-        # partial_persisted: the turn task's CancelledError handler writes the
-        # message; we only know the partial was non-empty here.
-        partial_persisted = partial_chars > 0
-
-        # Broadcast termination event to all /watch subscribers
-        _broadcast(
+            return _idle_interrupt_response(session_id)
+        return await _interrupt_running_turn(
             session_id,
-            {"t": "CHAT_TURN_TERMINATED", "reason": reason},
-        )
-
-        return _ok(
-            {
-                "session_id": session_id,
-                "interrupted": True,
-                "partial_persisted": partial_persisted,
-                "partial_chars": partial_chars,
-            }
+            running_task,
+            reason=await _interrupt_reason(request),
         )
 
 

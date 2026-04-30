@@ -254,6 +254,42 @@ describe('PreflightGate', () => {
     expect(copyButtons).toHaveLength(2);
   });
 
+  it('renders lowercase fail/warn statuses from the API contract', async () => {
+    (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeReport({
+        ok: false,
+        fail_count: 1,
+        warn_count: 1,
+        checks: [
+          {
+            name: 'agent backends',
+            status: 'fail',
+            message: 'Default backend not found',
+            fix_hint: 'kg doctor',
+            verify_hint: 'which codex',
+            category: 'backend',
+            is_blocking: true,
+          },
+          {
+            name: 'gh cli',
+            status: 'warn',
+            message: 'GitHub CLI not found',
+            fix_hint: 'brew install gh',
+            verify_hint: 'gh --version',
+            category: 'integration',
+            is_blocking: false,
+          },
+        ],
+      }),
+    );
+
+    renderGate();
+
+    await screen.findByRole('dialog');
+    expect(screen.getByText('agent backends')).toBeInTheDocument();
+    expect(screen.getByText('gh cli')).toBeInTheDocument();
+  });
+
   it('copy button writes fix_hint to clipboard and shows transient Copied confirmation', async () => {
     (apiClient.getDoctorReport as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeReport({

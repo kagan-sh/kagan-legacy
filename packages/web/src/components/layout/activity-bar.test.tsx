@@ -7,10 +7,10 @@ describe('ActivityBar', () => {
   it('renders core navigation links', () => {
     renderWithProviders(<ActivityBar />);
 
-    expect(screen.getByRole('link', { name: /^Home/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /^Board/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /^Workspace/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /^Settings/ })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^Project picker/ })).toBeVisible();
   });
 
   it('marks the current route as active', () => {

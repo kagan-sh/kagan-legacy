@@ -74,6 +74,7 @@ export interface WireTask {
   status: TaskStatus;
   priority: Priority;
   base_branch: string | null;
+  github_issue?: string | null;
   acceptance_criteria: string[];
   agent_backend: string | null;
   launcher: string | null;
@@ -146,6 +147,19 @@ export interface ReviewStatusResponse {
   review_approved: boolean;
 }
 
+export interface Mention {
+  source: "kagan" | "github";
+  id: string;
+  title: string;
+  state: string | null;
+}
+
+export interface SearchMentionsInput {
+  projectId: string;
+  q: string;
+  limit?: number;
+}
+
 export interface CreateTaskInput {
   title: string;
   description?: string;
@@ -154,6 +168,7 @@ export interface CreateTaskInput {
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string;
+  github_issue?: string;
 }
 
 export interface UpdateTaskInput {
@@ -164,6 +179,7 @@ export interface UpdateTaskInput {
   acceptance_criteria?: string[];
   agent_backend?: string;
   launcher?: string | null;
+  github_issue?: string;
 }
 
 export interface RunTaskInput {

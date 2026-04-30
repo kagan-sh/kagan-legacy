@@ -15,7 +15,6 @@ docs/internal/
     cli.md          # Click CLI
     mcp.md          # MCP server
     server.md       # HTTP API server (REST + SSE)
-    plugins.md      # Plugin system
   features/         # What the system does (behavioral catalogs)
     core.md         # Core domain behaviors
     chat.md         # REPL and orchestrator behaviors
@@ -24,7 +23,6 @@ docs/internal/
     cli.md          # CLI behaviors
     mcp.md          # MCP tool behaviors
     server.md       # Server features (REST, SSE)
-    plugins.md      # Plugin behaviors
     github_import_user_experience.md # Layman-first GitHub import rollout plan
   testing.md        # Acceptance test commandments
 ```

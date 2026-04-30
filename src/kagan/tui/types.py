@@ -9,10 +9,6 @@ __all__ = [
     "ChatTargetKind",
     "MessageHandler",
     "ModalActionResult",
-    "PluginAction",
-    "PluginBadge",
-    "PluginForm",
-    "PluginUICatalog",
     "ProjectView",
     "RepoView",
     "ScreenResult",
@@ -66,33 +62,6 @@ ScreenResult = TaskUpdateResult | ModalActionResult | dict[str, object] | None
 
 
 MessageHandler = Callable[..., Awaitable[None] | None]
-
-
-class PluginAction(Protocol):
-    plugin_id: str
-    action_id: str
-    label: str
-    surface: str
-    form_id: str | None
-
-
-class PluginForm(Protocol):
-    plugin_id: str
-    form_id: str
-    fields: list[dict[str, object]]
-
-
-class PluginBadge(Protocol):
-    surface: str
-    label: str
-    icon: str | None
-
-
-class PluginUICatalog(Protocol):
-    schema_version: str
-    actions: list[PluginAction]
-    forms: list[PluginForm]
-    badges: list[PluginBadge]
 
 
 class ChatTargetKind(Protocol):

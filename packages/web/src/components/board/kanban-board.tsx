@@ -4,6 +4,7 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   Plus,
   Search,
+  Download,
 } from 'lucide-react';
 import {
   DndContext,
@@ -31,6 +32,8 @@ import { BoardToolbar } from '@/components/board/board-toolbar';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@/lib/api/types';
+import { integrationImportOpenAtom } from '@/lib/atoms/ui';
+import { store } from '@/lib/atoms/store';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
@@ -148,6 +151,9 @@ export function KanbanBoard() {
   }, [navigate, selectedTask]);
 
   const openCreateDialog = () => setBoardDialog({ kind: 'create' });
+  const openImportDialog = useCallback(() => {
+    store.set(integrationImportOpenAtom, true);
+  }, []);
   const editingTask = boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
   const deleteTask = boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
 
@@ -241,6 +247,7 @@ export function KanbanBoard() {
         setView={setView}
         boardMetrics={boardMetrics}
         onCreateTask={openCreateDialog}
+        onImportGitHub={openImportDialog}
         searchInputRef={searchInputRef}
       />
 
@@ -258,12 +265,23 @@ export function KanbanBoard() {
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Plus className="size-6" /></EmptyMedia>
                 <EmptyTitle>Start your first task</EmptyTitle>
-                <EmptyDescription>Create a task, then Start to move it toward review and merge.</EmptyDescription>
+                <EmptyDescription>
+                  Create a task, or import existing issues from GitHub to get started.
+                </EmptyDescription>
               </EmptyHeader>
-              <Button onClick={openCreateDialog} className="cta-glow">
-                <Plus className="size-4" />
-                Create first task
-              </Button>
+              <div className="flex flex-col items-center gap-3">
+                <Button onClick={openCreateDialog} className="cta-glow">
+                  <Plus className="size-4" />
+                  Create first task
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => store.set(integrationImportOpenAtom, true)}
+                >
+                  <Download className="size-4" />
+                  Import from GitHub
+                </Button>
+              </div>
             </Empty>
           ) : showFilteredEmpty ? (
             <Empty>

@@ -9,10 +9,12 @@ import type {
   DiffFile,
   DiffStats,
   DoctorReportResponse,
+  Mention,
   ReviewDecisionInput,
   ReviewDecisionResponse,
   ReviewStatusResponse,
   RunTaskInput,
+  SearchMentionsInput,
   SessionTimelineEntry,
   SettingsResponse,
   TaskStatus,
@@ -434,6 +436,48 @@ export class KaganClient {
   getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
     const query = params?.days ? `?days=${params.days}` : '';
     return this.get<AnalyticsExport>(`/api/analytics/export${query}`);
+  }
+
+  /** GET /api/mentions/search?project_id=&q=&limit= */
+  async searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
+    const params = new URLSearchParams();
+    params.set("project_id", input.projectId);
+    params.set("q", input.q);
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    const envelope = await this.get<{ mentions: Mention[]; total: number }>(
+      `/api/mentions/search?${params.toString()}`,
+    );
+    return envelope.mentions;
+  }
+
+  /** GET /api/integrations/github/preflight */
+  getGithubPreflight(): Promise<{ id: string; checks: Array<{ ok: boolean; message: string; fix_hint: string | null }>; ready: boolean }> {
+    return this.get("/api/integrations/github/preflight");
+  }
+
+  /** GET /api/integrations/github/detect-repo */
+  detectGithubRepo(): Promise<{ id: string; repo_slug: string | null }> {
+    return this.get("/api/integrations/github/detect-repo");
+  }
+
+  /** GET /api/integrations/github/preview */
+  previewGithubIssues(params: {
+    repo_slug: string;
+    state?: string;
+    labels?: string;
+    limit?: number;
+  }): Promise<{ id: string; issues: Array<{ number: number; title: string; state: string; labels: string[]; url: string; already_synced: boolean }>; total: number }> {
+    const qs = new URLSearchParams();
+    qs.set("repo_slug", params.repo_slug);
+    if (params.state) qs.set("state", params.state);
+    if (params.labels) qs.set("labels", params.labels);
+    if (params.limit) qs.set("limit", String(params.limit));
+    return this.get(`/api/integrations/github/preview?${qs.toString()}`);
+  }
+
+  /** POST /api/integrations/github/sync */
+  syncGithubIssues(config: Record<string, unknown>): Promise<{ id: string; created: number; updated: number; skipped: number; errors: string[] }> {
+    return this.post("/api/integrations/github/sync", config);
   }
 
   async ping(): Promise<boolean> {

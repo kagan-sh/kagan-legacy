@@ -21,6 +21,19 @@ def _make_check(name: str, status: str, fix_hint: str = "echo fix") -> DoctorChe
     )
 
 
+async def _wait_for_setup_flow(app) -> None:
+    from textual.widgets._select import SelectOverlay
+
+    await wait_for(
+        lambda: (
+            app.screen.id == "setup-flow"
+            and bool(app.screen.query("#setup-project-list"))
+            and len(app.screen.query(SelectOverlay)) >= 2
+        ),
+        pump_delay=0.05,
+    )
+
+
 # ── DoctorModal: FAIL state ────────────────────────────────────────────────
 
 
@@ -63,7 +76,7 @@ async def test_doctor_modal_escape_always_blocked(tmp_path) -> None:
 
 
 async def test_doctor_modal_skip_button_enabled_after_mount_autofocus(tmp_path) -> None:
-    """Skip button becomes enabled after on_mount auto-focuses a check row."""
+    """Skip button becomes enabled when backend availability is not blocked."""
     from textual.widgets import Button
 
     from kagan.tui import KaganApp
@@ -79,8 +92,33 @@ async def test_doctor_modal_skip_button_enabled_after_mount_autofocus(tmp_path) 
         assert skip_btn.disabled is False
 
 
+async def test_doctor_modal_skip_button_disabled_when_no_backend_available(tmp_path) -> None:
+    """Skip is blocked when doctor reports no usable agent backend."""
+    from textual.widgets import Button
+
+    from kagan.tui import KaganApp
+
+    checks = [
+        DoctorCheck(
+            name="agent backends",
+            status="fail",
+            message="No available agent backends found",
+            fix_hint="Install Claude Code or another supported backend",
+            verify_hint="kagan doctor",
+            category="backend",
+        )
+    ]
+    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=checks)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.screen.id == "doctor-modal"
+
+        skip_btn = app.screen.query_one("#dm-skip-btn", Button)
+        assert skip_btn.disabled is True
+
+
 async def test_doctor_modal_skip_button_dismisses_modal(tmp_path) -> None:
-    """Clicking 'Skip anyway' button dismisses DoctorModal and routes to kanban."""
+    """Clicking 'Skip anyway' button dismisses DoctorModal and resumes startup."""
     from textual.widgets import Button
 
     from kagan.tui import KaganApp
@@ -93,7 +131,7 @@ async def test_doctor_modal_skip_button_dismisses_modal(tmp_path) -> None:
 
         skip_btn = app.screen.query_one("#dm-skip-btn", Button)
         skip_btn.press()
-        await wait_for(lambda: app.screen.id != "doctor-modal", pump_delay=0.05)
+        await _wait_for_setup_flow(app)
 
 
 async def test_doctor_modal_check_rows_rendered_for_fail_and_warn(tmp_path) -> None:
@@ -161,8 +199,8 @@ async def test_doctor_modal_fix_hint_shown_for_fail_rows(tmp_path) -> None:
 # ── Startup routing: WARN-only / all-pass / no checks ──────────────────────
 
 
-async def test_warn_only_routes_to_kanban(tmp_path) -> None:
-    """WARN-only checks route directly to kanban-screen (no blocking modal)."""
+async def test_warn_only_routes_to_project_picker(tmp_path) -> None:
+    """WARN-only checks continue to the non-blocking project picker."""
     from kagan.tui import KaganApp
 
     checks = [_make_check("ide", "warn", fix_hint="Install VS Code")]
@@ -170,11 +208,11 @@ async def test_warn_only_routes_to_kanban(tmp_path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        assert app.screen.id == "kanban-screen"
+        assert app.screen.id == "setup-flow"
 
 
-async def test_all_pass_routes_to_kanban(tmp_path) -> None:
-    """All-pass checks route to kanban-screen."""
+async def test_all_pass_routes_to_project_picker(tmp_path) -> None:
+    """All-pass checks route to the project picker by default."""
     from kagan.tui import KaganApp
 
     checks = [_make_check("git", "pass", fix_hint="")]
@@ -182,17 +220,32 @@ async def test_all_pass_routes_to_kanban(tmp_path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.pause()
-        assert app.screen.id == "kanban-screen"
+        assert app.screen.id == "setup-flow"
 
 
-async def test_no_checks_routes_to_kanban(tmp_path) -> None:
-    """When startup_checks is None (no preflight), kanban is shown directly."""
+async def test_no_checks_routes_to_project_picker(tmp_path) -> None:
+    """When startup_checks is None, startup still begins at the project picker."""
     from kagan.tui import KaganApp
 
     app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=None)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.screen.id == "kanban-screen"
+        assert app.screen.id == "setup-flow"
+
+
+async def test_startup_project_picker_cannot_escape_to_blank_screen(tmp_path) -> None:
+    """The boot picker is mandatory so Escape must not reveal Textual's empty screen."""
+    from kagan.tui import KaganApp
+
+    app = KaganApp(db_path=tmp_path / "kagan.db", startup_checks=[])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.screen.id == "setup-flow"
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert app.screen.id == "setup-flow"
 
 
 # ── Command pane smoke ─────────────────────────────────────────────────────
@@ -330,7 +383,7 @@ async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -
                 _CommandPane.CommandFinished(return_code=0, check_name=backend_check.name)
             )
             # Pump until modal auto-dismisses (all FAILs resolved → dismiss(True))
-            await wait_for(lambda: app.screen.id != "doctor-modal", pump_delay=0.05)
+            await _wait_for_setup_flow(app)
 
         # Settings must contain the promoted backend
         settings = await app.core.settings.get()
@@ -395,7 +448,7 @@ async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> 
             modal._on_command_finished(
                 _CommandPane.CommandFinished(return_code=0, check_name=git_check.name)
             )
-            await wait_for(lambda: app.screen.id != "doctor-modal", pump_delay=0.05)
+            await _wait_for_setup_flow(app)
 
         # Settings must NOT have default_agent_backend written by the git fix
         settings = await app.core.settings.get()

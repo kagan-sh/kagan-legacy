@@ -103,6 +103,53 @@ __all__ = [
 ]
 
 
+def _settings_flag_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
+    raw_value = settings.get(key)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _bootstrap_repository_status(
+    *,
+    repo_path: str,
+    git_root: Path | None,
+    auto_init_git: bool,
+) -> str:
+    if git_root is not None:
+        return f"[dim]Detected git root; linking it as the Repository:[/dim] {repo_path}"
+    if auto_init_git:
+        return (
+            "[dim]No git repository detected in this folder. Kagan will create a "
+            "Project, link this folder as its Repository, and core will initialize "
+            "git for it.[/dim]"
+        )
+    return (
+        "[yellow]No git repository detected in this folder.[/yellow] "
+        "Auto git initialization is disabled; run [bold]git init[/bold] here "
+        "or enable auto-init before linking it as a Repository."
+    )
+
+
+def _bootstrap_noninteractive_message(
+    *,
+    repo_path: str,
+    git_root: Path | None,
+    auto_init_git: bool,
+) -> str:
+    status = _bootstrap_repository_status(
+        repo_path=repo_path,
+        git_root=git_root,
+        auto_init_git=auto_init_git,
+    )
+    return (
+        "[red]No Kagan Project is linked to this folder.[/red]\n"
+        f"{status}\n"
+        "Run [bold]kg chat[/bold] in an interactive terminal to create the Project, "
+        "or run [bold]kg tui[/bold] and use [bold]Open Folder[/bold]."
+    )
+
+
 class ChatController:
     def __init__(
         self,
@@ -419,22 +466,29 @@ class ChatController:
         repo_root = git_root or cwd
         repo_path = str(repo_root)
         default_name = repo_root.name
+        settings = await self.client.settings.get()
+        auto_init_git = _settings_flag_enabled(settings, "auto_init_git_repo", default=True)
 
         if not sys.stdin.isatty():
             _console.print(
-                "[red]No project found.[/red] Run [bold]kagan[/bold] interactively "
-                "or use [bold]kg chat --project <name>[/bold] to specify one."
+                _bootstrap_noninteractive_message(
+                    repo_path=repo_path,
+                    git_root=git_root,
+                    auto_init_git=auto_init_git,
+                )
             )
             return False
 
         _console.print()
-        _console.print("[bold]No project found.[/bold] Let's create one.")
-        if git_root is None:
-            _console.print(
-                "[dim]No git repo detected. Core will initialize one based on settings.[/dim]"
+        _console.print("[bold]No Kagan Project is linked to this folder.[/bold]")
+        _console.print("Let's create one.")
+        _console.print(
+            _bootstrap_repository_status(
+                repo_path=repo_path,
+                git_root=git_root,
+                auto_init_git=auto_init_git,
             )
-        else:
-            _console.print(f"[dim]Detected git repo:[/dim] {repo_path}")
+        )
         _console.print()
 
         try:

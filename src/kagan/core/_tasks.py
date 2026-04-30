@@ -1,6 +1,7 @@
 import asyncio
 import builtins
 import contextlib
+import re
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -195,6 +196,160 @@ class Tasks:
             if latest.status != initial.status:
                 return latest, False
 
+    # ── GitHub link helpers ────────────────────────────────────────────
+
+    async def _detect_repo_slug_for_project(
+        self, project_id: str, repo_id: str | None
+    ) -> str | None:
+        """Detect the GitHub repo slug for a project (used for bare-number links)."""
+        if self._client is None:
+            return None
+
+        from kagan.core.integrations.github import detect_github_repo_slug_from_origin
+
+        # Try the specified repo_id first, then all project repos
+        repos_to_try = []
+        if repo_id is not None:
+            repo = await _db_async(
+                self._engine, lambda s: s.get(Repository, repo_id)
+            )
+            if repo:
+                repos_to_try.append(repo)
+
+        if not repos_to_try:
+            with contextlib.suppress(Exception):
+                repos_to_try = await self._client.projects.repos(project_id)
+
+        for repo in repos_to_try:
+            slug = await detect_github_repo_slug_from_origin(repo.path)
+            if slug:
+                return slug
+
+        return None
+
+    async def _resolve_github_issue_link(
+        self,
+        github_issue: str | None,
+        title: str,
+        description: str,
+        project_id: str,
+        repo_id: str | None,
+    ) -> str | None:
+        """Normalize and validate a github_issue parameter.
+
+        - None → no link (return None)
+        - "new" → call _gh_create_issue, return "slug#N"
+        - "42" / "#42" / "owner/repo#42" → normalise, validate via _gh_view_issue
+        """
+        if github_issue is None:
+            return None
+
+        from kagan.core.errors import KaganError as _KaganError
+        from kagan.core.integrations.github import (
+            _gh_create_issue,
+            _gh_view_issue,
+            canonical_repo_slug,
+        )
+
+        if github_issue == "new":
+            slug = await self._detect_repo_slug_for_project(project_id, repo_id)
+            if slug is None:
+                raise _KaganError(
+                    "Cannot create GitHub issue: no GitHub repo detected for this project"
+                )
+            number = await _gh_create_issue(slug, title, description)
+            return f"{slug}#{number}"
+
+        # Parse bare number: "42" or "#42"
+        bare_match = re.match(r"^#?(\d+)$", github_issue.strip())
+        if bare_match:
+            number = int(bare_match.group(1))
+            slug = await self._detect_repo_slug_for_project(project_id, repo_id)
+            if slug is None:
+                raise _KaganError(
+                    f"Cannot link GitHub issue #{number}: no GitHub repo detected for this project"
+                )
+            await _gh_view_issue(slug, number)  # validates issue exists
+            return f"{slug}#{number}"
+
+        # Parse "owner/repo#42" form
+        full_match = re.match(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)$", github_issue.strip())
+        if full_match:
+            slug = canonical_repo_slug(full_match.group(1))
+            number = int(full_match.group(2))
+            await _gh_view_issue(slug, number)  # validates issue exists
+            return f"{slug}#{number}"
+
+        raise _KaganError(
+            f"Invalid github_issue value {github_issue!r}. "
+            "Use 'new', '42', '#42', or 'owner/repo#42'."
+        )
+
+    async def _update_github_sync_map(self, task_id: str, github_issue_link: str) -> None:
+        """Persist task_id → issue mapping in settings sync_map."""
+        if self._client is None:
+            return
+        # Parse "slug#number"
+        if "#" not in github_issue_link:
+            return
+        slug, number_str = github_issue_link.rsplit("#", 1)
+        settings_key = f"integration.github.{slug}.sync_map"
+        try:
+            from kagan.core.integrations.github import _load_sync_map, _save_sync_map
+
+            sync_map = await _load_sync_map(self._client, settings_key)
+            sync_map[number_str] = task_id
+            await _save_sync_map(self._client, settings_key, sync_map)
+        except Exception as exc:
+            logger.warning("Failed to update GitHub sync_map for {}: {}", github_issue_link, exc)
+
+    def _fire_github_criteria_sync(self, task_id: str, github_issue_link: str) -> None:
+        """Schedule a fire-and-forget criteria comment sync on the GitHub issue."""
+        if self._client is None:
+            return
+
+        async def _run() -> None:
+            try:
+                task = await self.get(task_id)
+                if "#" not in github_issue_link:
+                    return
+                slug, number_str = github_issue_link.rsplit("#", 1)
+                number = int(number_str)
+                from kagan.core.integrations.github import _sync_criteria_via_comment
+
+                await _sync_criteria_via_comment(self._client, task, slug, number)  # type: ignore[arg-type]
+            except Exception as exc:
+                logger.warning(
+                    "Criteria criteria sync fire-and-forget failed for {}: {}", task_id, exc
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run())
+        except RuntimeError:
+            pass  # No running loop — skip silently
+
+    def _fire_github_push(self, task: Any, *, fields: set[str]) -> None:
+        """Schedule a fire-and-forget push of title/description/priority to GitHub."""
+        if self._client is None:
+            return
+
+        async def _run() -> None:
+            try:
+                from kagan.core.integrations.github import _push_task_change
+
+                await _push_task_change(self._client, task, fields=fields)  # type: ignore[arg-type]
+            except Exception as exc:
+                logger.warning(
+                    "GitHub push fire-and-forget failed for task {}: {}", task.id, exc
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run())
+        except RuntimeError:
+            pass  # No running loop — skip silently
+
     # ── Core task operations ───────────────────────────────────────────
 
     async def create(
@@ -208,6 +363,8 @@ class Tasks:
         agent_backend: str | None = None,
         launcher: str | None = None,
         repo_id: str | None = None,
+        github_issue: str | None = None,
+        _from_sync: bool = False,
     ) -> Task:
         active_project_id = self._require_project()
 
@@ -239,6 +396,16 @@ class Tasks:
             if not repo_ok:
                 raise NotFoundError("Repository", repo_id)
 
+        # Resolve github_issue link before creating the task. When called from
+        # the GitHub sync path, the link is already in canonical "slug#N" form
+        # and was just fetched from gh — skip the validation roundtrip.
+        if _from_sync:
+            resolved_github_issue: str | None = github_issue
+        else:
+            resolved_github_issue = await self._resolve_github_issue_link(
+                github_issue, title, description, active_project_id, repo_id
+            )
+
         task = Task(
             project_id=active_project_id,
             title=title,
@@ -248,6 +415,7 @@ class Tasks:
             agent_backend=agent_backend,
             launcher=launcher,
             repo_id=repo_id,
+            github_issue=resolved_github_issue,
         )
         # Classify task for analytics
         task_type = classify_task(title, description)
@@ -283,6 +451,11 @@ class Tasks:
                 raise
 
         created = await _db_async(self._engine, op)
+
+        # Update sync_map if a github_issue link was resolved
+        if resolved_github_issue and self._client is not None:
+            await self._update_github_sync_map(created.id, resolved_github_issue)
+
         self.events.publish_board(
             BoardEvent(
                 task_id=created.id,
@@ -338,6 +511,7 @@ class Tasks:
         agent_backend: str | None = None,
         launcher: str | None | object = _UNSET,
         repo_id: str | None | object = _UNSET,
+        _from_sync: bool = False,
     ) -> Task:
         task = await self.get(task_id)
         scalar_updates = {
@@ -422,6 +596,18 @@ class Tasks:
             return db_task
 
         updated = await _db_async(self._engine, op)
+
+        if not _from_sync:
+            # Fire-and-forget criteria sync when criteria changed and task is linked
+            if acceptance_criteria is not None and updated.github_issue:
+                self._fire_github_criteria_sync(updated.id, updated.github_issue)
+
+            # Fire-and-forget push-back for title / description / priority changes
+            if updated.github_issue:
+                push_fields = changed_fields.keys() & {"title", "description", "priority"}
+                if push_fields:
+                    self._fire_github_push(updated, fields=set(push_fields))
+
         self.events.publish_board(
             BoardEvent(
                 task_id=updated.id,
@@ -499,14 +685,38 @@ class Tasks:
 
         await _db_async(self._engine, op, commit=True)
 
-    async def search(self, query: str) -> builtins.list[Task]:
-        project_id = self._require_project()
-        q = query.lower()
-        tasks = await _db_async(
-            self._engine,
-            lambda s: list(s.exec(select(Task).where(Task.project_id == project_id)).all()),
-        )
-        return [t for t in tasks if q in t.title.lower() or q in t.description.lower()]
+    async def search(
+        self,
+        query: str,
+        *,
+        project_id: str | None = None,
+        repo_id: str | None = None,
+        limit: int = 50,
+    ) -> builtins.list[Task]:
+        """Search tasks by title / description substring or short_id prefix.
+
+        If ``project_id`` is not given, falls back to the active project.
+        ``short_id`` is the first 8 characters of ``task.id``.
+        """
+        pid = project_id or self._require_project()
+        q = query.lower().lstrip("#")
+        stmt = select(Task).where(Task.project_id == pid)
+        if repo_id is not None:
+            stmt = stmt.where(Task.repo_id == repo_id)
+
+        def _search_with_criteria(s) -> builtins.list[Task]:
+            tasks = list(s.exec(stmt).all())
+            matched = [
+                t for t in tasks
+                if q in t.title.lower()
+                or q in t.id[:8].lower()
+                or q in t.description.lower()
+            ][:limit]
+            for t in matched:
+                _ = list(t.criteria)
+            return matched
+
+        return await _db_async(self._engine, _search_with_criteria)
 
     async def build_context(self, task_id: str) -> dict:
         task = await self.get(task_id)

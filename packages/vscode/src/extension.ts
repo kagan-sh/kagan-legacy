@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { KaganClient } from "./api/client.js";
 import { SSEStream } from "./api/sse.js";
 import { registerAnalyticsCommands } from "./commands/analytics.js";
+import { registerIntegrationCommands } from "./commands/integrations.js";
 import { registerReviewCommands } from "./commands/review.js";
 import { registerSettingsCommands } from "./commands/settings.js";
 import { registerTaskCommands } from "./commands/tasks.js";
@@ -15,6 +16,8 @@ import { ReviewCommentProvider, ReviewDocumentProvider } from "./providers/revie
 import { AgentTerminalProvider } from "./providers/tasks.terminal.js";
 import { registerChatParticipant } from "./providers/chat.participant.js";
 import { DoctorStatusProvider } from "./providers/doctor.status.js";
+import { MentionCompletionProvider } from "./providers/mention-completion-provider.js";
+import { MentionLinkProvider } from "./providers/mention-link-provider.js";
 import { StatusBar } from "./status/bar.js";
 import { SSE_TYPE, type SSEMessage } from "./api/types.js";
 import { LocalServerSupervisor } from "./server/supervisor.js";
@@ -95,7 +98,28 @@ export function activate(context: vscode.ExtensionContext): void {
   registerReviewCommands(context, client, boardProvider, reviewProvider);
   registerSettingsCommands(context, client);
   registerAnalyticsCommands(context, client);
+  registerIntegrationCommands(context, client, boardProvider);
   registerChatParticipant(context, client, sse);
+
+  // Mention providers
+  const mentionCompletionProvider = new MentionCompletionProvider(client);
+  const mentionLinkProvider = new MentionLinkProvider(client);
+  const MENTION_DOCUMENT_SELECTORS: vscode.DocumentSelector = [
+    { language: "plaintext" },
+    { language: "markdown" },
+  ];
+
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      MENTION_DOCUMENT_SELECTORS,
+      mentionCompletionProvider,
+      "#",
+    ),
+    vscode.languages.registerDocumentLinkProvider(
+      MENTION_DOCUMENT_SELECTORS,
+      mentionLinkProvider,
+    ),
+  );
 
   // Polling fallback: refresh board when SSE is disconnected
   sse.setPollingFallback(() => {

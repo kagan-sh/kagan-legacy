@@ -162,40 +162,40 @@ Once a session is active, the server pushes streaming events over SSE:
 
 ______________________________________________________________________
 
-## Plugin Routes
+## Integration Routes
 
-Plugins can be listed, checked, and imported via REST without restarting the server.
+Integrations can be checked and imported via REST without restarting the server.
 
-### List plugins
+### List integrations
 
-Returns all registered plugins:
+Returns all enabled integrations:
 
 ```bash
-curl http://localhost:8765/api/plugins
+curl http://localhost:8765/api/integrations
 ```
 
-### Preflight check (per plugin)
+### Preflight check (per integration)
 
-Returns readiness status for a specific plugin:
+Returns readiness status for a specific integration:
 
 ```bash
-curl http://localhost:8765/api/plugins/{name}/preflight
+curl http://localhost:8765/api/integrations/{name}/preflight
 ```
 
-### Detect repo
+### Preview
 
-Detect repo metadata for a specific plugin:
+Preview items from a specific integration without importing:
 
 ```bash
-curl http://localhost:8765/api/plugins/{name}/detect-repo
+curl "http://localhost:8765/api/integrations/{name}/preview?repo=owner/repo"
 ```
 
-### Import
+### Sync
 
-Import a plugin by name:
+Sync items from an integration into the active project:
 
 ```bash
-curl -X POST http://localhost:8765/api/plugins/{name}/import
+curl -X POST "http://localhost:8765/api/integrations/{name}/sync?repo=owner/repo"
 ```
 
 ______________________________________________________________________

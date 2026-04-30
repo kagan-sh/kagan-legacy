@@ -1357,6 +1357,10 @@ class ChatPanel(Vertical):
     def _sync_completion_overlays(self, raw_value: str) -> None:
         self._sync_slash_complete(raw_value)
         self._sync_mention_complete(raw_value)
+        # TODO(tui): add _sync_hash_mention_complete for kagan#/GitHub # tokens.
+        # The ChatPanel Input widget uses tightly-coupled @-mention and slash
+        # routing in on_key / _sync_completion_overlays.  A # trigger needs its
+        # own overlay slot and a clean seam before it can coexist here safely.
 
     def _sync_slash_complete(self, raw_value: str) -> None:
         query = raw_value.strip()

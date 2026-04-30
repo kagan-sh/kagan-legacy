@@ -76,20 +76,6 @@ max_concurrent_agents = 3
 | Key                                | Type        | Default               | Notes                                                      |
 | ---------------------------------- | ----------- | --------------------- | ---------------------------------------------------------- |
 | `skip_attached_instructions_popup` | boolean     | `false`               | Skip interactive-launch instruction modal                  |
-| `tui_plugin_ui_allowlist`          | string list | `["official.github"]` | Plugin IDs allowed to contribute declarative UI to the TUI |
-
-## `[plugins]`
-
-| Key         | Type        | Default (GitHub + NoOp) | Notes                   |
-| ----------- | ----------- | ----------------------- | ----------------------- |
-| `discovery` | string list | GitHub, NoOp plugins    | `module.path:ClassName` |
-
-Third-party: install plugin → add to `discovery` → restart core. No remote fetch; import-based from local packages.
-
-```toml
-[plugins]
-discovery = [..., "my_company.kagan_plugins.my_plugin:MyPlugin"]
-```
 
 ## Environment variables passed into interactive sessions
 

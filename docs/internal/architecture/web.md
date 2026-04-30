@@ -69,7 +69,7 @@ ______________________________________________________________________
 - `review-panel.tsx` -- review approval surface
 - `task-metadata-panel.tsx` -- metadata inspector section
 - `backlog-list-view.tsx` -- list view for backlog lane
-- `plugin-import-dialog.tsx` -- plugin import flow dialog
+- `integration-import-dialog.tsx` -- integration import flow dialog
 - `task-sidebar.tsx` -- collapsible task sidebar
 - `board-dialogs.tsx` -- shared dialog orchestration for board actions
 - `first-boot-tutorial-dialog.tsx` -- first-run onboarding tutorial dialog

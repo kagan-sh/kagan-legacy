@@ -251,7 +251,7 @@ REPO_PICKER_BINDINGS: list[BindingType] = [
 ]
 
 GITHUB_IMPORT_BINDINGS: list[BindingType] = [
-    Binding("enter", "run_import", "Import", key_display="Enter"),
+    Binding("enter", "run_import", "Import", key_display="Enter", priority=True),
     Binding("escape", "dismiss", "Close", key_display="Esc"),
     Binding("a", "select_all", "Select All", show=False),
     Binding("n", "select_none", "Select None", show=False),

@@ -65,6 +65,7 @@ class Task(SQLModel, table=True):
     max_retries: int = Field(default=0)
     success_command: str | None = Field(default=None)
     task_type: str | None = Field(default=None, index=True)
+    github_issue: str | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 

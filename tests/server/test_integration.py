@@ -39,6 +39,7 @@ class _FakeTasksClient:
         agent_backend: str | None = None,
         launcher: str | None = None,
         repo_id: str | None = None,
+        github_issue: str | None = None,
     ) -> Any:
         self._seq += 1
         task = Task(
@@ -53,6 +54,7 @@ class _FakeTasksClient:
             agent_backend=agent_backend,
             launcher=launcher,
             repo_id=repo_id,
+            github_issue=github_issue,
             review_approved=False,
         )
         self._tasks[task.id] = task

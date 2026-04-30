@@ -1,4 +1,4 @@
-"""Tests: GitHub integration — label mapping, idempotent sync, description building, preflight."""
+"""Tests: GitHub integration — label mapping, idempotent sync, verbatim body, preflight."""
 
 import json
 from typing import cast
@@ -11,7 +11,6 @@ from kagan.core.integrations.github import (
     GitHubConfig,
     GitHubIntegration,
     GitHubIssue,
-    _build_description,
     _extract_label_names,
     _map_labels,
     canonical_repo_slug,
@@ -96,31 +95,6 @@ def test_map_labels_defaults_when_no_mapped_labels() -> None:
     priority, remaining = _map_labels(["bug", "documentation"])
     assert priority == Priority.MEDIUM
     assert remaining == ["bug", "documentation"]
-
-
-# ---------------------------------------------------------------------------
-# Description building
-# ---------------------------------------------------------------------------
-
-
-def test_build_description_with_url_body_and_labels() -> None:
-    """Description includes URL, extra labels as tags, and body."""
-    issue: GitHubIssue = {
-        "url": "https://github.com/octocat/hello-world/issues/42",
-        "body": "Fix the login bug",
-    }
-    desc = _build_description(issue, ["bug", "frontend"])
-    assert "https://github.com/octocat/hello-world/issues/42" in desc
-    assert "[bug]" in desc
-    assert "[frontend]" in desc
-    assert "Fix the login bug" in desc
-
-
-def test_build_description_no_labels_no_body() -> None:
-    """Description with only URL when body and labels are empty."""
-    issue: GitHubIssue = {"url": "https://github.com/x/y/issues/1", "body": ""}
-    desc = _build_description(issue, [])
-    assert desc == "https://github.com/x/y/issues/1"
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +264,85 @@ def _make_gh_issues(*issues):
             }
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# New design: verbatim body
+# ---------------------------------------------------------------------------
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_import_stores_body_verbatim(
+    _mock_path, _mock_auth, mock_fetch, integration, config, client
+) -> None:
+    """Imported task description equals the GitHub issue body exactly."""
+    body_text = "Fix the login bug\n\nSteps to reproduce:\n1. Go to /login\n2. Click Submit"
+    mock_fetch.return_value = [
+        {
+            "number": 1,
+            "title": "Login bug",
+            "body": body_text,
+            "labels": [],
+            "state": "OPEN",
+            "url": "https://github.com/octocat/hello-world/issues/1",
+        }
+    ]
+
+    await integration.sync(client, config, client.active_project_id)
+
+    tasks = await client.tasks.list()
+    assert len(tasks) == 1
+    assert tasks[0].description == body_text
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_first_import_seeds_criteria_from_body_checkboxes(
+    _mock_path, _mock_auth, mock_fetch, integration, config, client
+) -> None:
+    """First import seeds acceptance criteria from - [ ] / - [x] lines in body."""
+    mock_fetch.return_value = [
+        {
+            "number": 1,
+            "title": "Feature with checkboxes",
+            "body": "Acceptance criteria:\n- [ ] foo\n- [x] bar\n- [ ] baz",
+            "labels": [],
+            "state": "OPEN",
+            "url": "https://github.com/octocat/hello-world/issues/1",
+        }
+    ]
+
+    await integration.sync(client, config, client.active_project_id)
+
+    tasks = await client.tasks.list()
+    assert len(tasks) == 1
+    criteria_texts = [c.text for c in tasks[0].criteria]
+    assert set(criteria_texts) == {"foo", "bar", "baz"}
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_import_sets_github_issue_field_to_canonical_form(
+    _mock_path, _mock_auth, mock_fetch, integration, config, client
+) -> None:
+    """Imported task has github_issue set to '<owner>/<repo>#<number>'."""
+    mock_fetch.return_value = _make_gh_issues((42, "Some issue", []))
+
+    await integration.sync(client, config, client.active_project_id)
+
+    tasks = await client.tasks.list()
+    assert len(tasks) == 1
+    assert tasks[0].github_issue == "octocat/hello-world#42"
 
 
 # ---------------------------------------------------------------------------

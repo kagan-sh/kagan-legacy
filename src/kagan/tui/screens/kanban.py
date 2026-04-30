@@ -285,7 +285,8 @@ class KanbanScreen(Screen[None]):
 
             if not self._all_tasks and not self._github_import_hint_shown:
                 self.app.notify(
-                    "No tasks yet. Press Ctrl+Shift+P and run 'github import' to import from GitHub.",
+                    "No tasks yet. Press Ctrl+Shift+P and run"
+                    " 'github import' to import from GitHub.",
                     severity="information",
                 )
                 self._github_import_hint_shown = True

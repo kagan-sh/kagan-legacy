@@ -20,15 +20,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. Add the new column (nullable, no server default needed).
-    op.add_column(
-        "tasks",
-        sa.Column("github_issue", sa.Text(), nullable=True),
-    )
-    op.create_index(op.f("ix_tasks_github_issue"), "tasks", ["github_issue"], unique=False)
+    # 1. Add the new column — idempotent: skip if already present (e.g. when
+    #    the 0001 baseline migration ran SQLModel.metadata.create_all() on a
+    #    fresh DB that already included this column in the model).
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_cols = {col["name"] for col in inspector.get_columns("tasks")}
+    if "github_issue" not in existing_cols:
+        op.add_column(
+            "tasks",
+            sa.Column("github_issue", sa.Text(), nullable=True),
+        )
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes("tasks")}
+    if "ix_tasks_github_issue" not in existing_indexes:
+        op.create_index(
+            op.f("ix_tasks_github_issue"), "tasks", ["github_issue"], unique=False
+        )
 
     # 2. Backfill from sync_map settings — single transaction, idempotent.
-    conn = op.get_bind()
 
     # Read all sync_map settings rows.
     rows = conn.execute(

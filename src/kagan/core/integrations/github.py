@@ -466,6 +466,9 @@ def _render_criteria_comment(criteria: list[Any]) -> str:
     Each criterion may be a string (text, considered unchecked) or an object
     with ``.text`` and ``.verdicts`` attributes.  A criterion is checked if the
     latest verdict on it is "pass".
+
+    Accessing the ``verdicts`` relationship on a detached ORM instance raises
+    ``sqlalchemy.exc.DetachedInstanceError`` — we treat that as no verdicts.
     """
     lines: list[str] = [_KAGAN_CRITERIA_MARKER, ""]
     for crit in criteria:
@@ -473,12 +476,17 @@ def _render_criteria_comment(criteria: list[Any]) -> str:
             lines.append(f"- [ ] {crit}")
             continue
         text = getattr(crit, "text", str(crit))
-        verdicts = getattr(crit, "verdicts", [])
         is_done = False
-        if verdicts:
-            latest = sorted(verdicts, key=lambda v: getattr(v, "created_at", ""), reverse=True)
-            top_verdict = getattr(latest[0], "verdict", "").upper()
-            is_done = top_verdict == "PASS"
+        try:
+            verdicts = list(getattr(crit, "verdicts", []) or [])
+            if verdicts:
+                latest = sorted(
+                    verdicts, key=lambda v: getattr(v, "created_at", ""), reverse=True
+                )
+                top_verdict = getattr(latest[0], "verdict", "").upper()
+                is_done = top_verdict == "PASS"
+        except Exception:
+            pass
         box = "x" if is_done else " "
         lines.append(f"- [{box}] {text}")
     return "\n".join(lines)

@@ -13,6 +13,17 @@ Label conventions on the GitHub side auto-map to kagan task priorities:
 Sync is idempotent: a mapping of issue numbers → task IDs is persisted in
 the kagan settings table.  Re-running sync skips already-imported issues.
 
+Body round-trip policy: ``task.description = issue.body`` verbatim, both
+directions.  No URL prefix, no ``[label]`` tags in the description.
+
+Acceptance-criteria sync: on first import, ``- [ ]`` / ``- [x]`` lines in the
+issue body are seeded as criteria.  On subsequent pulls and whenever criteria
+change in kagan, a tagged comment (marked with ``_KAGAN_CRITERIA_MARKER``) is
+upserted on the issue so the checklist stays in sync.
+
+Status is fully decoupled: kagan task status changes never touch the GitHub
+issue; GitHub issue state changes never touch the task.
+
 Design choice: ``github`` (the module-level singleton) is instantiated once
 without a client reference; it receives the client only at call time. The
 class is testable: tests can pass a mock client to each method directly.
@@ -26,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -55,7 +67,11 @@ _PRIORITY_LABELS: Final[dict[str, Priority]] = {
     "priority:low": Priority.LOW,
 }
 
-_GH_JSON_FIELDS = "number,title,body,labels,state,url"
+_GH_JSON_FIELDS = "number,title,body,labels,state,url,updatedAt"
+
+_KAGAN_CRITERIA_MARKER: Final[str] = "<!-- kagan:acceptance-criteria -->"
+
+_CRITERIA_LINE_RE = re.compile(r"^\s*- \[([xX ])\] (.+)$")
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +111,7 @@ class GitHubIssue(TypedDict, total=False):
     labels: list[dict[str, Any]]
     state: str
     url: str
+    updatedAt: str
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +279,290 @@ async def _gh_fetch_issues(config: GitHubConfig) -> list[GitHubIssue]:
     return data
 
 
+async def _gh_view_issue(repo_slug: str, number: int) -> dict[str, Any]:
+    """Fetch a single issue from GitHub using gh CLI.
+
+    Returns a dict with keys: number, title, body, labels, state, url, updatedAt.
+    Raises KaganError on failure.
+    """
+    fields = "number,title,body,labels,state,url,updatedAt"
+    resolved = resolve_spawn_command(
+        "gh", "issue", "view", str(number), "--repo", repo_slug, "--json", fields
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh issue view failed for {repo_slug}#{number}: {err}")
+    try:
+        return json.loads(stdout.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise KaganError(f"Failed to parse gh issue view output: {exc}") from exc
+
+
+async def _gh_list_comments(repo_slug: str, number: int) -> list[dict[str, Any]]:
+    """List comments on a GitHub issue using gh API.
+
+    Returns a list of comment dicts (id, body, user, created_at, updated_at).
+    """
+    resolved = resolve_spawn_command(
+        "gh", "api", f"repos/{repo_slug}/issues/{number}/comments"
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh api comments failed for {repo_slug}#{number}: {err}")
+    try:
+        data = json.loads(stdout.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise KaganError(f"Failed to parse gh api comments output: {exc}") from exc
+    return data if isinstance(data, list) else []
+
+
+async def _gh_create_comment(repo_slug: str, number: int, body: str) -> int:
+    """Create a comment on a GitHub issue and return its comment id.
+
+    Parses the comment URL printed by ``gh issue comment`` to extract the id.
+    Raises KaganError on failure.
+    """
+    resolved = resolve_spawn_command(
+        "gh", "issue", "comment", str(number), "--repo", repo_slug, "--body", body
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh issue comment failed for {repo_slug}#{number}: {err}")
+    # gh prints the comment URL, e.g.:
+    # https://github.com/owner/repo/issues/42#issuecomment-123456789
+    url = stdout.decode("utf-8").strip()
+    match = re.search(r"issuecomment-(\d+)", url)
+    if match:
+        return int(match.group(1))
+    # Fallback: we created successfully but couldn't parse id
+    return 0
+
+
+async def _gh_update_comment(repo_slug: str, comment_id: int, body: str) -> None:
+    """Update an existing comment on a GitHub issue via gh API PATCH.
+
+    Raises KaganError on failure.
+    """
+    resolved = resolve_spawn_command(
+        "gh",
+        "api",
+        "-X",
+        "PATCH",
+        f"repos/{repo_slug}/issues/comments/{comment_id}",
+        "-f",
+        f"body={body}",
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh api PATCH comment {comment_id} failed: {err}")
+
+
+async def _gh_create_issue(repo_slug: str, title: str, body: str) -> int:
+    """Create a new GitHub issue and return its issue number.
+
+    Parses the issue URL printed by ``gh issue create``.
+    Raises KaganError on failure.
+    """
+    resolved = resolve_spawn_command(
+        "gh",
+        "issue",
+        "create",
+        "--repo",
+        repo_slug,
+        "--title",
+        title,
+        "--body",
+        body,
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode(errors="replace").strip()
+        raise KaganError(f"gh issue create failed for {repo_slug}: {err}")
+    url = stdout.decode("utf-8").strip()
+    # URL format: https://github.com/owner/repo/issues/42
+    match = re.search(r"/issues/(\d+)$", url)
+    if not match:
+        raise KaganError(f"Could not parse issue number from gh output: {url!r}")
+    return int(match.group(1))
+
+
+async def _search_issues(repo_slug: str, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search GitHub issues in a repo by text query.
+
+    Returns a list of dicts with keys: number, title, state.
+    Returns empty list on any failure (best-effort).
+    """
+    resolved = resolve_spawn_command(
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        repo_slug,
+        "--search",
+        query,
+        "--limit",
+        str(limit),
+        "--json",
+        "number,title,state",
+    )
+    proc = await asyncio.create_subprocess_exec(
+        *resolved,
+        env=build_sanitized_subprocess_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return []
+    try:
+        data = json.loads(stdout.decode("utf-8"))
+    except json.JSONDecodeError:
+        return []
+    return data if isinstance(data, list) else []
+
+
 # ---------------------------------------------------------------------------
-# Pure helper functions (label parsing, description building)
+# Criteria helpers
+# ---------------------------------------------------------------------------
+
+
+def _render_criteria_comment(criteria: list[Any]) -> str:
+    """Build a tagged comment body from a list of criterion objects.
+
+    Each criterion may be a string (text, considered unchecked) or an object
+    with ``.text`` and ``.verdicts`` attributes.  A criterion is checked if the
+    latest verdict on it is "pass".
+    """
+    lines: list[str] = [_KAGAN_CRITERIA_MARKER, ""]
+    for crit in criteria:
+        if isinstance(crit, str):
+            lines.append(f"- [ ] {crit}")
+            continue
+        text = getattr(crit, "text", str(crit))
+        verdicts = getattr(crit, "verdicts", [])
+        is_done = False
+        if verdicts:
+            latest = sorted(verdicts, key=lambda v: getattr(v, "created_at", ""), reverse=True)
+            top_verdict = getattr(latest[0], "verdict", "").upper()
+            is_done = top_verdict == "PASS"
+        box = "x" if is_done else " "
+        lines.append(f"- [{box}] {text}")
+    return "\n".join(lines)
+
+
+def _parse_criteria_lines(text: str) -> list[tuple[str, bool]]:
+    """Parse ``- [ ] text`` / ``- [x] text`` lines from a block of text.
+
+    Returns ``[(text, done)]`` for each matching line.
+    """
+    results: list[tuple[str, bool]] = []
+    for line in text.splitlines():
+        m = _CRITERIA_LINE_RE.match(line)
+        if m:
+            done = m.group(1).lower() == "x"
+            results.append((m.group(2).strip(), done))
+    return results
+
+
+def _seed_criteria_from_body(body: str) -> list[str]:
+    """Return criterion texts from ``- [ ]`` / ``- [x]`` lines in an issue body.
+
+    Used only on first import as a one-time bootstrap.  Returns text only
+    (done-state is irrelevant for seeding).
+    """
+    parsed = _parse_criteria_lines(body)
+    return [text for text, _done in parsed]
+
+
+async def _sync_criteria_via_comment(
+    client: KaganCore,
+    task: Any,
+    repo_slug: str,
+    number: int,
+) -> None:
+    """Upsert the tagged criteria comment on a GitHub issue (fire-and-forget).
+
+    Finds the tagged comment, updates it if present; creates one if not.
+    All failures are logged at WARNING and never re-raised.
+    """
+    try:
+        criteria = list(task.criteria) if hasattr(task, "criteria") else []
+        new_body = _render_criteria_comment(criteria)
+        comments = await _gh_list_comments(repo_slug, number)
+        tagged = next(
+            (c for c in comments if isinstance(c.get("body"), str) and
+             c["body"].startswith(_KAGAN_CRITERIA_MARKER)),
+            None,
+        )
+        if tagged is not None:
+            comment_id = tagged.get("id")
+            if comment_id:
+                await _gh_update_comment(repo_slug, int(comment_id), new_body)
+        else:
+            await _gh_create_comment(repo_slug, number, new_body)
+    except Exception as exc:
+        logger.warning(
+            "Failed to sync criteria comment for {}#{}: {}", repo_slug, number, exc
+        )
+
+
+async def _pull_criteria_from_comment(
+    repo_slug: str, number: int
+) -> list[tuple[str, bool]] | None:
+    """Find the tagged criteria comment and parse its lines.
+
+    Returns ``[(text, done)]`` if a tagged comment exists, else ``None``.
+    """
+    try:
+        comments = await _gh_list_comments(repo_slug, number)
+    except KaganError:
+        return None
+    tagged = next(
+        (c for c in comments if isinstance(c.get("body"), str) and
+         c["body"].startswith(_KAGAN_CRITERIA_MARKER)),
+        None,
+    )
+    if tagged is None:
+        return None
+    return _parse_criteria_lines(tagged["body"])
+
+
+# ---------------------------------------------------------------------------
+# Pure helper functions (label parsing)
 # ---------------------------------------------------------------------------
 
 
@@ -282,23 +581,6 @@ def _map_labels(label_names: list[str]) -> tuple[Priority, list[str]]:
         else:
             remaining.append(name)
     return priority, remaining
-
-
-def _build_description(issue: GitHubIssue, extra_labels: list[str]) -> str:
-    parts: list[str] = []
-
-    if url := issue.get("url"):
-        parts.append(url)
-
-    if extra_labels:
-        tags = " ".join(f"[{lbl}]" for lbl in extra_labels)
-        parts.append(tags)
-
-    body = (issue.get("body") or "").strip()
-    if body:
-        parts.append(body)
-
-    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -467,8 +749,11 @@ class GitHubIntegration:
         sync_map: dict[str, str],
         result: ImportResult,
         repo_id: str | None,
+        repo_slug: str,
     ) -> ImportResult:
         title = (issue.get("title") or "").strip()
+        body = (issue.get("body") or "").strip()
+        github_issue_link = f"{repo_slug}#{number}"
 
         if number in sync_map:
             task_id = sync_map[number]
@@ -484,14 +769,18 @@ class GitHubIntegration:
                 logger.debug("Task {} for issue #{} was deleted, re-importing", task_id, number)
 
         label_names = _extract_label_names(issue)
-        priority, extra_labels = _map_labels(label_names)
-        description = _build_description(issue, extra_labels)
+        priority, _extra_labels = _map_labels(label_names)
+
+        # Seed acceptance criteria from body checkboxes on first import
+        seeded_criteria = _seed_criteria_from_body(body)
 
         task = await client.tasks.create(
             title,
-            description=description,
+            description=body,
             priority=priority,
             repo_id=repo_id,
+            acceptance_criteria=seeded_criteria or None,
+            github_issue=github_issue_link,
         )
         sync_map[number] = task.id
         return ImportResult(
@@ -525,7 +814,7 @@ class GitHubIntegration:
 
             try:
                 result = await self._sync_single_issue(
-                    client, number, issue, sync_map, result, repo_id
+                    client, number, issue, sync_map, result, repo_id, config.repo_slug
                 )
             except KaganError as exc:
                 result = result.with_error(f"Issue #{number}: {exc}")
@@ -641,9 +930,21 @@ async def preview_github_issues(
 
 __all__ = [
     "GITHUB_IMPORT_STATES",
+    "_KAGAN_CRITERIA_MARKER",
     "GitHubConfig",
     "GitHubIntegration",
     "GitHubIssue",
+    "_gh_create_comment",
+    "_gh_create_issue",
+    "_gh_list_comments",
+    "_gh_update_comment",
+    "_gh_view_issue",
+    "_parse_criteria_lines",
+    "_pull_criteria_from_comment",
+    "_render_criteria_comment",
+    "_search_issues",
+    "_seed_criteria_from_body",
+    "_sync_criteria_via_comment",
     "canonical_repo_slug",
     "detect_github_repo_slug_from_origin",
     "format_github_setup_message",

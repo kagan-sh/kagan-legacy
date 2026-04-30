@@ -210,3 +210,10 @@ export interface IntegrationSyncResult {
   skipped: number;
   errors?: string[];
 }
+
+export interface MentionResponse {
+  source: string;
+  id: string;
+  title: string;
+  state?: string | null;
+}

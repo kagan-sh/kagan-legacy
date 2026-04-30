@@ -35,6 +35,39 @@ async def _resolve_selected_repo_path(ctx: Any) -> Path | None:
     return await ctx.client.projects.resolve_repo_path(settings=settings)
 
 
+async def _handle_mentions_search(request: Request, ctx: Any) -> JSONResponse:
+    """Search kagan tasks + GitHub issues for #-mention autocomplete.
+
+    Query params: ``project_id`` (defaults to active project), ``q`` (required),
+    ``limit`` (default 10, max 50).
+    """
+    from kagan.core.integrations.mentions import search_mentions
+
+    q = request.query_params.get("q", "").strip()
+    if not q:
+        return _err("'q' query parameter is required", status=400)
+
+    project_id = request.query_params.get("project_id") or ctx.client.active_project_id
+    if not project_id:
+        return _err("No active project and no project_id provided", status=400)
+
+    try:
+        limit = min(max(int(request.query_params.get("limit", "10")), 1), 50)
+    except ValueError:
+        limit = 10
+
+    mentions = await search_mentions(ctx.client, project_id, q, limit=limit)
+    return _ok(
+        {
+            "mentions": [
+                {"source": m.source, "id": m.id, "title": m.title, "state": m.state}
+                for m in mentions
+            ],
+            "total": len(mentions),
+        }
+    )
+
+
 def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations", methods=["GET"])
     @require_context(mcp)
@@ -243,41 +276,4 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @require_context(mcp)
     @handle_errors
     async def mentions_search(request: Request, *, ctx: Any) -> JSONResponse:
-        """Search for kagan tasks and GitHub issues for #-mention autocomplete.
-
-        Query params:
-          project_id  — project to scope kagan task search to (defaults to active project)
-          q           — search query (required)
-          limit       — max results (default 10, max 50)
-        """
-        from kagan.core.integrations.mentions import search_mentions
-
-        q = request.query_params.get("q", "").strip()
-        if not q:
-            return _err("'q' query parameter is required", status=400)
-
-        project_id = request.query_params.get("project_id") or ctx.client.active_project_id
-        if not project_id:
-            return _err("No active project and no project_id provided", status=400)
-
-        limit_raw = request.query_params.get("limit", "10")
-        try:
-            limit = min(max(int(limit_raw), 1), 50)
-        except ValueError:
-            limit = 10
-
-        mentions = await search_mentions(ctx.client, project_id, q, limit=limit)
-        return _ok(
-            {
-                "mentions": [
-                    {
-                        "source": m.source,
-                        "id": m.id,
-                        "title": m.title,
-                        "state": m.state,
-                    }
-                    for m in mentions
-                ],
-                "total": len(mentions),
-            }
-        )
+        return await _handle_mentions_search(request, ctx)

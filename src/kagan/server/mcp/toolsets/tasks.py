@@ -27,6 +27,7 @@ class _BatchTaskEntry(TypedDict, total=False):
     agent_backend: str | None
     launcher: str | None
     repo_id: str | None
+    github_issue: str | None
 
 
 def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
@@ -89,6 +90,7 @@ async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
         "agent_backend": getattr(task, "agent_backend", None),
         "launcher": getattr(task, "launcher", None),
         "repo_id": getattr(task, "repo_id", None),
+        "github_issue": getattr(task, "github_issue", None),
         "review_approved": approved,
     }
 
@@ -255,6 +257,7 @@ async def _task_create(
     agent_backend: str | None = None,
     launcher: str | None = None,
     repo_id: str | None = None,
+    github_issue: str | None = None,
 ) -> dict:
     """Create one or more tasks on the active board.
 
@@ -281,6 +284,7 @@ async def _task_create(
                 agent_backend=agent_backend,
                 launcher=launcher,
                 repo_id=repo_id,
+                github_issue=github_issue,
             )
         ]
 
@@ -306,6 +310,7 @@ async def _task_create(
                 agent_backend=entry.get("agent_backend"),
                 launcher=entry.get("launcher"),
                 repo_id=effective_repo_id,
+                github_issue=entry.get("github_issue"),
             )
             result = await _task_to_dict(task, app.client.engine)
             if app.bound_session_id is not None:

@@ -145,6 +145,7 @@ class TaskResponse(_OrmBase):
     priority: Priority
     base_branch: str | None = None
     repo_id: str | None = None
+    github_issue: str | None = None
     # criteria is the ORM relationship name; acceptance_criteria is the wire name
     acceptance_criteria: list[AcceptanceCriterionResponse] = Field(
         default_factory=list, validation_alias="criteria"
@@ -383,6 +384,18 @@ class IntegrationSyncResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+# ── Mentions ──────────────────────────────────────────────────────────────────
+
+
+class MentionResponse(BaseModel):
+    """A single result from the dual-source mention autocomplete endpoint."""
+
+    source: str  # "kagan" or "github"
+    id: str      # insert form: "kagan#<short_id>" or "#<number>"
+    title: str
+    state: str | None = None
+
+
 # ── Schema export helper ─────────────────────────────────────────────────────
 
 # All response models that map to TS interfaces.
@@ -410,4 +423,5 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "FsBrowseResponse": FsBrowseResponse,
     "IntegrationInfo": IntegrationInfo,
     "IntegrationSyncResult": IntegrationSyncResult,
+    "MentionResponse": MentionResponse,
 }

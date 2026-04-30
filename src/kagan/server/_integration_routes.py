@@ -7,6 +7,7 @@ Endpoints:
     GET  /api/integrations/{id}/detect-repo
     GET  /api/integrations/{id}/preview
     POST /api/integrations/{id}/sync
+    GET  /api/mentions/search
 """
 
 from __future__ import annotations
@@ -235,5 +236,48 @@ def register_integration_routes(mcp: FastMCP) -> None:
                 "updated": result.updated,
                 "skipped": result.skipped,
                 "errors": list(result.errors),
+            }
+        )
+
+    @mcp.custom_route("/api/mentions/search", methods=["GET"])
+    @require_context(mcp)
+    @handle_errors
+    async def mentions_search(request: Request, *, ctx: Any) -> JSONResponse:
+        """Search for kagan tasks and GitHub issues for #-mention autocomplete.
+
+        Query params:
+          project_id  — project to scope kagan task search to (defaults to active project)
+          q           — search query (required)
+          limit       — max results (default 10, max 50)
+        """
+        from kagan.core.integrations.mentions import search_mentions
+
+        q = request.query_params.get("q", "").strip()
+        if not q:
+            return _err("'q' query parameter is required", status=400)
+
+        project_id = request.query_params.get("project_id") or ctx.client.active_project_id
+        if not project_id:
+            return _err("No active project and no project_id provided", status=400)
+
+        limit_raw = request.query_params.get("limit", "10")
+        try:
+            limit = min(max(int(limit_raw), 1), 50)
+        except ValueError:
+            limit = 10
+
+        mentions = await search_mentions(ctx.client, project_id, q, limit=limit)
+        return _ok(
+            {
+                "mentions": [
+                    {
+                        "source": m.source,
+                        "id": m.id,
+                        "title": m.title,
+                        "state": m.state,
+                    }
+                    for m in mentions
+                ],
+                "total": len(mentions),
             }
         )

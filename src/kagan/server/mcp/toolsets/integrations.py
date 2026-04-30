@@ -187,12 +187,49 @@ async def _integration_sync(
     }
 
 
+@mcp_error_boundary
+async def _mention_search(
+    ctx: Context,
+    project_id: str,
+    q: str,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Search for kagan tasks and GitHub issues for ``#``-mention autocomplete.
+
+    Returns a merged, scored list of results from both kagan tasks (local DB)
+    and GitHub issues (remote, if a GitHub repo is linked to the project).
+
+    Args:
+        project_id: Project to scope the kagan task search to.
+        q: Free-text query to match against task titles / short-ids / issue titles.
+        limit: Maximum results to return (1-50).
+    """
+    from kagan.core.integrations.mentions import search_mentions
+
+    app = get_context(ctx)
+    clamped_limit = max(1, min(limit, 50))
+    mentions = await search_mentions(app.client, project_id, q, limit=clamped_limit)
+    return {
+        "mentions": [
+            {
+                "source": m.source,
+                "id": m.id,
+                "title": m.title,
+                "state": m.state,
+            }
+            for m in mentions
+        ],
+        "total": len(mentions),
+    }
+
+
 def register(mcp: FastMCP, opts: ServerOptions) -> None:
     """Register integration domain tools on mcp, filtered by opts."""
     _tools: list[tuple[str, Callable[..., Any]]] = [
         ("integration_preview", _integration_preview),
         ("integration_sync", _integration_sync),
         ("integration_preflight", _integration_preflight),
+        ("mention_search", _mention_search),
     ]
     for name, fn in _tools:
         if is_tool_allowed(name, opts):

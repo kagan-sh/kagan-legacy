@@ -875,15 +875,19 @@ class GitHubIntegration:
         if number in sync_map:
             task_id = sync_map[number]
             try:
-                await client.tasks.get(task_id)
-                return ImportResult(
-                    created=result.created,
-                    updated=result.updated,
-                    skipped=result.skipped + 1,
-                    errors=result.errors,
-                )
+                existing = await client.tasks.get(task_id)
             except NotFoundError:
                 logger.debug("Task {} for issue #{} was deleted, re-importing", task_id, number)
+            else:
+                return await self._refresh_existing_task(
+                    client,
+                    existing,
+                    task_id,
+                    number,
+                    repo_slug,
+                    github_issue_link,
+                    result,
+                )
 
         label_names = _extract_label_names(issue)
         priority, _extra_labels = _map_labels(label_names)
@@ -903,6 +907,72 @@ class GitHubIntegration:
         return ImportResult(
             created=result.created + 1,
             updated=result.updated,
+            skipped=result.skipped,
+            errors=result.errors,
+        )
+
+    async def _refresh_existing_task(
+        self,
+        client: KaganCore,
+        existing: Any,
+        task_id: str,
+        number: str,
+        repo_slug: str,
+        github_issue_link: str,
+        result: ImportResult,
+    ) -> ImportResult:
+        """Pull canonical GitHub state for one already-imported issue and apply
+        any field-level changes to the kagan task.
+
+        Uses _gh_view_issue for the authoritative single-issue data.  Always
+        passes _from_sync=True to every tasks.update call so the update does
+        not trigger push-back to GitHub.  Status is never touched.
+        """
+        gh_issue = await _gh_view_issue(repo_slug, int(number))
+        gh_title = (gh_issue.get("title") or "").strip()
+        gh_body = (gh_issue.get("body") or "").strip()
+        label_names = [
+            lbl["name"]
+            for lbl in (gh_issue.get("labels") or [])
+            if isinstance(lbl, dict) and "name" in lbl
+        ]
+        gh_priority, _extra = _map_labels(label_names)
+
+        update_kwargs: dict[str, Any] = {}
+
+        if gh_title and gh_title != (existing.title or "").strip():
+            update_kwargs["title"] = gh_title
+        if gh_body != (existing.description or "").strip():
+            update_kwargs["description"] = gh_body
+        if gh_priority != existing.priority:
+            update_kwargs["priority"] = gh_priority
+
+        # Pull criteria from tagged comment; if present, they are canonical
+        pulled = await _pull_criteria_from_comment(repo_slug, int(number))
+        if pulled is not None:
+            update_kwargs["acceptance_criteria"] = [text for text, _done in pulled]
+
+        if not update_kwargs:
+            logger.debug(
+                "GitHub pull: issue #{} unchanged, skipping task {}", number, task_id
+            )
+            return ImportResult(
+                created=result.created,
+                updated=result.updated,
+                skipped=result.skipped + 1,
+                errors=result.errors,
+            )
+
+        await client.tasks.update(task_id, _from_sync=True, **update_kwargs)
+        logger.debug(
+            "GitHub pull: updated task {} from issue #{} fields={}",
+            task_id,
+            number,
+            set(update_kwargs.keys()),
+        )
+        return ImportResult(
+            created=result.created,
+            updated=result.updated + 1,
             skipped=result.skipped,
             errors=result.errors,
         )

@@ -403,17 +403,26 @@ async def test_sync_assigns_imported_tasks_to_selected_repo(
     assert tasks[0].title == "Repo-scoped bug"
 
 
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
     "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_is_idempotent(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
 ) -> None:
     """Running sync twice with same issues creates tasks only once."""
     issues = _make_gh_issues((1, "Bug report", ["bug"]))
     mock_fetch.return_value = issues
+    mock_view.return_value = {
+        "number": 1,
+        "title": "Bug report",
+        "body": "Body for #1",
+        "labels": [{"name": "bug"}],
+        "state": "OPEN",
+    }
 
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
@@ -449,16 +458,25 @@ async def test_sync_reimports_deleted_tasks(
     assert result2.skipped == 0
 
 
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
     "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_sync_incremental_new_issues(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
 ) -> None:
     """Sync picks up new issues while skipping already-imported ones."""
     mock_fetch.return_value = _make_gh_issues((1, "First", []))
+    mock_view.return_value = {
+        "number": 1,
+        "title": "First",
+        "body": "Body for #1",
+        "labels": [],
+        "state": "OPEN",
+    }
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
 

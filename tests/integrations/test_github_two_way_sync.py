@@ -300,16 +300,26 @@ async def test_status_change_does_not_call_gh(
         mock_update.assert_not_called()
 
 
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
     "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 async def test_pull_sync_does_not_trigger_push_back_loop(
-    _mock_path, _mock_auth, mock_fetch, integration, config, client
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
 ) -> None:
     """A second pull sync (same issues) does not re-create or modify tasks."""
-    mock_fetch.return_value = [_make_issue(1, "Bug", "Body")]
+    issue = _make_issue(1, "Bug", "Body")
+    mock_fetch.return_value = [issue]
+    mock_view.return_value = {
+        "number": 1,
+        "title": "Bug",
+        "body": "Body",
+        "labels": [],
+        "state": "OPEN",
+    }
     result1 = await integration.sync(client, config, client.active_project_id)
     assert result1.created == 1
 
@@ -319,6 +329,167 @@ async def test_pull_sync_does_not_trigger_push_back_loop(
 
     tasks = await client.tasks.list()
     assert len(tasks) == 1
+
+
+# ---------------------------------------------------------------------------
+# Pull refresh — two-way sync
+# ---------------------------------------------------------------------------
+
+
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_pull_refreshes_existing_task_when_gh_title_changed(
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
+) -> None:
+    """Second sync with a changed GitHub title updates the task title."""
+    issue = _make_issue(1, "Original title", "Body")
+    mock_fetch.return_value = [issue]
+    mock_view.return_value = {
+        "number": 1,
+        "title": "Original title",
+        "body": "Body",
+        "labels": [],
+        "state": "OPEN",
+    }
+
+    result1 = await integration.sync(client, config, client.active_project_id)
+    assert result1.created == 1
+
+    # Simulate GitHub-side title change
+    mock_view.return_value = {
+        "number": 1,
+        "title": "Updated title from GitHub",
+        "body": "Body",
+        "labels": [],
+        "state": "OPEN",
+    }
+
+    result2 = await integration.sync(client, config, client.active_project_id)
+    assert result2.updated == 1
+    assert result2.skipped == 0
+
+    tasks = await client.tasks.list()
+    assert tasks[0].title == "Updated title from GitHub"
+
+
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_pull_refreshes_existing_task_body_verbatim(
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
+) -> None:
+    """Second sync with a changed GitHub body updates description verbatim."""
+    original_body = "Original body text"
+    issue = _make_issue(1, "My issue", original_body)
+    mock_fetch.return_value = [issue]
+    mock_view.return_value = {
+        "number": 1,
+        "title": "My issue",
+        "body": original_body,
+        "labels": [],
+        "state": "OPEN",
+    }
+
+    result1 = await integration.sync(client, config, client.active_project_id)
+    assert result1.created == 1
+
+    new_body = "Completely revised body\n\nWith multiple paragraphs."
+    mock_view.return_value = {
+        "number": 1,
+        "title": "My issue",
+        "body": new_body,
+        "labels": [],
+        "state": "OPEN",
+    }
+
+    result2 = await integration.sync(client, config, client.active_project_id)
+    assert result2.updated == 1
+
+    tasks = await client.tasks.list()
+    assert tasks[0].description == new_body
+
+
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_pull_overrides_criteria_from_tagged_comment(
+    _mock_path, _mock_auth, mock_fetch, mock_view, mock_pull_criteria, integration, config, client
+) -> None:
+    """Second sync with a tagged comment overrides criteria from body seed."""
+    issue = _make_issue(1, "Feature", "- [ ] seeded from body")
+    mock_fetch.return_value = [issue]
+    mock_view.return_value = {
+        "number": 1,
+        "title": "Feature",
+        "body": "- [ ] seeded from body",
+        "labels": [],
+        "state": "OPEN",
+    }
+    # First sync: no tagged comment yet
+    mock_pull_criteria.return_value = None
+
+    result1 = await integration.sync(client, config, client.active_project_id)
+    assert result1.created == 1
+
+    tasks = await client.tasks.list()
+    body_criteria_texts = {c.text for c in tasks[0].criteria}
+    assert "seeded from body" in body_criteria_texts
+
+    # Second sync: tagged comment now exists with different criteria
+    mock_pull_criteria.return_value = [("alpha", False), ("beta", True)]
+
+    result2 = await integration.sync(client, config, client.active_project_id)
+    assert result2.updated == 1
+
+    tasks = await client.tasks.list()
+    criteria_texts = [c.text for c in sorted(tasks[0].criteria, key=lambda c: c.ordinal)]
+    assert criteria_texts == ["alpha", "beta"]
+
+
+@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_pull_skips_when_nothing_changed(
+    _mock_path, _mock_auth, mock_fetch, mock_view, _mock_pull_criteria, integration, config, client
+) -> None:
+    """Second sync with identical GitHub state increments skipped, not updated."""
+    issue = _make_issue(1, "Stable issue", "Unchanged body")
+    mock_fetch.return_value = [issue]
+    view_response = {
+        "number": 1,
+        "title": "Stable issue",
+        "body": "Unchanged body",
+        "labels": [],
+        "state": "OPEN",
+    }
+    mock_view.return_value = view_response
+
+    result1 = await integration.sync(client, config, client.active_project_id)
+    assert result1.created == 1
+
+    with patch.object(client.tasks, "update", wraps=client.tasks.update) as mock_update:
+        result2 = await integration.sync(client, config, client.active_project_id)
+
+    assert result2.skipped == 1
+    assert result2.updated == 0
+    mock_update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -25,9 +25,15 @@ pytestmark = [pytest.mark.integrations]
 
 @pytest.fixture
 async def client(tmp_path):
+    from tests.helpers.helpers import make_git_repo
+
     c = KaganCore(db_path=tmp_path / "test.db")
     project = await c.projects.create("Test Project")
     await c.projects.set_active(project.id)
+    # Attach a repo so GitHub import has a target repo_id
+    repo_path = tmp_path / "test-repo"
+    await make_git_repo(repo_path)
+    await c.projects.add_repo(project.id, str(repo_path))
     yield c
     c.close()
 
@@ -171,9 +177,7 @@ async def test_first_import_seeds_criteria_from_body_checkboxes(
     _mock_path, _mock_auth, mock_fetch, integration, config, client
 ) -> None:
     """First import: checkboxes in body seed kagan acceptance criteria."""
-    mock_fetch.return_value = [
-        _make_issue(1, "Feature", "- [ ] foo\n- [x] bar")
-    ]
+    mock_fetch.return_value = [_make_issue(1, "Feature", "- [ ] foo\n- [x] bar")]
 
     await integration.sync(client, config, client.active_project_id)
 
@@ -215,9 +219,7 @@ async def test_criteria_comment_updated_on_subsequent_change(
 ) -> None:
     """When a tagged comment already exists, update it (no duplicate)."""
     existing_comment_body = f"{_KAGAN_CRITERIA_MARKER}\n\n- [ ] old criterion"
-    mock_list_comments.return_value = [
-        {"id": 999, "body": existing_comment_body}
-    ]
+    mock_list_comments.return_value = [{"id": 999, "body": existing_comment_body}]
 
     task = await client.tasks.create("Task with criteria", acceptance_criteria=["new criterion"])
 
@@ -254,9 +256,7 @@ async def test_pull_criteria_returns_none_when_no_tagged_comment(
     mock_list_comments,
 ) -> None:
     """_pull_criteria_from_comment returns None when no tagged comment exists."""
-    mock_list_comments.return_value = [
-        {"id": 1, "body": "Just a regular comment"}
-    ]
+    mock_list_comments.return_value = [{"id": 1, "body": "Just a regular comment"}]
 
     from kagan.core.integrations.github import _pull_criteria_from_comment
 
@@ -300,7 +300,11 @@ async def test_status_change_does_not_call_gh(
         mock_update.assert_not_called()
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -336,7 +340,11 @@ async def test_pull_sync_does_not_trigger_push_back_loop(
 # ---------------------------------------------------------------------------
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -377,7 +385,11 @@ async def test_pull_refreshes_existing_task_when_gh_title_changed(
     assert tasks[0].title == "Updated title from GitHub"
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -459,7 +471,11 @@ async def test_pull_overrides_criteria_from_tagged_comment(
     assert criteria_texts == ["alpha", "beta"]
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -498,9 +514,7 @@ async def test_pull_skips_when_nothing_changed(
 
 
 @patch("kagan.core.integrations.github._gh_create_issue", new_callable=AsyncMock, return_value=99)
-async def test_create_with_github_issue_new_creates_and_links(
-    mock_create_issue, tmp_path
-) -> None:
+async def test_create_with_github_issue_new_creates_and_links(mock_create_issue, tmp_path) -> None:
     """github_issue='new' creates a GitHub issue and stores the link on the task."""
     from tests.helpers.helpers import make_git_repo
 
@@ -529,9 +543,7 @@ async def test_create_with_github_issue_new_creates_and_links(
     new_callable=AsyncMock,
     return_value={"number": 5, "title": "Existing issue"},
 )
-async def test_create_with_github_issue_number_links_existing(
-    _mock_view, tmp_path
-) -> None:
+async def test_create_with_github_issue_number_links_existing(_mock_view, tmp_path) -> None:
     """github_issue='5' validates and links an existing GitHub issue."""
     c = KaganCore(db_path=tmp_path / "test.db")
     project = await c.projects.create("P")
@@ -553,9 +565,7 @@ async def test_create_with_github_issue_number_links_existing(
     new_callable=AsyncMock,
     side_effect=Exception("404 not found"),
 )
-async def test_create_with_invalid_github_issue_raises(
-    _mock_view, tmp_path
-) -> None:
+async def test_create_with_invalid_github_issue_raises(_mock_view, tmp_path) -> None:
     """github_issue pointing to a nonexistent issue raises KaganError."""
     from kagan.core.errors import KaganError
 

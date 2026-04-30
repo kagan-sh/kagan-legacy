@@ -130,16 +130,12 @@ def normalize_github_state(state: str) -> str:
 def canonical_repo_slug(repo_slug: str) -> str:
     value = repo_slug.strip()
     if "/" not in value:
-        raise ValueError(
-            "Repository must use owner/repo format (for example octocat/hello-world)"
-        )
+        raise ValueError("Repository must use owner/repo format (for example octocat/hello-world)")
     owner, name = value.split("/", 1)
     owner = owner.strip()
     name = name.strip()
     if not owner or not name or " " in owner or " " in name:
-        raise ValueError(
-            "Repository must use owner/repo format (for example octocat/hello-world)"
-        )
+        raise ValueError("Repository must use owner/repo format (for example octocat/hello-world)")
     return f"{owner}/{name}"
 
 
@@ -310,9 +306,7 @@ async def _gh_list_comments(repo_slug: str, number: int) -> list[dict[str, Any]]
 
     Returns a list of comment dicts (id, body, user, created_at, updated_at).
     """
-    resolved = resolve_spawn_command(
-        "gh", "api", f"repos/{repo_slug}/issues/{number}/comments"
-    )
+    resolved = resolve_spawn_command("gh", "api", f"repos/{repo_slug}/issues/{number}/comments")
     proc = await asyncio.create_subprocess_exec(
         *resolved,
         env=build_sanitized_subprocess_environment(),
@@ -589,9 +583,7 @@ def _render_criteria_comment(criteria: list[Any]) -> str:
         try:
             verdicts = list(getattr(crit, "verdicts", []) or [])
             if verdicts:
-                latest = sorted(
-                    verdicts, key=lambda v: getattr(v, "created_at", ""), reverse=True
-                )
+                latest = sorted(verdicts, key=lambda v: getattr(v, "created_at", ""), reverse=True)
                 top_verdict = getattr(latest[0], "verdict", "").upper()
                 is_done = top_verdict == "PASS"
         except Exception:
@@ -641,8 +633,11 @@ async def _sync_criteria_via_comment(
         new_body = _render_criteria_comment(criteria)
         comments = await _gh_list_comments(repo_slug, number)
         tagged = next(
-            (c for c in comments if isinstance(c.get("body"), str) and
-             c["body"].startswith(_KAGAN_CRITERIA_MARKER)),
+            (
+                c
+                for c in comments
+                if isinstance(c.get("body"), str) and c["body"].startswith(_KAGAN_CRITERIA_MARKER)
+            ),
             None,
         )
         if tagged is not None:
@@ -652,14 +647,10 @@ async def _sync_criteria_via_comment(
         else:
             await _gh_create_comment(repo_slug, number, new_body)
     except Exception as exc:
-        logger.warning(
-            "Failed to sync criteria comment for {}#{}: {}", repo_slug, number, exc
-        )
+        logger.warning("Failed to sync criteria comment for {}#{}: {}", repo_slug, number, exc)
 
 
-async def _pull_criteria_from_comment(
-    repo_slug: str, number: int
-) -> list[tuple[str, bool]] | None:
+async def _pull_criteria_from_comment(repo_slug: str, number: int) -> list[tuple[str, bool]] | None:
     """Find the tagged criteria comment and parse its lines.
 
     Returns ``[(text, done)]`` if a tagged comment exists, else ``None``.
@@ -669,8 +660,11 @@ async def _pull_criteria_from_comment(
     except KaganError:
         return None
     tagged = next(
-        (c for c in comments if isinstance(c.get("body"), str) and
-         c["body"].startswith(_KAGAN_CRITERIA_MARKER)),
+        (
+            c
+            for c in comments
+            if isinstance(c.get("body"), str) and c["body"].startswith(_KAGAN_CRITERIA_MARKER)
+        ),
         None,
     )
     if tagged is None:
@@ -723,18 +717,28 @@ async def _resolve_task_repo_id(
     client: KaganCore,
     project_id: str,
     configured_repo_id: str | None,
-) -> str | None:
-    """Pick the repo_id that imported tasks should belong to, when available."""
+) -> str:
+    """Pick the repo_id that imported tasks should belong to.
+
+    Raises:
+        KaganError: If no repo_id can be determined (no repos attached to
+            the project, or multiple repos with none selected).
+    """
     if configured_repo_id:
         return configured_repo_id
 
     try:
         repos = await client.projects.repos(project_id)
-    except KaganError:
-        return None
+    except KaganError as exc:
+        raise KaganError(
+            "Failed to resolve repository for import. Attach a repository to the project first."
+        ) from exc
 
     if not repos:
-        return None
+        raise KaganError(
+            "No repositories attached to this project. "
+            "Attach a repository before importing GitHub issues."
+        )
 
     settings = await client.settings.get()
     selected_repo_id = settings.get(f"ui.selected_repo.{project_id}")
@@ -744,7 +748,11 @@ async def _resolve_task_repo_id(
     if len(repos) == 1:
         return repos[0].id
 
-    return None
+    repo_paths = ", ".join(r.path for r in repos)
+    raise KaganError(
+        f"Multiple repositories attached to this project ({repo_paths}). "
+        "Select a repository in the TUI/web UI before importing, or pass target_repo_id explicitly."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -764,8 +772,8 @@ class GitHubIntegration:
         from kagan.core.integrations import github
 
         result = await github.sync(client, config, project_id)
-        items   = await github.preview(client, config, project_id)
-        checks  = github.preflight()
+        items = await github.preview(client, config, project_id)
+        checks = github.preflight()
     """
 
     id: str = "github"
@@ -836,9 +844,7 @@ class GitHubIntegration:
 
     # -- Internal helpers ---------------------------------------------------
 
-    async def _fetch_issues(
-        self, config: GitHubConfig
-    ) -> list[GitHubIssue]:
+    async def _fetch_issues(self, config: GitHubConfig) -> list[GitHubIssue]:
         """Validate prerequisites and fetch issues from GitHub."""
         if _gh_path() is None:
             raise KaganError("GitHub CLI (gh) not found. Install → https://cli.github.com")
@@ -954,9 +960,7 @@ class GitHubIntegration:
             update_kwargs["acceptance_criteria"] = [text for text, _done in pulled]
 
         if not update_kwargs:
-            logger.debug(
-                "GitHub pull: issue #{} unchanged, skipping task {}", number, task_id
-            )
+            logger.debug("GitHub pull: issue #{} unchanged, skipping task {}", number, task_id)
             return ImportResult(
                 created=result.created,
                 updated=result.updated,
@@ -1066,7 +1070,8 @@ class GitHubIntegration:
                     current_labels = await _gh_issue_labels(slug, number)
                     add_labels = [new_label] if new_label not in current_labels else []
                     remove_labels = [
-                        lbl for lbl in current_labels
+                        lbl
+                        for lbl in current_labels
                         if lbl in _ALL_PRIORITY_LABELS and lbl != new_label
                     ]
                     await _gh_ensure_label(slug, new_label)

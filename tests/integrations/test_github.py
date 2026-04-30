@@ -34,6 +34,10 @@ async def client(tmp_path):
     c = KaganCore(db_path=tmp_path / "test.db")
     project = await c.projects.create("Test Project")
     await c.projects.set_active(project.id)
+    # Attach a repo so GitHub import has a target repo_id
+    repo_path = tmp_path / "test-repo"
+    await make_git_repo(repo_path)
+    await c.projects.add_repo(project.id, str(repo_path))
     yield c
     c.close()
 
@@ -403,7 +407,11 @@ async def test_sync_assigns_imported_tasks_to_selected_repo(
     assert tasks[0].title == "Repo-scoped bug"
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -458,7 +466,11 @@ async def test_sync_reimports_deleted_tasks(
     assert result2.skipped == 0
 
 
-@patch("kagan.core.integrations.github._pull_criteria_from_comment", new_callable=AsyncMock, return_value=None)
+@patch(
+    "kagan.core.integrations.github._pull_criteria_from_comment",
+    new_callable=AsyncMock,
+    return_value=None,
+)
 @patch("kagan.core.integrations.github._gh_view_issue", new_callable=AsyncMock)
 @patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
 @patch(
@@ -595,3 +607,61 @@ async def test_preview_raises_when_gh_missing(_mock_path, integration, config, c
 
     with pytest.raises(KaganError, match=r"gh.*not found"):
         await integration.preview(client, config, client.active_project_id)
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_sync_raises_when_no_repo_attached(
+    _mock_path, _mock_auth, mock_fetch, integration, config, tmp_path
+) -> None:
+    """sync() raises KaganError when project has no repositories attached."""
+    from kagan.core.errors import KaganError
+
+    # Create a fresh client with a project that has NO repos attached
+    client = KaganCore(db_path=tmp_path / "no_repo_test.db")
+    project = await client.projects.create("No Repo Project")
+    await client.projects.set_active(project.id)
+
+    mock_fetch.return_value = _make_gh_issues((1, "Bug report", ["bug"]))
+
+    try:
+        with pytest.raises(KaganError, match=r"No repositories attached"):
+            await integration.sync(client, config, project.id)
+    finally:
+        client.close()
+
+
+@patch("kagan.core.integrations.github._gh_fetch_issues", new_callable=AsyncMock)
+@patch(
+    "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
+)
+@patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
+async def test_sync_raises_when_multiple_repos_and_none_selected(
+    _mock_path, _mock_auth, mock_fetch, integration, config, tmp_path
+) -> None:
+    """sync() raises KaganError when project has multiple repos but none is selected."""
+    from kagan.core.errors import KaganError
+
+    # Create a fresh client with a project that has multiple repos but none selected
+    client = KaganCore(db_path=tmp_path / "multi_repo_test.db")
+    project = await client.projects.create("Multi Repo Project")
+    await client.projects.set_active(project.id)
+
+    # Attach two repos
+    repo1_path = tmp_path / "repo1"
+    repo2_path = tmp_path / "repo2"
+    await make_git_repo(repo1_path)
+    await make_git_repo(repo2_path)
+    await client.projects.add_repo(project.id, str(repo1_path))
+    await client.projects.add_repo(project.id, str(repo2_path))
+
+    mock_fetch.return_value = _make_gh_issues((1, "Bug report", ["bug"]))
+
+    try:
+        with pytest.raises(KaganError, match=r"Multiple repositories attached"):
+            await integration.sync(client, config, project.id)
+    finally:
+        client.close()

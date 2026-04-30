@@ -38,9 +38,15 @@ def _make_ctx():
 async def client(tmp_path):
     from kagan.core import KaganCore
 
+    from tests.helpers.helpers import make_git_repo
+
     c = KaganCore(db_path=tmp_path / "test.db")
     project = await c.projects.create("Test Project")
     await c.projects.set_active(project.id)
+    # Attach a repo so GitHub import has a target repo_id
+    repo_path = tmp_path / "test-repo"
+    await make_git_repo(repo_path)
+    await c.projects.add_repo(project.id, str(repo_path))
     yield c
     c.close()
 
@@ -83,9 +89,7 @@ async def test_integration_preflight_tool_returns_expected_keys(
     "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
-async def test_integration_preview_tool_shape(
-    _mock_path, _mock_auth, mock_fetch, client
-) -> None:
+async def test_integration_preview_tool_shape(_mock_path, _mock_auth, mock_fetch, client) -> None:
     """integration_preview returns integration, repo, issues, total keys."""
     mock_fetch.return_value = [
         {
@@ -127,9 +131,7 @@ async def test_integration_preview_tool_shape(
     "kagan.core.integrations.github._gh_is_authenticated", new_callable=AsyncMock, return_value=True
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
-async def test_integration_sync_tool_shape(
-    _mock_path, _mock_auth, mock_fetch, client
-) -> None:
+async def test_integration_sync_tool_shape(_mock_path, _mock_auth, mock_fetch, client) -> None:
     """integration_sync returns integration, repo, project_id, created, updated, skipped, errors."""
     mock_fetch.return_value = [
         {

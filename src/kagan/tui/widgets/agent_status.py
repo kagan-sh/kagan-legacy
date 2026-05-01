@@ -3,8 +3,12 @@ from datetime import UTC, datetime, timedelta
 from textual.reactive import reactive
 from textual.widgets import Static
 
+_HALF_DISC_FRAMES: tuple[str, ...] = ("◐", "◓", "◑", "◒")
+_HALF_DISC_FPS: float = 4.0
+_HALF_DISC_INTERVAL: float = 1.0 / _HALF_DISC_FPS
+
 STATUS_META = {
-    "running": ("[yellow]●[/]", "Running"),
+    "running": ("[#fbbf24]◐[/]", "Running"),  # placeholder; glyph is animated in _refresh_display
     "completed": ("[green]✓[/]", "Completed"),
     "failed": ("[red]✗[/]", "Failed"),
     "idle": ("[dim]○[/]", "Idle"),
@@ -36,6 +40,11 @@ class AgentStatusPanel(Static):
     context_size: reactive[int | None] = reactive(None)
     cost_amount: reactive[float | None] = reactive(None)
     cost_currency: reactive[str | None] = reactive(None)
+    _frame_index: reactive[int] = reactive(0)
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._spin_timer = None
 
     def on_mount(self) -> None:
         self.tooltip = "Agent execution status, elapsed time, context usage, and cost"
@@ -77,10 +86,14 @@ class AgentStatusPanel(Static):
             started = started.replace(tzinfo=UTC)
         self.elapsed = _format_elapsed(datetime.now(UTC) - started)
 
-    def watch_backend(self, _: str) -> None:
+    def watch_status(self, status: str) -> None:
+        if status == "running":
+            self._start_spin()
+        else:
+            self._stop_spin()
         self._refresh_display()
 
-    def watch_status(self, _: str) -> None:
+    def watch_backend(self, _: str) -> None:
         self._refresh_display()
 
     def watch_elapsed(self, _: str) -> None:
@@ -104,8 +117,33 @@ class AgentStatusPanel(Static):
     def watch_cost_currency(self, _: str | None) -> None:
         self._refresh_display()
 
+    def watch__frame_index(self, _: int) -> None:
+        self._refresh_display()
+
+    def _start_spin(self) -> None:
+        if self._spin_timer is None:
+            self._spin_timer = self.set_interval(_HALF_DISC_INTERVAL, self._next_frame, pause=False)
+
+    def _stop_spin(self) -> None:
+        if self._spin_timer is not None:
+            self._spin_timer.stop()
+            self._spin_timer = None
+        self._frame_index = 0
+
+    def _next_frame(self) -> None:
+        self._frame_index = (self._frame_index + 1) % len(_HALF_DISC_FRAMES)
+
+    def _running_symbol(self) -> str:
+        glyph = _HALF_DISC_FRAMES[self._frame_index]
+        return f"[#fbbf24]{glyph}[/]"
+
     def _refresh_display(self) -> None:
-        symbol, label = STATUS_META.get(self.status, ("[dim]○[/]", self.status.title() or "Idle"))
+        if self.status == "running":
+            symbol = self._running_symbol()
+            label = "Running"
+        else:
+            _fallback = ("[dim]○[/]", self.status.title() or "Idle")
+            symbol, label = STATUS_META.get(self.status, _fallback)
         pid_value = "-" if self.pid is None else str(self.pid)
         context_line = "Context: -"
         ctx_used = self.context_used

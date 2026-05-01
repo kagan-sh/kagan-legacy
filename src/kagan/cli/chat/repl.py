@@ -637,11 +637,28 @@ def _render_input_separator(cols: int) -> tuple[str, str]:
     return style, line
 
 
+def _thinking_dot() -> str:
+    """Return the glyph representing current agent state for the toolbar badge.
+
+    Mirrors the prompt glyph logic in ``_build_prompt_message``:
+    - truecolor terminal → geometric half-disc animation / idle arrow / plan diamond
+    - ANSI fallback → ● streaming / ○ idle (same as the old default)
+    """
+    if _supports_truecolor_terminal():
+        if _TOOLBAR_STATE.is_streaming:
+            return _streaming_glyph_frame().rstrip()
+        if _TOOLBAR_STATE.plan_mode:
+            return "◇"
+        return "❯"  # noqa: RUF001
+    # ANSI fallback: keep legacy glyphs that have comparable rendering risk
+    return "●" if _TOOLBAR_STATE.is_streaming else "○"
+
+
 def _format_agent_mode(remaining_cols: int) -> str:
     backend = _TOOLBAR_STATE.agent_backend
     if not backend:
         return ""
-    thinking_dot = "●" if _TOOLBAR_STATE.is_streaming else "○"
+    thinking_dot = _thinking_dot()
     full = f"agent ({backend} {thinking_dot})"
     mid = f"agent {thinking_dot}"
     bare = "agent"

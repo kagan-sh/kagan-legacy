@@ -11,7 +11,7 @@ from kagan.cli.chat._approval_panel import (
     _build_display_options,
     _extract_key_args_preview,
     _is_shell_command,
-    _strip_tool_prefix,
+    strip_tool_prefix,
     _tool_display_name,
     build_approval_panel,
 )
@@ -29,16 +29,16 @@ pytestmark = [pytest.mark.unit]
 # ---------------------------------------------------------------------------
 
 
-def test_strip_tool_prefix_removes_mcp_kagan_prefix() -> None:
-    assert _strip_tool_prefix("mcp__kagan__task_get") == "task get"
+def teststrip_tool_prefix_removes_mcp_kagan_prefix() -> None:
+    assert strip_tool_prefix("mcp__kagan__task_get") == "task get"
 
 
-def test_strip_tool_prefix_removes_mcp_prefix() -> None:
-    assert _strip_tool_prefix("mcp__bash") == "bash"
+def teststrip_tool_prefix_removes_mcp_prefix() -> None:
+    assert strip_tool_prefix("mcp__bash") == "bash"
 
 
-def test_strip_tool_prefix_leaves_plain_names_unchanged() -> None:
-    assert _strip_tool_prefix("read_file") == "read file"
+def teststrip_tool_prefix_leaves_plain_names_unchanged() -> None:
+    assert strip_tool_prefix("read_file") == "read file"
 
 
 def test_tool_display_name_uses_title_attr() -> None:

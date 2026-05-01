@@ -14,7 +14,7 @@ import click
 from loguru import logger
 from rich.live import Live
 
-from kagan.cli.chat._approval_panel import _strip_tool_prefix
+from kagan.cli.chat._approval_panel import strip_tool_prefix
 from kagan.cli.chat._chat_acp import (
     _OrchestratorACPClient,
     _SendResult,
@@ -1074,7 +1074,7 @@ class ChatController:
             return
         _console.print("[bold]Session-granted approvals:[/bold]")
         for name in granted:
-            display = _strip_tool_prefix(name)
+            display = strip_tool_prefix(name)
             _console.print(f"  [green]✓[/green] {display}  [dim](/approvals revoke {name})[/dim]")
 
     async def _switch_project(self, name: str) -> None:

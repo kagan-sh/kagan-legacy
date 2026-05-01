@@ -20,6 +20,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 
+from kagan.cli.chat._theme import APPROVAL
+
 # Maximum lines to show in approval preview body
 _MAX_PREVIEW_LINES = 4
 
@@ -36,23 +38,23 @@ def _use_ascii_spinner() -> bool:
     return bool(os.environ.get("NO_COLOR")) or os.environ.get("TERM", "") == "dumb"
 
 
-def _no_color() -> bool:
+def no_color() -> bool:
     """Honor the NO_COLOR convention (https://no-color.org)."""
     return bool(os.environ.get("NO_COLOR"))
 
 
-def _strip_tool_prefix(name: str) -> str:
+def strip_tool_prefix(name: str) -> str:
     """Remove mcp__kagan__ prefix and convert underscores to spaces for display."""
     for prefix in ("mcp__kagan__", "mcp__"):
         if name.startswith(prefix):
-            name = name[len(prefix):]
+            name = name[len(prefix) :]
     return name.replace("_", " ").strip()
 
 
 def _tool_display_name(tool_call: Any) -> str:
     """Return a human-readable tool name from an ACP tool_call object."""
     raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or "tool call"
-    return _strip_tool_prefix(str(raw))
+    return strip_tool_prefix(str(raw))
 
 
 def _is_shell_command(tool_call: Any) -> bool:
@@ -149,9 +151,9 @@ def build_approval_panel(
     source_desc = getattr(tool_call, "source_description", None)
     if agent_id or subagent_type:
         parts = [p for p in (subagent_type, agent_id) if p]
-        lines.append(Text(f"Agent: {' / '.join(parts)}", style="dim grey50"))
+        lines.append(Text(f"Agent: {' / '.join(parts)}", style=APPROVAL.meta))
     if source_desc:
-        lines.append(Text(f"Task: {source_desc}", style="dim grey50"))
+        lines.append(Text(f"Task: {source_desc}", style=APPROVAL.meta))
 
     lines.append(Text(""))
 
@@ -164,14 +166,14 @@ def build_approval_panel(
                 truncated += "\n... (truncated)"
             lines.append(Syntax(truncated, "bash", theme="ansi_dark", word_wrap=False))
         else:
-            lines.append(Text("(shell command)", style="dim"))
+            lines.append(Text("(shell command)", style=APPROVAL.dim))
     else:
         preview = _extract_key_args_preview(tool_call)
         if preview:
-            lines.append(Text(preview, style="dim"))
+            lines.append(Text(preview, style=APPROVAL.dim))
         else:
             raw = getattr(tool_call, "title", None) or getattr(tool_call, "name", None) or ""
-            lines.append(Text(_strip_tool_prefix(str(raw)), style="dim"))
+            lines.append(Text(strip_tool_prefix(str(raw)), style=APPROVAL.dim))
 
     lines.append(Text(""))
 
@@ -183,11 +185,11 @@ def build_approval_panel(
         if i == selected_index:
             if is_feedback and feedback_draft:
                 cursor_display = f"→ [{num}] Reject: {feedback_draft}█"
-                lines.append(Text(cursor_display, style="cyan"))
+                lines.append(Text(cursor_display, style=APPROVAL.cursor))
             else:
-                lines.append(Text(f"→ [{num}] {label}", style="cyan bold"))
+                lines.append(Text(f"→ [{num}] {label}", style=APPROVAL.focused))
         else:
-            lines.append(Text(f"  [{num}] {label}", style="dim"))
+            lines.append(Text(f"  [{num}] {label}", style=APPROVAL.dim))
 
     # Keyboard hint footer
     lines.append(Text(""))
@@ -195,7 +197,7 @@ def build_approval_panel(
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
         hint = "  ▲/▼ select  1/2/3/4 choose  ↵ confirm"
-    lines.append(Text(hint, style="dim"))
+    lines.append(Text(hint, style=APPROVAL.hint))
 
     # Queue depth indicator
     title = "[bold]approval[/bold]"
@@ -204,7 +206,7 @@ def build_approval_panel(
 
     return Panel(
         Group(*lines),
-        border_style="yellow",
+        border_style=APPROVAL.border,
         title=title,
         title_align="left",
         padding=(0, 1),

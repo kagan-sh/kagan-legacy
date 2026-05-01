@@ -26,8 +26,8 @@ from typing import Any
 from loguru import logger
 from prompt_toolkit.application.run_in_terminal import run_in_terminal
 
-from kagan.cli.chat._approval_panel import _no_color
-from kagan.cli.chat._approval_panel import _strip_tool_prefix as _strip_mcp_prefix
+from kagan.cli.chat._approval_panel import no_color, strip_tool_prefix
+from kagan.cli.chat._theme import APPROVAL
 
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
@@ -92,13 +92,12 @@ def _build_batch_panel_ansi(
 ) -> str:
     """Render the combined batch approval panel to an ANSI string."""
     from rich.console import Console, Group
-    from rich.markup import escape as _rich_escape
     from rich.panel import Panel
     from rich.text import Text
 
     buf = io.StringIO()
     cols = shutil.get_terminal_size((80, 24)).columns
-    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=_no_color())
+    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=no_color())
 
     n = len(items)
     lines: list[Any] = []
@@ -113,11 +112,11 @@ def _build_batch_panel_ansi(
             or getattr(item.tool_call, "name", None)
             or "tool call"
         )
-        name = _strip_mcp_prefix(str(raw))
+        name = strip_tool_prefix(str(raw))
         if i == focused_item:
-            lines.append(Text.from_markup(f"[cyan bold]→ {name}[/cyan bold]"))
+            lines.append(Text(f"→ {name}", style=APPROVAL.focused))
         else:
-            lines.append(Text.from_markup(f"[dim]  {_rich_escape(name)}[/dim]"))
+            lines.append(Text(f"  {name}", style=APPROVAL.dim))
 
     lines.append(Text(""))
 
@@ -129,11 +128,11 @@ def _build_batch_panel_ansi(
         if is_selected:
             if is_feedback_slot and feedback_draft:
                 cursor_display = f"→ [{num}] Reject: {feedback_draft}█"
-                lines.append(Text(cursor_display, style="cyan"))
+                lines.append(Text(cursor_display, style=APPROVAL.cursor))
             else:
-                lines.append(Text(f"→ [{num}] {label}", style="cyan bold"))
+                lines.append(Text(f"→ [{num}] {label}", style=APPROVAL.focused))
         else:
-            lines.append(Text(f"  [{num}] {label}", style="dim"))
+            lines.append(Text(f"  [{num}] {label}", style=APPROVAL.dim))
 
     lines.append(Text(""))
 
@@ -142,12 +141,12 @@ def _build_batch_panel_ansi(
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
         hint = "  ▲/▼ option  Tab/S-Tab item  1-6 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
-    lines.append(Text(hint, style="dim"))
+    lines.append(Text(hint, style=APPROVAL.hint))
 
     title = f"[bold]approval ({n} tools)[/bold]"
     panel = Panel(
         Group(*lines),
-        border_style="yellow",
+        border_style=APPROVAL.border,
         title=title,
         title_align="left",
         padding=(0, 1),
@@ -391,7 +390,7 @@ def _run_legacy_batch_input(
     for i, item in enumerate(items):
         _console.print(
             f"[bold yellow]approval ({i+1}/{len(items)})[/bold yellow]: "
-            f"{_strip_mcp_prefix(getattr(item.tool_call, 'title', None) or 'tool')}"
+            f"{strip_tool_prefix(getattr(item.tool_call, 'title', None) or 'tool')}"
         )
         try:
             raw = input("  [1] approve  [3] reject  > ").strip()

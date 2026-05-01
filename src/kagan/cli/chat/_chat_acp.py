@@ -28,7 +28,7 @@ from rich.text import Text
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
-from kagan.cli.chat._approval_panel import _no_color, build_approval_panel, get_rich_spinner_name
+from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
 from kagan.cli.chat._streaming import OutputFlushManager, ResponseChunkBuffer
 from kagan.cli.chat.repl import WAVE_FRAMES, _console, _env_flag_enabled
 from kagan.cli.chat.tool_runs import ToolRunTracker
@@ -280,7 +280,7 @@ def _render_panel_ansi(
 
     buf = io.StringIO()
     cols = shutil.get_terminal_size((80, 24)).columns
-    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=_no_color())
+    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=no_color())
     tmp.print(
         build_approval_panel(
             tool_call,
@@ -303,7 +303,7 @@ def _show_panel_in_pager(
 
     cols = shutil.get_terminal_size((80, 24)).columns
     buf = io.StringIO()
-    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=_no_color())
+    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=no_color())
     tmp.print(
         build_approval_panel(
             tool_call,

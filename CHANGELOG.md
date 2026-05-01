@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.19 (2026-05-01)
+
+
+
+
+### Bug Fixes
+
+- **tests**: Attach repo before GitHub sync API test
+  ([`e232f57`](https://github.com/kagan-sh/kagan/commit/e232f57c892ccfd0c49e432bc93c99d19cee8053))
+
+
+
+
+
 ## v0.19.0-beta.18 (2026-04-30)
 
 

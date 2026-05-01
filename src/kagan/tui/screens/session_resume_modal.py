@@ -113,9 +113,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
     ) -> str:
         backend = f" · {agent_backend}" if agent_backend else ""
         updated = f" · {updated_relative}" if updated_relative else ""
-        source_badge = (
-            f" [$secondary][{source}][/]" if source else ""
-        )
+        source_badge = f" [$secondary][{source}][/]" if source else ""
         return f"{project_name} · {session_label}{backend}{updated}{source_badge}"
 
     def _selected_session(self) -> RecentSessionSelection | None:

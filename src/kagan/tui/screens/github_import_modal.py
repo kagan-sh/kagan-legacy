@@ -304,8 +304,7 @@ class GitHubImportModal(ModalScreen[GitHubImportSummary | None]):
         count = len(issues)
         selected_count = sum(not issue.already_synced for issue in issues)
         self._set_status(
-            f"{count} issue{'s' if count != 1 else ''} found. "
-            f"{selected_count} selected for import."
+            f"{count} issue{'s' if count != 1 else ''} found. {selected_count} selected for import."
         )
 
     async def _do_import(self) -> None:

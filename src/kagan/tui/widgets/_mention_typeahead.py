@@ -125,8 +125,8 @@ class MentionTypeahead(Vertical):
         self._project_id = project_id
         self._client = client
         self._debounce_seconds = debounce_seconds
-        self._active = False          # True while user has typed a ``#``
-        self._hash_position: int = -1 # cursor index just after ``#``
+        self._active = False  # True while user has typed a ``#``
+        self._hash_position: int = -1  # cursor index just after ``#``
         self._current_query = ""
         self._results: list[Mention] = []
         self._debounce_task: asyncio.Task[None] | None = None
@@ -163,7 +163,7 @@ class MentionTypeahead(Vertical):
             self._deactivate()
             return
 
-        query = text[self._hash_position + 1:cursor_position]
+        query = text[self._hash_position + 1 : cursor_position]
         # If there's whitespace in the query the ``#``-mention span ended
         if " " in query or "\n" in query:
             self._deactivate()
@@ -237,9 +237,7 @@ class MentionTypeahead(Vertical):
         option_list = self.query_one(f"#mention-list-{self._host_id}", OptionList)
         option_list.clear_options()
         for mention in self._results:
-            option_list.add_option(
-                Option(_render_mention_option(mention), id=mention.id)
-            )
+            option_list.add_option(Option(_render_mention_option(mention), id=mention.id))
         if self._results:
             option_list.highlighted = 0
             self.display = True

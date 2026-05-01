@@ -179,7 +179,6 @@ class TestClassifyTaskIndividual:
         assert task_type == TaskType.INVESTIGATION
 
 
-
 class TestClassificationEdgeCases:
     """Test edge cases and unusual inputs."""
 

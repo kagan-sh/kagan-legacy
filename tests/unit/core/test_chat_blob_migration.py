@@ -96,9 +96,7 @@ def test_migration_drops_legacy_blob_not_migrates(tmp_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     try:
         # Legacy setting must be gone
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_SETTINGS_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_SETTINGS_KEY,)).fetchone()
         assert row is None, "chat_sessions_v1 must be deleted by migration"
 
         # New tables exist but contain no rows (data NOT migrated)
@@ -119,9 +117,7 @@ def test_migration_creates_tables_on_fresh_db(tmp_path: Path) -> None:
     try:
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "chat_sessions" in tables
         assert "chat_messages" in tables

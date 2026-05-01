@@ -414,10 +414,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         sessions = await ctx.client.tasks.sessions.list_for_task(task_id)
         return _ok(
-            [
-                TaskSessionResponse.model_validate(s).model_dump(mode="json")
-                for s in sessions
-            ]
+            [TaskSessionResponse.model_validate(s).model_dump(mode="json") for s in sessions]
         )
 
     @mcp.custom_route("/api/tasks/{task_id}/review", methods=["GET"])

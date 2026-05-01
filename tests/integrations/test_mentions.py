@@ -78,9 +78,7 @@ async def test_mentions_merges_kagan_and_github_results(client) -> None:
     await client.tasks.create("Auth task")
     project_id = client.active_project_id
 
-    github_results = [
-        Mention(source="github", id="#5", title="Auth GitHub issue", state="open")
-    ]
+    github_results = [Mention(source="github", id="#5", title="Auth GitHub issue", state="open")]
     with patch(
         "kagan.core.integrations.mentions._fetch_github_mentions",
         new_callable=AsyncMock,
@@ -99,8 +97,7 @@ async def test_mentions_returns_at_most_limit(client) -> None:
         await client.tasks.create(f"Task {i} matching query")
 
     github_results = [
-        Mention(source="github", id=f"#{i}", title=f"Issue {i}", state="open")
-        for i in range(8)
+        Mention(source="github", id=f"#{i}", title=f"Issue {i}", state="open") for i in range(8)
     ]
     project_id = client.active_project_id
     with patch(

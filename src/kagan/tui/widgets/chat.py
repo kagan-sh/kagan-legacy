@@ -338,9 +338,7 @@ class ChatPanel(Vertical):
         with contextlib.suppress(NoMatches):
             self.query_one("#chat-overlay-session-select", Select).disabled = True
         with contextlib.suppress(NoMatches):
-            self.query_one("#chat-overlay-empty-heading", Static).update(
-                self._DOCKED_EMPTY_HEADING
-            )
+            self.query_one("#chat-overlay-empty-heading", Static).update(self._DOCKED_EMPTY_HEADING)
         self._sync_input_enabled_state()
         self._render_current_session()
         self._refresh_status()

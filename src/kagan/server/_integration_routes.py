@@ -76,14 +76,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
         from kagan.core.integrations import all_enabled
 
         integrations = all_enabled()
-        return _ok(
-            {
-                "integrations": [
-                    {"id": i.id, "name": i.id}
-                    for i in integrations
-                ]
-            }
-        )
+        return _ok({"integrations": [{"id": i.id, "name": i.id} for i in integrations]})
 
     @mcp.custom_route("/api/integrations/{id}/preflight", methods=["GET"])
     @require_context(mcp)
@@ -166,9 +159,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
             return _err(f"Integration {integration_id!r} not found", status=404)
 
         if integration_id != "github":
-            return _err(
-                f"Integration {integration_id!r} does not support preview", status=400
-            )
+            return _err(f"Integration {integration_id!r} does not support preview", status=400)
 
         project_id = ctx.client.active_project_id
         if not project_id:
@@ -238,9 +229,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
             state = normalize_github_state(str(body.get("state", "open")))
             labels_raw = body.get("labels")
             labels = (
-                tuple(str(s).strip() for s in labels_raw)
-                if isinstance(labels_raw, list)
-                else ()
+                tuple(str(s).strip() for s in labels_raw) if isinstance(labels_raw, list) else ()
             )
             limit = min(max(int(body.get("limit", 100)), 1), 500)
             issue_numbers_raw = body.get("issue_numbers")

@@ -26,7 +26,7 @@ class Mention:
     """A single mention result from the dual-source typeahead backend."""
 
     source: Literal["kagan", "github"]
-    id: str          # insert form: "kagan#abc12345" or "#42"
+    id: str  # insert form: "kagan#abc12345" or "#42"
     title: str
     state: str | None = None  # task status for kagan, issue state for github
 
@@ -85,8 +85,8 @@ async def search_mentions(
         merged.append(k)
         merged.append(g)
 
-    remaining_k = scored_kagan[len(scored_github):]
-    remaining_g = scored_github[len(scored_kagan):]
+    remaining_k = scored_kagan[len(scored_github) :]
+    remaining_g = scored_github[len(scored_kagan) :]
     merged.extend(remaining_k)
     merged.extend(remaining_g)
 

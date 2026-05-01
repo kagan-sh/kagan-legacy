@@ -64,10 +64,7 @@ def test_session_indexes_support_recency_listing(tmp_path: Path) -> None:
     db_path = _make_db(tmp_path)
     conn = sqlite3.connect(db_path)
     try:
-        indexes = {
-            row[1]
-            for row in conn.execute("PRAGMA index_list(chat_sessions)").fetchall()
-        }
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(chat_sessions)").fetchall()}
         # SQLModel create_all creates individual indexes from Field(index=True)
         # The migration additionally creates a composite index; on fresh DBs only
         # the individual ones exist.
@@ -75,8 +72,7 @@ def test_session_indexes_support_recency_listing(tmp_path: Path) -> None:
         assert "ix_chat_sessions_updated_at" in indexes
         # Check the session_id cursor index on messages exists
         msg_indexes = {
-            row[1]
-            for row in conn.execute("PRAGMA index_list(chat_messages)").fetchall()
+            row[1] for row in conn.execute("PRAGMA index_list(chat_messages)").fetchall()
         }
         assert "ix_chat_messages_session_id" in msg_indexes
     finally:
@@ -99,8 +95,7 @@ def test_terminated_at_user_request_defaults_false(tmp_path: Path) -> None:
         )
         conn.commit()
         row = conn.execute(
-            "SELECT terminated_at_user_request FROM chat_messages "
-            "WHERE session_id = 'sess02'"
+            "SELECT terminated_at_user_request FROM chat_messages WHERE session_id = 'sess02'"
         ).fetchone()
         assert row is not None
         assert row[0] == 0  # SQLite stores False as 0

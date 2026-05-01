@@ -103,9 +103,7 @@ def _session_to_dict(row: ChatSession, messages: list[ChatMessage]) -> dict[str,
     """Convert a ChatSession ORM row + messages list to the legacy dict shape."""
     history = [[m.role, m.content] for m in messages]
     updated_at = (
-        row.updated_at.isoformat()
-        if isinstance(row.updated_at, datetime)
-        else str(row.updated_at)
+        row.updated_at.isoformat() if isinstance(row.updated_at, datetime) else str(row.updated_at)
     )
     return {
         "id": row.id,
@@ -147,13 +145,11 @@ async def list_chat_sessions(
             sessions = db.exec(stmt).all()
             result: list[dict[str, Any]] = []
             for row in sessions:
-                msgs = (
-                    db.exec(
-                        select(ChatMessage)
-                        .where(ChatMessage.session_id == row.id)  # type: ignore[arg-type]
-                        .order_by(ChatMessage.id)  # type: ignore[attr-defined]
-                    ).all()
-                )
+                msgs = db.exec(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == row.id)  # type: ignore[arg-type]
+                    .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+                ).all()
                 result.append(_session_to_dict(row, list(msgs)))
             return result
 
@@ -280,7 +276,7 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
         project_id = None
 
     history: list[list[str]] = []
-    for pair in (session.get("orchestrator_history") or []):
+    for pair in session.get("orchestrator_history") or []:
         if isinstance(pair, (list, tuple)) and len(pair) == 2:
             role = str(pair[0]).strip()
             content = str(pair[1]).strip()

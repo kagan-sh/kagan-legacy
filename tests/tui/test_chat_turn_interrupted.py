@@ -221,8 +221,7 @@ async def test_watch_chat_session_notifies_on_takeover() -> None:
             pass
 
         assert any(
-            "taken over" in msg.lower() or "interrupted" in msg.lower()
-            for msg in app.notifications
+            "taken over" in msg.lower() or "interrupted" in msg.lower() for msg in app.notifications
         ), f"Expected takeover notification, got: {app.notifications}"
 
 

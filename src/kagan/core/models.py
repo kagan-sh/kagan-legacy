@@ -211,9 +211,7 @@ class AuditEntry(SQLModel, table=True):
 
 class ChatSession(SQLModel, table=True):
     __tablename__ = "chat_sessions"  # type: ignore[assignment]
-    __table_args__ = (
-        Index("ix_chat_sessions_project_id_updated_at", "project_id", "updated_at"),
-    )
+    __table_args__ = (Index("ix_chat_sessions_project_id_updated_at", "project_id", "updated_at"),)
 
     id: str = Field(default_factory=_new_id, primary_key=True)
     label: str
@@ -235,9 +233,7 @@ class ChatSession(SQLModel, table=True):
 
 class ChatMessage(SQLModel, table=True):
     __tablename__ = "chat_messages"  # type: ignore[assignment]
-    __table_args__ = (
-        Index("ix_chat_messages_session_id_id", "session_id", "id"),
-    )
+    __table_args__ = (Index("ix_chat_messages_session_id_id", "session_id", "id"),)
 
     id: int | None = Field(default=None, primary_key=True)  # autoincrement
     session_id: str = Field(foreign_key="chat_sessions.id", index=True)

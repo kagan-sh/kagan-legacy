@@ -67,11 +67,7 @@ _friendly_acp_error_message = friendly_acp_error_message
 
 def _is_mcp_server_unsupported_error(error: object) -> bool:
     raw = str(error).lower()
-    return (
-        "mcp" in raw
-        and "server" in raw
-        and ("not implemented" in raw or "unsupported" in raw)
-    )
+    return "mcp" in raw and "server" in raw and ("not implemented" in raw or "unsupported" in raw)
 
 
 async def _new_session_with_mcp_fallback(

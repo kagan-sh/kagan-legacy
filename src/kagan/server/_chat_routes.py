@@ -102,9 +102,7 @@ async def _claim_turn_slot(
             return _err("Session not found", status=404)
         settings = await client.settings.get()
         backend = (
-            agent_backend
-            or session.get("agent_backend")
-            or resolve_default_agent_backend(settings)
+            agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
         )
         return (session, backend)
     except BaseException:

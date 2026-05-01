@@ -440,8 +440,13 @@ def _make_reviews_ns(engine: Engine, client: "KaganCore") -> Any:
         session_id: str | None = None,
     ) -> Task:
         return await set_criterion_verdict(
-            engine, task_id, criterion_index, verdict, reason,
-            client=client, session_id=session_id,
+            engine,
+            task_id,
+            criterion_index,
+            verdict,
+            reason,
+            client=client,
+            session_id=session_id,
         )
 
     async def _clear_verdicts(task_id: str) -> Task:

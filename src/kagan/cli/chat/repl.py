@@ -1,6 +1,7 @@
 """Console setup, REPL banner, wave animation, git helpers, and entry points."""
 
 import asyncio
+import contextlib
 import os
 import shutil
 import subprocess
@@ -72,9 +73,53 @@ class ToolbarState:
     pending_approvals: int = 0
     current_tool: str = ""
     token_used_k: float | None = None
+    plan_mode: bool = False
 
 
 _TOOLBAR_STATE = ToolbarState()
+
+_ROTATING_TIPS: Final[tuple[str, ...]] = (
+    "Ctrl-J newline",
+    "/help shows commands",
+    "? shows shortcuts",
+    "Esc stops streaming",
+    "Up/Down history",
+    "/flow plan -> execute -> orchestrate",
+    "/sessions list & switch",
+    "/status one-line summary",
+)
+_TIP_ROTATE_INTERVAL: Final[float] = 30.0
+
+
+@dataclass(slots=True)
+class _TipRotator:
+    index: int = 0
+    last_rotate: float = 0.0
+
+    def maybe_rotate(self) -> None:
+        now = time.monotonic()
+        if self.last_rotate == 0.0:
+            self.last_rotate = now
+            return
+        if now - self.last_rotate >= _TIP_ROTATE_INTERVAL:
+            self.index = (self.index + 1) % len(_ROTATING_TIPS)
+            self.last_rotate = now
+
+    def bump(self) -> None:
+        self.index = (self.index + 1) % len(_ROTATING_TIPS)
+        self.last_rotate = time.monotonic()
+
+    def current(self) -> str:
+        return _ROTATING_TIPS[self.index % len(_ROTATING_TIPS)]
+
+
+_TIP_ROTATOR = _TipRotator()
+
+
+def rotate_tip_on_submit() -> None:
+    """Advance the rotating toolbar tip — invoked after each user submission."""
+    _TIP_ROTATOR.bump()
+
 
 _REPL_COLORS: Final[dict[str, str]] = {
     "bg": "#0B0A09",
@@ -86,6 +131,12 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "accent": "#3fb58e",
     "accent_soft": "#1D3A31",
     "primary": "#d4a84b",
+    "separator": "#4a5568",
+    "plan": "#60a5fa",
+    "yolo": "#f87171",
+    "meta": "#7c8594",
+    "meta_current": "#56a4ff",
+    "thinking": "#fbbf24",
 }
 
 _ANSI_REPL_COLORS: Final[dict[str, str]] = {
@@ -122,10 +173,24 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "bottom-toolbar.status": f"fg:{_REPL_COLORS['text_muted']}",
             "bottom-toolbar.hint": f"fg:{_REPL_COLORS['text_soft']}",
             "bottom-toolbar.key": f"fg:{_REPL_COLORS['accent']} bold",
+            "bottom-toolbar.tip": f"fg:{_REPL_COLORS['text_soft']} italic",
+            "bottom-toolbar.thinking": f"fg:{_REPL_COLORS['thinking']} bold",
+            "bottom-toolbar.idle-dot": f"fg:{_REPL_COLORS['text_muted']}",
+            "bottom-toolbar.yolo": f"fg:{_REPL_COLORS['yolo']} bold",
+            "bottom-toolbar.plan": f"fg:{_REPL_COLORS['plan']} bold",
+            "input-separator": f"fg:{_REPL_COLORS['separator']}",
+            "input-separator.plan": f"fg:{_REPL_COLORS['plan']}",
+            "input-separator.yolo": f"fg:{_REPL_COLORS['yolo']}",
             "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
+            "completion-menu.completion": (
+                f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}"
+            ),
             "completion-menu.completion.current": (
                 f"bg:{_REPL_COLORS['accent_soft']} fg:{_REPL_COLORS['text']} bold"
             ),
+            "completion-menu.meta.completion": f"fg:{_REPL_COLORS['meta']}",
+            "completion-menu.meta.completion.current": f"fg:{_REPL_COLORS['meta_current']}",
+            "completion-menu.multi-column-meta": f"fg:{_REPL_COLORS['meta']}",
             "selected-text": f"noreverse bg:{_REPL_COLORS['accent']} fg:{_REPL_COLORS['bg']}",
         }
     return {
@@ -136,8 +201,20 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "bottom-toolbar.status": "fg:ansibrightblack",
         "bottom-toolbar.hint": "fg:default",
         "bottom-toolbar.key": "fg:ansigreen bold",
+        "bottom-toolbar.tip": "fg:ansibrightblack italic",
+        "bottom-toolbar.thinking": "fg:ansiyellow bold",
+        "bottom-toolbar.idle-dot": "fg:ansibrightblack",
+        "bottom-toolbar.yolo": "fg:ansired bold",
+        "bottom-toolbar.plan": "fg:ansiblue bold",
+        "input-separator": "fg:ansibrightblack",
+        "input-separator.plan": "fg:ansiblue",
+        "input-separator.yolo": "fg:ansired",
         "completion-menu": "bg:default fg:default",
+        "completion-menu.completion": "bg:default fg:default",
         "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
+        "completion-menu.meta.completion": "fg:ansibrightblack",
+        "completion-menu.meta.completion.current": "fg:ansicyan",
+        "completion-menu.multi-column-meta": "fg:ansibrightblack",
         "selected-text": "noreverse bg:ansigreen fg:ansiblack",
     }
 
@@ -334,7 +411,11 @@ def _display_path(path: Path) -> str:
     return _truncate_left(rendered, 48)
 
 
-def _git_branch_badge(path: Path) -> str | None:
+_GIT_BADGE_CACHE: dict[str, tuple[float, str | None]] = {}
+_GIT_BADGE_TTL: Final[float] = 5.0
+
+
+def _compute_git_badge(path: Path) -> str | None:
     git_root = _find_git_root(path)
     if git_root is None:
         return None
@@ -363,8 +444,8 @@ def _git_branch_badge(path: Path) -> str | None:
         if not branch:
             return None
 
-        dirty_result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-b"],
             cwd=git_root,
             capture_output=True,
             text=True,
@@ -374,8 +455,39 @@ def _git_branch_badge(path: Path) -> str | None:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 
-    dirty_suffix = "*" if dirty_result.stdout.strip() else ""
-    return f"[⎇ {branch}{dirty_suffix}]"
+    lines = status_result.stdout.splitlines()
+    dirty = any(line and not line.startswith("##") for line in lines)
+    ahead = behind = 0
+    for line in lines:
+        if not line.startswith("##"):
+            continue
+        if "ahead " in line:
+            with contextlib.suppress(ValueError, IndexError):
+                ahead = int(line.split("ahead ", 1)[1].split(",", 1)[0].rstrip("]"))
+        if "behind " in line:
+            with contextlib.suppress(ValueError, IndexError):
+                behind = int(line.split("behind ", 1)[1].split(",", 1)[0].rstrip("]"))
+
+    suffix_parts: list[str] = []
+    if dirty:
+        suffix_parts.append("*")
+    if ahead:
+        suffix_parts.append(f"↑{ahead}")
+    if behind:
+        suffix_parts.append(f"↓{behind}")
+    suffix = "".join(suffix_parts)
+    return f"[⎇ {branch}{suffix}]"
+
+
+def _git_branch_badge(path: Path) -> str | None:
+    key = str(path)
+    now = time.monotonic()
+    cached = _GIT_BADGE_CACHE.get(key)
+    if cached is not None and now - cached[0] < _GIT_BADGE_TTL:
+        return cached[1]
+    badge = _compute_git_badge(path)
+    _GIT_BADGE_CACHE[key] = (now, badge)
+    return badge
 
 
 def _build_workspace_label(path: Path) -> str:
@@ -501,13 +613,56 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
     buffer.go_to_history(target)
 
 
+def _render_input_separator(cols: int) -> tuple[str, str]:
+    """Return (style_class, rendered_line) for the leading input zone separator."""
+    title_parts = ["input"]
+    if _TOOLBAR_STATE.plan_mode:
+        title_parts.append("plan")
+    if _TOOLBAR_STATE.yolo:
+        title_parts.append("yolo")
+    title = f"  {' · '.join(title_parts)}  "
+
+    if _TOOLBAR_STATE.plan_mode:
+        dash = "╌"
+        style = "class:input-separator.plan"
+    elif _TOOLBAR_STATE.yolo:
+        dash = "─"
+        style = "class:input-separator.yolo"
+    else:
+        dash = "─"
+        style = "class:input-separator"
+
+    border_fill = max(0, cols - len(title) - 2)
+    line = f"{dash}{dash}{title}{dash * border_fill}"
+    return style, line
+
+
+def _format_agent_mode(remaining_cols: int) -> str:
+    backend = _TOOLBAR_STATE.agent_backend
+    if not backend:
+        return ""
+    thinking_dot = "●" if _TOOLBAR_STATE.is_streaming else "○"
+    full = f"agent ({backend} {thinking_dot})"
+    mid = f"agent {thinking_dot}"
+    bare = "agent"
+    if remaining_cols >= 90 and len(full) <= remaining_cols:
+        return full
+    if remaining_cols >= 60 and len(mid) <= remaining_cols:
+        return mid
+    return bare
+
+
 def _bottom_toolbar() -> FormattedText:
+    _TIP_ROTATOR.maybe_rotate()
+    cols = shutil.get_terminal_size().columns
+
     status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
     status_right_parts: list[str] = []
     if _TOOLBAR_STATE.yolo:
         status_right_parts.append("YOLO")
-    if _TOOLBAR_STATE.agent_backend:
-        status_right_parts.append(_TOOLBAR_STATE.agent_backend)
+    agent_mode = _format_agent_mode(cols)
+    if agent_mode:
+        status_right_parts.append(agent_mode)
     if _TOOLBAR_STATE.pending_approvals > 0:
         status_right_parts.append(f"⚠ {_TOOLBAR_STATE.pending_approvals} approval(s) pending")
     if _TOOLBAR_STATE.current_tool:
@@ -520,30 +675,52 @@ def _bottom_toolbar() -> FormattedText:
     status_right_parts.append(f"{_TOOLBAR_STATE.turn_count} {msg_word}")
     status_right = " · ".join(status_right_parts)
 
-    shortcut_left = _SHORTCUT_HINT_STREAMING if _TOOLBAR_STATE.is_streaming else _SHORTCUT_HINT_IDLE
-    shortcut_right = f"session: {_TOOLBAR_STATE.session_label}"
-    cols = shutil.get_terminal_size().columns
+    tip_left = f"tip: {_TIP_ROTATOR.current()}"
+    tip_right = f"session: {_TOOLBAR_STATE.session_label}"
+
+    sep_style, sep_line = _render_input_separator(cols)
     rule = "─" * max(cols, 1)
     return FormattedText(
         [
+            (sep_style, sep_line),
+            ("", "\n"),
             ("class:bottom-toolbar.rule", rule),
             ("", "\n"),
             ("class:bottom-toolbar.status", _compose_toolbar_line(status_left, status_right, cols)),
             ("", "\n"),
             (
-                "class:bottom-toolbar.status",
-                _compose_toolbar_line(shortcut_left, shortcut_right, cols),
+                "class:bottom-toolbar.tip",
+                _compose_toolbar_line(tip_left, tip_right, cols),
             ),
         ]
     )
 
 
+_PROMPT_GLYPH_IDLE: Final[str] = "✨ "
+_PROMPT_GLYPH_STREAMING: Final[str] = "💫 "
+_PROMPT_GLYPH_PLAN: Final[str] = "📋 "
+_PROMPT_GLYPH_FALLBACK: Final[str] = "> "
+
+
 def _build_prompt_message() -> FormattedText:
-    if _supports_truecolor_terminal():
-        prompt_style = f"bold {_REPL_COLORS['accent']}"
+    truecolor = _supports_truecolor_terminal()
+    if truecolor:
+        accent = _REPL_COLORS["accent"]
+        plan = _REPL_COLORS["plan"]
+        thinking = _REPL_COLORS["thinking"]
     else:
-        prompt_style = f"bold {_ANSI_REPL_COLORS['accent']}"
-    return FormattedText([(prompt_style, "> ")])
+        accent = _ANSI_REPL_COLORS["accent"]
+        plan = "ansiblue"
+        thinking = "ansiyellow"
+
+    if not truecolor:
+        return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_FALLBACK)])
+
+    if _TOOLBAR_STATE.plan_mode:
+        return FormattedText([(f"bold {plan}", _PROMPT_GLYPH_PLAN)])
+    if _TOOLBAR_STATE.is_streaming:
+        return FormattedText([(f"bold {thinking}", _PROMPT_GLYPH_STREAMING)])
+    return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_IDLE)])
 
 
 _kb = KeyBindings()
@@ -614,7 +791,16 @@ def _ascii_spinner_active() -> bool:
 
 # Unicode frames (Canadian Syllabics) replaced with dots-style ASCII-safe fallback
 WAVE_FRAMES_UNICODE: tuple[str, ...] = (
-    "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
+    "⠋",
+    "⠙",
+    "⠹",
+    "⠸",
+    "⠼",
+    "⠴",
+    "⠦",
+    "⠧",
+    "⠇",
+    "⠏",
 )
 WAVE_FRAMES_ASCII: tuple[str, ...] = ("|", "/", "-", "\\")
 

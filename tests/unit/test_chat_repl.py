@@ -32,12 +32,13 @@ def test_history_cycle_target_from_draft_goes_to_edge_for_direction() -> None:
     assert _history_cycle_target(current_index=3, working_line_count=4, direction="down") == 0
 
 
-def test_bottom_toolbar_mentions_clear_and_exit_shortcuts() -> None:
+def test_bottom_toolbar_renders_input_separator_and_rotating_tip() -> None:
     toolbar = _bottom_toolbar()
     # FormattedText — extract text content
     text = "".join(fragment[1] for fragment in toolbar)
-    assert "Ctrl-C" in text
-    assert "Ctrl-D" in text
+    assert "input" in text  # leading input-zone separator
+    assert "tip:" in text  # rotating tip line
+    assert "session:" in text  # session label on tip line
 
 
 def test_prompt_style_rules_truecolor_use_kagan_night_palette(

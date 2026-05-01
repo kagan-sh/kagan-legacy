@@ -140,16 +140,26 @@ class StreamingMarkdownRegion:
     """
 
     _REFRESH_PER_SECOND = 12
+    # Idle backoff: when no chunk has arrived for >_ACTIVE_WINDOW_SECONDS,
+    # gate manual `update()` calls so they fire at most once per
+    # _IDLE_REFRESH_INTERVAL.  Active streaming still flushes every
+    # `update()` (bounded by Rich's own refresh thread at 12/s).
+    _ACTIVE_WINDOW_SECONDS = 0.5
+    _IDLE_REFRESH_INTERVAL = 1.0
 
     def __init__(self, console: Any) -> None:
         self._console = console
         self._buffer: list[str] = []
         self._live: Live | None = None
+        self._last_chunk_at: float = 0.0
+        self._last_update_at: float = 0.0
 
     def append(self, text: str) -> None:
         if not text:
             return
         self._buffer.append(text)
+        now = time.monotonic()
+        self._last_chunk_at = now
         rendered = Markdown(self._joined())
         if self._live is None:
             self._live = Live(
@@ -159,8 +169,18 @@ class StreamingMarkdownRegion:
                 transient=True,
             )
             self._live.start()
+            self._last_update_at = now
         else:
-            self._live.update(rendered)
+            # During active streaming (chunk just arrived) always update.
+            # If we somehow re-enter while idle, gate to 1/s.
+            since_chunk = now - self._last_chunk_at
+            since_update = now - self._last_update_at
+            if (
+                since_chunk <= self._ACTIVE_WINDOW_SECONDS
+                or since_update >= self._IDLE_REFRESH_INTERVAL
+            ):
+                self._live.update(rendered)
+                self._last_update_at = now
 
     def finalize(self) -> None:
         """Stop the live preview and commit the final Markdown to scrollback."""
@@ -171,6 +191,8 @@ class StreamingMarkdownRegion:
             self._live = None
         text = self._joined().strip()
         self._buffer = []
+        self._last_chunk_at = 0.0
+        self._last_update_at = 0.0
         if text:
             self._console.print(Markdown(text))
 
@@ -180,6 +202,8 @@ class StreamingMarkdownRegion:
             self._live.stop()
             self._live = None
         self._buffer = []
+        self._last_chunk_at = 0.0
+        self._last_update_at = 0.0
 
     @property
     def is_active(self) -> bool:

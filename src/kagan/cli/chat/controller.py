@@ -61,6 +61,7 @@ from kagan.cli.chat.repl import (
     _console,
     _find_git_root,
     _get_prompt_session,
+    rotate_tip_on_submit,
     searchable_picker,
     supports_interactive_picker,
 )
@@ -936,7 +937,7 @@ class ChatController:
             while True:
                 try:
                     line = await _get_prompt_session().prompt_async(
-                        _build_prompt_message(),
+                        _build_prompt_message,
                         placeholder=_build_prompt_placeholder(),
                         default=_prefill,
                     )
@@ -949,6 +950,8 @@ class ChatController:
                 stripped = line.strip()
                 if not stripped:
                     continue
+
+                rotate_tip_on_submit()
 
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
@@ -1049,7 +1052,7 @@ class ChatController:
 
     async def _handle_analytics(self, data: str | None) -> None:
         if data and data.startswith("export:"):
-            path = data[len("export:"):] or None
+            path = data[len("export:") :] or None
             await export_analytics_json(self.client, path)
         else:
             await print_analytics_panel(self.client)
@@ -1060,7 +1063,7 @@ class ChatController:
         approvals = get_session_approvals()
 
         if data.startswith("revoke:"):
-            target = data[len("revoke:"):]
+            target = data[len("revoke:") :]
             if target:
                 approvals.revoke(target)
                 _console.print(f"[green]Revoked approval:[/green] {target}")

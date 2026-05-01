@@ -440,11 +440,12 @@ async def _run_interactive_modal(
     @kb.add("c-e", eager=True)
     def _expand(event) -> None:
         async def _pager() -> None:
-            await asyncio.to_thread(
-                _show_panel_in_pager,
-                tool_call,
-                permission_options=permission_options,
-                selected_index=state["selected"],
+            await run_in_terminal(
+                lambda: _show_panel_in_pager(
+                    tool_call,
+                    permission_options=permission_options,
+                    selected_index=state["selected"],
+                )
             )
 
         event.app.create_background_task(_pager())

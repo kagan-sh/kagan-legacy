@@ -696,10 +696,16 @@ def _bottom_toolbar() -> FormattedText:
     )
 
 
-_PROMPT_GLYPH_IDLE: Final[str] = "✨ "
-_PROMPT_GLYPH_STREAMING: Final[str] = "💫 "
-_PROMPT_GLYPH_PLAN: Final[str] = "📋 "
+_PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
+_PROMPT_GLYPH_PLAN: Final[str] = "◇ "
 _PROMPT_GLYPH_FALLBACK: Final[str] = "> "
+_PROMPT_GLYPH_STREAMING_FRAMES: Final[tuple[str, ...]] = ("◐ ", "◓ ", "◑ ", "◒ ")
+_PROMPT_STREAMING_FPS: Final[float] = 4.0
+
+
+def _streaming_glyph_frame() -> str:
+    idx = int(time.monotonic() * _PROMPT_STREAMING_FPS) % len(_PROMPT_GLYPH_STREAMING_FRAMES)
+    return _PROMPT_GLYPH_STREAMING_FRAMES[idx]
 
 
 def _build_prompt_message() -> FormattedText:
@@ -719,7 +725,7 @@ def _build_prompt_message() -> FormattedText:
     if _TOOLBAR_STATE.plan_mode:
         return FormattedText([(f"bold {plan}", _PROMPT_GLYPH_PLAN)])
     if _TOOLBAR_STATE.is_streaming:
-        return FormattedText([(f"bold {thinking}", _PROMPT_GLYPH_STREAMING)])
+        return FormattedText([(f"bold {thinking}", _streaming_glyph_frame())])
     return FormattedText([(f"bold {accent}", _PROMPT_GLYPH_IDLE)])
 
 
@@ -780,6 +786,7 @@ def _get_prompt_session() -> PromptSession[str]:
             completer=_SlashCompleter(),
             key_bindings=_kb,
             bottom_toolbar=_bottom_toolbar,
+            refresh_interval=0.25,
         )
     return _prompt_session
 

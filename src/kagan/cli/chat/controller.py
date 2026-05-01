@@ -104,19 +104,6 @@ __all__ = [
 ]
 
 
-def _reply_has_markdown(text: str) -> bool:
-    """Return True if the text contains Markdown tables, fences, or headers."""
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("|") and "|" in stripped[1:]:
-            return True
-        if stripped.startswith("```"):
-            return True
-        if stripped.startswith("#"):
-            return True
-    return False
-
-
 def _settings_flag_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
     raw_value = settings.get(key)
     if raw_value is None:
@@ -870,12 +857,6 @@ class ChatController:
             return _SendResult(was_cancelled=True)
 
         _console.print()  # newline after streamed output
-        # If the response contains Markdown tables/headers/fences, re-render
-        # using Rich Markdown so pipes display as proper tables.
-        if assistant_reply and _reply_has_markdown(assistant_reply):
-            from rich.markdown import Markdown as _RichMarkdown
-
-            _console.print(_RichMarkdown(assistant_reply))
         self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
 

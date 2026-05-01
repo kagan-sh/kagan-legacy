@@ -107,14 +107,12 @@ def test_extract_key_args_preview_truncates_long_values() -> None:
 
 
 def test_build_display_options_always_returns_four_slots() -> None:
-    class _Opt:
-        def __init__(self, kind: str) -> None:
-            self.kind = kind
-
-    options = [_Opt("allow_once"), _Opt("reject_once")]
-    result = _build_display_options(options)
+    result = _build_display_options()
     assert len(result) == 4
-    assert result[3][0] == "Reject — tell the model what to do"
+    assert result[0] == ("Approve once", "allow_once")
+    assert result[1] == ("Approve for this session", "allow_always")
+    assert result[2] == ("Reject", "reject_once")
+    assert result[3] == ("Reject — tell the model what to do", "reject_feedback")
 
 
 def test_build_approval_panel_highlights_selected_index() -> None:
@@ -132,13 +130,8 @@ def test_build_approval_panel_highlights_selected_index() -> None:
         subagent_type = None
         source_description = None
 
-    class _Opt:
-        def __init__(self, kind: str) -> None:
-            self.kind = kind
-
     panel = build_approval_panel(
         _FakeCall(),
-        options=[_Opt("allow_once"), _Opt("allow_always"), _Opt("reject_once")],
         selected_index=1,
         feedback_draft="",
         queue_depth=1,

@@ -284,7 +284,6 @@ def _render_panel_ansi(
     tmp.print(
         build_approval_panel(
             tool_call,
-            options=permission_options,
             selected_index=selected_index,
             feedback_draft=feedback_draft,
             queue_depth=queue_depth,
@@ -297,7 +296,6 @@ def _render_panel_ansi(
 def _show_panel_in_pager(
     tool_call: Any,
     *,
-    permission_options: list[Any],
     selected_index: int,
 ) -> None:
     """Show a full pager with the approval panel content (Ctrl-E handler)."""
@@ -309,7 +307,6 @@ def _show_panel_in_pager(
     tmp.print(
         build_approval_panel(
             tool_call,
-            options=permission_options,
             selected_index=selected_index,
             feedback_draft="",
             queue_depth=1,
@@ -443,7 +440,6 @@ async def _run_interactive_modal(
             await run_in_terminal(
                 lambda: _show_panel_in_pager(
                     tool_call,
-                    permission_options=permission_options,
                     selected_index=state["selected"],
                 )
             )
@@ -492,7 +488,6 @@ def _run_legacy_input(
     _console.print(
         build_approval_panel(
             tool_call,
-            options=permission_options,
             selected_index=selected_index,
             feedback_draft=feedback_draft,
             queue_depth=queue_depth,

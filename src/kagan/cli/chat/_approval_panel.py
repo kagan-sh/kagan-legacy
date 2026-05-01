@@ -117,7 +117,6 @@ def _extract_key_args_preview(tool_call: Any) -> str | None:
 def build_approval_panel(
     tool_call: Any,
     *,
-    options: list[Any],
     selected_index: int = 0,
     feedback_draft: str = "",
     queue_depth: int = 0,
@@ -127,7 +126,6 @@ def build_approval_panel(
 
     Args:
         tool_call: ACP tool_call object from request_permission.
-        options: Filtered list of ACP permission option objects.
         selected_index: Currently highlighted menu row (0-based).
         feedback_draft: Text typed so far for option-4 rejection feedback.
         queue_depth: Total pending approvals (0 = single, shown as queue N of M).
@@ -173,7 +171,7 @@ def build_approval_panel(
     lines.append(Text(""))
 
     # Menu options
-    panel_options = _build_display_options(options)
+    panel_options = _build_display_options()
     for i, (label, _kind) in enumerate(panel_options):
         num = i + 1
         is_feedback = i == 3
@@ -208,30 +206,21 @@ def build_approval_panel(
     )
 
 
-def _build_display_options(acp_options: list[Any]) -> list[tuple[str, str]]:
-    """Map ACP option kinds to our 4-slot display list.
+_DISPLAY_OPTIONS: list[tuple[str, str]] = [
+    ("Approve once", "allow_once"),
+    ("Approve for this session", "allow_always"),
+    ("Reject", "reject_once"),
+    ("Reject — tell the model what to do", "reject_feedback"),
+]
 
-    Always returns exactly 4 rows regardless of what ACP provides.
+
+def _build_display_options() -> list[tuple[str, str]]:
+    """Return the fixed 4-slot panel option list.
+
+    The panel surface is constant; ACP options aren't consulted because
+    `_map_approval_result` resolves the user's choice by slot index.
     """
-    _KIND_LABEL = {
-        "allow_once": "Approve once",
-        "allow_always": "Approve for this session",
-        "reject_once": "Reject",
-        "reject_always": "Reject",
-    }
-    found = {str(getattr(o, "kind", "")): o for o in acp_options}
-    result: list[tuple[str, str]] = []
-    for kind, label in [
-        ("allow_once", "Approve once"),
-        ("allow_always", "Approve for this session"),
-        ("reject_once", "Reject"),
-    ]:
-        if kind in found:
-            result.append((label, kind))
-        else:
-            result.append((label, kind))
-    result.append(("Reject — tell the model what to do", "reject_feedback"))
-    return result
+    return list(_DISPLAY_OPTIONS)
 
 
 def get_rich_spinner_name() -> str:

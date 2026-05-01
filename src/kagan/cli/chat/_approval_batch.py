@@ -43,7 +43,11 @@ def _debounce_seconds() -> float:
 
 
 def _batch_cap() -> int:
-    return _DEFAULT_BATCH_CAP
+    raw = os.environ.get("KAGAN_BATCH_APPROVAL_CAP", "")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_BATCH_CAP
 
 
 # ---------------------------------------------------------------------------

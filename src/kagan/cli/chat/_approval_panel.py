@@ -36,6 +36,11 @@ def _use_ascii_spinner() -> bool:
     return bool(os.environ.get("NO_COLOR")) or os.environ.get("TERM", "") == "dumb"
 
 
+def _no_color() -> bool:
+    """Honor the NO_COLOR convention (https://no-color.org)."""
+    return bool(os.environ.get("NO_COLOR"))
+
+
 def _strip_tool_prefix(name: str) -> str:
     """Remove mcp__kagan__ prefix and convert underscores to spaces for display."""
     for prefix in ("mcp__kagan__", "mcp__"):

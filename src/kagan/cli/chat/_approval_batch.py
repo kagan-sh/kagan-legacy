@@ -26,6 +26,9 @@ from typing import Any
 from loguru import logger
 from prompt_toolkit.application.run_in_terminal import run_in_terminal
 
+from kagan.cli.chat._approval_panel import _no_color
+from kagan.cli.chat._approval_panel import _strip_tool_prefix as _strip_mcp_prefix
+
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
 # ---------------------------------------------------------------------------
@@ -95,7 +98,7 @@ def _build_batch_panel_ansi(
 
     buf = io.StringIO()
     cols = shutil.get_terminal_size((80, 24)).columns
-    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True)
+    tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=_no_color())
 
     n = len(items)
     lines: list[Any] = []
@@ -138,7 +141,7 @@ def _build_batch_panel_ansi(
     if selected_option == 3 and feedback_draft:
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
-        hint = "  ▲/▼ option  Tab/S-Tab item  1-6 choose  ↵ confirm  Esc reject all"
+        hint = "  ▲/▼ option  Tab/S-Tab item  1-6 choose  ↵ confirm  Ctrl-E expand  Esc reject all"
     lines.append(Text(hint, style="dim"))
 
     title = f"[bold]approval ({n} tools)[/bold]"
@@ -151,13 +154,6 @@ def _build_batch_panel_ansi(
     )
     tmp.print(panel)
     return buf.getvalue()
-
-
-def _strip_mcp_prefix(name: str) -> str:
-    for prefix in ("mcp__kagan__", "mcp__"):
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-    return name.replace("_", " ").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +182,10 @@ async def _run_batch_modal_async(
             reject_all=_reject_all,
         )
     except Exception:
-        logger.debug("Batch interactive modal failed; falling back to legacy batch input")
+        logger.warning(
+            "Batch interactive modal failed; falling back to legacy batch input",
+            exc_info=True,
+        )
         _run_legacy_batch_input(
             items,
             resolve_item=_resolve_item,

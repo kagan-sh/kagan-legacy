@@ -79,6 +79,13 @@ max_concurrent_agents = 3
 
 ## Environment variables passed into interactive sessions
 
+| Variable                            | Default | Meaning                                                                                           |
+| ----------------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `NO_COLOR`                          | unset   | When set (any value), the chat REPL renders all panels and spinners without ANSI color and uses an ASCII spinner. Honors [no-color.org](https://no-color.org). |
+| `KAGAN_BATCH_APPROVAL_DEBOUNCE_MS`  | `100`   | Window (milliseconds) the chat REPL waits to collect concurrent `request_permission` calls into one batched approval panel. Must parse as a non-negative number; falls back to the default otherwise. |
+| `KAGAN_BATCH_APPROVAL_CAP`          | `20`    | Maximum number of approvals batched into a single panel. Once reached, the panel is shown immediately even if the debounce window has not expired. Must parse as a positive integer; falls back to the default otherwise. |
+| `KAGAN_CHAT_SHOW_THOUGHTS`          | unset   | When set to a truthy value (`1`, `true`, `yes`, `on`), the REPL prints agent "thinking" chunks alongside its message output. |
+
 ## Web dashboard settings
 
 The web dashboard at `/settings` offers a categorized settings UI that reads and writes the same key-value store as `config.toml`. Changes made in the web UI take effect immediately and are visible in the TUI Settings modal, and vice versa.

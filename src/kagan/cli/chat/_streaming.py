@@ -4,6 +4,8 @@ import time
 from typing import Any
 
 from loguru import logger
+from rich.live import Live
+from rich.markdown import Markdown
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -124,3 +126,64 @@ class OutputFlushManager:
     def is_empty(self) -> bool:
         """Check if there are pending chunks."""
         return len(self._pending_chunks) == 0
+
+
+class StreamingMarkdownRegion:
+    """Live-updating Markdown render of the agent's streaming reply.
+
+    A Rich `Live` (transient) shows the buffer rendered as Markdown while
+    chunks arrive.  `finalize()` drops the live preview and commits the
+    Markdown render to scrollback so it persists like normal output.
+    Subsequent appends start a fresh region — this is what gives the
+    transcript its "rendered text, then tool calls, then more rendered
+    text" shape without the streamed pipes/fences a raw stream would show.
+    """
+
+    _REFRESH_PER_SECOND = 12
+
+    def __init__(self, console: Any) -> None:
+        self._console = console
+        self._buffer: list[str] = []
+        self._live: Live | None = None
+
+    def append(self, text: str) -> None:
+        if not text:
+            return
+        self._buffer.append(text)
+        rendered = Markdown(self._joined())
+        if self._live is None:
+            self._live = Live(
+                rendered,
+                console=self._console,
+                refresh_per_second=self._REFRESH_PER_SECOND,
+                transient=True,
+            )
+            self._live.start()
+        else:
+            self._live.update(rendered)
+
+    def finalize(self) -> None:
+        """Stop the live preview and commit the final Markdown to scrollback."""
+        if self._live is None and not self._buffer:
+            return
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+        text = self._joined().strip()
+        self._buffer = []
+        if text:
+            self._console.print(Markdown(text))
+
+    def discard(self) -> None:
+        """Stop the live preview without printing (used on turn reset)."""
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+        self._buffer = []
+
+    @property
+    def is_active(self) -> bool:
+        return self._live is not None
+
+    def _joined(self) -> str:
+        return "".join(self._buffer)

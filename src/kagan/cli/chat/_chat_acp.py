@@ -29,7 +29,11 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
 from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
-from kagan.cli.chat._streaming import OutputFlushManager, ResponseChunkBuffer
+from kagan.cli.chat._streaming import (
+    OutputFlushManager,
+    ResponseChunkBuffer,
+    StreamingMarkdownRegion,
+)
 from kagan.cli.chat.repl import WAVE_FRAMES, _console, _env_flag_enabled
 from kagan.cli.chat.tool_runs import ToolRunTracker
 from kagan.core import ACPClientBase
@@ -641,6 +645,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._grouped_tools = _GroupedToolDisplay()
         self._response_chunks = ResponseChunkBuffer()
         self._output_flusher = OutputFlushManager(_console)
+        self._md_region = StreamingMarkdownRegion(_console)
         self._first_update_notified = False
         self._on_first_update: Callable[[], None] | None = None
         self.last_usage: Any = None
@@ -648,6 +653,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._batch_queue = _BatchApprovalQueue(self)
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
+        self._md_region.discard()
         self._output_flusher.shutdown()
         self._response_chunks.clear()
         self._output_flusher.clear()
@@ -667,6 +673,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._on_first_update()
 
     def finish_turn(self) -> str:
+        self._md_region.finalize()
         self._output_flusher.flush(force=True)
         response = self._response_chunks.get_all().strip()
         return response
@@ -748,8 +755,7 @@ class _OrchestratorACPClient(ACPClientBase):
                     self._streaming = True
                     self._notify_first_update()
                     self._response_chunks.append(text)
-                    self._output_flusher.queue_chunk(text)
-                    self._output_flusher.flush()
+                    self._md_region.append(text)
         elif isinstance(update, AgentThoughtChunk):
             if self._show_thoughts:
                 content = getattr(update, "content", None)
@@ -757,6 +763,7 @@ class _OrchestratorACPClient(ACPClientBase):
                     text = getattr(content, "text", "") or ""
                     if text:
                         self._notify_first_update()
+                        self._md_region.finalize()
                         self._output_flusher.flush(force=True)
 
                         def _print_thought() -> None:
@@ -768,6 +775,7 @@ class _OrchestratorACPClient(ACPClientBase):
                         self._print_via_terminal(_print_thought)
         elif isinstance(update, ToolCallStart):
             self._notify_first_update()
+            self._md_region.finalize()
             self._output_flusher.flush(force=True)
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)
@@ -788,6 +796,7 @@ class _OrchestratorACPClient(ACPClientBase):
                 self._print_via_terminal(_print_start)
         elif isinstance(update, ToolCallProgress):
             self._notify_first_update()
+            self._md_region.finalize()
             self._output_flusher.flush(force=True)
             self._handle_tool_progress(update)
         elif isinstance(update, UsageUpdate):
@@ -805,6 +814,7 @@ class _OrchestratorACPClient(ACPClientBase):
         if not permission_options:
             return _cancelled_permission_response()
 
+        self._md_region.finalize()
         self._output_flusher.flush(force=True)
 
         # --yolo: short-circuit before the batch queue is armed.

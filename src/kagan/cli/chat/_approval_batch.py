@@ -89,21 +89,29 @@ def _build_batch_panel_ansi(
     focused_item: int,
     selected_option: int,
     feedback_draft: str,
+    resolved: dict[int, str] | None = None,
 ) -> str:
-    """Render the combined batch approval panel to an ANSI string."""
+    """Render the combined batch approval panel to an ANSI string.
+
+    `resolved` maps item index → "approved" or "rejected".  Items already
+    decided render with a coloured tick / cross prefix and a dim style,
+    so the user can see at a glance which calls are still pending.
+    """
     from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
 
+    resolved = resolved or {}
     buf = io.StringIO()
     cols = shutil.get_terminal_size((80, 24)).columns
     tmp = Console(file=buf, highlight=False, width=cols, force_terminal=True, no_color=no_color())
 
     n = len(items)
+    pending = sum(1 for i in range(n) if i not in resolved)
     lines: list[Any] = []
 
     # Item list header
-    lines.append(Text(f"[yellow]{n} tool calls pending:[/yellow]", justify="left"))
+    lines.append(Text.from_markup(f"[yellow]{pending} of {n} tool calls pending:[/yellow]"))
     lines.append(Text(""))
 
     for i, item in enumerate(items):
@@ -113,7 +121,12 @@ def _build_batch_panel_ansi(
             or "tool call"
         )
         name = strip_tool_prefix(str(raw))
-        if i == focused_item:
+        disposition = resolved.get(i)
+        if disposition == "approved":
+            lines.append(Text(f"✓ {name}", style="dim green"))
+        elif disposition == "rejected":
+            lines.append(Text(f"✗ {name}", style="dim red"))
+        elif i == focused_item:
             lines.append(Text(f"→ {name}", style=APPROVAL.focused))
         else:
             lines.append(Text(f"  {name}", style=APPROVAL.dim))
@@ -262,7 +275,8 @@ async def _run_batch_interactive(
         "selected_option": 0,
         "feedback": "",
         "feedback_mode": False,
-        "resolved": [],
+        # idx -> "approved" | "rejected"
+        "resolved": {},
     }
 
     feedback_buffer = Buffer(name="batch_approval_feedback", multiline=False)
@@ -274,6 +288,7 @@ async def _run_batch_interactive(
             focused_item=state["focused_item"],
             selected_option=state["selected_option"],
             feedback_draft=draft,
+            resolved=state["resolved"],
         )
         return ANSI(ansi)
 
@@ -308,11 +323,10 @@ async def _run_batch_interactive(
             app.exit(result=None)
             return
         resolve_item(item_idx, opt, fb)
-        state["resolved"].append(item_idx)
+        state["resolved"][item_idx] = "approved" if opt in (0, 1) else "rejected"
         state["feedback"] = ""
         feedback_buffer.set_document(Document(), bypass_readonly=True)
-        resolved_set = set(state["resolved"])
-        next_idx = _find_next_unresolved(item_idx, n, resolved_set)
+        next_idx = _find_next_unresolved(item_idx, n, set(state["resolved"]))
         if next_idx is None:
             app.exit(result=None)
         else:

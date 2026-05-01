@@ -648,7 +648,7 @@ def _write_boot_banner(
     body: list[Any] = [title, subtitle, tip, safety]
     if yolo:
         body.append(
-            Text("YOLO MODE — every tool call auto-approved.", style="bold red"),
+            Text("Yolo mode — every tool call auto-approved.", style="bold red"),
         )
 
     banner = Panel(

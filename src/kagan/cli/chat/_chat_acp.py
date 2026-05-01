@@ -633,6 +633,8 @@ def _map_approval_result(
 
 class _OrchestratorACPClient(ACPClientBase):
     def __init__(self, *, yolo: bool = False) -> None:
+        from kagan.cli.chat._approval_batch import _BatchApprovalQueue
+
         self._conn: Any = None
         self._streaming = False
         self._yolo = yolo
@@ -645,6 +647,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._on_first_update: Callable[[], None] | None = None
         self.last_usage: Any = None
         self._spinner_name = get_rich_spinner_name()
+        self._batch_queue = _BatchApprovalQueue(self)
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._output_flusher.shutdown()
@@ -655,6 +658,7 @@ class _OrchestratorACPClient(ACPClientBase):
         self._first_update_notified = False
         self._on_first_update = on_first_update
         self.last_usage = None
+        self._batch_queue.reset()
 
     def _notify_first_update(self) -> None:
         if self._first_update_notified:
@@ -805,6 +809,7 @@ class _OrchestratorACPClient(ACPClientBase):
 
         self._output_flusher.flush(force=True)
 
+        # --yolo: short-circuit before the batch queue is armed.
         if self._yolo:
             for option in permission_options:
                 if getattr(option, "kind", None) == "allow_once":
@@ -830,7 +835,10 @@ class _OrchestratorACPClient(ACPClientBase):
             self._print_via_terminal(_print_denied)
             return _cancelled_permission_response()
 
-        selected = await _prompt_for_permission_option_async(permission_options, tool_call)
-        if selected is None:
-            return _rejected_permission_response()
-        return _selected_permission_response(selected)
+        # Enqueue into the batch queue; await the resolved Future.
+        future = await self._batch_queue.enqueue(permission_options, tool_call)
+        return await future
+
+    def cancel_batch_queue(self) -> None:
+        """Cancel all pending batch approval futures (called from SIGINT handler)."""
+        self._batch_queue.cancel_all()

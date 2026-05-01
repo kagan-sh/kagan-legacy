@@ -35,5 +35,3 @@ def http_forbidden(*, operation: str, minimum_tier: AccessTier) -> JSONResponse:
     ).model_dump()
     payload["error_code"] = "ACCESS_TIER_FORBIDDEN"
     return JSONResponse(payload, status_code=403)
-
-

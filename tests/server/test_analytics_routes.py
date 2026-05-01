@@ -21,9 +21,7 @@ class _FakeAnalytics:
         self.calls.append(("backend_stats", project_id, days))
         return [{"agent_backend": "alpha", "count": 1}]
 
-    async def session_timeline(
-        self, project_id: str, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def session_timeline(self, project_id: str, days: int = 30) -> list[dict[str, Any]]:
         self.calls.append(("session_timeline", project_id, days))
         return [{"date": "2026-04-28", "total": 1}]
 

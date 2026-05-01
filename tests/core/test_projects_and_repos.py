@@ -185,9 +185,7 @@ async def test_inspect_project_folder_resolves_git_root_and_existing_project(
     assert resolution.existing_repo_id == repo_id
 
 
-async def test_inspect_project_folder_describes_empty_folder(
-    board: KaganDriver, tmp_path
-) -> None:
+async def test_inspect_project_folder_describes_empty_folder(board: KaganDriver, tmp_path) -> None:
     folder = tmp_path / "empty-folder"
     folder.mkdir()
 

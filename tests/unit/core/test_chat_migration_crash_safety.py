@@ -64,9 +64,7 @@ def test_migration_runs_on_fresh_db(tmp_path: Path) -> None:
     try:
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "chat_sessions" in tables
         assert "chat_messages" in tables
@@ -116,9 +114,7 @@ def test_migration_runs_when_chat_sessions_v1_setting_exists(tmp_path: Path) -> 
     try:
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "chat_sessions" in tables
         assert "chat_messages" in tables

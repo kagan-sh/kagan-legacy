@@ -210,9 +210,7 @@ class Tasks:
         # Try the specified repo_id first, then all project repos
         repos_to_try = []
         if repo_id is not None:
-            repo = await _db_async(
-                self._engine, lambda s: s.get(Repository, repo_id)
-            )
+            repo = await _db_async(self._engine, lambda s: s.get(Repository, repo_id))
             if repo:
                 repos_to_try.append(repo)
 
@@ -340,9 +338,7 @@ class Tasks:
 
                 await _push_task_change(self._client, task, fields=fields)  # type: ignore[arg-type]
             except Exception as exc:
-                logger.warning(
-                    "GitHub push fire-and-forget failed for task {}: {}", task.id, exc
-                )
+                logger.warning("GitHub push fire-and-forget failed for task {}: {}", task.id, exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -707,10 +703,9 @@ class Tasks:
         def _search_with_criteria(s) -> builtins.list[Task]:
             tasks = list(s.exec(stmt).all())
             matched = [
-                t for t in tasks
-                if q in t.title.lower()
-                or q in t.id[:8].lower()
-                or q in t.description.lower()
+                t
+                for t in tasks
+                if q in t.title.lower() or q in t.id[:8].lower() or q in t.description.lower()
             ][:limit]
             for t in matched:
                 _ = list(t.criteria)

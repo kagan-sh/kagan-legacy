@@ -391,7 +391,7 @@ class MentionResponse(BaseModel):
     """A single result from the dual-source mention autocomplete endpoint."""
 
     source: str  # "kagan" or "github"
-    id: str      # insert form: "kagan#<short_id>" or "#<number>"
+    id: str  # insert form: "kagan#<short_id>" or "#<number>"
     title: str
     state: str | None = None
 

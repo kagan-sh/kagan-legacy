@@ -1,6 +1,5 @@
 """Tests for the github_issue field on the TaskEditor widget."""
 
-
 import pytest
 from tests.helpers.driver import KaganDriver
 from textual.widgets import Input

@@ -14,6 +14,7 @@ import click
 from loguru import logger
 from rich.live import Live
 
+from kagan.cli.chat._approval_panel import _strip_tool_prefix
 from kagan.cli.chat._chat_acp import (
     _OrchestratorACPClient,
     _SendResult,
@@ -101,6 +102,19 @@ __all__ = [
     "_WaveIndicator",
     "_turn_wave_animation",
 ]
+
+
+def _reply_has_markdown(text: str) -> bool:
+    """Return True if the text contains Markdown tables, fences, or headers."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|") and "|" in stripped[1:]:
+            return True
+        if stripped.startswith("```"):
+            return True
+        if stripped.startswith("#"):
+            return True
+    return False
 
 
 def _settings_flag_enabled(settings: dict[str, str], key: str, *, default: bool) -> bool:
@@ -856,6 +870,12 @@ class ChatController:
             return _SendResult(was_cancelled=True)
 
         _console.print()  # newline after streamed output
+        # If the response contains Markdown tables/headers/fences, re-render
+        # using Rich Markdown so pipes display as proper tables.
+        if assistant_reply and _reply_has_markdown(assistant_reply):
+            from rich.markdown import Markdown as _RichMarkdown
+
+            _console.print(_RichMarkdown(assistant_reply))
         self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
 
@@ -1022,11 +1042,7 @@ class ChatController:
                     turn_count=self._turn_count,
                 )
             case SlashAction.SHOW_ANALYTICS:
-                if result.data and result.data.startswith("export:"):
-                    path = result.data[len("export:") :] or None
-                    await export_analytics_json(self.client, path)
-                else:
-                    await print_analytics_panel(self.client)
+                await self._handle_analytics(result.data)
             case SlashAction.SHOW_PROJECT:
                 print_project_info(
                     project_name=self._project_name,
@@ -1041,12 +1057,44 @@ class ChatController:
                     repo_name=self._selected_repo_name,
                     repo_id=self._selected_repo_id,
                 )
+            case SlashAction.SHOW_APPROVALS:
+                self._show_approvals(result.data or "")
             case SlashAction.CLOSE:
                 return True
             case _:
                 pass
 
         return False
+
+    async def _handle_analytics(self, data: str | None) -> None:
+        if data and data.startswith("export:"):
+            path = data[len("export:"):] or None
+            await export_analytics_json(self.client, path)
+        else:
+            await print_analytics_panel(self.client)
+
+    def _show_approvals(self, data: str) -> None:
+        from kagan.cli.chat._chat_acp import get_session_approvals
+
+        approvals = get_session_approvals()
+
+        if data.startswith("revoke:"):
+            target = data[len("revoke:"):]
+            if target:
+                approvals.revoke(target)
+                _console.print(f"[green]Revoked approval:[/green] {target}")
+            else:
+                _console.print("[red]Usage: /approvals revoke <name>[/red]")
+            return
+
+        granted = approvals.list_granted()
+        if not granted:
+            _console.print("[dim]No session approvals granted yet.[/dim]")
+            return
+        _console.print("[bold]Session-granted approvals:[/bold]")
+        for name in granted:
+            display = _strip_tool_prefix(name)
+            _console.print(f"  [green]✓[/green] {display}  [dim](/approvals revoke {name})[/dim]")
 
     async def _switch_project(self, name: str) -> None:
         projects = await self.client.projects.list()

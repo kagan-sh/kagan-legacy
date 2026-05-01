@@ -118,9 +118,7 @@ async def test_integration_preflight_unknown_returns_404() -> None:
     mcp = make_api_server()
     _make_server_with_ctx(mcp)
     endpoint = get_http_endpoint(mcp, "/api/integrations/{id}/preflight", "GET")
-    request = make_request(
-        "GET", "/api/integrations/jira/preflight", path_params={"id": "jira"}
-    )
+    request = make_request("GET", "/api/integrations/jira/preflight", path_params={"id": "jira"})
     response = await endpoint(request)
     body = json_body(response)
 
@@ -141,9 +139,7 @@ async def test_integration_preflight_unknown_returns_404() -> None:
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 @pytest.mark.asyncio
-async def test_integration_preview_returns_items(
-    _mock_path, _mock_auth, mock_fetch
-) -> None:
+async def test_integration_preview_returns_items(_mock_path, _mock_auth, mock_fetch) -> None:
     mock_fetch.return_value = [
         {
             "number": 1,
@@ -203,9 +199,7 @@ async def test_integration_preview_missing_project_id() -> None:
 )
 @patch("kagan.core.integrations.github._gh_path", return_value="/usr/bin/gh")
 @pytest.mark.asyncio
-async def test_integration_sync_returns_counts(
-    _mock_path, _mock_auth, mock_fetch
-) -> None:
+async def test_integration_sync_returns_counts(_mock_path, _mock_auth, mock_fetch) -> None:
     mock_fetch.return_value = [
         {
             "number": 5,
@@ -219,13 +213,18 @@ async def test_integration_sync_returns_counts(
 
     import os
     import tempfile
+    from pathlib import Path
 
     from kagan.core import KaganCore
+    from tests.helpers.helpers import make_git_repo
 
     tmp = tempfile.mkdtemp()
     real_client = KaganCore(db_path=os.path.join(tmp, "test.db"))
     project = await real_client.projects.create("Test")
     await real_client.projects.set_active(project.id)
+    repo_path = Path(tmp) / "repo"
+    await make_git_repo(repo_path)
+    await real_client.projects.add_repo(project.id, str(repo_path))
 
     mcp = make_api_server()
     _make_server_with_ctx(mcp, client=real_client)

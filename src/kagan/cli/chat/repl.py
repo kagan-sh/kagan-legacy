@@ -20,8 +20,9 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console, Group
+from rich.console import Console, ConsoleRenderable, Group
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from kagan.cli.chat._completion import fuzzy_match
@@ -134,8 +135,8 @@ _REPL_COLORS: Final[dict[str, str]] = {
     "separator": "#4a5568",
     "plan": "#60a5fa",
     "yolo": "#f87171",
-    "meta": "#7c8594",
-    "meta_current": "#56a4ff",
+    "meta": "#9ca3af",
+    "meta_current": "#7dd3fc",
     "thinking": "#fbbf24",
 }
 
@@ -170,7 +171,7 @@ def _build_prompt_style_rules() -> dict[str, str]:
                 f"noreverse bg:{_REPL_COLORS['panel']} fg:{_REPL_COLORS['text']}"
             ),
             "bottom-toolbar.rule": f"fg:{_REPL_COLORS['accent_soft']}",
-            "bottom-toolbar.status": f"fg:{_REPL_COLORS['text_muted']}",
+            "bottom-toolbar.status": f"fg:{_REPL_COLORS['text_soft']}",
             "bottom-toolbar.hint": f"fg:{_REPL_COLORS['text_soft']}",
             "bottom-toolbar.key": f"fg:{_REPL_COLORS['accent']} bold",
             "bottom-toolbar.tip": f"fg:{_REPL_COLORS['text_soft']} italic",
@@ -673,6 +674,33 @@ def _bottom_toolbar() -> FormattedText:
     _TIP_ROTATOR.maybe_rotate()
     cols = shutil.get_terminal_size().columns
 
+    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
+
+    sep_style, sep_line = _render_input_separator(cols)
+    rule = "─" * max(cols, 1)
+    return FormattedText(
+        [
+            (sep_style, sep_line),
+            ("", "\n"),
+            ("class:bottom-toolbar.rule", rule),
+            ("", "\n"),
+            ("class:bottom-toolbar.status", _compose_toolbar_line(status_left, status_right, cols)),
+            ("", "\n"),
+            (
+                "class:bottom-toolbar.tip",
+                _compose_toolbar_line(tip_left, tip_right, cols),
+            ),
+        ]
+    )
+
+
+def _toolbar_status_segments() -> tuple[str, str, str, str]:
+    """Compute the four toolbar text segments shared by prompt-toolkit and Rich footers.
+
+    Caller is responsible for advancing `_TIP_ROTATOR` (e.g. via `maybe_rotate()`).
+    """
+    cols = shutil.get_terminal_size().columns
+
     status_left = _TOOLBAR_STATE.workspace_label or _display_path(Path.cwd())
     status_right_parts: list[str] = []
     if _TOOLBAR_STATE.yolo:
@@ -695,21 +723,68 @@ def _bottom_toolbar() -> FormattedText:
     tip_left = f"tip: {_TIP_ROTATOR.current()}"
     tip_right = f"session: {_TOOLBAR_STATE.session_label}"
 
-    sep_style, sep_line = _render_input_separator(cols)
-    rule = "─" * max(cols, 1)
-    return FormattedText(
-        [
-            (sep_style, sep_line),
-            ("", "\n"),
-            ("class:bottom-toolbar.rule", rule),
-            ("", "\n"),
-            ("class:bottom-toolbar.status", _compose_toolbar_line(status_left, status_right, cols)),
-            ("", "\n"),
-            (
-                "class:bottom-toolbar.tip",
-                _compose_toolbar_line(tip_left, tip_right, cols),
-            ),
-        ]
+    return status_left, status_right, tip_left, tip_right
+
+
+def _rich_footer_styles() -> dict[str, str]:
+    """Return Rich style strings matching the prompt-toolkit toolbar palette."""
+    if _supports_truecolor_terminal():
+        return {
+            "rule": _REPL_COLORS["accent_soft"],
+            "status": _REPL_COLORS["text_soft"],
+            "tip": f"italic {_REPL_COLORS['text_soft']}",
+            "sep": _REPL_COLORS["separator"],
+            "sep_plan": _REPL_COLORS["plan"],
+            "sep_yolo": _REPL_COLORS["yolo"],
+        }
+    return {
+        "rule": "bright_black",
+        "status": "bright_black",
+        "tip": "italic bright_black",
+        "sep": "bright_black",
+        "sep_plan": "blue",
+        "sep_yolo": "red",
+    }
+
+
+def _build_rich_footer() -> ConsoleRenderable:
+    """Build a Rich renderable mirroring `_bottom_toolbar()` for use inside Rich Live regions.
+
+    Layout (top → bottom):
+        ──  input [· plan · yolo]  ──────────────
+        ────────────────────────────────────────
+        workspace · git · …               agent · approvals · turn count
+        tip: …                                   session: orchestrator
+    """
+    _TIP_ROTATOR.maybe_rotate()
+    cols = max(shutil.get_terminal_size().columns, 1)
+    styles = _rich_footer_styles()
+
+    # Input separator (re-uses prompt-toolkit logic for parity).
+    sep_pt_style, sep_line = _render_input_separator(cols)
+    if "plan" in sep_pt_style:
+        sep_style = styles["sep_plan"]
+    elif "yolo" in sep_pt_style:
+        sep_style = styles["sep_yolo"]
+    else:
+        sep_style = styles["sep"]
+
+    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
+
+    rule_text = Text("─" * cols, style=styles["rule"])
+
+    def _split_row(left: str, right: str, style: str) -> Table:
+        table = Table.grid(expand=True, padding=0)
+        table.add_column(justify="left", ratio=1, no_wrap=True, overflow="ellipsis")
+        table.add_column(justify="right", no_wrap=True, overflow="ellipsis")
+        table.add_row(Text(left, style=style), Text(right, style=style))
+        return table
+
+    return Group(
+        Text(sep_line, style=sep_style),
+        rule_text,
+        _split_row(status_left, status_right, styles["status"]),
+        _split_row(tip_left, tip_right, styles["tip"]),
     )
 
 

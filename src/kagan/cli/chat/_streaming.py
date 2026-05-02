@@ -4,8 +4,10 @@ import time
 from typing import Any
 
 from loguru import logger
+from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.rule import Rule
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -139,48 +141,55 @@ class StreamingMarkdownRegion:
     text" shape without the streamed pipes/fences a raw stream would show.
     """
 
-    _REFRESH_PER_SECOND = 12
-    # Idle backoff: when no chunk has arrived for >_ACTIVE_WINDOW_SECONDS,
-    # gate manual `update()` calls so they fire at most once per
-    # _IDLE_REFRESH_INTERVAL.  Active streaming still flushes every
-    # `update()` (bounded by Rich's own refresh thread at 12/s).
-    _ACTIVE_WINDOW_SECONDS = 0.5
-    _IDLE_REFRESH_INTERVAL = 1.0
+    # Refresh at 4fps so the toolbar's `◐ ◓ ◑ ◒` thinking-dot animation keeps
+    # spinning even when no chunk arrives for a beat.  Rich coalesces redraws
+    # internally, so this stays cheap.
+    _REFRESH_PER_SECOND = 4
 
     def __init__(self, console: Any) -> None:
         self._console = console
         self._buffer: list[str] = []
         self._live: Live | None = None
-        self._last_chunk_at: float = 0.0
-        self._last_update_at: float = 0.0
+
+    def _render(self) -> Any:
+        """Build the renderable for the Live region: markdown body + footer."""
+        body = Markdown(self._joined()) if self._buffer else None
+        try:
+            from kagan.cli.chat.repl import _build_rich_footer
+        except ImportError:  # pragma: no cover — defensive, repl is always importable here
+            footer = None
+        else:
+            try:
+                footer = _build_rich_footer()
+            except Exception:  # pragma: no cover — never let footer break streaming
+                logger.opt(exception=True).debug("Failed to build Rich footer; skipping")
+                footer = None
+
+        parts: list[Any] = []
+        if body is not None:
+            parts.append(body)
+        if footer is not None:
+            if body is not None:
+                parts.append(Rule(style="dim"))
+            parts.append(footer)
+        if not parts:
+            return Markdown("")
+        return Group(*parts)
 
     def append(self, text: str) -> None:
         if not text:
             return
         self._buffer.append(text)
-        now = time.monotonic()
-        self._last_chunk_at = now
-        rendered = Markdown(self._joined())
         if self._live is None:
             self._live = Live(
-                rendered,
+                self._render(),
                 console=self._console,
                 refresh_per_second=self._REFRESH_PER_SECOND,
                 transient=True,
             )
             self._live.start()
-            self._last_update_at = now
         else:
-            # During active streaming (chunk just arrived) always update.
-            # If we somehow re-enter while idle, gate to 1/s.
-            since_chunk = now - self._last_chunk_at
-            since_update = now - self._last_update_at
-            if (
-                since_chunk <= self._ACTIVE_WINDOW_SECONDS
-                or since_update >= self._IDLE_REFRESH_INTERVAL
-            ):
-                self._live.update(rendered)
-                self._last_update_at = now
+            self._live.update(self._render())
 
     def finalize(self) -> None:
         """Stop the live preview and commit the final Markdown to scrollback."""
@@ -191,8 +200,6 @@ class StreamingMarkdownRegion:
             self._live = None
         text = self._joined().strip()
         self._buffer = []
-        self._last_chunk_at = 0.0
-        self._last_update_at = 0.0
         if text:
             self._console.print(Markdown(text))
 
@@ -202,8 +209,6 @@ class StreamingMarkdownRegion:
             self._live.stop()
             self._live = None
         self._buffer = []
-        self._last_chunk_at = 0.0
-        self._last_update_at = 0.0
 
     @property
     def is_active(self) -> bool:

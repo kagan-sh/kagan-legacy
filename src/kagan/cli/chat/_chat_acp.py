@@ -54,21 +54,43 @@ class _WaveIndicator:
 
 
 class _TurnWaveAnimation:
-    """Turn wave animation helper with clear state management."""
+    """Turn wave animation helper with clear state management.
 
-    def __init__(self, _console, frames: tuple[str, ...]) -> None:
+    When a :class:`TurnLiveRegion` is provided, the wave frames render
+    inside the live region's tail (so the pinned footer stays put).
+    Without a turn-live region the animator falls back to raw stdout
+    line writes for compatibility.
+    """
+
+    def __init__(
+        self,
+        _console,
+        frames: tuple[str, ...],
+        *,
+        turn_live: Any | None = None,
+    ) -> None:
         self._console = _console
         self._frames = frames
         self._line_width = len(frames[0])
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._active = False
+        self._turn_live = turn_live
 
     def _write_wave(self, text: str) -> None:
         self._console.file.write(text)
         self._console.file.flush()
 
-    def _clear_line(self) -> None:
+    def _show_frame(self, frame: str) -> None:
+        if self._turn_live is not None:
+            self._turn_live.set_tail(Text(frame, style="dim cyan"))
+            return
+        self._write_wave(f"\r{frame}")
+
+    def _clear_frame(self) -> None:
+        if self._turn_live is not None:
+            self._turn_live.clear_tail()
+            return
         self._write_wave(f"\r{' ' * self._line_width}\r")
 
     def stop(self) -> None:
@@ -80,13 +102,13 @@ class _TurnWaveAnimation:
         frame_index = 0
         while not self._stop_event.is_set():
             frame = self._frames[frame_index]
-            self._write_wave(f"\r{frame}")
+            self._show_frame(frame)
             frame_index = (frame_index + 1) % len(self._frames)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=0.10)
             except TimeoutError:
                 continue
-        self._clear_line()
+        self._clear_frame()
         self._active = False
 
     async def start(self) -> None:
@@ -98,14 +120,17 @@ class _TurnWaveAnimation:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
         if self._active:
-            self._clear_line()
+            self._clear_frame()
 
 
 @contextlib.asynccontextmanager
 async def _turn_wave_animation(
-    _console, frames: tuple[str, ...]
+    _console,
+    frames: tuple[str, ...],
+    *,
+    turn_live: Any | None = None,
 ) -> AsyncIterator[Callable[[], None]]:
-    animator = _TurnWaveAnimation(_console, frames)
+    animator = _TurnWaveAnimation(_console, frames, turn_live=turn_live)
     await animator.start()
     try:
         yield animator.stop
@@ -651,6 +676,13 @@ class _OrchestratorACPClient(ACPClientBase):
         self.last_usage: Any = None
         self._spinner_name = get_rich_spinner_name()
         self._batch_queue = _BatchApprovalQueue(self)
+        self._turn_live: Any | None = None
+
+    def set_turn_live(self, turn_live: Any | None) -> None:
+        """Attach (or detach) the turn-wide pinned-footer Live region."""
+        self._turn_live = turn_live
+        self._md_region.attach(turn_live)
+        self._batch_queue.set_turn_live(turn_live)
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._md_region.discard()
@@ -682,7 +714,18 @@ class _OrchestratorACPClient(ACPClientBase):
         return self._tool_runs.tool_report(query)
 
     def _print_via_terminal(self, fn: Callable[[], None]) -> None:
-        """Print safely, using run_in_terminal when a real prompt_toolkit app is active."""
+        """Print safely above any active Live / prompt_toolkit Application.
+
+        - When a turn-wide Rich ``Live`` is active, plain ``console.print``
+          calls inside ``fn`` are routed above the live region by Rich
+          itself, so we just call ``fn`` directly.
+        - Otherwise, if a real prompt_toolkit Application owns the
+          terminal (e.g. an approval modal), use ``run_in_terminal`` so
+          the print doesn't collide with the modal's redraw.
+        """
+        if self._turn_live is not None and self._turn_live.is_active:
+            fn()
+            return
         try:
             from prompt_toolkit.application.current import get_app
             from prompt_toolkit.application.dummy import DummyApplication

@@ -37,6 +37,7 @@ from kagan.cli.chat._chat_ui import (
 from kagan.cli.chat._handshake import execute_handshake
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
 from kagan.cli.chat._title import generate_session_title
+from kagan.cli.chat._turn_live import TurnLiveRegion
 from kagan.cli.chat.acp import (
     _ACP_STDIO_BUFFER_LIMIT_BYTES,
 )
@@ -816,39 +817,56 @@ class ChatController:
         _console.print(f"[bold]You:[/bold] {text}")
 
         interrupted = False
-        async with _turn_wave_animation(_console, WAVE_FRAMES) as stop_animation:
-            if self._acp_client is not None:
-                self._acp_client.start_turn(on_first_update=stop_animation)
-            prompt_task = asyncio.create_task(
-                self._acp_conn.prompt(
-                    session_id=self._acp_session_id,
-                    prompt=prompt_blocks,
-                ),
-                name="chat-prompt",
-            )
-            original_sigint = install_sigint_handler(prompt_task)
-            try:
-                await prompt_task
-            except asyncio.CancelledError:
-                interrupted = True
-            except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
-                logger.exception("Failed to send prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            except Exception as exc:
-                logger.exception("Unexpected failure while sending prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            finally:
-                restore_sigint_handler(original_sigint)
-                _TOOLBAR_STATE.is_streaming = False
-
         assistant_reply = ""
+        turn_live = TurnLiveRegion(_console)
+        turn_live.start()
         if self._acp_client is not None:
-            try:
-                assistant_reply = self._acp_client.finish_turn()
-            except Exception:
-                logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
+            self._acp_client.set_turn_live(turn_live)
+        try:
+            async with _turn_wave_animation(
+                _console, WAVE_FRAMES, turn_live=turn_live
+            ) as stop_animation:
+                if self._acp_client is not None:
+                    self._acp_client.start_turn(on_first_update=stop_animation)
+                prompt_task = asyncio.create_task(
+                    self._acp_conn.prompt(
+                        session_id=self._acp_session_id,
+                        prompt=prompt_blocks,
+                    ),
+                    name="chat-prompt",
+                )
+                original_sigint = install_sigint_handler(prompt_task)
+                try:
+                    await prompt_task
+                except asyncio.CancelledError:
+                    interrupted = True
+                except (
+                    acp.RequestError,
+                    TimeoutError,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                ) as exc:
+                    logger.exception("Failed to send prompt to agent")
+                    _console.print(f"\n[red]Agent error: {exc}[/red]")
+                    return _SendResult()
+                except Exception as exc:
+                    logger.exception("Unexpected failure while sending prompt to agent")
+                    _console.print(f"\n[red]Agent error: {exc}[/red]")
+                    return _SendResult()
+                finally:
+                    restore_sigint_handler(original_sigint)
+                    _TOOLBAR_STATE.is_streaming = False
+
+            if self._acp_client is not None:
+                try:
+                    assistant_reply = self._acp_client.finish_turn()
+                except Exception:
+                    logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
+        finally:
+            turn_live.stop()
+            if self._acp_client is not None:
+                self._acp_client.set_turn_live(None)
 
         self._append_turn(text, assistant_reply)
 

@@ -1,13 +1,16 @@
 """Response chunk processing and streaming output with memory safeguards."""
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.rule import Rule
+
+if TYPE_CHECKING:
+    from kagan.cli.chat._turn_live import TurnLiveRegion
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -150,6 +153,16 @@ class StreamingMarkdownRegion:
         self._console = console
         self._buffer: list[str] = []
         self._live: Live | None = None
+        # Optional outer ``TurnLiveRegion`` that owns the pinned-footer Live
+        # for the whole turn.  When set, ``StreamingMarkdownRegion`` becomes a
+        # passive renderable: streaming chunks update the parent's tail, and
+        # ``finalize()`` commits the final Markdown to scrollback above the
+        # parent's live region.
+        self._parent: TurnLiveRegion | None = None
+
+    def attach(self, parent: "TurnLiveRegion | None") -> None:
+        """Attach an outer turn-wide Live region (or detach with ``None``)."""
+        self._parent = parent
 
     def _render(self) -> Any:
         """Build the renderable for the Live region: markdown body + footer."""
@@ -180,6 +193,10 @@ class StreamingMarkdownRegion:
         if not text:
             return
         self._buffer.append(text)
+        if self._parent is not None:
+            # Outer TurnLiveRegion owns the live region; stream into its tail.
+            self._parent.set_tail(Markdown(self._joined()))
+            return
         if self._live is None:
             self._live = Live(
                 self._render(),
@@ -193,6 +210,15 @@ class StreamingMarkdownRegion:
 
     def finalize(self) -> None:
         """Stop the live preview and commit the final Markdown to scrollback."""
+        if self._parent is not None:
+            text = self._joined().strip()
+            self._buffer = []
+            # Drop the streaming preview from the parent's tail before
+            # committing the final Markdown to scrollback above the live.
+            self._parent.clear_tail()
+            if text:
+                self._console.print(Markdown(text))
+            return
         if self._live is None and not self._buffer:
             return
         if self._live is not None:
@@ -205,6 +231,10 @@ class StreamingMarkdownRegion:
 
     def discard(self) -> None:
         """Stop the live preview without printing (used on turn reset)."""
+        if self._parent is not None:
+            self._parent.clear_tail()
+            self._buffer = []
+            return
         if self._live is not None:
             self._live.stop()
             self._live = None
@@ -212,6 +242,8 @@ class StreamingMarkdownRegion:
 
     @property
     def is_active(self) -> bool:
+        if self._parent is not None:
+            return bool(self._buffer)
         return self._live is not None
 
     def _joined(self) -> str:

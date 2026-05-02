@@ -179,9 +179,6 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "bottom-toolbar.idle-dot": f"fg:{_REPL_COLORS['text_muted']}",
             "bottom-toolbar.yolo": f"fg:{_REPL_COLORS['yolo']} bold",
             "bottom-toolbar.plan": f"fg:{_REPL_COLORS['plan']} bold",
-            "input-separator": f"fg:{_REPL_COLORS['separator']}",
-            "input-separator.plan": f"fg:{_REPL_COLORS['plan']}",
-            "input-separator.yolo": f"fg:{_REPL_COLORS['yolo']}",
             "completion-menu": f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}",
             "completion-menu.completion": (
                 f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['text_muted']}"
@@ -207,9 +204,6 @@ def _build_prompt_style_rules() -> dict[str, str]:
         "bottom-toolbar.idle-dot": "fg:ansibrightblack",
         "bottom-toolbar.yolo": "fg:ansired bold",
         "bottom-toolbar.plan": "fg:ansiblue bold",
-        "input-separator": "fg:ansibrightblack",
-        "input-separator.plan": "fg:ansiblue",
-        "input-separator.yolo": "fg:ansired",
         "completion-menu": "bg:default fg:default",
         "completion-menu.completion": "bg:default fg:default",
         "completion-menu.completion.current": "noreverse bg:ansigreen fg:ansiblack bold",
@@ -614,30 +608,6 @@ def _cycle_history(event, direction: Literal["up", "down"]) -> None:
     buffer.go_to_history(target)
 
 
-def _render_input_separator(cols: int) -> tuple[str, str]:
-    """Return (style_class, rendered_line) for the leading input zone separator."""
-    title_parts = ["input"]
-    if _TOOLBAR_STATE.plan_mode:
-        title_parts.append("plan")
-    if _TOOLBAR_STATE.yolo:
-        title_parts.append("yolo")
-    title = f"  {' · '.join(title_parts)}  "
-
-    if _TOOLBAR_STATE.plan_mode:
-        dash = "╌"
-        style = "class:input-separator.plan"
-    elif _TOOLBAR_STATE.yolo:
-        dash = "─"
-        style = "class:input-separator.yolo"
-    else:
-        dash = "─"
-        style = "class:input-separator"
-
-    border_fill = max(0, cols - len(title) - 2)
-    line = f"{dash}{dash}{title}{dash * border_fill}"
-    return style, line
-
-
 def _thinking_dot() -> str:
     """Return the glyph representing current agent state for the toolbar badge.
 
@@ -676,12 +646,9 @@ def _bottom_toolbar() -> FormattedText:
 
     status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
 
-    sep_style, sep_line = _render_input_separator(cols)
     rule = "─" * max(cols, 1)
     return FormattedText(
         [
-            (sep_style, sep_line),
-            ("", "\n"),
             ("class:bottom-toolbar.rule", rule),
             ("", "\n"),
             ("class:bottom-toolbar.status", _compose_toolbar_line(status_left, status_right, cols)),
@@ -733,17 +700,11 @@ def _rich_footer_styles() -> dict[str, str]:
             "rule": _REPL_COLORS["accent_soft"],
             "status": _REPL_COLORS["text_soft"],
             "tip": f"italic {_REPL_COLORS['text_soft']}",
-            "sep": _REPL_COLORS["separator"],
-            "sep_plan": _REPL_COLORS["plan"],
-            "sep_yolo": _REPL_COLORS["yolo"],
         }
     return {
         "rule": "bright_black",
         "status": "bright_black",
         "tip": "italic bright_black",
-        "sep": "bright_black",
-        "sep_plan": "blue",
-        "sep_yolo": "red",
     }
 
 
@@ -760,15 +721,6 @@ def _build_rich_footer() -> ConsoleRenderable:
     cols = max(shutil.get_terminal_size().columns, 1)
     styles = _rich_footer_styles()
 
-    # Input separator (re-uses prompt-toolkit logic for parity).
-    sep_pt_style, sep_line = _render_input_separator(cols)
-    if "plan" in sep_pt_style:
-        sep_style = styles["sep_plan"]
-    elif "yolo" in sep_pt_style:
-        sep_style = styles["sep_yolo"]
-    else:
-        sep_style = styles["sep"]
-
     status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
 
     rule_text = Text("─" * cols, style=styles["rule"])
@@ -781,7 +733,6 @@ def _build_rich_footer() -> ConsoleRenderable:
         return table
 
     return Group(
-        Text(sep_line, style=sep_style),
         rule_text,
         _split_row(status_left, status_right, styles["status"]),
         _split_row(tip_left, tip_right, styles["tip"]),

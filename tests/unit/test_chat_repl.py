@@ -32,11 +32,10 @@ def test_history_cycle_target_from_draft_goes_to_edge_for_direction() -> None:
     assert _history_cycle_target(current_index=3, working_line_count=4, direction="down") == 0
 
 
-def test_bottom_toolbar_renders_input_separator_and_rotating_tip() -> None:
+def test_bottom_toolbar_renders_status_and_rotating_tip() -> None:
     toolbar = _bottom_toolbar()
     # FormattedText — extract text content
     text = "".join(fragment[1] for fragment in toolbar)
-    assert "input" in text  # leading input-zone separator
     assert "tip:" in text  # rotating tip line
     assert "session:" in text  # session label on tip line
 

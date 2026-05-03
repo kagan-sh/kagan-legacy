@@ -313,6 +313,14 @@ async def _sse_stream(
         raise
     except (asyncio.CancelledError, GeneratorExit, ConnectionError):
         logger.debug("Client disconnected during chat stream for session {}", session_id)
+        # Starlette throws CancelledError at the active yield when the client
+        # drops; the inner stream_assistant generator is abandoned and its
+        # ``finally: _teardown`` only fires when Python's async-gen finalizer
+        # eventually calls aclose(). Until then the sentinel stays in
+        # engine._states and every subsequent /stream 409s. detach() is
+        # idempotent so this is safe even when stream_assistant cleaned up
+        # itself (Greptile P1).
+        await engine.detach(session_id)
         return
     except Exception as exc:
         logger.exception("Chat stream failed for session {}", session_id)

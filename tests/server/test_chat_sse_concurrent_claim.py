@@ -191,3 +191,65 @@ async def test_pre_stream_failure_releases_slot(
         )
     finally:
         core.close()
+
+
+async def test_client_disconnect_mid_stream_releases_slot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Starlette throws CancelledError at the active yield when the SSE
+    client drops. Pre-fix the disconnect branch returned without calling
+    engine.detach, leaving the sentinel in engine._states until Python's
+    async-gen finalizer eventually fired. Every subsequent /stream for the
+    same session 409'd in the meantime.
+
+    Greptile P1.
+    """
+    db_path = tmp_path / "kagan.db"
+    core = KaganCore(db_path=db_path)
+    try:
+        await core.reset()
+
+        started = asyncio.Event()
+        suspending = SuspendingFactory(first_chunk="partial", started=started)
+        monkeypatch.setattr(
+            _chat_routes,
+            "SpawnPerTurnACPFactory",
+            lambda **_kwargs: suspending,
+        )
+
+        session = await core.chat_sessions.create(source="web", label="t")
+        session_dict = await get_chat_session(core, session.id)
+        assert session_dict is not None
+
+        ctx = SimpleNamespace(client=core)
+
+        stream = _chat_routes._sse_stream(
+            ctx,
+            session.id,
+            session_dict,
+            text="first",
+            backend="claude-code",
+            attachments=None,
+        )
+
+        # Drive the stream until it parks on the suspending factory, then
+        # simulate a Starlette client disconnect by cancelling the consumer
+        # task — Starlette throws CancelledError at the active yield, which
+        # propagates into _sse_stream's except branch. The branch should run
+        # engine.detach so the slot is freed.
+        consumer = asyncio.create_task(_drain_sse(stream))
+        await asyncio.wait_for(started.wait(), timeout=5.0)
+        consumer.cancel()
+        with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
+            await asyncio.wait_for(consumer, timeout=2.0)
+
+        # Slot must be free: a follow-up /stream must not 409.
+        await asyncio.sleep(0)  # let any pending awaits flush
+        status = core.chat.turn_status(session.id)
+        assert not status.active, (
+            "Slot leaked on client disconnect — engine._states still has "
+            "the sentinel after aclose()."
+        )
+    finally:
+        core.close()

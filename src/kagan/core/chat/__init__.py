@@ -6,6 +6,7 @@ use. The legacy `kagan.cli.chat.sessions` raw-SQL helpers are gone — call
 `client.chat` (the :class:`ChatEngine`) rather than driving ACP directly.
 """
 
+from kagan.core.chat._factories import LongLivedACPFactory
 from kagan.core.chat.acp import (
     ACPSessionFactory,
     ACPTurnResult,
@@ -53,6 +54,7 @@ __all__ = [
     "ChatEngine",
     "ChatEvent",
     "ChatSessions",
+    "LongLivedACPFactory",
     "PermissionRequest",
     "PermissionResolved",
     "SpawnPerTurnACPFactory",

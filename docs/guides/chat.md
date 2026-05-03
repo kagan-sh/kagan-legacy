@@ -26,6 +26,20 @@ kagan chat --yolo                  # auto-approve every tool call
 
 The REPL persists conversation history across restarts. Type a message and press Enter to send. `Ctrl+D` or `/exit` to quit.
 
+### Prompt and toolbar
+
+The input prompt is pinned to the bottom of the terminal for the entire session. The leading glyph reflects state:
+
+| Glyph             | State                      |
+| ----------------- | -------------------------- |
+| `❯` (teal)        | Idle, waiting for input    |
+| `◐ ◓ ◑ ◒` (amber) | Streaming a model response |
+| `◇`               | Plan mode (`/flow` plan)   |
+
+The bottom toolbar shows the active backend, session, pending approval count, currently running tool, approximate token usage, and a git badge. The badge displays the current branch with `↑N` / `↓M` markers when the local branch is ahead of or behind its upstream.
+
+A rotating tip line (eight tips, 30 s cadence; advances on submit) sits beneath the toolbar.
+
 ### Yolo mode
 
 `--yolo` skips the per-tool-call permission prompt and auto-approves every request for the session. On boot it shows a disclaimer and requires you to type `I ACCEPT` exactly; anything else aborts. The boot banner border turns red and a `YOLO` badge appears in the bottom toolbar while it is active. Each auto-approved call is still logged as `● yolo auto-approve: <tool>` so you can see what ran. Use only inside disposable worktrees or sandboxes you trust the agent to operate on unattended.
@@ -60,9 +74,7 @@ When the agent issues several tool calls at once, the REPL collects them inside 
 
 Use ++tab++ / ++shift+tab++ to move between items in the header.
 
-The debounce window and the item cap are tunable via environment variables — see [`KAGAN_BATCH_APPROVAL_DEBOUNCE_MS` and `KAGAN_BATCH_APPROVAL_CAP`](../reference/configuration.md#environment-variables-passed-into-interactive-sessions).
-
-The bottom toolbar shows the number of pending approvals, the currently running tool name, and approximate token usage so you always know what the agent is asking for.
+Tune the debounce window and item cap via [`KAGAN_BATCH_APPROVAL_DEBOUNCE_MS` and `KAGAN_BATCH_APPROVAL_CAP`](../reference/configuration.md#environment-variables-passed-into-interactive-sessions).
 
 ______________________________________________________________________
 
@@ -85,20 +97,22 @@ ______________________________________________________________________
 
 Type `/` followed by a command name. All commands work in both the CLI REPL and TUI overlay.
 
-| Command      | Alias |
-| ------------ | ----- |
-| `/help`      | `/?`  |
-| `/exit`      | `/q`  |
-| `/clear`     |       |
-| `/new`       |       |
-| `/sessions`  | `/s`  |
-| `/agents`    | `/a`  |
-| `/approvals` |       |
-| `/status`    |       |
-| `/project`   | `/p`  |
-| `/delete`    |       |
-| `/tool`      |       |
-| `/flow`      | `/f`  |
+| Command      | Alias | Purpose                                                                |
+| ------------ | ----- | ---------------------------------------------------------------------- |
+| `/help`      | `/?`  | Command list and quick reference                                       |
+| `/exit`      | `/q`  | Quit the REPL                                                          |
+| `/clear`     |       | Clear scrollback                                                       |
+| `/new`       |       | Start a fresh session, replacing the current one                       |
+| `/sessions`  | `/s`  | List, attach, create, or delete sessions                               |
+| `/agents`    | `/a`  | List installed agent backends or switch backend                        |
+| `/approvals` |       | List session-granted approvals; revoke with `/approvals revoke <name>` |
+| `/status`    |       | Backend, session, and runtime summary                                  |
+| `/project`   | `/p`  | Show or switch the active Kagan project                                |
+| `/repo`      |       | Show or switch the active git repo when the project spans many         |
+| `/delete`    |       | Delete the current session                                             |
+| `/tool`      |       | Inspect recent tool calls (`/tool <id>` for full input/output)         |
+| `/flow`      | `/f`  | Toggle plan/execution flow modes                                       |
+| `/analytics` |       | Print backend analytics for this project (mirrors the web tab)         |
 
 ### `/sessions` usage
 
@@ -128,6 +142,12 @@ Type `/` followed by a command name. All commands work in both the CLI REPL and 
 ```text
 /approvals             # list approvals granted this session
 /approvals revoke <name>  # revoke a session-granted approval by tool name
+```
+
+### `/analytics` usage
+
+```text
+/analytics             # backend success rate / duration / retry summary
 ```
 
 ______________________________________________________________________

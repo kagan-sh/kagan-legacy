@@ -18,7 +18,6 @@ tags:
 | `import` | Import tasks from external sources              |
 | `list`   | List projects with task counts                  |
 | `mcp`    | Run MCP server (stdio)                          |
-| `import` | Import tasks from external sources              |
 | `reset`  | Remove local state                              |
 | `serve`  | Run HTTP API server (no web UI)                 |
 | `tools`  | Stateless utilities and advanced prompt tooling |

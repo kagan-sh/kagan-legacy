@@ -1,13 +1,31 @@
-"""ACP client for orchestrator mode — streaming output, tool tracking, animation."""
+"""ACP client for orchestrator mode — streaming output, tool tracking, animation.
+
+Phase 5b refactor: rendering state (``StreamingMarkdownRegion``,
+``_GroupedToolDisplay``, ``ToolRunTracker``, the usage snapshot, terminal
+printing) lives in ``cli/chat/_renderer.py`` as ``CLIRenderer``. The permission
+flow lives in ``cli/chat/_permission_ui.py`` as ``PermissionUI``.
+
+This module retains:
+- The module-level helper functions (``_run_interactive_modal``,
+  ``_run_legacy_input``, ``_run_approval_panel_async``, ``_map_approval_result``,
+  ``_session_approvals``, the ``_*_permission_response`` constructors,
+  ``_format_permission_tool``, ``_tool_action_key``, ``_stdio_is_interactive``,
+  ``_render_panel_ansi``, ``_show_panel_in_pager``, ``_modal_active``,
+  ``_MODAL_DEPTH``). Existing tests reach into these via monkeypatch and
+  ``_BatchApprovalQueue`` imports them as plain symbols, so they stay
+  defined in this module rather than being moved to ``_permission_ui``.
+- ``_OrchestratorACPClient`` itself, now a thin wrapper that constructs
+  ``CLIRenderer`` + ``PermissionUI`` and dispatches ``session_update`` /
+  ``request_permission`` calls through them. Phase 5c will delete this class
+  entirely and have the controller drive the engine + helpers directly.
+"""
 
 from __future__ import annotations
 
-import contextlib
 import io
 import shutil
 import sys
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -24,38 +42,31 @@ from rich.markup import escape as _rich_escape
 from rich.measure import Measurement
 from rich.text import Text
 
+from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
+
+# Re-export the modal-depth helpers so external imports keep working. The
+# canonical implementation now lives in ``_renderer`` so the renderer and
+# the permission flow share a single counter.
+from kagan.cli.chat._renderer import (
+    CLIRenderer,
+    _GroupedToolDisplay,
+    _modal_active,
+    _modal_depth,
+    print_via_terminal,
+)
+from kagan.cli.chat.repl import WAVE_FRAMES, _console, _env_flag_enabled
+from kagan.core import ACPClientBase
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
-from kagan.cli.chat._streaming import (
-    ResponseChunkBuffer,
-    StreamingMarkdownRegion,
-)
-from kagan.cli.chat.repl import WAVE_FRAMES, _console, _env_flag_enabled
-from kagan.cli.chat.tool_runs import ToolRunTracker
-from kagan.core import ACPClientBase
 
-# Approval modals (transient prompt_toolkit Applications) need to coexist with
-# the long-lived REPL prompt session. While a modal owns the screen, prints
-# from the streaming ACP client must be routed via ``run_in_terminal``; outside
-# a modal the outer ``patch_stdout(raw=True)`` already routes them above the
-# REPL prompt, so direct calls are cheaper and avoid extra redraw cycles.
-_MODAL_DEPTH = 0
-
-
-@contextlib.contextmanager
-def _modal_active():
-    """Increment the modal-depth counter for the duration of an approval modal.
-
-    Multiple modals can stack (rare); the depth counter handles nesting safely.
-    """
-    global _MODAL_DEPTH
-    _MODAL_DEPTH += 1
-    try:
-        yield
-    finally:
-        _MODAL_DEPTH -= 1
+# Backward-compatible alias for the module-level modal-depth integer.
+# Tests and ``_approval_batch`` import ``_modal_active`` from here; keep
+# ``_MODAL_DEPTH`` resolvable as a module attribute for any callers that
+# inspect it directly.
+def _get_modal_depth() -> int:  # pragma: no cover — diagnostic helper
+    return _modal_depth()
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,82 +156,7 @@ def _tool_action_key(tool_call: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Grouped tool-call display
-# ---------------------------------------------------------------------------
-
-
-class _GroupedToolDisplay:
-    """Accumulate parallel tool calls and render them as grouped status lines.
-
-    Groups calls by tool name.  Shows: ``tool_name x N -- done D/N . Xs``.
-    """
-
-    def __init__(self) -> None:
-        # tool_name -> list of (status, started_at, ended_at)
-        self._calls: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        self._key_to_name: dict[str, str] = {}
-
-    def start(self, tool_key: str, tool_name: str, started_at: float) -> None:
-        self._key_to_name[tool_key] = tool_name
-        self._calls[tool_name].append(
-            {"key": tool_key, "status": "running", "started": started_at, "ended": None}
-        )
-
-    def complete(self, tool_key: str, status: str, ended_at: float) -> None:
-        name = self._key_to_name.get(tool_key)
-        if name is None:
-            return
-        for entry in self._calls.get(name, []):
-            if entry["key"] == tool_key and entry["status"] == "running":
-                entry["status"] = status
-                entry["ended"] = ended_at
-                break
-
-    def render_lines(self) -> list[str]:
-        """Return one display line per tool name."""
-        lines = []
-        now = time.monotonic()
-        for name, entries in self._calls.items():
-            total = len(entries)
-            done = sum(1 for e in entries if e["status"] in ("completed", "failed"))
-            error = sum(1 for e in entries if e["status"] == "failed")
-            elapsed = max((now - e["started"]) for e in entries if e["started"] is not None)
-            elapsed_text = f"{elapsed:.1f}s"
-
-            if total == 1:
-                entry = entries[0]
-                if entry["status"] == "running":
-                    icon = "●"
-                    style = "dim"
-                elif entry["status"] == "completed":
-                    icon = "✓"
-                    style = "green"
-                else:
-                    icon = "✗"
-                    style = "red"
-                line = f"  [{style}]{icon} {_rich_escape(name)} · {elapsed_text}[/{style}]"
-            else:
-                if error > 0:
-                    status_text = f"done {done}/{total} · {error} err · {elapsed_text}"
-                    style = "red"
-                elif done == total:
-                    status_text = f"done {total}/{total} · {elapsed_text}"
-                    style = "green"
-                else:
-                    status_text = f"done {done}/{total} · {elapsed_text}"
-                    style = "dim"
-                icon = "✓" if done == total and error == 0 else "●"
-                line = f"  [{style}]{icon} {_rich_escape(name)} x{total} -- {status_text}[/{style}]"
-            lines.append(line)
-        return lines
-
-    def clear(self) -> None:
-        self._calls.clear()
-        self._key_to_name.clear()
-
-
-# ---------------------------------------------------------------------------
-# Arrow-key approval panel — prompt_toolkit Application
+# Single-approval panel rendering + key handling
 # ---------------------------------------------------------------------------
 
 
@@ -329,14 +265,12 @@ async def _run_interactive_modal(
     from prompt_toolkit.layout.containers import HSplit, Window
     from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
-    # Mutable state captured by the closures below.
     state: dict[str, Any] = {
         "selected": 0,
         "feedback": "",
         "feedback_mode": False,
     }
 
-    # Buffer for option-4 inline feedback text.
     feedback_buffer = Buffer(name="approval_feedback", multiline=False)
 
     def _panel_text() -> ANSI:
@@ -355,7 +289,6 @@ async def _run_interactive_modal(
         content=FormattedTextControl(text=_panel_text),
         dont_extend_height=True,
     )
-    # Height-0 Window keeps the feedback buffer alive without taking screen space.
     feedback_window = Window(
         content=BufferControl(buffer=feedback_buffer, focusable=True),
         height=0,
@@ -414,7 +347,6 @@ async def _run_interactive_modal(
             state["selected"] = idx
             if idx == 3:
                 state["feedback_mode"] = True
-                # option 4 selected — stay open for feedback input
             else:
                 state["feedback_mode"] = False
                 _exit_with(event.app, idx, "")
@@ -483,6 +415,13 @@ def _run_legacy_input(
         selected_index = 2
 
     return selected_index, feedback_draft
+
+
+# ---------------------------------------------------------------------------
+# Session-allow cache (module-level singleton — owned conceptually by
+# ``PermissionUI`` but kept addressable here for cross-module imports and
+# existing tests).
+# ---------------------------------------------------------------------------
 
 
 class _SessionApprovals:
@@ -588,198 +527,139 @@ def _map_approval_result(
     return None
 
 
+# ---------------------------------------------------------------------------
+# _OrchestratorACPClient — thin shell over CLIRenderer + PermissionUI
+# ---------------------------------------------------------------------------
+
+
 class _OrchestratorACPClient(ACPClientBase):
     def __init__(self, *, yolo: bool = False) -> None:
-        from kagan.cli.chat._approval_batch import _BatchApprovalQueue
+        from kagan.cli.chat._permission_ui import PermissionUI
 
         self._conn: Any = None
         self._streaming = False
-        self._yolo = yolo
-        self._show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
-        self._tool_runs = ToolRunTracker()
-        self._grouped_tools = _GroupedToolDisplay()
-        self._response_chunks = ResponseChunkBuffer()
-        self._md_region = StreamingMarkdownRegion(_console)
-        self.last_usage: Any = None
+        show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
+        self._renderer = CLIRenderer(_console, show_thoughts=show_thoughts)
+        self._permission_ui = PermissionUI(yolo=yolo, renderer=self._renderer)
         self._spinner_name = get_rich_spinner_name()
-        self._batch_queue = _BatchApprovalQueue(self)
+
+    # ------------------------------------------------------------------
+    # Backward-compatible attribute surface — the controller and a handful
+    # of other call sites still poke at these directly. Phase 5c will
+    # replace these with explicit accessor calls on the renderer.
+    # ------------------------------------------------------------------
+
+    @property
+    def last_usage(self) -> Any:
+        return self._renderer.last_usage
+
+    @last_usage.setter
+    def last_usage(self, value: Any) -> None:
+        self._renderer.last_usage = value
+
+    @property
+    def _md_region(self) -> Any:
+        return self._renderer._md_region
+
+    @property
+    def _tool_runs(self) -> Any:
+        return self._renderer._tool_runs
+
+    @property
+    def _grouped_tools(self) -> Any:
+        return self._renderer._grouped_tools
+
+    @property
+    def _response_chunks(self) -> Any:
+        return self._renderer._response_chunks
+
+    @property
+    def _yolo(self) -> bool:
+        return self._permission_ui._yolo
+
+    @property
+    def _show_thoughts(self) -> bool:
+        return self._renderer._show_thoughts
+
+    @property
+    def _batch_queue(self) -> Any:
+        return self._permission_ui._batch_queue
+
+    # ------------------------------------------------------------------
+    # Turn lifecycle
+    # ------------------------------------------------------------------
 
     def start_turn(self) -> None:
-        self._md_region.discard()
-        self._response_chunks.clear()
-        self._tool_runs.start_turn()
-        self._grouped_tools.clear()
-        self.last_usage = None
-        self._batch_queue.reset()
+        self._renderer.start_turn()
+        self._permission_ui.reset_batch_queue()
 
     def finish_turn(self) -> str:
-        self._md_region.finalize()
-        response = self._response_chunks.get_all().strip()
-        return response
+        return self._renderer.finish_turn()
 
     def tool_report(self, query: str | None) -> tuple[str, bool]:
-        return self._tool_runs.tool_report(query)
+        return self._renderer.tool_report(query)
 
     def _print_via_terminal(self, fn: Callable[[], None]) -> None:
-        """Print safely above any active prompt_toolkit Application.
+        print_via_terminal(fn)
 
-        When an approval modal (a transient ``Application``) owns the
-        terminal, route through ``run_in_terminal`` so the print doesn't
-        collide with the modal's redraw.  Outside of modals,
-        ``patch_stdout(raw=True)`` in the outer REPL loop already routes
-        ``_console.print`` above the toolbar — call ``fn`` directly to
-        skip the extra redraw cycle.
-        """
-        if _MODAL_DEPTH > 0:
-            try:
-                run_in_terminal(fn)
-                return
-            except Exception:
-                logger.debug("run_in_terminal failed, falling back to direct print", exc_info=True)
-        fn()
-
-    def _handle_tool_progress(self, update: ToolCallProgress) -> None:
-        """Handle ToolCallProgress events: update run record and print status."""
-        status = getattr(update, "status", None)
-        title = getattr(update, "title", None) or "tool"
-        tool_key = self._tool_runs.tool_key(update)
-        if status and self._tool_runs.status_for(tool_key) == status:
-            return
-        key_arg = self._tool_runs.extract_tool_key_arg(update)
-        run = self._tool_runs.ensure_tool_run(update=update, title=title, key_arg=key_arg)
-        if status:
-            run.status = str(status)
-        args = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_args(update))
-        if args:
-            run.args = args
-        result = self._tool_runs.serialize_payload(self._tool_runs.extract_tool_result(update))
-        if result:
-            run.result = result
-        if status not in ("completed", "failed"):
-            return
-        self._tool_runs.set_status(tool_key, status)
-        run.ended_at = run.ended_at or time.monotonic()
-        self._grouped_tools.complete(tool_key, status, run.ended_at)
-        self._print_via_terminal(
-            self._make_done_printer(title, key_arg, status, run.started_at, run.ended_at)
-        )
-
-    @staticmethod
-    def _make_done_printer(
-        title: str,
-        key_arg: str | None,
-        status: str,
-        started_at: float,
-        ended_at: float,
-    ) -> Callable[[], None]:
-        def _print() -> None:
-            arg_suffix = f"({key_arg})" if key_arg else ""
-            elapsed = max(0.0, ended_at - started_at)
-            duration = f" [dim]{elapsed:.1f}s[/dim]" if elapsed >= 0.1 else ""
-            if status == "completed":
-                _console.print(
-                    f"  [green]● {title}{arg_suffix}[/green]{duration}",
-                    highlight=False,
-                )
-            else:
-                _console.print(
-                    f"  [red]● {title}{arg_suffix} failed[/red]",
-                    highlight=False,
-                )
-
-        return _print
+    # ------------------------------------------------------------------
+    # ACP session_update — thin dispatcher into the renderer
+    # ------------------------------------------------------------------
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
+        del session_id, kwargs
         if isinstance(update, AgentMessageChunk):
             content = getattr(update, "content", None)
             if content and getattr(content, "type", None) == "text":
                 text = getattr(content, "text", "") or ""
                 if text:
                     self._streaming = True
-                    self._response_chunks.append(text)
-                    self._md_region.append(text)
+                    self._renderer.on_assistant_chunk(text)
         elif isinstance(update, AgentThoughtChunk):
-            if self._show_thoughts:
-                content = getattr(update, "content", None)
-                if content and getattr(content, "type", None) == "text":
-                    text = getattr(content, "text", "") or ""
-                    if text:
-                        self._md_region.finalize()
-
-                        def _print_thought() -> None:
-                            _console.print(
-                                f"[dim]{_rich_escape(text)}[/dim]", end="", highlight=False
-                            )
-                            _console.file.flush()
-
-                        self._print_via_terminal(_print_thought)
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                text = getattr(content, "text", "") or ""
+                if text:
+                    self._renderer.on_assistant_chunk(text, thought=True)
         elif isinstance(update, ToolCallStart):
-            self._md_region.finalize()
-            title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
-            tool_key = self._tool_runs.tool_key(update)
-            if self._tool_runs.status_for(tool_key) != "started":
-                self._tool_runs.set_status(tool_key, "started")
-                key_arg = self._tool_runs.extract_tool_key_arg(update)
-                run = self._tool_runs.ensure_tool_run(update=update, title=title, key_arg=key_arg)
-                run.status = "running"
-                run.args = self._tool_runs.serialize_payload(
-                    self._tool_runs.extract_tool_args(update)
-                )
-                self._grouped_tools.start(tool_key, title, run.started_at)
-
-                def _print_start() -> None:
-                    arg_suffix = f"({key_arg})" if key_arg else ""
-                    _console.print(f"\n  [dim]● {title}{arg_suffix}[/dim]", highlight=False)
-
-                self._print_via_terminal(_print_start)
+            self._renderer.on_tool_call_start(update)
         elif isinstance(update, ToolCallProgress):
-            self._md_region.finalize()
-            self._handle_tool_progress(update)
+            self._renderer.on_tool_call_progress(update)
         elif isinstance(update, UsageUpdate):
-            self.last_usage = update
+            self._renderer.on_usage_update(update)
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):
-        del session_id
-        permission_options = [
-            option
-            for option in list(options or ())
-            if getattr(option, "kind", None)
-            in {"allow_once", "allow_always", "reject_once", "reject_always"}
-        ]
-        if not permission_options:
-            return _cancelled_permission_response()
-
-        self._md_region.finalize()
-
-        # --yolo: short-circuit before the batch queue is armed.
-        if self._yolo:
-            for option in permission_options:
-                if getattr(option, "kind", None) == "allow_once":
-                    _yolo_title = _format_permission_tool(tool_call)
-
-                    def _print_yolo(_t: str = _yolo_title) -> None:
-                        _console.print(
-                            f"  [red]● yolo auto-approve:[/red] [dim]{_rich_escape(_t)}[/dim]",
-                            highlight=False,
-                        )
-
-                    self._print_via_terminal(_print_yolo)
-                    return _selected_permission_response(option)
-
-        if not _stdio_is_interactive():
-
-            def _print_denied() -> None:
-                _console.print(
-                    "[yellow]Permission request denied in non-interactive mode.[/yellow]"
-                )
-
-            self._print_via_terminal(_print_denied)
-            return _cancelled_permission_response()
-
-        # Enqueue into the batch queue; await the resolved Future.
-        future = await self._batch_queue.enqueue(permission_options, tool_call)
-        return await future
+        return await self._permission_ui.handle_request(options, session_id, tool_call)
 
     def cancel_batch_queue(self) -> None:
         """Cancel all pending batch approval futures (called from SIGINT handler)."""
-        self._batch_queue.cancel_all()
+        self._permission_ui.cancel_batch_queue()
+
+
+__all__ = [
+    "CLIRenderer",
+    "_GroupedToolDisplay",
+    "_OrchestratorACPClient",
+    "_SendResult",
+    "_SessionApprovals",
+    "_WaveIndicator",
+    "_cancelled_permission_response",
+    "_format_permission_tool",
+    "_get_modal_depth",
+    "_map_approval_result",
+    "_modal_active",
+    "_permission_choice_matches",
+    "_prompt_for_permission_option_async",
+    "_rejected_permission_response",
+    "_render_panel_ansi",
+    "_run_approval_panel_async",
+    "_run_interactive_modal",
+    "_run_legacy_input",
+    "_selected_permission_response",
+    "_session_approvals",
+    "_show_panel_in_pager",
+    "_stdio_is_interactive",
+    "_tool_action_key",
+    "get_session_approvals",
+    "print_via_terminal",
+]

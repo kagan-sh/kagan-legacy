@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -19,9 +19,6 @@ from kagan.cli.chat import acp as cli_chat_acp
 from kagan.core import BackendCapability
 from kagan.core._agent import BackendSpec
 from kagan.core.chat import LongLivedACPFactory
-
-if TYPE_CHECKING:
-    pass
 
 pytestmark = [pytest.mark.core]
 

@@ -255,3 +255,77 @@ async def test_client_disconnect_mid_stream_releases_slot(
         )
     finally:
         core.close()
+
+
+async def test_post_done_refresh_failure_does_not_emit_chat_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-CHAT_DONE session-refresh failure must not emit CHAT_ERROR.
+
+    Pre-fix the post-turn metadata refresh lived inside the async-for body
+    covered by `except Exception`. If the DB hiccup'd, the client would see
+    CHAT_DONE followed by a spurious CHAT_ERROR for the same turn — corrupting
+    spinner / turn-count state on web/VSCode clients.
+
+    Greptile P1.
+    """
+    from tests.helpers.chat_engine import ScriptedFactory
+
+    db_path = tmp_path / "kagan.db"
+    core = KaganCore(db_path=db_path)
+    try:
+        await core.reset()
+
+        # Drive a successful turn via a scripted factory so CHAT_DONE actually
+        # fires, then force the post-turn refresh to raise.
+        scripted = ScriptedFactory(chunks=["hello"])
+        monkeypatch.setattr(
+            _chat_routes,
+            "SpawnPerTurnACPFactory",
+            lambda **_kwargs: scripted,
+        )
+
+        session = await core.chat_sessions.create(source="web", label="t")
+        _pair = await core.chat_sessions.get_with_history(session.id)
+        session_dict = _to_dict(*_pair) if _pair is not None else None
+        assert session_dict is not None
+
+        ctx = SimpleNamespace(client=core)
+
+        # Make the post-DONE get_with_history call raise. The turn itself is
+        # already done at that point so this MUST be silently swallowed.
+        original_get_with_history = core.chat_sessions.get_with_history
+        call_count = {"n": 0}
+
+        async def _get(session_id: str) -> Any:
+            call_count["n"] += 1
+            # The first call (in _load_session_dict for prior_history) succeeds;
+            # the second call (post-CHAT_DONE refresh) is the one we sabotage.
+            # The route's _load_session_dict was already invoked by the caller
+            # before we get here, so any get_with_history during _sse_stream is
+            # the post-DONE refresh.
+            if call_count["n"] == 1:
+                raise RuntimeError("simulated post-DONE refresh failure")
+            return await original_get_with_history(session_id)
+
+        monkeypatch.setattr(core.chat_sessions, "get_with_history", _get)
+
+        stream = _chat_routes._sse_stream(
+            ctx,
+            session.id,
+            session_dict,
+            text="hi",
+            backend="claude-code",
+            attachments=None,
+        )
+        chunks = await asyncio.wait_for(_drain_sse(stream), timeout=5.0)
+        frames = _frames(chunks)
+        kinds = [f["t"] for f in frames]
+
+        assert "CHAT_DONE" in kinds, f"Expected CHAT_DONE in stream; got {kinds}"
+        assert "CHAT_ERROR" not in kinds, (
+            f"Spurious CHAT_ERROR after successful CHAT_DONE; got {kinds}"
+        )
+    finally:
+        core.close()

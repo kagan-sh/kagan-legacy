@@ -245,6 +245,7 @@ async def _sse_stream(
     # is entered it owns teardown via its own try/finally; ``detach`` is
     # idempotent so double-teardown is safe.
     stream_entered = False
+    turn_done = False
     try:
         await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
 
@@ -304,18 +305,8 @@ async def _sse_stream(
                 continue
             _broadcast(session_id, frame)
             yield _emit(frame)
-
-            # After a successful turn, broadcast a session summary refresh so
-            # /watch subscribers can update sidebar metadata.
             if frame.get("t") == "CHAT_DONE":
-                refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
-                if refreshed_pair is not None:
-                    refreshed = chat_session_to_legacy_dict(*refreshed_pair)
-                    update = {
-                        "t": "CHAT_SESSION_UPDATED",
-                        "session": _session_summary(refreshed),
-                    }
-                    _broadcast(session_id, update)
+                turn_done = True
     except TurnInProgressError:
         # Surfaced to the route caller via the wrapper below — no body here.
         raise
@@ -338,6 +329,23 @@ async def _sse_stream(
     finally:
         if not stream_entered:
             await engine.detach(session_id)
+
+    # Post-turn metadata refresh OUTSIDE the error handler. A DB hiccup here
+    # must not emit a spurious CHAT_ERROR after the successful CHAT_DONE that
+    # already shipped — clients toggling spinners / turn counts would see
+    # success-then-error for the same turn (Greptile P1).
+    if turn_done:
+        try:
+            refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
+        except Exception:
+            logger.exception("Post-turn session refresh failed for {}", session_id)
+        else:
+            if refreshed_pair is not None:
+                refreshed = chat_session_to_legacy_dict(*refreshed_pair)
+                _broadcast(
+                    session_id,
+                    {"t": "CHAT_SESSION_UPDATED", "session": _session_summary(refreshed)},
+                )
 
 
 # ---------------------------------------------------------------------------

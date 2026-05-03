@@ -180,12 +180,22 @@ class ChatEngine:
         prior = await self._sessions.history(session_id)
         is_first_turn = not any(m.role == "assistant" for m in prior)
 
+        # Drive the inner generator manually so we can explicitly ``aclose``
+        # it when the outer consumer cancels us. ``async for`` would let the
+        # inner generator be garbage-collected without ever propagating
+        # ``GeneratorExit`` into its ``except (GeneratorExit, ...)`` block
+        # (especially when the outer is cancelled at its very first yield —
+        # see Greptile P2). Manual closure guarantees the inner cleanup path
+        # — ``cancel_event.set()`` + ``run_task.cancel()`` + ``drain_task``
+        # join — runs every time.
+        inner = self._run_stream(
+            session_id, state, prompt_blocks, is_first_turn, agent_backend, factory
+        )
         try:
-            async for event in self._run_stream(
-                session_id, state, prompt_blocks, is_first_turn, agent_backend, factory
-            ):
+            async for event in inner:
                 yield event
         finally:
+            await inner.aclose()
             self._teardown(session_id)
 
     # ------------------------------------------------------------------ cancel
@@ -301,9 +311,14 @@ class ChatEngine:
 
         drain_task = asyncio.create_task(_drain_to_queue())
 
-        yield TurnStarted(at=state.started_at or datetime.now(UTC))
-
         try:
+            # ``yield`` MUST live inside the try/except so that a consumer
+            # closing the generator at this exact yield point still runs the
+            # cancel-and-cleanup branch. Otherwise ``GeneratorExit`` escapes
+            # without setting ``cancel_event`` and ``run_task`` / ``drain_task``
+            # leak. (Greptile P2 fix.)
+            yield TurnStarted(at=state.started_at or datetime.now(UTC))
+
             while True:
                 item = await queue.get()
                 if item is None:

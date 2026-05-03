@@ -301,6 +301,63 @@ async def test_generator_exit_tears_down_state(tmp_path: Path) -> None:
         core.close()
 
 
+async def test_generator_exit_at_turn_started_yield_cleans_up(tmp_path: Path) -> None:
+    """Greptile P2: if the consumer ``aclose()``s the generator at the exact
+    ``yield TurnStarted(...)`` point — *before* control reaches the queue-drain
+    ``try`` block — the engine must still set ``cancel_event``, cancel
+    ``run_task``, and tear down ``_TurnState``. Otherwise the run task and
+    drain task leak and the next ``stream_assistant`` slot reports stale state.
+    """
+    started = asyncio.Event()
+    factory = SuspendingFactory(first_chunk="x", started=started)
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        await engine.push_user(sid, "Hi")
+        from acp.schema import TextContentBlock
+
+        stream = engine.stream_assistant(
+            sid, prompt_blocks=[TextContentBlock(type="text", text="Hi")]
+        )
+        # Advance to the *first* yielded event — by contract this is
+        # ``TurnStarted``. The generator is now suspended *at* that yield.
+        first = await stream.__anext__()
+        assert isinstance(first, TurnStarted)
+
+        # Snapshot the underlying tasks via the engine's private state so we
+        # can assert they get cancelled below.
+        run_state = engine._states[sid]  # pyrefly: ignore  # noqa: SLF001
+        run_task = run_state.task
+        cancel_event = run_state.cancel_event
+        assert run_task is not None and not run_task.done()
+        assert not cancel_event.is_set()
+
+        # Close the generator at the TurnStarted yield point. Pre-fix this
+        # raised GeneratorExit *outside* the try/except, so cleanup never ran.
+        await stream.aclose()
+
+        # Cleanup invariants:
+        # (a) cancel_event was set during the GeneratorExit handler.
+        assert cancel_event.is_set(), "GeneratorExit at TurnStarted must set cancel_event"
+        # (b) the run task is finished (cancelled or returned cancelled=True).
+        await asyncio.wait_for(
+            asyncio.shield(asyncio.gather(run_task, return_exceptions=True)), 5.0
+        )
+        assert run_task.done()
+        # (c) per-session state is cleared and turn_status reports inactive.
+        assert engine.turn_status(sid).active is False
+        # (d) a follow-up turn can claim the slot without a 409.
+        scripted = ScriptedFactory(chunks=["ok"])
+        await _drain(
+            engine.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Again")],
+                acp_factory=scripted,
+            )
+        )
+    finally:
+        core.close()
+
+
 async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
     """Issue 2: a raising ``ACPSessionFactory.prompt`` must produce exactly
     one ``TurnError`` event — not two from the drain + outer except both

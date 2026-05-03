@@ -32,7 +32,6 @@ from kagan.cli.chat.sessions import (
     get_chat_session,
     get_messages_after,
     list_chat_sessions,
-    save_chat_session,
 )
 from kagan.core import resolve_default_agent_backend
 from kagan.core.chat import (
@@ -211,14 +210,18 @@ async def _sse_stream(
     """
     engine = ctx.client.chat
 
+    # Update session metadata BEFORE persisting the user message. The legacy
+    # ``save_chat_session`` shim used ``upsert_with_history`` which DELETEs every
+    # ``ChatMessage`` row for the session and re-inserts only the snapshot —
+    # calling it after ``push_user`` would wipe the just-persisted user row.
+    # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
+    session["agent_backend"] = backend
+    await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
+
     # Persist user message and broadcast (transport owns user-row emission;
     # see the note above ``UserMessagePersisted`` in core.chat.events).
     user_msg = await engine.push_user(session_id, text, attachments=attachments)
     user_msg_id = getattr(user_msg, "id", None)
-
-    # Update session metadata (agent_backend selection sticks across turns).
-    session["agent_backend"] = backend
-    await save_chat_session(ctx.client, session)
 
     user_event = {
         "t": "CHAT_USER_MESSAGE",
@@ -414,8 +417,11 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             return _err("Request body must be a JSON object", status=400)
         agent_backend = body.get("agent_backend")
         if agent_backend is not None:
+            # Metadata-only patch — never round-trip through the legacy
+            # ``save_chat_session`` shim, which DELETEs every ``ChatMessage``
+            # for the session via ``upsert_with_history``. (Greptile P1 fix.)
             session["agent_backend"] = agent_backend
-        await save_chat_session(ctx.client, session)
+            await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])

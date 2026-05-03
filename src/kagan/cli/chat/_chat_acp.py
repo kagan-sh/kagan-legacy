@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import shutil
 import sys
@@ -35,6 +36,27 @@ from kagan.cli.chat._streaming import (
 from kagan.cli.chat.repl import WAVE_FRAMES, _console, _env_flag_enabled
 from kagan.cli.chat.tool_runs import ToolRunTracker
 from kagan.core import ACPClientBase
+
+# Approval modals (transient prompt_toolkit Applications) need to coexist with
+# the long-lived REPL prompt session. While a modal owns the screen, prints
+# from the streaming ACP client must be routed via ``run_in_terminal``; outside
+# a modal the outer ``patch_stdout(raw=True)`` already routes them above the
+# REPL prompt, so direct calls are cheaper and avoid extra redraw cycles.
+_MODAL_DEPTH = 0
+
+
+@contextlib.contextmanager
+def _modal_active():
+    """Increment the modal-depth counter for the duration of an approval modal.
+
+    Multiple modals can stack (rare); the depth counter handles nesting safely.
+    """
+    global _MODAL_DEPTH
+    _MODAL_DEPTH += 1
+    try:
+        yield
+    finally:
+        _MODAL_DEPTH -= 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,7 +435,8 @@ async def _run_interactive_modal(
         mouse_support=False,
     )
 
-    result = await app.run_async()
+    with _modal_active():
+        result = await app.run_async()
     if result is None:
         return 2, ""
     return result
@@ -611,21 +634,18 @@ class _OrchestratorACPClient(ACPClientBase):
         """Print safely above any active prompt_toolkit Application.
 
         When an approval modal (a transient ``Application``) owns the
-        terminal, use ``run_in_terminal`` so the print doesn't collide
-        with the modal's redraw.  Outside of modals, ``patch_stdout`` in
-        the outer REPL loop already routes ``_console.print`` above the
-        toolbar, so we just call ``fn`` directly.
+        terminal, route through ``run_in_terminal`` so the print doesn't
+        collide with the modal's redraw.  Outside of modals,
+        ``patch_stdout(raw=True)`` in the outer REPL loop already routes
+        ``_console.print`` above the toolbar — call ``fn`` directly to
+        skip the extra redraw cycle.
         """
-        try:
-            from prompt_toolkit.application.current import get_app
-            from prompt_toolkit.application.dummy import DummyApplication
-
-            app = get_app()
-            if app is not None and not isinstance(app, DummyApplication):
+        if _MODAL_DEPTH > 0:
+            try:
                 run_in_terminal(fn)
                 return
-        except Exception:
-            pass
+            except Exception:
+                logger.debug("run_in_terminal failed, falling back to direct print", exc_info=True)
         fn()
 
     def _handle_tool_progress(self, update: ToolCallProgress) -> None:

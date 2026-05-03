@@ -59,6 +59,7 @@ from kagan.cli.chat.repl import (
     _console,
     _find_git_root,
     _get_prompt_session,
+    _release_prompt_session,
     rotate_tip_on_submit,
     searchable_picker,
     supports_interactive_picker,
@@ -942,17 +943,17 @@ class ChatController:
         submit_queue: asyncio.Queue[str | None] = asyncio.Queue()
         session = _get_prompt_session(submit_queue)
         watcher_task = asyncio.create_task(self._event_watcher())
-        _last_sent = ""
-        _done = False
+        last_sent = ""
+        done = False
 
         async def _pump_queue() -> None:
             """Read submissions from the queue and process them until exit."""
-            nonlocal _last_sent, _done
-            while not _done:
+            nonlocal last_sent, done
+            while not done:
                 text = await submit_queue.get()
                 if text is None:
                     # Ctrl-D sentinel: signal exit
-                    _done = True
+                    done = True
                     return
                 stripped = text.strip()
                 if not stripped:
@@ -960,10 +961,10 @@ class ChatController:
                 rotate_tip_on_submit()
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
-                        _done = True
+                        done = True
                         return
                     continue
-                _last_sent = stripped
+                last_sent = stripped
                 try:
                     result = await self._send(stripped)
                 except KeyboardInterrupt:
@@ -979,7 +980,7 @@ class ChatController:
                     _console.print(f"[red]Error:[/red] {exc}")
                     continue
                 if result.was_cancelled:
-                    await submit_queue.put(_last_sent)
+                    await submit_queue.put(last_sent)
 
         try:
             with patch_stdout(raw=True):
@@ -1000,7 +1001,7 @@ class ChatController:
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                 finally:
-                    _done = True
+                    done = True
                     # Unblock the pump if it's waiting on the queue
                     submit_queue.put_nowait(None)
                     for task in (pump_task, prompt_task):
@@ -1012,6 +1013,7 @@ class ChatController:
             watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher_task
+            _release_prompt_session()
             if not self._restart_requested:
                 _console.print("\n[dim]Session ended.[/dim]")
 

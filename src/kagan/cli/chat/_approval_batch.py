@@ -389,7 +389,10 @@ async def _run_batch_interactive(
         full_screen=False,
         mouse_support=False,
     )
-    await app.run_async()
+    from kagan.cli.chat._chat_acp import _modal_active
+
+    with _modal_active():
+        await app.run_async()
 
 
 def _run_legacy_batch_input(

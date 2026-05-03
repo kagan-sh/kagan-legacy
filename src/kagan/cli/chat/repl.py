@@ -868,26 +868,57 @@ def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBi
 def _get_prompt_session(
     submit_queue: "asyncio.Queue[str | None] | None" = None,
 ) -> PromptSession[str]:
-    """Return the singleton REPL PromptSession.
+    """Return a REPL PromptSession.
 
-    When *submit_queue* is provided and differs from the previously used queue
-    the session is rebuilt so the Enter keybinding is wired to the new queue.
+    Two distinct call modes:
+
+    * **No queue** (project bootstrap, ad-hoc input prompts): returns a fresh,
+      uncached session bound to the legacy ``_kb`` keybindings, where Enter
+      submits and ``prompt_async`` returns the input. Safe to call any time.
+    * **With queue** (REPL loop): returns the cached long-lived session whose
+      Enter keybinding pushes into the queue without closing ``prompt_async``.
+      The session is rebuilt only when the queue identity changes.
+
+    The two modes do not share a session — calling without a queue after the
+    REPL loop has cached its queue-bound session never returns the queue-bound
+    session by accident, which would silently swallow input.
     """
     global _prompt_session, _submit_queue
-    if submit_queue is not None and submit_queue is not _submit_queue:
+    if submit_queue is None:
+        # One-shot session for bootstrap / ad-hoc prompts. Never cached so
+        # callers can't accidentally inherit the queue-bound Enter binding.
+        return PromptSession(
+            style=_prompt_style,
+            completer=_SlashCompleter(),
+            key_bindings=_kb,
+            bottom_toolbar=_bottom_toolbar,
+            refresh_interval=0.25,
+            mouse_support=False,
+        )
+    if submit_queue is not _submit_queue:
         _prompt_session = None
         _submit_queue = submit_queue
     if _prompt_session is None:
-        kb = _build_repl_key_bindings(_submit_queue) if _submit_queue is not None else _kb
         _prompt_session = PromptSession(
             style=_prompt_style,
             completer=_SlashCompleter(),
-            key_bindings=kb,
+            key_bindings=_build_repl_key_bindings(submit_queue),
             bottom_toolbar=_bottom_toolbar,
             refresh_interval=0.25,
             mouse_support=False,
         )
     return _prompt_session
+
+
+def _release_prompt_session() -> None:
+    """Drop the cached long-lived REPL session.
+
+    Called by ``_repl_loop`` on exit so a subsequent loop entry (e.g. after
+    backend switch) builds a fresh session bound to its own queue.
+    """
+    global _prompt_session, _submit_queue
+    _prompt_session = None
+    _submit_queue = None
 
 
 def _ascii_spinner_active() -> bool:

@@ -152,6 +152,25 @@ class ChatEngine:
             raise ValueError("user message text is required")
         return await self._sessions.append_message(session_id, "user", cleaned)
 
+    # ------------------------------------------------------------------ claim
+
+    def try_claim_turn(self, session_id: str) -> None:
+        """Atomically reserve the per-session turn slot.
+
+        Synchronous (no ``await``) so the reservation is atomic with respect
+        to the asyncio scheduler: no other coroutine can slip past the
+        in-progress check before the sentinel is installed. Raises
+        :class:`TurnInProgressError` if a turn is already active.
+
+        Used by transports (e.g. the SSE route) that need to guard
+        ``push_user`` and broadcast side effects under the same claim that
+        :meth:`stream_assistant` would otherwise install on its first iter.
+        Once claimed via this method, the next ``stream_assistant`` call
+        for the same session reuses the sentinel state instead of
+        double-claiming.
+        """
+        self._claim_slot(session_id)
+
     # ------------------------------------------------------------------ stream
 
     async def stream_assistant(
@@ -169,7 +188,22 @@ class ChatEngine:
         for this single call — used by transports (e.g. server SSE) that need
         per-request cwd / attachments without sharing factory mutable state.
         """
-        state = self._claim_slot(session_id)
+        existing = self._states.get(session_id)
+        if (
+            existing is not None
+            and existing.task is not None
+            and not existing.task.done()
+            and not isinstance(existing.task, asyncio.Task)
+        ):
+            # Slot pre-reserved via ``try_claim_turn`` (a sentinel Future, not
+            # a running ``asyncio.Task``). Reuse the existing state so the
+            # SSE route's atomic-claim-then-side-effects ordering holds.
+            # If ``existing.task`` is an ``asyncio.Task`` then a real turn is
+            # already running for this session and ``_claim_slot`` below will
+            # correctly raise ``TurnInProgressError``.
+            state = existing
+        else:
+            state = self._claim_slot(session_id)
         # Wrap the entire post-claim body in try/finally so the slot is always
         # released — even if ``self._sessions.history`` raises before the inner
         # generator exists. Pre-fix, a transient DB error inside ``history()``

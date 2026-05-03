@@ -409,6 +409,40 @@ async def test_history_failure_releases_slot(tmp_path: Path) -> None:
         core.close()
 
 
+async def test_try_claim_turn_blocks_second_caller(tmp_path: Path) -> None:
+    """``try_claim_turn`` is the synchronous slot reservation used by the SSE
+    route to guard ``push_user`` / broadcast under the same atomic claim that
+    ``stream_assistant`` would otherwise install on its first iteration.
+
+    First call wins; second call raises ``TurnInProgressError`` immediately,
+    with no ``await`` in between (so no other coroutine can slip past).
+    """
+    factory = ScriptedFactory(chunks=[])
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        engine.try_claim_turn(sid)
+        with pytest.raises(TurnInProgressError):
+            engine.try_claim_turn(sid)
+
+        # ``stream_assistant`` for the same session must reuse the
+        # pre-claimed slot instead of double-claiming + raising.
+        from acp.schema import TextContentBlock
+
+        events = await _drain(
+            engine.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Hi")],
+            )
+        )
+        assert any(isinstance(e, TurnDone) for e in events)
+
+        # After the run the slot is released; a fresh claim succeeds again.
+        engine.try_claim_turn(sid)
+        await engine.detach(sid)
+    finally:
+        core.close()
+
+
 async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
     """Issue 2: a raising ``ACPSessionFactory.prompt`` must produce exactly
     one ``TurnError`` event — not two from the drain + outer except both

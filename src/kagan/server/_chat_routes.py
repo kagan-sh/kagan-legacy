@@ -210,17 +210,44 @@ async def _sse_stream(
     """
     engine = ctx.client.chat
 
+    # Claim the engine slot BEFORE any side effects (push_user, broadcast,
+    # session metadata update). The claim is synchronous so it is atomic
+    # w.r.t. the asyncio scheduler; without it, a concurrent /stream request
+    # on the same session could slip past the pre-flight ``turn_status``
+    # check, persist a user row, broadcast CHAT_USER_MESSAGE +
+    # CHAT_TURN_STARTED, then trip TurnInProgressError inside
+    # ``stream_assistant`` — leaving an orphan user row in DB and /watch
+    # subscribers stuck without a recovery frame. (Greptile P1.)
+    try:
+        engine.try_claim_turn(session_id)
+    except TurnInProgressError:
+        err = {"t": "CHAT_ERROR", "error": "Turn already in progress for this session"}
+        _broadcast(session_id, err)
+        yield _emit(err)
+        return
+
     # Update session metadata BEFORE persisting the user message. The legacy
     # ``save_chat_session`` shim used ``upsert_with_history`` which DELETEs every
     # ``ChatMessage`` row for the session and re-inserts only the snapshot —
     # calling it after ``push_user`` would wipe the just-persisted user row.
     # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
     session["agent_backend"] = backend
-    await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
+    # If anything between the claim and ``stream_assistant`` raises, the
+    # claimed slot must be released — otherwise the sentinel leaks into
+    # ``engine._states`` and every subsequent request 409s for this session.
+    # ``stream_assistant`` itself owns teardown via its own try/finally once
+    # entered, so this guard only needs to cover the pre-stream window.
+    pre_stream_ok = False
+    try:
+        await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
 
-    # Persist user message and broadcast (transport owns user-row emission;
-    # see the note above ``UserMessagePersisted`` in core.chat.events).
-    user_msg = await engine.push_user(session_id, text, attachments=attachments)
+        # Persist user message and broadcast (transport owns user-row emission;
+        # see the note above ``UserMessagePersisted`` in core.chat.events).
+        user_msg = await engine.push_user(session_id, text, attachments=attachments)
+        pre_stream_ok = True
+    finally:
+        if not pre_stream_ok:
+            await engine.detach(session_id)
     user_msg_id = getattr(user_msg, "id", None)
 
     user_event = {

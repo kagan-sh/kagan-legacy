@@ -45,15 +45,20 @@ def test_format_agent_backend_list_marks_current_backend() -> None:
 
 
 def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:
-    controller = ChatController(cast("Any", _FakeClient()), agent_backend="custom-backend")
+    """Phase 5c: backend ACP-capability check now lives in the helper used by
+    :class:`LongLivedACPFactory`. Driving it directly mirrors the path taken
+    when the controller opens the factory.
+    """
+    from kagan.cli.chat import acp as cli_chat_acp
 
     monkeypatch.setattr(
-        "kagan.cli.chat.controller.get_backend_spec",
+        cli_chat_acp,
+        "get_backend_spec",
         lambda _name: BackendSpec(name="custom-backend", executable="custom-backend"),
     )
 
-    with pytest.raises(AgentError, match="does not support ACP"):
-        controller._resolve_acp_command()
+    with pytest.raises(RuntimeError, match="does not support ACP"):
+        cli_chat_acp._resolve_acp_command_for_backend("custom-backend")
 
 
 def test_bootstrap_status_mentions_detected_git_root(tmp_path) -> None:
@@ -292,11 +297,34 @@ def _make_test_engine():  # type: ignore[return]
     return create_db_engine(Path(tmpdir) / "test.db")
 
 
+class _FakeChatEngine:
+    """Stub for ``client.chat`` — controller construction requires it.
+
+    Records ``resolve_permission`` calls; the slash-command tests don't
+    drive the engine, but the controller's ``__init__`` wires the engine
+    into ``PermissionUI`` so the attribute must exist.
+    """
+
+    def __init__(self) -> None:
+        self.resolve_calls: list[tuple[str, str, str, str | None]] = []
+
+    async def resolve_permission(
+        self,
+        session_id: str,
+        future_id: str,
+        *,
+        outcome: str,
+        feedback: str | None = None,
+    ) -> None:
+        self.resolve_calls.append((session_id, future_id, outcome, feedback))
+
+
 class _FakeClient:
     def __init__(self) -> None:
         self.settings = _FakeSettingsOps()
         self.active_project_id: str | None = None
         self._engine = _make_test_engine()
+        self.chat = _FakeChatEngine()
 
 
 @pytest.mark.asyncio
@@ -335,8 +363,8 @@ async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
     assert controller._chat_session_id == "cfcee6c1"
     # Session is confirmed as attached
     assert any("Attached session" in line for line in lines)
-    # History is loaded (1 user turn)
-    assert len(controller._chat_history) == 1
+    # History is loaded — restored as rendered transcript lines
+    assert len(controller._rendered_messages) == 1
 
 
 @pytest.mark.asyncio

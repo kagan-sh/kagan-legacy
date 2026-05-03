@@ -49,9 +49,7 @@ async def _interrupt_via_engine(core: KaganCore, session_id: str) -> None:
     """
     result = await core.chat.cancel(session_id, reason="user")
     if not result.was_running:
-        _chat_routes._broadcast(
-            session_id, {"t": "CHAT_TURN_TERMINATED", "reason": "user"}
-        )
+        _chat_routes._broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": "user"})
 
 
 async def test_interrupt_during_active_stream_emits_terminated_once(
@@ -106,9 +104,7 @@ async def test_interrupt_during_active_stream_emits_terminated_once(
             await asyncio.wait_for(consumer, timeout=5.0)
         finally:
             with contextlib.suppress(Exception):
-                _chat_routes._chat_subscribers[session.id].remove(
-                    watch_queue
-                )
+                _chat_routes._chat_subscribers[session.id].remove(watch_queue)
 
         # Drain the watch queue and count CHAT_TURN_TERMINATED frames.
         terminated_count = 0
@@ -142,9 +138,7 @@ async def test_interrupt_with_no_active_turn_still_broadcasts_once(
         try:
             await _interrupt_via_engine(core, session.id)
         finally:
-            _chat_routes._chat_subscribers[session.id].remove(
-                watch_queue
-            )
+            _chat_routes._chat_subscribers[session.id].remove(watch_queue)
 
         terminated_count = 0
         while not watch_queue.empty():

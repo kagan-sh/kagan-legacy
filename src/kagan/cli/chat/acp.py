@@ -151,17 +151,13 @@ class _CaptureACPClient(ACPClientBase):
                 for option in options or ():
                     if option.kind == wanted:
                         return RequestPermissionResponse(
-                            outcome=AllowedOutcome(
-                                outcome="selected", option_id=option.option_id
-                            )
+                            outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
                         )
                 # No exact-match option; pick any allow_* option as fallback.
                 for option in options or ():
                     if option.kind in {"allow_once", "allow_always"}:
                         return RequestPermissionResponse(
-                            outcome=AllowedOutcome(
-                                outcome="selected", option_id=option.option_id
-                            )
+                            outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
                         )
             return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 
@@ -304,9 +300,7 @@ async def run_orchestrator_turn(
         backend_env_vars=backend.env_vars,
     )
 
-    capture_client = _CaptureACPClient(
-        on_update=on_update, permission_resolver=permission_resolver
-    )
+    capture_client = _CaptureACPClient(on_update=on_update, permission_resolver=permission_resolver)
     timeout_s = _acp_handshake_timeout_seconds(agent_backend)
     try:
         async with acp.spawn_agent_process(

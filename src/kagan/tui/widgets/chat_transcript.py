@@ -81,9 +81,7 @@ class ChatTranscript(Vertical):
                 kind=payload.get("kind"),
             )
 
-    def render_decision_surface(
-        self, decision_surface: tuple[str, dict[str, Any]] | None
-    ) -> None:
+    def render_decision_surface(self, decision_surface: tuple[str, dict[str, Any]] | None) -> None:
         try:
             container = self.query_one("#chat-inline-surface", Vertical)
         except NoMatches:
@@ -175,13 +173,9 @@ class ChatTranscript(Vertical):
         stream = self.stream_output()
         if stream is None:
             return
-        stream.upsert_tool_call(
-            tool_id, title, status=status, args=args, result=result, kind=kind
-        )
+        stream.upsert_tool_call(tool_id, title, status=status, args=args, result=result, kind=kind)
 
-    def update_tool_status(
-        self, tool_id: str, status: str, *, result: str | None = None
-    ) -> None:
+    def update_tool_status(self, tool_id: str, status: str, *, result: str | None = None) -> None:
         stream = self.stream_output()
         if stream is None:
             return
@@ -192,5 +186,3 @@ class ChatTranscript(Vertical):
         if stream is None:
             return
         stream.clear()
-
-

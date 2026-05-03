@@ -186,8 +186,7 @@ async def test_pre_stream_failure_releases_slot(
         # Slot must be free: a follow-up turn_status should report inactive.
         status = core.chat.turn_status(session.id)
         assert not status.active, (
-            "Slot leaked after pre-stream failure — engine._states still has "
-            "the sentinel."
+            "Slot leaked after pre-stream failure — engine._states still has the sentinel."
         )
     finally:
         core.close()

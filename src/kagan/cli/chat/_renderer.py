@@ -295,9 +295,7 @@ class CLIRenderer:
         run.ended_at = run.ended_at or time.monotonic()
         self._grouped_tools.complete(tool_key, status, run.ended_at)
         print_via_terminal(
-            _make_done_printer(
-                self._console, title, key_arg, status, run.started_at, run.ended_at
-            )
+            _make_done_printer(self._console, title, key_arg, status, run.started_at, run.ended_at)
         )
 
     def on_usage_update(self, update: Any) -> None:

@@ -495,9 +495,7 @@ async def test_permission_request_event_emitted_and_resolved(tmp_path: Path) -> 
                 events.append(ev)
                 if isinstance(ev, PermissionRequest):
                     # Consumer resolves the permission as soon as it sees it.
-                    await engine.resolve_permission(
-                        sid, ev.future_id, outcome="allow_once"
-                    )
+                    await engine.resolve_permission(sid, ev.future_id, outcome="allow_once")
 
         await asyncio.wait_for(_consume(), timeout=5.0)
 
@@ -526,9 +524,7 @@ async def test_permission_request_idempotent_resolve(tmp_path: Path) -> None:
     try:
         # Resolve before any turn / future is registered — must be a no-op.
         await engine.resolve_permission(sid, "unknown-future-id", outcome="allow_once")
-        await engine.resolve_permission(
-            "no-such-session", "any-id", outcome="allow_once"
-        )
+        await engine.resolve_permission("no-such-session", "any-id", outcome="allow_once")
 
         await engine.push_user(sid, "Hi")
         from acp.schema import TextContentBlock
@@ -546,9 +542,7 @@ async def test_permission_request_idempotent_resolve(tmp_path: Path) -> None:
                         sid, ev.future_id, outcome="deny", feedback="not now"
                     )
                     # Double-resolve must be safe.
-                    await engine.resolve_permission(
-                        sid, ev.future_id, outcome="allow_once"
-                    )
+                    await engine.resolve_permission(sid, ev.future_id, outcome="allow_once")
 
         await asyncio.wait_for(_consume(), timeout=5.0)
 

@@ -13,6 +13,249 @@
 
 
 
+## v0.19.0-beta.20 (2026-05-03)
+
+
+
+
+### Features
+
+- **chat**: Match kimi-cli REPL polish — input separator, stateful prompt, toolbar
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Overhaul kg chat approval panel and REPL UX
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Overhaul kg chat REPL — approval panel, geometric UX language, terminal-bottom-pinned
+  toolbar ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Pin toolbar footer during streaming + lift completion-meta contrast
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Pin toolbar footer through entire agent reply via TurnLiveRegion
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Render streaming Markdown live via Rich Live region
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Replace emoji prompt glyphs with geometric set + animated streaming
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat,tui,web**: Unify streaming indicator on animated half-disc
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **chat**: Address greptile review findings ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Address greptile review on PR #131 ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Apply review findings — modal-aware print routing + safer prompt session caching
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Keep _flush_batch under the C901 complexity cap
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Remove redundant wave spinner during agent reply
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Tighten approval panel hygiene from review
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Use ○ instead of ❯ as toolbar idle indicator
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **chat**: Batched approval panel shows resolved items distinctly
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Centralize REPL palette in _theme.py
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Pin toolbar at terminal bottom via long-lived prompt-toolkit session
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Remove pointless `── input ──` separator from toolbar
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Documentation
+
+- **chat**: Document approval panel, batched approvals, /approvals, env knobs
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- **chat**: Document new prompt/toolbar UX, missing slash commands, drop stale wave reference
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- Dead-code sweep — vulture findings + orphan task-completion doc
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- Gitignore agent-generated tasks/ scratch directory
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+- Pre-commit format sweep across drifted docs and tests
+  ([#131](https://github.com/kagan-sh/kagan/pull/131),
+  [`b8d94f6`](https://github.com/kagan-sh/kagan/commit/b8d94f6c34f5ac251b534c9efe31bc3db59b39c3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Code Style
+
+- Apply formatter pass across chat/server/core/tui/tests
+  ([#132](https://github.com/kagan-sh/kagan/pull/132),
+  [`62827f1`](https://github.com/kagan-sh/kagan/commit/62827f17ce389fb29f8bab37f5b15c6865696b88))
+
+
+
+
+
 ## v0.19.0-beta.19 (2026-05-01)
 
 

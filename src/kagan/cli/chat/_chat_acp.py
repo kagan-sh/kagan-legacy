@@ -185,9 +185,7 @@ class _GroupedToolDisplay:
             total = len(entries)
             done = sum(1 for e in entries if e["status"] in ("completed", "failed"))
             error = sum(1 for e in entries if e["status"] == "failed")
-            elapsed = max(
-                (now - e["started"]) for e in entries if e["started"] is not None
-            )
+            elapsed = max((now - e["started"]) for e in entries if e["started"] is not None)
             elapsed_text = f"{elapsed:.1f}s"
 
             if total == 1:
@@ -213,10 +211,7 @@ class _GroupedToolDisplay:
                     status_text = f"done {done}/{total} · {elapsed_text}"
                     style = "dim"
                 icon = "✓" if done == total and error == 0 else "●"
-                line = (
-                    f"  [{style}]{icon} {_rich_escape(name)} x{total}"
-                    f" -- {status_text}[/{style}]"
-                )
+                line = f"  [{style}]{icon} {_rich_escape(name)} x{total} -- {status_text}[/{style}]"
             lines.append(line)
         return lines
 
@@ -773,8 +768,7 @@ class _OrchestratorACPClient(ACPClientBase):
 
                     def _print_yolo(_t: str = _yolo_title) -> None:
                         _console.print(
-                            f"  [red]● yolo auto-approve:[/red]"
-                            f" [dim]{_rich_escape(_t)}[/dim]",
+                            f"  [red]● yolo auto-approve:[/red] [dim]{_rich_escape(_t)}[/dim]",
                             highlight=False,
                         )
 

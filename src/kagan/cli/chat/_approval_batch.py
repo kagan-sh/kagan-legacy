@@ -406,7 +406,7 @@ def _run_legacy_batch_input(
 
     for i, item in enumerate(items):
         _console.print(
-            f"[bold yellow]approval ({i+1}/{len(items)})[/bold yellow]: "
+            f"[bold yellow]approval ({i + 1}/{len(items)})[/bold yellow]: "
             f"{strip_tool_prefix(getattr(item.tool_call, 'title', None) or 'tool')}"
         )
         try:
@@ -441,7 +441,7 @@ class _BatchApprovalQueue:
         queue = _BatchApprovalQueue(acp_client)
         # In _OrchestratorACPClient.request_permission:
         future = await queue.enqueue(options, tool_call)
-        response = await future   # blocks until batch resolves
+        response = await future  # blocks until batch resolves
 
     The queue arms a debounce timer on the first enqueue.  When the timer fires
     (or the cap is reached) it calls ``_flush()`` which renders the batch panel
@@ -608,11 +608,11 @@ class _BatchApprovalQueue:
         run_in_terminal(lambda: None)  # flush any pending terminal output
 
         await _run_batch_modal_async(
-                items,
-                _resolve_item=_resolve_item,
-                _resolve_all=_resolve_all,
-                _reject_all=_reject_all_fn,
-            )
+            items,
+            _resolve_item=_resolve_item,
+            _resolve_all=_resolve_all,
+            _reject_all=_reject_all_fn,
+        )
 
         # Apply resolutions; any still-missing items get rejected
         for i, item in enumerate(items):

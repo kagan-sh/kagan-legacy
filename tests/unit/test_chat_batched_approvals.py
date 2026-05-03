@@ -66,6 +66,7 @@ def _make_client(
 async def test_single_approval_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     """N=1: existing single-approval panel is used; batch panel is never rendered."""
     client = _make_client(monkeypatch)
+
     # Patch _run_approval_panel_async to return allow_once (index 0)
     async def _fake_single(*_a: Any, **_kw: Any) -> tuple[int, str]:
         return (0, "")

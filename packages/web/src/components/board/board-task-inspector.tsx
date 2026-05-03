@@ -242,4 +242,3 @@ export function BoardTaskInspector({ task, className, onOpenTask, onOpenStream, 
     </Panel>
   );
 }
-

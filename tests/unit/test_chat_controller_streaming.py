@@ -166,9 +166,11 @@ async def test_permission_request_selects_interactive_allow_option(
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+
     # Mock the async panel to return index 1 = allow_always without launching a real terminal.
     async def _fake_panel(*_a, **_kw):  # noqa: RUF006
         return (1, "")
+
     monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
     # Ensure no residual session approval bleeds into this test.
     chat_acp_module._session_approvals.revoke("run command")
@@ -198,9 +200,11 @@ async def test_permission_request_can_select_deny_option_from_acp_options(
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+
     # Mock the async panel to return index 2 = reject_once.
     async def _fake_panel(*_a, **_kw):  # noqa: RUF006
         return (2, "")
+
     monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
     # Clear any session-level grant that may bleed from allow_always tests.
     chat_acp_module._session_approvals.revoke("run command")

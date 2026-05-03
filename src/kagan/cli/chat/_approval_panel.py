@@ -71,6 +71,7 @@ def _extract_shell_command(tool_call: Any) -> str | None:
             continue
         if isinstance(val, str):
             import json
+
             try:
                 obj = json.loads(val)
                 if isinstance(obj, dict):
@@ -93,6 +94,7 @@ def _extract_shell_command(tool_call: Any) -> str | None:
 def _extract_key_args_preview(tool_call: Any) -> str | None:
     """Extract up to _MAX_PREVIEW_LINES lines of key arguments for display."""
     import json
+
     for attr in ("raw_input", "rawInput", "arguments", "args"):
         val = getattr(tool_call, attr, None)
         if not val:

@@ -34,20 +34,20 @@ The REPL persists conversation history across restarts. Type a message and press
 
 When the agent requests permission to run a tool, the REPL surfaces a yellow-bordered panel with the tool name, a short preview (syntax-highlighted for shell commands, key arguments otherwise), and four options:
 
-| # | Option                                  | Effect                                                                           |
-| - | --------------------------------------- | -------------------------------------------------------------------------------- |
-| 1 | Approve once                            | Allow this single call.                                                          |
-| 2 | Approve for this session                | Allow this and any future call to the same tool until the REPL exits.            |
-| 3 | Reject                                  | Deny without explanation.                                                        |
-| 4 | Reject — tell the model what to do      | Deny and forward an inline feedback message back to the agent.                   |
+| #   | Option                             | Effect                                                                |
+| --- | ---------------------------------- | --------------------------------------------------------------------- |
+| 1   | Approve once                       | Allow this single call.                                               |
+| 2   | Approve for this session           | Allow this and any future call to the same tool until the REPL exits. |
+| 3   | Reject                             | Deny without explanation.                                             |
+| 4   | Reject — tell the model what to do | Deny and forward an inline feedback message back to the agent.        |
 
-| Key                  | Action                                                |
-| -------------------- | ----------------------------------------------------- |
-| ++up++ / ++down++    | Move selection                                        |
-| ++1++ / ++2++ / ++3++ / ++4++ | Jump to option and confirm                   |
-| ++enter++            | Confirm the highlighted option                        |
-| ++ctrl+e++           | Open the full preview in a pager (when truncated)     |
-| ++esc++ / ++ctrl+c++ | Cancel (= reject)                                     |
+| Key                           | Action                                            |
+| ----------------------------- | ------------------------------------------------- |
+| ++up++ / ++down++             | Move selection                                    |
+| ++1++ / ++2++ / ++3++ / ++4++ | Jump to option and confirm                        |
+| ++enter++                     | Confirm the highlighted option                    |
+| ++ctrl+e++                    | Open the full preview in a pager (when truncated) |
+| ++esc++ / ++ctrl+c++          | Cancel (= reject)                                 |
 
 Use `/approvals` to list session-granted approvals or revoke one (`/approvals revoke <name>`).
 
@@ -85,20 +85,20 @@ ______________________________________________________________________
 
 Type `/` followed by a command name. All commands work in both the CLI REPL and TUI overlay.
 
-| Command       | Alias |
-| ------------- | ----- |
-| `/help`       | `/?`  |
-| `/exit`       | `/q`  |
-| `/clear`      |       |
-| `/new`        |       |
-| `/sessions`   | `/s`  |
-| `/agents`     | `/a`  |
-| `/approvals`  |       |
-| `/status`     |       |
-| `/project`    | `/p`  |
-| `/delete`     |       |
-| `/tool`       |       |
-| `/flow`       | `/f`  |
+| Command      | Alias |
+| ------------ | ----- |
+| `/help`      | `/?`  |
+| `/exit`      | `/q`  |
+| `/clear`     |       |
+| `/new`       |       |
+| `/sessions`  | `/s`  |
+| `/agents`    | `/a`  |
+| `/approvals` |       |
+| `/status`    |       |
+| `/project`   | `/p`  |
+| `/delete`    |       |
+| `/tool`      |       |
+| `/flow`      | `/f`  |
 
 ### `/sessions` usage
 

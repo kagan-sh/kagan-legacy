@@ -35,32 +35,32 @@ max_concurrent_agents = 3
 
 ## `[general]`
 
-| Key                                  | Type           | Default                          | Notes                                                                               |
-| ------------------------------------ | -------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
-| `max_concurrent_agents`              | integer        | `3`                              | Concurrent managed-run cap                                                          |
-| `mcp_server_name`                    | string         | `"kagan"`                        | MCP server registration name                                                        |
-| `worktree_base_ref_strategy`         | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local`      |
-| `auto_review`                        | boolean        | `true`                           | Run AI review on completion                                                         |
-| `auto_approve`                       | boolean        | `true`                           | Skip planner permission prompts                                                     |
-| `auto_skill_discovery`               | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`            |
-| `require_review_approval`            | boolean        | `false`                          | Require review approval before merge                                                |
-| `serialize_merges`                   | boolean        | `true`                           | Queue merge actions                                                                 |
-| `default_agent_backend`              | string         | `"claude-code"`                  | Default worker agent                                                                |
-| `use_recommended_backend`            | boolean        | `false`                          | Auto-pick the best-performing backend per task from historical analytics (requires ≥5 prior sessions per backend × role × task-type). See [intelligent backend selection](../guides/analytics.md#intelligent-backend-selection). |
-| `additional_instructions`            | string         | `""`                             | Free-text rules appended to every agent prompt                                      |
-| `review_strictness`                  | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                              |
-| `planning_depth`                     | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                 |
-| `auto_confirm_single_tasks`          | boolean        | `false`                          | Skip confirmation for single-task plans                                             |
-| `attached_launcher`                  | string         | `"tmux"` (`"vscode"` on Windows) | Preferred launcher for interactive runs                                             |
-| `doctor_verbosity`                   | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers) |
-| `interaction_verbosity`              | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level) |
-| `default_model_claude`               | string or null | `null`                           | Default model for Claude-family agents                                              |
-| `default_model_openai`               | string or null | `null`                           | Default model for OpenAI-family agents                                              |
-| `core_idle_timeout_seconds`          | integer        | `180`                            | Core auto-stop timeout after idle                                                   |
-| `core_autostart`                     | boolean        | `true`                           | Start core automatically when client connects                                       |
-| `core_transport_preference`          | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                    |
-| `task_wait_default_timeout_seconds`  | integer        | `1800`                           | Default timeout for `task_wait` (30 minutes)                                        |
-| `task_wait_max_timeout_seconds`      | integer        | `3600`                           | Max allowed timeout for `task_wait` (60 minutes)                                    |
+| Key                                 | Type           | Default                          | Notes                                                                                                                                                                                                                            |
+| ----------------------------------- | -------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `max_concurrent_agents`             | integer        | `3`                              | Concurrent managed-run cap                                                                                                                                                                                                       |
+| `mcp_server_name`                   | string         | `"kagan"`                        | MCP server registration name                                                                                                                                                                                                     |
+| `worktree_base_ref_strategy`        | string         | `"local_if_ahead"`               | Base ref preference for worktree add/diff: `remote`, `local_if_ahead`, `local`                                                                                                                                                   |
+| `auto_review`                       | boolean        | `true`                           | Run AI review on completion                                                                                                                                                                                                      |
+| `auto_approve`                      | boolean        | `true`                           | Skip planner permission prompts                                                                                                                                                                                                  |
+| `auto_skill_discovery`              | boolean        | `false`                          | Enable trusted local skill metadata discovery for orchestrator `/skills`                                                                                                                                                         |
+| `require_review_approval`           | boolean        | `false`                          | Require review approval before merge                                                                                                                                                                                             |
+| `serialize_merges`                  | boolean        | `true`                           | Queue merge actions                                                                                                                                                                                                              |
+| `default_agent_backend`             | string         | `"claude-code"`                  | Default worker agent                                                                                                                                                                                                             |
+| `use_recommended_backend`           | boolean        | `false`                          | Auto-pick the best-performing backend per task from historical analytics (requires ≥5 prior sessions per backend × role × task-type). See [intelligent backend selection](../guides/analytics.md#intelligent-backend-selection). |
+| `additional_instructions`           | string         | `""`                             | Free-text rules appended to every agent prompt                                                                                                                                                                                   |
+| `review_strictness`                 | string         | `"balanced"`                     | Review rigor. Allowed: `strict`, `balanced`, `relaxed`                                                                                                                                                                           |
+| `planning_depth`                    | string         | `"always"`                       | When to create task plans. Allowed: `always`, `multi_task`, `never`                                                                                                                                                              |
+| `auto_confirm_single_tasks`         | boolean        | `false`                          | Skip confirmation for single-task plans                                                                                                                                                                                          |
+| `attached_launcher`                 | string         | `"tmux"` (`"vscode"` on Windows) | Preferred launcher for interactive runs                                                                                                                                                                                          |
+| `doctor_verbosity`                  | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used by `kagan doctor` and startup blockers)                                                                                                                                              |
+| `interaction_verbosity`             | string         | `"short"`                        | Allowed: `tldr`, `short`, `technical` (used for TUI notification/help detail level)                                                                                                                                              |
+| `default_model_claude`              | string or null | `null`                           | Default model for Claude-family agents                                                                                                                                                                                           |
+| `default_model_openai`              | string or null | `null`                           | Default model for OpenAI-family agents                                                                                                                                                                                           |
+| `core_idle_timeout_seconds`         | integer        | `180`                            | Core auto-stop timeout after idle                                                                                                                                                                                                |
+| `core_autostart`                    | boolean        | `true`                           | Start core automatically when client connects                                                                                                                                                                                    |
+| `core_transport_preference`         | string         | `"auto"`                         | Allowed: `auto`, `socket`, `tcp`                                                                                                                                                                                                 |
+| `task_wait_default_timeout_seconds` | integer        | `1800`                           | Default timeout for `task_wait` (30 minutes)                                                                                                                                                                                     |
+| `task_wait_max_timeout_seconds`     | integer        | `3600`                           | Max allowed timeout for `task_wait` (60 minutes)                                                                                                                                                                                 |
 
 ## `[refinement]`
 
@@ -73,18 +73,18 @@ max_concurrent_agents = 3
 
 ## `[ui]`
 
-| Key                                | Type        | Default               | Notes                                                      |
-| ---------------------------------- | ----------- | --------------------- | ---------------------------------------------------------- |
-| `skip_attached_instructions_popup` | boolean     | `false`               | Skip interactive-launch instruction modal                  |
+| Key                                | Type    | Default | Notes                                     |
+| ---------------------------------- | ------- | ------- | ----------------------------------------- |
+| `skip_attached_instructions_popup` | boolean | `false` | Skip interactive-launch instruction modal |
 
 ## Environment variables passed into interactive sessions
 
-| Variable                            | Default | Meaning                                                                                           |
-| ----------------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `NO_COLOR`                          | unset   | When set (any value), the chat REPL renders all panels and spinners without ANSI color and uses an ASCII spinner. Honors [no-color.org](https://no-color.org). |
-| `KAGAN_BATCH_APPROVAL_DEBOUNCE_MS`  | `100`   | Window (milliseconds) the chat REPL waits to collect concurrent `request_permission` calls into one batched approval panel. Must parse as a non-negative number; falls back to the default otherwise. |
-| `KAGAN_BATCH_APPROVAL_CAP`          | `20`    | Maximum number of approvals batched into a single panel. Once reached, the panel is shown immediately even if the debounce window has not expired. Must parse as a positive integer; falls back to the default otherwise. |
-| `KAGAN_CHAT_SHOW_THOUGHTS`          | unset   | When set to a truthy value (`1`, `true`, `yes`, `on`), the REPL prints agent "thinking" chunks alongside its message output. |
+| Variable                           | Default | Meaning                                                                                                                                                                                                                   |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO_COLOR`                         | unset   | When set (any value), the chat REPL renders all panels and spinners without ANSI color and uses an ASCII spinner. Honors [no-color.org](https://no-color.org).                                                            |
+| `KAGAN_BATCH_APPROVAL_DEBOUNCE_MS` | `100`   | Window (milliseconds) the chat REPL waits to collect concurrent `request_permission` calls into one batched approval panel. Must parse as a non-negative number; falls back to the default otherwise.                     |
+| `KAGAN_BATCH_APPROVAL_CAP`         | `20`    | Maximum number of approvals batched into a single panel. Once reached, the panel is shown immediately even if the debounce window has not expired. Must parse as a positive integer; falls back to the default otherwise. |
+| `KAGAN_CHAT_SHOW_THOUGHTS`         | unset   | When set to a truthy value (`1`, `true`, `yes`, `on`), the REPL prints agent "thinking" chunks alongside its message output.                                                                                              |
 
 ## Web dashboard settings
 

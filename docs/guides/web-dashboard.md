@@ -17,12 +17,12 @@ kagan web --host 0.0.0.0    # LAN access
 
 The left-edge activity bar has four icons:
 
-| Icon      | Route         | Purpose                                |
-| --------- | ------------- | -------------------------------------- |
-| Board     | `/board`      | Kanban board with drag-and-drop        |
-| Workspace | `/workspace`  | Orchestrator-first conversation view   |
-| Analytics | `/analytics`  | Agent performance and session metrics  |
-| Settings  | `/settings`   | Categorized settings with sidebar      |
+| Icon      | Route        | Purpose                               |
+| --------- | ------------ | ------------------------------------- |
+| Board     | `/board`     | Kanban board with drag-and-drop       |
+| Workspace | `/workspace` | Orchestrator-first conversation view  |
+| Analytics | `/analytics` | Agent performance and session metrics |
+| Settings  | `/settings`  | Categorized settings with sidebar     |
 
 Toggle between Board and Workspace with `Cmd/Ctrl+Shift+W`.
 
@@ -51,12 +51,12 @@ A conversation-first companion to the board, modeled after ChatGPT / Codex Deskt
 
 Added in v0.18.0. The `/analytics` page surfaces multi-dimensional metrics across your agent runs, with four tabs:
 
-| Tab              | Content                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Tab              | Content                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Backend**      | KPI cards (Total Sessions, Success Rate, Avg Duration, Retry Rate), backend performance table, duration chart, session timeline |
-| **By Role**      | Per-role success rates (Worker / Orchestrator / Reviewer) and a role comparison chart                              |
-| **By Task Type** | Per-task-type success rates and a Backend x Task Type matrix                                                       |
-| **Combined**     | 3D table of Backend x Role x Task Type combinations                                                                |
+| **By Role**      | Per-role success rates (Worker / Orchestrator / Reviewer) and a role comparison chart                                           |
+| **By Task Type** | Per-task-type success rates and a Backend x Task Type matrix                                                                    |
+| **Combined**     | 3D table of Backend x Role x Task Type combinations                                                                             |
 
 Top-of-page controls:
 

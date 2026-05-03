@@ -30,10 +30,12 @@ Open the analytics modal on the Kanban board:
 **Keyboard shortcut:** Press `i` (uppercase I)
 
 The modal shows:
+
 - **Backend Performance** table: Sessions, success %, average duration, retry %
 - **Session Activity (30 days)**: Total sessions, breakdown by status, active days, overall success rate
 
 **Actions in modal:**
+
 - `r` — Refresh data
 - `e` — Export analytics to JSON (`kagan-analytics.json` in current directory)
 - `Esc` — Close modal
@@ -45,6 +47,7 @@ Navigate to the **Analytics** page from the main navigation.
 The web analytics page includes four tabs for different views:
 
 #### Backend Tab
+
 - **KPI Cards**: Quick stats at the top
   - Total Sessions
   - Success Rate
@@ -55,14 +58,17 @@ The web analytics page includes four tabs for different views:
 - **Session Activity Timeline**: Line chart of daily session counts over 30 days
 
 #### By-Role Tab
+
 - **Performance by Agent Role**: Success rates and duration metrics for Worker, Orchestrator, and Reviewer roles
 - **Role Comparison by Backend**: See which agent roles perform best on each backend
 
 #### By-Task-Type Tab
+
 - **Performance by Task Type**: Success rates for different task classifications (code implementation, bug fix, refactoring, etc.)
 - **Backend × Task Type Matrix**: Cross-tabulation showing how each backend handles different task types
 
 #### Combined Tab
+
 - **Backend × Role × Task Type Matrix**: Three-dimensional breakdown showing optimal combinations (e.g., "claude-code excels at code implementation tasks as a worker")
 
 **Export:** Click the **Export** button in the header to download analytics as JSON.
@@ -86,6 +92,7 @@ In the chat REPL, use the `/analytics` command:
 ```
 
 This opens a Markdown document in your editor showing:
+
 - Backend Performance table
 - Session Activity summary
 
@@ -105,6 +112,7 @@ If no path is specified, exports to `kagan-analytics.json` in the current direct
 Access analytics from the Kagan extension:
 
 **Command Palette** (`Cmd/Ctrl+Shift+P`):
+
 - `Kagan: Show Analytics` — Opens analytics in a Markdown preview
 - `Kagan: Export Analytics` — Opens a save dialog to export JSON
 
@@ -117,39 +125,42 @@ If you're using Kagan's MCP server in another tool, call the analytics tools dir
 ```
 analytics_backend_stats(project_id, days=30)
 ```
+
 Returns: Per-backend performance stats (sessions, success rate, duration, retry rate)
 
 ```
 analytics_session_timeline(project_id, days=30)
 ```
+
 Returns: Daily session counts (total, completed, failed, cancelled)
 
 ```
 analytics_export(project_id, days=30)
 ```
+
 Returns: Combined export with both datasets above
 
 ## Understanding the Metrics
 
 ### Backend Performance
 
-| Metric | Meaning | Good Range |
-|--------|---------|------------|
-| **Sessions** | Total runs for this backend | — |
-| **Success** | Percentage of runs that completed successfully | 80%+ |
-| **Avg Duration** | Average execution time per session | Depends on your workflows |
-| **Retry** | Percentage of sessions that were retried | 0–20% |
+| Metric           | Meaning                                        | Good Range                |
+| ---------------- | ---------------------------------------------- | ------------------------- |
+| **Sessions**     | Total runs for this backend                    | —                         |
+| **Success**      | Percentage of runs that completed successfully | 80%+                      |
+| **Avg Duration** | Average execution time per session             | Depends on your workflows |
+| **Retry**        | Percentage of sessions that were retried       | 0–20%                     |
 
 ### Session Activity
 
-| Metric | Meaning |
-|--------|---------|
-| **Total sessions** | Cumulative runs in the period |
-| **Completed** | Sessions that finished successfully |
-| **Failed** | Sessions that ended with an error |
-| **Cancelled** | Sessions manually stopped |
-| **Active days** | Days when you ran at least one session |
-| **Success rate** | Overall percentage of completed sessions |
+| Metric             | Meaning                                  |
+| ------------------ | ---------------------------------------- |
+| **Total sessions** | Cumulative runs in the period            |
+| **Completed**      | Sessions that finished successfully      |
+| **Failed**         | Sessions that ended with an error        |
+| **Cancelled**      | Sessions manually stopped                |
+| **Active days**    | Days when you ran at least one session   |
+| **Success rate**   | Overall percentage of completed sessions |
 
 ### KPI Cards (Web)
 
@@ -166,19 +177,21 @@ Kagan can automatically recommend the best backend for a task based on historica
 
 1. **Task Classification**: Every task is automatically classified into one of 12 categories (e.g., "code implementation", "bug fix", "refactoring") based on keywords in the title and description.
 
-2. **Role Inference**: The system infers whether the task is being handled by a Worker, Orchestrator, or Reviewer based on the task status and execution context.
+1. **Role Inference**: The system infers whether the task is being handled by a Worker, Orchestrator, or Reviewer based on the task status and execution context.
 
-3. **Performance Lookup**: When running a task, Kagan queries the analytics database for the best-performing backend combination matching:
+1. **Performance Lookup**: When running a task, Kagan queries the analytics database for the best-performing backend combination matching:
+
    - Backend + Role + Task Type (most specific match)
    - Backend + Task Type (if role-specific data is sparse)
    - Backend + Role (if task-type-specific data is sparse)
    - Backend only (if dimensional data is limited)
 
-4. **Confidence Scoring**: Recommendations include a confidence score (0–1) indicating how much historical data supports the choice. Scores are only given if at least 5 prior sessions exist for that combination.
+1. **Confidence Scoring**: Recommendations include a confidence score (0–1) indicating how much historical data supports the choice. Scores are only given if at least 5 prior sessions exist for that combination.
 
 ### Enabling Recommendations
 
 In **Settings → Backend Selection**, enable **Use recommended backend for tasks**. When enabled:
+
 - Tasks will be assigned to the recommended backend automatically
 - You can still override by explicitly specifying a backend when creating a task
 - The selection metadata is logged for auditability (visible in task details)
@@ -187,20 +200,20 @@ In **Settings → Backend Selection**, enable **Use recommended backend for task
 
 Tasks are classified using keyword matching. Here are the main categories:
 
-| Category | Example Keywords |
-|----------|------------------|
+| Category                | Example Keywords                                                            |
+| ----------------------- | --------------------------------------------------------------------------- |
 | **Code Implementation** | implement, add feature, build, develop, new endpoint, api, function, module |
-| **Bug Fix** | bug, fix, broken, crash, error, exception, failing, regression |
-| **Refactoring** | refactor, cleanup, restructure, simplify, technical debt, modernize |
-| **Testing** | test, unit test, integration test, test coverage, pytest, jest |
-| **Optimization** | optimize, performance, perf, slow, latency, caching, speed |
-| **Documentation** | document, docs, readme, comment, docstring, wiki, guide |
-| **Architecture** | architecture, design system, scalability, microservice |
-| **Design** | design, ux, ui, user experience, styling, layout, visual |
-| **Analysis** | analyze, research, code review, audit, assessment |
-| **Investigation** | investigate, debug, troubleshoot, diagnose, root cause |
-| **Deployment** | deploy, release, ci/cd, docker, kubernetes, infra, devops |
-| **Unknown** | (no keywords match) |
+| **Bug Fix**             | bug, fix, broken, crash, error, exception, failing, regression              |
+| **Refactoring**         | refactor, cleanup, restructure, simplify, technical debt, modernize         |
+| **Testing**             | test, unit test, integration test, test coverage, pytest, jest              |
+| **Optimization**        | optimize, performance, perf, slow, latency, caching, speed                  |
+| **Documentation**       | document, docs, readme, comment, docstring, wiki, guide                     |
+| **Architecture**        | architecture, design system, scalability, microservice                      |
+| **Design**              | design, ux, ui, user experience, styling, layout, visual                    |
+| **Analysis**            | analyze, research, code review, audit, assessment                           |
+| **Investigation**       | investigate, debug, troubleshoot, diagnose, root cause                      |
+| **Deployment**          | deploy, release, ci/cd, docker, kubernetes, infra, devops                   |
+| **Unknown**             | (no keywords match)                                                         |
 
 ## Exporting & Integration
 
@@ -255,24 +268,31 @@ Export analytics as evidence of how often agents ran and their success rates.
 ## Interpreting Results
 
 ### High Retry Rate
+
 If **Retry %** is above 20%, investigate:
+
 - Is a particular agent consistently failing?
 - Are tasks timing out?
 - Check the task details to see error patterns.
 
 ### Low Success Rate
+
 If **Success Rate** is below 80%:
+
 - Examine failed tasks in the TUI (`x` key to delete, but first review the failure message)
 - Check if certain backends are underperforming
 - Review agent logs to diagnose issues
 
 ### Slow Average Duration
+
 If **Avg Duration** is higher than expected:
+
 - Check if tasks are timing out
 - Review task complexity (large codebases, complex refactors take longer)
 - Compare across backends to see if one agent is consistently slower
 
 ### Inactive Days
+
 If **Active days** is much lower than the period (e.g., 5 days in 30), you may not be using Kagan frequently. The data is still valuable for measuring the sessions you *do* run.
 
 ## 🔒 Data Privacy & Security
@@ -280,30 +300,36 @@ If **Active days** is much lower than the period (e.g., 5 days in 30), you may n
 **All analytics data is stored and processed locally. Nothing is sent to external servers.**
 
 ### Local Storage
+
 - Analytics are persisted in your local Kagan database (`~/.local/share/kagan/kagan.db` by default)
 - Database is SQLite, encrypted by OS-level file permissions
 - Data is never transmitted over the network unless you explicitly export it
 
 ### No Telemetry
+
 - Kagan does **not** collect or send any usage data to Kagan servers
 - No analytics are tracked about your agents, tasks, or runs
 - No performance data is reported home
 - Your agent runs remain completely private
 
 ### Export Control
+
 - You control when and how data is exported
 - Exported JSON files are saved only to paths you specify
 - No automatic uploads or syncing to cloud services
 - Exports are point-in-time snapshots (not continuous sync)
 
 ### What's Included in Analytics
+
 Tracked data includes only:
+
 - Session counts per backend
 - Success/failure/cancelled counts
 - Average execution times per backend
 - Retry percentages
 
 **NOT included:**
+
 - Agent prompts or model responses
 - Task descriptions or acceptance criteria
 - Code changes or diffs
@@ -311,10 +337,12 @@ Tracked data includes only:
 - Any user input or conversations
 
 ### Compliance
+
 If you need to delete analytics:
+
 1. Clear your Kagan database: `rm ~/.local/share/kagan/kagan.db`
-2. Delete any exported JSON files manually
-3. Analytics are gone permanently
+1. Delete any exported JSON files manually
+1. Analytics are gone permanently
 
 Use this if you need to comply with data retention policies or privacy regulations.
 
@@ -331,15 +359,19 @@ Use this if you need to comply with data retention policies or privacy regulatio
 ## Troubleshooting
 
 ### "No data yet"
+
 You haven't run any sessions yet. Run a task with any agent, and analytics will populate after the first session completes.
 
 ### Metrics show 0% success
+
 - Confirm tasks have actually completed (check TUI board status)
 - Verify the time window matches when you ran sessions (use the date picker on web dashboard)
 
 ### Export fails
+
 - Ensure you have write permissions in the target directory
 - Check that your project has an active repository linked (`/project` in CLI, or Projects page in web)
 
 ### Missing backends
+
 If a backend you've used isn't showing in the Backend Performance table, it may have had zero runs in the selected time window.

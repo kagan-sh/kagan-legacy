@@ -12,8 +12,8 @@ tags:
 Kagan integrates with GitHub Issues at three points:
 
 1. **Import** issues from a repository as Kagan tasks.
-2. **Create-and-link** — when creating a Kagan task, optionally link it to an existing issue or create a fresh issue from the task.
-3. **`#`-mention autocomplete** — type `#` anywhere in a Kagan text field to insert a link to a Kagan task or a GitHub issue.
+1. **Create-and-link** — when creating a Kagan task, optionally link it to an existing issue or create a fresh issue from the task.
+1. **`#`-mention autocomplete** — type `#` anywhere in a Kagan text field to insert a link to a Kagan task or a GitHub issue.
 
 The integration uses the GitHub CLI (`gh`) for auth — no token plumbing.
 
@@ -27,12 +27,12 @@ The integration uses the GitHub CLI (`gh`) for auth — no token plumbing.
 
 Once a task is linked to a GitHub issue, Kagan keeps the following fields in sync **bidirectionally** on every pull/push:
 
-| Field                     | Direction                                    |
-| ------------------------- | -------------------------------------------- |
-| Title                     | both ways                                    |
-| Body / description        | both ways, **verbatim** — no scaffolding     |
-| Priority labels           | both ways (`priority:critical/high/medium/low`) |
-| Acceptance criteria       | both ways via a tagged comment (see below)   |
+| Field               | Direction                                       |
+| ------------------- | ----------------------------------------------- |
+| Title               | both ways                                       |
+| Body / description  | both ways, **verbatim** — no scaffolding        |
+| Priority labels     | both ways (`priority:critical/high/medium/low`) |
+| Acceptance criteria | both ways via a tagged comment (see below)      |
 
 What does **not** sync:
 
@@ -47,7 +47,7 @@ The body is stored exactly as it appears on GitHub. Kagan does not prepend the U
 GitHub already has a checklist convention (`- [ ]` / `- [x]`). Kagan uses it in two ways:
 
 1. **First import** — checklist lines in the issue body seed the Kagan task's acceptance criteria. The body is left untouched.
-2. **Subsequent edits** — when criteria change in Kagan, Kagan upserts a single comment on the issue tagged with `<!-- kagan:acceptance-criteria -->`. The comment body is a clean checklist. On every pull, if that comment exists Kagan re-derives criteria from it; otherwise it falls back to the body seed.
+1. **Subsequent edits** — when criteria change in Kagan, Kagan upserts a single comment on the issue tagged with `<!-- kagan:acceptance-criteria -->`. The comment body is a clean checklist. On every pull, if that comment exists Kagan re-derives criteria from it; otherwise it falls back to the body seed.
 
 The issue body is never modified by criteria sync — only the tagged comment is.
 
@@ -115,11 +115,11 @@ If the project has no linked GitHub repo, the typeahead still works — Kagan-on
 
 Every capability above is reachable from every client:
 
-| Capability       | CLI | TUI | Web | VS Code | Chat | MCP |
-| ---------------- | --- | --- | --- | ------- | ---- | --- |
-| Import           | ✓   | ✓   | ✓   | ✓       | ✓    | ✓   |
-| Create-and-link  | —   | ✓   | ✓   | ✓       | ✓    | ✓   |
-| `#`-mention      | —   | ✓   | ✓   | ✓       | ✓    | ✓   |
+| Capability      | CLI | TUI | Web | VS Code | Chat | MCP |
+| --------------- | --- | --- | --- | ------- | ---- | --- |
+| Import          | ✓   | ✓   | ✓   | ✓       | ✓    | ✓   |
+| Create-and-link | —   | ✓   | ✓   | ✓       | ✓    | ✓   |
+| `#`-mention     | —   | ✓   | ✓   | ✓       | ✓    | ✓   |
 
 (CLI does not have a generic `task create` command today — task creation is via the TUI or any of the API-driven clients.)
 

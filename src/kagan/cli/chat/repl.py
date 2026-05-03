@@ -696,7 +696,6 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
     return status_left, status_right, tip_left, tip_right
 
 
-
 _PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
 _PROMPT_GLYPH_PLAN: Final[str] = "◇ "
 _PROMPT_GLYPH_FALLBACK: Final[str] = "> "

@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
 from kagan.cli.chat._streaming import (
-    OutputFlushManager,
     ResponseChunkBuffer,
     StreamingMarkdownRegion,
 )
@@ -600,7 +599,6 @@ class _OrchestratorACPClient(ACPClientBase):
         self._tool_runs = ToolRunTracker()
         self._grouped_tools = _GroupedToolDisplay()
         self._response_chunks = ResponseChunkBuffer()
-        self._output_flusher = OutputFlushManager(_console)
         self._md_region = StreamingMarkdownRegion(_console)
         self.last_usage: Any = None
         self._spinner_name = get_rich_spinner_name()
@@ -608,9 +606,7 @@ class _OrchestratorACPClient(ACPClientBase):
 
     def start_turn(self) -> None:
         self._md_region.discard()
-        self._output_flusher.shutdown()
         self._response_chunks.clear()
-        self._output_flusher.clear()
         self._tool_runs.start_turn()
         self._grouped_tools.clear()
         self.last_usage = None
@@ -618,7 +614,6 @@ class _OrchestratorACPClient(ACPClientBase):
 
     def finish_turn(self) -> str:
         self._md_region.finalize()
-        self._output_flusher.flush(force=True)
         response = self._response_chunks.get_all().strip()
         return response
 
@@ -710,7 +705,6 @@ class _OrchestratorACPClient(ACPClientBase):
                     text = getattr(content, "text", "") or ""
                     if text:
                         self._md_region.finalize()
-                        self._output_flusher.flush(force=True)
 
                         def _print_thought() -> None:
                             _console.print(
@@ -721,7 +715,6 @@ class _OrchestratorACPClient(ACPClientBase):
                         self._print_via_terminal(_print_thought)
         elif isinstance(update, ToolCallStart):
             self._md_region.finalize()
-            self._output_flusher.flush(force=True)
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
             tool_key = self._tool_runs.tool_key(update)
             if self._tool_runs.status_for(tool_key) != "started":
@@ -741,7 +734,6 @@ class _OrchestratorACPClient(ACPClientBase):
                 self._print_via_terminal(_print_start)
         elif isinstance(update, ToolCallProgress):
             self._md_region.finalize()
-            self._output_flusher.flush(force=True)
             self._handle_tool_progress(update)
         elif isinstance(update, UsageUpdate):
             self.last_usage = update
@@ -758,7 +750,6 @@ class _OrchestratorACPClient(ACPClientBase):
             return _cancelled_permission_response()
 
         self._md_region.finalize()
-        self._output_flusher.flush(force=True)
 
         # --yolo: short-circuit before the batch queue is armed.
         if self._yolo:

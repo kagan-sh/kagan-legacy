@@ -410,9 +410,14 @@ def _run_legacy_batch_input(
             f"{strip_tool_prefix(getattr(item.tool_call, 'title', None) or 'tool')}"
         )
         try:
-            raw = input("  [1] approve  [3] reject  > ").strip()
-            if raw in {"1", "2"}:
+            raw = input(
+                "  [1] approve once  [2] approve for session  [3] reject  "
+                "[5] approve all  [6] reject all  > "
+            ).strip()
+            if raw == "1":
                 resolve_item(i, 0, "")
+            elif raw == "2":
+                resolve_item(i, 1, "")
             elif raw in {"5", "a"}:
                 # approve all remaining
                 for j in range(i, len(items)):
@@ -566,14 +571,55 @@ class _BatchApprovalQueue:
             _map_approval_result,
             _rejected_permission_response,
             _selected_permission_response,
+            _session_approvals,
             _tool_action_key,
         )
 
         # We'll collect resolutions here then apply after the modal closes
         resolutions: dict[int, Any] = {}  # index -> ACP response
 
-        def _resolve_item(item_idx: int, opt_idx: int, feedback: str) -> None:
-            item = items[item_idx]
+        # Pre-resolve any items the user already granted "approve for this
+        # session" — mirrors the short-circuit in ``_flush_single`` so a
+        # session-approved tool is auto-approved without forcing the user to
+        # re-confirm it through the batch modal.
+        unresolved_items: list[_PendingItem] = []
+        unresolved_index_map: list[int] = []
+        for original_idx, pending in enumerate(items):
+            action_key = _tool_action_key(pending.tool_call)
+            if _session_approvals.is_allowed(action_key):
+                allow_once = next(
+                    (o for o in pending.options if getattr(o, "kind", None) == "allow_once"),
+                    None,
+                )
+                resolutions[original_idx] = _selected_permission_response(
+                    allow_once if allow_once is not None else pending.options[0]
+                )
+                continue
+            unresolved_items.append(pending)
+            unresolved_index_map.append(original_idx)
+
+        # All items already session-approved — skip the modal entirely.
+        if not unresolved_items:
+            for i, item in enumerate(items):
+                response = resolutions.get(i)
+                if response is None:
+                    response = _rejected_permission_response()
+                if not item.future.done():
+                    item.future.set_result(response)
+            return
+
+        # If only one item is left after pre-resolution, fall through to the
+        # single-approval panel for a less noisy UX.
+        if len(unresolved_items) == 1:
+            await self._flush_single(unresolved_items[0])
+            for i, item in enumerate(items):
+                if i in resolutions and not item.future.done():
+                    item.future.set_result(resolutions[i])
+            return
+
+        def _resolve_item(unresolved_idx: int, opt_idx: int, feedback: str) -> None:
+            original_idx = unresolved_index_map[unresolved_idx]
+            item = items[original_idx]
             action_key = _tool_action_key(item.tool_call)
             option = _map_approval_result(
                 opt_idx,
@@ -582,33 +628,34 @@ class _BatchApprovalQueue:
                 permission_options=item.options,
             )
             if option is None:
-                resolutions[item_idx] = _rejected_permission_response()
+                resolutions[original_idx] = _rejected_permission_response()
             else:
-                resolutions[item_idx] = _selected_permission_response(option)
+                resolutions[original_idx] = _selected_permission_response(option)
 
         def _resolve_all(kind: str) -> None:
-            for i, item in enumerate(items):
-                if i not in resolutions:
-                    for o in item.options:
-                        if getattr(o, "kind", None) == kind:
-                            resolutions[i] = _selected_permission_response(o)
-                            break
+            for original_idx in unresolved_index_map:
+                if original_idx in resolutions:
+                    continue
+                item = items[original_idx]
+                for o in item.options:
+                    if getattr(o, "kind", None) == kind:
+                        resolutions[original_idx] = _selected_permission_response(o)
+                        break
+                else:
+                    if item.options:
+                        resolutions[original_idx] = _selected_permission_response(item.options[0])
                     else:
-                        # fall back to first option
-                        if item.options:
-                            resolutions[i] = _selected_permission_response(item.options[0])
-                        else:
-                            resolutions[i] = _rejected_permission_response()
+                        resolutions[original_idx] = _rejected_permission_response()
 
         def _reject_all_fn() -> None:
-            for i, _item in enumerate(items):
-                if i not in resolutions:
-                    resolutions[i] = _rejected_permission_response()
+            for original_idx in unresolved_index_map:
+                if original_idx not in resolutions:
+                    resolutions[original_idx] = _rejected_permission_response()
 
         run_in_terminal(lambda: None)  # flush any pending terminal output
 
         await _run_batch_modal_async(
-            items,
+            unresolved_items,
             _resolve_item=_resolve_item,
             _resolve_all=_resolve_all,
             _reject_all=_reject_all_fn,

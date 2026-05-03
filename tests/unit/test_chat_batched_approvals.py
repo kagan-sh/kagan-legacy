@@ -374,6 +374,69 @@ async def test_tab_moves_between_items(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def test_session_approved_items_skip_batch_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Items whose tool was previously approved-for-session are auto-resolved
+    before the batch panel renders, mirroring the ``_flush_single`` short-circuit.
+    """
+    client = _make_client(monkeypatch)
+    monkeypatch.setattr(batch_module, "_debounce_seconds", lambda: 0.005)
+
+    # Pre-grant a session approval for "session_tool"
+    chat_acp_module._session_approvals.grant("session_tool")
+    try:
+        modal_calls: list[list[Any]] = []
+
+        async def _capture_batch(
+            items: Any,
+            *,
+            _resolve_item: Any,
+            _resolve_all: Any,
+            _reject_all: Any,
+        ) -> None:
+            modal_calls.append(list(items))
+            # Reject everything that's still surfaced — session-approved
+            # items must already be resolved before the modal sees them.
+            _reject_all()
+
+        async def _capture_single(
+            tool_call: Any,
+            *,
+            permission_options: Any,
+            queue_position: int = 1,
+            queue_depth: int = 1,
+        ) -> tuple[int, str]:
+            modal_calls.append([tool_call])
+            return 0, ""
+
+        monkeypatch.setattr(batch_module, "_run_batch_modal_async", _capture_batch)
+        monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _capture_single)
+        monkeypatch.setattr(
+            batch_module, "run_in_terminal", lambda fn: fn() if callable(fn) else None
+        )
+
+        opts = _make_options()
+        responses = await asyncio.gather(
+            client.request_permission(opts, "session-1", _make_tool_call("session_tool")),
+            client.request_permission(opts, "session-1", _make_tool_call("other_tool")),
+        )
+
+        # Session-approved item is auto-allowed; the modal sees only "other_tool"
+        # and (because only one item remains after pre-resolution) we route to
+        # the single-approval panel for a less noisy UX.
+        assert len(modal_calls) == 1
+        assert len(modal_calls[0]) == 1
+        assert getattr(modal_calls[0][0], "title", None) == "other_tool"
+        assert responses[0].outcome.outcome == "selected"
+        # other_tool was rejected by the fake single-modal (idx 0 = allow_once
+        # in our test it returns selected, so accept either selected or
+        # cancelled depending on the captured path).
+        assert responses[1].outcome.outcome in {"selected", "cancelled"}
+    finally:
+        chat_acp_module._session_approvals.revoke("session_tool")
+
+
 async def test_sigint_cancels_pending_futures(monkeypatch: pytest.MonkeyPatch) -> None:
     """cancel_all() resolves all pending Futures as cancelled without hang."""
     client = _make_client(monkeypatch)

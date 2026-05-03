@@ -438,6 +438,66 @@ def _run_legacy_batch_input(
 # ---------------------------------------------------------------------------
 
 
+def _preresolve_session_approved(
+    items: list[_PendingItem],
+) -> tuple[dict[int, Any], list[_PendingItem], list[int]]:
+    """Auto-resolve items whose tool was previously approved-for-session.
+
+    Mirrors the short-circuit in ``_flush_single`` so a session-approved tool
+    is auto-approved without forcing the user to re-confirm it through the
+    batch modal. Returns ``(resolutions, unresolved_items, unresolved_index_map)``
+    where ``unresolved_index_map[i]`` gives the original index in *items*
+    corresponding to ``unresolved_items[i]``.
+    """
+    from kagan.cli.chat._chat_acp import (
+        _selected_permission_response,
+        _session_approvals,
+        _tool_action_key,
+    )
+
+    resolutions: dict[int, Any] = {}
+    unresolved_items: list[_PendingItem] = []
+    unresolved_index_map: list[int] = []
+    for original_idx, pending in enumerate(items):
+        action_key = _tool_action_key(pending.tool_call)
+        if not _session_approvals.is_allowed(action_key):
+            unresolved_items.append(pending)
+            unresolved_index_map.append(original_idx)
+            continue
+        allow_once = next(
+            (o for o in pending.options if getattr(o, "kind", None) == "allow_once"),
+            None,
+        )
+        chosen = allow_once if allow_once is not None else pending.options[0]
+        resolutions[original_idx] = _selected_permission_response(chosen)
+    return resolutions, unresolved_items, unresolved_index_map
+
+
+def _apply_batch_resolutions(
+    items: list[_PendingItem],
+    resolutions: dict[int, Any],
+    *,
+    skip_unresolved: bool = False,
+) -> None:
+    """Resolve every item Future from the *resolutions* mapping.
+
+    Items missing from *resolutions* default to a rejected response unless
+    ``skip_unresolved`` is True, in which case they are left untouched (used
+    when the caller has already resolved them via a separate single-approval
+    flow).
+    """
+    from kagan.cli.chat._chat_acp import _rejected_permission_response
+
+    for i, item in enumerate(items):
+        response = resolutions.get(i)
+        if response is None:
+            if skip_unresolved:
+                continue
+            response = _rejected_permission_response()
+        if not item.future.done():
+            item.future.set_result(response)
+
+
 class _BatchApprovalQueue:
     """Collect concurrent request_permission calls and present them as one panel.
 
@@ -571,50 +631,18 @@ class _BatchApprovalQueue:
             _map_approval_result,
             _rejected_permission_response,
             _selected_permission_response,
-            _session_approvals,
             _tool_action_key,
         )
 
-        # We'll collect resolutions here then apply after the modal closes
-        resolutions: dict[int, Any] = {}  # index -> ACP response
+        resolutions, unresolved_items, unresolved_index_map = _preresolve_session_approved(items)
 
-        # Pre-resolve any items the user already granted "approve for this
-        # session" — mirrors the short-circuit in ``_flush_single`` so a
-        # session-approved tool is auto-approved without forcing the user to
-        # re-confirm it through the batch modal.
-        unresolved_items: list[_PendingItem] = []
-        unresolved_index_map: list[int] = []
-        for original_idx, pending in enumerate(items):
-            action_key = _tool_action_key(pending.tool_call)
-            if _session_approvals.is_allowed(action_key):
-                allow_once = next(
-                    (o for o in pending.options if getattr(o, "kind", None) == "allow_once"),
-                    None,
-                )
-                resolutions[original_idx] = _selected_permission_response(
-                    allow_once if allow_once is not None else pending.options[0]
-                )
-                continue
-            unresolved_items.append(pending)
-            unresolved_index_map.append(original_idx)
-
-        # All items already session-approved — skip the modal entirely.
         if not unresolved_items:
-            for i, item in enumerate(items):
-                response = resolutions.get(i)
-                if response is None:
-                    response = _rejected_permission_response()
-                if not item.future.done():
-                    item.future.set_result(response)
+            _apply_batch_resolutions(items, resolutions)
             return
 
-        # If only one item is left after pre-resolution, fall through to the
-        # single-approval panel for a less noisy UX.
         if len(unresolved_items) == 1:
             await self._flush_single(unresolved_items[0])
-            for i, item in enumerate(items):
-                if i in resolutions and not item.future.done():
-                    item.future.set_result(resolutions[i])
+            _apply_batch_resolutions(items, resolutions, skip_unresolved=True)
             return
 
         def _resolve_item(unresolved_idx: int, opt_idx: int, feedback: str) -> None:

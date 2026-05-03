@@ -79,7 +79,7 @@ ______________________________________________________________________
 - Session Switcher (`Cmd/Ctrl+Shift+K`) provides a global session index across orchestrator and task-linked sessions
 - `/chat/:id` shows orchestrator conversation history, streaming output, slash commands, and backend metadata
 - task-specific quick-jump entry points link the ChatSidePanel overlay and chat surfaces together
-- during streaming, a wave animation and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift
+- during streaming, a rotating half-disc indicator and `esc interrupt` hint appear below the chat input; space is always reserved to prevent layout shift (shape language matches the chat REPL and TUI)
 - session titles are auto-generated after the first exchange via a lightweight ACP call and pushed to the client via `CHAT_SESSION_UPDATED` SSE event
 
 ______________________________________________________________________

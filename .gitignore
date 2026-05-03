@@ -209,6 +209,7 @@ kagan*.mcp.json
 coverage.json
 
 .claude/
+tasks/
 
 :memory:-shm
 

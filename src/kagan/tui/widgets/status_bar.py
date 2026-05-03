@@ -5,17 +5,8 @@ from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.widgets import Static
 
-WAVE_FRAMES = (
-    "ᘚᘚᘚᘚ",
-    "ᘛᘚᘚᘚ",
-    "ᘛᘛᘚᘚ",
-    "ᘛᘛᘛᘚ",
-    "ᘛᘛᘛᘛ",
-    "ᘚᘛᘛᘛ",
-    "ᘚᘚᘛᘛ",
-    "ᘚᘚᘚᘛ",
-)
-WAVE_INTERVAL_SECONDS = 0.1
+WAVE_FRAMES = ("◐", "◓", "◑", "◒")
+WAVE_INTERVAL_SECONDS = 0.25  # 4 fps, matches chat REPL streaming glyph
 WORKING_STATES = frozenset({"thinking", "initializing"})
 STATUS_LABELS = {
     "ready": "Ready",
@@ -131,7 +122,7 @@ class StatusBar(Horizontal):
         status = self.status
         label = STATUS_LABELS.get(status, status.capitalize())
         if status in WORKING_STATES:
-            symbol = WAVE_FRAMES[self._frame_index]
+            symbol = f"[#fbbf24]{WAVE_FRAMES[self._frame_index]}[/]"
             if self._work_started_at is not None:
                 label = f"{label} · {_format_elapsed(monotonic() - self._work_started_at)}"
         else:

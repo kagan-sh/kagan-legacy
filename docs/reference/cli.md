@@ -11,20 +11,19 @@ tags:
 
 `kagan` with no subcommand launches the TUI (same as `kagan tui`).
 
-| Command   | Description                                     |
-| --------- | ----------------------------------------------- |
-| `chat`    | Orchestrator REPL / one-shot prompt             |
-| `doctor`  | Environment diagnostics                         |
-| `import`  | Import tasks from external sources              |
-| `list`    | List projects with task counts                  |
-| `mcp`     | Run MCP server (stdio)                          |
-| `import`  | Import tasks from external sources              |
-| `reset`   | Remove local state                              |
-| `serve`   | Run HTTP API server (no web UI)                 |
-| `tools`   | Stateless utilities and advanced prompt tooling |
-| `tui`     | Run TUI explicitly                              |
-| `update`  | Check/install updates                           |
-| `web`     | Start API server with bundled web UI            |
+| Command  | Description                                     |
+| -------- | ----------------------------------------------- |
+| `chat`   | Orchestrator REPL / one-shot prompt             |
+| `doctor` | Environment diagnostics                         |
+| `import` | Import tasks from external sources              |
+| `list`   | List projects with task counts                  |
+| `mcp`    | Run MCP server (stdio)                          |
+| `reset`  | Remove local state                              |
+| `serve`  | Run HTTP API server (no web UI)                 |
+| `tools`  | Stateless utilities and advanced prompt tooling |
+| `tui`    | Run TUI explicitly                              |
+| `update` | Check/install updates                           |
+| `web`    | Start API server with bundled web UI            |
 
 ## Global options
 
@@ -55,8 +54,8 @@ Interactive orchestrator REPL by default. Use `--prompt` for single-shot mode.
 Session lifecycle details: [ACP session lifecycle](../guides/acp-session-lifecycle.md).
 Slash commands and usage: [Chat guide](../guides/chat.md).
 
-| Option          | Description                                |
-| --------------- | ------------------------------------------ |
+| Option          | Description                                       |
+| --------------- | ------------------------------------------------- |
 | `--prompt TEXT` | Single-shot mode (send once, print, exit)         |
 | `--session-id`  | Attach to an existing chat or task session        |
 | `--agent`       | Override default orchestrator backend             |
@@ -117,11 +116,11 @@ Prefer `--role` when configuring MCP clients. `--readonly` and `--admin` are com
 
 ### Access tiers
 
-| Tier       | Scope                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tier       | Scope                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `readonly` | Worker-scope operations (`task_get`, `task_list`, `task_events`, `task_wait`, `run_get`, `run_cancel`, `run_detach`, `run_summary`, `review_conflicts`, `settings_get`, `integration_preflight`, `integration_preview`, `verify_step`, `verification_summary`, `checkpoint_create`, `checkpoint_list`, `session_rewind`, `insight_add`, `insight_list`) |
-| `default`  | Orchestrator-scope access (worker tools plus task creation/mutation/deletion, run orchestration, review decisions/merge/rebase, projects, settings, audit, integrations, personas, and insight removal)                                                                                                                                                                                                    |
-| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                                                                                                                                                      |
+| `default`  | Orchestrator-scope access (worker tools plus task creation/mutation/deletion, run orchestration, review decisions/merge/rebase, projects, settings, audit, integrations, personas, and insight removal)                                                                                                                                                 |
+| `admin`    | Alias of `default` for MCP; currently exposes the same tool surface                                                                                                                                                                                                                                                                                     |
 
 ```bash
 kagan mcp --readonly                    # worker-scope access

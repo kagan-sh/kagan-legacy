@@ -32,18 +32,18 @@ Skip the Docker image build step (reuse previously built images):
 
 ## Images
 
-| Image | Purpose |
-|---|---|
-| `kagan-e2e-base` | Zero-ready: Python 3.12 + uv + kagan, NO backend binaries |
+| Image                         | Purpose                                                        |
+| ----------------------------- | -------------------------------------------------------------- |
+| `kagan-e2e-base`              | Zero-ready: Python 3.12 + uv + kagan, NO backend binaries      |
 | `kagan-e2e-default-installed` | Default backend (`claude-code` stub) present, 13 others absent |
 
 ## Scenarios
 
-| Scenario | Image | Assert |
-|---|---|---|
-| A — Zero-ready | base | default=fail, 13+ others=warn, fix_hint non-empty |
-| B — Default installed | default-installed | default=pass, 13+ others=warn, no fail entries |
-| C — Real install | base | codex: warn→pass, DOCTOR_WARNED in telemetry DB |
+| Scenario              | Image             | Assert                                            |
+| --------------------- | ----------------- | ------------------------------------------------- |
+| A — Zero-ready        | base              | default=fail, 13+ others=warn, fix_hint non-empty |
+| B — Default installed | default-installed | default=pass, 13+ others=warn, no fail entries    |
+| C — Real install      | base              | codex: warn→pass, DOCTOR_WARNED in telemetry DB   |
 
 ## Coverage gaps
 

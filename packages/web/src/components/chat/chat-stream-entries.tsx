@@ -3,6 +3,7 @@ import { MarkdownContent } from '@/components/shared/markdown-content';
 import { cn } from '@/lib/utils';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { StreamingGlyph } from '@/components/chat/streaming-glyph';
 
 interface ChatStreamEntriesProps {
   entries: ChatStreamEntry[];
@@ -90,7 +91,7 @@ function StreamToolPill({ name, status, detail }: { name: string; status: 'runni
       <Wrench
         className={cn(
           'size-3.5 shrink-0',
-          status === 'running' ? 'text-[var(--primary)] animate-pulse' : 'text-[var(--kagan-rail-running)]',
+          status === 'running' ? 'text-[var(--kagan-thinking)]' : 'text-[var(--kagan-rail-running)]',
         )}
       />
       <span className="min-w-0 flex-1 truncate font-medium text-[var(--foreground)]">{name}</span>
@@ -98,7 +99,7 @@ function StreamToolPill({ name, status, detail }: { name: string; status: 'runni
         <span className="shrink-0 text-[10px] text-[var(--muted-foreground)]">{detail}</span>
       )}
       {status === 'running' && (
-        <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--primary)]" />
+        <StreamingGlyph className="text-[11px] leading-none" />
       )}
     </div>
   );

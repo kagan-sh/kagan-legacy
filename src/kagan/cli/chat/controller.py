@@ -12,13 +12,13 @@ from uuid import uuid4
 import acp
 import click
 from loguru import logger
+from prompt_toolkit.patch_stdout import patch_stdout
 from rich.live import Live
 
+from kagan.cli.chat._approval_panel import strip_tool_prefix
 from kagan.cli.chat._chat_acp import (
     _OrchestratorACPClient,
     _SendResult,
-    _turn_wave_animation,
-    _TurnWaveAnimation,
     _WaveIndicator,
 )
 from kagan.cli.chat._chat_ui import (
@@ -53,13 +53,14 @@ from kagan.cli.chat.prompt import (
 )
 from kagan.cli.chat.repl import (
     _TOOLBAR_STATE,
-    WAVE_FRAMES,
     SearchPickerOption,
     _build_prompt_message,
     _build_prompt_placeholder,
     _console,
     _find_git_root,
     _get_prompt_session,
+    _release_prompt_session,
+    rotate_tip_on_submit,
     searchable_picker,
     supports_interactive_picker,
 )
@@ -92,14 +93,11 @@ from kagan.core import (
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError, KaganError
 
-# Re-export for backward compatibility (tests, etc.)
 __all__ = [
     "ChatController",
     "_OrchestratorACPClient",
     "_SendResult",
-    "_TurnWaveAnimation",
     "_WaveIndicator",
-    "_turn_wave_animation",
 ]
 
 
@@ -814,34 +812,39 @@ class ChatController:
         _console.print(f"[bold]You:[/bold] {text}")
 
         interrupted = False
-        async with _turn_wave_animation(_console, WAVE_FRAMES) as stop_animation:
-            if self._acp_client is not None:
-                self._acp_client.start_turn(on_first_update=stop_animation)
-            prompt_task = asyncio.create_task(
-                self._acp_conn.prompt(
-                    session_id=self._acp_session_id,
-                    prompt=prompt_blocks,
-                ),
-                name="chat-prompt",
-            )
-            original_sigint = install_sigint_handler(prompt_task)
-            try:
-                await prompt_task
-            except asyncio.CancelledError:
-                interrupted = True
-            except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
-                logger.exception("Failed to send prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            except Exception as exc:
-                logger.exception("Unexpected failure while sending prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            finally:
-                restore_sigint_handler(original_sigint)
-                _TOOLBAR_STATE.is_streaming = False
-
         assistant_reply = ""
+        if self._acp_client is not None:
+            self._acp_client.start_turn()
+        prompt_task = asyncio.create_task(
+            self._acp_conn.prompt(
+                session_id=self._acp_session_id,
+                prompt=prompt_blocks,
+            ),
+            name="chat-prompt",
+        )
+        original_sigint = install_sigint_handler(prompt_task)
+        try:
+            await prompt_task
+        except asyncio.CancelledError:
+            interrupted = True
+        except (
+            acp.RequestError,
+            TimeoutError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as exc:
+            logger.exception("Failed to send prompt to agent")
+            _console.print(f"\n[red]Agent error: {exc}[/red]")
+            return _SendResult()
+        except Exception as exc:
+            logger.exception("Unexpected failure while sending prompt to agent")
+            _console.print(f"\n[red]Agent error: {exc}[/red]")
+            return _SendResult()
+        finally:
+            restore_sigint_handler(original_sigint)
+            _TOOLBAR_STATE.is_streaming = False
+
         if self._acp_client is not None:
             try:
                 assistant_reply = self._acp_client.finish_turn()
@@ -924,53 +927,93 @@ class ChatController:
             logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
 
     async def _repl_loop(self) -> None:
+        """Run the interactive REPL using a long-lived PromptSession.
+
+        A single ``prompt_async()`` call stays alive across agent reply turns.
+        The Enter keybinding enqueues submissions without closing the prompt,
+        so the bottom toolbar remains pinned at the terminal bottom throughout
+        the session — during user input, agent reply, tool calls, and wave
+        animation alike.  All console output is routed above the prompt by
+        ``patch_stdout(raw=True)``.
+        """
         _console.print(
             "[dim]Press [bold]/help[/bold] for commands, "
-            "[bold]Esc[/bold] to cancel, [bold]Ctrl-D[/bold] to exit.[/dim]\n"
+            "[bold]Ctrl-C[/bold] clear · [bold]Ctrl-D[/bold] exit.[/dim]\n"
         )
+        submit_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        session = _get_prompt_session(submit_queue)
         watcher_task = asyncio.create_task(self._event_watcher())
-        _last_sent = ""
-        _prefill = ""
-        try:
-            while True:
-                try:
-                    line = await _get_prompt_session().prompt_async(
-                        _build_prompt_message(),
-                        placeholder=_build_prompt_placeholder(),
-                        default=_prefill,
-                    )
-                except EOFError:
-                    break
-                except KeyboardInterrupt:
-                    continue
+        last_sent = ""
+        done = False
 
-                _prefill = ""
-                stripped = line.strip()
+        async def _pump_queue() -> None:
+            """Read submissions from the queue and process them until exit."""
+            nonlocal last_sent, done
+            while not done:
+                text = await submit_queue.get()
+                if text is None:
+                    # Ctrl-D sentinel: signal exit
+                    done = True
+                    return
+                stripped = text.strip()
                 if not stripped:
                     continue
-
+                rotate_tip_on_submit()
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
-                        break  # /exit or agent switch
+                        done = True
+                        return
                     continue
-
-                _last_sent = stripped
+                last_sent = stripped
                 try:
                     result = await self._send(stripped)
                 except KeyboardInterrupt:
-                    _prefill = _last_sent
                     continue
-                except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+                except (
+                    acp.RequestError,
+                    TimeoutError,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                ) as exc:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
                     continue
-
                 if result.was_cancelled:
-                    _prefill = _last_sent
+                    await submit_queue.put(last_sent)
+
+        try:
+            with patch_stdout(raw=True):
+                # Launch queue-drain loop and long-lived prompt concurrently.
+                pump_task = asyncio.create_task(_pump_queue(), name="chat-repl-pump")
+                prompt_task: asyncio.Task[str] = asyncio.create_task(
+                    session.prompt_async(
+                        _build_prompt_message,
+                        placeholder=_build_prompt_placeholder(),
+                    ),
+                    name="chat-repl-prompt",
+                )
+                try:
+                    # Wait for either the pump to signal done (Ctrl-D / /exit)
+                    # or prompt_async to return (unexpected EOF from the session).
+                    await asyncio.wait(
+                        [pump_task, prompt_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    done = True
+                    # Unblock the pump if it's waiting on the queue
+                    submit_queue.put_nowait(None)
+                    for task in (pump_task, prompt_task):
+                        if not task.done():
+                            task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await task
         finally:
             watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher_task
+            _release_prompt_session()
             if not self._restart_requested:
                 _console.print("\n[dim]Session ended.[/dim]")
 
@@ -1022,11 +1065,7 @@ class ChatController:
                     turn_count=self._turn_count,
                 )
             case SlashAction.SHOW_ANALYTICS:
-                if result.data and result.data.startswith("export:"):
-                    path = result.data[len("export:") :] or None
-                    await export_analytics_json(self.client, path)
-                else:
-                    await print_analytics_panel(self.client)
+                await self._handle_analytics(result.data)
             case SlashAction.SHOW_PROJECT:
                 print_project_info(
                     project_name=self._project_name,
@@ -1041,12 +1080,44 @@ class ChatController:
                     repo_name=self._selected_repo_name,
                     repo_id=self._selected_repo_id,
                 )
+            case SlashAction.SHOW_APPROVALS:
+                self._show_approvals(result.data or "")
             case SlashAction.CLOSE:
                 return True
             case _:
                 pass
 
         return False
+
+    async def _handle_analytics(self, data: str | None) -> None:
+        if data and data.startswith("export:"):
+            path = data[len("export:") :] or None
+            await export_analytics_json(self.client, path)
+        else:
+            await print_analytics_panel(self.client)
+
+    def _show_approvals(self, data: str) -> None:
+        from kagan.cli.chat._chat_acp import get_session_approvals
+
+        approvals = get_session_approvals()
+
+        if data.startswith("revoke:"):
+            target = data[len("revoke:") :]
+            if target:
+                approvals.revoke(target)
+                _console.print(f"[green]Revoked approval:[/green] {target}")
+            else:
+                _console.print("[red]Usage: /approvals revoke <name>[/red]")
+            return
+
+        granted = approvals.list_granted()
+        if not granted:
+            _console.print("[dim]No session approvals granted yet.[/dim]")
+            return
+        _console.print("[bold]Session-granted approvals:[/bold]")
+        for name in granted:
+            display = strip_tool_prefix(name)
+            _console.print(f"  [green]✓[/green] {display}  [dim](/approvals revoke {name})[/dim]")
 
     async def _switch_project(self, name: str) -> None:
         projects = await self.client.projects.list()

@@ -57,6 +57,7 @@ class SlashAction(Enum):
     SHOW_INFO = "show_info"
     SWITCH_REPO = "switch_repo"
     SHOW_REPO = "show_repo"
+    SHOW_APPROVALS = "show_approvals"
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,6 +313,20 @@ def _handle_analytics(
     return SlashCommandOutcome(handled=True, action=SlashAction.SHOW_ANALYTICS)
 
 
+def _handle_approvals(
+    invocation: SlashCommandInvocation, _ctx: _SlashCommandContext
+) -> SlashCommandOutcome:
+    arg = invocation.arg.strip().casefold()
+    if arg.startswith("revoke ") or arg.startswith("revoke\t"):
+        target = arg.split(None, 1)[1].strip()
+        return SlashCommandOutcome(
+            handled=True,
+            action=SlashAction.SHOW_APPROVALS,
+            data=f"revoke:{target}",
+        )
+    return SlashCommandOutcome(handled=True, action=SlashAction.SHOW_APPROVALS)
+
+
 def _handle_flow(
     invocation: SlashCommandInvocation, ctx: _SlashCommandContext
 ) -> SlashCommandOutcome:
@@ -398,6 +413,11 @@ def _build_slash_command_registry() -> SlashCommandRegistry:
         name="analytics",
         description="Show stats or export: /analytics [export [path]]",
         handler=_handle_analytics,
+    )
+    registry.register(
+        name="approvals",
+        description="List session-granted approvals: /approvals [revoke <name>]",
+        handler=_handle_approvals,
     )
     registry.register(
         name="flow",

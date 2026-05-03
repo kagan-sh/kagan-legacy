@@ -59,9 +59,9 @@ src/kagan/cli/
 | `update`   | Self-update via pipx/pip                     | `--check-only`, `--prerelease`           |
 | `tools`    | LLM tool utilities                           | Subgroup: `enhance`                      |
 
-| `import`   | Import from external sources                 | Subgroup: `github`                       |
-| `serve`    | Start HTTP API server                        | Blocks until stopped                     |
-| `web`      | Start server + open browser                  | Convenience wrapper around `serve`       |
+| `import` | Import from external sources | Subgroup: `github` |
+| `serve` | Start HTTP API server | Blocks until stopped |
+| `web` | Start server + open browser | Convenience wrapper around `serve` |
 
 ## The Async Bridge (`_bootstrap.py`)
 

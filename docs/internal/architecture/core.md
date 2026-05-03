@@ -96,22 +96,22 @@ kagan/core/
 
 ## Integrations
 
-Native integrations live in `kagan.core.integrations`.  Each integration is a plain class that
+Native integrations live in `kagan.core.integrations`. Each integration is a plain class that
 satisfies the `Integration` typing.Protocol (defined in `_base.py`): three methods — `preflight`,
-`preview`, and `sync`.  No ABCs, no metaclasses, no entry-point discovery.
+`preview`, and `sync`. No ABCs, no metaclasses, no entry-point discovery.
 
-The module exports `all_enabled(client) -> list[Integration]`.  Today it returns `[github]`.
+The module exports `all_enabled(client) -> list[Integration]`. Today it returns `[github]`.
 Adding a new integration (Jira, Linear, Azure DevOps) means: create a submodule, implement the
-three methods, register in `all_enabled()`.  That is the complete API surface change required.
+three methods, register in `all_enabled()`. That is the complete API surface change required.
 
 The old entry-point plugin system (ABC hierarchy, dynamic discovery, community-plugin env flag)
-was removed in the `refactor/native-integrations` branch.  There are no backwards-compat shims.
+was removed in the `refactor/native-integrations` branch. There are no backwards-compat shims.
 
 The GitHub integration stores the canonical task-to-issue link on `Task.github_issue` as
-`<owner>/<repo>#<number>`.  Body / title / priority / acceptance-criteria sync bidirectionally;
-status lifecycles (kanban column ↔ issue open/closed) are intentionally decoupled.  Acceptance
+`<owner>/<repo>#<number>`. Body / title / priority / acceptance-criteria sync bidirectionally;
+status lifecycles (kanban column ↔ issue open/closed) are intentionally decoupled. Acceptance
 criteria sync via a comment tagged `<!-- kagan:acceptance-criteria -->` rather than rewriting
-the issue body.  A separate `kagan.core.integrations.mentions` module powers `#`-mention
+the issue body. A separate `kagan.core.integrations.mentions` module powers `#`-mention
 autocomplete with dual-source results (kagan tasks from the local DB + GitHub issues from `gh`).
 
 ## Frontend Construction

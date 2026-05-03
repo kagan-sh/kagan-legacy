@@ -78,6 +78,7 @@
   --kagan-rail-warning: #a87b25;
   --kagan-rail-review: #a8653a;
   --kagan-rail-idle: #8a7f72;
+  --kagan-thinking: #d4a044;
 
   --border-blurred: #bcae9a80;
   --text-muted: #665c50;
@@ -193,6 +194,7 @@
   --kagan-rail-warning: #e6c07b;
   --kagan-rail-review: #c27c4e;
   --kagan-rail-idle: #777777;
+  --kagan-thinking: #fbbf24;
 
   --border-blurred: hsl(240 4% 18% / 0.4);
   --text-muted: hsl(240 4% 64%);
@@ -511,6 +513,25 @@ textarea {
     --text-disabled: hsl(240 4% 65%);
     --footer-key-foreground: hsl(240 4% 75%);
     --footer-description-foreground: hsl(240 4% 70%);
+  }
+}
+
+/* Streaming glyph — half-disc rotating at 4fps (◐ ◓ ◑ ◒).
+   Uses steps(4) so the rotation snaps rather than interpolates.
+   Reduced-motion: component renders a static ◐ and skips this animation. */
+@keyframes streaming-glyph-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.streaming-glyph {
+  display: inline-block;
+  animation: streaming-glyph-spin 1s steps(4, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-glyph {
+    animation: none;
   }
 }
 

@@ -278,7 +278,7 @@ async def test_first_session_success_fires_on_first_completion(tmp_path: Path) -
 
     emitted: list[dict[str, Any]] = []
 
-    async def fake_emit(eng, event_type: str, payload: dict):
+    async def fake_emit(_eng, event_type: str, payload: dict):
         emitted.append({"event_type": event_type, "payload": payload})
 
     sessions_obj = Sessions.__new__(Sessions)
@@ -335,7 +335,7 @@ async def test_first_session_success_does_not_fire_on_subsequent_completion(
 
     emitted: list[dict[str, Any]] = []
 
-    async def fake_emit(eng, event_type: str, payload: dict):
+    async def fake_emit(_eng, event_type: str, payload: dict):
         emitted.append({"event_type": event_type, "payload": payload})
 
     sessions_obj = Sessions.__new__(Sessions)

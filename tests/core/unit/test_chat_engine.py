@@ -358,6 +358,57 @@ async def test_generator_exit_at_turn_started_yield_cleans_up(tmp_path: Path) ->
         core.close()
 
 
+async def test_history_failure_releases_slot(tmp_path: Path) -> None:
+    """Greptile P1: if ``self._sessions.history`` raises before the inner
+    generator is built, the engine must still release its claimed slot.
+    Pre-fix the sentinel Future stayed in ``_states`` and every subsequent
+    ``stream_assistant`` call raised ``TurnInProgressError`` forever.
+    """
+    factory = ScriptedFactory(chunks=["ok"])
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        from acp.schema import TextContentBlock
+
+        await engine.push_user(sid, "Hi")
+
+        original_history = engine._sessions.history  # noqa: SLF001
+        calls = {"n": 0}
+
+        async def flaky_history(session_id: str) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("simulated DB failure")
+            return await original_history(session_id)
+
+        engine._sessions.history = flaky_history  # type: ignore[method-assign]  # noqa: SLF001
+
+        with pytest.raises(RuntimeError, match="simulated DB failure"):
+            await _drain(
+                engine.stream_assistant(
+                    sid,
+                    prompt_blocks=[TextContentBlock(type="text", text="Hi")],
+                )
+            )
+
+        # Slot must be released — turn_status reports inactive.
+        assert engine.turn_status(sid).active is False, (
+            "DB failure in history() leaked the turn slot"
+        )
+
+        # Restore real history; a follow-up turn must NOT raise
+        # TurnInProgressError. Reuse the same scripted factory.
+        engine._sessions.history = original_history  # type: ignore[method-assign]  # noqa: SLF001
+        events = await _drain(
+            engine.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Hi")],
+            )
+        )
+        assert any(isinstance(e, TurnDone) for e in events)
+    finally:
+        core.close()
+
+
 async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
     """Issue 2: a raising ``ACPSessionFactory.prompt`` must produce exactly
     one ``TurnError`` event — not two from the drain + outer except both

@@ -170,32 +170,39 @@ class ChatEngine:
         per-request cwd / attachments without sharing factory mutable state.
         """
         state = self._claim_slot(session_id)
-        factory = acp_factory or self._acp
-
-        # First turn = "no assistant has replied yet". The user row is already
-        # persisted by ``push_user`` before this method is called, so checking
-        # ``len(prior) == 0`` would never fire title generation.
-        # ``GeneratorExit`` (early break by the consumer) MUST tear down
-        # ``_TurnState`` — otherwise the slot leaks and future turns 409.
-        prior = await self._sessions.history(session_id)
-        is_first_turn = not any(m.role == "assistant" for m in prior)
-
-        # Drive the inner generator manually so we can explicitly ``aclose``
-        # it when the outer consumer cancels us. ``async for`` would let the
-        # inner generator be garbage-collected without ever propagating
-        # ``GeneratorExit`` into its ``except (GeneratorExit, ...)`` block
-        # (especially when the outer is cancelled at its very first yield —
-        # see Greptile P2). Manual closure guarantees the inner cleanup path
-        # — ``cancel_event.set()`` + ``run_task.cancel()`` + ``drain_task``
-        # join — runs every time.
-        inner = self._run_stream(
-            session_id, state, prompt_blocks, is_first_turn, agent_backend, factory
-        )
+        # Wrap the entire post-claim body in try/finally so the slot is always
+        # released — even if ``self._sessions.history`` raises before the inner
+        # generator exists. Pre-fix, a transient DB error inside ``history()``
+        # would leak the sentinel Future into ``self._states`` and every
+        # subsequent ``stream_assistant`` call for this session would 409
+        # forever. (Greptile P1.)
         try:
-            async for event in inner:
-                yield event
+            factory = acp_factory or self._acp
+
+            # First turn = "no assistant has replied yet". The user row is
+            # already persisted by ``push_user`` before this method is called,
+            # so checking ``len(prior) == 0`` would never fire title generation.
+            prior = await self._sessions.history(session_id)
+            is_first_turn = not any(m.role == "assistant" for m in prior)
+
+            # Drive the inner generator manually so we can explicitly
+            # ``aclose`` it when the outer consumer cancels us. ``async for``
+            # would let the inner generator be garbage-collected without ever
+            # propagating ``GeneratorExit`` into its
+            # ``except (GeneratorExit, ...)`` block (especially when the outer
+            # is cancelled at its very first yield — see Greptile P2). Manual
+            # closure guarantees the inner cleanup path —
+            # ``cancel_event.set()`` + ``run_task.cancel()`` + ``drain_task``
+            # join — runs every time.
+            inner = self._run_stream(
+                session_id, state, prompt_blocks, is_first_turn, agent_backend, factory
+            )
+            try:
+                async for event in inner:
+                    yield event
+            finally:
+                await inner.aclose()
         finally:
-            await inner.aclose()
             self._teardown(session_id)
 
     # ------------------------------------------------------------------ cancel

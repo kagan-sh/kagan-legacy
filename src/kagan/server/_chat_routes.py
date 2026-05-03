@@ -597,6 +597,13 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         reason = await _interrupt_reason(request)
         result = await ctx.client.chat.cancel(session_id, reason=reason)
         if not result.was_running:
+            # No active /stream consumer to relay the engine's TurnCancelled
+            # event, so emit a transport-level CHAT_TURN_TERMINATED here so
+            # any /watch-only subscribers still see the cancel. When a turn
+            # *is* running, the engine emits TurnCancelled which
+            # ``_sse_stream`` already broadcasts — broadcasting again here
+            # would deliver the same frame twice. (Greptile P2.)
+            _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
             return _ok(
                 {
                     "session_id": session_id,
@@ -605,10 +612,6 @@ def _register_stream_routes(mcp: FastMCP) -> None:
                     "partial_chars": 0,
                 }
             )
-        # The engine's stream_assistant emits CHAT_TURN_TERMINATED via its
-        # TurnCancelled -> SSE mapping; broadcast a transport-level copy too
-        # so /watch-only subscribers (no active /stream consumer) still see it.
-        _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
         return _ok(
             {
                 "session_id": session_id,

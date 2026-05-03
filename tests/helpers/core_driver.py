@@ -293,7 +293,6 @@ class CoreDriver:
         *,
         timeout_seconds: float = 10.0,
         wait_for_status: list[str] | None = None,
-        from_updated_at: str | None = None,
     ) -> dict[str, Any]:
         """Wait for task status change or timeout."""
         target_statuses = (

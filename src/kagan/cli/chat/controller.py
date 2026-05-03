@@ -12,6 +12,7 @@ from uuid import uuid4
 import acp
 import click
 from loguru import logger
+from prompt_toolkit.patch_stdout import patch_stdout
 from rich.live import Live
 
 from kagan.cli.chat._approval_panel import strip_tool_prefix
@@ -37,7 +38,6 @@ from kagan.cli.chat._chat_ui import (
 from kagan.cli.chat._handshake import execute_handshake
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
 from kagan.cli.chat._title import generate_session_title
-from kagan.cli.chat._turn_live import TurnLiveRegion
 from kagan.cli.chat.acp import (
     _ACP_STDIO_BUFFER_LIMIT_BYTES,
 )
@@ -95,7 +95,6 @@ from kagan.core import (
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError, KaganError
 
-# Re-export for backward compatibility (tests, etc.)
 __all__ = [
     "ChatController",
     "_OrchestratorACPClient",
@@ -818,55 +817,44 @@ class ChatController:
 
         interrupted = False
         assistant_reply = ""
-        turn_live = TurnLiveRegion(_console)
-        turn_live.start()
-        if self._acp_client is not None:
-            self._acp_client.set_turn_live(turn_live)
-        try:
-            async with _turn_wave_animation(
-                _console, WAVE_FRAMES, turn_live=turn_live
-            ) as stop_animation:
-                if self._acp_client is not None:
-                    self._acp_client.start_turn(on_first_update=stop_animation)
-                prompt_task = asyncio.create_task(
-                    self._acp_conn.prompt(
-                        session_id=self._acp_session_id,
-                        prompt=prompt_blocks,
-                    ),
-                    name="chat-prompt",
-                )
-                original_sigint = install_sigint_handler(prompt_task)
-                try:
-                    await prompt_task
-                except asyncio.CancelledError:
-                    interrupted = True
-                except (
-                    acp.RequestError,
-                    TimeoutError,
-                    OSError,
-                    RuntimeError,
-                    ValueError,
-                ) as exc:
-                    logger.exception("Failed to send prompt to agent")
-                    _console.print(f"\n[red]Agent error: {exc}[/red]")
-                    return _SendResult()
-                except Exception as exc:
-                    logger.exception("Unexpected failure while sending prompt to agent")
-                    _console.print(f"\n[red]Agent error: {exc}[/red]")
-                    return _SendResult()
-                finally:
-                    restore_sigint_handler(original_sigint)
-                    _TOOLBAR_STATE.is_streaming = False
+        async with _turn_wave_animation(_console, WAVE_FRAMES) as stop_animation:
+            if self._acp_client is not None:
+                self._acp_client.start_turn(on_first_update=stop_animation)
+            prompt_task = asyncio.create_task(
+                self._acp_conn.prompt(
+                    session_id=self._acp_session_id,
+                    prompt=prompt_blocks,
+                ),
+                name="chat-prompt",
+            )
+            original_sigint = install_sigint_handler(prompt_task)
+            try:
+                await prompt_task
+            except asyncio.CancelledError:
+                interrupted = True
+            except (
+                acp.RequestError,
+                TimeoutError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as exc:
+                logger.exception("Failed to send prompt to agent")
+                _console.print(f"\n[red]Agent error: {exc}[/red]")
+                return _SendResult()
+            except Exception as exc:
+                logger.exception("Unexpected failure while sending prompt to agent")
+                _console.print(f"\n[red]Agent error: {exc}[/red]")
+                return _SendResult()
+            finally:
+                restore_sigint_handler(original_sigint)
+                _TOOLBAR_STATE.is_streaming = False
 
-            if self._acp_client is not None:
-                try:
-                    assistant_reply = self._acp_client.finish_turn()
-                except Exception:
-                    logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
-        finally:
-            turn_live.stop()
-            if self._acp_client is not None:
-                self._acp_client.set_turn_live(None)
+        if self._acp_client is not None:
+            try:
+                assistant_reply = self._acp_client.finish_turn()
+            except Exception:
+                logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
 
         self._append_turn(text, assistant_reply)
 
@@ -944,51 +932,88 @@ class ChatController:
             logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
 
     async def _repl_loop(self) -> None:
+        """Run the interactive REPL using a long-lived PromptSession.
+
+        A single ``prompt_async()`` call stays alive across agent reply turns.
+        The Enter keybinding enqueues submissions without closing the prompt,
+        so the bottom toolbar remains pinned at the terminal bottom throughout
+        the session — during user input, agent reply, tool calls, and wave
+        animation alike.  All console output is routed above the prompt by
+        ``patch_stdout(raw=True)``.
+        """
         _console.print(
             "[dim]Press [bold]/help[/bold] for commands, "
-            "[bold]Esc[/bold] to cancel, [bold]Ctrl-D[/bold] to exit.[/dim]\n"
+            "[bold]Ctrl-C[/bold] clear · [bold]Ctrl-D[/bold] exit.[/dim]\n"
         )
+        submit_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        session = _get_prompt_session(submit_queue)
         watcher_task = asyncio.create_task(self._event_watcher())
         _last_sent = ""
-        _prefill = ""
-        try:
-            while True:
-                try:
-                    line = await _get_prompt_session().prompt_async(
-                        _build_prompt_message,
-                        placeholder=_build_prompt_placeholder(),
-                        default=_prefill,
-                    )
-                except EOFError:
-                    break
-                except KeyboardInterrupt:
-                    continue
+        _done = False
 
-                _prefill = ""
-                stripped = line.strip()
+        async def _pump_queue() -> None:
+            """Read submissions from the queue and process them until exit."""
+            nonlocal _last_sent, _done
+            while not _done:
+                text = await submit_queue.get()
+                if text is None:
+                    # Ctrl-D sentinel: signal exit
+                    _done = True
+                    return
+                stripped = text.strip()
                 if not stripped:
                     continue
-
                 rotate_tip_on_submit()
-
                 if stripped.startswith("/"):
                     if await self._handle_slash(stripped):
-                        break  # /exit or agent switch
+                        _done = True
+                        return
                     continue
-
                 _last_sent = stripped
                 try:
                     result = await self._send(stripped)
                 except KeyboardInterrupt:
-                    _prefill = _last_sent
                     continue
-                except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+                except (
+                    acp.RequestError,
+                    TimeoutError,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                ) as exc:
                     logger.exception("Chat send failed")
                     _console.print(f"[red]Error:[/red] {exc}")
                     continue
-
                 if result.was_cancelled:
-                    _prefill = _last_sent
+                    await submit_queue.put(_last_sent)
+
+        try:
+            with patch_stdout(raw=True):
+                # Launch queue-drain loop and long-lived prompt concurrently.
+                pump_task = asyncio.create_task(_pump_queue(), name="chat-repl-pump")
+                prompt_task: asyncio.Task[str] = asyncio.create_task(
+                    session.prompt_async(
+                        _build_prompt_message,
+                        placeholder=_build_prompt_placeholder(),
+                    ),
+                    name="chat-repl-prompt",
+                )
+                try:
+                    # Wait for either the pump to signal done (Ctrl-D / /exit)
+                    # or prompt_async to return (unexpected EOF from the session).
+                    await asyncio.wait(
+                        [pump_task, prompt_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    _done = True
+                    # Unblock the pump if it's waiting on the queue
+                    submit_queue.put_nowait(None)
+                    for task in (pump_task, prompt_task):
+                        if not task.done():
+                            task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await task
         finally:
             watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

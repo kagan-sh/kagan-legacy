@@ -56,18 +56,15 @@ class _WaveIndicator:
 class _TurnWaveAnimation:
     """Turn wave animation helper with clear state management.
 
-    When a :class:`TurnLiveRegion` is provided, the wave frames render
-    inside the live region's tail (so the pinned footer stays put).
-    Without a turn-live region the animator falls back to raw stdout
-    line writes for compatibility.
+    Wave frames are written directly to stdout via ``_console.file``.
+    ``patch_stdout(raw=True)`` in the outer REPL loop routes these writes
+    above the prompt-toolkit toolbar so the footer stays pinned.
     """
 
     def __init__(
         self,
         _console,
         frames: tuple[str, ...],
-        *,
-        turn_live: Any | None = None,
     ) -> None:
         self._console = _console
         self._frames = frames
@@ -75,22 +72,15 @@ class _TurnWaveAnimation:
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._active = False
-        self._turn_live = turn_live
 
     def _write_wave(self, text: str) -> None:
         self._console.file.write(text)
         self._console.file.flush()
 
     def _show_frame(self, frame: str) -> None:
-        if self._turn_live is not None:
-            self._turn_live.set_tail(Text(frame, style="dim cyan"))
-            return
         self._write_wave(f"\r{frame}")
 
     def _clear_frame(self) -> None:
-        if self._turn_live is not None:
-            self._turn_live.clear_tail()
-            return
         self._write_wave(f"\r{' ' * self._line_width}\r")
 
     def stop(self) -> None:
@@ -127,10 +117,8 @@ class _TurnWaveAnimation:
 async def _turn_wave_animation(
     _console,
     frames: tuple[str, ...],
-    *,
-    turn_live: Any | None = None,
 ) -> AsyncIterator[Callable[[], None]]:
-    animator = _TurnWaveAnimation(_console, frames, turn_live=turn_live)
+    animator = _TurnWaveAnimation(_console, frames)
     await animator.start()
     try:
         yield animator.stop
@@ -676,13 +664,6 @@ class _OrchestratorACPClient(ACPClientBase):
         self.last_usage: Any = None
         self._spinner_name = get_rich_spinner_name()
         self._batch_queue = _BatchApprovalQueue(self)
-        self._turn_live: Any | None = None
-
-    def set_turn_live(self, turn_live: Any | None) -> None:
-        """Attach (or detach) the turn-wide pinned-footer Live region."""
-        self._turn_live = turn_live
-        self._md_region.attach(turn_live)
-        self._batch_queue.set_turn_live(turn_live)
 
     def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
         self._md_region.discard()
@@ -714,18 +695,14 @@ class _OrchestratorACPClient(ACPClientBase):
         return self._tool_runs.tool_report(query)
 
     def _print_via_terminal(self, fn: Callable[[], None]) -> None:
-        """Print safely above any active Live / prompt_toolkit Application.
+        """Print safely above any active prompt_toolkit Application.
 
-        - When a turn-wide Rich ``Live`` is active, plain ``console.print``
-          calls inside ``fn`` are routed above the live region by Rich
-          itself, so we just call ``fn`` directly.
-        - Otherwise, if a real prompt_toolkit Application owns the
-          terminal (e.g. an approval modal), use ``run_in_terminal`` so
-          the print doesn't collide with the modal's redraw.
+        When an approval modal (a transient ``Application``) owns the
+        terminal, use ``run_in_terminal`` so the print doesn't collide
+        with the modal's redraw.  Outside of modals, ``patch_stdout`` in
+        the outer REPL loop already routes ``_console.print`` above the
+        toolbar, so we just call ``fn`` directly.
         """
-        if self._turn_live is not None and self._turn_live.is_active:
-            fn()
-            return
         try:
             from prompt_toolkit.application.current import get_app
             from prompt_toolkit.application.dummy import DummyApplication

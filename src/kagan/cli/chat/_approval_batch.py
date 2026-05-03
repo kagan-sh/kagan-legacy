@@ -17,7 +17,6 @@ per-item options 1-4 and bulk options 5 (approve all) / 6 (reject all).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import io
 import os
 import shutil
@@ -451,25 +450,6 @@ class _BatchApprovalQueue:
         self._pending: list[_PendingItem] = []
         self._debounce_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
-        self._turn_live: Any | None = None
-
-    def set_turn_live(self, turn_live: Any | None) -> None:
-        """Attach the turn-wide Live region (paused around modal entry)."""
-        self._turn_live = turn_live
-
-    @contextlib.contextmanager
-    def _paused_turn_live(self) -> Any:
-        """Pause the turn-wide Live so a prompt_toolkit modal can run."""
-        live = self._turn_live
-        paused = False
-        try:
-            if live is not None and live.is_active:
-                live.pause()
-                paused = True
-            yield
-        finally:
-            if paused and live is not None:
-                live.resume()
 
     def reset(self) -> None:
         """Clear queue state at turn start (called from start_turn)."""
@@ -560,13 +540,12 @@ class _BatchApprovalQueue:
             item.future.set_result(_selected_permission_response(item.options[0]))
             return
 
-        with self._paused_turn_live():
-            selected_index, feedback = await _run_approval_panel_async(
-                item.tool_call,
-                permission_options=item.options,
-                queue_position=1,
-                queue_depth=1,
-            )
+        selected_index, feedback = await _run_approval_panel_async(
+            item.tool_call,
+            permission_options=item.options,
+            queue_position=1,
+            queue_depth=1,
+        )
         option = _map_approval_result(
             selected_index,
             feedback,
@@ -625,8 +604,7 @@ class _BatchApprovalQueue:
 
         run_in_terminal(lambda: None)  # flush any pending terminal output
 
-        with self._paused_turn_live():
-            await _run_batch_modal_async(
+        await _run_batch_modal_async(
                 items,
                 _resolve_item=_resolve_item,
                 _resolve_all=_resolve_all,

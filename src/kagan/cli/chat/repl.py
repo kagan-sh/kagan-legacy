@@ -20,9 +20,8 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console, ConsoleRenderable, Group
+from rich.console import Console, Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 from kagan.cli.chat._completion import fuzzy_match
@@ -186,8 +185,12 @@ def _build_prompt_style_rules() -> dict[str, str]:
             "completion-menu.completion.current": (
                 f"bg:{_REPL_COLORS['accent_soft']} fg:{_REPL_COLORS['text']} bold"
             ),
-            "completion-menu.meta.completion": f"fg:{_REPL_COLORS['meta']}",
-            "completion-menu.meta.completion.current": f"fg:{_REPL_COLORS['meta_current']}",
+            "completion-menu.meta.completion": (
+                f"bg:{_REPL_COLORS['surface']} fg:{_REPL_COLORS['meta']}"
+            ),
+            "completion-menu.meta.completion.current": (
+                f"bg:{_REPL_COLORS['accent_soft']} fg:{_REPL_COLORS['meta_current']}"
+            ),
             "completion-menu.multi-column-meta": f"fg:{_REPL_COLORS['meta']}",
             "selected-text": f"noreverse bg:{_REPL_COLORS['accent']} fg:{_REPL_COLORS['bg']}",
         }
@@ -693,51 +696,6 @@ def _toolbar_status_segments() -> tuple[str, str, str, str]:
     return status_left, status_right, tip_left, tip_right
 
 
-def _rich_footer_styles() -> dict[str, str]:
-    """Return Rich style strings matching the prompt-toolkit toolbar palette."""
-    if _supports_truecolor_terminal():
-        return {
-            "rule": _REPL_COLORS["accent_soft"],
-            "status": _REPL_COLORS["text_soft"],
-            "tip": f"italic {_REPL_COLORS['text_soft']}",
-        }
-    return {
-        "rule": "bright_black",
-        "status": "bright_black",
-        "tip": "italic bright_black",
-    }
-
-
-def _build_rich_footer() -> ConsoleRenderable:
-    """Build a Rich renderable mirroring `_bottom_toolbar()` for use inside Rich Live regions.
-
-    Layout (top → bottom):
-        ──  input [· plan · yolo]  ──────────────
-        ────────────────────────────────────────
-        workspace · git · …               agent · approvals · turn count
-        tip: …                                   session: orchestrator
-    """
-    _TIP_ROTATOR.maybe_rotate()
-    cols = max(shutil.get_terminal_size().columns, 1)
-    styles = _rich_footer_styles()
-
-    status_left, status_right, tip_left, tip_right = _toolbar_status_segments()
-
-    rule_text = Text("─" * cols, style=styles["rule"])
-
-    def _split_row(left: str, right: str, style: str) -> Table:
-        table = Table.grid(expand=True, padding=0)
-        table.add_column(justify="left", ratio=1, no_wrap=True, overflow="ellipsis")
-        table.add_column(justify="right", no_wrap=True, overflow="ellipsis")
-        table.add_row(Text(left, style=style), Text(right, style=style))
-        return table
-
-    return Group(
-        rule_text,
-        _split_row(status_left, status_right, styles["status"]),
-        _split_row(tip_left, tip_right, styles["tip"]),
-    )
-
 
 _PROMPT_GLYPH_IDLE: Final[str] = "❯ "  # noqa: RUF001
 _PROMPT_GLYPH_PLAN: Final[str] = "◇ "
@@ -819,17 +777,115 @@ def _ctrl_c(event) -> None:
 _console = Console(highlight=False)
 _prompt_style = Style.from_dict(_PROMPT_STYLE_RULES)
 _prompt_session: PromptSession[str] | None = None
+_submit_queue: "asyncio.Queue[str | None] | None" = None
 
 
-def _get_prompt_session() -> PromptSession[str]:
-    global _prompt_session
+def _build_repl_key_bindings(submit_queue: "asyncio.Queue[str | None]") -> KeyBindings:
+    """Return a KeyBindings instance wired to the long-lived REPL submit queue.
+
+    The Enter key reads the buffer, clears it, and enqueues the text — it does
+    NOT close ``prompt_async``.  All other bindings delegate to the module-level
+    ``_kb`` instance.
+    """
+    kb = KeyBindings()
+
+    # Ctrl-J: insert newline (multiline input)
+    @kb.add("c-j")
+    def _ctrl_j(event) -> None:
+        event.current_buffer.insert_text("\n")
+
+    # Up / Down: history cycling or completion menu navigation
+    @kb.add("up")
+    def _up(event) -> None:
+        buffer = event.current_buffer
+        if buffer.complete_state is not None:
+            buffer.complete_previous()
+            return
+        if not buffer.document.on_first_line:
+            buffer.cursor_up(count=1)
+            return
+        _cycle_history(event, "up")
+
+    @kb.add("down")
+    def _down(event) -> None:
+        buffer = event.current_buffer
+        if buffer.complete_state is not None:
+            buffer.complete_next()
+            return
+        if not buffer.document.on_last_line:
+            buffer.cursor_down(count=1)
+            return
+        _cycle_history(event, "down")
+
+    # Ctrl-C: clear buffer (does NOT exit — Ctrl-D exits)
+    @kb.add("c-c")
+    def _ctrl_c(event) -> None:
+        buffer = event.current_buffer
+        if not buffer.text:
+            return
+        line_count = len(getattr(buffer, "_working_lines", []))
+        if line_count > 0:
+            buffer.go_to_history(line_count - 1)
+        buffer.text = ""
+        buffer.cursor_position = 0
+
+    # Ctrl-D (EOF): enqueue sentinel to stop the REPL loop
+    @kb.add("c-d")
+    def _ctrl_d(event) -> None:
+        buffer = event.current_buffer
+        if buffer.text:
+            # Ctrl-D with content: clear buffer, consistent with readline
+            buffer.text = ""
+            buffer.cursor_position = 0
+            return
+        # Empty buffer: signal EOF
+        submit_queue.put_nowait(None)
+
+    # Enter: submit via queue, keep prompt_async alive
+    @kb.add("enter")
+    def _enter(event) -> None:
+        buffer = event.current_buffer
+        # If completion menu is open, accept the selection and stay in prompt
+        if buffer.complete_state is not None and buffer.complete_state.completions:
+            current = buffer.complete_state.current_completion
+            if current:
+                buffer.apply_completion(current)
+            elif buffer.complete_state.completions:
+                buffer.apply_completion(buffer.complete_state.completions[0])
+            return
+        text = buffer.text
+        buffer.text = ""
+        buffer.cursor_position = 0
+        # Reset history pointer to working line
+        line_count = len(getattr(buffer, "_working_lines", []))
+        if line_count > 0:
+            buffer.go_to_history(line_count - 1)
+        submit_queue.put_nowait(text)
+
+    return kb
+
+
+def _get_prompt_session(
+    submit_queue: "asyncio.Queue[str | None] | None" = None,
+) -> PromptSession[str]:
+    """Return the singleton REPL PromptSession.
+
+    When *submit_queue* is provided and differs from the previously used queue
+    the session is rebuilt so the Enter keybinding is wired to the new queue.
+    """
+    global _prompt_session, _submit_queue
+    if submit_queue is not None and submit_queue is not _submit_queue:
+        _prompt_session = None
+        _submit_queue = submit_queue
     if _prompt_session is None:
+        kb = _build_repl_key_bindings(_submit_queue) if _submit_queue is not None else _kb
         _prompt_session = PromptSession(
             style=_prompt_style,
             completer=_SlashCompleter(),
-            key_bindings=_kb,
+            key_bindings=kb,
             bottom_toolbar=_bottom_toolbar,
             refresh_interval=0.25,
+            mouse_support=False,
         )
     return _prompt_session
 

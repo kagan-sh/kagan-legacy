@@ -1,16 +1,10 @@
 """Response chunk processing and streaming output with memory safeguards."""
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from loguru import logger
-from rich.console import Group
-from rich.live import Live
 from rich.markdown import Markdown
-from rich.rule import Rule
-
-if TYPE_CHECKING:
-    from kagan.cli.chat._turn_live import TurnLiveRegion
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -134,117 +128,41 @@ class OutputFlushManager:
 
 
 class StreamingMarkdownRegion:
-    """Live-updating Markdown render of the agent's streaming reply.
+    """Accumulates streaming Markdown chunks and commits them on finalize.
 
-    A Rich `Live` (transient) shows the buffer rendered as Markdown while
-    chunks arrive.  `finalize()` drops the live preview and commits the
-    Markdown render to scrollback so it persists like normal output.
-    Subsequent appends start a fresh region — this is what gives the
-    transcript its "rendered text, then tool calls, then more rendered
-    text" shape without the streamed pipes/fences a raw stream would show.
+    Chunks accumulate in a buffer.  ``finalize()`` commits the final
+    Markdown render to the console via ``_console.print(Markdown(text))``.
+    ``patch_stdout(raw=True)`` in the outer REPL loop routes this output
+    above the prompt-toolkit toolbar so the footer stays pinned.
+
+    The previous ``attach()`` / parent-tail mechanism (``TurnLiveRegion``)
+    has been removed.  Streaming updates are now purely accumulative;
+    the prompt-toolkit toolbar provides the only live footer.
     """
-
-    # Refresh at 4fps so the toolbar's `◐ ◓ ◑ ◒` thinking-dot animation keeps
-    # spinning even when no chunk arrives for a beat.  Rich coalesces redraws
-    # internally, so this stays cheap.
-    _REFRESH_PER_SECOND = 4
 
     def __init__(self, console: Any) -> None:
         self._console = console
         self._buffer: list[str] = []
-        self._live: Live | None = None
-        # Optional outer ``TurnLiveRegion`` that owns the pinned-footer Live
-        # for the whole turn.  When set, ``StreamingMarkdownRegion`` becomes a
-        # passive renderable: streaming chunks update the parent's tail, and
-        # ``finalize()`` commits the final Markdown to scrollback above the
-        # parent's live region.
-        self._parent: TurnLiveRegion | None = None
-
-    def attach(self, parent: "TurnLiveRegion | None") -> None:
-        """Attach an outer turn-wide Live region (or detach with ``None``)."""
-        self._parent = parent
-
-    def _render(self) -> Any:
-        """Build the renderable for the Live region: markdown body + footer."""
-        body = Markdown(self._joined()) if self._buffer else None
-        try:
-            from kagan.cli.chat.repl import _build_rich_footer
-        except ImportError:  # pragma: no cover — defensive, repl is always importable here
-            footer = None
-        else:
-            try:
-                footer = _build_rich_footer()
-            except Exception:  # pragma: no cover — never let footer break streaming
-                logger.opt(exception=True).debug("Failed to build Rich footer; skipping")
-                footer = None
-
-        parts: list[Any] = []
-        if body is not None:
-            parts.append(body)
-        if footer is not None:
-            if body is not None:
-                parts.append(Rule(style="dim"))
-            parts.append(footer)
-        if not parts:
-            return Markdown("")
-        return Group(*parts)
 
     def append(self, text: str) -> None:
         if not text:
             return
         self._buffer.append(text)
-        if self._parent is not None:
-            # Outer TurnLiveRegion owns the live region; stream into its tail.
-            self._parent.set_tail(Markdown(self._joined()))
-            return
-        if self._live is None:
-            self._live = Live(
-                self._render(),
-                console=self._console,
-                refresh_per_second=self._REFRESH_PER_SECOND,
-                transient=True,
-            )
-            self._live.start()
-        else:
-            self._live.update(self._render())
 
     def finalize(self) -> None:
-        """Stop the live preview and commit the final Markdown to scrollback."""
-        if self._parent is not None:
-            text = self._joined().strip()
-            self._buffer = []
-            # Drop the streaming preview from the parent's tail before
-            # committing the final Markdown to scrollback above the live.
-            self._parent.clear_tail()
-            if text:
-                self._console.print(Markdown(text))
-            return
-        if self._live is None and not self._buffer:
-            return
-        if self._live is not None:
-            self._live.stop()
-            self._live = None
+        """Commit the accumulated Markdown to the console and clear the buffer."""
         text = self._joined().strip()
         self._buffer = []
         if text:
             self._console.print(Markdown(text))
 
     def discard(self) -> None:
-        """Stop the live preview without printing (used on turn reset)."""
-        if self._parent is not None:
-            self._parent.clear_tail()
-            self._buffer = []
-            return
-        if self._live is not None:
-            self._live.stop()
-            self._live = None
+        """Clear the buffer without printing (used on turn reset)."""
         self._buffer = []
 
     @property
     def is_active(self) -> bool:
-        if self._parent is not None:
-            return bool(self._buffer)
-        return self._live is not None
+        return bool(self._buffer)
 
     def _joined(self) -> str:
         return "".join(self._buffer)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import io
 import shutil
 import sys
@@ -26,7 +24,7 @@ from rich.measure import Measurement
 from rich.text import Text
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import Callable
 
 from kagan.cli.chat._approval_panel import build_approval_panel, get_rich_spinner_name, no_color
 from kagan.cli.chat._streaming import (
@@ -51,79 +49,6 @@ class _WaveIndicator:
     def __rich_measure__(self, console, options):
         del console, options
         return Measurement(len(WAVE_FRAMES[0]), len(WAVE_FRAMES[0]))
-
-
-class _TurnWaveAnimation:
-    """Turn wave animation helper with clear state management.
-
-    Wave frames are written directly to stdout via ``_console.file``.
-    ``patch_stdout(raw=True)`` in the outer REPL loop routes these writes
-    above the prompt-toolkit toolbar so the footer stays pinned.
-    """
-
-    def __init__(
-        self,
-        _console,
-        frames: tuple[str, ...],
-    ) -> None:
-        self._console = _console
-        self._frames = frames
-        self._line_width = len(frames[0])
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task[None] | None = None
-        self._active = False
-
-    def _write_wave(self, text: str) -> None:
-        self._console.file.write(text)
-        self._console.file.flush()
-
-    def _show_frame(self, frame: str) -> None:
-        self._write_wave(f"\r{frame}")
-
-    def _clear_frame(self) -> None:
-        self._write_wave(f"\r{' ' * self._line_width}\r")
-
-    def stop(self) -> None:
-        if self._active:
-            self._stop_event.set()
-
-    async def _animate(self) -> None:
-        self._active = True
-        frame_index = 0
-        while not self._stop_event.is_set():
-            frame = self._frames[frame_index]
-            self._show_frame(frame)
-            frame_index = (frame_index + 1) % len(self._frames)
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=0.10)
-            except TimeoutError:
-                continue
-        self._clear_frame()
-        self._active = False
-
-    async def start(self) -> None:
-        self._task = asyncio.create_task(self._animate(), name="chat-turn-wave")
-
-    async def shutdown(self) -> None:
-        self._stop_event.set()
-        if self._task is not None:
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._active:
-            self._clear_frame()
-
-
-@contextlib.asynccontextmanager
-async def _turn_wave_animation(
-    _console,
-    frames: tuple[str, ...],
-) -> AsyncIterator[Callable[[], None]]:
-    animator = _TurnWaveAnimation(_console, frames)
-    await animator.start()
-    try:
-        yield animator.stop
-    finally:
-        await animator.shutdown()
 
 
 @dataclass(frozen=True, slots=True)
@@ -659,31 +584,19 @@ class _OrchestratorACPClient(ACPClientBase):
         self._response_chunks = ResponseChunkBuffer()
         self._output_flusher = OutputFlushManager(_console)
         self._md_region = StreamingMarkdownRegion(_console)
-        self._first_update_notified = False
-        self._on_first_update: Callable[[], None] | None = None
         self.last_usage: Any = None
         self._spinner_name = get_rich_spinner_name()
         self._batch_queue = _BatchApprovalQueue(self)
 
-    def start_turn(self, *, on_first_update: Callable[[], None] | None = None) -> None:
+    def start_turn(self) -> None:
         self._md_region.discard()
         self._output_flusher.shutdown()
         self._response_chunks.clear()
         self._output_flusher.clear()
         self._tool_runs.start_turn()
         self._grouped_tools.clear()
-        self._first_update_notified = False
-        self._on_first_update = on_first_update
         self.last_usage = None
         self._batch_queue.reset()
-
-    def _notify_first_update(self) -> None:
-        if self._first_update_notified:
-            return
-        self._first_update_notified = True
-        if self._on_first_update is None:
-            return
-        self._on_first_update()
 
     def finish_turn(self) -> str:
         self._md_region.finalize()
@@ -773,7 +686,6 @@ class _OrchestratorACPClient(ACPClientBase):
                 text = getattr(content, "text", "") or ""
                 if text:
                     self._streaming = True
-                    self._notify_first_update()
                     self._response_chunks.append(text)
                     self._md_region.append(text)
         elif isinstance(update, AgentThoughtChunk):
@@ -782,7 +694,6 @@ class _OrchestratorACPClient(ACPClientBase):
                 if content and getattr(content, "type", None) == "text":
                     text = getattr(content, "text", "") or ""
                     if text:
-                        self._notify_first_update()
                         self._md_region.finalize()
                         self._output_flusher.flush(force=True)
 
@@ -794,7 +705,6 @@ class _OrchestratorACPClient(ACPClientBase):
 
                         self._print_via_terminal(_print_thought)
         elif isinstance(update, ToolCallStart):
-            self._notify_first_update()
             self._md_region.finalize()
             self._output_flusher.flush(force=True)
             title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
@@ -815,12 +725,10 @@ class _OrchestratorACPClient(ACPClientBase):
 
                 self._print_via_terminal(_print_start)
         elif isinstance(update, ToolCallProgress):
-            self._notify_first_update()
             self._md_region.finalize()
             self._output_flusher.flush(force=True)
             self._handle_tool_progress(update)
         elif isinstance(update, UsageUpdate):
-            self._notify_first_update()
             self.last_usage = update
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):

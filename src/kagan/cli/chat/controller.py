@@ -19,8 +19,6 @@ from kagan.cli.chat._approval_panel import strip_tool_prefix
 from kagan.cli.chat._chat_acp import (
     _OrchestratorACPClient,
     _SendResult,
-    _turn_wave_animation,
-    _TurnWaveAnimation,
     _WaveIndicator,
 )
 from kagan.cli.chat._chat_ui import (
@@ -55,7 +53,6 @@ from kagan.cli.chat.prompt import (
 )
 from kagan.cli.chat.repl import (
     _TOOLBAR_STATE,
-    WAVE_FRAMES,
     SearchPickerOption,
     _build_prompt_message,
     _build_prompt_placeholder,
@@ -99,9 +96,7 @@ __all__ = [
     "ChatController",
     "_OrchestratorACPClient",
     "_SendResult",
-    "_TurnWaveAnimation",
     "_WaveIndicator",
-    "_turn_wave_animation",
 ]
 
 
@@ -817,38 +812,37 @@ class ChatController:
 
         interrupted = False
         assistant_reply = ""
-        async with _turn_wave_animation(_console, WAVE_FRAMES) as stop_animation:
-            if self._acp_client is not None:
-                self._acp_client.start_turn(on_first_update=stop_animation)
-            prompt_task = asyncio.create_task(
-                self._acp_conn.prompt(
-                    session_id=self._acp_session_id,
-                    prompt=prompt_blocks,
-                ),
-                name="chat-prompt",
-            )
-            original_sigint = install_sigint_handler(prompt_task)
-            try:
-                await prompt_task
-            except asyncio.CancelledError:
-                interrupted = True
-            except (
-                acp.RequestError,
-                TimeoutError,
-                OSError,
-                RuntimeError,
-                ValueError,
-            ) as exc:
-                logger.exception("Failed to send prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            except Exception as exc:
-                logger.exception("Unexpected failure while sending prompt to agent")
-                _console.print(f"\n[red]Agent error: {exc}[/red]")
-                return _SendResult()
-            finally:
-                restore_sigint_handler(original_sigint)
-                _TOOLBAR_STATE.is_streaming = False
+        if self._acp_client is not None:
+            self._acp_client.start_turn()
+        prompt_task = asyncio.create_task(
+            self._acp_conn.prompt(
+                session_id=self._acp_session_id,
+                prompt=prompt_blocks,
+            ),
+            name="chat-prompt",
+        )
+        original_sigint = install_sigint_handler(prompt_task)
+        try:
+            await prompt_task
+        except asyncio.CancelledError:
+            interrupted = True
+        except (
+            acp.RequestError,
+            TimeoutError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as exc:
+            logger.exception("Failed to send prompt to agent")
+            _console.print(f"\n[red]Agent error: {exc}[/red]")
+            return _SendResult()
+        except Exception as exc:
+            logger.exception("Unexpected failure while sending prompt to agent")
+            _console.print(f"\n[red]Agent error: {exc}[/red]")
+            return _SendResult()
+        finally:
+            restore_sigint_handler(original_sigint)
+            _TOOLBAR_STATE.is_streaming = False
 
         if self._acp_client is not None:
             try:

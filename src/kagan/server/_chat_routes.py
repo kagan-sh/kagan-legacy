@@ -232,64 +232,60 @@ async def _sse_stream(
     # calling it after ``push_user`` would wipe the just-persisted user row.
     # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
     session["agent_backend"] = backend
-    # If anything between the claim and ``stream_assistant`` raises, the
-    # claimed slot must be released — otherwise the sentinel leaks into
-    # ``engine._states`` and every subsequent request 409s for this session.
-    # ``stream_assistant`` itself owns teardown via its own try/finally once
-    # entered, so this guard only needs to cover the pre-stream window.
-    pre_stream_ok = False
+    # The claimed slot must be released if ANYTHING between the claim and
+    # entering ``stream_assistant`` fails — including settings/cwd resolution,
+    # client disconnect at a yield, or push_user. Once ``stream_assistant``
+    # is entered it owns teardown via its own try/finally; ``detach`` is
+    # idempotent so double-teardown is safe.
+    stream_entered = False
     try:
         await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
 
         # Persist user message and broadcast (transport owns user-row emission;
         # see the note above ``UserMessagePersisted`` in core.chat.events).
         user_msg = await engine.push_user(session_id, text, attachments=attachments)
-        pre_stream_ok = True
-    finally:
-        if not pre_stream_ok:
-            await engine.detach(session_id)
-    user_msg_id = getattr(user_msg, "id", None)
+        user_msg_id = getattr(user_msg, "id", None)
 
-    user_event = {
-        "t": "CHAT_USER_MESSAGE",
-        "message_id": user_msg_id,
-        "content": text,
-    }
-    _broadcast(session_id, user_event)
-    yield _emit(user_event)
+        user_event = {
+            "t": "CHAT_USER_MESSAGE",
+            "message_id": user_msg_id,
+            "content": text,
+        }
+        _broadcast(session_id, user_event)
+        yield _emit(user_event)
 
-    started_event = {
-        "t": "CHAT_TURN_STARTED",
-        "at": datetime.now(UTC).isoformat(),
-        "by_source": session.get("source"),
-    }
-    _broadcast(session_id, started_event)
-    yield _emit(started_event)
+        started_event = {
+            "t": "CHAT_TURN_STARTED",
+            "at": datetime.now(UTC).isoformat(),
+            "by_source": session.get("source"),
+        }
+        _broadcast(session_id, started_event)
+        yield _emit(started_event)
 
-    # Build a per-request factory that captures cwd + attachments.
-    settings = await ctx.client.settings.get()
-    project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-    factory = SpawnPerTurnACPFactory(
-        client=ctx.client,
-        default_agent_backend=backend,
-        cwd=project_cwd,
-        attachments=attachments,
-    )
+        # Build a per-request factory that captures cwd + attachments.
+        settings = await ctx.client.settings.get()
+        project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
+        factory = SpawnPerTurnACPFactory(
+            client=ctx.client,
+            default_agent_backend=backend,
+            cwd=project_cwd,
+            attachments=attachments,
+        )
 
-    # Build the prompt blocks. Today the spawn-per-turn factory only honours
-    # the user text (it reconstructs system + wrapper internally via
-    # ``run_orchestrator_turn``); we forward the prior conversation here so
-    # the orchestrator sees full context.
-    from kagan.cli.chat.prompt import build_orchestrator_prompt
+        # Build the prompt blocks. Today the spawn-per-turn factory only honours
+        # the user text (it reconstructs system + wrapper internally via
+        # ``run_orchestrator_turn``); we forward the prior conversation here so
+        # the orchestrator sees full context.
+        from kagan.cli.chat.prompt import build_orchestrator_prompt
 
-    prior_history: list[tuple[str, str]] = [
-        (str(item[0]), str(item[1]))
-        for item in (session.get("orchestrator_history") or [])
-        if isinstance(item, list | tuple) and len(item) == 2
-    ]
-    prompt_text = build_orchestrator_prompt(prior_history, text)
+        prior_history: list[tuple[str, str]] = [
+            (str(item[0]), str(item[1]))
+            for item in (session.get("orchestrator_history") or [])
+            if isinstance(item, list | tuple) and len(item) == 2
+        ]
+        prompt_text = build_orchestrator_prompt(prior_history, text)
 
-    try:
+        stream_entered = True
         async for event in engine.stream_assistant(
             session_id,
             prompt_blocks=[acp.text_block(prompt_text)],
@@ -323,6 +319,9 @@ async def _sse_stream(
         err = {"t": "CHAT_ERROR", "error": str(exc)}
         _broadcast(session_id, err)
         yield _emit(err)
+    finally:
+        if not stream_entered:
+            await engine.detach(session_id)
 
 
 # ---------------------------------------------------------------------------

@@ -132,3 +132,62 @@ async def test_concurrent_sse_streams_claim_atomically(
         assert user_rows[0].content == "first"
     finally:
         core.close()
+
+
+async def test_pre_stream_failure_releases_slot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If anything between try_claim_turn and entering stream_assistant
+    raises (settings.get / resolve_repo_path / yield), the slot must be
+    released so a subsequent /stream request does not 409 forever.
+
+    Greptile P1: the original ``pre_stream_ok`` guard only covered
+    ``push_user``; the gap between push_user and stream_assistant included
+    two more awaits + two yields where a slot leak was possible.
+    """
+    db_path = tmp_path / "kagan.db"
+    core = KaganCore(db_path=db_path)
+    try:
+        await core.reset()
+
+        session = await core.chat_sessions.create(source="web", label="t")
+        session_dict = await get_chat_session(core, session.id)
+        assert session_dict is not None
+
+        ctx = SimpleNamespace(client=core)
+
+        # Force settings.get() to raise — simulates a flaky read between
+        # try_claim_turn and stream_assistant entry.
+        async def _boom(*_args: Any, **_kwargs: Any) -> dict[str, str]:
+            raise RuntimeError("simulated settings failure")
+
+        monkeypatch.setattr(core.settings, "get", _boom)
+
+        stream = _chat_routes._sse_stream(
+            ctx,
+            session.id,
+            session_dict,
+            text="first",
+            backend="claude-code",
+            attachments=None,
+        )
+
+        # Drain the generator — exception must propagate via the route's
+        # except branch but the slot must be released by the finally.
+        chunks = await _drain_sse(stream)
+        # The CHAT_USER_MESSAGE + CHAT_TURN_STARTED frames go out before the
+        # settings.get() call, then CHAT_ERROR fires when the exception is
+        # caught.
+        frames = _frames(chunks)
+        kinds = [f["t"] for f in frames]
+        assert "CHAT_ERROR" in kinds
+
+        # Slot must be free: a follow-up turn_status should report inactive.
+        status = core.chat.turn_status(session.id)
+        assert not status.active, (
+            "Slot leaked after pre-stream failure — engine._states still has "
+            "the sentinel."
+        )
+    finally:
+        core.close()

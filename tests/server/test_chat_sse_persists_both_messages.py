@@ -67,7 +67,7 @@ async def test_sse_turn_persists_both_user_and_assistant_rows(
         assert session_dict is not None
 
         ctx = SimpleNamespace(client=core)
-        stream = _chat_routes._sse_stream(  # noqa: SLF001
+        stream = _chat_routes._sse_stream(
             ctx,
             session.id,
             session_dict,

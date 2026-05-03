@@ -168,7 +168,7 @@ async def test_permission_request_selects_interactive_allow_option(
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
 
     # Mock the async panel to return index 1 = allow_always without launching a real terminal.
-    async def _fake_panel(*_a, **_kw):  # noqa: RUF006
+    async def _fake_panel(*_a, **_kw):
         return (1, "")
 
     monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
@@ -202,7 +202,7 @@ async def test_permission_request_can_select_deny_option_from_acp_options(
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
 
     # Mock the async panel to return index 2 = reject_once.
-    async def _fake_panel(*_a, **_kw):  # noqa: RUF006
+    async def _fake_panel(*_a, **_kw):
         return (2, "")
 
     monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)

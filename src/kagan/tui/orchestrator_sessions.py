@@ -26,6 +26,23 @@ def is_orchestrator_session_key(key: str) -> bool:
 
 
 class TuiOrchestratorSessionStore:
+    """TUI-only cache + UX state on top of ``client.chat_sessions``.
+
+    Owns the **transient** TUI bits that don't fit on the core aggregate:
+
+    * the in-memory cache of session dicts the picker renders without a DB
+      round-trip on every keystroke,
+    * the ``active_key`` pointer driven by the session switcher,
+    * the per-source rendering helpers (``(cli)`` / ``(web)`` badges),
+    * the title-generation kick-off cadence.
+
+    Persistence still flows through ``client.chat_sessions`` (via the legacy
+    ``cli/chat/sessions.py`` shim, which is the phase-6 deletion target).
+    Migrating this store to consume ``client.chat_sessions`` directly is
+    deferred until that shim is rewritten — the dict-shaped interface here is
+    load-bearing for ``ChatPanel.set_sessions``.
+    """
+
     def __init__(self, client: Any, *, startup_session_id: str | None = None) -> None:
         self._client = client
         self._startup_session_id = startup_session_id.strip() if startup_session_id else None

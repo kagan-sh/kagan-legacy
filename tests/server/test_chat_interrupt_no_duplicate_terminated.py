@@ -49,7 +49,7 @@ async def _interrupt_via_engine(core: KaganCore, session_id: str) -> None:
     """
     result = await core.chat.cancel(session_id, reason="user")
     if not result.was_running:
-        _chat_routes._broadcast(  # noqa: SLF001
+        _chat_routes._broadcast(
             session_id, {"t": "CHAT_TURN_TERMINATED", "reason": "user"}
         )
 
@@ -83,10 +83,10 @@ async def test_interrupt_during_active_stream_emits_terminated_once(
 
         # Subscribe to the /watch fanout with a queue so we can count frames.
         watch_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        _chat_routes._chat_subscribers[session.id].append(watch_queue)  # noqa: SLF001
+        _chat_routes._chat_subscribers[session.id].append(watch_queue)
 
         ctx = SimpleNamespace(client=core)
-        sse_stream = _chat_routes._sse_stream(  # noqa: SLF001
+        sse_stream = _chat_routes._sse_stream(
             ctx,
             session.id,
             session_dict,
@@ -106,7 +106,7 @@ async def test_interrupt_during_active_stream_emits_terminated_once(
             await asyncio.wait_for(consumer, timeout=5.0)
         finally:
             with contextlib.suppress(Exception):
-                _chat_routes._chat_subscribers[session.id].remove(  # noqa: SLF001
+                _chat_routes._chat_subscribers[session.id].remove(
                     watch_queue
                 )
 
@@ -138,11 +138,11 @@ async def test_interrupt_with_no_active_turn_still_broadcasts_once(
         session = await core.chat_sessions.create(source="web", label="t")
 
         watch_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        _chat_routes._chat_subscribers[session.id].append(watch_queue)  # noqa: SLF001
+        _chat_routes._chat_subscribers[session.id].append(watch_queue)
         try:
             await _interrupt_via_engine(core, session.id)
         finally:
-            _chat_routes._chat_subscribers[session.id].remove(  # noqa: SLF001
+            _chat_routes._chat_subscribers[session.id].remove(
                 watch_queue
             )
 

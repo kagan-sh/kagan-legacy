@@ -27,10 +27,9 @@ from kagan.tui._chat_helpers import (
 )
 from kagan.tui.keybindings import SESSION_DASHBOARD_BINDINGS, get_key_for_action
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
-from kagan.tui.screens.kanban_chat import (
+from kagan.tui.screens._chat_runner import (
     acp_payload,
     apply_task_chat_event,
-    send_orchestrator_message,
     stream_chunk_kind,
     stream_chunk_text,
     tool_call_args,
@@ -39,6 +38,9 @@ from kagan.tui.screens.kanban_chat import (
     tool_call_result,
     tool_call_status,
     tool_call_title,
+)
+from kagan.tui.screens._chat_runner import (
+    send_chat_message as send_orchestrator_message,
 )
 from kagan.tui.widgets.agent_status import AgentStatusPanel
 from kagan.tui.widgets.chat import ChatPanel

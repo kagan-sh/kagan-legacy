@@ -11,8 +11,14 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from tests.helpers.chat_engine import (
+    RaisingFactory,
+    ScriptedFactory,
+    SuspendingFactory,
+    boot_engine,
+)
 
-from kagan.core.chat.engine import ChatEngine, TurnInProgressError
+from kagan.core.chat.engine import TurnInProgressError
 from kagan.core.chat.events import (
     AssistantChunk,
     AssistantMessagePersisted,
@@ -21,12 +27,6 @@ from kagan.core.chat.events import (
     TurnDone,
     TurnError,
     TurnStarted,
-)
-from tests.helpers.chat_engine import (
-    RaisingFactory,
-    ScriptedFactory,
-    SuspendingFactory,
-    boot_engine,
 )
 
 if TYPE_CHECKING:
@@ -325,7 +325,7 @@ async def test_generator_exit_at_turn_started_yield_cleans_up(tmp_path: Path) ->
 
         # Snapshot the underlying tasks via the engine's private state so we
         # can assert they get cancelled below.
-        run_state = engine._states[sid]  # pyrefly: ignore  # noqa: SLF001
+        run_state = engine._states[sid]  # pyrefly: ignore
         run_task = run_state.task
         cancel_event = run_state.cancel_event
         assert run_task is not None and not run_task.done()
@@ -371,7 +371,7 @@ async def test_history_failure_releases_slot(tmp_path: Path) -> None:
 
         await engine.push_user(sid, "Hi")
 
-        original_history = engine._sessions.history  # noqa: SLF001
+        original_history = engine._sessions.history
         calls = {"n": 0}
 
         async def flaky_history(session_id: str) -> Any:
@@ -380,7 +380,7 @@ async def test_history_failure_releases_slot(tmp_path: Path) -> None:
                 raise RuntimeError("simulated DB failure")
             return await original_history(session_id)
 
-        engine._sessions.history = flaky_history  # type: ignore[method-assign]  # noqa: SLF001
+        engine._sessions.history = flaky_history  # type: ignore[method-assign]
 
         with pytest.raises(RuntimeError, match="simulated DB failure"):
             await _drain(
@@ -397,7 +397,7 @@ async def test_history_failure_releases_slot(tmp_path: Path) -> None:
 
         # Restore real history; a follow-up turn must NOT raise
         # TurnInProgressError. Reuse the same scripted factory.
-        engine._sessions.history = original_history  # type: ignore[method-assign]  # noqa: SLF001
+        engine._sessions.history = original_history  # type: ignore[method-assign]
         events = await _drain(
             engine.stream_assistant(
                 sid,

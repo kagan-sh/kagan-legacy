@@ -37,7 +37,6 @@ def _make_ctx():
 @pytest.fixture
 async def client(tmp_path):
     from kagan.core import KaganCore
-
     from tests.helpers.helpers import make_git_repo
 
     c = KaganCore(db_path=tmp_path / "test.db")

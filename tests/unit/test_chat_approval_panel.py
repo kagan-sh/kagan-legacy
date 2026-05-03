@@ -11,9 +11,9 @@ from kagan.cli.chat._approval_panel import (
     _build_display_options,
     _extract_key_args_preview,
     _is_shell_command,
-    strip_tool_prefix,
     _tool_display_name,
     build_approval_panel,
+    strip_tool_prefix,
 )
 from kagan.cli.chat._chat_acp import (
     _map_approval_result,
@@ -116,8 +116,9 @@ def test_build_display_options_always_returns_four_slots() -> None:
 
 
 def test_build_approval_panel_highlights_selected_index() -> None:
-    from rich.console import Console
     import io
+
+    from rich.console import Console
 
     class _FakeCall:
         title = "mcp__kagan__task_get"

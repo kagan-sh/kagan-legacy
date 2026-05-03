@@ -9,9 +9,9 @@ These tests verify the three visible states:
 from __future__ import annotations
 
 import pytest
+from tests.helpers.async_utils import wait_for
 
 from kagan.cli.doctor import DoctorCheck
-from tests.helpers.async_utils import wait_for
 
 pytestmark = [pytest.mark.tui, pytest.mark.snapshot]
 

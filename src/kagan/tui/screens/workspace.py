@@ -16,8 +16,8 @@ from kagan.core.enums import SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.tui._chat_helpers import TitleGenerationSession, kick_title_generation
 from kagan.tui.keybindings import WORKSPACE_BINDINGS, get_key_for_action
+from kagan.tui.screens._chat_runner import send_chat_message
 from kagan.tui.screens.confirm import ConfirmModal
-from kagan.tui.screens.kanban_chat import send_orchestrator_message as send_chat_message
 from kagan.tui.widgets.chat import ChatPanel
 from kagan.tui.widgets.header import KaganHeader
 

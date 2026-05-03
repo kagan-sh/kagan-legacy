@@ -187,6 +187,10 @@ class ChatPanel(Vertical):
         self._overlay_close_key = "Esc"
         self._status_hint_override: str | None = None
         self._state_only_updates = 0
+        # Cache of chat-session ids belonging to the active project, refreshed
+        # asynchronously via :meth:`_refresh_project_session_keys`. ``None``
+        # means "not yet loaded / no filter" — the picker shows everything.
+        self._project_session_keys_cache: dict[str, set[str]] = {}
 
     @contextlib.contextmanager
     def state_only_updates(self):
@@ -408,6 +412,14 @@ class ChatPanel(Vertical):
     def set_sessions(self, sessions: list[tuple[str, str]], active_key: str | None = None) -> None:
         normalized = [(label.strip(), key.strip()) for label, key in sessions if label and key]
         self._session_options = normalized or [("Orchestrator", "orchestrator")]
+        # Invalidate + refresh the per-project session-key cache. ``set_sessions``
+        # is called whenever the orchestrator store changes (new/delete/switch),
+        # which is the same trigger ``SessionChanged`` fires under.
+        self._project_session_keys_cache.clear()
+        core = getattr(self.app, "core", None)
+        active_project_id = getattr(core, "active_project_id", None) if core else None
+        if isinstance(active_project_id, str) and active_project_id:
+            self._kick_project_session_keys_refresh(active_project_id)
         for _label, key in self._session_options:
             self._ensure_session_state(key)
         self._prune_session_states()
@@ -1630,34 +1642,53 @@ class ChatPanel(Vertical):
         return groups
 
     def _project_session_keys(self, project_id: str) -> set[str] | None:
-        """Return session keys belonging to the given project, or None if unavailable."""
-        import json
+        """Return session keys for the given project from the local cache.
 
-        from sqlmodel import select
+        Returns ``None`` while the cache is cold so callers fall back to
+        showing every session — the cache is populated asynchronously by
+        :meth:`_refresh_project_session_keys`, which is kicked off on
+        :class:`SessionChanged` and on mount. This avoids the legacy
+        ``_db_sync`` call from a sync code path.
+        """
+        cached = self._project_session_keys_cache.get(project_id)
+        if cached is None:
+            # Kick off a background refresh so the next render of the picker
+            # gets the filtered set. Does nothing if a refresh is in flight.
+            self._kick_project_session_keys_refresh(project_id)
+            return None
+        return cached
 
-        from kagan.core._db_helpers import _db_sync
-        from kagan.core.models import Setting
+    def _kick_project_session_keys_refresh(self, project_id: str) -> None:
+        if not self.is_mounted:
+            return
+        # Use ``run_worker`` so concurrent kicks coalesce by name; Textual will
+        # not start a duplicate worker with the same group.
+        self.run_worker(
+            self._refresh_project_session_keys(project_id),
+            name=f"chat-project-session-keys-{project_id}",
+            group=f"chat-project-session-keys-{project_id}",
+            exit_on_error=False,
+        )
 
+    async def _refresh_project_session_keys(self, project_id: str) -> None:
+        """Populate :attr:`_project_session_keys_cache` for ``project_id``.
+
+        Reads from ``client.chat_sessions.list`` — the public aggregate seam
+        that replaces the legacy ``_db_sync(Setting)`` raw read.
+        """
         core = getattr(self.app, "core", None)
-        engine = getattr(core, "_engine", None) if core else None
-        if engine is None:
-            return None
+        if core is None:
+            return
         try:
-            settings = _db_sync(
-                engine, lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()}
-            )
-            blob = settings.get("chat_sessions_v1", "")
-            if not blob:
-                return None
-            parsed = json.loads(blob)
-            sessions = parsed.get("sessions", []) if isinstance(parsed, dict) else []
-            return {
-                f"orchestrator:{s.get('id', '')}"
-                for s in sessions
-                if isinstance(s, dict) and s.get("project_id") == project_id and s.get("id")
-            }
+            rows = await core.chat_sessions.list(project_id=project_id)
         except Exception:
-            return None
+            return
+        keys: set[str] = set()
+        for row in rows:
+            session_id = getattr(row, "id", None)
+            if isinstance(session_id, str) and session_id:
+                keys.add(f"orchestrator:{session_id}")
+        self._project_session_keys_cache[project_id] = keys
 
     @staticmethod
     def _ticket_group_label(option_label: str) -> str:

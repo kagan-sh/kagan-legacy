@@ -33,7 +33,6 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from rich.live import Live
 
 from kagan.cli.chat._approval_panel import strip_tool_prefix
-from kagan.cli.chat._chat_acp import _SendResult, _WaveIndicator
 from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
     export_analytics_json,
@@ -46,8 +45,13 @@ from kagan.cli.chat._chat_ui import (
     print_status_panel,
     show_tool_report,
 )
-from kagan.cli.chat._permission_ui import PermissionUI
+from kagan.cli.chat._permission_ui import PermissionUI, _SendResult, _WaveIndicator
 from kagan.cli.chat._renderer import CLIRenderer
+from kagan.cli.chat._session_picker import (
+    build_chat_session_list_items,
+    chat_session_to_legacy_dict,
+    resolve_chat_session_selector,
+)
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
 from kagan.cli.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.cli.chat.commands import (
@@ -73,16 +77,6 @@ from kagan.cli.chat.repl import (
     rotate_tip_on_submit,
     searchable_picker,
     supports_interactive_picker,
-)
-from kagan.cli.chat.sessions import (
-    build_chat_session_list_items,
-    create_chat_session,
-    delete_chat_session,
-    get_chat_session,
-    list_chat_sessions,
-    resolve_chat_session_selector,
-    resolve_task_session_binding,
-    set_last_session_id,
 )
 from kagan.core import (
     KAGAN_AGENT_EMAIL,
@@ -207,24 +201,38 @@ class ChatController:
     async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
         selected = await self._resolve_initial_session(explicit_session_id)
         if selected is None:
-            selected = await create_chat_session(
-                self.client,
+            row = await self.client.chat_sessions.create(
                 source="repl",
                 label="REPL session",
                 agent_backend=self.agent_backend,
                 project_id=self.client.active_project_id,
             )
+            selected = chat_session_to_legacy_dict(row, [])
         await self._attach_session(selected, switching=False)
 
     async def _resolve_initial_session(
         self, explicit_session_id: str | None
     ) -> dict[str, Any] | None:
-        if explicit_session_id:
-            persisted = await get_chat_session(self.client, explicit_session_id)
-            if persisted is not None:
-                return persisted
-            return await resolve_task_session_binding(self.client, explicit_session_id)
-        return None
+        if not explicit_session_id:
+            return None
+        cs = self.client.chat_sessions
+        pair = await cs.get_with_history(explicit_session_id)
+        if pair is not None:
+            row, msgs = pair
+            return chat_session_to_legacy_dict(row, msgs)
+        binding = await cs.resolve_task_binding(explicit_session_id)
+        if binding is None:
+            return None
+        return {
+            "id": binding.id,
+            "label": binding.label,
+            "source": binding.source,
+            "agent_backend": binding.agent_backend,
+            "orchestrator_history": [],
+            "messages_rendered": [
+                f"System: Attached to task session {binding.id} (status: {binding.status})."
+            ],
+        }
 
     async def _attach_session(self, session: dict[str, Any], *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
@@ -275,7 +283,9 @@ class ChatController:
             self._restart_requested = True
 
         if self._persist_repl_session:
-            await set_last_session_id(self.client, scope="repl", session_id=session_id)
+            await self.client.chat_sessions.set_last_session_id(
+                scope="repl", session_id=session_id
+            )
         return self._restart_requested
 
     def _print_restored_messages(self) -> None:
@@ -285,7 +295,10 @@ class ChatController:
         self._restored_messages_printed = True
 
     async def _open_sessions(self, query: str | None) -> bool:
-        sessions = await list_chat_sessions(self.client, project_id=self.client.active_project_id)
+        pairs = await self.client.chat_sessions.list_with_history(
+            project_id=self.client.active_project_id
+        )
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No persisted sessions yet.[/dim]")
             return False
@@ -348,19 +361,20 @@ class ChatController:
         return await self._switch_agent(selected_backend)
 
     async def _create_new_session(self) -> bool:
-        created = await create_chat_session(
-            self.client,
+        row = await self.client.chat_sessions.create(
             source="repl",
             label="REPL session",
             agent_backend=self.agent_backend,
             project_id=self.client.active_project_id,
         )
+        created = chat_session_to_legacy_dict(row, [])
         should_restart = await self._attach_session(created, switching=True)
         _console.print(f"[green]New session:[/green] {created['id']}")
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
-        sessions = await list_chat_sessions(self.client)
+        pairs = await self.client.chat_sessions.list_with_history()
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
             return
@@ -382,7 +396,7 @@ class ChatController:
             _console.print("[red]Cannot delete the current session.[/red]")
             return
 
-        deleted = await delete_chat_session(self.client, target_id)
+        deleted = await self.client.chat_sessions.delete(target_id)
         if deleted:
             _console.print(f"[green]Deleted:[/green] {target_label} [{target_id}]")
         else:
@@ -1038,7 +1052,7 @@ class ChatController:
             await print_analytics_panel(self.client)
 
     def _show_approvals(self, data: str) -> None:
-        from kagan.cli.chat._chat_acp import get_session_approvals
+        from kagan.cli.chat._permission_ui import get_session_approvals
 
         approvals = get_session_approvals()
 

@@ -26,13 +26,7 @@ import acp
 from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
-from kagan.cli.chat.sessions import (
-    create_chat_session,
-    delete_chat_session,
-    get_chat_session,
-    get_messages_after,
-    list_chat_sessions,
-)
+from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 from kagan.core import resolve_default_agent_backend
 from kagan.core.chat import (
     AssistantChunk,
@@ -86,6 +80,19 @@ def _broadcast(session_id: str, event: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # Wire helpers
 # ---------------------------------------------------------------------------
+
+
+async def _load_session_dict(client: Any, session_id: str) -> dict[str, Any] | None:
+    """Fetch a session + its messages and return the legacy dict shape.
+
+    Wraps ``client.chat_sessions.get_with_history`` for transport-layer code
+    that consumes the dict-shaped wire mappers (``_session_to_wire`` /
+    ``_session_summary``). Returns ``None`` if the session is missing.
+    """
+    pair = await client.chat_sessions.get_with_history(session_id)
+    if pair is None:
+        return None
+    return chat_session_to_legacy_dict(*pair)
 
 
 def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:
@@ -301,8 +308,9 @@ async def _sse_stream(
             # After a successful turn, broadcast a session summary refresh so
             # /watch subscribers can update sidebar metadata.
             if frame.get("t") == "CHAT_DONE":
-                refreshed = await get_chat_session(ctx.client, session_id)
-                if refreshed is not None:
+                refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
+                if refreshed_pair is not None:
+                    refreshed = chat_session_to_legacy_dict(*refreshed_pair)
                     update = {
                         "t": "CHAT_SESSION_UPDATED",
                         "session": _session_summary(refreshed),
@@ -347,6 +355,33 @@ def _teardown_session_state(ctx: Any, session_id: str) -> None:
             asyncio.get_running_loop().create_task(engine.detach(session_id))
 
 
+async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
+    """PATCH handler — metadata-only update for a chat session."""
+    forbidden = _require_access(
+        ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
+    )
+    if forbidden is not None:
+        return forbidden
+    session_id = cast("str", request.path_params["session_id"])
+    session = await _load_session_dict(ctx.client, session_id)
+    if session is None:
+        return _err("Session not found", status=404)
+    body = await request.json()
+    if not isinstance(body, dict):
+        return _err("Request body must be a JSON object", status=400)
+    agent_backend = body.get("agent_backend")
+    if agent_backend is not None:
+        # Metadata-only patch — never round-trip through ``upsert_with_history``,
+        # which DELETEs every ``ChatMessage`` for the session. (Greptile P1 fix.)
+        await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
+        # Re-fetch so the response carries the new ``updated_at`` rather than
+        # the pre-update snapshot. (Greptile P2 fix.)
+        refreshed = await _load_session_dict(ctx.client, session_id)
+        if refreshed is not None:
+            session = refreshed
+    return _ok(_session_to_wire(session))
+
+
 def _register_crud_routes(mcp: FastMCP) -> None:
     """Register chat session CRUD endpoints (list, create, get, delete, agents)."""
 
@@ -356,7 +391,10 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     async def list_sessions(_request: Request, *, ctx: Any) -> JSONResponse:
         source = _request.query_params.get("source")
         project_id = _request.query_params.get("project_id")
-        sessions = await list_chat_sessions(ctx.client, source=source, project_id=project_id)
+        pairs = await ctx.client.chat_sessions.list_with_history(
+            source=source, project_id=project_id
+        )
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         return _ok([_session_summary(s) for s in sessions])
 
     @mcp.custom_route("/api/chat/sessions", methods=["POST"])
@@ -375,13 +413,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         label = cast("str | None", body.get("label"))
         source = str(body.get("source") or "web").strip() or "web"
         project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
-        session = await create_chat_session(
-            ctx.client,
+        row = await ctx.client.chat_sessions.create(
             source=source,
             label=label,
             agent_backend=agent_backend,
             project_id=project_id,
         )
+        session = chat_session_to_legacy_dict(row, [])
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["GET"])
@@ -389,7 +427,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def get_session(request: Request, *, ctx: Any) -> JSONResponse:
         session_id = cast("str", request.path_params["session_id"])
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
         etag = f'"{session.get("updated_at", "")}"'
@@ -415,11 +453,11 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         except (ValueError, TypeError):
             return _err("after_id must be an integer", status=400)
 
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
 
-        messages = await get_messages_after(ctx.client, session_id, after_id=after_id)
+        messages = await ctx.client.chat_sessions.messages_after(session_id, after_id=after_id)
         wire = [
             ChatMessageDetailResponse(
                 id=m.id or 0,
@@ -437,30 +475,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @require_context(mcp)
     @handle_errors
     async def update_session(request: Request, *, ctx: Any) -> JSONResponse:
-        forbidden = _require_access(
-            ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
-        )
-        if forbidden is not None:
-            return forbidden
-        session_id = cast("str", request.path_params["session_id"])
-        session = await get_chat_session(ctx.client, session_id)
-        if session is None:
-            return _err("Session not found", status=404)
-        body = await request.json()
-        if not isinstance(body, dict):
-            return _err("Request body must be a JSON object", status=400)
-        agent_backend = body.get("agent_backend")
-        if agent_backend is not None:
-            # Metadata-only patch — never round-trip through the legacy
-            # ``save_chat_session`` shim, which DELETEs every ``ChatMessage``
-            # for the session via ``upsert_with_history``. (Greptile P1 fix.)
-            await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
-            # Re-fetch so the response carries the new ``updated_at`` rather
-            # than the pre-update snapshot. (Greptile P2 fix.)
-            refreshed = await get_chat_session(ctx.client, session_id)
-            if refreshed is not None:
-                session = refreshed
-        return _ok(_session_to_wire(session))
+        return await _patch_session(request, ctx=ctx)
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])
     @require_context(mcp)
@@ -472,7 +487,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return forbidden
         session_id = cast("str", request.path_params["session_id"])
-        deleted = await delete_chat_session(ctx.client, session_id)
+        deleted = await ctx.client.chat_sessions.delete(session_id)
         if not deleted:
             return _err("Session not found", status=404)
         _teardown_session_state(ctx, session_id)
@@ -521,7 +536,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
         # Resolve session + backend up-front (mirrors the legacy
         # ``_claim_turn_slot`` body).
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
         settings = await ctx.client.settings.get()
@@ -565,7 +580,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         if not is_access_allowed(ctx, AccessTier.STANDARD):
             return _err("Insufficient access tier for chat", status=403)
 
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
 

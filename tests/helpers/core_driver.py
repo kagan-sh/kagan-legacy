@@ -503,20 +503,23 @@ class CoreDriver:
         agent_backend: str | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
-        from kagan.cli.chat.sessions import create_chat_session
+        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 
-        return await create_chat_session(
-            self._ctx,
+        row = await self._ctx.chat_sessions.create(
             source=source,
             label=label,
             agent_backend=agent_backend,
             project_id=project_id,
         )
+        return chat_session_to_legacy_dict(row, [])
 
     async def chat_get_session(self, session_id: str) -> dict[str, Any] | None:
-        from kagan.cli.chat.sessions import get_chat_session
+        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 
-        return await get_chat_session(self._ctx, session_id)
+        pair = await self._ctx.chat_sessions.get_with_history(session_id)
+        if pair is None:
+            return None
+        return chat_session_to_legacy_dict(*pair)
 
     async def chat_list_sessions(
         self,
@@ -524,14 +527,15 @@ class CoreDriver:
         source: str | None = None,
         project_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        from kagan.cli.chat.sessions import list_chat_sessions
+        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 
-        return await list_chat_sessions(self._ctx, source=source, project_id=project_id)
+        pairs = await self._ctx.chat_sessions.list_with_history(
+            source=source, project_id=project_id
+        )
+        return [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
 
     async def chat_delete_session(self, session_id: str) -> bool:
-        from kagan.cli.chat.sessions import delete_chat_session
-
-        return await delete_chat_session(self._ctx, session_id)
+        return await self._ctx.chat_sessions.delete(session_id)
 
     async def chat_append_message(
         self,
@@ -541,10 +545,7 @@ class CoreDriver:
         *,
         terminated: bool = False,
     ) -> Any:
-        from kagan.cli.chat.sessions import append_chat_message
-
-        return await append_chat_message(
-            self._ctx,
+        return await self._ctx.chat_sessions.append_message(
             session_id,
             role,
             content,

@@ -7,6 +7,36 @@ from textual.css.query import NoMatches
 from textual.widgets import OptionList
 
 
+async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
+    """Local test helper — upsert a session dict via the aggregate."""
+    sid = str(session.get("id") or "").strip()
+    if not sid:
+        return
+    history: list[tuple[str, str]] = []
+    for pair in session.get("orchestrator_history") or []:
+        if isinstance(pair, list | tuple) and len(pair) == 2:
+            role = str(pair[0]).strip()
+            content = str(pair[1]).strip()
+            if role and content:
+                history.append((role, content))
+    raw_backend = session.get("agent_backend")
+    backend: str | None = (
+        raw_backend if isinstance(raw_backend, str) and raw_backend.strip() else None
+    )
+    raw_project = session.get("project_id")
+    project: str | None = (
+        raw_project if isinstance(raw_project, str) and raw_project.strip() else None
+    )
+    await client.chat_sessions.upsert_with_history(
+        sid,
+        label=str(session.get("label") or f"Session {sid[:8]}").strip(),
+        source=str(session.get("source") or "repl") or "repl",
+        agent_backend=backend,
+        project_id=project,
+        history=history,
+    )
+
+
 def _has_options(app, widget_id: str) -> bool:
     """Check if an OptionList widget exists and has options, without raising."""
     try:
@@ -21,7 +51,6 @@ pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 async def test_session_resume_modal_opens_and_resumes_project(
     tmp_path,
 ) -> None:
-    from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
     from kagan.tui.screens.session_resume_modal import SessionResumeModal
 
@@ -68,7 +97,6 @@ async def test_session_resume_modal_opens_and_resumes_project(
 
 
 async def test_resume_modal_hides_sessions_without_project_binding(tmp_path) -> None:
-    from kagan.cli.chat.sessions import save_chat_session
     from kagan.tui import KaganApp
     from kagan.tui.screens.session_resume_modal import SessionResumeModal
 

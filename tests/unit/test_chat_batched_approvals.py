@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 import kagan.cli.chat._approval_batch as batch_module
-import kagan.cli.chat._chat_acp as chat_acp_module
+import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._permission_ui import PermissionUI
 from kagan.core.chat.events import PermissionRequest
 

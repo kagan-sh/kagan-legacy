@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from rich.console import Console
 
-import kagan.cli.chat._chat_acp as chat_acp_module
+import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._permission_ui import PermissionUI
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.core.chat.events import (

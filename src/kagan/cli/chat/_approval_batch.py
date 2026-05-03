@@ -34,7 +34,7 @@ from kagan.cli.chat._approval_panel import no_color, strip_tool_prefix
 from kagan.cli.chat._theme import APPROVAL
 
 if TYPE_CHECKING:
-    from kagan.cli.chat._chat_acp import _DecisionTuple
+    from kagan.cli.chat._permission_ui import _DecisionTuple
 
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
@@ -385,7 +385,7 @@ async def _run_batch_interactive(
         full_screen=False,
         mouse_support=False,
     )
-    from kagan.cli.chat._chat_acp import _modal_active
+    from kagan.cli.chat._permission_ui import _modal_active
 
     with _modal_active():
         await app.run_async()
@@ -466,7 +466,7 @@ def _resolve_decision_via_engine(
 
 
 def _cancelled_decision() -> _DecisionTuple:
-    from kagan.cli.chat._chat_acp import _DecisionTuple as _DT
+    from kagan.cli.chat._permission_ui import _DecisionTuple as _DT
 
     return _DT(outcome="deny")
 
@@ -481,7 +481,7 @@ def _preresolve_session_approved(
     Returns ``(resolved_indices, unresolved_items, unresolved_index_map)``.
     Resolved items are dispatched to the engine immediately.
     """
-    from kagan.cli.chat._chat_acp import (
+    from kagan.cli.chat._permission_ui import (
         _DecisionTuple,
         _session_approvals,
         _tool_action_key,
@@ -592,7 +592,7 @@ class _BatchApprovalQueue:
         await self._flush_batch(items)
 
     async def _flush_single(self, item: _PendingItem) -> None:
-        from kagan.cli.chat._chat_acp import (
+        from kagan.cli.chat._permission_ui import (
             _DecisionTuple,
             _map_decision_from_approval,
             _run_approval_panel_async,
@@ -615,7 +615,7 @@ class _BatchApprovalQueue:
         _resolve_decision_via_engine(self._engine, item, decision)
 
     async def _flush_batch(self, items: list[_PendingItem]) -> None:
-        from kagan.cli.chat._chat_acp import (
+        from kagan.cli.chat._permission_ui import (
             _DecisionTuple,
             _map_decision_from_approval,
             _tool_action_key,

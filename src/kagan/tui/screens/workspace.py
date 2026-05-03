@@ -11,7 +11,7 @@ from textual.widget import Widget
 from textual.widgets import Input, OptionList, Static
 
 from kagan.cli.chat import resolve_default_agent_backend, warm_orchestrator_backend
-from kagan.cli.chat.sessions import ChatSessionListItem
+from kagan.cli.chat._session_picker import ChatSessionListItem
 from kagan.core.enums import SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.tui._chat_helpers import TitleGenerationSession, kick_title_generation

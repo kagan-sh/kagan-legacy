@@ -383,46 +383,6 @@ class ChatSessions:
 
         return await _db_async(self._engine, _write, commit=True)
 
-    async def replace_history(
-        self,
-        session_id: str,
-        history: builtins.list[tuple[str, str]],
-    ) -> None:
-        """Replace the entire message list for a session.
-
-        Used by the legacy CLI `save_chat_session` codepath. Prefer
-        `upsert_with_history` for the metadata-plus-history case so the whole
-        operation is one transaction.
-        """
-        normalized = session_id.strip()
-        if not normalized:
-            return
-        now = _utc_now()
-
-        def _write(s: DBSession) -> None:
-            row = s.get(ChatSession, normalized)
-            if row is None:
-                return
-            row.updated_at = now
-            s.add(row)
-            existing = s.exec(
-                select(ChatMessage).where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
-            ).all()
-            for m in existing:
-                s.delete(m)
-            for role, content in history:
-                s.add(
-                    ChatMessage(
-                        session_id=normalized,
-                        role=role,
-                        content=content,
-                        terminated_at_user_request=False,
-                        created_at=now,
-                    )
-                )
-
-        await _db_async(self._engine, _write, commit=True)
-
     async def upsert_with_history(
         self,
         session_id: str,

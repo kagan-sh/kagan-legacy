@@ -4,7 +4,44 @@ from typing import Any, cast
 
 import pytest
 
-from kagan.cli.chat.sessions import get_chat_session, save_chat_session
+from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+
+
+async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
+    """Local test helper — upsert a session dict via the aggregate."""
+    sid = str(session.get("id") or "").strip()
+    if not sid:
+        return
+    history: list[tuple[str, str]] = []
+    for pair in session.get("orchestrator_history") or []:
+        if isinstance(pair, list | tuple) and len(pair) == 2:
+            role = str(pair[0]).strip()
+            content = str(pair[1]).strip()
+            if role and content:
+                history.append((role, content))
+    raw_backend = session.get("agent_backend")
+    backend: str | None = (
+        raw_backend if isinstance(raw_backend, str) and raw_backend.strip() else None
+    )
+    raw_project = session.get("project_id")
+    project: str | None = (
+        raw_project if isinstance(raw_project, str) and raw_project.strip() else None
+    )
+    await client.chat_sessions.upsert_with_history(
+        sid,
+        label=str(session.get("label") or f"Session {sid[:8]}").strip(),
+        source=str(session.get("source") or "repl") or "repl",
+        agent_backend=backend,
+        project_id=project,
+        history=history,
+    )
+
+
+async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | None:
+    pair = await client.chat_sessions.get_with_history(session_id)
+    if pair is None:
+        return None
+    return chat_session_to_legacy_dict(*pair)
 
 
 def _load_tui_orchestrator_sessions_module() -> Any:
@@ -65,9 +102,12 @@ def _make_test_engine(*, seed_project_id: str | None = None):  # type: ignore[re
 
 class _FakeClient:
     def __init__(self, *, active_project_id: str | None = None) -> None:
+        from kagan.core.chat import ChatSessions
+
         self.settings = _FakeSettingsOps()
         self.active_project_id = active_project_id
         self._engine = _make_test_engine(seed_project_id=active_project_id)
+        self.chat_sessions = ChatSessions(self._engine, self.settings)
 
 
 @pytest.mark.asyncio

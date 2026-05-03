@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from kagan.cli.chat.sessions import get_chat_session
+from kagan.cli.chat._session_picker import chat_session_to_legacy_dict as _to_dict
 from kagan.core import KaganCore
 from kagan.server import _chat_routes
 from tests.helpers.chat_engine import SuspendingFactory
@@ -78,7 +78,8 @@ async def test_concurrent_sse_streams_claim_atomically(
         )
 
         session = await core.chat_sessions.create(source="web", label="t")
-        session_dict = await get_chat_session(core, session.id)
+        _pair = await core.chat_sessions.get_with_history(session.id)
+        session_dict = _to_dict(*_pair) if _pair is not None else None
         assert session_dict is not None
 
         ctx = SimpleNamespace(client=core)
@@ -152,7 +153,8 @@ async def test_pre_stream_failure_releases_slot(
         await core.reset()
 
         session = await core.chat_sessions.create(source="web", label="t")
-        session_dict = await get_chat_session(core, session.id)
+        _pair = await core.chat_sessions.get_with_history(session.id)
+        session_dict = _to_dict(*_pair) if _pair is not None else None
         assert session_dict is not None
 
         ctx = SimpleNamespace(client=core)
@@ -218,7 +220,8 @@ async def test_client_disconnect_mid_stream_releases_slot(
         )
 
         session = await core.chat_sessions.create(source="web", label="t")
-        session_dict = await get_chat_session(core, session.id)
+        _pair = await core.chat_sessions.get_with_history(session.id)
+        session_dict = _to_dict(*_pair) if _pair is not None else None
         assert session_dict is not None
 
         ctx = SimpleNamespace(client=core)

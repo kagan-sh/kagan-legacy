@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-import kagan.cli.chat._chat_acp as chat_acp_module
+import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._approval_panel import (
     _build_display_options,
     _extract_key_args_preview,
@@ -15,7 +15,7 @@ from kagan.cli.chat._approval_panel import (
     build_approval_panel,
     strip_tool_prefix,
 )
-from kagan.cli.chat._chat_acp import (
+from kagan.cli.chat._permission_ui import (
     _map_decision_from_approval,
     _run_legacy_input,
     _session_approvals,

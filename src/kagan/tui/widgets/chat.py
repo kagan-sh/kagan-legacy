@@ -1056,12 +1056,9 @@ class ChatPanel(Vertical):
 
     async def _delete_chat_session(self, query: str) -> None:
         """Delete a chat session by number or id."""
-        # Pure UI helpers (item formatting + selector) stay in the cli.chat
-        # shim until the chat-package consolidation completes (phase 6); the
-        # actual DB mutation now goes through ``core.chat_sessions`` directly.
-        from kagan.cli.chat.sessions import (
+        from kagan.cli.chat._session_picker import (
             build_chat_session_list_items,
-            list_chat_sessions,
+            chat_session_to_legacy_dict,
             resolve_chat_session_selector,
         )
 
@@ -1070,7 +1067,8 @@ class ChatPanel(Vertical):
             self.add_system_message("No client available.")
             return
 
-        sessions = await list_chat_sessions(core)
+        pairs = await core.chat_sessions.list_with_history()
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             self.add_system_message("No sessions to delete.")
             return

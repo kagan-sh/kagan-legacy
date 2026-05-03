@@ -264,7 +264,14 @@ class ChatSessions:
         agent_backend: str | None = None,
         project_id: str | None = None,
     ) -> ChatSession | None:
-        """Patch metadata on an existing session. Returns the updated row, or None if missing."""
+        """Patch metadata on an existing session. Returns the updated row, or None if missing.
+
+        Each `None`-valued kwarg is treated as "leave this field unchanged".
+        Clearing nullable fields (`agent_backend`, `project_id`) back to NULL is
+        not currently supported via `update()` — use `upsert_with_history()` if
+        you need to set them to None explicitly. No caller in R1 needs the
+        clear-to-null path; revisit if a later phase does.
+        """
         normalized = session_id.strip()
         now = _utc_now()
 

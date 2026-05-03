@@ -33,7 +33,7 @@ from kagan.core._settings import _make_settings_ns
 from kagan.core._tasks import Tasks
 from kagan.core._watcher import DBWatcher
 from kagan.core._worktrees import Worktrees
-from kagan.core.chat import ChatSessions
+from kagan.core.chat import ChatEngine, ChatSessions, SpawnPerTurnACPFactory
 
 
 class KaganCore:
@@ -50,6 +50,10 @@ class KaganCore:
         self.analytics = Analytics(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
         self.chat_sessions = ChatSessions(self._engine, self.settings)
+        self.chat = ChatEngine(
+            sessions=self.chat_sessions,
+            acp_factory=SpawnPerTurnACPFactory(client=self),
+        )
 
         self.active_project_id: str | None = None
         # reviews namespace must be built after tasks/worktrees are set

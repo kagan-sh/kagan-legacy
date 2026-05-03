@@ -46,7 +46,7 @@ from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:
     import builtins
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 
     from kagan.core.chat.sessions import ChatSessions
     from kagan.core.models import ChatMessage
@@ -277,7 +277,7 @@ class ChatEngine:
         is_first_turn: bool,
         agent_backend: str | None,
         factory: ACPSessionFactory,
-    ) -> AsyncIterator[ChatEvent]:
+    ) -> AsyncGenerator[ChatEvent, None]:
         queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
 
         async def _on_update(update: Any) -> None:

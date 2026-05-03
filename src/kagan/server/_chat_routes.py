@@ -420,8 +420,12 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             # Metadata-only patch — never round-trip through the legacy
             # ``save_chat_session`` shim, which DELETEs every ``ChatMessage``
             # for the session via ``upsert_with_history``. (Greptile P1 fix.)
-            session["agent_backend"] = agent_backend
             await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
+            # Re-fetch so the response carries the new ``updated_at`` rather
+            # than the pre-update snapshot. (Greptile P2 fix.)
+            refreshed = await get_chat_session(ctx.client, session_id)
+            if refreshed is not None:
+                session = refreshed
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])

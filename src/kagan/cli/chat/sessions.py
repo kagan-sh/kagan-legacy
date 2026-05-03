@@ -120,12 +120,8 @@ async def list_chat_sessions(
     cs = _aggregate(client)
     if cs is None:
         return []
-    rows = await cs.list(source=source, project_id=project_id)
-    out: list[dict[str, Any]] = []
-    for row in rows:
-        msgs = await cs.history(row.id)
-        out.append(_row_to_dict(row, msgs))
-    return out
+    pairs = await cs.list_with_history(source=source, project_id=project_id)
+    return [_row_to_dict(row, msgs) for row, msgs in pairs]
 
 
 async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | None:
@@ -208,7 +204,11 @@ async def create_chat_session(
 
 
 async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
-    """Upsert metadata + replace history (legacy semantics — overwrite-all)."""
+    """Upsert metadata + replace history (legacy semantics — overwrite-all).
+
+    Single transaction via `cs.upsert_with_history` so a concurrent delete
+    cannot race between metadata write and history replacement.
+    """
     cs = _aggregate(client)
     if cs is None:
         return
@@ -219,12 +219,14 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
 
     label = str(session.get("label") or f"Session {session_id[:8]}").strip()
     source = str(session.get("source") or "unknown").strip() or "unknown"
-    agent_backend = session.get("agent_backend")
-    if not isinstance(agent_backend, str) or not agent_backend.strip():
-        agent_backend = None
-    project_id = session.get("project_id")
-    if not isinstance(project_id, str) or not project_id.strip():
-        project_id = None
+    raw_backend = session.get("agent_backend")
+    agent_backend: str | None = (
+        raw_backend if isinstance(raw_backend, str) and raw_backend.strip() else None
+    )
+    raw_project = session.get("project_id")
+    project_id: str | None = (
+        raw_project if isinstance(raw_project, str) and raw_project.strip() else None
+    )
 
     history: list[tuple[str, str]] = []
     for pair in session.get("orchestrator_history") or []:
@@ -234,25 +236,14 @@ async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
             if role and content:
                 history.append((role, content))
 
-    # Upsert metadata, creating the row if it doesn't exist
-    existing = await cs.get(session_id)
-    if existing is None:
-        await cs.create(
-            source=source,
-            label=label,
-            agent_backend=agent_backend,
-            project_id=project_id,
-            session_id=session_id,
-        )
-    else:
-        await cs.update(
-            session_id,
-            label=label,
-            agent_backend=agent_backend,
-            project_id=project_id,
-        )
-
-    await cs.replace_history(session_id, history)
+    await cs.upsert_with_history(
+        session_id,
+        label=label,
+        source=source,
+        agent_backend=agent_backend,
+        project_id=project_id,
+        history=history,
+    )
 
 
 async def delete_chat_session(client: Any, session_id: str) -> bool:

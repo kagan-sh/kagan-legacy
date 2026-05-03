@@ -4,11 +4,14 @@ Replaces the raw-SQL helpers that used to live in `kagan.cli.chat.sessions`.
 Callers now use `client.chat_sessions.X(...)` rather than importing module
 functions. Returned types are real SQLModel rows (detached from the DB
 session), not the legacy dict shape.
+
+All DB access goes through `_db_async` / `_db_sync` helpers so that
+transaction boundaries are explicit and consistent with the other aggregates
+(`Tasks`, `Sessions`, `Projects`).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from dataclasses import dataclass
@@ -16,9 +19,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlmodel import Session as DBSession
 from sqlmodel import select
 
+from kagan.core._db_helpers import _db_async
 from kagan.core.models import ChatMessage, ChatSession, Task
 from kagan.core.models import Session as TaskSession
 
@@ -26,6 +29,7 @@ if TYPE_CHECKING:
     import builtins
 
     from sqlalchemy import Engine
+    from sqlmodel import Session as DBSession
 
 CHAT_SCOPE_PREFIX = "chat_scope_state_"
 CHAT_LAST_SESSION_PREFIX = "chat_last_session_"
@@ -98,7 +102,8 @@ class ChatSessions:
 
     All writes go through this class; `cli.chat.sessions` raw functions are
     gone. The aggregate exposes async methods that wrap a thread-pooled DB
-    session — same convention as `Tasks`, `Sessions`, `Projects`.
+    session via `_db_async` — same convention as `Tasks`, `Sessions`,
+    `Projects`.
     """
 
     def __init__(self, engine: Engine, settings_ns: Any) -> None:
@@ -112,19 +117,55 @@ class ChatSessions:
         *,
         source: str | None = None,
         project_id: str | None = None,
-    ) -> list[ChatSession]:
-        def _read() -> list[ChatSession]:
-            with DBSession(self._engine) as db:
-                stmt = select(ChatSession)
-                if source is not None:
-                    stmt = stmt.where(ChatSession.source == source)  # type: ignore[arg-type]
-                if project_id is not None:
-                    stmt = stmt.where(ChatSession.project_id == project_id)  # type: ignore[arg-type]
-                stmt = stmt.order_by(ChatSession.updated_at.desc())  # type: ignore[attr-defined]
-                rows = db.exec(stmt).all()
-                return [_detached(r) for r in rows]
+    ) -> builtins.list[ChatSession]:
+        def _read(s: DBSession) -> builtins.list[ChatSession]:
+            stmt = select(ChatSession)
+            if source is not None:
+                stmt = stmt.where(ChatSession.source == source)  # type: ignore[arg-type]
+            if project_id is not None:
+                stmt = stmt.where(ChatSession.project_id == project_id)  # type: ignore[arg-type]
+            stmt = stmt.order_by(ChatSession.updated_at.desc())  # type: ignore[attr-defined]
+            return [_detached(r) for r in s.exec(stmt).all()]
 
-        return await asyncio.to_thread(_read)
+        return await _db_async(self._engine, _read)
+
+    async def list_with_history(
+        self,
+        *,
+        source: str | None = None,
+        project_id: str | None = None,
+    ) -> builtins.list[tuple[ChatSession, builtins.list[ChatMessage]]]:
+        """Fetch all sessions + their messages in a single transaction.
+
+        Replaces the N+1 pattern of `list()` then per-row `history()` for
+        callers (e.g. the legacy dict-shape shim) that need full history per
+        session for display.
+        """
+
+        def _read(s: DBSession) -> builtins.list[tuple[ChatSession, builtins.list[ChatMessage]]]:
+            sess_stmt = select(ChatSession)
+            if source is not None:
+                sess_stmt = sess_stmt.where(ChatSession.source == source)  # type: ignore[arg-type]
+            if project_id is not None:
+                sess_stmt = sess_stmt.where(ChatSession.project_id == project_id)  # type: ignore[arg-type]
+            sess_stmt = sess_stmt.order_by(ChatSession.updated_at.desc())  # type: ignore[attr-defined]
+            sessions = list(s.exec(sess_stmt).all())
+            if not sessions:
+                return []
+
+            ids = [row.id for row in sessions]
+            msg_stmt = (
+                select(ChatMessage)
+                .where(ChatMessage.session_id.in_(ids))  # type: ignore[attr-defined]
+                .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+            )
+            grouped: dict[str, builtins.list[ChatMessage]] = {sid: [] for sid in ids}
+            for msg in s.exec(msg_stmt).all():
+                grouped[msg.session_id].append(_detached(msg))
+
+            return [(_detached(row), grouped[row.id]) for row in sessions]
+
+        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ get
 
@@ -133,12 +174,11 @@ class ChatSessions:
         if not normalized:
             return None
 
-        def _read() -> ChatSession | None:
-            with DBSession(self._engine) as db:
-                row = db.get(ChatSession, normalized)
-                return _detached(row) if row is not None else None
+        def _read(s: DBSession) -> ChatSession | None:
+            row = s.get(ChatSession, normalized)
+            return _detached(row) if row is not None else None
 
-        return await asyncio.to_thread(_read)
+        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ history
 
@@ -148,16 +188,15 @@ class ChatSessions:
         if not normalized:
             return []
 
-        def _read() -> list[ChatMessage]:
-            with DBSession(self._engine) as db:
-                rows = db.exec(
-                    select(ChatMessage)
-                    .where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
-                    .order_by(ChatMessage.id)  # type: ignore[attr-defined]
-                ).all()
-                return [_detached(r) for r in rows]
+        def _read(s: DBSession) -> builtins.list[ChatMessage]:
+            rows = s.exec(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
+                .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+            ).all()
+            return [_detached(r) for r in rows]
 
-        return await asyncio.to_thread(_read)
+        return await _db_async(self._engine, _read)
 
     async def messages_after(
         self,
@@ -171,18 +210,17 @@ class ChatSessions:
         if not normalized:
             return []
 
-        def _read() -> list[ChatMessage]:
-            with DBSession(self._engine) as db:
-                stmt = (
-                    select(ChatMessage)
-                    .where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
-                    .where(ChatMessage.id > after_id)  # type: ignore[operator]
-                    .order_by(ChatMessage.id)  # type: ignore[attr-defined]
-                    .limit(limit)
-                )
-                return [_detached(r) for r in db.exec(stmt).all()]
+        def _read(s: DBSession) -> builtins.list[ChatMessage]:
+            stmt = (
+                select(ChatMessage)
+                .where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
+                .where(ChatMessage.id > after_id)  # type: ignore[operator]
+                .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+                .limit(limit)
+            )
+            return [_detached(r) for r in s.exec(stmt).all()]
 
-        return await asyncio.to_thread(_read)
+        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ create
 
@@ -207,14 +245,13 @@ class ChatSessions:
             updated_at=now,
         )
 
-        def _write() -> ChatSession:
-            with DBSession(self._engine) as db:
-                db.add(row)
-                db.commit()
-                db.refresh(row)
-                return _detached(row)
+        def _write(s: DBSession) -> ChatSession:
+            s.add(row)
+            s.flush()
+            s.refresh(row)
+            return _detached(row)
 
-        return await asyncio.to_thread(_write)
+        return await _db_async(self._engine, _write, commit=True)
 
     # ------------------------------------------------------------------ update
 
@@ -223,6 +260,7 @@ class ChatSessions:
         session_id: str,
         *,
         label: str | None = None,
+        source: str | None = None,
         agent_backend: str | None = None,
         project_id: str | None = None,
     ) -> ChatSession | None:
@@ -230,56 +268,53 @@ class ChatSessions:
         normalized = session_id.strip()
         now = _utc_now()
 
-        def _write() -> ChatSession | None:
-            with DBSession(self._engine) as db:
-                row = db.get(ChatSession, normalized)
-                if row is None:
-                    return None
-                if label is not None:
-                    row.label = label.strip() or row.label
-                if agent_backend is not None:
-                    row.agent_backend = agent_backend
-                if project_id is not None:
-                    row.project_id = project_id
-                row.updated_at = now
-                db.add(row)
-                db.commit()
-                db.refresh(row)
-                return _detached(row)
+        def _write(s: DBSession) -> ChatSession | None:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                return None
+            if label is not None:
+                row.label = label.strip() or row.label
+            if source is not None and source.strip():
+                row.source = source.strip()
+            if agent_backend is not None:
+                row.agent_backend = agent_backend
+            if project_id is not None:
+                row.project_id = project_id
+            row.updated_at = now
+            s.add(row)
+            s.flush()
+            s.refresh(row)
+            return _detached(row)
 
-        return await asyncio.to_thread(_write)
+        return await _db_async(self._engine, _write, commit=True)
 
     async def touch(self, session_id: str) -> None:
         """Bump `updated_at` to now."""
         normalized = session_id.strip()
         now = _utc_now()
 
-        def _write() -> None:
-            with DBSession(self._engine) as db:
-                row = db.get(ChatSession, normalized)
-                if row is None:
-                    return
-                row.updated_at = now
-                db.add(row)
-                db.commit()
+        def _write(s: DBSession) -> None:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                return
+            row.updated_at = now
+            s.add(row)
 
-        await asyncio.to_thread(_write)
+        await _db_async(self._engine, _write, commit=True)
 
     # ------------------------------------------------------------------ delete
 
     async def delete(self, session_id: str) -> bool:
         normalized = session_id.strip()
 
-        def _write() -> bool:
-            with DBSession(self._engine) as db:
-                row = db.get(ChatSession, normalized)
-                if row is None:
-                    return False
-                db.delete(row)
-                db.commit()
-                return True
+        def _write(s: DBSession) -> bool:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                return False
+            s.delete(row)
+            return True
 
-        return await asyncio.to_thread(_write)
+        return await _db_async(self._engine, _write, commit=True)
 
     # ------------------------------------------------------------------ messages
 
@@ -302,18 +337,17 @@ class ChatSessions:
             created_at=now,
         )
 
-        def _write() -> ChatMessage:
-            with DBSession(self._engine) as db:
-                db.add(msg)
-                row = db.get(ChatSession, normalized)
-                if row is not None:
-                    row.updated_at = now
-                    db.add(row)
-                db.commit()
-                db.refresh(msg)
-                return _detached(msg)
+        def _write(s: DBSession) -> ChatMessage:
+            s.add(msg)
+            row = s.get(ChatSession, normalized)
+            if row is not None:
+                row.updated_at = now
+                s.add(row)
+            s.flush()
+            s.refresh(msg)
+            return _detached(msg)
 
-        return await asyncio.to_thread(_write)
+        return await _db_async(self._engine, _write, commit=True)
 
     async def replace_history(
         self,
@@ -322,42 +356,102 @@ class ChatSessions:
     ) -> None:
         """Replace the entire message list for a session.
 
-        Used by the legacy CLI `save_chat_session` codepath and the TUI
-        orchestrator session blob. New code should `append_message` instead —
-        this exists only because the CLI reconstructs history from
-        `_chat_history` every turn. Will be removed once the CLI migrates to
-        ChatEngine.
+        Used by the legacy CLI `save_chat_session` codepath. Prefer
+        `upsert_with_history` for the metadata-plus-history case so the whole
+        operation is one transaction.
         """
         normalized = session_id.strip()
         if not normalized:
             return
         now = _utc_now()
 
-        def _write() -> None:
-            with DBSession(self._engine) as db:
-                row = db.get(ChatSession, normalized)
-                if row is None:
-                    return
-                row.updated_at = now
-                db.add(row)
-                existing = db.exec(
-                    select(ChatMessage).where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
-                ).all()
-                for m in existing:
-                    db.delete(m)
-                for role, content in history:
-                    db.add(
-                        ChatMessage(
-                            session_id=normalized,
-                            role=role,
-                            content=content,
-                            terminated_at_user_request=False,
-                            created_at=now,
-                        )
+        def _write(s: DBSession) -> None:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                return
+            row.updated_at = now
+            s.add(row)
+            existing = s.exec(
+                select(ChatMessage).where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
+            ).all()
+            for m in existing:
+                s.delete(m)
+            for role, content in history:
+                s.add(
+                    ChatMessage(
+                        session_id=normalized,
+                        role=role,
+                        content=content,
+                        terminated_at_user_request=False,
+                        created_at=now,
                     )
-                db.commit()
+                )
 
-        await asyncio.to_thread(_write)
+        await _db_async(self._engine, _write, commit=True)
+
+    async def upsert_with_history(
+        self,
+        session_id: str,
+        *,
+        label: str,
+        source: str,
+        agent_backend: str | None,
+        project_id: str | None,
+        history: builtins.list[tuple[str, str]],
+    ) -> ChatSession:
+        """Atomic: create-or-update session metadata + replace its messages.
+
+        Single transaction. Replaces the legacy `save_chat_session` upsert
+        semantics without splitting the operation across multiple thread
+        dispatches (which loses atomicity under concurrent deletes).
+        """
+        normalized = session_id.strip()
+        if not normalized:
+            raise ValueError("session_id is required")
+        now = _utc_now()
+
+        def _write(s: DBSession) -> ChatSession:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                row = ChatSession(
+                    id=normalized,
+                    label=label,
+                    source=source,
+                    agent_backend=agent_backend,
+                    project_id=project_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                s.add(row)
+            else:
+                row.label = label
+                row.source = source
+                row.agent_backend = agent_backend
+                row.project_id = project_id
+                row.updated_at = now
+                s.add(row)
+
+            existing = s.exec(
+                select(ChatMessage).where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
+            ).all()
+            for m in existing:
+                s.delete(m)
+            for role, content in history:
+                s.add(
+                    ChatMessage(
+                        session_id=normalized,
+                        role=role,
+                        content=content,
+                        terminated_at_user_request=False,
+                        created_at=now,
+                    )
+                )
+
+            s.flush()
+            s.refresh(row)
+            return _detached(row)
+
+        return await _db_async(self._engine, _write, commit=True)
 
     # ------------------------------------------------------------------ task binding
 
@@ -367,25 +461,24 @@ class ChatSessions:
         if not normalized:
             return None
 
-        def _read() -> TaskBinding | None:
-            with DBSession(self._engine) as db:
-                bound = db.get(TaskSession, normalized)
-                if bound is None:
-                    return None
-                task = db.get(Task, bound.task_id)
-                if task is None:
-                    return None
-                status_value = getattr(bound.status, "value", str(bound.status))
-                return TaskBinding(
-                    id=bound.id,
-                    label=f"Task {task.id[:8]} - {task.title}",
-                    source="task-session",
-                    agent_backend=bound.agent_backend,
-                    task_id=task.id,
-                    status=status_value,
-                )
+        def _read(s: DBSession) -> TaskBinding | None:
+            bound = s.get(TaskSession, normalized)
+            if bound is None:
+                return None
+            task = s.get(Task, bound.task_id)
+            if task is None:
+                return None
+            status_value = getattr(bound.status, "value", str(bound.status))
+            return TaskBinding(
+                id=bound.id,
+                label=f"Task {task.id[:8]} - {task.title}",
+                source="task-session",
+                agent_backend=bound.agent_backend,
+                task_id=task.id,
+                status=status_value,
+            )
 
-        return await asyncio.to_thread(_read)
+        return await _db_async(self._engine, _read)
 
     # ------------------------------------------------------------------ scope state
 

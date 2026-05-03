@@ -9,7 +9,6 @@ session), not the legacy dict shape.
 from __future__ import annotations
 
 import asyncio
-import builtins
 import json
 import re
 from dataclasses import dataclass
@@ -24,6 +23,8 @@ from kagan.core.models import ChatMessage, ChatSession, Task
 from kagan.core.models import Session as TaskSession
 
 if TYPE_CHECKING:
+    import builtins
+
     from sqlalchemy import Engine
 
 CHAT_SCOPE_PREFIX = "chat_scope_state_"

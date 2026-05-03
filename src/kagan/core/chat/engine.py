@@ -168,9 +168,11 @@ class ChatEngine:
         """
         state = self._claim_slot(session_id)
 
-        # Capture history-was-empty for first-turn title generation.
+        # First turn = "no assistant has replied yet". The user row is already
+        # persisted by ``push_user`` before this method is called, so checking
+        # ``len(prior) == 0`` would never fire title generation.
         prior = await self._sessions.history(session_id)
-        is_first_turn = len(prior) == 0
+        is_first_turn = not any(m.role == "assistant" for m in prior)
 
         async for event in self._run_stream(
             session_id, state, prompt_blocks, is_first_turn, agent_backend
@@ -272,12 +274,18 @@ class ChatEngine:
         state.task = run_task
 
         async def _drain_to_queue() -> None:
+            # The drain task's only job is to wait for the run to finish (or
+            # be cancelled) and then close the queue. Lifecycle / error
+            # reporting is owned by the outer engine coroutine — emitting a
+            # ``TurnError`` from here would race with the outer ``except`` and
+            # produce duplicate events.
             try:
                 await run_task
             except asyncio.CancelledError:
                 pass
-            except Exception as exc:
-                await queue.put(TurnError(message=str(exc)))
+            except Exception:
+                # Outer coroutine reports the error via ``run_task.result()``.
+                pass
             finally:
                 await queue.put(None)
 

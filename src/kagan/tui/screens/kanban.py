@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import acp
 from textual import events, on
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import Container
@@ -16,8 +17,22 @@ from kagan.cli.chat import (
     resolve_default_agent_backend,
     warm_orchestrator_backend,
 )
+from kagan.cli.chat.prompt import build_orchestrator_prompt
 from kagan.core import resolve_launcher
 from kagan.core._subprocess import resolve_spawn_command
+from kagan.core.chat import (
+    AssistantChunk,
+    AssistantMessagePersisted,
+    ChatEvent,
+    ToolCallProgress,
+    ToolCallStart,
+    TurnCancelled,
+    TurnDone,
+    TurnError,
+    TurnInProgressError,
+    TurnStarted,
+    UsageUpdate,
+)
 from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.core.models import Task, Worktree
@@ -37,13 +52,7 @@ from kagan.tui.keybindings import (
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
-from kagan.tui.screens.kanban_chat import (
-    apply_task_chat_event,
-    watch_chat_session,
-)
-from kagan.tui.screens.kanban_chat import (
-    send_orchestrator_message as send_chat_message,
-)
+from kagan.tui.screens.kanban_chat import apply_task_chat_event
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
@@ -58,7 +67,7 @@ from kagan.tui.widgets.streaming import StreamingOutput
 from kagan.tui.widgets.task_inspector import TaskInspector
 
 if TYPE_CHECKING:
-    from kagan.core.client import DBWatcher
+    from kagan.core.client import DBWatcher, KaganCore
     from kagan.tui.app import KaganApp
 
 
@@ -108,6 +117,150 @@ class SearchQuery:
     status: TaskStatus | None = None
     priority: str | None = None
     sort: str | None = None
+
+
+def _apply_chat_event_to_panel(panel: ChatPanel, event: ChatEvent) -> None:
+    """Translate a single :class:`ChatEvent` into ChatPanel widget calls.
+
+    Mirrors the user-visible status indicators that ``kanban_chat``'s legacy
+    ACP-on_update path emitted (``set_runtime_status`` / ``set_stream_action``)
+    so the kanban overlay continues to behave identically to phases 1-3.
+
+    ``UsageUpdate`` is rendered as a runtime-status nudge — phase 4b will
+    surface token / cost in the chat status bar properly.
+
+    ``PermissionRequest`` / ``PermissionResolved`` are intentionally no-ops in
+    phase 4a; phase 4c wires them to the existing approval surface.
+    """
+    if isinstance(event, TurnStarted):
+        panel.set_runtime_status("thinking")
+        panel.set_stream_action("Initializing...", confidence="assumption")
+        return
+    if isinstance(event, AssistantChunk):
+        panel.set_runtime_status("thinking")
+        if event.thought:
+            panel.set_stream_action("Reasoning through approach", confidence="assumption")
+            panel.append_thought_fragment(event.text)
+            return
+        panel.set_stream_action("Streaming response", confidence="certain")
+        panel.append_assistant_fragment(event.text)
+        return
+    if isinstance(event, ToolCallStart):
+        panel.set_runtime_status("thinking")
+        panel.upsert_tool_call(
+            event.tool_id,
+            event.title,
+            status="running",
+            args=event.args,
+            kind=event.kind_hint,
+        )
+        panel.set_stream_action(f"Running tool: {event.title}", confidence="certain")
+        return
+    if isinstance(event, ToolCallProgress):
+        panel.set_runtime_status("thinking")
+        panel.update_tool_call(event.tool_id, event.status, result=event.result)
+        return
+    if isinstance(event, UsageUpdate):
+        # Token/cost meter — keep state visible without overwriting the
+        # current stream action label. Full UI lands in phase 4b.
+        panel.set_runtime_status("thinking")
+        return
+    if isinstance(event, AssistantMessagePersisted):
+        # Engine has flushed the assistant row to DB. The streaming fragments
+        # already drove ``append_assistant_fragment``; nothing more to render.
+        return
+    if isinstance(event, TurnDone):
+        panel.set_runtime_status("ready")
+        panel.set_stream_action("Waiting for prompt", confidence="certain")
+        panel.increment_turn_count()
+        return
+    if isinstance(event, TurnCancelled):
+        panel.set_runtime_status("ready")
+        panel.set_stream_action("Waiting for prompt", confidence="certain")
+        return
+    if isinstance(event, TurnError):
+        panel.set_runtime_status("error")
+        panel.set_stream_action("Orchestrator error", confidence="needs-validation")
+        panel.add_system_message(f"Orchestrator error: {event.message}")
+        return
+    # PermissionRequest / PermissionResolved / UserMessagePersisted —
+    # intentionally no-op in phase 4a.
+
+
+async def send_chat_message(
+    *,
+    core: "KaganCore",
+    panel: ChatPanel,
+    text: str,
+    history: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """Drive a single orchestrator chat turn through :class:`ChatEngine`.
+
+    Module-level so tests can monkeypatch this seam directly. Replaces the
+    bespoke ``kanban_chat.send_orchestrator_message`` helper for the kanban
+    overlay only — the other three screens still use the legacy path until
+    phase 4c.
+
+    Returns the updated ``history`` list (with the new user/assistant pair
+    appended) so the caller can persist via ``orchestrator_sessions``.
+    """
+    settings = await core.settings.get()
+    backend = panel.preferred_agent_backend() or resolve_default_agent_backend(settings)
+    panel.set_agent_backend(backend)
+
+    # Resolve the active chat session id. The kanban screen always opens with
+    # an orchestrator session loaded; if the caller arrived here without one,
+    # there is nothing to thread the engine state through and we surface a
+    # system message instead of crashing.
+    app = panel.app
+    sessions_ns = getattr(app, "orchestrator_sessions", None)
+    chat_session_id = (
+        sessions_ns.current_session_id() if sessions_ns is not None else None
+    )
+    if not chat_session_id:
+        panel.set_runtime_status("error")
+        panel.set_stream_action("Orchestrator error", confidence="needs-validation")
+        panel.add_system_message("No active chat session.")
+        return list(history)
+
+    panel.set_runtime_status("initializing")
+    panel.set_stream_action("Initializing...", confidence="assumption")
+    with contextlib.suppress(KaganError, OSError, RuntimeError, ValueError):
+        await warm_orchestrator_backend(core, agent_backend=backend)
+
+    prompt_text = build_orchestrator_prompt(history, text)
+
+    # Buffer streamed assistant fragments locally so the returned ``history``
+    # tuple matches what the panel rendered, regardless of which event
+    # ultimately carried the persisted assistant content.
+    streamed_chunks: list[str] = []
+    persisted_response: str | None = None
+
+    try:
+        await core.chat.push_user(chat_session_id, text)
+        try:
+            async for event in core.chat.stream_assistant(
+                chat_session_id,
+                prompt_blocks=[acp.text_block(prompt_text)],
+                agent_backend=backend,
+            ):
+                if isinstance(event, AssistantChunk) and not event.thought:
+                    streamed_chunks.append(event.text)
+                if isinstance(event, AssistantMessagePersisted):
+                    persisted_response = event.content
+                if isinstance(event, TurnDone) and event.full_response:
+                    persisted_response = event.full_response
+                _apply_chat_event_to_panel(panel, event)
+        except TurnInProgressError:
+            panel.add_system_message("A turn is already running for this session.")
+            return list(history)
+    except asyncio.CancelledError:
+        # Cancellation is owned by the caller's CancelledError branch; we just
+        # propagate so it can render the interrupt message.
+        raise
+
+    response = persisted_response or "".join(streamed_chunks) or "No response from orchestrator"
+    return [*history, ("user", text), ("assistant", response)]
 
 
 def _is_enabled(value: str | None, *, default: bool) -> bool:
@@ -167,7 +320,6 @@ class KanbanScreen(Screen[None]):
         self._chat_session_switch_token = 0
         self._chat_message_task: asyncio.Task[None] | None = None
         self._chat_stream_task: asyncio.Task[None] | None = None
-        self._chat_watch_task: asyncio.Task[None] | None = None
         self._watcher: DBWatcher | None = None
         self._watcher_reload_task: asyncio.Task[None] | None = None
         self._branch_sync_task: asyncio.Task[None] | None = None
@@ -318,11 +470,6 @@ class KanbanScreen(Screen[None]):
             self._branch_sync_task = None
 
     async def on_unmount(self) -> None:
-        if self._chat_watch_task is not None:
-            self._chat_watch_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._chat_watch_task
-            self._chat_watch_task = None
         if self._watcher_reload_task is not None:
             self._watcher_reload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1842,28 +1989,6 @@ class KanbanScreen(Screen[None]):
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
             panel.set_preferred_agent_backend(session_backend)
-        session_id = self.kagan_app.orchestrator_sessions.current_session_id()
-        if session_id:
-            self._start_chat_watch_task(session_id, panel)
-
-    def _start_chat_watch_task(self, session_id: str, panel: ChatPanel) -> None:
-        """Start (or restart) the background SSE watch task for a chat session.
-
-        The task monitors the server-side /watch endpoint for takeover events.
-        In the default local-core configuration there is no HTTP client, so
-        ``watch_chat_session`` exits immediately — no overhead in the common case.
-        """
-        if self._chat_watch_task is not None and not self._chat_watch_task.done():
-            self._chat_watch_task.cancel()
-        http_client = getattr(self.kagan_app, "_chat_http_client", None)
-        self._chat_watch_task = asyncio.create_task(
-            watch_chat_session(
-                session_id=session_id,
-                panel=panel,
-                http_client=http_client,
-            ),
-            name=f"kanban-chat-watch:{session_id}",
-        )
 
     def _task_session_options(self, task: Task) -> list[tuple[str, str]]:
         ticket = task.title.strip() or f"Ticket #{task.id[:8]}"

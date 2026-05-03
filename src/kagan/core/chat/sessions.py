@@ -180,6 +180,33 @@ class ChatSessions:
 
         return await _db_async(self._engine, _read)
 
+    async def get_with_history(
+        self, session_id: str
+    ) -> tuple[ChatSession, builtins.list[ChatMessage]] | None:
+        """Fetch a single session row + its messages in one transaction.
+
+        Mirrors ``list_with_history`` for the single-session case so callers
+        (notably the ``cli.chat.sessions.get_chat_session`` shim) avoid two
+        round-trips and a race window between metadata read and history read.
+        Returns ``None`` if the session is missing.
+        """
+        normalized = session_id.strip()
+        if not normalized:
+            return None
+
+        def _read(s: DBSession) -> tuple[ChatSession, builtins.list[ChatMessage]] | None:
+            row = s.get(ChatSession, normalized)
+            if row is None:
+                return None
+            msgs = s.exec(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == normalized)  # type: ignore[arg-type]
+                .order_by(ChatMessage.id)  # type: ignore[attr-defined]
+            ).all()
+            return _detached(row), [_detached(m) for m in msgs]
+
+        return await _db_async(self._engine, _read)
+
     # ------------------------------------------------------------------ history
 
     async def history(self, session_id: str) -> builtins.list[ChatMessage]:

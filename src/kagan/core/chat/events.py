@@ -90,6 +90,11 @@ class TurnStarted(_ChatEventBase):
     at: datetime
 
 
+# NOTE: ``UserMessagePersisted`` is emitted by transport-layer route handlers
+# (currently the server SSE producer in ``kagan.server._chat_routes``) right
+# after they call ``ChatEngine.push_user``. The engine itself does not emit it
+# because the user row is persisted *before* ``stream_assistant`` runs — the
+# transport that owns the persist call also owns the broadcast.
 class UserMessagePersisted(_ChatEventBase):
     """The user message row was just written to the DB."""
 

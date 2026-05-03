@@ -261,6 +261,46 @@ async def test_title_generator_fires_only_on_first_turn(tmp_path: Path) -> None:
         core.close()
 
 
+async def test_generator_exit_tears_down_state(tmp_path: Path) -> None:
+    """Breaking out of ``stream_assistant`` early (GeneratorExit) MUST clear
+    the engine's per-session ``_TurnState`` — otherwise the slot leaks and the
+    next ``stream_assistant`` call would 409.
+    """
+    started = asyncio.Event()
+    factory = SuspendingFactory(first_chunk="x", started=started)
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        await engine.push_user(sid, "Hi")
+        from acp.schema import TextContentBlock
+
+        stream = engine.stream_assistant(
+            sid, prompt_blocks=[TextContentBlock(type="text", text="Hi")]
+        )
+        # Pump until the first chunk arrives, then break out early.
+        async for ev in stream:
+            if ev.kind == "assistant_chunk":
+                break
+        # Closing the async generator triggers GeneratorExit inside the engine.
+        await stream.aclose()
+
+        # State should be torn down; turn_status reports inactive.
+        status = engine.turn_status(sid)
+        assert status.active is False, "GeneratorExit must clear _TurnState"
+
+        # And we must be able to start a new turn without 409.
+        factory2 = ScriptedFactory(chunks=["ok"])
+        engine_with_factory = engine
+        await _drain(
+            engine_with_factory.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Again")],
+                acp_factory=factory2,
+            )
+        )
+    finally:
+        core.close()
+
+
 async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
     """Issue 2: a raising ``ACPSessionFactory.prompt`` must produce exactly
     one ``TurnError`` event — not two from the drain + outer except both

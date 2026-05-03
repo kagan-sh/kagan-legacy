@@ -128,10 +128,10 @@ async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | Non
     cs = _aggregate(client)
     if cs is None:
         return None
-    row = await cs.get(session_id)
-    if row is None:
+    pair = await cs.get_with_history(session_id)
+    if pair is None:
         return None
-    msgs = await cs.history(row.id)
+    row, msgs = pair
     return _row_to_dict(row, msgs)
 
 

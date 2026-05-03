@@ -160,24 +160,33 @@ class ChatEngine:
         *,
         prompt_blocks: list[Any],
         agent_backend: str | None = None,
+        acp_factory: ACPSessionFactory | None = None,
     ) -> AsyncIterator[ChatEvent]:
         """Run a single assistant turn and yield :class:`ChatEvent` items.
 
         Raises :class:`TurnInProgressError` if a turn is already in flight for
-        ``session_id``.
+        ``session_id``. ``acp_factory`` overrides the engine's default factory
+        for this single call — used by transports (e.g. server SSE) that need
+        per-request cwd / attachments without sharing factory mutable state.
         """
         state = self._claim_slot(session_id)
+        factory = acp_factory or self._acp
 
         # First turn = "no assistant has replied yet". The user row is already
         # persisted by ``push_user`` before this method is called, so checking
         # ``len(prior) == 0`` would never fire title generation.
+        # ``GeneratorExit`` (early break by the consumer) MUST tear down
+        # ``_TurnState`` — otherwise the slot leaks and future turns 409.
         prior = await self._sessions.history(session_id)
         is_first_turn = not any(m.role == "assistant" for m in prior)
 
-        async for event in self._run_stream(
-            session_id, state, prompt_blocks, is_first_turn, agent_backend
-        ):
-            yield event
+        try:
+            async for event in self._run_stream(
+                session_id, state, prompt_blocks, is_first_turn, agent_backend, factory
+            ):
+                yield event
+        finally:
+            self._teardown(session_id)
 
     # ------------------------------------------------------------------ cancel
 
@@ -250,6 +259,7 @@ class ChatEngine:
         prompt_blocks: list[Any],
         is_first_turn: bool,
         agent_backend: str | None,
+        factory: ACPSessionFactory,
     ) -> AsyncIterator[ChatEvent]:
         queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
 
@@ -263,7 +273,7 @@ class ChatEngine:
 
         # Create the actual running task and replace the sentinel.
         run_task: asyncio.Task[ACPTurnResult] = asyncio.create_task(
-            self._acp.prompt(
+            factory.prompt(
                 session_id=session_id,
                 prompt_blocks=prompt_blocks,
                 on_update=_on_update,
@@ -325,11 +335,9 @@ class ChatEngine:
                     terminated=True,
                 )
             yield TurnCancelled(reason="user")
-            self._teardown(session_id)
             return
         except Exception as exc:
             yield TurnError(message=str(exc))
-            self._teardown(session_id)
             return
 
         if result.cancelled:
@@ -344,7 +352,6 @@ class ChatEngine:
                     terminated=True,
                 )
             yield TurnCancelled(reason="user")
-            self._teardown(session_id)
             return
 
         full_response = result.full_response or "".join(state.partial)
@@ -365,7 +372,6 @@ class ChatEngine:
                 asyncio.create_task(self._maybe_rename(session_id, first_user_text, full_response))
 
         yield TurnDone(full_response=full_response)
-        self._teardown(session_id)
 
     async def _maybe_rename(self, session_id: str, user_text: str, reply: str) -> None:
         if self._title_generator is None:

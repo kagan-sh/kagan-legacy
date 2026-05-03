@@ -34,7 +34,7 @@ from kagan.core.chat.events import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.unit]
 
 
 async def _drain(stream: Any) -> list[ChatEvent]:

@@ -11,7 +11,7 @@ proving that both interfaces behave identically.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,16 @@ class RepoView:
     id: str
     path: str
     default_branch: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ChatTurnOutcome:
+    """Result of a single chat turn driven through the engine."""
+
+    user_content: str
+    assistant_content: str
+    terminated: bool
+    events: list[Any] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +562,91 @@ class CoreDriver:
             terminated=terminated,
         )
 
+    async def chat_send(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        agent_chunks: list[str] | None = None,
+        cancel_after_chars: int | None = None,
+    ) -> "ChatTurnOutcome":
+        """Drive a full chat turn through ChatEngine with a ScriptedFactory.
+
+        ``agent_chunks`` is forwarded to ``ScriptedFactory``; defaults to
+        ``["ok"]`` when omitted.  If ``cancel_after_chars`` is set, the engine
+        is cancelled once the in-flight partial exceeds that many characters.
+        """
+        from acp.schema import TextContentBlock
+
+        from tests.helpers.chat_engine import ScriptedFactory, SuspendingFactory
+
+        chunks = agent_chunks if agent_chunks is not None else ["ok"]
+        engine = self._ctx.chat
+
+        if cancel_after_chars is not None:
+            started: asyncio.Event = asyncio.Event()
+            factory: Any = SuspendingFactory(
+                first_chunk=chunks[0] if chunks else "x", started=started
+            )
+        else:
+            factory = ScriptedFactory(chunks=chunks)
+
+        user_msg = await engine.push_user(session_id, text)
+
+        events: list[Any] = []
+
+        async def _consume() -> None:
+            async for ev in engine.stream_assistant(
+                session_id,
+                prompt_blocks=[TextContentBlock(type="text", text=text)],
+                acp_factory=factory,
+            ):
+                events.append(ev)
+
+        if cancel_after_chars is not None:
+            consumer = asyncio.create_task(_consume())
+            await asyncio.wait_for(started.wait(), timeout=5.0)
+            # Wait until enough chars accumulated.
+            for _ in range(200):
+                status = engine.turn_status(session_id)
+                if status.partial_chars >= cancel_after_chars:
+                    break
+                await asyncio.sleep(0)
+            await engine.cancel(session_id)
+            await asyncio.wait_for(consumer, timeout=5.0)
+        else:
+            await asyncio.wait_for(_consume(), timeout=10.0)
+
+        from kagan.core.chat.events import AssistantMessagePersisted
+
+        persisted = next(
+            (e for e in reversed(events) if isinstance(e, AssistantMessagePersisted)), None
+        )
+        assistant_content = persisted.content if persisted else ""
+        terminated = persisted.terminated if persisted else False
+        return ChatTurnOutcome(
+            user_content=user_msg.content,
+            assistant_content=assistant_content,
+            terminated=terminated,
+            events=events,
+        )
+
+    async def chat_history(self, session_id: str) -> list[Any]:
+        """Return ChatMessage rows for a session via the engine."""
+        return await self._ctx.chat.history(session_id)
+
+    async def chat_event_log(self, session_id: str, outcome: "ChatTurnOutcome") -> list[Any]:
+        """Return the events list from a ChatTurnOutcome (for sequence assertions)."""
+        return list(outcome.events)
+
+    async def chat_cancel_in_flight(self, session_id: str) -> Any:
+        """Cancel any in-flight turn for ``session_id``."""
+        return await self._ctx.chat.cancel(session_id)
+
+    async def chat_switch_session(self, new_session_id: str) -> None:
+        """Detach engine state for ``new_session_id`` (simulates session switch)."""
+        await self._ctx.chat.detach(new_session_id)
+
     # -- Audit --------------------------------------------------------------
 
     async def audit_list(
@@ -588,6 +683,7 @@ class CoreDriver:
 
 
 __all__ = [
+    "ChatTurnOutcome",
     "CoreDriver",
     "ProjectView",
     "RepoView",

@@ -55,6 +55,32 @@ class ACPTurnResult:
     usage: UsageSnapshot | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PermissionDecision:
+    """Outcome of a consumer-driven permission resolution.
+
+    Returned from :class:`ACPSessionFactory`'s ``permission_resolver`` callback
+    back into the factory, which then translates it into an ACP
+    ``RequestPermissionResponse``.
+    """
+
+    outcome: str  # one of: allow_once, allow_always, deny, deny_feedback
+    feedback: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionRequestPayload:
+    """Permission request handed from the factory to the resolver.
+
+    Shape-compatible with :class:`events.PermissionRequest` minus the
+    ``future_id`` (the engine assigns that). Carries the ACP ``tool_call`` and
+    ``options`` as plain dicts so the resolver doesn't depend on ACP schema.
+    """
+
+    tool_call: dict[str, Any]
+    options: list[dict[str, Any]]
+
+
 @runtime_checkable
 class ACPSessionFactory(Protocol):
     """The seam between :class:`ChatEngine` and the underlying ACP transport.
@@ -62,6 +88,14 @@ class ACPSessionFactory(Protocol):
     Implementations own the lifecycle of an ACP session for a single turn.
     They MUST surface every ACP ``session_update`` to ``on_update`` and MUST
     honour ``cancel_event`` (cancelling the in-flight prompt when set).
+
+    ``permission_resolver`` (when provided) is invoked when the underlying ACP
+    agent issues a ``request_permission`` JSON-RPC call. The factory hands the
+    request — already shaped as a :class:`PermissionRequestPayload` — to the
+    resolver, awaits a :class:`PermissionDecision`, and translates it back
+    into the ACP outcome. When ``None``, factories MUST fall back to their
+    historical behaviour (auto-deny for the server, prompt-toolkit modal for
+    the legacy CLI).
     """
 
     async def prompt(
@@ -72,6 +106,8 @@ class ACPSessionFactory(Protocol):
         on_update: Callable[[Any], Awaitable[None]],
         cancel_event: asyncio.Event,
         agent_backend: str | None = None,
+        permission_resolver: Callable[[PermissionRequestPayload], Awaitable[PermissionDecision]]
+        | None = None,
     ) -> ACPTurnResult: ...
 
 
@@ -215,6 +251,8 @@ class SpawnPerTurnACPFactory:
         on_update: Callable[[Any], Awaitable[None]],
         cancel_event: asyncio.Event,
         agent_backend: str | None = None,
+        permission_resolver: Callable[[PermissionRequestPayload], Awaitable[PermissionDecision]]
+        | None = None,
     ) -> ACPTurnResult:
         from kagan.cli.chat.acp import run_orchestrator_turn
 
@@ -233,6 +271,7 @@ class SpawnPerTurnACPFactory:
                 on_update=on_update,
                 attachments=self.attachments,
                 cwd=self.cwd,
+                permission_resolver=permission_resolver,
             )
         )
         cancel_task = asyncio.create_task(cancel_event.wait())
@@ -280,6 +319,8 @@ def _flatten_prompt_blocks(prompt_blocks: list[Any]) -> str:
 __all__ = [
     "ACPSessionFactory",
     "ACPTurnResult",
+    "PermissionDecision",
+    "PermissionRequestPayload",
     "SpawnPerTurnACPFactory",
     "UsageSnapshot",
     "acp_update_to_chat_event",

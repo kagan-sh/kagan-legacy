@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from tests.helpers.chat_engine import (
+    PermissionFactory,
     RaisingFactory,
     ScriptedFactory,
     SuspendingFactory,
@@ -23,6 +24,7 @@ from kagan.core.chat.events import (
     AssistantChunk,
     AssistantMessagePersisted,
     ChatEvent,
+    PermissionRequest,
     TurnCancelled,
     TurnDone,
     TurnError,
@@ -465,5 +467,94 @@ async def test_factory_failure_emits_single_turn_error(tmp_path: Path) -> None:
         assert errors[0].message == "boom"
         # Engine should clean up state after a failed turn.
         assert engine.turn_status(sid).active is False
+    finally:
+        core.close()
+
+
+async def test_permission_request_event_emitted_and_resolved(tmp_path: Path) -> None:
+    """Engine emits PermissionRequest, awaits resolve_permission, returns decision."""
+    factory = PermissionFactory(
+        tool_call={"title": "edit_file", "kind": "fs.write"},
+        options=[
+            {"option_id": "1", "kind": "allow_once", "name": "Allow once"},
+            {"option_id": "2", "kind": "reject_once", "name": "Deny"},
+        ],
+    )
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        await engine.push_user(sid, "Hi")
+        from acp.schema import TextContentBlock
+
+        events: list[ChatEvent] = []
+
+        async def _consume() -> None:
+            async for ev in engine.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Hi")],
+            ):
+                events.append(ev)
+                if isinstance(ev, PermissionRequest):
+                    # Consumer resolves the permission as soon as it sees it.
+                    await engine.resolve_permission(
+                        sid, ev.future_id, outcome="allow_once"
+                    )
+
+        await asyncio.wait_for(_consume(), timeout=5.0)
+
+        perm_events = [e for e in events if isinstance(e, PermissionRequest)]
+        assert len(perm_events) == 1
+        assert perm_events[0].tool_call == {"title": "edit_file", "kind": "fs.write"}
+        assert perm_events[0].options[0]["kind"] == "allow_once"
+
+        assert factory.decision is not None
+        assert factory.decision.outcome == "allow_once"
+        assert factory.decision.feedback is None
+
+        done = next(e for e in events if isinstance(e, TurnDone))
+        assert done.full_response == "resolved:allow_once"
+    finally:
+        core.close()
+
+
+async def test_permission_request_idempotent_resolve(tmp_path: Path) -> None:
+    """resolve_permission is idempotent and safe before the future exists."""
+    factory = PermissionFactory(
+        tool_call={"title": "noop"},
+        options=[{"option_id": "1", "kind": "allow_once"}],
+    )
+    core, engine, sid = await boot_engine(tmp_path, factory)
+    try:
+        # Resolve before any turn / future is registered — must be a no-op.
+        await engine.resolve_permission(sid, "unknown-future-id", outcome="allow_once")
+        await engine.resolve_permission(
+            "no-such-session", "any-id", outcome="allow_once"
+        )
+
+        await engine.push_user(sid, "Hi")
+        from acp.schema import TextContentBlock
+
+        events: list[ChatEvent] = []
+
+        async def _consume() -> None:
+            async for ev in engine.stream_assistant(
+                sid,
+                prompt_blocks=[TextContentBlock(type="text", text="Hi")],
+            ):
+                events.append(ev)
+                if isinstance(ev, PermissionRequest):
+                    await engine.resolve_permission(
+                        sid, ev.future_id, outcome="deny", feedback="not now"
+                    )
+                    # Double-resolve must be safe.
+                    await engine.resolve_permission(
+                        sid, ev.future_id, outcome="allow_once"
+                    )
+
+        await asyncio.wait_for(_consume(), timeout=5.0)
+
+        assert factory.decision is not None
+        # First resolution wins.
+        assert factory.decision.outcome == "deny"
+        assert factory.decision.feedback == "not now"
     finally:
         core.close()

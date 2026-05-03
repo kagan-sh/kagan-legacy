@@ -102,9 +102,11 @@ class _CaptureACPClient(ACPClientBase):
         self,
         *,
         on_update: Callable[[Any], Awaitable[None] | None] | None = None,
+        permission_resolver: Callable[[Any], Awaitable[Any]] | None = None,
     ) -> None:
         self.text_chunks: list[str] = []
         self._on_update = on_update
+        self._permission_resolver = permission_resolver
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         del session_id, kwargs
@@ -124,13 +126,94 @@ class _CaptureACPClient(ACPClientBase):
             logger.exception("Orchestrator turn update callback failed")
 
     async def request_permission(self, options: Any, session_id: str, tool_call: Any, **_kw: Any):
-        del session_id, tool_call
+        del session_id
+        # Engine-driven seam: when a resolver is wired, hand the request off
+        # to it and translate its decision back into an ACP outcome.
+        if self._permission_resolver is not None:
+            from kagan.core.chat.acp import PermissionDecision, PermissionRequestPayload
+
+            payload = PermissionRequestPayload(
+                tool_call=_tool_call_to_dict(tool_call),
+                options=[_permission_option_to_dict(opt) for opt in (options or ())],
+            )
+            try:
+                decision = await self._permission_resolver(payload)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("permission_resolver raised; falling back to deny")
+                return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+            if isinstance(decision, PermissionDecision) and decision.outcome in {
+                "allow_once",
+                "allow_always",
+            }:
+                wanted = decision.outcome
+                for option in options or ():
+                    if option.kind == wanted:
+                        return RequestPermissionResponse(
+                            outcome=AllowedOutcome(
+                                outcome="selected", option_id=option.option_id
+                            )
+                        )
+                # No exact-match option; pick any allow_* option as fallback.
+                for option in options or ():
+                    if option.kind in {"allow_once", "allow_always"}:
+                        return RequestPermissionResponse(
+                            outcome=AllowedOutcome(
+                                outcome="selected", option_id=option.option_id
+                            )
+                        )
+            return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+
+        # Legacy auto-deny fallback: matches today's server behaviour when no
+        # resolver is wired.
+        del tool_call
         for option in options:
             if option.kind in {"allow_always", "allow_once"}:
                 return RequestPermissionResponse(
                     outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
                 )
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+
+
+def _tool_call_to_dict(tool_call: Any) -> dict[str, Any]:
+    """Reduce an ACP tool-call object to a JSON-serialisable dict."""
+    if tool_call is None:
+        return {}
+    if isinstance(tool_call, dict):
+        return dict(tool_call)
+    dump = getattr(tool_call, "model_dump", None)
+    if callable(dump):
+        try:
+            return dict(dump())
+        except (TypeError, ValueError):
+            pass
+    out: dict[str, Any] = {}
+    for attr in ("tool_call_id", "title", "name", "kind", "raw_input", "rawInput"):
+        value = getattr(tool_call, attr, None)
+        if value is not None:
+            out[attr] = value
+    return out
+
+
+def _permission_option_to_dict(option: Any) -> dict[str, Any]:
+    """Reduce an ACP ``PermissionOption`` to a JSON-serialisable dict."""
+    if option is None:
+        return {}
+    if isinstance(option, dict):
+        return dict(option)
+    dump = getattr(option, "model_dump", None)
+    if callable(dump):
+        try:
+            return dict(dump())
+        except (TypeError, ValueError):
+            pass
+    out: dict[str, Any] = {}
+    for attr in ("option_id", "name", "kind"):
+        value = getattr(option, attr, None)
+        if value is not None:
+            out[attr] = value
+    return out
 
 
 def _resolve_acp_command_for_backend(agent_backend: str) -> tuple[str, list[str]]:
@@ -187,6 +270,7 @@ async def run_orchestrator_turn(
     attachments: list[dict[str, str]] | None = None,
     cwd: Path | None = None,
     lightweight: bool = False,
+    permission_resolver: Callable[[Any], Awaitable[Any]] | None = None,
 ) -> str:
     """Run a single orchestrator turn via ACP.
 
@@ -220,7 +304,9 @@ async def run_orchestrator_turn(
         backend_env_vars=backend.env_vars,
     )
 
-    capture_client = _CaptureACPClient(on_update=on_update)
+    capture_client = _CaptureACPClient(
+        on_update=on_update, permission_resolver=permission_resolver
+    )
     timeout_s = _acp_handshake_timeout_seconds(agent_backend)
     try:
         async with acp.spawn_agent_process(

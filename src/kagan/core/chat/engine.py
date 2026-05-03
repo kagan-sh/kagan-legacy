@@ -22,21 +22,25 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
 from kagan.core.chat.acp import (
     ACPSessionFactory,
     ACPTurnResult,
+    PermissionDecision,
+    PermissionRequestPayload,
     acp_update_to_chat_event,
 )
 from kagan.core.chat.events import (
     AssistantChunk,
     AssistantMessagePersisted,
     ChatEvent,
+    PermissionRequest,
     TurnCancelled,
     TurnDone,
     TurnError,
@@ -88,6 +92,7 @@ class _TurnState:
     started_at: datetime | None = None
     partial: list[str] = field(default_factory=list)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    pending_permissions: dict[str, asyncio.Future[PermissionDecision]] = field(default_factory=dict)
 
 
 class ChatEngine:
@@ -259,6 +264,31 @@ class ChatEngine:
             state.task.cancel()
         return CancelResult(was_running=True, partial_chars=partial_chars)
 
+    # ------------------------------------------------------------------ permission
+
+    async def resolve_permission(
+        self,
+        session_id: str,
+        future_id: str,
+        *,
+        outcome: Literal["allow_once", "allow_always", "deny", "deny_feedback"],
+        feedback: str | None = None,
+    ) -> None:
+        """Resolve a previously emitted :class:`PermissionRequest`.
+
+        Idempotent: resolving an unknown ``future_id`` (already resolved, or
+        not yet registered when a consumer races ahead) is a no-op. The
+        single-consumer pattern is fine for now — phase 5 may broadcast
+        :class:`PermissionResolved` to additional subscribers.
+        """
+        state = self._states.get(session_id)
+        if state is None:
+            return
+        fut = state.pending_permissions.pop(future_id, None)
+        if fut is None or fut.done():
+            return
+        fut.set_result(PermissionDecision(outcome=outcome, feedback=feedback))
+
     # ------------------------------------------------------------------ detach
 
     async def detach(self, session_id: str) -> None:
@@ -303,6 +333,29 @@ class ChatEngine:
         self._states[session_id] = state
         return state
 
+    @staticmethod
+    async def _resolve_via_queue(
+        state: _TurnState,
+        queue: asyncio.Queue[ChatEvent | None],
+        payload: PermissionRequestPayload,
+    ) -> PermissionDecision:
+        """Register a pending permission, emit the request, await the answer."""
+        future_id = uuid.uuid4().hex
+        fut: asyncio.Future[PermissionDecision] = asyncio.get_running_loop().create_future()
+        state.pending_permissions[future_id] = fut
+        await queue.put(
+            PermissionRequest(
+                future_id=future_id,
+                tool_call=payload.tool_call,
+                options=payload.options,
+            )
+        )
+        try:
+            return await fut
+        except asyncio.CancelledError:
+            state.pending_permissions.pop(future_id, None)
+            raise
+
     async def _run_stream(
         self,
         session_id: str,
@@ -322,6 +375,11 @@ class ChatEngine:
                 state.partial.append(event.text)
             await queue.put(event)
 
+        async def _permission_resolver(
+            payload: PermissionRequestPayload,
+        ) -> PermissionDecision:
+            return await self._resolve_via_queue(state, queue, payload)
+
         # Create the actual running task and replace the sentinel.
         run_task: asyncio.Task[ACPTurnResult] = asyncio.create_task(
             factory.prompt(
@@ -330,6 +388,7 @@ class ChatEngine:
                 on_update=_on_update,
                 cancel_event=state.cancel_event,
                 agent_backend=agent_backend,
+                permission_resolver=_permission_resolver,
             )
         )
         state.task = run_task

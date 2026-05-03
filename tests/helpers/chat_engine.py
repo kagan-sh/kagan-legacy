@@ -48,8 +48,9 @@ class ScriptedFactory:
         on_update: Any,
         cancel_event: asyncio.Event,
         agent_backend: str | None = None,
+        permission_resolver: Any = None,
     ) -> ACPTurnResult:
-        del session_id, prompt_blocks, agent_backend
+        del session_id, prompt_blocks, agent_backend, permission_resolver
         for chunk in self.chunks:
             if cancel_event.is_set():
                 return ACPTurnResult(full_response="", cancelled=True)
@@ -73,12 +74,56 @@ class SuspendingFactory:
         on_update: Any,
         cancel_event: asyncio.Event,
         agent_backend: str | None = None,
+        permission_resolver: Any = None,
     ) -> ACPTurnResult:
-        del session_id, prompt_blocks, agent_backend
+        del session_id, prompt_blocks, agent_backend, permission_resolver
         await on_update(text_chunk(self.first_chunk))
         self.started.set()
         await cancel_event.wait()
         return ACPTurnResult(full_response="", cancelled=True)
+
+
+@dataclass
+class PermissionFactory:
+    """ACPSessionFactory that drives the permission seam.
+
+    On ``prompt`` it invokes ``permission_resolver`` once, stores the
+    resulting :class:`PermissionDecision` on ``self.decision``, and returns
+    a successful turn carrying the decision's outcome as text. Raises if no
+    resolver was passed (the seam is broken).
+    """
+
+    tool_call: dict[str, Any]
+    options: list[dict[str, Any]]
+    decision: Any = None
+    resolver_started: asyncio.Event | None = None
+
+    async def prompt(
+        self,
+        *,
+        session_id: str,
+        prompt_blocks: list[Any],
+        on_update: Any,
+        cancel_event: asyncio.Event,
+        agent_backend: str | None = None,
+        permission_resolver: Any = None,
+    ) -> ACPTurnResult:
+        del session_id, prompt_blocks, on_update, cancel_event, agent_backend
+        if permission_resolver is None:
+            raise AssertionError("permission_resolver was not threaded through")
+        from kagan.core.chat.acp import PermissionRequestPayload
+
+        payload = PermissionRequestPayload(
+            tool_call=self.tool_call,
+            options=self.options,
+        )
+        if self.resolver_started is not None:
+            self.resolver_started.set()
+        self.decision = await permission_resolver(payload)
+        return ACPTurnResult(
+            full_response=f"resolved:{self.decision.outcome}",
+            cancelled=False,
+        )
 
 
 @dataclass
@@ -99,8 +144,9 @@ class RaisingFactory:
         on_update: Any,
         cancel_event: asyncio.Event,
         agent_backend: str | None = None,
+        permission_resolver: Any = None,
     ) -> ACPTurnResult:
-        del session_id, prompt_blocks, on_update, cancel_event, agent_backend
+        del session_id, prompt_blocks, on_update, cancel_event, agent_backend, permission_resolver
         raise self.exc
 
 
@@ -128,6 +174,7 @@ async def boot_engine(
 
 
 __all__ = [
+    "PermissionFactory",
     "RaisingFactory",
     "ScriptedFactory",
     "SuspendingFactory",

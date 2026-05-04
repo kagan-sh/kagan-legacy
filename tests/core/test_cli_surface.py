@@ -495,7 +495,10 @@ def test_web_ctrl_c_exits_cleanly(monkeypatch, tmp_path: Path) -> None:
         coro.close()
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("kagan.server._web_ui.has_web_bundle", lambda: True)
+    # CLI does `from kagan.server import has_web_bundle` (public re-export
+    # since R4); patch the bound name in the consumer module.
+    monkeypatch.setattr("kagan.cli.web.has_web_bundle", lambda: True, raising=False)
+    monkeypatch.setattr("kagan.server.has_web_bundle", lambda: True)
     monkeypatch.setattr("kagan.cli.web._is_server_running", lambda *_args, **_kwargs: False)
     monkeypatch.setattr("kagan.cli.web.run_async", _raise_keyboard_interrupt)
 

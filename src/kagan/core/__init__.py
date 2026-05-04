@@ -144,6 +144,7 @@ from kagan.core._security import (
     scan_text_for_injection,
 )
 from kagan.core._sessions import (
+    SessionSummary,
     active_session_summaries,
     fetch_project_learnings,
     get_latest_session,
@@ -287,6 +288,7 @@ __all__ = [
     "SessionError",
     "SessionEvent",
     "SessionStatus",
+    "SessionSummary",
     "Setting",
     "StepVerdict",
     "StepVerification",

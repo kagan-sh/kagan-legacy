@@ -15,17 +15,18 @@ formatting, VS Code tree view).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from kagan.core.chat.sessions import (
-    chat_session_to_legacy_dict,
+    ChatSessionView,
+    chat_session_to_view,
     format_relative_time,
 )
 
 __all__ = [
     "ChatSessionListItem",
+    "ChatSessionView",
     "build_chat_session_list_items",
-    "chat_session_to_legacy_dict",
+    "chat_session_to_view",
     "resolve_chat_session_selector",
 ]
 
@@ -44,18 +45,17 @@ class ChatSessionListItem:
 
 
 def build_chat_session_list_items(
-    sessions: list[dict[str, Any]],
+    sessions: list[ChatSessionView],
     *,
     current_session_id: str | None = None,
 ) -> list[ChatSessionListItem]:
     items: list[ChatSessionListItem] = []
     for idx, session in enumerate(sessions, start=1):
-        sid = str(session.get("id") or "").strip()
-        label = str(session.get("label") or sid).strip() or sid
-        source = str(session.get("source") or "unknown").strip() or "unknown"
-        agent_backend = session.get("agent_backend")
-        backend_value = str(agent_backend).strip() if isinstance(agent_backend, str) else None
-        updated_at = str(session.get("updated_at") or "")
+        sid = session.id.strip()
+        label = session.label.strip() or sid
+        source = session.source.strip() or "unknown"
+        backend_value = session.agent_backend.strip() if session.agent_backend else None
+        updated_at = session.updated_at
         updated_relative = format_relative_time(updated_at) if updated_at else ""
 
         items.append(
@@ -65,7 +65,7 @@ def build_chat_session_list_items(
                 label=label,
                 source=source,
                 agent_backend=backend_value,
-                project_id=session.get("project_id"),
+                project_id=session.project_id,
                 updated_at=updated_at,
                 updated_relative=updated_relative,
                 is_current=bool(current_session_id) and sid == current_session_id,

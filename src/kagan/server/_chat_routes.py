@@ -37,6 +37,7 @@ from kagan.core.chat import (
     AssistantChunk,
     AssistantMessagePersisted,
     ChatEvent,
+    ChatSessionView,
     SpawnPerTurnACPFactory,
     ToolCallProgress,
     ToolCallStart,
@@ -45,7 +46,7 @@ from kagan.core.chat import (
     TurnError,
     TurnInProgressError,
     TurnStarted,
-    chat_session_to_legacy_dict,
+    chat_session_to_view,
 )
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
@@ -88,50 +89,53 @@ def _broadcast(session_id: str, event: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _load_session_dict(client: Any, session_id: str) -> dict[str, Any] | None:
-    """Fetch a session + its messages and return the legacy dict shape.
+async def _load_session_view(client: Any, session_id: str) -> ChatSessionView | None:
+    """Fetch a session + its messages and return a typed view.
 
     Wraps ``client.chat_sessions.get_with_history`` for transport-layer code
-    that consumes the dict-shaped wire mappers (``_session_to_wire`` /
-    ``_session_summary``). Returns ``None`` if the session is missing.
+    that needs the session view for wire serialization. Returns ``None`` if
+    the session is missing.
     """
     pair = await client.chat_sessions.get_with_history(session_id)
     if pair is None:
         return None
-    return chat_session_to_legacy_dict(*pair)
+    return chat_session_to_view(*pair)
 
 
-def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:
-    """Convert a chat session record to a wire-safe dict."""
-    history = session.get("orchestrator_history") or []
-    messages: list[ChatMessageResponse] = []
-    for item in history:
-        if isinstance(item, list | tuple) and len(item) == 2:
-            messages.append(ChatMessageResponse(role=str(item[0]), content=str(item[1])))
+def _session_to_wire(session: ChatSessionView) -> dict[str, Any]:
+    """Serialize a typed session view to the REST wire shape."""
+    messages: list[ChatMessageResponse] = [
+        ChatMessageResponse(role=str(item[0]), content=str(item[1]))
+        for item in session.orchestrator_history
+        if isinstance(item, list | tuple) and len(item) == 2
+    ]
 
     return ChatSessionResponse(
-        id=session.get("id", ""),
-        label=session.get("label", ""),
-        source=session.get("source", "repl"),
-        agent_backend=session.get("agent_backend"),
-        project_id=session.get("project_id"),
-        updated_at=session.get("updated_at", ""),
+        id=session.id,
+        label=session.label,
+        source=session.source,
+        agent_backend=session.agent_backend,
+        project_id=session.project_id,
+        updated_at=session.updated_at,
         message_count=len(messages),
         messages=messages,
     ).model_dump(mode="json")
 
 
-def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
-    """Lightweight summary without full message history."""
-    history = session.get("orchestrator_history") or []
-    msg_count = sum(1 for item in history if isinstance(item, list | tuple) and len(item) == 2)
+def _session_summary(session: ChatSessionView) -> dict[str, Any]:
+    """Serialize a typed session view to the lightweight summary wire shape."""
+    msg_count = sum(
+        1
+        for item in session.orchestrator_history
+        if isinstance(item, list | tuple) and len(item) == 2
+    )
     return ChatSessionSummaryResponse(
-        id=session.get("id", ""),
-        label=session.get("label", ""),
-        source=session.get("source", "repl"),
-        agent_backend=session.get("agent_backend"),
-        project_id=session.get("project_id"),
-        updated_at=session.get("updated_at", ""),
+        id=session.id,
+        label=session.label,
+        source=session.source,
+        agent_backend=session.agent_backend,
+        project_id=session.project_id,
+        updated_at=session.updated_at,
         message_count=msg_count,
     ).model_dump(mode="json")
 
@@ -216,7 +220,7 @@ def _emit(frame: dict[str, Any]) -> str:
 async def _sse_stream(
     ctx: Any,
     session_id: str,
-    session: dict[str, Any],
+    session: ChatSessionView,
     text: str,
     backend: str,
     attachments: list[Attachment] | None,
@@ -250,7 +254,7 @@ async def _sse_stream(
     # ``ChatMessage`` row for the session and re-inserts only the snapshot —
     # calling it after ``push_user`` would wipe the just-persisted user row.
     # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
-    session["agent_backend"] = backend
+    session.agent_backend = backend
     # The claimed slot must be released if ANYTHING between the claim and
     # entering ``stream_assistant`` fails — including settings/cwd resolution,
     # client disconnect at a yield, or push_user. Once ``stream_assistant``
@@ -285,7 +289,7 @@ async def _sse_stream(
         started_event = {
             "t": "CHAT_TURN_STARTED",
             "at": datetime.now(UTC).isoformat(),
-            "by_source": session.get("source"),
+            "by_source": session.source,
         }
         _broadcast(session_id, started_event)
         yield _emit(started_event)
@@ -308,7 +312,7 @@ async def _sse_stream(
 
         prior_history: list[tuple[str, str]] = [
             (str(item[0]), str(item[1]))
-            for item in (session.get("orchestrator_history") or [])
+            for item in session.orchestrator_history
             if isinstance(item, list | tuple) and len(item) == 2
         ]
         prompt_text = build_orchestrator_prompt(prior_history, text)
@@ -361,7 +365,7 @@ async def _sse_stream(
             logger.exception("Post-turn session refresh failed for {}", session_id)
         else:
             if refreshed_pair is not None:
-                refreshed = chat_session_to_legacy_dict(*refreshed_pair)
+                refreshed = chat_session_to_view(*refreshed_pair)
                 _broadcast(
                     session_id,
                     {"t": "CHAT_SESSION_UPDATED", "session": _session_summary(refreshed)},
@@ -391,7 +395,7 @@ async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
     if forbidden is not None:
         return forbidden
     session_id = cast("str", request.path_params["session_id"])
-    session = await _load_session_dict(ctx.client, session_id)
+    session = await _load_session_view(ctx.client, session_id)
     if session is None:
         return _err("Session not found", status=404)
     raw = await request.json()
@@ -404,7 +408,7 @@ async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
         await ctx.client.chat_sessions.update(session_id, agent_backend=body.agent_backend)
         # Re-fetch so the response carries the new ``updated_at`` rather than
         # the pre-update snapshot. (Greptile P2 fix.)
-        refreshed = await _load_session_dict(ctx.client, session_id)
+        refreshed = await _load_session_view(ctx.client, session_id)
         if refreshed is not None:
             session = refreshed
     return _ok(_session_to_wire(session))
@@ -422,7 +426,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         pairs = await ctx.client.chat_sessions.list_with_history(
             source=source, project_id=project_id
         )
-        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+        sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
         return _ok([_session_summary(s) for s in sessions])
 
     @mcp.custom_route("/api/chat/sessions", methods=["POST"])
@@ -443,7 +447,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
             agent_backend=body.agent_backend,
             project_id=project_id,
         )
-        session = chat_session_to_legacy_dict(row, [])
+        session = chat_session_to_view(row, [])
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["GET"])
@@ -451,10 +455,10 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def get_session(request: Request, *, ctx: Any) -> JSONResponse:
         session_id = cast("str", request.path_params["session_id"])
-        session = await _load_session_dict(ctx.client, session_id)
+        session = await _load_session_view(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
-        etag = f'"{session.get("updated_at", "")}"'
+        etag = f'"{session.updated_at}"'
         if request.headers.get("If-None-Match") == etag:
             return JSONResponse(None, status_code=304)
         resp = _ok(_session_to_wire(session))
@@ -477,8 +481,9 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         except (ValueError, TypeError):
             return _err("after_id must be an integer", status=400)
 
-        session = await _load_session_dict(ctx.client, session_id)
-        if session is None:
+        # Existence check only — messages are fetched separately below.
+        session_exists = await _load_session_view(ctx.client, session_id)
+        if session_exists is None:
             return _err("Session not found", status=404)
 
         messages = await ctx.client.chat_sessions.messages_after(session_id, after_id=after_id)
@@ -560,12 +565,12 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
         # Resolve session + backend up-front (mirrors the legacy
         # ``_claim_turn_slot`` body).
-        session = await _load_session_dict(ctx.client, session_id)
+        session = await _load_session_view(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
         settings = await ctx.client.settings.get()
         backend = (
-            agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
+            agent_backend or session.agent_backend or resolve_default_agent_backend(settings)
         )
 
         # Pre-flight 409: cheap turn_status read keeps the early-error path
@@ -604,8 +609,8 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         if not is_access_allowed(ctx, AccessTier.STANDARD):
             return _err("Insufficient access tier for chat", status=403)
 
-        session = await _load_session_dict(ctx.client, session_id)
-        if session is None:
+        session_view = await _load_session_view(ctx.client, session_id)
+        if session_view is None:
             return _err("Session not found", status=404)
 
         async def _event_stream() -> AsyncIterator[str]:

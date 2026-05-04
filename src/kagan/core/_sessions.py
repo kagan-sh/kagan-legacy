@@ -6,6 +6,7 @@ from typing import Any
 
 from acp.schema import ToolCallStart, UsageUpdate
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy import Engine
 from sqlmodel import desc, select
 
@@ -175,9 +176,23 @@ async def has_active_session(engine: Engine, task_id: str) -> bool:
     return active_session is not None
 
 
+class SessionSummary(BaseModel):
+    """Typed summary of all agent sessions for a single task.
+
+    Replaces the ``dict[str, Any]`` shape that ``active_session_summaries``
+    previously returned. Fields are consumed by the TUI kanban board to decide
+    badge visibility and launcher routing.
+    """
+
+    has_history: bool
+    has_active: bool
+    active_launcher: str | None
+    latest_launcher: str | None
+
+
 async def active_session_summaries(
     engine: Engine, task_ids: list[str]
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, SessionSummary]:
     if not task_ids:
         return {}
 
@@ -192,31 +207,31 @@ async def active_session_summaries(
         ),
     )
 
-    summaries: dict[str, dict[str, Any]] = {}
+    summaries: dict[str, SessionSummary] = {}
     active_statuses = {SessionStatus.PENDING, SessionStatus.RUNNING}
     for session in sessions:
         existing = summaries.get(session.task_id)
         is_active = session.status in active_statuses
 
         if existing is None:
-            summaries[session.task_id] = {
-                "has_history": True,
-                "has_active": is_active,
-                "active_launcher": session.launcher if is_active else None,
-                "latest_launcher": session.launcher,
-            }
+            summaries[session.task_id] = SessionSummary(
+                has_history=True,
+                has_active=is_active,
+                active_launcher=session.launcher if is_active else None,
+                latest_launcher=session.launcher,
+            )
             continue
 
-        active_launcher = existing.get("active_launcher")
+        active_launcher = existing.active_launcher
         if active_launcher is None and is_active:
             active_launcher = session.launcher
 
-        summaries[session.task_id] = {
-            "has_history": True,
-            "has_active": bool(existing.get("has_active")) or is_active,
-            "active_launcher": active_launcher,
-            "latest_launcher": existing.get("latest_launcher"),
-        }
+        summaries[session.task_id] = SessionSummary(
+            has_history=True,
+            has_active=existing.has_active or is_active,
+            active_launcher=active_launcher,
+            latest_launcher=existing.latest_launcher,
+        )
 
     return summaries
 
@@ -289,7 +304,7 @@ class Sessions:
     async def has_active(self, task_id: str) -> bool:
         return await has_active_session(self._engine, task_id)
 
-    async def active_session_summaries(self, task_ids: list[str]) -> dict[str, dict[str, Any]]:
+    async def active_session_summaries(self, task_ids: list[str]) -> dict[str, SessionSummary]:
         return await active_session_summaries(self._engine, task_ids)
 
     # -- Sync DB helper delegates -------------------------------------------
@@ -1099,6 +1114,7 @@ class Sessions:
 
 __all__ = [
     "DetachResult",
+    "SessionSummary",
     "Sessions",
     "active_session_summaries",
     "fetch_project_learnings",

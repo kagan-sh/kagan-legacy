@@ -124,7 +124,7 @@ async def test_sse_stream_broadcasts_to_watch_subscribers(tmp_path: Path) -> Non
         await core.reset()
         scripted = ScriptedFactory(chunks=["hello"])
 
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict as _to_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view as _to_dict
 
         session = await core.chat_sessions.create(source="web", label="t")
         pair = await core.chat_sessions.get_with_history(session.id)
@@ -178,7 +178,7 @@ async def test_interrupt_emits_chat_turn_terminated_exactly_once(tmp_path: Path)
         started = asyncio.Event()
         factory = SuspendingFactory(first_chunk="partial", started=started)
 
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict as _to_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view as _to_dict
 
         session = await core.chat_sessions.create(source="web", label="t")
         pair = await core.chat_sessions.get_with_history(session.id)
@@ -197,7 +197,6 @@ async def test_interrupt_emits_chat_turn_terminated_exactly_once(tmp_path: Path)
             consumer = asyncio.create_task(_drain_sse(sse_stream))
             try:
                 await asyncio.wait_for(started.wait(), timeout=5.0)
-                await asyncio.sleep(0.05)
 
                 cancel_result = await core.chat.cancel(session.id, reason="user")
                 if not cancel_result.was_running:
@@ -242,7 +241,7 @@ async def test_concurrent_stream_emits_chat_error_without_orphan_user_row(
         started = asyncio.Event()
         factory = SuspendingFactory(first_chunk="partial", started=started)
 
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict as _to_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view as _to_dict
 
         session = await core.chat_sessions.create(source="web", label="t")
         pair = await core.chat_sessions.get_with_history(session.id)

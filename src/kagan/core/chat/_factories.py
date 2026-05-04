@@ -1,6 +1,6 @@
 """Long-lived ACP factory — keeps ONE orchestrator subprocess across turns.
 
-Counterpart to :class:`kagan.core.chat.acp.SpawnPerTurnACPFactory`. The CLI REPL
+Counterpart to ``kagan.core.chat.acp.make_spawn_per_turn_acp_factory``. The CLI REPL
 adopts this so normal turns share a connection while session switches pay a
 process restart via :meth:`LongLivedACPFactory.restart`.
 
@@ -12,7 +12,7 @@ switch without re-doing the with-statement.
 
 Permission resolution is delegated to the caller-supplied resolver via
 ``prompt(..., permission_resolver=...)``, identical to
-``SpawnPerTurnACPFactory``. The factory contains no UI.
+the spawn-per-turn ACP helper. The factory contains no UI.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ _ACP_STDIO_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024
 class LongLivedACPFactory:
     """ACP factory that maintains ONE orchestrator subprocess across many turns.
 
-    Mirrors :class:`SpawnPerTurnACPFactory`'s ``prompt`` contract but reuses the
+    Mirrors the spawn-per-turn ACP helper's ``prompt`` contract but reuses the
     underlying ACP connection between calls. ``restart()`` tears down + respawns
     in place; consumers stay alive across session switches.
 

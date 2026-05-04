@@ -36,9 +36,9 @@ from kagan.core import (
 from kagan.core.chat import (
     ChatEvent,
     ChatSessionView,
-    SpawnPerTurnACPFactory,
     TurnInProgressError,
     chat_session_to_view,
+    make_spawn_per_turn_acp_factory,
 )
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
@@ -262,7 +262,7 @@ async def _sse_stream(
         await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
 
         # Serialise typed Attachment models back to dicts for the downstream
-        # functions (SpawnPerTurnACPFactory, engine.push_user) which still
+        # functions (spawn-per-turn ACP helper, engine.push_user) which still
         # consume list[dict[str, str]]. The boundary-typed list is used for
         # internal clarity; the wire shape is unchanged.
         attachment_dicts: list[dict[str, str]] | None = (
@@ -293,7 +293,7 @@ async def _sse_stream(
         # Build a per-request factory that captures cwd + attachments.
         settings = await ctx.client.settings.get()
         project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
-        factory = SpawnPerTurnACPFactory(
+        factory = make_spawn_per_turn_acp_factory(
             client=ctx.client,
             default_agent_backend=backend,
             cwd=project_cwd,
@@ -565,9 +565,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         if session is None:
             return _err("Session not found", status=404)
         settings = await ctx.client.settings.get()
-        backend = (
-            agent_backend or session.agent_backend or resolve_default_agent_backend(settings)
-        )
+        backend = agent_backend or session.agent_backend or resolve_default_agent_backend(settings)
 
         # Pre-flight 409: cheap turn_status read keeps the early-error path
         # fast (no need to start the SSE response just to tear it down).

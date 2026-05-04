@@ -4,8 +4,8 @@ Defines the ``ACPSessionFactory`` protocol — the boundary between
 ``ChatEngine`` and the orchestrator agent process. Two strategies exist
 historically:
 
-* spawn-per-turn (server): a fresh ACP session per HTTP turn — implemented
-  here as :class:`SpawnPerTurnACPFactory`, wrapping
+* spawn-per-turn (server): a fresh ACP session per HTTP turn — implemented by
+  :func:`make_spawn_per_turn_acp_factory`, wrapping
   ``kagan.cli.chat.acp.run_orchestrator_turn``.
 * long-lived (CLI REPL): one orchestrator subprocess across many turns —
   will land when the CLI migrates onto the engine in a later phase.
@@ -217,28 +217,57 @@ def _normalize_tool_status(raw: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SpawnPerTurnACPFactory — wraps run_orchestrator_turn
+# Spawn-per-turn factory helper — wraps run_orchestrator_turn
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
-class SpawnPerTurnACPFactory:
-    """Spawn-per-turn factory: one fresh orchestrator process per ``prompt`` call.
+def make_spawn_per_turn_acp_factory(
+    *,
+    client: Any,
+    default_agent_backend: str | None = None,
+    cwd: Path | None = None,
+    attachments: list[dict[str, str]] | None = None,
+) -> ACPSessionFactory:
+    """Return an ``ACPSessionFactory`` backed by one fresh ACP process per turn.
 
-    Mirrors how the server currently runs each HTTP turn. Cancellation is
-    honoured by cancelling the underlying ``run_orchestrator_turn`` task when
-    ``cancel_event`` fires.
-
-    ``client`` is the :class:`KaganCore` instance — needed by
-    ``run_orchestrator_turn`` for settings + project resolution.
-    ``default_agent_backend`` is used when callers don't pass one through
-    :meth:`prompt`.
+    The private wrapper exists only because pyrefly cannot prove protocol
+    compatibility for dynamic objects with a ``prompt`` attribute. The public
+    API is the helper function, and all spawn state lives in this closure.
     """
 
-    client: Any
-    default_agent_backend: str | None = None
-    cwd: Path | None = None
-    attachments: list[dict[str, str]] | None = None
+    async def prompt(
+        *,
+        session_id: str,
+        prompt_blocks: list[Any],
+        on_update: Callable[[Any], Awaitable[None]],
+        cancel_event: asyncio.Event,
+        agent_backend: str | None = None,
+        permission_resolver: Callable[[PermissionRequestPayload], Awaitable[PermissionDecision]]
+        | None = None,
+    ) -> ACPTurnResult:
+        return await run_spawn_per_turn_acp_prompt(
+            client=client,
+            default_agent_backend=default_agent_backend,
+            cwd=cwd,
+            attachments=attachments,
+            session_id=session_id,
+            prompt_blocks=prompt_blocks,
+            on_update=on_update,
+            cancel_event=cancel_event,
+            agent_backend=agent_backend,
+            permission_resolver=permission_resolver,
+        )
+
+    return _PromptFactory(prompt)
+
+
+class _PromptFactory:
+    """Thin typed wrapper for a closure-backed ``prompt`` function."""
+
+    __slots__ = ("_prompt",)
+
+    def __init__(self, prompt: Callable[..., Awaitable[ACPTurnResult]]) -> None:
+        self._prompt = prompt
 
     async def prompt(
         self,
@@ -251,51 +280,76 @@ class SpawnPerTurnACPFactory:
         permission_resolver: Callable[[PermissionRequestPayload], Awaitable[PermissionDecision]]
         | None = None,
     ) -> ACPTurnResult:
-        from kagan.cli.chat.acp import run_orchestrator_turn
-
-        del session_id  # spawn-per-turn doesn't reuse a session id
-
-        backend = agent_backend or self.default_agent_backend
-        if not backend:
-            raise ValueError("agent_backend is required (no default configured)")
-        prompt_text = _flatten_prompt_blocks(prompt_blocks)
-
-        run_task = asyncio.create_task(
-            run_orchestrator_turn(
-                self.client,
-                prompt=prompt_text,
-                agent_backend=backend,
-                on_update=on_update,
-                attachments=self.attachments,
-                cwd=self.cwd,
-                permission_resolver=permission_resolver,
-            )
+        return await self._prompt(
+            session_id=session_id,
+            prompt_blocks=prompt_blocks,
+            on_update=on_update,
+            cancel_event=cancel_event,
+            agent_backend=agent_backend,
+            permission_resolver=permission_resolver,
         )
-        cancel_task = asyncio.create_task(cancel_event.wait())
 
+
+async def run_spawn_per_turn_acp_prompt(
+    *,
+    client: Any,
+    default_agent_backend: str | None = None,
+    cwd: Path | None = None,
+    attachments: list[dict[str, str]] | None = None,
+    session_id: str,
+    prompt_blocks: list[Any],
+    on_update: Callable[[Any], Awaitable[None]],
+    cancel_event: asyncio.Event,
+    agent_backend: str | None = None,
+    permission_resolver: Callable[[PermissionRequestPayload], Awaitable[PermissionDecision]]
+    | None = None,
+) -> ACPTurnResult:
+    """Run one spawn-per-turn ACP prompt and adapt it to ``ACPTurnResult``."""
+    from kagan.cli.chat.acp import run_orchestrator_turn
+
+    del session_id  # spawn-per-turn doesn't reuse a session id
+
+    backend = agent_backend or default_agent_backend
+    if not backend:
+        raise ValueError("agent_backend is required (no default configured)")
+    prompt_text = _flatten_prompt_blocks(prompt_blocks)
+
+    run_task = asyncio.create_task(
+        run_orchestrator_turn(
+            client,
+            prompt=prompt_text,
+            agent_backend=backend,
+            on_update=on_update,
+            attachments=attachments,
+            cwd=cwd,
+            permission_resolver=permission_resolver,
+        )
+    )
+    cancel_task = asyncio.create_task(cancel_event.wait())
+
+    try:
+        done, _pending = await asyncio.wait(
+            {run_task, cancel_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    finally:
+        cancel_task.cancel()
+
+    if cancel_task in done and not run_task.done():
+        run_task.cancel()
         try:
-            done, _pending = await asyncio.wait(
-                {run_task, cancel_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        finally:
-            cancel_task.cancel()
-
-        if cancel_task in done and not run_task.done():
-            run_task.cancel()
-            try:
-                await run_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.debug("run_orchestrator_turn raised after cancel")
-            return ACPTurnResult(full_response="", cancelled=True, usage=None)
-
-        try:
-            full_response = run_task.result()
+            await run_task
         except asyncio.CancelledError:
-            return ACPTurnResult(full_response="", cancelled=True, usage=None)
-        return ACPTurnResult(full_response=full_response or "", cancelled=False, usage=None)
+            pass
+        except Exception:
+            logger.debug("run_orchestrator_turn raised after cancel")
+        return ACPTurnResult(full_response="", cancelled=True, usage=None)
+
+    try:
+        full_response = run_task.result()
+    except asyncio.CancelledError:
+        return ACPTurnResult(full_response="", cancelled=True, usage=None)
+    return ACPTurnResult(full_response=full_response or "", cancelled=False, usage=None)
 
 
 def _flatten_prompt_blocks(prompt_blocks: list[Any]) -> str:
@@ -318,7 +372,8 @@ __all__ = [
     "ACPTurnResult",
     "PermissionDecision",
     "PermissionRequestPayload",
-    "SpawnPerTurnACPFactory",
     "UsageSnapshot",
     "acp_update_to_chat_event",
+    "make_spawn_per_turn_acp_factory",
+    "run_spawn_per_turn_acp_prompt",
 ]

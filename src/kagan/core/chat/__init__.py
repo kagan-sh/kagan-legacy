@@ -10,9 +10,10 @@ from kagan.core.chat._factories import LongLivedACPFactory
 from kagan.core.chat.acp import (
     ACPSessionFactory,
     ACPTurnResult,
-    SpawnPerTurnACPFactory,
     UsageSnapshot,
     acp_update_to_chat_event,
+    make_spawn_per_turn_acp_factory,
+    run_spawn_per_turn_acp_prompt,
 )
 from kagan.core.chat.engine import (
     CancelResult,
@@ -60,7 +61,6 @@ __all__ = [
     "LongLivedACPFactory",
     "PermissionRequest",
     "PermissionResolved",
-    "SpawnPerTurnACPFactory",
     "ToolCallProgress",
     "ToolCallStart",
     "TurnCancelled",
@@ -76,4 +76,6 @@ __all__ = [
     "chat_session_to_view",
     "clean_generated_title",
     "format_relative_time",
+    "make_spawn_per_turn_acp_factory",
+    "run_spawn_per_turn_acp_prompt",
 ]

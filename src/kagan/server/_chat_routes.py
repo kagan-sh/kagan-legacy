@@ -28,6 +28,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 
 from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 from kagan.core import resolve_default_agent_backend
+from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRequest
 from kagan.core.chat import (
     AssistantChunk,
     AssistantMessagePersisted,
@@ -374,14 +375,14 @@ async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
     session = await _load_session_dict(ctx.client, session_id)
     if session is None:
         return _err("Session not found", status=404)
-    body = await request.json()
-    if not isinstance(body, dict):
+    raw = await request.json()
+    if not isinstance(raw, dict):
         return _err("Request body must be a JSON object", status=400)
-    agent_backend = body.get("agent_backend")
-    if agent_backend is not None:
+    body = ChatSessionPatchRequest.model_validate(raw)
+    if body.agent_backend is not None:
         # Metadata-only patch — never round-trip through ``upsert_with_history``,
         # which DELETEs every ``ChatMessage`` for the session. (Greptile P1 fix.)
-        await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
+        await ctx.client.chat_sessions.update(session_id, agent_backend=body.agent_backend)
         # Re-fetch so the response carries the new ``updated_at`` rather than
         # the pre-update snapshot. (Greptile P2 fix.)
         refreshed = await _load_session_dict(ctx.client, session_id)
@@ -414,17 +415,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         )
         if forbidden is not None:
             return forbidden
-        body = await request.json()
-        if not isinstance(body, dict):
-            body = {}
-        agent_backend = cast("str | None", body.get("agent_backend"))
-        label = cast("str | None", body.get("label"))
-        source = str(body.get("source") or "web").strip() or "web"
-        project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
+        raw = await request.json()
+        body = ChatSessionCreateRequest.model_validate(raw if isinstance(raw, dict) else {})
+        project_id = body.project_id or ctx.client.active_project_id
         row = await ctx.client.chat_sessions.create(
-            source=source,
-            label=label,
-            agent_backend=agent_backend,
+            source=body.source,
+            label=body.label,
+            agent_backend=body.agent_backend,
             project_id=project_id,
         )
         session = chat_session_to_legacy_dict(row, [])

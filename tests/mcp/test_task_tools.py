@@ -75,6 +75,27 @@ async def test_task_create_returns_status(mcp_board: ClientSession) -> None:
     assert "status" in _first_created(result)
 
 
+async def test_task_create_batch_collects_validation_errors_per_entry(
+    mcp_board: ClientSession,
+) -> None:
+    """Validation failure on one entry must not fail the whole batch.
+
+    pydantic.ValidationError does NOT inherit from ValueError in v2; the
+    batch loop's except clause must list it explicitly so a malformed
+    entry lands in `errors` and the rest of the batch still runs.
+    """
+    oversize_title = "x" * 501  # title max_length=500 in TaskCreateRequest
+    result = await mcp_board.call_tool(
+        "task_create",
+        {"tasks": [{"title": "good"}, {"title": oversize_title}, {"title": "also good"}]},
+    )
+    assert not result.isError, "Batch must not error out on one bad entry"
+    payload = _text(result)
+    assert payload["created_count"] == 2
+    assert payload["error_count"] == 1
+    assert payload["errors"][0]["index"] == "1"
+
+
 # ---------------------------------------------------------------------------
 # task_get — returns task dict for a known id
 # ---------------------------------------------------------------------------

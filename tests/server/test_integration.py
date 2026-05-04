@@ -141,13 +141,48 @@ async def test_list_tasks_without_active_project_returns_empty(
 @pytest.mark.asyncio
 async def test_rest_lifecycle_create_update_transition_delete(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
 ) -> None:
+    # Use a real KaganCore so that transition_task's _db_async write has a
+    # real engine + Task row.  The fake client cannot satisfy client.engine,
+    # which transition_task now requires for the TOCTOU-safe write path.
+    from kagan.core import KaganCore
+
+    core = KaganCore(db_path=tmp_path / "int_test.db")
+    project = await core.projects.create("Test Project")
+    await core.projects.set_active(project.id)
+
+    async def _get_settings() -> dict[str, str]:
+        return {}
+
+    settings = SimpleNamespace(get=_get_settings)
+
+    async def _no_repos_real(_project_id: str) -> list:
+        return []
+
+    async def _no_repo_path_real(**_kwargs: Any) -> None:
+        return None
+
+    def _real_ctx() -> SimpleNamespace:
+        return SimpleNamespace(
+            client=SimpleNamespace(
+                tasks=core.tasks,
+                settings=settings,
+                worktrees=core.worktrees,
+                engine=core.engine,
+                active_project_id=core.active_project_id,
+                projects=SimpleNamespace(
+                    repos=_no_repos_real, resolve_repo_path=_no_repo_path_real
+                ),
+            ),
+            opts=ServerOptions(admin=True),
+        )
+
     mcp = make_api_server()
-    tasks = _FakeTasksClient()
     monkeypatch.setattr(
         server_helpers,
         "get_server_context",
-        lambda _mcp: _ctx(tasks, opts=ServerOptions(admin=True)),
+        lambda _mcp: _real_ctx(),
     )
     create = get_http_endpoint(mcp, "/api/tasks", "POST")
     created = json_body(
@@ -197,6 +232,7 @@ async def test_rest_lifecycle_create_update_transition_delete(
         )["data"]["deleted"]
         is True
     )
+    core.close()
 
 
 @pytest.mark.asyncio

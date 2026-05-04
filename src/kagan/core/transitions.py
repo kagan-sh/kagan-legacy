@@ -35,13 +35,13 @@ from loguru import logger
 
 from kagan.core._db_helpers import _db_async, _utc_now
 from kagan.core._reviews import is_review_approved
-from kagan.core.enums import SessionStatus, TaskStatus
+from kagan.core._tasks import _record_task_audit
+from kagan.core.enums import SessionEventType, SessionStatus, TaskStatus
 from kagan.core.errors import InvalidTransitionError, NotFoundError
-from kagan.core.models import Session
+from kagan.core.models import Session, Task
 
 if TYPE_CHECKING:
     from kagan.core.client import KaganCore
-    from kagan.core.models import Task
 
 
 class IllegalTransition(InvalidTransitionError):
@@ -146,7 +146,42 @@ async def transition_task(
         to.value,
         by,
     )
-    return await client.tasks.set_status(task_id, to)
+
+    # Write the status inside a single _db_async transaction so that the read
+    # (above) and write are not split across two round-trips (TOCTOU fix, P2).
+    # We do NOT call client.tasks.set_status() here because that method routes
+    # through validate_move(), which explicitly excludes REVIEW→DONE — the very
+    # pair we need to write when the review gate passes (P1 fix).
+    # The write mirrors _set_status() semantics: updated_at + audit record.
+    def _write_task(s):
+        obj = s.get(Task, task_id)
+        if obj is None:
+            raise NotFoundError("Task", task_id)
+        # TOCTOU guard: abort if the status drifted between our read and now.
+        if obj.status != src:
+            raise IllegalTransition(obj.status, to)
+        obj.status = to
+        obj.updated_at = _utc_now()
+        _record_task_audit(
+            s,
+            action="task.status_change",
+            task_id=task_id,
+            detail={"from": src.value, "to": to.value},
+        )
+        s.add(obj)
+        s.commit()
+        s.refresh(obj)
+        _ = list(obj.criteria)  # Eagerly load criteria while session is open
+        logger.info("Task {} moved to {} (by={})", task_id, to.value, by)
+        return obj
+
+    moved: Task = await _db_async(client.engine, _write_task)
+    await client.tasks.events.emit(
+        task_id,
+        SessionEventType.TASK_STATUS_CHANGED,
+        {"from": src.value, "to": to.value},
+    )
+    return moved
 
 
 async def transition_session(
@@ -215,6 +250,9 @@ async def transition_session(
         obj = s.get(Session, session_id)
         if obj is None:
             raise NotFoundError("Session", session_id)
+        # TOCTOU guard: abort if status drifted between the read above and now.
+        if obj.status != src:
+            raise IllegalTransition(obj.status, to)
         obj.status = to
         if to in {SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED}:
             obj.ended_at = _utc_now()

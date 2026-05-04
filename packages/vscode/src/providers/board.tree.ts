@@ -8,6 +8,7 @@ import {
   SSE_TYPE,
   type WireTask,
   type TaskStatus,
+  type Priority,
   type SSEMessage,
 } from "../api/types.js";
 import { PRIORITY_ICONS, STATUS_ICONS } from "../api/local.js";
@@ -105,7 +106,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
     const { task } = element;
 
     const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon(PRIORITY_ICONS[task.priority as import("../api/types.js").Priority] ?? "dash");
+    item.iconPath = new vscode.ThemeIcon(PRIORITY_ICONS[task.priority as Priority] ?? "dash");
     item.contextValue = `task.${task.status}`;
     item.tooltip = this.buildTooltip(task);
     item.description = this.buildDescription(task);

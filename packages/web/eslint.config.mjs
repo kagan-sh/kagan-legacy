@@ -16,9 +16,19 @@ const config = [
         {
           patterns: [
             {
-              group: ["**/api/generated-wire-types", "**/api/generated-wire-types.ts"],
+              // Block both the deleted generated file and any future
+              // hand-rolled `api/types*.ts` siblings (types2.ts, types_v2.ts,
+              // etc.). The shim at `@/lib/api/types` is exempt because it
+              // re-exports from @kagan/shared-api-client. (Greptile P2.)
+              group: [
+                "**/api/generated-wire-types",
+                "**/api/generated-wire-types.ts",
+                "**/api/types[0-9]*",
+                "**/api/types_*",
+                "**/api/types-*",
+              ],
               message:
-                "Import wire types from @/lib/api/types or @kagan/shared-api-client. The generated-wire-types file has been deleted — extend scripts/generate_wire_types.py instead.",
+                "Import wire types from @/lib/api/types or @kagan/shared-api-client. Hand-rolled api/types*.ts files are forbidden — extend scripts/generate_wire_types.py instead.",
             },
           ],
         },

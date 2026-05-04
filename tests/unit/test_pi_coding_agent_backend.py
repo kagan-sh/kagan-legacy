@@ -30,7 +30,7 @@ from kagan.core._agent import (
 from kagan.core._environment_checks import check_node_version
 from kagan.core.adapters.pi_rpc import PiRpcClient
 
-pytestmark = [pytest.mark.core]
+pytestmark = [pytest.mark.unit]
 
 # ---------------------------------------------------------------------------
 # Helpers

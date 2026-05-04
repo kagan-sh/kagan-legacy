@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient
 
 from kagan.server._web_ui import _SPAStaticFiles
+
+pytestmark = [pytest.mark.unit]
 
 
 def _client(tmp_path) -> TestClient:

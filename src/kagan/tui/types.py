@@ -12,6 +12,7 @@ __all__ = [
     "ProjectView",
     "RepoView",
     "ScreenResult",
+    "TaskData",
     "TaskUpdateResult",
     "TaskView",
 ]
@@ -28,6 +29,14 @@ class RepoView(Protocol):
     name: str
     path: str
     default_branch: str
+
+
+class TaskData(Protocol):
+    id: str
+    title: str
+    description: str
+    status: TaskStatus
+    priority: Priority
 
 
 class TaskView(Protocol):

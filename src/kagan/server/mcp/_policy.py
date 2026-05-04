@@ -90,6 +90,9 @@ _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
         # fs (2 write tools)
         "fs_write_file",
         "fs_edit_file",
+        # shell execution (2 streaming tools)
+        "bash_exec",
+        "terminal_run",
     }
 )
 

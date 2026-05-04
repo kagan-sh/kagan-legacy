@@ -13,6 +13,68 @@
 
 
 
+## v0.19.0-beta.22 (2026-05-04)
+
+
+
+
+### Bug Fixes
+
+- **mcp**: Catch pydantic.ValidationError in batch task_create (Greptile P1)
+  ([#134](https://github.com/kagan-sh/kagan/pull/134),
+  [`c17f51a`](https://github.com/kagan-sh/kagan/commit/c17f51a59a1e47d561e6be7db5f0520f81bc7aa2))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **server**: Shared Pydantic request models for projects + reviews (R2 phase 2c)
+  ([#134](https://github.com/kagan-sh/kagan/pull/134),
+  [`c17f51a`](https://github.com/kagan-sh/kagan/commit/c17f51a59a1e47d561e6be7db5f0520f81bc7aa2))
+
+- **R2**: Shared Pydantic request models for REST + MCP
+  ([#134](https://github.com/kagan-sh/kagan/pull/134),
+  [`c17f51a`](https://github.com/kagan-sh/kagan/commit/c17f51a59a1e47d561e6be7db5f0520f81bc7aa2))
+
+- **server**: Shared Pydantic request models for sessions (R2 phase 2b)
+  ([#134](https://github.com/kagan-sh/kagan/pull/134),
+  [`c17f51a`](https://github.com/kagan-sh/kagan/commit/c17f51a59a1e47d561e6be7db5f0520f81bc7aa2))
+
+- **server**: Shared Pydantic request models for tasks (R2 phase 2a)
+  ([#134](https://github.com/kagan-sh/kagan/pull/134),
+  [`c17f51a`](https://github.com/kagan-sh/kagan/commit/c17f51a59a1e47d561e6be7db5f0520f81bc7aa2))
+
+
+
+
+
 ## v0.19.0-beta.21 (2026-05-04)
 
 

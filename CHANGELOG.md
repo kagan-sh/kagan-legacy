@@ -13,6 +13,78 @@
 
 
 
+## v0.19.0-beta.24 (2026-05-04)
+
+
+
+
+### Bug Fixes
+
+- **R4**: Address Greptile P1 findings — duplicates, naming, broken tests
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+- **R4**: Allow_indirect_imports must be TOML boolean, not string (Greptile P1)
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+- **R4**: Update test_web_ctrl_c_exits_cleanly monkeypatch path
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **R4**: Enforce package boundaries — promote privates + import-linter
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+- **boundaries**: Promote cross-package privates to public exports (R4 phase 4a)
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- **boundaries**: Add import-linter contract + poe check-boundaries (R4 phase 4b)
+  ([#136](https://github.com/kagan-sh/kagan/pull/136),
+  [`2fa65ec`](https://github.com/kagan-sh/kagan/commit/2fa65ec92c9c48a9323a6b7a3d687ad01e513060))
+
+
+
+
+
 ## v0.19.0-beta.23 (2026-05-04)
 
 

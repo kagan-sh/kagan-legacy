@@ -51,7 +51,7 @@ from kagan.core import CheckStatus, KaganCore, PreflightCheckResult
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.enums import Priority
 from kagan.core.errors import KaganError, NotFoundError
-from kagan.core.integrations._base import ExternalItem, ImportResult
+from kagan.core.integrations._types import ExternalItem, ImportResult
 from kagan.runtime_env import build_sanitized_subprocess_environment
 
 # ---------------------------------------------------------------------------
@@ -761,7 +761,7 @@ async def _resolve_task_repo_id(
 
 
 class GitHubIntegration:
-    """GitHub Issues integration implementing the Integration protocol.
+    """GitHub Issues integration.
 
     The class is instantiated once (as the module-level ``github`` singleton)
     and receives the ``KaganCore`` client and ``GitHubConfig`` at call time.

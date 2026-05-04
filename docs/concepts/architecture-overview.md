@@ -81,7 +81,7 @@ Set globally via `attached_launcher`, or override per task.
 
 ## Integrations
 
-GitHub import is a native integration ([guide](../guides/github.md)). New trackers (Jira, Linear, …) are added as new modules under `kagan.core.integrations`; there is no plugin system.
+GitHub import is the native integration ([guide](../guides/github.md)); there is no plugin system.
 
 ## Data
 

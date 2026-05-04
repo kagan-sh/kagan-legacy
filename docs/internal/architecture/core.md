@@ -98,13 +98,9 @@ kagan/core/
 
 ## Integrations
 
-Native integrations live in `kagan.core.integrations`. Each integration is a plain class that
-satisfies the `Integration` typing.Protocol (defined in `_base.py`): three methods — `preflight`,
-`preview`, and `sync`. No ABCs, no metaclasses, no entry-point discovery.
-
-The module exports `all_enabled(client) -> list[Integration]`. Today it returns `[github]`.
-Adding a new integration (Jira, Linear, Azure DevOps) means: create a submodule, implement the
-three methods, register in `all_enabled()`. That is the complete API surface change required.
+Native integrations live in `kagan.core.integrations`. Today GitHub is the only native
+integration, exposed through the module-level `github` singleton and `all_enabled()`.
+There is no protocol, ABC, metaclass, or entry-point discovery layer around it.
 
 The old entry-point plugin system (ABC hierarchy, dynamic discovery, community-plugin env flag)
 was removed in the `refactor/native-integrations` branch. There are no backwards-compat shims.

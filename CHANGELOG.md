@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.28 (2026-05-04)
+
+
+
+
+### Bug Fixes
+
+- Skip Dependabot Snyk scans and harden Windows PID checks
+  ([`819124a`](https://github.com/kagan-sh/kagan/commit/819124a9884d196b5c233ef8ada81cdcc8de79da))
+
+
+
+
+
 ## v0.19.0-beta.27 (2026-05-04)
 
 

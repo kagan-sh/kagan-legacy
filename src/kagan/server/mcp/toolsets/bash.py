@@ -36,6 +36,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions
 from kagan.server.mcp.toolsets import mcp_error_boundary
+from kagan.server.mcp.toolsets._path_validation import assert_cwd_contained
 
 # Maximum bytes per stdout/stderr read chunk — prevents runaway buffering on
 # pathological subprocess output (e.g. binary data without newlines).
@@ -218,6 +219,9 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         task_id: str | None = app.bound_task_id
         session_id: str | None = app.bound_session_id or app.opts.session_id
         tool_id = f"bash_exec:{uuid.uuid4().hex[:12]}"
+
+        # Reject cwd that escapes the bound task's worktree (F2 containment).
+        await assert_cwd_contained(cwd, "bash_exec", app)
 
         on_update: Callable[[str], None] | None = None
 

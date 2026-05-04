@@ -13,6 +13,130 @@
 
 
 
+## v0.19.0-beta.26 (2026-05-04)
+
+
+
+
+### Features
+
+- **core**: Add pi-coding-agent as 15th backend (R6a)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **events**: Emit AgentEvent through wire generator (Pi Step 1c)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **core/events**: Extract events_common.py shared base variants (Pi Step 1a)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **mcp**: Opt-in tool partial-result streaming for bash_exec + terminal_run (Pi Step 2)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **mcp/fs**: Port edit-diff CRLF/BOM/overlap handling from pi-coding-agent (Pi Step 7)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **web**: Tool renderer registry + artifacts panel + RAF-batched streaming (Pi Step 5)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- **core**: Typed AgentEvent union for agent task sessions (Pi Step 1b)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- Address Greptile P1 + 3 P2 on consolidated pi-mono PR
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- Boundary typing — kill dict[str,Any] + isinstance ladders
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- Typed AgentEvent + edit-diff + tool streaming + pi-coding-agent backend + web renderer registry
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- Complete pi-mono pre-sweep — retire SessionEventType + delete _transitions.py
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- Pre-sweep — remove legacy / dead / backcompat / shim code (pi-mono)
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+- Scrub internal pi-mono references from Kagan code
+  ([#138](https://github.com/kagan-sh/kagan/pull/138),
+  [`365c5b9`](https://github.com/kagan-sh/kagan/commit/365c5b982cf6959f78c04c28c4295b1df933ae2d))
+
+
+
+
+
 ## v0.19.0-beta.25 (2026-05-04)
 
 

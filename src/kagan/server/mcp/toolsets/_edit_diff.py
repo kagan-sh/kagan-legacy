@@ -2,9 +2,10 @@
 
 Pure helper module -- no MCP coupling.
 
-Ported from references/pi-mono/packages/coding-agent/src/core/tools/edit-diff.ts.
 Provides normalize_line_endings, detect_bom, reapply_line_endings,
 merge_overlapping_edits, the Edit dataclass and EditConflict exception.
+Handles Unicode BOM detection (UTF-8/16/32 variants), EOL normalization
+(CRLF/LF/CR), and fuzzy-match overlap detection for concurrent edit merging.
 """
 
 from __future__ import annotations
@@ -72,7 +73,7 @@ def detect_bom(raw_bytes: bytes) -> tuple[bytes | None, str]:
 def normalize_line_endings(content: str) -> tuple[str, str]:
     """Detect EOL style and return (lf_normalized_text, original_eol).
 
-    Detection rule (mirrors pi-mono detectLineEnding):
+    Detection rule:
     - If the first CRLF appears before the first bare LF -> CRLF file.
     - Otherwise -> LF file.
     - A file with no line endings at all -> "lf" (no-op for reapply).

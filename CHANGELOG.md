@@ -13,6 +13,88 @@
 
 
 
+## v0.19.0-beta.25 (2026-05-04)
+
+
+
+
+### Features
+
+- **core**: Add transition_task / transition_session funnel (R5 phase 5a)
+  ([#137](https://github.com/kagan-sh/kagan/pull/137),
+  [`663a83a`](https://github.com/kagan-sh/kagan/commit/663a83a8b42ea1a7c4e04e1ed93a786f0f3c3e80))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **R5**: Close REVIEW→DONE break and TOCTOU windows (Greptile P1 + P2)
+  ([#137](https://github.com/kagan-sh/kagan/pull/137),
+  [`663a83a`](https://github.com/kagan-sh/kagan/commit/663a83a8b42ea1a7c4e04e1ed93a786f0f3c3e80))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **R5**: Funnel-function transitions (no enforcement magic)
+  ([#137](https://github.com/kagan-sh/kagan/pull/137),
+  [`663a83a`](https://github.com/kagan-sh/kagan/commit/663a83a8b42ea1a7c4e04e1ed93a786f0f3c3e80))
+
+- **server**: Route task/session status mutations through transitions (R5 phase 5b)
+  ([#137](https://github.com/kagan-sh/kagan/pull/137),
+  [`663a83a`](https://github.com/kagan-sh/kagan/commit/663a83a8b42ea1a7c4e04e1ed93a786f0f3c3e80))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- **core**: Document transition funnel + fix test collision (R5 phase 5c)
+  ([#137](https://github.com/kagan-sh/kagan/pull/137),
+  [`663a83a`](https://github.com/kagan-sh/kagan/commit/663a83a8b42ea1a7c4e04e1ed93a786f0f3c3e80))
+
+
+
+
+
 ## v0.19.0-beta.24 (2026-05-04)
 
 

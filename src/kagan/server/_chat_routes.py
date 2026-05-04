@@ -27,6 +27,8 @@ from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
 from kagan.core import (
+    Attachment,
+    AttachmentBody,
     ChatSessionCreateRequest,
     ChatSessionPatchRequest,
     resolve_default_agent_backend,
@@ -134,21 +136,27 @@ def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-def _parse_attachments(body: dict[str, Any]) -> list[dict[str, str]] | None:
-    """Extract and validate attachments from request body."""
+def _parse_attachments(body: dict[str, Any]) -> list[Attachment] | None:
+    """Extract and validate attachments from the request body.
+
+    Validates against :class:`kagan.core._io.sessions._AttachmentBody` so
+    callers receive typed :class:`Attachment` instances instead of hand-rolled
+    dicts. Entries without a ``data`` field are filtered out by the model
+    (``data`` is required; model_validate will raise for missing required fields
+    and they are skipped via the list comprehension guard).
+
+    Returns ``None`` when the validated list is empty.
+    """
+    # Pre-filter entries with no data before model_validate to avoid
+    # raising ValidationError for structurally invalid items. Only
+    # well-formed dicts with a truthy 'data' key are forwarded.
     raw = body.get("attachments")
     if not isinstance(raw, list):
         return None
-    parsed = [
-        {
-            "type": str(a.get("type", "")),
-            "name": str(a.get("name", "")),
-            "mime_type": str(a.get("mime_type", "")),
-            "data": str(a.get("data", "")),
-        }
-        for a in raw
-        if isinstance(a, dict) and a.get("data")
-    ]
+    candidates = [a for a in raw if isinstance(a, dict) and a.get("data")]
+    if not candidates:
+        return None
+    parsed = AttachmentBody.model_validate({"attachments": candidates}).attachments
     return parsed or None
 
 
@@ -211,7 +219,7 @@ async def _sse_stream(
     session: dict[str, Any],
     text: str,
     backend: str,
-    attachments: list[dict[str, str]] | None,
+    attachments: list[Attachment] | None,
 ) -> AsyncIterator[str]:
     """Drive a single chat turn through ``ChatEngine`` and yield SSE frames.
 
@@ -253,9 +261,17 @@ async def _sse_stream(
     try:
         await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
 
+        # Serialise typed Attachment models back to dicts for the downstream
+        # functions (SpawnPerTurnACPFactory, engine.push_user) which still
+        # consume list[dict[str, str]]. The boundary-typed list is used for
+        # internal clarity; the wire shape is unchanged.
+        attachment_dicts: list[dict[str, str]] | None = (
+            [a.model_dump() for a in attachments] if attachments else None
+        )
+
         # Persist user message and broadcast (transport owns user-row emission;
         # see the note above ``UserMessagePersisted`` in core.chat.events).
-        user_msg = await engine.push_user(session_id, text, attachments=attachments)
+        user_msg = await engine.push_user(session_id, text, attachments=attachment_dicts)
         user_msg_id = getattr(user_msg, "id", None)
 
         user_event = {
@@ -281,7 +297,7 @@ async def _sse_stream(
             client=ctx.client,
             default_agent_backend=backend,
             cwd=project_cwd,
-            attachments=attachments,
+            attachments=attachment_dicts,
         )
 
         # Build the prompt blocks. Today the spawn-per-turn factory only honours

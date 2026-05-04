@@ -43,6 +43,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from kagan.core._subprocess import resolve_spawn_command
+from kagan.core.adapters.pi_rpc_messages import (
+    PiAgentEnd,
+    PiAgentStart,
+    PiCompactionStart,
+    PiMessageEnd,
+    PiMessageStart,
+    PiMessageUpdate,
+    PiToolCallEnd,
+    PiToolCallStart,
+    PiToolCallUpdate,
+    PiTurnEnd,
+    PiTurnStart,
+    parse_pi_rpc_message,
+)
 from kagan.core.agent_events import (
     AgentEnd,
     AgentEvent,
@@ -73,15 +87,12 @@ _KILL_GRACE_SECONDS: float = 2.0
 
 
 # ---------------------------------------------------------------------------
-# JSONL → AgentEvent translator (split into per-domain helpers for complexity)
+# JSONL → AgentEvent translator
 # ---------------------------------------------------------------------------
-
-# Dispatcher table: event_type → handler function (populated after helpers are defined).
-_TRANSLATOR_DISPATCH: dict[str, Any] = {}
 
 
 def translate_pi_rpc_message(
-    msg: dict[str, Any],
+    raw: dict[str, Any],
     *,
     session_id: str,
     backend: str = "pi-coding-agent",
@@ -96,178 +107,79 @@ def translate_pi_rpc_message(
     - Events that cannot be meaningfully represented (e.g. user ``message_start``)
 
     Args:
-        msg:        Parsed JSON dict from a single pi stdout line.
+        raw:        Parsed JSON dict from a single pi stdout line.
         session_id: Session identifier injected into AgentStart / AgentEnd.
         backend:    Backend name injected into AgentStart / CompactionOccurred.
-        turn_index: Caller's per-prompt turn counter; used as a fallback when
-                    pi's frame doesn't carry an explicit ``turn_index``.
+        turn_index: Caller's per-prompt turn counter; used as the TurnStart /
+                    TurnEnd index (pi's real protocol carries no turn_index field).
     """
-    event_type = msg.get("type")
-    if not isinstance(event_type, str):
+    msg = parse_pi_rpc_message(raw)
+    if msg is None:
         return None
-    handler = _TRANSLATOR_DISPATCH.get(event_type)
-    if handler is None:
-        return None
-    return handler(msg, session_id=session_id, backend=backend, turn_index=turn_index)
 
+    match msg:
+        case PiAgentStart():
+            return AgentStart(session_id=session_id, agent_backend=backend)
 
-# ---------------------------------------------------------------------------
-# Per-domain helper translators
-# ---------------------------------------------------------------------------
+        case PiAgentEnd():
+            return AgentEnd(session_id=session_id, stop_reason="completed")
 
+        case PiTurnStart():
+            # Pi's real protocol has no turn_index on these frames; use caller counter.
+            return TurnStart(turn_index=turn_index)
 
-def _translate_agent_start(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    return AgentStart(session_id=session_id, agent_backend=backend)
+        case PiTurnEnd():
+            return TurnEnd(turn_index=turn_index)
 
+        case PiMessageStart(message=m) if m.role == "assistant":
+            return MessageStart(message_id=m.id or str(uuid.uuid4()))
 
-def _translate_agent_end(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    return AgentEnd(session_id=session_id, stop_reason="completed")
+        case PiMessageStart():
+            return None  # user / toolResult messages — not surfaced
 
+        case PiMessageUpdate(message=m, assistantMessageEvent=ame):
+            if ame is None:
+                return None
+            if ame.type not in {"text_delta", "thinking_delta"}:
+                return None
+            if not ame.delta:
+                return None
+            return MessageUpdate(message_id=m.id or str(uuid.uuid4()), delta=ame.delta)
 
-def _translate_turn_start(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    # Prefer pi-supplied index when present; fall back to the caller's counter.
-    raw = msg.get("turn_index")
-    idx = raw if isinstance(raw, int) else turn_index
-    return TurnStart(turn_index=idx)
+        case PiMessageEnd(message=m) if m.role == "assistant":
+            return MessageEnd(
+                message_id=m.id or str(uuid.uuid4()),
+                full_text=_extract_assistant_text(m.content),
+            )
 
+        case PiMessageEnd():
+            return None  # user / toolResult messages — not surfaced
 
-def _translate_turn_end(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    raw = msg.get("turn_index")
-    idx = raw if isinstance(raw, int) else turn_index
-    return TurnEnd(turn_index=idx)
+        case PiToolCallStart(toolCallId=tid, toolName=tn, args=a):
+            tool_id = str(tid or uuid.uuid4())
+            name = str(tn or "unknown")
+            args = a if isinstance(a, dict) else None
+            return ToolExecutionStart(tool_id=tool_id, name=name, args=args)
 
+        case PiToolCallUpdate(toolCallId=tid, partialResult=partial):
+            tool_id = str(tid or uuid.uuid4())
+            partial_str = _result_to_str(partial)
+            return ToolExecutionUpdate(tool_id=tool_id, partial_result=partial_str)
 
-def _translate_message_start(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    """pi emits message_start for user, assistant, and toolResult messages.
+        case PiToolCallEnd(toolCallId=tid, isError=is_error, result=r):
+            tool_id = str(tid or uuid.uuid4())
+            status: str = "error" if is_error else "success"
+            result_str: str | None = _result_to_str(r) if r is not None else None
+            return ToolExecutionEnd(tool_id=tool_id, status=status, result=result_str)  # type: ignore[arg-type]
 
-    Only assistant messages are surfaced as AgentEvents.
-    """
-    message = msg.get("message")
-    if not isinstance(message, dict):
-        return None
-    if message.get("role") != "assistant":
-        return None
-    message_id = str(message.get("id") or uuid.uuid4())
-    return MessageStart(message_id=message_id)
+        case PiCompactionStart():
+            return CompactionOccurred(backend=backend)
 
-
-def _translate_message_update(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    """pi emits message_update only for assistant messages (streaming).
-
-    assistantMessageEvent carries the streaming delta.
-    """
-    message = msg.get("message")
-    if not isinstance(message, dict):
-        return None
-    ame = msg.get("assistantMessageEvent")
-    if not isinstance(ame, dict):
-        return None
-    delta_type = ame.get("type")
-    if delta_type not in {"text_delta", "thinking_delta"}:
-        return None
-    delta = ame.get("delta", "")
-    if not isinstance(delta, str) or not delta:
-        return None
-    message_id = str(message.get("id") or uuid.uuid4())
-    return MessageUpdate(message_id=message_id, delta=delta)
-
-
-def _translate_message_end(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    message = msg.get("message")
-    if not isinstance(message, dict):
-        return None
-    if message.get("role") != "assistant":
-        return None
-    message_id = str(message.get("id") or uuid.uuid4())
-    full_text = _extract_assistant_text(message)
-    return MessageEnd(message_id=message_id, full_text=full_text)
-
-
-def _translate_tool_start(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    tool_id = str(msg.get("toolCallId") or uuid.uuid4())
-    name = str(msg.get("toolName") or "unknown")
-    raw_args = msg.get("args")
-    args = raw_args if isinstance(raw_args, dict) else None
-    return ToolExecutionStart(tool_id=tool_id, name=name, args=args)
-
-
-def _translate_tool_update(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    tool_id = str(msg.get("toolCallId") or uuid.uuid4())
-    partial = msg.get("partialResult")
-    partial_str = _result_to_str(partial)
-    return ToolExecutionUpdate(tool_id=tool_id, partial_result=partial_str)
-
-
-def _translate_tool_end(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    tool_id = str(msg.get("toolCallId") or uuid.uuid4())
-    is_error = bool(msg.get("isError", False))
-    status: str = "error" if is_error else "success"
-    result = msg.get("result")
-    result_str: str | None = _result_to_str(result) if result is not None else None
-    return ToolExecutionEnd(tool_id=tool_id, status=status, result=result_str)  # type: ignore[arg-type]
-
-
-def _translate_compaction_start(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    return CompactionOccurred(backend=backend)
-
-
-def _translate_noop(
-    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
-) -> AgentEvent | None:
-    """Return None for known non-event frames (compaction_end, RPC acks, UI requests)."""
-    return None
-
-
-# Build the dispatch table after all helpers are defined.
-_TRANSLATOR_DISPATCH.update(
-    {
-        "agent_start": _translate_agent_start,
-        "agent_end": _translate_agent_end,
-        "turn_start": _translate_turn_start,
-        "turn_end": _translate_turn_end,
-        "message_start": _translate_message_start,
-        "message_update": _translate_message_update,
-        "message_end": _translate_message_end,
-        "tool_execution_start": _translate_tool_start,
-        "tool_execution_update": _translate_tool_update,
-        "tool_execution_end": _translate_tool_end,
-        "compaction_start": _translate_compaction_start,
-        # compaction_end: CompactionOccurred was already emitted on start; drop end frame.
-        "compaction_end": _translate_noop,
-        # RPC ack frames (response to stdin commands) — not events.
-        "response": _translate_noop,
-        # Extension UI requests — not meaningful in headless mode.
-        "extension_ui_request": _translate_noop,
-        # Session state change frames — no AgentEvent equivalent.
-        "queue_update": _translate_noop,
-        "session_info_changed": _translate_noop,
-        "thinking_level_changed": _translate_noop,
-        "auto_retry_start": _translate_noop,
-        "auto_retry_end": _translate_noop,
-    }
-)
+        case _:
+            # Covers: PiCompactionEnd, PiResponseAck, PiExtensionUiRequest,
+            # PiQueueUpdate, PiSessionInfoChanged, PiThinkingLevelChanged,
+            # PiAutoRetryStart, PiAutoRetryEnd — all known non-event frames.
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -275,11 +187,8 @@ _TRANSLATOR_DISPATCH.update(
 # ---------------------------------------------------------------------------
 
 
-def _extract_assistant_text(message: dict[str, Any]) -> str:
+def _extract_assistant_text(content: list[Any]) -> str:
     """Extract plain text from a pi assistant message content array."""
-    content = message.get("content")
-    if not isinstance(content, list):
-        return ""
     parts: list[str] = []
     for block in content:
         if not isinstance(block, dict):
@@ -560,17 +469,13 @@ class PiRpcClient:
                     done = True
 
                 # Delta assembly for final text collection
-                assembled_text = _update_assembled_text(
-                    msg,
-                    assembled_text=assembled_text,
-                    current_message_id=current_message_id,
-                    current_message_parts=current_message_parts,
-                )
-                # Sync tracking state
-                current_message_id, current_message_parts = _track_message_state(
-                    msg,
-                    current_message_id=current_message_id,
-                    current_message_parts=current_message_parts,
+                assembled_text, current_message_id, current_message_parts = (
+                    _update_assembled_text_state(
+                        msg,
+                        assembled_text=assembled_text,
+                        current_message_id=current_message_id,
+                        current_message_parts=current_message_parts,
+                    )
                 )
 
                 event = translate_pi_rpc_message(
@@ -600,38 +505,25 @@ class PiRpcClient:
 # ---------------------------------------------------------------------------
 
 
-def _update_assembled_text(
+def _update_assembled_text_state(
     msg: dict[str, Any],
     *,
     assembled_text: str,
     current_message_id: str | None,
     current_message_parts: list[str],
-) -> str:
-    """Update the assembled assistant text based on the current message."""
-    event_type = msg.get("type")
-    if event_type == "message_end":
-        message = msg.get("message")
-        if isinstance(message, dict) and message.get("role") == "assistant":
-            if current_message_parts:
-                return "".join(current_message_parts)
-            return _extract_assistant_text(message)
-    return assembled_text
+) -> tuple[str, str | None, list[str]]:
+    """Return updated ``(assembled_text, message_id, parts)`` after processing *msg*.
 
-
-def _track_message_state(
-    msg: dict[str, Any],
-    *,
-    current_message_id: str | None,
-    current_message_parts: list[str],
-) -> tuple[str | None, list[str]]:
-    """Return updated (current_message_id, current_message_parts) after processing msg."""
+    Merges the two separate helpers that existed before the boundary-typing
+    sweep so the caller only makes one pass per message.
+    """
     event_type = msg.get("type")
 
     if event_type == "message_start":
         message = msg.get("message")
         if isinstance(message, dict) and message.get("role") == "assistant":
             mid = str(message.get("id") or uuid.uuid4())
-            return mid, []
+            return assembled_text, mid, []
 
     if event_type == "message_update":
         ame = msg.get("assistantMessageEvent")
@@ -640,11 +532,17 @@ def _track_message_state(
             if isinstance(delta, str) and delta:
                 new_parts = list(current_message_parts)
                 new_parts.append(delta)
-                return current_message_id, new_parts
+                return assembled_text, current_message_id, new_parts
 
     if event_type == "message_end":
         message = msg.get("message")
         if isinstance(message, dict) and message.get("role") == "assistant":
-            return None, []
+            if current_message_parts:
+                new_text = "".join(current_message_parts)
+            else:
+                new_text = _extract_assistant_text(
+                    message.get("content") if isinstance(message.get("content"), list) else []
+                )
+            return new_text, None, []
 
-    return current_message_id, current_message_parts
+    return assembled_text, current_message_id, current_message_parts

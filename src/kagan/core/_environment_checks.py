@@ -218,6 +218,42 @@ def check_noisy_env() -> EnvCheckResult | None:
     )
 
 
+def _parse_node_version() -> tuple[int, ...] | None:
+    """Return Node.js ``(major, minor, patch)`` tuple, or ``None`` if unavailable."""
+    import shutil
+
+    if shutil.which("node") is None:
+        return None
+    try:
+        out = subprocess.run(
+            ["node", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        # node --version emits e.g. "v20.11.0"
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+        if match:
+            return tuple(int(p) for p in match.groups())
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def check_node_version(min_version: tuple[int, ...] = (20, 6, 0)) -> bool:
+    """Return ``True`` when Node.js >= *min_version* is available on PATH.
+
+    Args:
+        min_version: Minimum required version as ``(major, minor, patch)`` tuple.
+                     Defaults to ``(20, 6, 0)`` which is required for
+                     ``@mariozechner/pi-coding-agent``.
+    """
+    node_version = _parse_node_version()
+    if node_version is None:
+        return False
+    return node_version >= min_version
+
+
 def collect_environment_checks(cwd: Path | None = None) -> list[EnvCheckResult]:
     """Collect all environment checks and return non-None results."""
     results: list[EnvCheckResult] = [check_ide()]

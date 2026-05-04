@@ -24,7 +24,7 @@ import contextlib
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import acp
 import click
@@ -102,9 +102,6 @@ from kagan.core.chat.events import (
     ToolCallStart as ChatToolCallStart,
 )
 from kagan.core.errors import AgentError, KaganError
-
-if TYPE_CHECKING:
-    from kagan.core.enums import SessionEventType  # noqa: F401
 
 __all__ = [
     "ChatController",
@@ -869,14 +866,12 @@ class ChatController:
     # ------------------------------------------------------------------
 
     async def _event_watcher(self) -> None:
-        from kagan.core.enums import SessionEventType
-
         try:
             async for event in self.client.tasks.events.stream_all(replay=False):
-                if event.event_type == SessionEventType.AGENT_FAILED:
+                if event.event_type == "agent_failed":
                     error = (event.payload or {}).get("error", "Agent failed")
                     _console.print(f"\n[bold red]  ⚠ Task {event.task_id[:8]}: {error}[/bold red]")
-                elif event.event_type == SessionEventType.AGENT_COMPLETED:
+                elif event.event_type == "agent_completed":
                     _console.print(
                         f"\n[green]  ✓ Task {event.task_id[:8]}: Agent completed[/green]"
                     )

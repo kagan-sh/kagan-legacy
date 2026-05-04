@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
-from kagan.core.enums import SessionEventType
 from kagan.tui.screens._chat_runner import (
     apply_task_chat_event,
     stream_chunk_kind,
@@ -46,20 +45,18 @@ class TaskEventHandler:
         self._set_running = set_running
         self._set_status = set_status
         self._set_usage = set_usage
-        self.event_handlers: dict[
-            SessionEventType, Callable[[dict[str, Any], str | None], None]
-        ] = {
-            SessionEventType.OUTPUT_CHUNK: self._handle_output_chunk,
-            SessionEventType.TOOL_CALL_START: self._handle_tool_call_start,
-            SessionEventType.TOOL_CALL_UPDATE: self._handle_tool_call_update,
-            SessionEventType.AGENT_STATUS: self._handle_agent_status,
-            SessionEventType.CRITERION_VERDICT: self._handle_criterion_verdict,
-            SessionEventType.TASK_STATUS_CHANGED: self._handle_task_status_changed,
-            SessionEventType.AGENT_COMPLETED: self._handle_agent_completed,
-            SessionEventType.AGENT_FAILED: self._handle_agent_failed,
-            SessionEventType.MERGE_COMPLETED: self._handle_merge_completed,
-            SessionEventType.MERGE_FAILED: self._handle_merge_failed,
-            SessionEventType.AUTO_REVIEW_STARTED: self._handle_auto_review_started,
+        self.event_handlers: dict[str, Callable[[dict[str, Any], str | None], None]] = {
+            "output_chunk": self._handle_output_chunk,
+            "tool_call_start": self._handle_tool_call_start,
+            "tool_call_update": self._handle_tool_call_update,
+            "agent_status": self._handle_agent_status,
+            "criterion_verdict": self._handle_criterion_verdict,
+            "task_status_changed": self._handle_task_status_changed,
+            "agent_completed": self._handle_agent_completed,
+            "agent_failed": self._handle_agent_failed,
+            "merge_completed": self._handle_merge_completed,
+            "merge_failed": self._handle_merge_failed,
+            "auto_review_started": self._handle_auto_review_started,
         }
 
     def _matches_active_session(self, event_session_id: str | None) -> bool:
@@ -70,7 +67,7 @@ class TaskEventHandler:
 
     def _maybe_apply_chat_event(
         self,
-        event_type: SessionEventType,
+        event_type: str,
         payload: dict[str, Any],
         *,
         event_session_id: str | None,
@@ -94,7 +91,7 @@ class TaskEventHandler:
         self._set_running(True)
         self._render_stream_chunk(payload)
         self._maybe_apply_chat_event(
-            SessionEventType.OUTPUT_CHUNK,
+            "output_chunk",
             payload,
             event_session_id=event_session_id,
         )
@@ -112,7 +109,7 @@ class TaskEventHandler:
             kind=tool_call_kind(payload),
         )
         self._maybe_apply_chat_event(
-            SessionEventType.TOOL_CALL_START,
+            "tool_call_start",
             payload,
             event_session_id=event_session_id,
         )
@@ -126,14 +123,14 @@ class TaskEventHandler:
             result=tool_call_result(payload),
         )
         self._maybe_apply_chat_event(
-            SessionEventType.TOOL_CALL_UPDATE,
+            "tool_call_update",
             payload,
             event_session_id=event_session_id,
         )
 
     def _handle_agent_status(self, payload: dict[str, Any], event_session_id: str | None) -> None:
         self._maybe_apply_chat_event(
-            SessionEventType.AGENT_STATUS,
+            "agent_status",
             payload,
             event_session_id=event_session_id,
         )
@@ -169,7 +166,7 @@ class TaskEventHandler:
         self._set_running(False)
         self._set_status("Completed")
         self._maybe_apply_chat_event(
-            SessionEventType.AGENT_COMPLETED,
+            "agent_completed",
             payload,
             event_session_id=event_session_id,
         )
@@ -179,7 +176,7 @@ class TaskEventHandler:
         self._set_running(False)
         self._set_status("Failed")
         self._maybe_apply_chat_event(
-            SessionEventType.AGENT_FAILED,
+            "agent_failed",
             payload,
             event_session_id=event_session_id,
         )

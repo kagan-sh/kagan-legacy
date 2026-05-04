@@ -54,7 +54,6 @@ from kagan.core._session_helpers import (
 )
 from kagan.core.enums import (
     AgentRole,
-    SessionEventType,
     SessionStatus,
     TaskStatus,
 )
@@ -316,7 +315,7 @@ class Sessions:
                     select(SessionEvent)
                     .where(
                         SessionEvent.session_id == session_id,
-                        SessionEvent.event_type == SessionEventType.AGENT_STATUS,
+                        SessionEvent.event_type == "agent_status",
                     )
                     .order_by(desc(SessionEvent.created_at))
                 ).first()
@@ -379,7 +378,7 @@ class Sessions:
             await asyncio.to_thread(self._set_status, task_id, TaskStatus.IN_PROGRESS)
             await self._events.emit(
                 task_id,
-                SessionEventType.TASK_STATUS_CHANGED,
+                "task_status_changed",
                 {"from": TaskStatus.BACKLOG.value, "to": TaskStatus.IN_PROGRESS.value},
                 session_id=session_obj.id,
             )
@@ -564,7 +563,7 @@ class Sessions:
                 await asyncio.to_thread(self._set_status, task_id, TaskStatus.REVIEW)
                 await self._events.emit(
                     task_id,
-                    SessionEventType.TASK_STATUS_CHANGED,
+                    "task_status_changed",
                     {"from": task.status.value, "to": TaskStatus.REVIEW.value},
                     session_id=(
                         latest_attached_session.id if latest_attached_session is not None else None
@@ -638,7 +637,7 @@ class Sessions:
             await asyncio.to_thread(self._set_status, task_id, next_status)
             await self._events.emit(
                 task_id,
-                SessionEventType.TASK_STATUS_CHANGED,
+                "task_status_changed",
                 {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                 session_id=active.id if active is not None else None,
             )
@@ -672,11 +671,11 @@ class Sessions:
                         task_id,
                         session_id,
                     )
-                    # Emit HOOK_BLOCKED before cancel so subscribers see the
-                    # event before the terminal TASK_STATUS_CHANGED.
+                    # Emit hook_blocked before cancel so subscribers see the
+                    # event before the terminal task_status_changed.
                     await self._events.emit(
                         task_id,
-                        SessionEventType.HOOK_BLOCKED,
+                        "hook_blocked",
                         {
                             "error": hook_result.message or "Hook blocked session",
                             "tool_name": tool_name,
@@ -693,7 +692,7 @@ class Sessions:
                     compactor.record_compaction()
                     await self._events.emit(
                         task_id,
-                        SessionEventType.COMPACTION_TRIGGERED,
+                        "compaction_triggered",
                         {
                             "context_window_used": used,
                             "context_window_size": size,
@@ -711,7 +710,7 @@ class Sessions:
                     event_type,
                     payload,
                     session_id=session_id,
-                    persist=event_type is not SessionEventType.OUTPUT_CHUNK,
+                    persist=event_type != "output_chunk",
                 )
 
         return on_update
@@ -724,7 +723,7 @@ class Sessions:
                 await asyncio.to_thread(self._fail_session, session_id)
                 await self._events.emit(
                     task_id,
-                    SessionEventType.AGENT_FAILED,
+                    "agent_failed",
                     {"error": str(exc), "error_class": classify_agent_error(exc)},
                     session_id=session_id,
                 )
@@ -757,14 +756,14 @@ class Sessions:
                         await asyncio.to_thread(self._set_status, task_id, next_status)
                         await self._events.emit(
                             task_id,
-                            SessionEventType.TASK_STATUS_CHANGED,
+                            "task_status_changed",
                             {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                             session_id=session_id,
                         )
                         transitioned_to_review = next_status == TaskStatus.REVIEW
                 await self._events.emit(
                     task_id,
-                    SessionEventType.AGENT_COMPLETED,
+                    "agent_completed",
                     {},
                     session_id=session_id,
                 )
@@ -857,7 +856,7 @@ class Sessions:
         await asyncio.to_thread(self._set_status, task.id, TaskStatus.BACKLOG)
         await self._events.emit(
             task.id,
-            SessionEventType.TASK_STATUS_CHANGED,
+            "task_status_changed",
             {"from": TaskStatus.IN_PROGRESS.value, "to": TaskStatus.BACKLOG.value},
             session_id=session_id,
         )
@@ -906,14 +905,14 @@ class Sessions:
                         await asyncio.to_thread(self._set_status, task_id, next_status)
                         await self._events.emit(
                             task_id,
-                            SessionEventType.TASK_STATUS_CHANGED,
+                            "task_status_changed",
                             {"from": TaskStatus.IN_PROGRESS.value, "to": next_status.value},
                             session_id=session_id,
                         )
                         transitioned_to_review = next_status == TaskStatus.REVIEW
                 await self._events.emit(
                     task_id,
-                    SessionEventType.AGENT_COMPLETED,
+                    "agent_completed",
                     {},
                     session_id=session_id,
                 )
@@ -1026,7 +1025,7 @@ class Sessions:
 
         await self._events.emit(
             task_id,
-            SessionEventType.AUTO_REVIEW_STARTED,
+            "auto_review_started",
             {"agent_backend": backend},
         )
 
@@ -1037,7 +1036,7 @@ class Sessions:
             logger.warning("Auto-review failed for task={}: {}", task_id, exc)
             await self._events.emit(
                 task_id,
-                SessionEventType.AGENT_FAILED,
+                "agent_failed",
                 {"error": f"Auto-review failed: {exc}"},
             )
 

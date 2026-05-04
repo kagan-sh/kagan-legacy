@@ -27,7 +27,6 @@ from kagan.cli.doctor import (
     _emit_json,
 )
 from kagan.core import Analytics, db_sync, derive_check_category, emit_telemetry
-from kagan.core.enums import SessionEventType
 from kagan.core.models import Project, Session
 
 pytestmark = [pytest.mark.unit]
@@ -205,7 +204,7 @@ def test_emit_doctor_warned_payload_shape_with_warn() -> None:
 
     assert len(captured_payloads) == 1
     ev = captured_payloads[0]
-    assert ev["event_type"] == SessionEventType.DOCTOR_WARNED
+    assert ev["event_type"] == "doctor_warned"
     payload = ev["payload"]
     assert "failing_check_names" in payload
     assert "warn_count" in payload

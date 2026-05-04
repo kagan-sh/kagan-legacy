@@ -17,7 +17,6 @@ from kagan.core import (
     resolve_doctor_backend_name,
     verify_hint_for,
 )
-from kagan.core.enums import SessionEventType
 from kagan.core.errors import KaganError
 from kagan.core.integrations import all_enabled
 
@@ -270,7 +269,7 @@ def _emit_doctor_warned_telemetry(checks: list[DoctorCheck]) -> None:
         run_async(
             emit_telemetry(
                 engine,
-                SessionEventType.DOCTOR_WARNED,
+                "doctor_warned",
                 {
                     "failing_check_names": failing_check_names,
                     "warn_count": warn_count,

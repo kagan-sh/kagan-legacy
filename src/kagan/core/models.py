@@ -166,11 +166,9 @@ class SessionEvent(SQLModel, table=True):
     id: str = Field(default_factory=_new_id, primary_key=True)
     task_id: str = Field(foreign_key="tasks.id", index=True)
     session_id: str | None = Field(default=None, foreign_key="sessions.id", index=True)
-    # ``event_type`` is a plain string as of v2: new AgentEvent rows store the
-    # variant ``kind`` (e.g. ``"output_chunk"``); legacy rows store
-    # ``SessionEventType`` enum values (e.g. ``"OUTPUT_CHUNK"``).
-    # Both coexist in the same column — consumers that need the legacy enum
-    # can coerce via ``SessionEventType(event.event_type)``.
+    # ``event_type`` stores the AgentEvent variant ``kind`` string
+    # (e.g. ``"output_chunk"``, ``"agent_completed"``).  All new rows use
+    # lowercase kind strings; the column is plain TEXT in the database.
     event_type: str = Field(index=True)
     payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=_utc_now)

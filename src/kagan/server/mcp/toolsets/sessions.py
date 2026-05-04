@@ -23,7 +23,6 @@ from kagan.core import (
     resolve_launcher,
     rewind_to_checkpoint,
 )
-from kagan.core.enums import SessionEventType
 from kagan.core.errors import (
     InsightError,
     KaganError,
@@ -334,7 +333,7 @@ async def _verify_step(
 
     await app.client.tasks.events.emit(
         task_id,
-        SessionEventType.STEP_VERIFIED,
+        "step_verified",
         payload,
         session_id=session_id,
     )
@@ -387,7 +386,7 @@ async def _verification_summary(
     )
 
     for event in events:
-        if event.event_type != SessionEventType.STEP_VERIFIED:
+        if event.event_type != "step_verified":
             continue
         p = event.payload if isinstance(event.payload, dict) else {}
         try:
@@ -453,7 +452,7 @@ async def _checkpoint_create(
 
     await app.client.tasks.events.emit(
         task_id,
-        SessionEventType.CHECKPOINT_CREATED,
+        "checkpoint_created",
         checkpoint.to_dict(),
         session_id=session_id,
     )
@@ -539,7 +538,7 @@ async def _session_rewind(
 
     await app.client.tasks.events.emit(
         task_id,
-        SessionEventType.SESSION_REWOUND,
+        "session_rewound",
         {
             "session_id": session_id,
             "step_index": target.step_index,
@@ -588,7 +587,7 @@ async def _insight_add(
     session_id = app.bound_session_id or app.opts.session_id
     await app.client.tasks.events.emit(
         task_id,
-        SessionEventType.INSIGHT_EXTRACTED,
+        "insight_extracted",
         {"category": cat.value, "content": content},
         session_id=session_id,
     )

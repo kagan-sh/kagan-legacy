@@ -11,7 +11,7 @@ from textual.widgets import Footer, Input, Label, Select, Static
 
 from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git, resolve_spawn_command
-from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
+from kagan.core.enums import ChatMode, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -515,9 +515,9 @@ class SessionDashboardScreen(Screen[None]):
                 # Always pipe events to chat panel for real-time streaming
                 apply_task_chat_event(chat, event.event_type, payload)
                 match event.event_type:
-                    case SessionEventType.OUTPUT_CHUNK:
+                    case "output_chunk":
                         self._render_stream_chunk(output, payload)
-                    case SessionEventType.TOOL_CALL_START:
+                    case "tool_call_start":
                         output.upsert_tool_call(
                             tool_call_id(payload),
                             tool_call_title(payload),
@@ -526,13 +526,13 @@ class SessionDashboardScreen(Screen[None]):
                             result=tool_call_result(payload),
                             kind=tool_call_kind(payload),
                         )
-                    case SessionEventType.TOOL_CALL_UPDATE:
+                    case "tool_call_update":
                         output.update_tool_status(
                             tool_call_id(payload),
                             tool_call_status(payload, default="updated"),
                             result=tool_call_result(payload),
                         )
-                    case SessionEventType.AGENT_STATUS:
+                    case "agent_status":
                         output.post_note(self._payload_text(payload) or "Agent status update")
                         usage = payload.get("usage")
                         if isinstance(usage, dict):
@@ -546,14 +546,14 @@ class SessionDashboardScreen(Screen[None]):
                                 )
                             except Exception:
                                 pass
-                    case SessionEventType.AGENT_COMPLETED:
+                    case "agent_completed":
                         self._running = False
                         self._set_compact_status("Completed")
                         output.post_note("Agent completed")
                         self._queue_refreshes(
                             agent_status=True, worktree=True, persona=True, delay=0.0
                         )
-                    case SessionEventType.AGENT_FAILED:
+                    case "agent_failed":
                         self._running = False
                         self._set_compact_status("Failed")
                         output.post_note(self._payload_text(payload) or "Agent failed")

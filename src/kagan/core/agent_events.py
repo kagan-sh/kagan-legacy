@@ -93,10 +93,10 @@ class CompactionOccurred(_AgentEventBase):
     threshold: float | None = None
 
 
-# ── Legacy status / plan / chunk events (from SessionEventType) ───────────────
-# These carry the existing dict-payload structure forwarded verbatim from ACP.
+# ── ACP-forwarded variants ────────────────────────────────────────────────────
+# These carry dict-payload structures forwarded verbatim from ACP updates.
 # They are included in the union so that the Events aggregate can accept any
-# AgentEvent in its emit() signature.
+# AgentEvent in its emit_typed() signature.
 
 
 class OutputChunk(_AgentEventBase):
@@ -242,7 +242,7 @@ class HookBlocked(_AgentEventBase):
 
 
 class CompactionTriggered(_AgentEventBase):
-    """Context compaction was triggered (legacy variant matching SessionEventType)."""
+    """Context compaction was triggered during an agent session."""
 
     kind: Literal["compaction_triggered"] = "compaction_triggered"
     backend: str
@@ -318,36 +318,8 @@ AgentEvent = Annotated[
     Field(discriminator="kind"),
 ]
 
-# ── Mapping from SessionEventType enum values → AgentEvent kind strings ───────
-# Used by the migration bridge in _events.py to translate persisted enum
-# values to the new kind field when reconstructing events from the DB.
-SESSION_EVENT_TYPE_TO_KIND: dict[str, str] = {
-    "OUTPUT_CHUNK": "output_chunk",
-    "AGENT_STATUS": "agent_status",
-    "TOOL_CALL_START": "tool_call_start",
-    "TOOL_CALL_UPDATE": "tool_call_update",
-    "AGENT_COMPLETED": "agent_completed",
-    "AGENT_FAILED": "agent_failed",
-    "PLAN_UPDATE": "plan_update",
-    "TASK_STATUS_CHANGED": "task_status_changed",
-    "MERGE_COMPLETED": "merge_completed",
-    "MERGE_FAILED": "merge_failed",
-    "CRITERION_VERDICT": "criterion_verdict",
-    "AUTO_REVIEW_STARTED": "auto_review_started",
-    "INSIGHT_EXTRACTED": "insight_extracted",
-    "STEP_VERIFIED": "step_verified",
-    "CHECKPOINT_CREATED": "checkpoint_created",
-    "SESSION_REWOUND": "session_rewound",
-    "HOOK_BLOCKED": "hook_blocked",
-    "COMPACTION_TRIGGERED": "compaction_triggered",
-    "DOCTOR_WARNED": "doctor_warned",
-    "FIRST_SESSION_SUCCESS": "first_session_success",
-    "BACKEND_AUTO_PROMOTED": "backend_auto_promoted",
-}
-
 
 __all__ = [
-    "SESSION_EVENT_TYPE_TO_KIND",
     "AgentCompleted",
     "AgentEnd",
     "AgentEvent",

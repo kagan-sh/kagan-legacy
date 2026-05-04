@@ -54,7 +54,6 @@ from kagan.core.chat import (
 from kagan.core.chat import (
     ToolCallStart as ChatToolCallStart,
 )
-from kagan.core.enums import SessionEventType
 from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:
@@ -339,7 +338,7 @@ async def send_chat_message(
 
 def apply_task_chat_event(
     panel: ChatPanel,
-    event_type: SessionEventType,
+    event_type: str,
     payload: dict[str, Any],
 ) -> None:
     """Translate a task agent ``SessionEvent`` payload onto ``panel``.
@@ -349,7 +348,7 @@ def apply_task_chat_event(
     from :func:`apply_chat_event_to_panel`, which dispatches engine
     :class:`ChatEvent` values.
     """
-    if event_type == SessionEventType.OUTPUT_CHUNK:
+    if event_type == "output_chunk":
         text = stream_chunk_text(payload)
         if not text:
             return
@@ -363,7 +362,7 @@ def apply_task_chat_event(
         panel.append_assistant_fragment(text)
         return
 
-    if event_type == SessionEventType.TOOL_CALL_START:
+    if event_type == "tool_call_start":
         title = tool_call_title(payload)
         panel.set_runtime_status("thinking")
         panel.upsert_tool_call(
@@ -377,7 +376,7 @@ def apply_task_chat_event(
         panel.set_stream_action(f"Running tool: {title}", confidence="certain")
         return
 
-    if event_type == SessionEventType.TOOL_CALL_UPDATE:
+    if event_type == "tool_call_update":
         title = tool_call_title(payload)
         panel.set_runtime_status("thinking")
         panel.upsert_tool_call(
@@ -391,19 +390,19 @@ def apply_task_chat_event(
         panel.set_stream_action(f"Running tool: {title}", confidence="certain")
         return
 
-    if event_type == SessionEventType.AGENT_COMPLETED:
+    if event_type == "agent_completed":
         panel.set_runtime_status("ready")
         panel.set_stream_action("Waiting for prompt", confidence="certain")
         return
 
-    if event_type == SessionEventType.AGENT_FAILED:
+    if event_type == "agent_failed":
         panel.set_runtime_status("error")
         panel.set_stream_action("Agent failed", confidence="needs-validation")
         detail = stream_chunk_text(payload) or "Agent failed"
         panel.add_system_message(detail)
         return
 
-    if event_type == SessionEventType.AGENT_STATUS:
+    if event_type == "agent_status":
         status_text = str(payload.get("status") or acp_payload(payload).get("status") or "").lower()
         if status_text in {"running", "thinking", "initializing", "pending"}:
             panel.set_runtime_status("thinking")

@@ -6,7 +6,6 @@ from textual.app import App, ComposeResult
 from textual.containers import Vertical
 
 from kagan.core._events import Events, _BoundedEventQueue
-from kagan.core.enums import SessionEventType
 from kagan.core.models import SessionEvent
 from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput, _sanitize_stream_text
 
@@ -25,7 +24,7 @@ def test_enqueue_output_chunk_replaces_old_non_critical_event_when_queue_is_full
         SessionEvent(
             task_id="task-1",
             session_id="session-1",
-            event_type=SessionEventType.AGENT_STATUS,
+            event_type="agent_status",
             payload={"status": "running"},
         )
     )
@@ -33,13 +32,13 @@ def test_enqueue_output_chunk_replaces_old_non_critical_event_when_queue_is_full
     incoming = SessionEvent(
         task_id="task-1",
         session_id="session-1",
-        event_type=SessionEventType.OUTPUT_CHUNK,
+        event_type="output_chunk",
         payload={"text": "hello"},
     )
     events._enqueue_session_event(queue, incoming)
 
     stored = queue.get_nowait()
-    assert stored.event_type == SessionEventType.OUTPUT_CHUNK
+    assert stored.event_type == "output_chunk"
     assert stored.payload == {"text": "hello"}
 
 
@@ -85,14 +84,14 @@ async def test_emit_non_persistent_event_streams_without_db_write(
 
     emitted = await events.emit(
         "task-1",
-        SessionEventType.OUTPUT_CHUNK,
+        "output_chunk",
         {"text": "live"},
         session_id="session-1",
         persist=False,
     )
 
     queued = queue.get_nowait()
-    assert emitted.event_type == SessionEventType.OUTPUT_CHUNK
+    assert emitted.event_type == "output_chunk"
     assert queued.payload == {"text": "live"}
 
 
@@ -125,13 +124,13 @@ async def test_stream_stops_after_terminal_event_without_db_polling(
         SessionEvent(
             task_id="task-1",
             session_id="session-1",
-            event_type=SessionEventType.AGENT_COMPLETED,
+            event_type="agent_completed",
             payload={},
         )
     )
 
     event = await next_event_task
-    assert event.event_type == SessionEventType.AGENT_COMPLETED
+    assert event.event_type == "agent_completed"
 
     with pytest.raises(StopAsyncIteration):
         await anext(stream)

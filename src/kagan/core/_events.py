@@ -13,7 +13,7 @@ from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _col, _db_async
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import TaskStatus
 from kagan.core.models import SessionEvent
 
 if TYPE_CHECKING:
@@ -62,11 +62,6 @@ def _scrub_secrets(payload: dict) -> dict:
 
 _NON_CRITICAL_EVENT_TYPES: frozenset[str] = frozenset(
     {
-        # Legacy enum values (uppercase)
-        SessionEventType.AGENT_STATUS,
-        SessionEventType.TOOL_CALL_UPDATE,
-        SessionEventType.PLAN_UPDATE,
-        # New AgentEvent kind strings (lowercase)
         "agent_status",
         "tool_call_update",
         "plan_update",
@@ -133,7 +128,7 @@ async def emit_event(
     engine: Engine,
     signals: dict[str, asyncio.Event],
     task_id: str,
-    event_type: SessionEventType,
+    event_type: str,
     payload: dict,
     *,
     session_id: str | None = None,
@@ -299,7 +294,7 @@ async def latest_event(
     engine: Engine,
     task_id: str,
     *,
-    event_type: SessionEventType | None = None,
+    event_type: str | None = None,
 ) -> SessionEvent | None:
     def op(s) -> SessionEvent | None:
         stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
@@ -344,15 +339,14 @@ class Events:
     @staticmethod
     def _session_event_key_for_coalesce(event: SessionEvent) -> tuple[str, str, str | None] | None:
         event_type = event.event_type
-        # Support both legacy enum values (uppercase) and new kind strings (lowercase).
-        if event_type in {SessionEventType.AGENT_STATUS, "agent_status"}:
-            return (str(event_type), event.task_id, event.session_id)
-        if event_type in {SessionEventType.PLAN_UPDATE, "plan_update"}:
-            return (str(event_type), event.task_id, event.session_id)
-        if event_type in {SessionEventType.TOOL_CALL_UPDATE, "tool_call_update"}:
+        if event_type == "agent_status":
+            return (event_type, event.task_id, event.session_id)
+        if event_type == "plan_update":
+            return (event_type, event.task_id, event.session_id)
+        if event_type == "tool_call_update":
             payload = event.payload if isinstance(event.payload, dict) else {}
             tool_call_id = payload.get("tool_call_id") or payload.get("id")
-            return (str(event_type), event.task_id, str(tool_call_id) if tool_call_id else None)
+            return (event_type, event.task_id, str(tool_call_id) if tool_call_id else None)
         return None
 
     @staticmethod
@@ -450,17 +444,10 @@ class Events:
 
     @staticmethod
     def _is_terminal_live_event(event: SessionEvent) -> bool:
-        # Support both legacy SessionEventType enum values (uppercase) and
-        # new AgentEvent kind strings (lowercase).
         et = event.event_type
-        if et in {
-            SessionEventType.AGENT_COMPLETED,
-            SessionEventType.AGENT_FAILED,
-            "agent_completed",
-            "agent_failed",
-        }:
+        if et in {"agent_completed", "agent_failed"}:
             return True
-        if et not in {SessionEventType.TASK_STATUS_CHANGED, "task_status_changed"}:
+        if et != "task_status_changed":
             return False
         payload = event.payload if isinstance(event.payload, dict) else {}
         next_status = str(payload.get("to") or "").upper()
@@ -469,7 +456,7 @@ class Events:
     async def emit(
         self,
         task_id: str,
-        event_type: SessionEventType,
+        event_type: str,
         payload: dict,
         *,
         session_id: str | None = None,
@@ -491,7 +478,7 @@ class Events:
         for queue in self._global_live_queues:
             self._enqueue_session_event(queue, event)
         self._prune_signal_if_idle(task_id)
-        if event_type is SessionEventType.TASK_STATUS_CHANGED:
+        if event_type == "task_status_changed":
             self.publish_board(
                 BoardEvent(
                     task_id=task_id,
@@ -500,7 +487,7 @@ class Events:
                     to_status=str(payload.get("to") or ""),
                 )
             )
-        elif event_type is SessionEventType.AUTO_REVIEW_STARTED:
+        elif event_type == "auto_review_started":
             self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
         return event
 
@@ -686,7 +673,7 @@ class Events:
         self,
         task_id: str,
         *,
-        event_type: SessionEventType | None = None,
+        event_type: str | None = None,
     ) -> SessionEvent | None:
         return await latest_event(self._engine, task_id, event_type=event_type)
 

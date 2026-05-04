@@ -29,7 +29,6 @@ from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRe
 from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest  # noqa: E402
 from kagan.core.enums import (  # noqa: E402
     Priority,
-    SessionEventType,
     SessionStatus,
     TaskStatus,
 )
@@ -129,7 +128,6 @@ WIRE_ENUMS: list[tuple[str, type]] = [
     ("TaskStatus", TaskStatus),
     ("SessionStatus", SessionStatus),
     ("Priority", Priority),
-    ("SessionEventType", SessionEventType),
 ]
 
 
@@ -157,15 +155,93 @@ def _generate_enum_section() -> list[str]:
 
 
 def _generate_constants_section() -> list[str]:
-    """Emit EVENT_TYPE and SSE_TYPE const objects derived from Python enums."""
-    lines: list[str] = [
-        "// ── Event type constants (derived from src/kagan/core/enums.py) ─────────────",
+    """Emit EVENT_TYPE and SSE_TYPE const objects derived from AgentEvent kind strings."""
+    from kagan.core.agent_events import (  # noqa: E402
+        AgentCompleted,
+        AgentEnd,
+        AgentFailed,
+        AgentStart,
+        AgentStatus,
+        AutoReviewStarted,
+        BackendAutoPromoted,
+        CheckpointCreated,
+        CompactionOccurred,
+        CompactionTriggered,
+        CriterionVerdict,
+        DoctorWarned,
+        FirstSessionSuccess,
+        HookBlocked,
+        InsightExtracted,
+        MergeCompleted,
+        MergeFailed,
+        MessageEnd,
+        MessageStart,
+        MessageUpdate,
+        OutputChunk,
+        PlanUpdate,
+        SessionRewound,
+        StepVerified,
+        TaskStatusChanged,
+        ToolCallStart,
+        ToolCallUpdate,
+        ToolExecutionEnd,
+        ToolExecutionStart,
+        ToolExecutionUpdate,
+        TurnEnd,
+        TurnStart,
+    )
+
+    # All AgentEvent variant kinds in the canonical order.
+    _ALL_EVENT_VARIANTS = [
+        AgentStart,
+        AgentEnd,
+        TurnStart,
+        TurnEnd,
+        MessageStart,
+        MessageUpdate,
+        MessageEnd,
+        ToolExecutionStart,
+        ToolExecutionUpdate,
+        ToolExecutionEnd,
+        CompactionOccurred,
+        OutputChunk,
+        AgentStatus,
+        ToolCallStart,
+        ToolCallUpdate,
+        PlanUpdate,
+        TaskStatusChanged,
+        AgentCompleted,
+        AgentFailed,
+        MergeCompleted,
+        MergeFailed,
+        CriterionVerdict,
+        AutoReviewStarted,
+        InsightExtracted,
+        StepVerified,
+        CheckpointCreated,
+        SessionRewound,
+        HookBlocked,
+        CompactionTriggered,
+        DoctorWarned,
+        FirstSessionSuccess,
+        BackendAutoPromoted,
     ]
 
-    # EVENT_TYPE from SessionEventType
+    lines: list[str] = [
+        "// ── Event type constants (derived from src/kagan/core/agent_events.py) ───────",
+    ]
+
+    # EVENT_TYPE from AgentEvent kind strings
     lines.append("export const EVENT_TYPE = {")
-    for member in SessionEventType:
-        lines.append(f'  {member.name}: "{member.value}",')
+    for variant_cls in _ALL_EVENT_VARIANTS:
+        # Each variant has a Literal ``kind`` field with default = the kind string.
+        kind: str = variant_cls.model_fields["kind"].default
+        ts_name = variant_cls.__name__
+        # Convert CamelCase class name to UPPER_SNAKE for the constant key.
+        import re
+
+        snake = re.sub(r"([A-Z])", r"_\1", ts_name).lstrip("_").upper()
+        lines.append(f'  {snake}: "{kind}",')
     lines.append("} as const;")
     lines.append("")
     lines.append("export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];")
@@ -200,8 +276,8 @@ def _generate_constants_section() -> list[str]:
 
 _STATIC_WIRE_SECTIONS = """\
 // ── AgentEvent typed union (from src/kagan/core/agent_events.py) ─────────────
-// Discriminated on the ``kind`` field. New agent task session events use these
-// shapes; legacy events use uppercase SessionEventType values.
+// Discriminated on the ``kind`` field. All task session events use these
+// shapes.
 
 export interface AgentEventAgentStart {
   kind: "agent_start";

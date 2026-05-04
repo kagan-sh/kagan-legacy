@@ -8,31 +8,41 @@
 export type TaskStatus = "BACKLOG" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type SessionStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type SessionEventType = "OUTPUT_CHUNK" | "AGENT_STATUS" | "TOOL_CALL_START" | "TOOL_CALL_UPDATE" | "AGENT_COMPLETED" | "AGENT_FAILED" | "PLAN_UPDATE" | "TASK_STATUS_CHANGED" | "MERGE_COMPLETED" | "MERGE_FAILED" | "CRITERION_VERDICT" | "AUTO_REVIEW_STARTED" | "INSIGHT_EXTRACTED" | "STEP_VERIFIED" | "CHECKPOINT_CREATED" | "SESSION_REWOUND" | "HOOK_BLOCKED" | "COMPACTION_TRIGGERED" | "DOCTOR_WARNED" | "FIRST_SESSION_SUCCESS" | "BACKEND_AUTO_PROMOTED";
 
-// ── Event type constants (derived from src/kagan/core/enums.py) ─────────────
+// ── Event type constants (derived from src/kagan/core/agent_events.py) ───────
 export const EVENT_TYPE = {
-  OUTPUT_CHUNK: "OUTPUT_CHUNK",
-  AGENT_STATUS: "AGENT_STATUS",
-  TOOL_CALL_START: "TOOL_CALL_START",
-  TOOL_CALL_UPDATE: "TOOL_CALL_UPDATE",
-  AGENT_COMPLETED: "AGENT_COMPLETED",
-  AGENT_FAILED: "AGENT_FAILED",
-  PLAN_UPDATE: "PLAN_UPDATE",
-  TASK_STATUS_CHANGED: "TASK_STATUS_CHANGED",
-  MERGE_COMPLETED: "MERGE_COMPLETED",
-  MERGE_FAILED: "MERGE_FAILED",
-  CRITERION_VERDICT: "CRITERION_VERDICT",
-  AUTO_REVIEW_STARTED: "AUTO_REVIEW_STARTED",
-  INSIGHT_EXTRACTED: "INSIGHT_EXTRACTED",
-  STEP_VERIFIED: "STEP_VERIFIED",
-  CHECKPOINT_CREATED: "CHECKPOINT_CREATED",
-  SESSION_REWOUND: "SESSION_REWOUND",
-  HOOK_BLOCKED: "HOOK_BLOCKED",
-  COMPACTION_TRIGGERED: "COMPACTION_TRIGGERED",
-  DOCTOR_WARNED: "DOCTOR_WARNED",
-  FIRST_SESSION_SUCCESS: "FIRST_SESSION_SUCCESS",
-  BACKEND_AUTO_PROMOTED: "BACKEND_AUTO_PROMOTED",
+  AGENT_START: "agent_start",
+  AGENT_END: "agent_end",
+  TURN_START: "turn_start",
+  TURN_END: "turn_end",
+  MESSAGE_START: "message_start",
+  MESSAGE_UPDATE: "message_update",
+  MESSAGE_END: "message_end",
+  TOOL_EXECUTION_START: "tool_execution_start",
+  TOOL_EXECUTION_UPDATE: "tool_execution_update",
+  TOOL_EXECUTION_END: "tool_execution_end",
+  COMPACTION_OCCURRED: "compaction_occurred",
+  OUTPUT_CHUNK: "output_chunk",
+  AGENT_STATUS: "agent_status",
+  TOOL_CALL_START: "tool_call_start",
+  TOOL_CALL_UPDATE: "tool_call_update",
+  PLAN_UPDATE: "plan_update",
+  TASK_STATUS_CHANGED: "task_status_changed",
+  AGENT_COMPLETED: "agent_completed",
+  AGENT_FAILED: "agent_failed",
+  MERGE_COMPLETED: "merge_completed",
+  MERGE_FAILED: "merge_failed",
+  CRITERION_VERDICT: "criterion_verdict",
+  AUTO_REVIEW_STARTED: "auto_review_started",
+  INSIGHT_EXTRACTED: "insight_extracted",
+  STEP_VERIFIED: "step_verified",
+  CHECKPOINT_CREATED: "checkpoint_created",
+  SESSION_REWOUND: "session_rewound",
+  HOOK_BLOCKED: "hook_blocked",
+  COMPACTION_TRIGGERED: "compaction_triggered",
+  DOCTOR_WARNED: "doctor_warned",
+  FIRST_SESSION_SUCCESS: "first_session_success",
+  BACKEND_AUTO_PROMOTED: "backend_auto_promoted",
 } as const;
 
 export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];
@@ -319,8 +329,8 @@ export interface ReviewDecideRequest {
 // ── Static wire sections (maintained in scripts/generate_wire_types.py) ──────
 
 // ── AgentEvent typed union (from src/kagan/core/agent_events.py) ─────────────
-// Discriminated on the ``kind`` field. New agent task session events use these
-// shapes; legacy events use uppercase SessionEventType values.
+// Discriminated on the ``kind`` field. All task session events use these
+// shapes.
 
 export interface AgentEventAgentStart {
   kind: "agent_start";

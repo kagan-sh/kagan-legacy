@@ -26,7 +26,6 @@ from textual.widgets import Button, Footer, Label, Static
 
 from kagan.cli.doctor import DoctorCheck, run_doctor_check_for_backend, run_doctor_checks
 from kagan.core import emit_telemetry, set_settings
-from kagan.core.enums import SessionEventType
 from kagan.tui.keybindings import CHECK_ROW_BINDINGS, DOCTOR_MODAL_BINDINGS
 
 if TYPE_CHECKING:
@@ -469,7 +468,7 @@ class DoctorModal(ModalScreen[bool]):
 
             await emit_telemetry(
                 engine,
-                SessionEventType.BACKEND_AUTO_PROMOTED.value,
+                "backend_auto_promoted",
                 {
                     "backend": backend_name,
                     "seconds_since_install_clicked": round(elapsed, 3),
@@ -524,7 +523,7 @@ async def emit_doctor_warned_telemetry_async(
             return
         await emit_telemetry(
             core.engine,
-            SessionEventType.DOCTOR_WARNED.value,
+            "doctor_warned",
             {
                 "fail_count": fail_count,
                 "warn_count": warn_count,

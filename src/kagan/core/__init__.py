@@ -72,7 +72,8 @@ from kagan.core._checkpoints import (
 )
 from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
 from kagan.core._db import create_db_engine, default_db_path
-from kagan.core._db_helpers import _db_async, _db_sync
+from kagan.core._db_helpers import _db_async as db_async
+from kagan.core._db_helpers import _db_sync as db_sync
 from kagan.core._environment_checks import (
     EnvCheckResult,
     collect_environment_checks,
@@ -293,8 +294,6 @@ __all__ = [
     "VerificationSummary",
     "Worktree",
     "WorktreeError",
-    "_db_async",
-    "_db_sync",
     "abort_rebase",
     "acp_handshake_timeout_seconds",
     "acp_process_exit_hint",
@@ -320,6 +319,8 @@ __all__ = [
     "create_db_engine",
     "create_project",
     "create_worktree",
+    "db_async",
+    "db_sync",
     "default_db_path",
     "default_log_path",
     "delete_project",

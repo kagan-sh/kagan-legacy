@@ -54,10 +54,10 @@ async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
     """
     from sqlmodel import select as _select
 
-    from kagan.core import _db_async, is_review_approved
+    from kagan.core import db_async, is_review_approved
     from kagan.core.models import AcceptanceCriterion as _AC
 
-    criteria = await _db_async(
+    criteria = await db_async(
         engine,
         lambda s: [
             c.text

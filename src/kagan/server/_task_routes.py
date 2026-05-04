@@ -10,7 +10,7 @@ from sqlmodel import select
 from kagan.core import (
     BackendSelector,
     TaskStatus,
-    _db_async,
+    db_async,
     parse_priority,
     resolve_default_agent_backend,
     resolve_launcher,
@@ -452,7 +452,7 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
-            criteria_list = await _db_async(
+            criteria_list = await db_async(
                 ctx.client.engine,
                 lambda s: list(
                     s.exec(

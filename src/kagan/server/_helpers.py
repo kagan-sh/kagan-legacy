@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 from sqlmodel import select
 from starlette.responses import JSONResponse
 
-from kagan.core import TaskStatus, _db_async
+from kagan.core import TaskStatus, db_async
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.core.models import AcceptanceCriterion, ReviewVerdict
 from kagan.server._access import http_forbidden, is_access_allowed
@@ -233,7 +233,7 @@ async def bulk_task_review_verdicts(
         return {tid: grouped.get(tid, []) for tid in unique_ids}
 
     try:
-        return await _db_async(ctx.client.engine, op)
+        return await db_async(ctx.client.engine, op)
     except (KaganError, RuntimeError, OSError, AttributeError) as exc:
         logger.debug("bulk_task_review_verdicts failed: {}", exc, exc_info=True)
         return {tid: [] for tid in unique_ids}

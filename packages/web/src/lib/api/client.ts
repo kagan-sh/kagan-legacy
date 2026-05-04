@@ -70,7 +70,7 @@ export class KaganApiClient extends BaseClient {
    * paths. Otherwise delegate to the base implementation.
    */
   override getBaseUrl(): string {
-    if (this._bundledWeb) return '';
+    if (this._bundledWeb || !super.isConfigured()) return '';
     return super.getBaseUrl();
   }
 
@@ -79,7 +79,7 @@ export class KaganApiClient extends BaseClient {
    * The base class always prepends `${protocol}://${host}`.
    */
   protected override getFullUrl(path: string): string {
-    if (this._bundledWeb) return path;
+    if (this._bundledWeb || !super.isConfigured()) return path;
     return super.getFullUrl(path);
   }
 
@@ -88,7 +88,8 @@ export class KaganApiClient extends BaseClient {
    * In bundled mode the base URL is '' so we use the relative path.
    */
   override async getHealth(): Promise<{ status: string; version: string }> {
-    const url = this._bundledWeb ? '/health' : `${super.getBaseUrl()}/health`;
+    const baseUrl = this.getBaseUrl();
+    const url = baseUrl ? `${baseUrl}/health` : '/health';
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!response.ok) throw new ApiError(response.status, 'Health check failed');
     return response.json() as Promise<{ status: string; version: string }>;

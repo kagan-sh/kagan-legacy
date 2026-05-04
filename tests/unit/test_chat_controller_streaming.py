@@ -19,7 +19,6 @@ import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._permission_ui import PermissionUI
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.core.chat.events import (
-    AssistantChunk,
     PermissionRequest,
     ToolCallStart,
 )

@@ -166,7 +166,7 @@ def _resolve_backend(agent_backend: str | None, tool: str | None) -> str:
         if normalized in _AGENT_ALIASES:
             return _AGENT_ALIASES[normalized]
 
-        from kagan.core._agent import list_backends
+        from kagan.core import list_backends
 
         available = set(list_backends())
         if normalized in available:
@@ -176,7 +176,7 @@ def _resolve_backend(agent_backend: str | None, tool: str | None) -> str:
     if tool is not None:
         return _TOOL_TO_BACKEND[tool.lower()]
 
-    from kagan.core._agent import CLAUDE_CODE_BACKEND, OPENCODE_BACKEND
+    from kagan.core import CLAUDE_CODE_BACKEND, OPENCODE_BACKEND
 
     for backend in (CLAUDE_CODE_BACKEND, OPENCODE_BACKEND, "kimi-cli"):
         executable = _get_backend_executable(backend)
@@ -186,7 +186,7 @@ def _resolve_backend(agent_backend: str | None, tool: str | None) -> str:
 
 
 def _get_backend_executable(backend_name: str) -> str:
-    from kagan.core._agent import get_backend
+    from kagan.core import get_backend
 
     backend = get_backend(backend_name)
     executable = backend.get("executable")
@@ -210,7 +210,7 @@ def _extract_refined_prompt(response: str) -> str:
 
 
 def _build_agent_command(backend_name: str, prompt_text: str) -> list[str]:
-    from kagan.core._agent import OPENCODE_BACKEND
+    from kagan.core import OPENCODE_BACKEND
 
     executable = _get_backend_executable(backend_name)
     prompt = _get_refinement_prompt(prompt_text)

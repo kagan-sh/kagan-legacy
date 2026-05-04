@@ -283,9 +283,7 @@ class ChatController:
             self._restart_requested = True
 
         if self._persist_repl_session:
-            await self.client.chat_sessions.set_last_session_id(
-                scope="repl", session_id=session_id
-            )
+            await self.client.chat_sessions.set_last_session_id(scope="repl", session_id=session_id)
         return self._restart_requested
 
     def _print_restored_messages(self) -> None:

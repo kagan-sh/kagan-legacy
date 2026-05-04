@@ -11,7 +11,7 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
-from kagan.core._formatting import format_duration, format_percentage
+from kagan.core import format_duration, format_percentage
 from kagan.tui.keybindings import ANALYTICS_BINDINGS
 
 if TYPE_CHECKING:

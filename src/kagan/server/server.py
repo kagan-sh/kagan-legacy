@@ -170,8 +170,11 @@ async def serve_http(
     mcp = create_api_server(opts)
 
     # Initialise KaganCore for REST API routes.
-    from kagan.core import KaganCore, install_asyncio_subprocess_exception_filter
-    from kagan.core._orphan_reap import reap_orphan_sessions
+    from kagan.core import (
+        KaganCore,
+        install_asyncio_subprocess_exception_filter,
+        reap_orphan_sessions,
+    )
 
     install_asyncio_subprocess_exception_filter()
     client = KaganCore(db_path=opts.mcp_opts.db_path)

@@ -8,8 +8,7 @@ import asyncio
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import build_conflict_resolution_feedback
-from kagan.core._db_helpers import _db_async
+from kagan.core import _db_async, build_conflict_resolution_feedback
 from kagan.core.errors import MergeConflictError, ValidationError
 from kagan.core.models import AcceptanceCriterion, Task
 from kagan.server._helpers import _manual_review_payload

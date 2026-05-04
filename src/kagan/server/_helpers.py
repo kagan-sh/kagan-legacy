@@ -11,8 +11,7 @@ from pydantic import BaseModel, ValidationError
 from sqlmodel import select
 from starlette.responses import JSONResponse
 
-from kagan.core import TaskStatus
-from kagan.core._db_helpers import _db_async
+from kagan.core import TaskStatus, _db_async
 from kagan.core.errors import InvalidTransitionError, KaganError, NotFoundError
 from kagan.core.models import AcceptanceCriterion, ReviewVerdict
 from kagan.server._access import http_forbidden, is_access_allowed

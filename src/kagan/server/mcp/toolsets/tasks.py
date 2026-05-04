@@ -12,8 +12,7 @@ import pydantic
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import Priority, TaskStatus, parse_priority
-from kagan.core._io.tasks import TaskCreateRequest
+from kagan.core import Priority, TaskCreateRequest, TaskStatus, parse_priority
 from kagan.core.errors import KaganError, ValidationError
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
@@ -55,8 +54,7 @@ async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
     """
     from sqlmodel import select as _select
 
-    from kagan.core._db_helpers import _db_async
-    from kagan.core._reviews import is_review_approved
+    from kagan.core import _db_async, is_review_approved
     from kagan.core.models import AcceptanceCriterion as _AC
 
     criteria = await _db_async(
@@ -287,9 +285,7 @@ async def _task_create(
             continue
         try:
             # Validate via shared model — enforces same constraints as REST surface.
-            req = TaskCreateRequest.model_validate(
-                {**raw_entry, "title": entry_title}
-            )
+            req = TaskCreateRequest.model_validate({**raw_entry, "title": entry_title})
             pri = parse_priority(req.priority)
             # MCP applies a project-level default_repo_id when the caller omits repo_id.
             # REST callers never receive this fallback — they must supply repo_id explicitly

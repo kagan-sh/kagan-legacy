@@ -48,7 +48,7 @@ def export(prompt_type: str, output: str | None, model: str, output_format: str)
     import asyncio
 
     from kagan.cli._bootstrap import make_client
-    from kagan.core._prompt_export import export_prompt_text, export_prompt_yml, write_prompt_file
+    from kagan.core import export_prompt_text, export_prompt_yml, write_prompt_file
 
     settings: dict[str, str] = {}
     try:

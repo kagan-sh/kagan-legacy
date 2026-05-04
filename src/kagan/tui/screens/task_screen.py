@@ -859,7 +859,7 @@ class TaskScreen(Screen[None]):
             ):
                 self._replay_count += 1
                 if self._oldest_event_ts is None and event.created_at:
-                    from kagan.core._utils import utc_iso
+                    from kagan.core import utc_iso
 
                     self._oldest_event_ts = utc_iso(event.created_at)
                 if self._replay_count == TASK_SCREEN_REPLAY_EVENT_LIMIT:
@@ -943,7 +943,7 @@ class TaskScreen(Screen[None]):
             return
 
         if older_events[0].created_at:
-            from kagan.core._utils import utc_iso
+            from kagan.core import utc_iso
 
             self._oldest_event_ts = utc_iso(older_events[0].created_at) or self._oldest_event_ts
 

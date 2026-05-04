@@ -13,8 +13,7 @@ from textual.screen import Screen
 from textual.widgets import Input, Select, Static, TextArea
 
 from kagan.cli.chat import resolve_default_agent_backend, warm_orchestrator_backend
-from kagan.core import resolve_launcher
-from kagan.core._subprocess import resolve_spawn_command
+from kagan.core import resolve_launcher, resolve_spawn_command
 from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
 from kagan.core.errors import KaganError
 from kagan.core.models import Task, Worktree

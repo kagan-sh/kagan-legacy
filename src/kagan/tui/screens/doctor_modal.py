@@ -25,8 +25,7 @@ from textual.widget import Widget
 from textual.widgets import Button, Footer, Label, Static
 
 from kagan.cli.doctor import DoctorCheck, run_doctor_check_for_backend, run_doctor_checks
-from kagan.core._analytics import emit_telemetry
-from kagan.core._settings import set_settings
+from kagan.core import emit_telemetry, set_settings
 from kagan.core.enums import SessionEventType
 from kagan.tui.keybindings import CHECK_ROW_BINDINGS, DOCTOR_MODAL_BINDINGS
 

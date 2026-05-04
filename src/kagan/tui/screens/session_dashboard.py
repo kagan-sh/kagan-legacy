@@ -10,8 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Select, Static
 
 from kagan.cli.chat import resolve_default_agent_backend
-from kagan.core import git
-from kagan.core._subprocess import resolve_spawn_command
+from kagan.core import git, resolve_spawn_command
 from kagan.core.enums import ChatMode, SessionEventType, SessionKind, SessionStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError, WorktreeError
 from kagan.core.models import Session

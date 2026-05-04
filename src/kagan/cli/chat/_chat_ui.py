@@ -13,7 +13,7 @@ from rich.text import Text
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.cli.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.cli.chat.repl import SearchPickerOption, _console
-from kagan.core._formatting import format_duration, format_percentage
+from kagan.core import format_duration, format_percentage
 
 
 def print_help_documentation() -> None:

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
 
-    from kagan.core._tasks import Tasks
+    from kagan.core import Tasks
 
 _SSE_KEEPALIVE_SECONDS = 25.0
 # Safety-net fallback interval — the event bus delivers most mutations

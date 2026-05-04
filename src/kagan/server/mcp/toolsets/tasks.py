@@ -12,7 +12,7 @@ import pydantic
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import Priority, TaskCreateRequest, TaskStatus, parse_priority
+from kagan.core import Priority, TaskCreateRequest, TaskStatus, parse_priority, transition_task
 from kagan.core.errors import KaganError, ValidationError
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
@@ -355,7 +355,7 @@ async def _task_update(
         repo_id=repo_id,
     )
     if status_enum is not None:
-        task = await app.client.tasks.set_status(resolved_task_id, status_enum)
+        task = await transition_task(app.client, resolved_task_id, status_enum, by="mcp")
     result = await _task_to_dict(task, app.client.engine)
     result["verification"] = _build_update_verification(
         result,

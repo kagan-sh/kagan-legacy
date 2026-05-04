@@ -13,6 +13,269 @@
 
 
 
+## v0.19.0-beta.21 (2026-05-04)
+
+
+
+
+### Features
+
+- **core/chat**: Add first-class permission seam (R1 phase 5-pre)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **core/chat**: Add LongLivedACPFactory (R1 phase 5a)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **R1 phase 3**: Address Greptile P1 data-loss + P2 task leak
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **R1 phase 3**: Address Greptile P1 slot leak + P2 duplicate broadcast
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **R1 phase 3**: Address Greptile P2 — stale PATCH updated_at + AsyncGenerator annotation
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **core/chat**: Address Greptile phase 2 review
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **R1 phase 4c**: Claim turn slot before user persist + broadcast (Greptile P1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **lint**: Move builtins import into TYPE_CHECKING block
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **server**: Post-CHAT_DONE refresh outside error handler (Greptile P1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **server**: Release turn slot on client disconnect mid-stream (Greptile P1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **server**: Widen post-claim guard to cover all pre-stream awaits + yields (Greptile P1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **core/chat**: Add ChatEngine + events + ACP factory (R1 phase 2)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **core/chat**: Address Greptile P1 review on phase 1
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **tui/kanban**: Consume ChatEngine for chat turns (R1 phase 4a)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **cli/core**: Delete legacy chat shim + replace_history + _chat_acp residue (R1 phase 6)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **core**: Extract ChatSessions aggregate (R1 phase 1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **cli**: Extract CLIRenderer + PermissionUI from _chat_acp.py (R1 phase 5b)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **tui**: Finish ChatEngine migration — sweep screens (R1 phase 4c)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **server**: Migrate _chat_routes.py to ChatEngine (R1 phase 3)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **cli**: Rewire controller to ChatEngine + delete _OrchestratorACPClient (R1 phase 5c)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **tui**: Split ChatPanel into ChatTranscript / ChatInput / ChatSessionMenu (R1 phase 4b, Option A)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **R1**: Unify chat engine — phase 1 (ChatSessions aggregate)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- **web/vscode**: Add chat E2E + VS Code chat-participant integration (R1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **tui**: Add Pilot-driven chat lifecycle behavioral tests (R1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+- **core/server**: Consolidate chat test suite per testing.md (R1)
+  ([#133](https://github.com/kagan-sh/kagan/pull/133),
+  [`f7eabe3`](https://github.com/kagan-sh/kagan/commit/f7eabe394d358f88dd9682e9b35a24c16092cf41))
+
+
+
+
+
 ## v0.19.0-beta.20 (2026-05-03)
 
 

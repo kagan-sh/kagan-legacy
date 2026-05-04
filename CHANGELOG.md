@@ -13,6 +13,86 @@
 
 
 
+## v0.19.0-beta.23 (2026-05-04)
+
+
+
+
+### Features
+
+- **scripts**: Extend generate_wire_types.py to emit full wire surface (R3 phase 3a)
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- **R3**: Address Greptile P2 — top-level Priority import + broader ESLint pattern
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+- **R3**: Resolve @kagan/shared-api-client to source in VS Code vitest
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **vscode**: Consume @kagan/api-client wire types (R3 phase 3c)
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+- **web**: Migrate to generated wire types (R3 phase 3b)
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+- **R3**: One TS wire source — consolidate hand-rolled types
+  ([#135](https://github.com/kagan-sh/kagan/pull/135),
+  [`991cf61`](https://github.com/kagan-sh/kagan/commit/991cf61eb8355fc718e2f36d9fcc417a19537c2a))
+
+
+
+
+
 ## v0.19.0-beta.22 (2026-05-04)
 
 

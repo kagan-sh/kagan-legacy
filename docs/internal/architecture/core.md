@@ -80,7 +80,7 @@ kagan/core/
 ├── _checkpoints.py        # task execution checkpoints (create, list, rewind, cleanup)
 ├── _compaction.py         # database compaction
 ├── _event_rendering.py    # event display rendering helpers
-├── _hooks.py              # hook system (Hook, HookRunner, HookContext)
+├── _hooks.py              # guard functions for repeated and dangerous tool calls
 ├── _insights.py           # project insight extraction with decay and relevance
 ├── _prompt_export.py      # prompt export functionality
 ├── _security.py           # security helpers

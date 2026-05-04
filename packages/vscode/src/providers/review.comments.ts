@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ReviewVerdict, ReviewVerdictState, WireTask } from "../api/types.js";
+import type { ReviewVerdict, ReviewVerdictState, WireTask } from "@kagan/shared-api-client";
 import { buildReviewDocument } from "./review.document.js";
 
 const REVIEW_SCHEME = "kagan-review";

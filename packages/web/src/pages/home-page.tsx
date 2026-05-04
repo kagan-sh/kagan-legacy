@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useSetAtom } from 'jotai';
 import { apiClient } from '@/lib/api/client';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 import { fetchTasksAtom } from '@/lib/atoms/board';
 import { classifyIntent, describeIntent } from '@/lib/intent/classify-intent';
 import { LiveRegion } from '@/components/a11y/live-region';

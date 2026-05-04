@@ -6,15 +6,18 @@ from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from sqlalchemy import Engine, and_, desc, or_
 from sqlmodel import select
 
 from kagan.core._db_helpers import _add_and_refresh, _col, _db_async
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import TaskStatus
 from kagan.core.models import SessionEvent
+
+if TYPE_CHECKING:
+    from kagan.core.agent_events import AgentEvent
 
 LIVE_STREAM_QUEUE_MAX_SIZE = 512
 GLOBAL_STREAM_QUEUE_MAX_SIZE = 512
@@ -57,11 +60,11 @@ def _scrub_secrets(payload: dict) -> dict:
     return _scrub_value(payload)
 
 
-_NON_CRITICAL_EVENT_TYPES: frozenset[SessionEventType] = frozenset(
+_NON_CRITICAL_EVENT_TYPES: frozenset[str] = frozenset(
     {
-        SessionEventType.AGENT_STATUS,
-        SessionEventType.TOOL_CALL_UPDATE,
-        SessionEventType.PLAN_UPDATE,
+        "agent_status",
+        "tool_call_update",
+        "plan_update",
     }
 )
 
@@ -125,7 +128,7 @@ async def emit_event(
     engine: Engine,
     signals: dict[str, asyncio.Event],
     task_id: str,
-    event_type: SessionEventType,
+    event_type: str,
     payload: dict,
     *,
     session_id: str | None = None,
@@ -291,7 +294,7 @@ async def latest_event(
     engine: Engine,
     task_id: str,
     *,
-    event_type: SessionEventType | None = None,
+    event_type: str | None = None,
 ) -> SessionEvent | None:
     def op(s) -> SessionEvent | None:
         stmt = select(SessionEvent).where(SessionEvent.task_id == task_id)
@@ -317,6 +320,11 @@ class Events:
         self._live_queues: dict[str, list[_BoundedEventQueue[SessionEvent]]] = {}
         self._global_live_queues: list[_BoundedEventQueue[SessionEvent]] = []
         self._board_live_queues: list[_BoundedEventQueue[BoardEvent]] = []
+        # Settlement-rule tracking: maps session_id to outstanding AgentEnd
+        # subscriber count + idle event.  Decremented when each subscriber
+        # acknowledges the AgentEnd event (via ``notify_agent_end_handled``).
+        self._agent_end_pending: dict[str, int] = {}
+        self._agent_end_idle: dict[str, asyncio.Event] = {}
 
     def _signal_for(self, task_id: str) -> asyncio.Event:
         if task_id not in self._signals:
@@ -331,14 +339,14 @@ class Events:
     @staticmethod
     def _session_event_key_for_coalesce(event: SessionEvent) -> tuple[str, str, str | None] | None:
         event_type = event.event_type
-        if event_type is SessionEventType.AGENT_STATUS:
-            return (event_type.value, event.task_id, event.session_id)
-        if event_type is SessionEventType.PLAN_UPDATE:
-            return (event_type.value, event.task_id, event.session_id)
-        if event_type is SessionEventType.TOOL_CALL_UPDATE:
+        if event_type == "agent_status":
+            return (event_type, event.task_id, event.session_id)
+        if event_type == "plan_update":
+            return (event_type, event.task_id, event.session_id)
+        if event_type == "tool_call_update":
             payload = event.payload if isinstance(event.payload, dict) else {}
             tool_call_id = payload.get("tool_call_id") or payload.get("id")
-            return (event_type.value, event.task_id, str(tool_call_id) if tool_call_id else None)
+            return (event_type, event.task_id, str(tool_call_id) if tool_call_id else None)
         return None
 
     @staticmethod
@@ -436,9 +444,10 @@ class Events:
 
     @staticmethod
     def _is_terminal_live_event(event: SessionEvent) -> bool:
-        if event.event_type in {SessionEventType.AGENT_COMPLETED, SessionEventType.AGENT_FAILED}:
+        et = event.event_type
+        if et in {"agent_completed", "agent_failed"}:
             return True
-        if event.event_type is not SessionEventType.TASK_STATUS_CHANGED:
+        if et != "task_status_changed":
             return False
         payload = event.payload if isinstance(event.payload, dict) else {}
         next_status = str(payload.get("to") or "").upper()
@@ -447,7 +456,7 @@ class Events:
     async def emit(
         self,
         task_id: str,
-        event_type: SessionEventType,
+        event_type: str,
         payload: dict,
         *,
         session_id: str | None = None,
@@ -469,7 +478,7 @@ class Events:
         for queue in self._global_live_queues:
             self._enqueue_session_event(queue, event)
         self._prune_signal_if_idle(task_id)
-        if event_type is SessionEventType.TASK_STATUS_CHANGED:
+        if event_type == "task_status_changed":
             self.publish_board(
                 BoardEvent(
                     task_id=task_id,
@@ -478,13 +487,108 @@ class Events:
                     to_status=str(payload.get("to") or ""),
                 )
             )
-        elif event_type is SessionEventType.AUTO_REVIEW_STARTED:
+        elif event_type == "auto_review_started":
+            self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
+        return event
+
+    async def emit_typed(
+        self,
+        task_id: str,
+        agent_event: "AgentEvent",
+        *,
+        session_id: str | None = None,
+        persist: bool = True,
+    ) -> SessionEvent:
+        """Emit a typed ``AgentEvent`` variant.
+
+        The variant's ``kind`` field becomes ``event_type`` in the DB row.
+        The full ``model_dump(mode="json")`` is stored in ``payload``
+        (the ``kind`` field is included so the row is self-describing).
+
+        Payload secrets are scrubbed before persistence.
+        """
+        # Import here to avoid circular imports at module load time.
+        from kagan.core.agent_events import AgentEvent as _AgentEventType  # noqa: F401
+
+        raw_payload: dict[str, Any] = agent_event.model_dump(mode="json")
+        kind: str = raw_payload.get("kind", "unknown")
+        scrubbed_payload = _scrub_secrets(raw_payload)
+        event = SessionEvent(
+            task_id=task_id,
+            session_id=session_id,
+            event_type=kind,  # type: ignore[arg-type] — kind is a str, DB accepts str
+            payload=scrubbed_payload,
+        )
+        if persist:
+            await _db_async(self._engine, lambda s: _add_and_refresh(s, event))
+        signal = self._signal_for(task_id)
+        signal.set()
+        for queue in self._live_queues.get(task_id, []):
+            self._enqueue_session_event(queue, event)
+        for queue in self._global_live_queues:
+            self._enqueue_session_event(queue, event)
+        self._prune_signal_if_idle(task_id)
+        if kind == "task_status_changed":
+            self.publish_board(
+                BoardEvent(
+                    task_id=task_id,
+                    kind="status_changed",
+                    from_status=str(scrubbed_payload.get("from_status") or ""),
+                    to_status=str(scrubbed_payload.get("to_status") or ""),
+                )
+            )
+        elif kind == "auto_review_started":
             self.publish_board(BoardEvent(task_id=task_id, kind="auto_review_started"))
         return event
 
     def publish_board(self, event: BoardEvent) -> None:
         for queue in self._board_live_queues:
             self._enqueue_board_event(queue, event)
+
+    # ── Settlement rule ────────────────────────────────────────────────────────
+
+    def register_agent_end_subscriber(self, session_id: str, count: int = 1) -> None:
+        """Register ``count`` subscribers that must acknowledge AgentEnd before idle.
+
+        Call once per subscriber (e.g. the session manager's completion handler)
+        before the agent session starts so the counter is ready when the event fires.
+        """
+        self._agent_end_pending[session_id] = (
+            self._agent_end_pending.get(session_id, 0) + count
+        )
+        if session_id not in self._agent_end_idle:
+            self._agent_end_idle[session_id] = asyncio.Event()
+
+    def notify_agent_end_handled(self, session_id: str) -> None:
+        """Decrement the outstanding AgentEnd subscriber count for a session.
+
+        When the count reaches zero the idle event fires and ``wait_idle``
+        unblocks.  Safe to call from sync context (no I/O).
+        """
+        remaining = max(0, self._agent_end_pending.get(session_id, 0) - 1)
+        self._agent_end_pending[session_id] = remaining
+        if remaining == 0:
+            idle = self._agent_end_idle.get(session_id)
+            if idle is not None:
+                idle.set()
+
+    async def wait_idle(self, session_id: str, *, timeout: float | None = None) -> bool:
+        """Wait until all AgentEnd subscribers for ``session_id`` have acknowledged.
+
+        Returns ``True`` if idle was reached, ``False`` if ``timeout`` expired.
+        If no subscribers were registered the method returns immediately with ``True``.
+        """
+        idle = self._agent_end_idle.get(session_id)
+        if idle is None or self._agent_end_pending.get(session_id, 0) == 0:
+            return True
+        if timeout is None:
+            await idle.wait()
+            return True
+        try:
+            await asyncio.wait_for(idle.wait(), timeout=timeout)
+            return True
+        except TimeoutError:
+            return False
 
     async def list_all(self, *, offset: int = 0, limit: int = 20) -> list[SessionEvent]:
         return await _db_async(
@@ -569,7 +673,7 @@ class Events:
         self,
         task_id: str,
         *,
-        event_type: SessionEventType | None = None,
+        event_type: str | None = None,
     ) -> SessionEvent | None:
         return await latest_event(self._engine, task_id, event_type=event_type)
 

@@ -48,7 +48,7 @@ import * as vscode from "vscode";
 import { DoctorStatusProvider } from "./doctor.status.js";
 import { StatusBar } from "../status/bar.js";
 import type { KaganClient } from "../api/client.js";
-import type { DoctorReportResponse } from "../api/types.js";
+import type { DoctorReportResponse } from "@kagan/shared-api-client";
 
 function makeReport(overrides: Partial<DoctorReportResponse> = {}): DoctorReportResponse {
   return {

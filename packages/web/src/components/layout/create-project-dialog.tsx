@@ -3,7 +3,7 @@ import { FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSetAtom } from 'jotai';
 import { apiClient } from '@/lib/api/client';
-import type { WireProject } from '@/lib/api/types';
+import type { WireProject } from '@kagan/shared-api-client';
 import { projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { Button } from '@/components/ui/button';
 import {

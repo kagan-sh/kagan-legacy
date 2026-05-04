@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { STATUS_COLORS, STATUS_LABELS } from '@/lib/utils/constants';
 import { cn } from '@/lib/utils';
 

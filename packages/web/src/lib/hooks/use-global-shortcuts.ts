@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import type { WireChatSessionSummary } from '@/lib/api/types';
+import type { WireChatSessionSummary } from '@kagan/shared-api-client';
 import {
   clearRightRailDismissalAtom,
   commandPaletteOpenAtom,

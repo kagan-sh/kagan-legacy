@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { ClientPresence } from '@/lib/api/types';
+import type { ClientPresence } from '@kagan/shared-api-client';
 
 /** Active client presence records. */
 export const presenceAtom = atom<ClientPresence[]>([]);

@@ -23,9 +23,8 @@ from kagan.core._security import scan_text_for_injection
 from kagan.core._session_helpers import DetachResult
 from kagan.core._sessions import Sessions, fetch_project_learnings
 from kagan.core._task_classification import classify_task
-from kagan.core._transitions import validate_move
 from kagan.core._utils import utc_iso
-from kagan.core.enums import Priority, SessionEventType, SessionStatus, TaskStatus
+from kagan.core.enums import Priority, SessionStatus, TaskStatus
 from kagan.core.errors import KaganError, NotFoundError, SessionError
 from kagan.core.models import (
     AcceptanceCriterion,
@@ -71,6 +70,21 @@ def _record_task_audit(
 
 
 # ── Tasks class ─────────────────────────────────────────────────────
+
+# Direct-move matrix used by Tasks.set_status. Module-level so the frozenset
+# is built once at import, not per call. REVIEW→DONE is merge-only and
+# excluded here; the canonical external entry point is the funnel
+# transition_task in core/transitions.py.
+_DIRECT_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    {
+        (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
+        (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
+        (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
+        (TaskStatus.REVIEW, TaskStatus.BACKLOG),
+        (TaskStatus.DONE, TaskStatus.BACKLOG),
+    }
+)
 
 
 class Tasks:
@@ -184,7 +198,7 @@ class Tasks:
             except TimeoutError:
                 continue
 
-            if event.event_type is not SessionEventType.TASK_STATUS_CHANGED:
+            if event.event_type != "task_status_changed":
                 continue
 
             latest = await self.get(task_id)
@@ -615,12 +629,15 @@ class Tasks:
         return updated
 
     async def set_status(self, task_id: str, status: TaskStatus) -> Task:
+        from kagan.core.errors import InvalidTransitionError
+
         task = await self.get(task_id)
-        validate_move(task.status, status)
+        if (task.status, status) not in _DIRECT_MOVES:
+            raise InvalidTransitionError(task.status, status)
         moved = await asyncio.to_thread(self._set_status, task_id, status)
         await self.events.emit(
             task_id,
-            SessionEventType.TASK_STATUS_CHANGED,
+            "task_status_changed",
             {"from": task.status.value, "to": status.value},
         )
         return moved

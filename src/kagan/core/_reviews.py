@@ -9,8 +9,7 @@ from kagan.core import git
 from kagan.core._db_helpers import _col, _db_async, _db_sync, _setting_enabled, _utc_now
 from kagan.core._prompts import build_conflict_resolution_feedback
 from kagan.core._settings import get_settings
-from kagan.core._transitions import validate_merge_move
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import TaskStatus
 from kagan.core.errors import (
     MergeConflictError,
     NotFoundError,
@@ -110,7 +109,7 @@ async def reject_review(
         moved = await asyncio.to_thread(client.tasks._set_status, task_id, TaskStatus.IN_PROGRESS)
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.TASK_STATUS_CHANGED,
+            "task_status_changed",
             {"from": TaskStatus.REVIEW.value, "to": TaskStatus.IN_PROGRESS.value},
         )
         return moved
@@ -173,7 +172,7 @@ async def set_criterion_verdict(
     updated = await _db_async(engine, op)
     await client.tasks.events.emit(
         task_id,
-        SessionEventType.CRITERION_VERDICT,
+        "criterion_verdict",
         {
             "criterion_index": criterion_index,
             "verdict": verdict_normalized,
@@ -226,8 +225,11 @@ async def merge_task(
     *,
     client: "KaganCore",
 ) -> Task:
+    from kagan.core.errors import InvalidTransitionError
+
     task = await client.tasks.get(task_id)
-    validate_merge_move(task.status, TaskStatus.DONE)
+    if task.status != TaskStatus.REVIEW:
+        raise InvalidTransitionError(task.status, TaskStatus.DONE)
 
     ws = await client.worktrees.get(task_id)
     if ws is None:
@@ -248,7 +250,7 @@ async def merge_task(
         error = "Cannot merge task branch: review approval is required."
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.MERGE_FAILED,
+            "merge_failed",
             {
                 "error": error,
                 "target_branch": target_branch,
@@ -262,7 +264,7 @@ async def merge_task(
         error = "Cannot merge while workspace has uncommitted or untracked changes."
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.MERGE_FAILED,
+            "merge_failed",
             {
                 "error": error,
                 "target_branch": target_branch,
@@ -276,7 +278,7 @@ async def merge_task(
         error = "Cannot merge task branch: no commits ahead of target branch."
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.MERGE_FAILED,
+            "merge_failed",
             {
                 "error": error,
                 "target_branch": target_branch,
@@ -305,7 +307,7 @@ async def merge_task(
         )
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.MERGE_FAILED,
+            "merge_failed",
             {
                 "error": str(exc),
                 "target_branch": target_branch,
@@ -320,12 +322,12 @@ async def merge_task(
     done_task = await asyncio.to_thread(client.tasks._set_status, task_id, TaskStatus.DONE)
     await client.tasks.events.emit(
         task_id,
-        SessionEventType.TASK_STATUS_CHANGED,
+        "task_status_changed",
         {"from": task.status.value, "to": TaskStatus.DONE.value},
     )
     await client.tasks.events.emit(
         task_id,
-        SessionEventType.MERGE_COMPLETED,
+        "merge_completed",
         {
             "target_branch": target_branch,
             "merged_branch": ws.branch_name,
@@ -353,7 +355,7 @@ async def rebase_task(
     except WorktreeError as exc:
         await client.tasks.events.emit(
             task_id,
-            SessionEventType.AGENT_FAILED,
+            "agent_failed",
             {
                 "op": "rebase",
                 "error": str(exc),
@@ -365,7 +367,7 @@ async def rebase_task(
 
     await client.tasks.events.emit(
         task_id,
-        SessionEventType.PLAN_UPDATE,
+        "plan_update",
         {"op": "rebase", "status": "completed", "target_branch": target},
     )
 

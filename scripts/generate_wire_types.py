@@ -29,7 +29,6 @@ from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRe
 from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest  # noqa: E402
 from kagan.core.enums import (  # noqa: E402
     Priority,
-    SessionEventType,
     SessionStatus,
     TaskStatus,
 )
@@ -129,7 +128,6 @@ WIRE_ENUMS: list[tuple[str, type]] = [
     ("TaskStatus", TaskStatus),
     ("SessionStatus", SessionStatus),
     ("Priority", Priority),
-    ("SessionEventType", SessionEventType),
 ]
 
 
@@ -157,15 +155,93 @@ def _generate_enum_section() -> list[str]:
 
 
 def _generate_constants_section() -> list[str]:
-    """Emit EVENT_TYPE and SSE_TYPE const objects derived from Python enums."""
-    lines: list[str] = [
-        "// ── Event type constants (derived from src/kagan/core/enums.py) ─────────────",
+    """Emit EVENT_TYPE and SSE_TYPE const objects derived from AgentEvent kind strings."""
+    from kagan.core.agent_events import (  # noqa: E402
+        AgentCompleted,
+        AgentEnd,
+        AgentFailed,
+        AgentStart,
+        AgentStatus,
+        AutoReviewStarted,
+        BackendAutoPromoted,
+        CheckpointCreated,
+        CompactionOccurred,
+        CompactionTriggered,
+        CriterionVerdict,
+        DoctorWarned,
+        FirstSessionSuccess,
+        HookBlocked,
+        InsightExtracted,
+        MergeCompleted,
+        MergeFailed,
+        MessageEnd,
+        MessageStart,
+        MessageUpdate,
+        OutputChunk,
+        PlanUpdate,
+        SessionRewound,
+        StepVerified,
+        TaskStatusChanged,
+        ToolCallStart,
+        ToolCallUpdate,
+        ToolExecutionEnd,
+        ToolExecutionStart,
+        ToolExecutionUpdate,
+        TurnEnd,
+        TurnStart,
+    )
+
+    # All AgentEvent variant kinds in the canonical order.
+    _ALL_EVENT_VARIANTS = [
+        AgentStart,
+        AgentEnd,
+        TurnStart,
+        TurnEnd,
+        MessageStart,
+        MessageUpdate,
+        MessageEnd,
+        ToolExecutionStart,
+        ToolExecutionUpdate,
+        ToolExecutionEnd,
+        CompactionOccurred,
+        OutputChunk,
+        AgentStatus,
+        ToolCallStart,
+        ToolCallUpdate,
+        PlanUpdate,
+        TaskStatusChanged,
+        AgentCompleted,
+        AgentFailed,
+        MergeCompleted,
+        MergeFailed,
+        CriterionVerdict,
+        AutoReviewStarted,
+        InsightExtracted,
+        StepVerified,
+        CheckpointCreated,
+        SessionRewound,
+        HookBlocked,
+        CompactionTriggered,
+        DoctorWarned,
+        FirstSessionSuccess,
+        BackendAutoPromoted,
     ]
 
-    # EVENT_TYPE from SessionEventType
+    lines: list[str] = [
+        "// ── Event type constants (derived from src/kagan/core/agent_events.py) ───────",
+    ]
+
+    # EVENT_TYPE from AgentEvent kind strings
     lines.append("export const EVENT_TYPE = {")
-    for member in SessionEventType:
-        lines.append(f'  {member.name}: "{member.value}",')
+    for variant_cls in _ALL_EVENT_VARIANTS:
+        # Each variant has a Literal ``kind`` field with default = the kind string.
+        kind: str = variant_cls.model_fields["kind"].default
+        ts_name = variant_cls.__name__
+        # Convert CamelCase class name to UPPER_SNAKE for the constant key.
+        import re
+
+        snake = re.sub(r"([A-Z])", r"_\1", ts_name).lstrip("_").upper()
+        lines.append(f'  {snake}: "{kind}",')
     lines.append("} as const;")
     lines.append("")
     lines.append("export type EventType = (typeof EVENT_TYPE)[keyof typeof EVENT_TYPE];")
@@ -199,6 +275,200 @@ def _generate_constants_section() -> list[str]:
 # ── Static wire sections ──────────────────────────────────────────────────────
 
 _STATIC_WIRE_SECTIONS = """\
+// ── AgentEvent typed union (from src/kagan/core/agent_events.py) ─────────────
+// Discriminated on the ``kind`` field. All task session events use these
+// shapes.
+
+export interface AgentEventAgentStart {
+  kind: "agent_start";
+  session_id: string;
+  agent_backend: string;
+}
+export interface AgentEventAgentEnd {
+  kind: "agent_end";
+  session_id: string;
+  stop_reason: "completed" | "error" | "aborted" | "compacted";
+}
+export interface AgentEventTurnStart {
+  kind: "turn_start";
+  turn_index: number;
+}
+export interface AgentEventTurnEnd {
+  kind: "turn_end";
+  turn_index: number;
+}
+export interface AgentEventMessageStart {
+  kind: "message_start";
+  message_id: string;
+}
+export interface AgentEventMessageUpdate {
+  kind: "message_update";
+  message_id: string;
+  delta: string;
+}
+export interface AgentEventMessageEnd {
+  kind: "message_end";
+  message_id: string;
+  full_text: string;
+}
+export interface AgentEventToolExecutionStart {
+  kind: "tool_execution_start";
+  tool_id: string;
+  name: string;
+  args?: Record<string, unknown> | null;
+}
+export interface AgentEventToolExecutionUpdate {
+  kind: "tool_execution_update";
+  tool_id: string;
+  partial_result: string;
+}
+export interface AgentEventToolExecutionEnd {
+  kind: "tool_execution_end";
+  tool_id: string;
+  status: "success" | "error" | "cancelled";
+  result?: string | null;
+}
+export interface AgentEventCompactionOccurred {
+  kind: "compaction_occurred";
+  backend: string;
+  threshold?: number | null;
+}
+export interface AgentEventOutputChunk {
+  kind: "output_chunk";
+  text: string;
+  thought?: boolean;
+  acp?: Record<string, unknown> | null;
+}
+export interface AgentEventAgentStatus {
+  kind: "agent_status";
+  usage?: Record<string, unknown> | null;
+  acp?: Record<string, unknown> | null;
+}
+export interface AgentEventToolCallStart {
+  kind: "tool_call_start";
+  acp: Record<string, unknown>;
+}
+export interface AgentEventToolCallUpdate {
+  kind: "tool_call_update";
+  acp: Record<string, unknown>;
+}
+export interface AgentEventPlanUpdate {
+  kind: "plan_update";
+  acp: Record<string, unknown>;
+}
+export interface AgentEventTaskStatusChanged {
+  kind: "task_status_changed";
+  from_status: string;
+  to_status: string;
+}
+export interface AgentEventAgentCompleted {
+  kind: "agent_completed";
+  message?: string | null;
+}
+export interface AgentEventAgentFailed {
+  kind: "agent_failed";
+  message?: string | null;
+}
+export interface AgentEventMergeCompleted {
+  kind: "merge_completed";
+  message?: string | null;
+}
+export interface AgentEventMergeFailed {
+  kind: "merge_failed";
+  message?: string | null;
+}
+export interface AgentEventCriterionVerdict {
+  kind: "criterion_verdict";
+  verdict: "pass" | "fail" | "skip";
+  reason: string;
+  criterion_index?: number | null;
+}
+export interface AgentEventAutoReviewStarted {
+  kind: "auto_review_started";
+}
+export interface AgentEventInsightExtracted {
+  kind: "insight_extracted";
+  content: string;
+  category?: string | null;
+}
+export interface AgentEventStepVerified {
+  kind: "step_verified";
+  step_index: number;
+  step_description: string;
+  verdict: string;
+  reason: string;
+}
+export interface AgentEventCheckpointCreated {
+  kind: "checkpoint_created";
+  step_index: number;
+  commit_sha: string;
+  tag_name: string;
+  description?: string | null;
+}
+export interface AgentEventSessionRewound {
+  kind: "session_rewound";
+  step_index: number;
+  commit_sha: string;
+}
+export interface AgentEventHookBlocked {
+  kind: "hook_blocked";
+  hook: string;
+  details?: string | null;
+}
+export interface AgentEventCompactionTriggered {
+  kind: "compaction_triggered";
+  backend: string;
+  threshold?: number | null;
+}
+export interface AgentEventDoctorWarned {
+  kind: "doctor_warned";
+  message: string;
+  check?: string | null;
+}
+export interface AgentEventFirstSessionSuccess {
+  kind: "first_session_success";
+}
+export interface AgentEventBackendAutoPromoted {
+  kind: "backend_auto_promoted";
+  from_backend: string;
+  to_backend: string;
+  reason?: string | null;
+}
+
+export type AgentEvent =
+  | AgentEventAgentStart
+  | AgentEventAgentEnd
+  | AgentEventTurnStart
+  | AgentEventTurnEnd
+  | AgentEventMessageStart
+  | AgentEventMessageUpdate
+  | AgentEventMessageEnd
+  | AgentEventToolExecutionStart
+  | AgentEventToolExecutionUpdate
+  | AgentEventToolExecutionEnd
+  | AgentEventCompactionOccurred
+  | AgentEventOutputChunk
+  | AgentEventAgentStatus
+  | AgentEventToolCallStart
+  | AgentEventToolCallUpdate
+  | AgentEventPlanUpdate
+  | AgentEventTaskStatusChanged
+  | AgentEventAgentCompleted
+  | AgentEventAgentFailed
+  | AgentEventMergeCompleted
+  | AgentEventMergeFailed
+  | AgentEventCriterionVerdict
+  | AgentEventAutoReviewStarted
+  | AgentEventInsightExtracted
+  | AgentEventStepVerified
+  | AgentEventCheckpointCreated
+  | AgentEventSessionRewound
+  | AgentEventHookBlocked
+  | AgentEventCompactionTriggered
+  | AgentEventDoctorWarned
+  | AgentEventFirstSessionSuccess
+  | AgentEventBackendAutoPromoted;
+
 // ── Envelope ─────────────────────────────────────────────────────────────────
 
 /**

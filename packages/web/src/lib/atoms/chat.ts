@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { WireChatMessage } from '@/lib/api/types';
+import type { WireChatMessage } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
 // Persisted history (loaded on session open, refreshed on CHAT_DONE)

@@ -20,7 +20,7 @@ import {
 } from '@/lib/atoms/board';
 import { presenceAtom } from '@/lib/atoms/presence';
 import { isAnyDialogOpenAtom } from '@/lib/atoms/ui';
-import type { WireEvent, WireTask } from '@/lib/api/types';
+import type { WireEvent, WireTask } from '@kagan/shared-api-client';
 
 interface SSEMessage {
   type: string;

@@ -46,6 +46,8 @@ _WORKER_TOOLS = frozenset(
         "analytics_backend_stats",
         "analytics_session_timeline",
         "analytics_export",
+        # fs (1 read tool)
+        "fs_read_file",
     }
 )
 
@@ -85,6 +87,12 @@ _ORCHESTRATOR_TOOLS = _REVIEWER_TOOLS | frozenset(
         "persona_trust",
         # insights (1 destructive tool)
         "insight_remove",
+        # fs (2 write tools)
+        "fs_write_file",
+        "fs_edit_file",
+        # shell execution (2 streaming tools)
+        "bash_exec",
+        "terminal_run",
     }
 )
 

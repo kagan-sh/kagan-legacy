@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '@/lib/api/client';
-import type { ChatWatchEvent } from '@/lib/api/types';
+import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;

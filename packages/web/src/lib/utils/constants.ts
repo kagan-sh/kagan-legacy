@@ -1,4 +1,4 @@
-import type { TaskStatus, Priority } from '@/lib/api/types';
+import type { TaskStatus, Priority } from '@kagan/shared-api-client';
 
 export const COLUMN_ORDER: TaskStatus[] = ['BACKLOG', 'IN_PROGRESS', 'REVIEW', 'DONE'];
 

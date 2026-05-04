@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
 import { isStreamingAtom, type ChatStreamEntry } from '@/lib/atoms/chat';
-import type { WireChatMessage } from '@/lib/api/types';
+import type { WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/components/chat/chat-input-bar';
 
 // ---------------------------------------------------------------------------

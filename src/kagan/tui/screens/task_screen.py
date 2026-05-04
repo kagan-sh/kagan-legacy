@@ -23,7 +23,6 @@ from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import git
 from kagan.core.enums import (
     ChatMode,
-    SessionEventType,
     SessionKind,
     StreamSource,
     TaskStatus,
@@ -825,7 +824,7 @@ class TaskScreen(Screen[None]):
         self._stream_task = asyncio.create_task(self._stream_events(self._task_id))
 
     def _maybe_apply_chat_event(
-        self, overlay_chat: ChatPanel, event_type: SessionEventType, payload: dict[str, Any]
+        self, overlay_chat: ChatPanel, event_type: str, payload: dict[str, Any]
     ) -> None:
         """Apply chat event if in task chat mode."""
         if self._chat_mode == ChatMode.TASK:
@@ -885,16 +884,16 @@ class TaskScreen(Screen[None]):
         self._running = running
 
     @staticmethod
-    def _should_refresh_after_event(event_type: SessionEventType) -> bool:
+    def _should_refresh_after_event(event_type: str) -> bool:
         return event_type in {
-            SessionEventType.OUTPUT_CHUNK,
-            SessionEventType.TOOL_CALL_START,
-            SessionEventType.TOOL_CALL_UPDATE,
-            SessionEventType.CRITERION_VERDICT,
-            SessionEventType.AGENT_COMPLETED,
-            SessionEventType.AGENT_FAILED,
-            SessionEventType.TASK_STATUS_CHANGED,
-            SessionEventType.AUTO_REVIEW_STARTED,
+            "output_chunk",
+            "tool_call_start",
+            "tool_call_update",
+            "criterion_verdict",
+            "agent_completed",
+            "agent_failed",
+            "task_status_changed",
+            "auto_review_started",
         }
 
     def _output_stream(self) -> StreamingOutput:
@@ -907,9 +906,9 @@ class TaskScreen(Screen[None]):
         return self._worker_session_id
 
     def _track_session_event(
-        self, event_type: SessionEventType, event_session_id: str | None
+        self, event_type: str, event_session_id: str | None
     ) -> None:
-        if event_type is SessionEventType.AUTO_REVIEW_STARTED:
+        if event_type == "auto_review_started":
             self._pending_reviewer_session_id = True
             return
         if event_session_id is None:
@@ -959,7 +958,7 @@ class TaskScreen(Screen[None]):
         for event in filtered_events:
             payload = event.payload or {}
             match event.event_type:
-                case SessionEventType.OUTPUT_CHUNK:
+                case "output_chunk":
                     text = stream_chunk_text(payload)
                     kind = stream_chunk_kind(payload)
                     if text and kind in {"assistant", "thought", "note", "user"}:
@@ -967,7 +966,7 @@ class TaskScreen(Screen[None]):
                             widgets.append(UserInputWidget(text))
                         else:
                             widgets.append(OutputChunk(text, kind=kind))
-                case SessionEventType.TOOL_CALL_START:
+                case "tool_call_start":
                     widgets.append(
                         ToolCallView(
                             tool_call_title(payload),
@@ -978,13 +977,13 @@ class TaskScreen(Screen[None]):
                             kind=tool_call_kind(payload),
                         )
                     )
-                case SessionEventType.AGENT_COMPLETED:
+                case "agent_completed":
                     widgets.append(OutputChunk("Agent completed", kind="note"))
-                case SessionEventType.AGENT_FAILED:
+                case "agent_failed":
                     widgets.append(
                         OutputChunk(stream_chunk_text(payload) or "Agent failed", kind="note")
                     )
-                case SessionEventType.TASK_STATUS_CHANGED:
+                case "task_status_changed":
                     widgets.append(
                         OutputChunk(
                             stream_chunk_text(payload) or "Task status changed", kind="note"

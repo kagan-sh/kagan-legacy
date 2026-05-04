@@ -6,7 +6,6 @@ import pytest
 from acp.schema import AgentMessageChunk, AgentThoughtChunk, TextContentBlock
 
 from kagan.core._acp import map_acp_update_to_event, run_acp_session
-from kagan.core.enums import SessionEventType
 
 pytestmark = [pytest.mark.unit]
 
@@ -159,7 +158,7 @@ async def test_map_acp_update_to_event_uses_lightweight_chunk_payload_without_mo
     thought_result = map_acp_update_to_event(thought_update)
 
     assert message_result == (
-        SessionEventType.OUTPUT_CHUNK,
+        "output_chunk",
         {
             "text": "hello",
             "acp": {
@@ -169,7 +168,7 @@ async def test_map_acp_update_to_event_uses_lightweight_chunk_payload_without_mo
         },
     )
     assert thought_result == (
-        SessionEventType.OUTPUT_CHUNK,
+        "output_chunk",
         {
             "text": "plan",
             "thought": True,

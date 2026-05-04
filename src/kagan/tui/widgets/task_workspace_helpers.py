@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 
 from kagan.core import git
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import TaskStatus
 from kagan.core.errors import KaganError, SessionError, WorktreeError
 
 if TYPE_CHECKING:
@@ -158,4 +158,4 @@ async def hydrate_workspace_panels(
 
 
 async def resolve_latest_merge_event(events_service: Any, task_id: str) -> Any:
-    return await events_service.latest(task_id, event_type=SessionEventType.MERGE_COMPLETED)
+    return await events_service.latest(task_id, event_type="merge_completed")

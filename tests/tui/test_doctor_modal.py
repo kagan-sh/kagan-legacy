@@ -345,7 +345,6 @@ async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -
     """AC3: rc=0 on a backend check → Settings written, telemetry emitted."""
     from unittest.mock import patch
 
-    from kagan.core.enums import SessionEventType
     from kagan.tui import KaganApp
     from kagan.tui.screens.doctor_modal import DoctorModal, _CommandPane
 
@@ -402,9 +401,9 @@ async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -
 
         events = await _db_async(app.core.engine, _fetch)
         promo_events = [
-            e for e in events if e.event_type == SessionEventType.BACKEND_AUTO_PROMOTED.value
+            e for e in events if e.event_type == "backend_auto_promoted"
         ]
-        assert promo_events, "BACKEND_AUTO_PROMOTED telemetry event not found"
+        assert promo_events, "backend_auto_promoted telemetry event not found"
         payload = promo_events[0].payload
         assert payload["backend"] == "my-agent"
         assert "seconds_since_install_clicked" in payload

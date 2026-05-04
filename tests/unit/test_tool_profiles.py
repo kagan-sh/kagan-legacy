@@ -35,6 +35,8 @@ def test_worker_role_tools() -> None:
         "analytics_backend_stats",
         "analytics_session_timeline",
         "analytics_export",
+        # fs (read-only for workers)
+        "fs_read_file",
     }
 
 

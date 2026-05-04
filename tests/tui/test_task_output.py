@@ -369,7 +369,6 @@ async def test_task_stream_uses_bounded_replay_and_merges_chunks(
 ) -> None:
     from textual.containers import Vertical
 
-    from kagan.core.enums import SessionEventType
     from kagan.core.models import SessionEvent
     from kagan.tui import KaganApp
     from kagan.tui.widgets.streaming import OutputChunk, StreamingOutput
@@ -382,7 +381,7 @@ async def test_task_stream_uses_bounded_replay_and_merges_chunks(
         for fragment in ("A", "B", "C"):
             yield SessionEvent(
                 task_id="task",
-                event_type=SessionEventType.OUTPUT_CHUNK,
+                event_type="output_chunk",
                 payload={"text": fragment, "kind": "assistant"},
             )
 

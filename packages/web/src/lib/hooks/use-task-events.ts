@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import type { WireEvent, WireTask, WireTaskSession } from "@/lib/api/types";
+import type { WireEvent, WireTask, WireTaskSession } from "@kagan/shared-api-client";
 import { mergeWireEvents } from "@/lib/utils/events";
 import { deriveTaskRunningSince } from "@/lib/utils/task-runtime";
 import { useFollowUpQueue } from "@/lib/hooks/use-follow-up-queue";

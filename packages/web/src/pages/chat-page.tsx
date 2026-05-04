@@ -40,7 +40,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import type { ChatWatchEvent } from '@/lib/api/types';
+import type { ChatWatchEvent } from '@kagan/shared-api-client';
 
 export function Component() {
   const { id } = useParams<{ id: string }>();

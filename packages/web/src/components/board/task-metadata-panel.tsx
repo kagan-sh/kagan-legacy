@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Workflow } from 'lucide-react';
 import { InspectorSection } from '@/components/shared/workspace';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { cn } from '@/lib/utils';
 import { STATUS_LABELS } from '@/lib/utils/constants';
 

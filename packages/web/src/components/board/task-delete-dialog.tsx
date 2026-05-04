@@ -3,7 +3,7 @@ import { useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { fetchTasksAtom } from '@/lib/atoms/board';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 import {
   AlertDialog,
   AlertDialogCancel,

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { WireTask } from "../api/types.js";
+import type { WireTask } from "@kagan/shared-api-client";
 
 const showErrorMessage = vi.fn();
 const showWarningMessage = vi.fn();

@@ -248,16 +248,14 @@ def test_tool_call_id_and_title_helpers() -> None:
 
 @pytest.mark.asyncio
 async def test_apply_task_chat_event_renders_output_chunk() -> None:
-    """Sanity-check the legacy task-event translator still works after the move."""
-    from kagan.core.enums import SessionEventType
-
+    """Sanity-check the task-event translator works with kind strings."""
     app = _ChatPanelHostApp()
     async with app.run_test(size=(120, 30)) as pilot:
         await pilot.pause()
         panel = app.screen.query_one(ChatPanel)
         apply_task_chat_event(
             panel,
-            SessionEventType.OUTPUT_CHUNK,
+            "output_chunk",
             {"text": "task agent output", "kind": "assistant"},
         )
         await pilot.pause()

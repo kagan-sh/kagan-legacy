@@ -1,5 +1,5 @@
 import { Activity, ArrowUpRight, Copy, Pencil, Plus, X } from 'lucide-react';
-import type { TaskStatus, WireEvent, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireEvent, WireTask } from '@kagan/shared-api-client';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { STATUS_LABELS } from '@/lib/utils/constants';
 import { AgentControl } from '@/components/board/agent-control';

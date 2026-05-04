@@ -9,7 +9,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { FsEntry } from '@/lib/api/types';
+import type { FsEntry } from '@kagan/shared-api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { TaskStatus, WireTask } from "../api/types.js";
+import type { TaskStatus, WireTask } from "@kagan/shared-api-client";
 import type { BoardItem } from "../providers/board.tree.js";
 
 export type TaskItem = Extract<BoardItem, { kind: "task" }>;

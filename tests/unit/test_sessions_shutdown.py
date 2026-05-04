@@ -7,7 +7,7 @@ import pytest
 
 from kagan.core._agent import BackendCapability, BackendSpec
 from kagan.core._sessions import Sessions
-from kagan.core.enums import SessionEventType, TaskStatus
+from kagan.core.enums import TaskStatus
 
 pytestmark = [pytest.mark.unit]
 
@@ -26,6 +26,15 @@ class _FakeEvents:
         persist: bool = True,
     ) -> None:
         self.emitted.append((task_id, event_type, payload, session_id, persist))
+
+    def publish_board(self, event: Any) -> None:
+        pass
+
+    def notify_agent_end_handled(self, session_id: str) -> None:
+        pass
+
+    def register_agent_end_subscriber(self, session_id: str, count: int = 1) -> None:
+        pass
 
 
 async def _stub_get_task(_task_id: str) -> Any:
@@ -79,14 +88,14 @@ async def test_make_acp_callback_emits_output_chunks_without_persistence(
 
     monkeypatch.setattr(
         "kagan.core._acp.map_acp_update_to_event",
-        lambda _update: (SessionEventType.OUTPUT_CHUNK, {"text": "hello"}),
+        lambda _update: ("output_chunk", {"text": "hello"}),
     )
 
     callback = sessions._make_acp_callback("task-1", "session-1")
     await callback("acp-session-1", object())
 
     assert events.emitted == [
-        ("task-1", SessionEventType.OUTPUT_CHUNK, {"text": "hello"}, "session-1", False)
+        ("task-1", "output_chunk", {"text": "hello"}, "session-1", False)
     ]
 
 
@@ -517,7 +526,7 @@ async def test_should_retry_runs_success_command_via_shell(
     assert events.emitted == [
         (
             "task-retry",
-            SessionEventType.TASK_STATUS_CHANGED,
+            "task_status_changed",
             {"from": TaskStatus.IN_PROGRESS.value, "to": TaskStatus.BACKLOG.value},
             "session-retry-1",
             True,

@@ -1,4 +1,4 @@
-import type { WireTask } from "../api/types.js";
+import type { WireTask } from "@kagan/shared-api-client";
 
 export interface ReviewDocument {
   text: string;

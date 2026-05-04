@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { WireTask } from "../api/types.js";
+import type { WireTask } from "@kagan/shared-api-client";
 import { buildEditorLink, normalizeLauncher } from "./tasks.terminal.helpers.js";
 
 function createKaganTerminal(task: WireTask, cwd: string | null): vscode.Terminal {

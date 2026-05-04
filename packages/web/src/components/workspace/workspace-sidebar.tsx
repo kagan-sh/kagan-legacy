@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { MessageSquareText, Plus, Search, Trash2 } from 'lucide-react';
-import type { WireChatSessionSummary } from '@/lib/api/types';
+import type { WireChatSessionSummary } from '@kagan/shared-api-client';
 import { timeAgo } from '@/lib/utils/time';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';

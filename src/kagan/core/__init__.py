@@ -86,7 +86,12 @@ from kagan.core._formatting import format_duration, format_percentage
 from kagan.core._insights import InsightCategory
 from kagan.core._io.projects import ProjectCreateRequest, RepoAddRequest
 from kagan.core._io.reviews import ReviewDecideRequest
-from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRequest
+from kagan.core._io.sessions import (
+    Attachment,
+    AttachmentBody,
+    ChatSessionCreateRequest,
+    ChatSessionPatchRequest,
+)
 from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest
 from kagan.core._launchers import resolve_launcher
 from kagan.core._logging import configure_logging, default_log_path
@@ -167,7 +172,6 @@ from kagan.core.enums import (
     AgentRole,
     BranchRefStrategy,
     Priority,
-    SessionEventType,
     SessionStatus,
     TaskStatus,
     TaskType,
@@ -243,6 +247,8 @@ __all__ = [
     "Analytics",
     "AttachedTerminalBackendLiteral",
     "AttachedTerminalBackendSpec",
+    "Attachment",
+    "AttachmentBody",
     "AuditEntry",
     "BackendCapability",
     "BackendCommand",
@@ -280,7 +286,6 @@ __all__ = [
     "Session",
     "SessionError",
     "SessionEvent",
-    "SessionEventType",
     "SessionStatus",
     "Setting",
     "StepVerdict",

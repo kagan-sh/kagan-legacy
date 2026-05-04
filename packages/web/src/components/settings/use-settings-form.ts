@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { asBool } from '@/lib/utils';
-import type { AgentBackend } from '@/lib/api/types';
+import type { AgentBackend } from '@kagan/shared-api-client';
 
 export type SettingsFormState = {
   attached_launcher: string;

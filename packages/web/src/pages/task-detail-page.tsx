@@ -12,7 +12,7 @@ import {
 import { useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
-import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@/lib/api/types";
+import type { AcceptanceCriterionResponse, ReviewVerdictResponse, TaskStatus, WireTask } from "@kagan/shared-api-client";
 import { fetchTasksAtom } from "@/lib/atoms/board";
 import {
     clearRightRailDismissalAtom,

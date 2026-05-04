@@ -3,7 +3,7 @@ import { act } from '@testing-library/react';
 import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { CardPulse } from '@/components/board/card-pulse';
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent } from '@kagan/shared-api-client';
 
 function dispatchSessionEvent(event: WireEvent) {
   window.dispatchEvent(

@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api/client';
-import type { WireTaskSession } from '@/lib/api/types';
+import type { WireTaskSession } from '@kagan/shared-api-client';
 import { useTaskEvents } from '@/lib/hooks/use-task-events';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { sessionPickerOpenAtom, type RightRailMode } from '@/lib/atoms/ui';

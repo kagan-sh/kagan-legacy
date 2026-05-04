@@ -51,7 +51,6 @@ from kagan.core._agent import (
     OPENCODE_BACKEND,
     get_backend_spec,
 )
-from kagan.core.enums import SessionEventType
 from kagan.core.errors import AgentError
 
 _ACP_STARTUP_TIMEOUT_ENV_KEY = "KAGAN_ACP_STARTUP_TIMEOUT_SECONDS"
@@ -349,13 +348,13 @@ def map_acp_update_to_event(
     | CurrentModeUpdate
     | SessionInfoUpdate
     | UsageUpdate,
-) -> tuple[SessionEventType, dict[str, Any]] | None:
-    """Map ACP session updates to kagan event types and payloads."""
+) -> tuple[str, dict[str, Any]] | None:
+    """Map ACP session updates to kagan event kind strings and payloads."""
     if isinstance(update, UserMessageChunk):
         return None
     if isinstance(update, AgentMessageChunk):
         chunk_text = str(getattr(update.content, "text", "") or "")
-        return SessionEventType.OUTPUT_CHUNK, {
+        return "output_chunk", {
             "text": chunk_text,
             "acp": {
                 "sessionUpdate": "agent_message_chunk",
@@ -364,7 +363,7 @@ def map_acp_update_to_event(
         }
     if isinstance(update, AgentThoughtChunk):
         chunk_text = str(getattr(update.content, "text", "") or "")
-        return SessionEventType.OUTPUT_CHUNK, {
+        return "output_chunk", {
             "text": chunk_text,
             "thought": True,
             "acp": {
@@ -377,11 +376,11 @@ def map_acp_update_to_event(
         "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True)
     }
     if isinstance(update, ToolCallStart):
-        return SessionEventType.TOOL_CALL_START, payload
+        return "tool_call_start", payload
     if isinstance(update, ToolCallProgress):
-        return SessionEventType.TOOL_CALL_UPDATE, payload
+        return "tool_call_update", payload
     if isinstance(update, AgentPlanUpdate):
-        return SessionEventType.PLAN_UPDATE, payload
+        return "plan_update", payload
     if isinstance(update, UsageUpdate):
         usage_payload: dict[str, Any] = {
             "usage": {
@@ -392,8 +391,8 @@ def map_acp_update_to_event(
             },
             "acp": update.model_dump(mode="json", by_alias=True, exclude_none=True),
         }
-        return SessionEventType.AGENT_STATUS, usage_payload
-    return SessionEventType.AGENT_STATUS, payload
+        return "agent_status", usage_payload
+    return "agent_status", payload
 
 
 def _build_mcp_server_from_manifest(mcp_manifest: str) -> McpServerStdio:

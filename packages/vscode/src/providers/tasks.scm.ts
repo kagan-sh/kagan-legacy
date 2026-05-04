@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { DiffFile, WireTask } from "../api/types.js";
+import type { DiffFile, WireTask } from "@kagan/shared-api-client";
 import { extractPatchForFile } from "./tasks.scm.helpers.js";
 
 const DIFF_SCHEME = "kagan-diff";

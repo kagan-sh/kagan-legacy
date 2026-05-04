@@ -27,7 +27,7 @@ import type {
   RoleStats,
   SessionTimelineEntry,
   TaskTypeStats,
-} from '@/lib/api/types';
+} from '@kagan/shared-api-client';
 import { formatDuration, formatPercentage } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

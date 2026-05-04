@@ -1,6 +1,6 @@
 import { InspectorSection } from '@/components/shared/workspace';
 import { TaskMetadataPanel } from '@/components/board/task-metadata-panel';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 
 interface TaskSidebarProps {
   task: WireTask;

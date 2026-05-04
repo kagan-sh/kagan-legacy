@@ -9,7 +9,6 @@ from sqlmodel import select
 
 from kagan.core._db import create_db_engine
 from kagan.core._db_helpers import _db_sync
-from kagan.core.enums import SessionEventType
 from kagan.core.models import (
     AcceptanceCriterion,
     Project,
@@ -77,7 +76,7 @@ def _seed_full_task(engine) -> str:
         event = SessionEvent(
             task_id=task.id,
             session_id=session.id,
-            event_type=SessionEventType.AGENT_COMPLETED,
+            event_type="agent_completed",
             payload={},
         )
         s.add(event)

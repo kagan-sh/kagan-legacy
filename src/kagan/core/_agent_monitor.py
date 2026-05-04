@@ -12,7 +12,6 @@ from kagan.core._db_helpers import _db_async
 from kagan.core._events import Events
 from kagan.core.enums import (
     BranchRefStrategy,
-    SessionEventType,
     TaskStatus,
 )
 from kagan.core.errors import WorktreeError
@@ -142,7 +141,7 @@ async def rebase_if_enabled(
         logger.warning("Rebase failed for task={}: {}", task_id, exc)
         await events.emit(
             task_id,
-            SessionEventType.PLAN_UPDATE,
+            "plan_update",
             {
                 "op": "rebase",
                 "status": "failed",

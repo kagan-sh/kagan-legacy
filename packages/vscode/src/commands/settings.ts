@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
-import type { AgentBackendResponse } from "../api/types.js";
+import type { AgentBackendResponse } from "@kagan/shared-api-client";
 import { withErrors } from "./common.js";
 
 const REVIEW_STRICTNESS_OPTIONS = [

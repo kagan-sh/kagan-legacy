@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/api/client';
 import { useSetAtom } from 'jotai';
 import { fetchTasksAtom } from '@/lib/atoms/board';
 import { toast } from 'sonner';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 import {
   Dialog,
   DialogContent,

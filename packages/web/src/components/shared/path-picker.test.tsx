@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { PathPicker } from '@/components/shared/path-picker';
-import type { FsBrowseResponse } from '@/lib/api/types';
+import type { FsBrowseResponse } from '@kagan/shared-api-client';
 
 // vi.mock is hoisted — factory must be self-contained (no outer-scope refs).
 vi.mock('@/lib/api/client', () => ({

@@ -49,8 +49,8 @@ async def test_merge_moves_task_to_done_and_removes_workspace(
     items = logs.get("items", [])
     assert isinstance(items, list)
     event_types = {str(item.get("event_type")) for item in items if isinstance(item, dict)}
-    assert "MERGE_COMPLETED" in event_types
-    assert "TASK_STATUS_CHANGED" in event_types
+    assert "merge_completed" in event_types
+    assert "task_status_changed" in event_types
 
     merged_file = tmp_path / "repo" / "calculator.py"
     assert merged_file.exists()
@@ -160,7 +160,7 @@ async def test_merge_conflict_emits_event_with_suggested_feedback(
     merge_failed_events = [
         item
         for item in items
-        if isinstance(item, dict) and str(item.get("event_type")) == "MERGE_FAILED"
+        if isinstance(item, dict) and str(item.get("event_type")) == "merge_failed"
     ]
     assert len(merge_failed_events) >= 1
 

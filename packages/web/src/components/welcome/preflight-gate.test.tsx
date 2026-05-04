@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
-import type { DoctorReportResponse } from '@/lib/api/types';
+import type { DoctorReportResponse } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
 // Mock apiClient before importing the component under test

@@ -36,7 +36,7 @@ from loguru import logger
 from kagan.core._db_helpers import _db_async, _utc_now
 from kagan.core._reviews import is_review_approved
 from kagan.core._tasks import _record_task_audit
-from kagan.core.enums import SessionEventType, SessionStatus, TaskStatus
+from kagan.core.enums import SessionStatus, TaskStatus
 from kagan.core.errors import InvalidTransitionError, NotFoundError
 from kagan.core.models import Session, Task
 
@@ -149,9 +149,6 @@ async def transition_task(
 
     # Write the status inside a single _db_async transaction so that the read
     # (above) and write are not split across two round-trips (TOCTOU fix, P2).
-    # We do NOT call client.tasks.set_status() here because that method routes
-    # through validate_move(), which explicitly excludes REVIEW→DONE — the very
-    # pair we need to write when the review gate passes (P1 fix).
     # The write mirrors _set_status() semantics: updated_at + audit record.
     def _write_task(s):
         obj = s.get(Task, task_id)
@@ -178,7 +175,7 @@ async def transition_task(
     moved: Task = await _db_async(client.engine, _write_task)
     await client.tasks.events.emit(
         task_id,
-        SessionEventType.TASK_STATUS_CHANGED,
+        "task_status_changed",
         {"from": src.value, "to": to.value},
     )
     return moved

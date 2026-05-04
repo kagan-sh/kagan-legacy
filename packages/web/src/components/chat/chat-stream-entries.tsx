@@ -1,9 +1,10 @@
-import { AlertTriangle, Bot, BrainCircuit, Wrench } from 'lucide-react';
+import { AlertTriangle, Bot, BrainCircuit } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import { cn } from '@/lib/utils';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { StreamingGlyph } from '@/components/chat/streaming-glyph';
+import { getToolRenderer } from '@/lib/tool-renderers';
 
 interface ChatStreamEntriesProps {
   entries: ChatStreamEntry[];
@@ -26,7 +27,7 @@ export function ChatStreamEntries({ entries }: ChatStreamEntriesProps) {
           case 'thought':
             return <StreamThoughtBlock key={key} content={entry.content} />;
           case 'tool':
-            return <StreamToolPill key={key} name={entry.name} status={entry.status} detail={entry.detail} />;
+            return <StreamToolCard key={key} id={entry.id} name={entry.name} status={entry.status} detail={entry.detail} />;
           case 'note':
             return <StreamNoteRow key={key} message={entry.message} />;
           case 'error':
@@ -83,23 +84,39 @@ function StreamThoughtBlock({ content }: { content: string }) {
   );
 }
 
-// ── Tool call pill ───────────────────────────────────────────────────────────
+// ── Tool call card — delegates to the registry ───────────────────────────────
 
-function StreamToolPill({ name, status, detail }: { name: string; status: 'running' | 'done'; detail?: string }) {
+function StreamToolCard({
+  id,
+  name,
+  status,
+  detail,
+}: {
+  id: string;
+  name: string;
+  status: 'running' | 'done';
+  detail?: string;
+}) {
+  const rendererStatus = status === 'running' ? 'running' : 'completed';
+  const Renderer = getToolRenderer(name);
+
   return (
-    <div className="ml-9 my-1 flex items-center gap-2 bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)] px-3 py-1.5 text-[12px]">
-      <Wrench
-        className={cn(
-          'size-3.5 shrink-0',
-          status === 'running' ? 'text-[var(--kagan-thinking)]' : 'text-[var(--kagan-rail-running)]',
-        )}
-      />
-      <span className="min-w-0 flex-1 truncate font-medium text-[var(--foreground)]">{name}</span>
-      {detail && (
-        <span className="shrink-0 text-[10px] text-[var(--muted-foreground)]">{detail}</span>
+    <div
+      className={cn(
+        'ml-9 my-1 bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)] px-3 py-2',
+        status === 'running' && 'border-l-2 border-[var(--kagan-thinking)]',
       )}
+    >
+      <Renderer
+        toolId={id}
+        name={name}
+        args={null}
+        partialResult={detail ?? null}
+        status={rendererStatus}
+        result={status === 'done' ? (detail ?? null) : null}
+      />
       {status === 'running' && (
-        <StreamingGlyph className="text-[11px] leading-none" />
+        <StreamingGlyph className="mt-1 text-[11px] leading-none" />
       )}
     </div>
   );

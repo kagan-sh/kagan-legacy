@@ -24,11 +24,14 @@ export function buildReviewDocument(task: WireTask | null): ReviewDocument {
   const criterionLines = new Map<string, number>();
   const criterionLabels = new Map<string, string>();
 
-  if (task.acceptance_criteria.length === 0) {
+  const criteria = task.acceptance_criteria ?? [];
+  const verdicts = task.review_verdicts ?? [];
+
+  if (criteria.length === 0) {
     lines.push("1. [ ] No acceptance criteria");
   } else {
-    for (const criterion of task.acceptance_criteria) {
-      const verdict = task.review_verdicts.find((item) => item.criterion_id === criterion.id);
+    for (const criterion of criteria) {
+      const verdict = verdicts.find((item) => item.criterion_id === criterion.id);
       const marker = markerForVerdict(verdict?.verdict);
       criterionLines.set(criterion.id, lines.length);
       criterionLabels.set(criterion.id, `${criterion.ordinal + 1}`);
@@ -36,10 +39,10 @@ export function buildReviewDocument(task: WireTask | null): ReviewDocument {
     }
   }
 
-  if (task.review_verdicts.length > 0) {
-    const ordinalById = new Map(task.acceptance_criteria.map((c) => [c.id, c.ordinal]));
+  if (verdicts.length > 0) {
+    const ordinalById = new Map(criteria.map((c) => [c.id, c.ordinal]));
     lines.push("", "## Verdict Summary", "");
-    for (const verdict of task.review_verdicts) {
+    for (const verdict of verdicts) {
       const ordinal = ordinalById.get(verdict.criterion_id);
       const label = ordinal !== undefined ? `${ordinal + 1}` : verdict.criterion_id;
       lines.push(`${label}. ${verdict.verdict}: ${verdict.reason}`);

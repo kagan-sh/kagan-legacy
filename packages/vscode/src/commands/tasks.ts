@@ -5,8 +5,9 @@ import type { AgentOutputProvider } from "../providers/events.output.js";
 import type { ReviewCommentProvider } from "../providers/review.comments.js";
 import type { TaskScmProvider } from "../providers/tasks.scm.js";
 import type { AgentTerminalProvider } from "../providers/tasks.terminal.js";
-import type { LauncherBackend, Priority, UpdateTaskInput, WireTask } from "../api/types.js";
+import type { Priority, UpdateTaskInput, WireTask } from "../api/types.js";
 import { TASK_COLUMNS } from "../api/types.js";
+import type { LauncherBackend } from "../api/local.js";
 import { confirmAction, resolveTask, type TaskItem, withErrors } from "./common.js";
 import { TASK_COLUMN_LABELS } from "../providers/board.tree.helpers.js";
 import { describeBackendStatus, sortBackends } from "./settings.js";
@@ -112,7 +113,7 @@ export function registerTaskCommands(
         const task = await resolveTask(client, item);
         if (!task) return;
 
-        if (task.review_verdicts.length > 0 || task.status === "REVIEW") {
+        if ((task.review_verdicts ?? []).length > 0 || task.status === "REVIEW") {
           await reviewProvider.showTaskReview(task);
           return;
         }
@@ -189,7 +190,7 @@ export function registerTaskCommands(
 
         const acceptanceCriteria = await vscode.window.showInputBox({
           prompt: "Acceptance criteria",
-          value: task.acceptance_criteria.join(" | "),
+          value: (task.acceptance_criteria ?? []).map((c) => c.text).join(" | "),
           placeHolder: "Optional; separate multiple items with |",
         });
         if (acceptanceCriteria === undefined) return;
@@ -247,8 +248,8 @@ export function registerTaskCommands(
 
 function renderTaskSummary(task: WireTask): string {
   const criteria =
-    task.acceptance_criteria.length > 0
-      ? task.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
+    (task.acceptance_criteria ?? []).length > 0
+      ? (task.acceptance_criteria ?? []).map((c, i) => `${i + 1}. ${c.text}`).join("\n")
       : "None";
 
   return [

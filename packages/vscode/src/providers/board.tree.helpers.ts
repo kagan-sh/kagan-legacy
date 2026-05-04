@@ -13,7 +13,7 @@ export function groupTasksByStatus(tasks: WireTask[]): Map<TaskStatus, WireTask[
     groups.set(status, []);
   }
   for (const task of tasks) {
-    groups.get(task.status)?.push(task);
+    groups.get(task.status as TaskStatus)?.push(task);
   }
   return groups;
 }

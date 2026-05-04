@@ -5,13 +5,12 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import {
   TASK_COLUMNS,
-  PRIORITY_ICONS,
-  STATUS_ICONS,
   SSE_TYPE,
   type WireTask,
   type TaskStatus,
   type SSEMessage,
 } from "../api/types.js";
+import { PRIORITY_ICONS, STATUS_ICONS } from "../api/local.js";
 import { groupTasksByStatus, sortTasksByTitle, TASK_COLUMN_LABELS } from "./board.tree.helpers.js";
 
 // ── Item types ──────────────────────────────────────────────────────────────
@@ -106,7 +105,7 @@ export class BoardTreeProvider implements vscode.TreeDataProvider<BoardItem> {
     const { task } = element;
 
     const item = new vscode.TreeItem(task.title, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon(PRIORITY_ICONS[task.priority]);
+    item.iconPath = new vscode.ThemeIcon(PRIORITY_ICONS[task.priority as import("../api/types.js").Priority] ?? "dash");
     item.contextValue = `task.${task.status}`;
     item.tooltip = this.buildTooltip(task);
     item.description = this.buildDescription(task);

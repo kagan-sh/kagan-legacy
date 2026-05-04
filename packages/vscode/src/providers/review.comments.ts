@@ -60,7 +60,7 @@ export class ReviewCommentProvider implements vscode.Disposable {
 
     const { criterionLabels, criterionLines } = document;
 
-    for (const verdict of task.review_verdicts) {
+    for (const verdict of (task.review_verdicts ?? [])) {
       const line = criterionLines.get(verdict.criterion_id);
       if (line === undefined) continue;
       const range = new vscode.Range(line, 0, line, 0);

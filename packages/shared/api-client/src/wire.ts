@@ -735,6 +735,13 @@ export type CreateProjectInput = ProjectCreateRequest;
 /** @deprecated Use ReviewDecideRequest */
 export type ReviewDecisionInput = ReviewDecideRequest;
 
+/** Alias for ReviewDecideResponse (legacy naming used by VS Code extension). */
+export type ReviewDecisionResponse = ReviewDecideResponse;
+
+// ── Review verdict state ──────────────────────────────────────────────────────
+
+export type ReviewVerdictState = "PASS" | "FAIL" | "SKIP";
+
 // ── Legacy aliases ────────────────────────────────────────────────────────────
 
 /** @deprecated Use ActiveSessionResponse */

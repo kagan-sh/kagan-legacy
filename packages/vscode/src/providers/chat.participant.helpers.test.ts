@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { WireChatSessionSummary } from "../api/types.js";
 import {
   isTaskSession,
   pickReusableChatSessionId,
   resetStickyChatStateIfNewConversation,
 } from "./chat.participant.helpers.js";
+
+function makeSession(id: string, source: string): WireChatSessionSummary {
+  return { id, label: "", source, agent_backend: null, updated_at: "", message_count: 0 };
+}
 
 describe("chat participant helpers", () => {
   it("treats task-session sources as task-scoped", () => {
@@ -14,8 +19,8 @@ describe("chat participant helpers", () => {
 
   it("reuses the saved session only when it is not task-scoped", () => {
     const sessionId = pickReusableChatSessionId("orch-1", [
-      { id: "task-1", label: null, agent_backend: null, source: "task-session" },
-      { id: "orch-1", label: null, agent_backend: null, source: "vscode" },
+      makeSession("task-1", "task-session"),
+      makeSession("orch-1", "vscode"),
     ]);
 
     expect(sessionId).toBe("orch-1");
@@ -23,9 +28,9 @@ describe("chat participant helpers", () => {
 
   it("ignores a saved task session and falls back to the latest orchestrator session", () => {
     const sessionId = pickReusableChatSessionId("task-1", [
-      { id: "task-1", label: null, agent_backend: null, source: "task-session" },
-      { id: "orch-2", label: null, agent_backend: null, source: "vscode" },
-      { id: "orch-1", label: null, agent_backend: null, source: "web" },
+      makeSession("task-1", "task-session"),
+      makeSession("orch-2", "vscode"),
+      makeSession("orch-1", "web"),
     ]);
 
     expect(sessionId).toBe("orch-2");
@@ -33,7 +38,7 @@ describe("chat participant helpers", () => {
 
   it("returns null when no orchestrator sessions exist", () => {
     const sessionId = pickReusableChatSessionId("task-1", [
-      { id: "task-1", label: null, agent_backend: null, source: "task-session" },
+      makeSession("task-1", "task-session"),
     ]);
 
     expect(sessionId).toBeNull();

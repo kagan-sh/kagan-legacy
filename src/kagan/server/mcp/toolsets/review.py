@@ -8,8 +8,7 @@ import asyncio
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import build_conflict_resolution_feedback
-from kagan.core._db_helpers import _db_async
+from kagan.core import build_conflict_resolution_feedback, db_async
 from kagan.core.errors import MergeConflictError, ValidationError
 from kagan.core.models import AcceptanceCriterion, Task
 from kagan.server._helpers import _manual_review_payload
@@ -21,7 +20,7 @@ from kagan.server.mcp.toolsets import mcp_error_boundary
 async def _has_acceptance_criteria(task_id: str, engine: object) -> bool:
     from sqlmodel import select as _select
 
-    criteria = await _db_async(
+    criteria = await db_async(
         engine,  # type: ignore[arg-type]
         lambda s: list(
             s.exec(_select(AcceptanceCriterion).where(AcceptanceCriterion.task_id == task_id)).all()
@@ -139,7 +138,7 @@ async def _review_verdict(
     app = get_context(ctx)
     await app.client.reviews.set_criterion_verdict(task_id, criterion_index, verdict, reason)
     total = len(
-        await _db_async(
+        await db_async(
             app.client.engine,
             lambda s: list(
                 s.exec(

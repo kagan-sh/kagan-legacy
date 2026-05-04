@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from kagan.core._backend_selector import BackendSelector
+from kagan.core import BackendSelector
 from kagan.server._helpers import _ok, handle_errors, require_context
 
 if TYPE_CHECKING:

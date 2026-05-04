@@ -1,7 +1,7 @@
 """Unit tests for doctor --json flag, category field, and telemetry events.
 
 Covers:
-- DoctorCheck.category field assignment and _derive_category
+- DoctorCheck.category field assignment and derive_check_category
 - --json flag serialization (all six fields present, valid JSON)
 - _emit_doctor_warned_telemetry payload shape
 - first_session_success guard (fires once, not twice)
@@ -23,12 +23,10 @@ from sqlmodel import SQLModel, create_engine
 
 from kagan.cli.doctor import (
     DoctorCheck,
-    _derive_category,
     _emit_doctor_warned_telemetry,
     _emit_json,
 )
-from kagan.core._analytics import Analytics, emit_telemetry
-from kagan.core._db_helpers import _db_sync
+from kagan.core import Analytics, db_sync, derive_check_category, emit_telemetry
 from kagan.core.enums import SessionEventType
 from kagan.core.models import Project, Session
 
@@ -67,22 +65,22 @@ def _make_check(
 # ── category field tests ──────────────────────────────────────────────
 
 
-def test_derive_category_core_checks() -> None:
+def test_derive_check_category_core_checks() -> None:
     for name in ("git", "tmux", "db"):
-        assert _derive_category(name) == "core", f"Expected 'core' for '{name}'"
+        assert derive_check_category(name) == "core", f"Expected 'core' for '{name}'"
 
 
-def test_derive_category_backend() -> None:
-    assert _derive_category("agent backend") == "backend"
+def test_derive_check_category_backend() -> None:
+    assert derive_check_category("agent backend") == "backend"
 
 
-def test_derive_category_environment() -> None:
+def test_derive_check_category_environment() -> None:
     for name in ("ide", "terminal multiplexer", "project config", "startup env"):
-        assert _derive_category(name) == "environment", f"Expected 'environment' for '{name}'"
+        assert derive_check_category(name) == "environment", f"Expected 'environment' for '{name}'"
 
 
-def test_derive_category_unknown_becomes_integration() -> None:
-    assert _derive_category("some custom integration check") == "integration"
+def test_derive_check_category_unknown_becomes_integration() -> None:
+    assert derive_check_category("some custom integration check") == "integration"
 
 
 def test_doctor_check_has_category_field() -> None:
@@ -274,7 +272,7 @@ async def test_first_session_success_fires_on_first_completion(tmp_path: Path) -
         s.refresh(session_obj)
         return session_obj.id
 
-    session_id = _db_sync(engine, setup, commit=False)
+    session_id = db_sync(engine, setup, commit=False)
 
     emitted: list[dict[str, Any]] = []
 
@@ -331,7 +329,7 @@ async def test_first_session_success_does_not_fire_on_subsequent_completion(
         s.refresh(new_sess)
         return new_sess.id
 
-    new_session_id = _db_sync(engine, setup, commit=False)
+    new_session_id = db_sync(engine, setup, commit=False)
 
     emitted: list[dict[str, Any]] = []
 

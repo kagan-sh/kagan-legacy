@@ -39,6 +39,7 @@ from kagan.core.chat.sessions import (
     CHAT_LAST_SESSION_PREFIX,
     CHAT_SCOPE_PREFIX,
     ChatSessions,
+    chat_session_to_legacy_dict,
     clean_generated_title,
     format_relative_time,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "UsageUpdate",
     "UserMessagePersisted",
     "acp_update_to_chat_event",
+    "chat_session_to_legacy_dict",
     "clean_generated_title",
     "format_relative_time",
 ]

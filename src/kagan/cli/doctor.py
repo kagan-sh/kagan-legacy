@@ -6,13 +6,13 @@ from loguru import logger
 
 from kagan.cli._bootstrap import make_client, run_async
 from kagan.cli._doctor_output import emit_short, emit_technical, emit_tldr
-from kagan.core import PreflightCheckResult
-from kagan.core._analytics import emit_telemetry
-from kagan.core._db import create_db_engine, default_db_path
-from kagan.core._environment_checks import (
-    _VERIFY_HINTS,
-    _derive_category,
+from kagan.core import (
+    PreflightCheckResult,
     collect_environment_checks,
+    create_db_engine,
+    default_db_path,
+    derive_check_category,
+    emit_telemetry,
     resolve_backend_guidance,
     resolve_doctor_backend_name,
     verify_hint_for,
@@ -33,7 +33,7 @@ class DoctorCheck:
 
 
 def _verify_hint(name: str) -> str:
-    return _VERIFY_HINTS.get(name, "ls")
+    return verify_hint_for(name)
 
 
 def _backend_verify_hint(backend_name: str) -> str:
@@ -90,7 +90,7 @@ def _map_preflight_check(check: PreflightCheckResult, default_backend: str) -> D
         message=message,
         fix_hint=fix_hint,
         verify_hint=v_hint,
-        category=_derive_category(name),
+        category=derive_check_category(name),
     )
 
 
@@ -322,7 +322,7 @@ def doctor(verbosity: str, output_json: bool) -> None:
 
     has_failures = any(check.status == "fail" for check in checks)
     if has_failures and not output_json:
-        from kagan.core._logging import default_log_path
+        from kagan.core import default_log_path
 
         click.echo(f"\nLog file: {default_log_path()}")
 
@@ -355,7 +355,7 @@ def run_doctor_check_for_backend(backend_name: str) -> DoctorCheck | None:
     """
     import shutil
 
-    from kagan.core._agent import AgentError, get_backend_spec
+    from kagan.core import AgentError, get_backend_spec
 
     try:
         backend_spec = get_backend_spec(backend_name)
@@ -402,7 +402,7 @@ def render_doctor_report(
         emit_short(checks)
 
     if any(c.status == "fail" for c in checks):
-        from kagan.core._logging import default_log_path
+        from kagan.core import default_log_path
 
         click.echo(f"\nLog file: {default_log_path()}")
 

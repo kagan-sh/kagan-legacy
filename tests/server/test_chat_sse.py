@@ -112,7 +112,7 @@ def test_chat_event_to_sse_frame_mapping() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_sse_stream_broadcasts_to_watch_subscribers(tmp_path: "Path") -> None:
+async def test_sse_stream_broadcasts_to_watch_subscribers(tmp_path: Path) -> None:
     """Events yielded by _sse_stream are also pushed to /watch subscribers."""
     from kagan.core import KaganCore
     from kagan.server import _chat_routes
@@ -165,7 +165,7 @@ async def test_sse_stream_broadcasts_to_watch_subscribers(tmp_path: "Path") -> N
 # ---------------------------------------------------------------------------
 
 
-async def test_interrupt_emits_chat_turn_terminated_exactly_once(tmp_path: "Path") -> None:
+async def test_interrupt_emits_chat_turn_terminated_exactly_once(tmp_path: Path) -> None:
     """/interrupt during an active stream must emit CHAT_TURN_TERMINATED once."""
     from kagan.core import KaganCore
     from kagan.server import _chat_routes
@@ -228,7 +228,7 @@ async def test_interrupt_emits_chat_turn_terminated_exactly_once(tmp_path: "Path
 
 
 async def test_concurrent_stream_emits_chat_error_without_orphan_user_row(
-    tmp_path: "Path",
+    tmp_path: Path,
 ) -> None:
     """Second /stream for the same session emits CHAT_ERROR; no orphan user row."""
     from kagan.core import KaganCore

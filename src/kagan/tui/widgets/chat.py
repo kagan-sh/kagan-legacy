@@ -1056,7 +1056,7 @@ class ChatPanel(Vertical):
 
     async def _delete_chat_session(self, query: str) -> None:
         """Delete a chat session by number or id."""
-        from kagan.cli.chat._session_picker import (
+        from kagan.cli.chat import (
             build_chat_session_list_items,
             chat_session_to_legacy_dict,
             resolve_chat_session_selector,

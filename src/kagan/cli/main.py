@@ -79,7 +79,7 @@ _RUNTIME_SURFACES = {"tui", "web", "chat"}
 
 
 def _print_crash_footer() -> None:
-    from kagan.core._logging import default_log_path
+    from kagan.core import default_log_path
 
     log_path = default_log_path()
     click.echo(f"Log file: {log_path}", err=True)
@@ -314,7 +314,7 @@ def _dispatch_surface_choice(ctx: click.Context, choice: str) -> None:
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose stderr logging")
 @click.pass_context
 def cli(ctx: click.Context, skip_update_check: bool, verbose: bool) -> None:
-    from kagan.core._logging import configure_logging
+    from kagan.core import configure_logging
 
     _sanitize_startup_environment()
     configure_logging(verbose=verbose)

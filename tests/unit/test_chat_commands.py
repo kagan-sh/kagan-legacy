@@ -15,13 +15,13 @@ from kagan.cli.chat.controller import (
     _bootstrap_noninteractive_message,
     _bootstrap_repository_status,
 )
+from kagan.core import BackendSpec
 from kagan.core.chat.sessions import (
     clean_generated_title as _clean_generated_title,
 )
 from kagan.core.chat.sessions import (
     format_relative_time as _format_relative_time,
 )
-from kagan.core import AgentError, BackendSpec
 
 pytestmark = [pytest.mark.unit]
 

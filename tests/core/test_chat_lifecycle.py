@@ -16,10 +16,7 @@ from typing import Any
 import pytest
 
 from kagan.core.chat import (
-    AssistantMessagePersisted,
-    TurnCancelled,
     TurnDone,
-    TurnError,
     TurnInProgressError,
     TurnStarted,
 )

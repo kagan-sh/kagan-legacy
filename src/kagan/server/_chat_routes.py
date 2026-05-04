@@ -26,9 +26,11 @@ import acp
 from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
-from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
-from kagan.core import resolve_default_agent_backend
-from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRequest
+from kagan.core import (
+    ChatSessionCreateRequest,
+    ChatSessionPatchRequest,
+    resolve_default_agent_backend,
+)
 from kagan.core.chat import (
     AssistantChunk,
     AssistantMessagePersisted,
@@ -41,6 +43,7 @@ from kagan.core.chat import (
     TurnError,
     TurnInProgressError,
     TurnStarted,
+    chat_session_to_legacy_dict,
 )
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context

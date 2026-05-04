@@ -11,15 +11,18 @@ from typing import Any, cast
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
-from kagan.core import resolve_default_agent_backend, resolve_launcher
-from kagan.core._checkpoints import (
+from kagan.core import (
     Checkpoint,
+    InsightCategory,
+    StepVerdict,
+    StepVerification,
+    VerificationSummary,
     create_checkpoint,
     list_checkpoints,
+    resolve_default_agent_backend,
+    resolve_launcher,
     rewind_to_checkpoint,
 )
-from kagan.core._insights import InsightCategory
-from kagan.core._verification import StepVerdict, StepVerification, VerificationSummary
 from kagan.core.enums import SessionEventType
 from kagan.core.errors import (
     InsightError,
@@ -192,7 +195,7 @@ async def _run_get(task_id: str, ctx: Context) -> dict[str, Any]:
     When a session exists, also returns context window usage fields:
     context_window_used, context_window_size, usage_ratio, needs_compaction.
     """
-    from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
+    from kagan.core import COMPACTION_THRESHOLD, ContextCompactor
 
     app = get_context(ctx)
     task = await app.client.tasks.get(task_id)

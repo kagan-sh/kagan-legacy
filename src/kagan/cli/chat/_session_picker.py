@@ -15,13 +15,12 @@ formatting, VS Code tree view).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from kagan.core.chat.sessions import format_relative_time
-
-if TYPE_CHECKING:
-    from kagan.core.models import ChatMessage, ChatSession
+from kagan.core.chat.sessions import (
+    chat_session_to_legacy_dict,
+    format_relative_time,
+)
 
 __all__ = [
     "ChatSessionListItem",
@@ -42,35 +41,6 @@ class ChatSessionListItem:
     updated_at: str
     updated_relative: str
     is_current: bool
-
-
-def chat_session_to_legacy_dict(
-    row: ChatSession,
-    messages: list[ChatMessage],
-) -> dict[str, Any]:
-    """Convert a ``(ChatSession, list[ChatMessage])`` pair into the legacy dict shape.
-
-    Several call sites (TUI orchestrator store, server SSE wire mapping, server
-    REST shape) consume the dict shape that the deleted ``cli.chat.sessions``
-    shim used to return. Rather than rewire every consumer in one phase, this
-    helper sits at the boundary of those callers — they call
-    ``client.chat_sessions.X`` directly for persistence and convert to dict
-    here for display.
-    """
-    history = [[m.role, m.content] for m in messages]
-    updated_at = (
-        row.updated_at.isoformat() if isinstance(row.updated_at, datetime) else str(row.updated_at)
-    )
-    return {
-        "id": row.id,
-        "label": row.label,
-        "source": row.source,
-        "agent_backend": row.agent_backend,
-        "orchestrator_history": history,
-        "messages_rendered": [],
-        "updated_at": updated_at,
-        "project_id": row.project_id,
-    }
 
 
 def build_chat_session_list_items(

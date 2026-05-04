@@ -74,7 +74,7 @@ def web(
     project_id: str | None,
     dev_mode: bool,
 ) -> None:
-    from kagan.server._web_ui import has_web_bundle
+    from kagan.server import has_web_bundle
 
     browser_timer = None
 

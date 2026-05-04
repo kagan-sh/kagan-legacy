@@ -36,8 +36,8 @@ from kagan.core import (
     friendly_acp_error_message,
     get_backend_spec,
     resolve_orchestrator_prompt,
+    resolve_spawn_command,
 )
-from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.errors import AgentError
 
 _ACP_CLIENT_NAME = "kagan"

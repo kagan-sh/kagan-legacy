@@ -4,7 +4,7 @@ import asyncio
 import platform
 import shutil
 
-from kagan.core._attached_backends import (
+from kagan.core import (
     attached_terminal_backend_executable,
     attached_terminal_backend_fallback_order,
 )

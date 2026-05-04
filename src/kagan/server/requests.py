@@ -13,9 +13,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from kagan.core._io.projects import ProjectCreateRequest, RepoAddRequest
-from kagan.core._io.reviews import ReviewDecideRequest
-from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest
+from kagan.core import (
+    ProjectCreateRequest,
+    RepoAddRequest,
+    ReviewDecideRequest,
+    TaskCreateRequest,
+    TaskUpdateRequest,
+)
 
 # Re-export under the legacy names used by route imports.
 CreateTaskRequest = TaskCreateRequest

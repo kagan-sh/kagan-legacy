@@ -60,6 +60,10 @@ def _derive_category(name: str) -> str:
     return "integration"
 
 
+# Public alias — callers outside kagan.core must use this name.
+derive_check_category = _derive_category
+
+
 # ---------------------------------------------------------------------------
 # Unified verify-hint mapping
 # ---------------------------------------------------------------------------

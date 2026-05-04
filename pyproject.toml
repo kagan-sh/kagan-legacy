@@ -82,6 +82,7 @@ exclude = ["src/kagan/server/_web_static/**"]
 "src/kagan/server/_web_static" = "kagan/server/_web_static"
 [dependency-groups]
 dev = [
+  "import-linter>=2.11",
   "poethepoet>=0.40.0",
   "pre-commit>=4.5.1",
   "pytest>=9.0.2",
@@ -208,11 +209,12 @@ check-loc = "python scripts/check_python_loc_budget.py --max-lines 2500"
 check-complexity = "ruff check src/ --select C90"
 check-wire-drift = "python scripts/check_wire_drift.py"
 check-test-quality = { help = "Lint test files for tautological patterns", cmd = "python scripts/check_test_quality.py" }
+check-boundaries = { cmd = "lint-imports", help = "Verify package boundaries (no cross-package _* imports)" }
 check-guardrails = ["check-loc", "check-complexity", "check-wire-drift", "check-test-quality"]
 format = "ruff format src/ tests/"
 typecheck = "pyrefly check --project-excludes src/kagan/core/adapters/db/migrations/versions src/"
 deadcode = "vulture"
-check = ["lint", "typecheck", "deadcode", "test"]
+check = ["lint", "typecheck", "deadcode", "check-boundaries", "test"]
 db-migrations-check = "pytest tests/core/test_db_migrations.py -n 0 -v"
 docs-dev = "mkdocs serve -f mkdocs.local.yml"
 docs-build = "mkdocs build"
@@ -396,6 +398,212 @@ upload_to_vcs_release = true
 
 [tool.semantic_release.remote.token]
 env = "GITHUB_TOKEN"
+
+[tool.importlinter]
+root_package = "kagan"
+
+# --- kagan.core private modules (kagan.core._*) ---
+# Nothing outside kagan.core may import from a private submodule directly.
+# Consumers must go through kagan.core (the public __init__) or a public
+# subpackage like kagan.core.chat, kagan.core.git, kagan.core.models, etc.
+# Each _*.py file is listed explicitly because import-linter's wildcard syntax
+# (mypackage.*) cannot filter by name prefix.
+[[tool.importlinter.contracts]]
+name = "kagan.tui must not import kagan.core private modules"
+type = "forbidden"
+source_modules = ["kagan.tui"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.core._acp",
+    "kagan.core._agent",
+    "kagan.core._agent_monitor",
+    "kagan.core._analytics",
+    "kagan.core._asyncio_compat",
+    "kagan.core._attached_backends",
+    "kagan.core._audit",
+    "kagan.core._backend_selector",
+    "kagan.core._checkpoints",
+    "kagan.core._compaction",
+    "kagan.core._config",
+    "kagan.core._db",
+    "kagan.core._db_helpers",
+    "kagan.core._environment_checks",
+    "kagan.core._event_rendering",
+    "kagan.core._events",
+    "kagan.core._formatting",
+    "kagan.core._hooks",
+    "kagan.core._insights",
+    "kagan.core._io",
+    "kagan.core._launchers",
+    "kagan.core._logging",
+    "kagan.core._orphan_reap",
+    "kagan.core._persona",
+    "kagan.core._preflight",
+    "kagan.core._projects",
+    "kagan.core._prompt_export",
+    "kagan.core._prompts",
+    "kagan.core._reviews",
+    "kagan.core._security",
+    "kagan.core._session_helpers",
+    "kagan.core._sessions",
+    "kagan.core._settings",
+    "kagan.core._subprocess",
+    "kagan.core._task_classification",
+    "kagan.core._tasks",
+    "kagan.core._transitions",
+    "kagan.core._utils",
+    "kagan.core._verification",
+    "kagan.core._watcher",
+    "kagan.core._worktrees",
+]
+
+[[tool.importlinter.contracts]]
+name = "kagan.cli must not import kagan.core private modules"
+type = "forbidden"
+source_modules = ["kagan.cli"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.core._acp",
+    "kagan.core._agent",
+    "kagan.core._agent_monitor",
+    "kagan.core._analytics",
+    "kagan.core._asyncio_compat",
+    "kagan.core._attached_backends",
+    "kagan.core._audit",
+    "kagan.core._backend_selector",
+    "kagan.core._checkpoints",
+    "kagan.core._compaction",
+    "kagan.core._config",
+    "kagan.core._db",
+    "kagan.core._db_helpers",
+    "kagan.core._environment_checks",
+    "kagan.core._event_rendering",
+    "kagan.core._events",
+    "kagan.core._formatting",
+    "kagan.core._hooks",
+    "kagan.core._insights",
+    "kagan.core._io",
+    "kagan.core._launchers",
+    "kagan.core._logging",
+    "kagan.core._orphan_reap",
+    "kagan.core._persona",
+    "kagan.core._preflight",
+    "kagan.core._projects",
+    "kagan.core._prompt_export",
+    "kagan.core._prompts",
+    "kagan.core._reviews",
+    "kagan.core._security",
+    "kagan.core._session_helpers",
+    "kagan.core._sessions",
+    "kagan.core._settings",
+    "kagan.core._subprocess",
+    "kagan.core._task_classification",
+    "kagan.core._tasks",
+    "kagan.core._transitions",
+    "kagan.core._utils",
+    "kagan.core._verification",
+    "kagan.core._watcher",
+    "kagan.core._worktrees",
+]
+
+[[tool.importlinter.contracts]]
+name = "kagan.server must not import kagan.core private modules"
+type = "forbidden"
+source_modules = ["kagan.server"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.core._acp",
+    "kagan.core._agent",
+    "kagan.core._agent_monitor",
+    "kagan.core._analytics",
+    "kagan.core._asyncio_compat",
+    "kagan.core._attached_backends",
+    "kagan.core._audit",
+    "kagan.core._backend_selector",
+    "kagan.core._checkpoints",
+    "kagan.core._compaction",
+    "kagan.core._config",
+    "kagan.core._db",
+    "kagan.core._db_helpers",
+    "kagan.core._environment_checks",
+    "kagan.core._event_rendering",
+    "kagan.core._events",
+    "kagan.core._formatting",
+    "kagan.core._hooks",
+    "kagan.core._insights",
+    "kagan.core._io",
+    "kagan.core._launchers",
+    "kagan.core._logging",
+    "kagan.core._orphan_reap",
+    "kagan.core._persona",
+    "kagan.core._preflight",
+    "kagan.core._projects",
+    "kagan.core._prompt_export",
+    "kagan.core._prompts",
+    "kagan.core._reviews",
+    "kagan.core._security",
+    "kagan.core._session_helpers",
+    "kagan.core._sessions",
+    "kagan.core._settings",
+    "kagan.core._subprocess",
+    "kagan.core._task_classification",
+    "kagan.core._tasks",
+    "kagan.core._transitions",
+    "kagan.core._utils",
+    "kagan.core._verification",
+    "kagan.core._watcher",
+    "kagan.core._worktrees",
+]
+
+# --- Cross-package private module imports ---
+# kagan.server._* must not be imported from kagan.tui or kagan.cli.
+[[tool.importlinter.contracts]]
+name = "kagan.tui and kagan.cli must not import kagan.server private modules"
+type = "forbidden"
+source_modules = ["kagan.tui", "kagan.cli"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.server._access",
+    "kagan.server._analytics_routes",
+    "kagan.server._chat_routes",
+    "kagan.server._envelope",
+    "kagan.server._helpers",
+    "kagan.server._integration_routes",
+    "kagan.server._middleware",
+    "kagan.server._presence",
+    "kagan.server._project_routes",
+    "kagan.server._sse",
+    "kagan.server._system_routes",
+    "kagan.server._task_routes",
+    "kagan.server._web_ui",
+    "kagan.server.mcp._policy",
+]
+
+# kagan.cli._* must not be imported from kagan.server or kagan.tui.
+# Note: kagan.cli.chat (public package) is allowed; only kagan.cli.chat._* is forbidden.
+[[tool.importlinter.contracts]]
+name = "kagan.server and kagan.tui must not import kagan.cli private modules"
+type = "forbidden"
+source_modules = ["kagan.server", "kagan.tui"]
+allow_indirect_imports = true
+forbidden_modules = [
+    "kagan.cli._bootstrap",
+    "kagan.cli._doctor_output",
+    "kagan.cli._env",
+    "kagan.cli.chat._approval_batch",
+    "kagan.cli.chat._approval_panel",
+    "kagan.cli.chat._chat_ui",
+    "kagan.cli.chat._completion",
+    "kagan.cli.chat._handshake",
+    "kagan.cli.chat._permission_ui",
+    "kagan.cli.chat._renderer",
+    "kagan.cli.chat._session_picker",
+    "kagan.cli.chat._signals",
+    "kagan.cli.chat._streaming",
+    "kagan.cli.chat._theme",
+    "kagan.cli.chat._title",
+    "kagan.cli.chat._yolo",
+]
 
 [tool.vulture]
 paths = ["src/"]

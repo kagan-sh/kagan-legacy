@@ -7,9 +7,14 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 from sqlmodel import select
 
-from kagan.core import TaskStatus, parse_priority, resolve_default_agent_backend, resolve_launcher
-from kagan.core._backend_selector import BackendSelector
-from kagan.core._db_helpers import _db_async
+from kagan.core import (
+    BackendSelector,
+    TaskStatus,
+    db_async,
+    parse_priority,
+    resolve_default_agent_backend,
+    resolve_launcher,
+)
 from kagan.core.models import AcceptanceCriterion
 from kagan.runtime_env import build_sanitized_subprocess_environment
 from kagan.server._access import AccessTier
@@ -77,7 +82,7 @@ async def _select_backend_intelligently(
 
     # Perform intelligent selection
     try:
-        from kagan.core._agent import list_available_backends
+        from kagan.core import list_available_backends
 
         # Get task details
         task = await ctx.client.tasks.get(task_id)
@@ -447,7 +452,7 @@ def register_task_routes(mcp: FastMCP) -> None:
 
         if action in {"approve", "merge"}:
             task = await ctx.client.tasks.get(task_id)
-            criteria_list = await _db_async(
+            criteria_list = await db_async(
                 ctx.client.engine,
                 lambda s: list(
                     s.exec(

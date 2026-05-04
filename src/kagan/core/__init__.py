@@ -39,10 +39,57 @@ from kagan.core._agent import (
     resolve_acp_command,
     resolve_default_agent_backend,
 )
+from kagan.core._analytics import Analytics, emit_telemetry
 from kagan.core._asyncio_compat import install_asyncio_subprocess_exception_filter
+from kagan.core._attached_backends import (
+    ANTIGRAVITY_BACKEND,
+    ATTACHED_TERMINAL_BACKEND_SPECS,
+    ATTACHED_TERMINAL_BACKEND_SPECS_BY_VALUE,
+    ATTACHED_TERMINAL_BACKEND_VALUE_SET,
+    ATTACHED_TERMINAL_BACKEND_VALUES,
+    CURSOR_BACKEND,
+    KIRO_BACKEND,
+    NVIM_BACKEND,
+    TMUX_BACKEND,
+    UNIX_ATTACHED_TERMINAL_FALLBACK_ORDER,
+    VSCODE_BACKEND,
+    WINDOWS_ATTACHED_TERMINAL_FALLBACK_ORDER,
+    WINDSURF_BACKEND,
+    AttachedTerminalBackendLiteral,
+    AttachedTerminalBackendSpec,
+    attached_terminal_backend_executable,
+    attached_terminal_backend_fallback_order,
+    coerce_attached_terminal_backend,
+)
 from kagan.core._audit import list_audit, record_audit
-from kagan.core._db import default_db_path
+from kagan.core._backend_selector import BackendSelector
+from kagan.core._checkpoints import (
+    Checkpoint,
+    cleanup_checkpoints,
+    create_checkpoint,
+    list_checkpoints,
+    rewind_to_checkpoint,
+)
+from kagan.core._compaction import COMPACTION_THRESHOLD, ContextCompactor
+from kagan.core._db import create_db_engine, default_db_path
+from kagan.core._db_helpers import _db_async as db_async
+from kagan.core._db_helpers import _db_sync as db_sync
+from kagan.core._environment_checks import (
+    EnvCheckResult,
+    collect_environment_checks,
+    derive_check_category,
+    resolve_backend_guidance,
+    resolve_doctor_backend_name,
+    verify_hint_for,
+)
+from kagan.core._formatting import format_duration, format_percentage
+from kagan.core._insights import InsightCategory
+from kagan.core._io.projects import ProjectCreateRequest, RepoAddRequest
+from kagan.core._io.reviews import ReviewDecideRequest
+from kagan.core._io.sessions import ChatSessionCreateRequest, ChatSessionPatchRequest
+from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest
 from kagan.core._launchers import resolve_launcher
+from kagan.core._logging import configure_logging, default_log_path
 from kagan.core._orphan_reap import reap_orphan_sessions
 from kagan.core._preflight import CheckStatus, PreflightCheckResult
 from kagan.core._projects import (
@@ -58,6 +105,7 @@ from kagan.core._projects import (
     resolve_repo_path,
     set_repo_default_branch,
 )
+from kagan.core._prompt_export import export_prompt_text, export_prompt_yml, write_prompt_file
 from kagan.core._prompts import (
     ADDITIONAL_INSTRUCTIONS_KEY,
     AUTO_CONFIRM_SINGLE_KEY,
@@ -101,8 +149,11 @@ from kagan.core._sessions import (
     resolve_session_binding,
 )
 from kagan.core._settings import get_settings, set_settings
+from kagan.core._subprocess import resolve_spawn_command
 from kagan.core._task_classification import classify_task
 from kagan.core._tasks import Tasks
+from kagan.core._utils import utc_iso
+from kagan.core._verification import StepVerdict, StepVerification, VerificationSummary
 from kagan.core._worktrees import (
     cleanup_orphan_worktrees,
     cleanup_worktree,
@@ -155,14 +206,23 @@ from kagan.core.models import (
 __all__ = [
     "ACP_TIMEOUT_HINT",
     "ADDITIONAL_INSTRUCTIONS_KEY",
+    "ANTIGRAVITY_BACKEND",
+    "ATTACHED_TERMINAL_BACKEND_SPECS",
+    "ATTACHED_TERMINAL_BACKEND_SPECS_BY_VALUE",
+    "ATTACHED_TERMINAL_BACKEND_VALUES",
+    "ATTACHED_TERMINAL_BACKEND_VALUE_SET",
     "AUTO_CONFIRM_SINGLE_KEY",
     "CLAUDE_CODE_BACKEND",
     "CODEX_BACKEND",
+    "COMPACTION_THRESHOLD",
+    "CURSOR_BACKEND",
     "DEFAULT_ORCHESTRATOR_PROMPT",
     "GEMINI_CLI_BACKEND",
     "KAGAN_AGENT_EMAIL",
     "KAGAN_AGENT_NAME",
     "KIMI_CLI_BACKEND",
+    "KIRO_BACKEND",
+    "NVIM_BACKEND",
     "OPENCODE_BACKEND",
     "OS",
     "PERSONA_DEFINITIONS_KEY",
@@ -170,21 +230,36 @@ __all__ = [
     "PLANNING_DEPTH_KEY",
     "REFERENCE_BACKENDS",
     "REVIEW_STRICTNESS_KEY",
+    "TMUX_BACKEND",
+    "UNIX_ATTACHED_TERMINAL_FALLBACK_ORDER",
+    "VSCODE_BACKEND",
+    "WINDOWS_ATTACHED_TERMINAL_FALLBACK_ORDER",
+    "WINDSURF_BACKEND",
     "ACPClientBase",
     "AcceptanceCriterion",
     "AgentError",
     "AgentRole",
+    "Analytics",
+    "AttachedTerminalBackendLiteral",
+    "AttachedTerminalBackendSpec",
     "AuditEntry",
     "BackendCapability",
     "BackendCommand",
+    "BackendSelector",
     "BackendSpec",
     "BranchRefStrategy",
     "ChatMessage",
     "ChatSession",
+    "ChatSessionCreateRequest",
+    "ChatSessionPatchRequest",
     "CheckStatus",
+    "Checkpoint",
     "ConfigurationError",
+    "ContextCompactor",
     "DBWatcher",
+    "EnvCheckResult",
     "InjectionDetector",
+    "InsightCategory",
     "InvalidTransitionError",
     "KaganCore",
     "KaganError",
@@ -195,7 +270,10 @@ __all__ = [
     "PreflightError",
     "Priority",
     "Project",
+    "ProjectCreateRequest",
+    "RepoAddRequest",
     "Repository",
+    "ReviewDecideRequest",
     "ReviewVerdict",
     "Session",
     "SessionError",
@@ -203,12 +281,17 @@ __all__ = [
     "SessionEventType",
     "SessionStatus",
     "Setting",
+    "StepVerdict",
+    "StepVerification",
     "Task",
+    "TaskCreateRequest",
     "TaskNote",
     "TaskStatus",
     "TaskType",
+    "TaskUpdateRequest",
     "Tasks",
     "ValidationError",
+    "VerificationSummary",
     "Worktree",
     "WorktreeError",
     "abort_rebase",
@@ -218,22 +301,39 @@ __all__ = [
     "active_session_summaries",
     "add_repo",
     "approve_review",
+    "attached_terminal_backend_executable",
+    "attached_terminal_backend_fallback_order",
     "build_agent_environment",
     "build_conflict_resolution_feedback",
     "build_mcp_manifest",
     "classify_task",
+    "cleanup_checkpoints",
     "cleanup_orphan_worktrees",
     "cleanup_worktree",
     "clear_review_verdicts",
+    "coerce_attached_terminal_backend",
+    "collect_environment_checks",
+    "configure_logging",
     "continue_rebase",
+    "create_checkpoint",
+    "create_db_engine",
     "create_project",
     "create_worktree",
+    "db_async",
+    "db_sync",
     "default_db_path",
+    "default_log_path",
     "delete_project",
+    "derive_check_category",
     "detect_dotfile_overrides",
+    "emit_telemetry",
+    "export_prompt_text",
+    "export_prompt_yml",
     "fetch_project_learnings",
     "find_project_by_name",
     "find_project_by_repo",
+    "format_duration",
+    "format_percentage",
     "friendly_acp_error_message",
     "get_backend",
     "get_backend_spec",
@@ -254,6 +354,7 @@ __all__ = [
     "list_available_backends",
     "list_backend_specs",
     "list_backends",
+    "list_checkpoints",
     "list_projects",
     "list_repos",
     "list_task_sessions",
@@ -265,17 +366,24 @@ __all__ = [
     "record_audit",
     "reject_review",
     "resolve_acp_command",
+    "resolve_backend_guidance",
     "resolve_default_agent_backend",
+    "resolve_doctor_backend_name",
     "resolve_launcher",
     "resolve_orchestrator_prompt",
     "resolve_repo",
     "resolve_repo_path",
     "resolve_review_prompt",
     "resolve_session_binding",
+    "resolve_spawn_command",
     "resolve_task_prompt",
+    "rewind_to_checkpoint",
     "scan_text_for_injection",
     "serialize_persona_definitions",
     "set_criterion_verdict",
     "set_repo_default_branch",
     "set_settings",
+    "utc_iso",
+    "verify_hint_for",
+    "write_prompt_file",
 ]

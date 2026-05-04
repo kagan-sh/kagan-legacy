@@ -14,6 +14,7 @@ from kagan.core import (
     parse_priority,
     resolve_default_agent_backend,
     resolve_launcher,
+    transition_task,
 )
 from kagan.core.models import AcceptanceCriterion
 from kagan.runtime_env import build_sanitized_subprocess_environment
@@ -288,7 +289,7 @@ def register_task_routes(mcp: FastMCP) -> None:
             return forbidden
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskStatusRequest)
-        task = await ctx.client.tasks.set_status(task_id, TaskStatus(body.status))
+        task = await transition_task(ctx.client, task_id, TaskStatus(body.status), by="api")
         return _ok(await task_wire_dict(ctx, task_id, task=task))
 
     @mcp.custom_route("/api/tasks/{task_id}/run", methods=["POST"])

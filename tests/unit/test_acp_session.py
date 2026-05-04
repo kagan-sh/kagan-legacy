@@ -64,7 +64,7 @@ class _FakeProcess:
 class _SlowInitializeConnection(_FakeConnection):
     async def initialize(self, *, protocol_version):
         del protocol_version
-        await asyncio.sleep(0.05)
+        await asyncio.Event().wait()
 
 
 class _FakeStderr:

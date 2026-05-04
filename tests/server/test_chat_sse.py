@@ -286,10 +286,7 @@ async def test_concurrent_stream_emits_chat_error_without_orphan_user_row(
 # ---------------------------------------------------------------------------
 
 
-import contextlib as _contextlib
-
-
-@_contextlib.contextmanager
+@contextlib.contextmanager
 def _patched_factory(module: Any, factory: Any) -> Any:
     """Temporarily replace ``SpawnPerTurnACPFactory`` on ``module``."""
     original = module.SpawnPerTurnACPFactory

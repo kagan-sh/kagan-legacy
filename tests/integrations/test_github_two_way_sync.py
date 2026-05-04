@@ -8,44 +8,12 @@ from kagan.core import KaganCore
 from kagan.core.enums import Priority, TaskStatus
 from kagan.core.integrations.github import (
     _KAGAN_CRITERIA_MARKER,
-    GitHubConfig,
-    GitHubIntegration,
     _parse_criteria_lines,
     _render_criteria_comment,
     _seed_criteria_from_body,
 )
 
 pytestmark = [pytest.mark.integrations]
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def client(tmp_path):
-    from tests.helpers.helpers import make_git_repo
-
-    c = KaganCore(db_path=tmp_path / "test.db")
-    project = await c.projects.create("Test Project")
-    await c.projects.set_active(project.id)
-    # Attach a repo so GitHub import has a target repo_id
-    repo_path = tmp_path / "test-repo"
-    await make_git_repo(repo_path)
-    await c.projects.add_repo(project.id, str(repo_path))
-    yield c
-    c.close()
-
-
-@pytest.fixture
-def config():
-    return GitHubConfig(owner="octocat", repo="hello-world")
-
-
-@pytest.fixture
-def integration():
-    return GitHubIntegration()
 
 
 def _make_issue(number: int, title: str, body: str = "", labels=None):

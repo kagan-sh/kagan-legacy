@@ -134,9 +134,8 @@ def test_secret_key_file_is_owner_only_from_creation(monkeypatch, tmp_path: Path
 
 def test_decrypt_failure_raises_typed_error(monkeypatch, tmp_path: Path) -> None:
     """Tampered ciphertext raises SettingsDecryptError; never returns raw bytes."""
-    from kagan.core._settings import SettingsDecryptError, _decrypt_value, _FERNET_PREFIX
-
     from kagan.core import _settings
+    from kagan.core._settings import _FERNET_PREFIX, SettingsDecryptError, _decrypt_value
 
     monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
     with pytest.raises(SettingsDecryptError):

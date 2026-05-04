@@ -1,4 +1,4 @@
-"""Thin ACP adapter for kagan.core agent sessions with a shared ACP client base."""
+"""Thin ACP adapter for kagan.core agent sessions."""
 
 import asyncio
 import contextlib
@@ -68,84 +68,6 @@ _CODEX_ACP_EACCES_HINT = (
     "@zed-industries/codex-acp-darwin-arm64/bin/codex-acp` "
     "or reset cache with `rm -rf ~/.npm/_npx && npx -y @zed-industries/codex-acp --help`."
 )
-
-
-class ACPClientBase(acp.Client):
-    """Shared ACP client defaults for unsupported file/terminal/ext methods."""
-
-    _conn: acp.Agent | None
-
-    async def write_text_file(
-        self,
-        content: str,
-        path: str,
-        session_id: str,
-        **kwargs: Any,
-    ) -> WriteTextFileResponse | None:
-        raise RequestError.method_not_found("fs/write_text_file")
-
-    async def read_text_file(
-        self,
-        path: str,
-        session_id: str,
-        limit: int | None = None,
-        line: int | None = None,
-        **kwargs: Any,
-    ) -> ReadTextFileResponse:
-        raise RequestError.method_not_found("fs/read_text_file")
-
-    async def create_terminal(
-        self,
-        command: str,
-        session_id: str,
-        args: list[str] | None = None,
-        cwd: str | None = None,
-        env: list[EnvVariable] | None = None,
-        output_byte_limit: int | None = None,
-        **kwargs: Any,
-    ) -> CreateTerminalResponse:
-        raise RequestError.method_not_found("terminal/create")
-
-    async def terminal_output(
-        self,
-        session_id: str,
-        terminal_id: str,
-        **kwargs: Any,
-    ) -> TerminalOutputResponse:
-        raise RequestError.method_not_found("terminal/output")
-
-    async def release_terminal(
-        self,
-        session_id: str,
-        terminal_id: str,
-        **kwargs: Any,
-    ) -> ReleaseTerminalResponse | None:
-        raise RequestError.method_not_found("terminal/release")
-
-    async def wait_for_terminal_exit(
-        self,
-        session_id: str,
-        terminal_id: str,
-        **kwargs: Any,
-    ) -> WaitForTerminalExitResponse:
-        raise RequestError.method_not_found("terminal/wait_for_exit")
-
-    async def kill_terminal(
-        self,
-        session_id: str,
-        terminal_id: str,
-        **kwargs: Any,
-    ) -> KillTerminalResponse | None:
-        raise RequestError.method_not_found("terminal/kill")
-
-    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        raise RequestError.method_not_found(method)
-
-    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        raise RequestError.method_not_found(method)
-
-    def on_connect(self, conn: acp.Agent) -> None:
-        self._conn = conn
 
 
 def _configured_acp_timeout_seconds(*keys: str) -> float | None:
@@ -278,7 +200,7 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
     )
 
 
-class KaganACPClient(ACPClientBase):
+class KaganACPClient(acp.Client):
     """ACP client implementation forwarding session updates to a callback."""
 
     def __init__(
@@ -292,6 +214,78 @@ class KaganACPClient(ACPClientBase):
         # tool_call_id, option_id).
         self._on_permission_grant = on_permission_grant
         self._conn: acp.Agent | None = None
+
+    async def write_text_file(
+        self,
+        content: str,
+        path: str,
+        session_id: str,
+        **kwargs: Any,
+    ) -> WriteTextFileResponse | None:
+        raise RequestError.method_not_found("fs/write_text_file")
+
+    async def read_text_file(
+        self,
+        path: str,
+        session_id: str,
+        limit: int | None = None,
+        line: int | None = None,
+        **kwargs: Any,
+    ) -> ReadTextFileResponse:
+        raise RequestError.method_not_found("fs/read_text_file")
+
+    async def create_terminal(
+        self,
+        command: str,
+        session_id: str,
+        args: list[str] | None = None,
+        cwd: str | None = None,
+        env: list[EnvVariable] | None = None,
+        output_byte_limit: int | None = None,
+        **kwargs: Any,
+    ) -> CreateTerminalResponse:
+        raise RequestError.method_not_found("terminal/create")
+
+    async def terminal_output(
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
+    ) -> TerminalOutputResponse:
+        raise RequestError.method_not_found("terminal/output")
+
+    async def release_terminal(
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
+    ) -> ReleaseTerminalResponse | None:
+        raise RequestError.method_not_found("terminal/release")
+
+    async def wait_for_terminal_exit(
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
+    ) -> WaitForTerminalExitResponse:
+        raise RequestError.method_not_found("terminal/wait_for_exit")
+
+    async def kill_terminal(
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
+    ) -> KillTerminalResponse | None:
+        raise RequestError.method_not_found("terminal/kill")
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        raise RequestError.method_not_found(method)
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        raise RequestError.method_not_found(method)
+
+    def on_connect(self, conn: acp.Agent) -> None:
+        self._conn = conn
 
     async def request_permission(
         self,

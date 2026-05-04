@@ -12,7 +12,7 @@ _configure_logging()
 
 from kagan.core._acp import (
     ACP_TIMEOUT_HINT,
-    ACPClientBase,
+    KaganACPClient,
     acp_handshake_timeout_seconds,
     acp_process_exit_hint,
     acp_startup_timeout_seconds,
@@ -241,7 +241,6 @@ __all__ = [
     "VSCODE_BACKEND",
     "WINDOWS_ATTACHED_TERMINAL_FALLBACK_ORDER",
     "WINDSURF_BACKEND",
-    "ACPClientBase",
     "AcceptanceCriterion",
     "AgentError",
     "AgentRole",
@@ -270,6 +269,7 @@ __all__ = [
     "InjectionDetector",
     "InsightCategory",
     "InvalidTransitionError",
+    "KaganACPClient",
     "KaganCore",
     "KaganError",
     "MergeConflictError",

@@ -66,6 +66,21 @@ kagan/
 - **Prompt resolution**: Three-layer pipeline in `core/_prompts.py` — dotfile override → code defaults + behavioral settings → additional instructions
 - **Settings keys**: Behavioral controls (`default_execution_mode`, `review_strictness`, `planning_depth`, `auto_confirm_single_tasks`) + single `additional_instructions` field
 
+### Status mutations
+
+`task.status` and `session.status` may only be written through
+`kagan.core.transitions.transition_task` and `transition_session`. Direct
+assignments (`task.status = ...`) bypass review gates and are forbidden in
+external-facing code paths (REST routes, MCP tools, CLI commands).
+The funnel functions enforce the (from, to) matrix at runtime; if you
+encounter a transition the matrix does not cover, add a match arm with the
+appropriate guard rather than working around the funnel.
+
+Exceptions: raw DB writes inside `_db_sync` / `_db_async` callbacks that
+operate at the SQLAlchemy layer (e.g. `_orphan_reap.py`, `_sessions.py`
+internal helpers) may assign `.status` directly when they cannot call the
+async funnel from within a sync transaction context.
+
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - **NEVER** suppress types with `as any` / `@ts-ignore` / `# type: ignore` without documented reason
@@ -74,6 +89,7 @@ kagan/
 - **NEVER** modify migration files after they ship — generate a new migration
 - **DO NOT** use stdlib `logging` — use `loguru`
 - **DO NOT** put test fixtures in test files — use `tests/helpers/`
+- **DO NOT** write `task.status = X` outside a `_db_sync`/`_db_async` callback or the files listed above — use `transition_task` instead
 - RUF012 / RUF006 / SIM102 / SIM117 intentionally suppressed (see pyproject.toml)
 
 ## COMMANDS

@@ -106,7 +106,8 @@ async def test_transition_task_legal(frm: TaskStatus, to: TaskStatus) -> None:
     result = await transition_task(client, "task-001", to)
     # set_status was called with the right arguments
     client.tasks.set_status.assert_awaited_once_with("task-001", to)
-    assert result is not None
+    # result is the mock returned by set_status, which is the updated task
+    assert result is client.tasks.set_status.return_value
 
 
 @pytest.mark.parametrize("frm,to", _TASK_ILLEGAL)
@@ -143,7 +144,7 @@ async def test_transition_task_review_to_done_allowed_when_passing_review() -> N
     ):
         result = await transition_task(client, "task-001", TaskStatus.DONE)
     client.tasks.set_status.assert_awaited_once_with("task-001", TaskStatus.DONE)
-    assert result is not None
+    assert result is client.tasks.set_status.return_value
 
 
 @pytest.mark.asyncio
@@ -235,7 +236,8 @@ async def test_transition_session_legal(frm: SessionStatus, to: SessionStatus) -
 
     with patch("kagan.core.transitions._db_async", side_effect=_db_async_side_effect):
         result = await transition_session(client, "session-001", to)
-    assert result is not None  # type: ignore[truthy-bool]
+    # The write op returns the session mock after setting status
+    assert result.status == to
 
 
 @pytest.mark.parametrize("frm,to", _SESSION_ILLEGAL)
@@ -286,7 +288,7 @@ async def test_transition_session_propagates_actor_label() -> None:
         result = await transition_session(
             client, "session-001", SessionStatus.RUNNING, by="reviewer"
         )
-    assert result is not None  # type: ignore[truthy-bool]
+    assert result.status == SessionStatus.RUNNING
 
 
 # ---------------------------------------------------------------------------

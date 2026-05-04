@@ -8,6 +8,12 @@ their wire shape at the edge.
 The ``kind`` literal is the discriminator. Pydantic's
 ``Annotated[Union[...], Field(discriminator="kind")]`` machinery validates that
 incoming dicts always resolve to a single concrete variant.
+
+Shared variants (MessageStart, MessageUpdate, MessageEnd, ToolExecutionStart,
+ToolExecutionUpdate, ToolExecutionEnd) live in ``kagan.core.events_common`` and
+are composed here by re-export.  Chat-specific tool-call variants (ToolCallStart,
+ToolCallProgress) are kept here because they carry chat-specific fields
+(``title``, ``kind_hint``) that do not appear in the agent surface.
 """
 
 from __future__ import annotations
@@ -16,6 +22,15 @@ from datetime import datetime  # noqa: TC003 — runtime-required by pydantic
 from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field
+
+from kagan.core.events_common import (
+    MessageEnd,
+    MessageStart,
+    MessageUpdate,
+    ToolExecutionEnd,
+    ToolExecutionStart,
+    ToolExecutionUpdate,
+)
 
 
 class _ChatEventBase(BaseModel):
@@ -156,13 +171,21 @@ ChatEvent = Annotated[
 
 
 __all__ = [
+    # Chat-specific variants
     "AssistantChunk",
     "AssistantMessagePersisted",
     "ChatEvent",
+    # Shared base variants re-exported from kagan.core.events_common
+    "MessageEnd",
+    "MessageStart",
+    "MessageUpdate",
     "PermissionRequest",
     "PermissionResolved",
     "ToolCallProgress",
     "ToolCallStart",
+    "ToolExecutionEnd",
+    "ToolExecutionStart",
+    "ToolExecutionUpdate",
     "TurnCancelled",
     "TurnDone",
     "TurnError",

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,12 @@ from kagan.core._db_helpers import (
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events
-from kagan.core._hooks import HookAction, HookContext, HookEvent, HookRunner
+from kagan.core._hooks import (
+    HookAction,
+    HookResult,
+    detect_dangerous_command,
+    detect_repetition,
+)
 from kagan.core._launchers import get_launcher
 from kagan.core._prompts import (
     build_persona_section,
@@ -280,6 +286,7 @@ class Sessions:
         self._set_status = set_status
         self._ensure_workspace = ensure_workspace
         self._db_path: Path | None = db_path
+        self._recent_tool_calls: dict[str, deque[str]] = {}
 
     # -- Query delegates (one-liner wrappers) --------------------------------
 
@@ -669,6 +676,7 @@ class Sessions:
                 )
         if active:
             unregister_spawned_process(active.id)
+            self._recent_tool_calls.pop(active.id, None)
 
             def cancel_op(s):
                 obj = s.get(Session, active.id)
@@ -717,28 +725,49 @@ class Sessions:
 
         return on_permission_grant
 
+    def _guard_tool_call(
+        self,
+        task_id: str,
+        session_id: str,
+        tool_name: str | None,
+        arguments: Any,
+    ) -> HookResult:
+        recent = self._recent_tool_calls.setdefault(session_id, deque(maxlen=20))
+        guards: tuple[tuple[str, Callable[[], HookResult]], ...] = (
+            ("repetition_guard", lambda: detect_repetition(recent, tool_name, arguments)),
+            (
+                "dangerous_command_guard",
+                lambda: detect_dangerous_command(tool_name, arguments, task_id),
+            ),
+        )
+        for guard_name, run_guard in guards:
+            try:
+                result = run_guard()
+            except Exception:
+                logger.exception(
+                    "Guard {!r} failed for task={} session={}",
+                    guard_name,
+                    task_id,
+                    session_id,
+                )
+                continue
+            if result.action != HookAction.CONTINUE:
+                return result
+        return HookResult()
+
     def _make_acp_callback(self, task_id: str, session_id: str):
         from kagan.core._acp import map_acp_update_to_event
 
-        runner = HookRunner().default_hooks()
         compactor = ContextCompactor()
 
         async def on_update(_acp_session_id: str, update: Any) -> None:
-            # Fire PRE_TOOL hooks before processing tool call starts
             if isinstance(update, ToolCallStart):
                 tool_name = getattr(update, "name", None) or getattr(update, "title", "unknown")
                 arguments = getattr(update, "raw_input", None)
-                hook_ctx = HookContext(
-                    task_id=task_id,
-                    session_id=session_id,
-                    event=HookEvent.PRE_TOOL,
-                    tool_name=tool_name,
-                    tool_arguments=arguments,
-                )
-                hook_result = runner.fire(hook_ctx)
-                if hook_result.action == HookAction.CANCEL_SESSION:
+                guard_result = self._guard_tool_call(task_id, session_id, tool_name, arguments)
+                if guard_result.action == HookAction.CANCEL_SESSION:
                     logger.warning(
-                        "Hook blocked tool call for task={} session={}; cancelling",
+                        "Guard blocked tool call for task={} session={}; cancelling",
                         task_id,
                         session_id,
                     )
@@ -748,7 +777,7 @@ class Sessions:
                         task_id,
                         "hook_blocked",
                         {
-                            "error": hook_result.message or "Hook blocked session",
+                            "error": guard_result.message or "Guard blocked session",
                             "tool_name": tool_name,
                         },
                         session_id=session_id,
@@ -855,6 +884,7 @@ class Sessions:
                 return
             raise
         finally:
+            self._recent_tool_calls.pop(session_id, None)
             # Release the settlement-rule counter registered before the agent
             # started so that wait_idle() unblocks any caller waiting for this
             # session to finish.

@@ -6,28 +6,17 @@
 import asyncio
 import contextlib
 import json
-from typing import Any, TypedDict
+from typing import Any
 
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
 from kagan.core import Priority, TaskStatus, parse_priority
+from kagan.core._io.tasks import TaskCreateRequest
 from kagan.core.errors import KaganError, ValidationError
 from kagan.server.mcp._policy import is_tool_allowed
 from kagan.server.mcp.server import ServerOptions, get_context
 from kagan.server.mcp.toolsets import mcp_error_boundary
-
-
-class _BatchTaskEntry(TypedDict, total=False):
-    title: str
-    description: str
-    priority: str | int
-    base_branch: str | None
-    acceptance_criteria: list[str] | None
-    agent_backend: str | None
-    launcher: str | None
-    repo_id: str | None
-    github_issue: str | None
 
 
 def _resolve_task_id(ctx: Context, task_id: str | None) -> str:
@@ -248,7 +237,7 @@ async def _task_list(
 @mcp_error_boundary
 async def _task_create(
     ctx: Context,
-    tasks: list[_BatchTaskEntry] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
     title: str | None = None,
     description: str = "",
     priority: str | int | None = None,
@@ -275,42 +264,46 @@ async def _task_create(
         if title is None:
             raise ValidationError("title", "title is required when tasks list is not provided")
         tasks = [
-            _BatchTaskEntry(
-                title=title,
-                description=description,
-                priority=priority,
-                base_branch=base_branch,
-                acceptance_criteria=acceptance_criteria,
-                agent_backend=agent_backend,
-                launcher=launcher,
-                repo_id=repo_id,
-                github_issue=github_issue,
-            )
+            {
+                "title": title,
+                "description": description,
+                "priority": priority,
+                "base_branch": base_branch,
+                "acceptance_criteria": acceptance_criteria,
+                "agent_backend": agent_backend,
+                "launcher": launcher,
+                "repo_id": repo_id,
+                "github_issue": github_issue,
+            }
         ]
 
     created: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
-    for idx, entry in enumerate(tasks):
-        entry_title = entry.get("title", "").strip()
+    for idx, raw_entry in enumerate(tasks):
+        entry_title = str(raw_entry.get("title") or "").strip()
         if not entry_title:
             errors.append({"index": str(idx), "error": "title is required"})
             continue
         try:
-            pri = parse_priority(entry.get("priority"))
-            criteria_raw = entry.get("acceptance_criteria")
-            criteria = criteria_raw if isinstance(criteria_raw, list) else None
-            entry_repo_id = entry.get("repo_id")
-            effective_repo_id = entry_repo_id if entry_repo_id is not None else default_repo_id
+            # Validate via shared model — enforces same constraints as REST surface.
+            req = TaskCreateRequest.model_validate(
+                {**raw_entry, "title": entry_title}
+            )
+            pri = parse_priority(req.priority)
+            # MCP applies a project-level default_repo_id when the caller omits repo_id.
+            # REST callers never receive this fallback — they must supply repo_id explicitly
+            # or leave it null.  The fallback is runtime logic, not model logic.
+            effective_repo_id = req.repo_id if req.repo_id is not None else default_repo_id
             task = await app.client.tasks.create(
-                entry_title,
-                description=entry.get("description", ""),
+                req.title,
+                description=req.description,
                 priority=pri,
-                base_branch=entry.get("base_branch"),
-                acceptance_criteria=criteria,
-                agent_backend=entry.get("agent_backend"),
-                launcher=entry.get("launcher"),
+                base_branch=req.base_branch,
+                acceptance_criteria=req.acceptance_criteria,
+                agent_backend=req.agent_backend,
+                launcher=req.launcher,
                 repo_id=effective_repo_id,
-                github_issue=entry.get("github_issue"),
+                github_issue=req.github_issue,
             )
             result = await _task_to_dict(task, app.client.engine)
             if app.bound_session_id is not None:

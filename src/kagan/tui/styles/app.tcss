@@ -3260,3 +3260,9 @@ SettingsModal {
     overflow-y: auto;
     scrollbar-gutter: stable;
 }
+
+/* Disable all CSS transitions when the user has enabled reduce_motion. */
+/* Applied as a class on the App root via KaganApp._apply_saved_theme(). */
+.reduce-motion * {
+    transition: none 0ms linear !important;
+}

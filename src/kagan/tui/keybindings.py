@@ -124,7 +124,7 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
     Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
-    Binding("ctrl+shift+t", "fullscreen_chat", "AI Full", key_display="Ctrl+Shift+T"),
+    Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
 ]

@@ -10,6 +10,7 @@ from textual.widgets._option_list import Option, OptionList
 
 from kagan.cli.chat import resolve_default_agent_backend
 from kagan.core import detect_dotfile_overrides
+from kagan.tui._utils import is_enabled as _is_enabled
 from kagan.tui.keybindings import SETTINGS_BINDINGS, SETTINGS_COMMAND_BINDINGS
 from kagan.tui.widgets.settings_fields import (
     CATEGORIES,
@@ -24,12 +25,6 @@ if TYPE_CHECKING:
     from textual.timer import Timer
 
     from kagan.tui.app import KaganApp
-
-
-def _is_enabled(value: str | None, *, default: bool) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 class CategoryList(OptionList):

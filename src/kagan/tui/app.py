@@ -12,6 +12,7 @@ from kagan.cli.doctor import DoctorCheck
 from kagan.core import KaganCore
 from kagan.core.errors import KaganError, NotFoundError
 from kagan.core.models import Project
+from kagan.tui._utils import is_enabled as _is_enabled
 from kagan.tui.keybindings import APP_BINDINGS
 from kagan.tui.orchestrator_sessions import TuiOrchestratorSessionStore
 from kagan.tui.screens.agent_picker import AgentPickerModal
@@ -32,12 +33,6 @@ from kagan.tui.textual_compat import (
     install_asyncio_subprocess_exception_filter,
 )
 from kagan.tui.theme import KAGAN_THEME, KAGAN_THEME_256
-
-
-def _is_enabled(value: str | None, *, default: bool) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _any_backend_available(checks: list[DoctorCheck]) -> bool:
@@ -130,6 +125,8 @@ class KaganApp(App[None]):
             self.theme = theme_name
         elif not theme_name:
             self.theme = KAGAN_THEME.name
+        reduce_motion = _is_enabled(settings.get("reduce_motion"), default=False)
+        self.set_class(reduce_motion, "reduce-motion")
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         for command in super().get_system_commands(screen):

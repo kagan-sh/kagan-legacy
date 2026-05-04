@@ -213,7 +213,7 @@ async def test_watch_chat_session_notifies_on_takeover() -> None:
             )
         )
         # Give the coroutine time to process the SSE line.
-        await asyncio.sleep(0.05)
+        await pilot.pause()
         task.cancel()
         try:
             await task
@@ -260,7 +260,7 @@ async def test_watch_chat_session_ignores_non_takeover_termination() -> None:
                 http_client=fake_client,  # type: ignore[arg-type]
             )
         )
-        await asyncio.sleep(0.05)
+        await pilot.pause()
         task.cancel()
         try:
             await task

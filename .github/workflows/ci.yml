@@ -196,17 +196,17 @@ jobs:
       - name: Snapshot tests
         shell: bash
         run: |
-          if [ ! -d tests/tui/snapshot ]; then
-            echo "No tests/tui/snapshot directory; skipping snapshot tests."
+          if [ ! -d tests/tui/smoke ]; then
+            echo "No tests/tui/smoke directory; skipping snapshot tests."
             exit 0
           fi
 
-          if ! ls tests/tui/snapshot/test_*.py >/dev/null 2>&1; then
+          if ! ls tests/tui/smoke/test_*.py >/dev/null 2>&1; then
             echo "No snapshot test files found; skipping snapshot tests."
             exit 0
           fi
 
-          uv run pytest tests/tui/snapshot/ -n auto -v
+          uv run pytest tests/tui/smoke/ -n auto -v
 
   test-vscode:
     if: github.event_name == 'pull_request'

@@ -68,6 +68,10 @@ if TYPE_CHECKING:
 _WATCH_RETRY_DELAY = 5.0
 _WATCH_EVENT_TAKEOVER = "CHAT_TURN_TERMINATED"
 
+# Session key constants shared across kanban, task_screen, and session_dashboard.
+TASK_WORKER_SESSION_KEY = "task-worker"
+TASK_REVIEWER_SESSION_KEY = "task-reviewer"
+
 StreamChunkKind = Literal["assistant", "thought", "note", "user"]
 
 

@@ -36,7 +36,8 @@ SetupMode = Literal["onboarding", "project-picker", "new-project", "open-folder"
 def _build_agent_backend_options() -> list[tuple[str, str]]:
     availability = list_available_backends()
     specs = list_backend_specs()
-    options: list[tuple[str, str]] = []
+    available: list[tuple[str, str]] = []
+    unavailable: list[tuple[str, str]] = []
     for name, spec in specs.items():
         label = spec.label()
         suffix: list[str] = []
@@ -44,10 +45,15 @@ def _build_agent_backend_options() -> list[tuple[str, str]]:
             suffix.append("reference")
         if not availability.get(name, False):
             suffix.append("unavailable")
-        if suffix:
             label = f"{label} ({', '.join(suffix)})"
-        options.append((label, name))
-    return options
+            unavailable.append((label, name))
+        else:
+            if suffix:
+                label = f"{label} ({', '.join(suffix)})"
+            available.append((label, name))
+    if available and unavailable:
+        return [*available, ("---", "---"), *unavailable]
+    return [*available, *unavailable]
 
 
 _MODE_COPY: dict[SetupMode, dict[str, str]] = {

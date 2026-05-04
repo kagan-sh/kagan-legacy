@@ -222,7 +222,7 @@ class ChatPanel(Vertical):
             return None
 
     def compose(self) -> ComposeResult:
-        yield Static("Orchestrator", id="chat-title")
+        yield Static("", id="chat-title")
         with Vertical(id="chat-overlay-main"):
             with ChatTranscript(id="chat-overlay-content"):
                 with Vertical(id="chat-overlay-empty-state", classes="chat-overlay-empty-state"):
@@ -315,7 +315,7 @@ class ChatPanel(Vertical):
                         )
                         session_indicator.tooltip = "Session status indicator"
                         yield session_indicator
-                        session_label = Static("Orchestrator", id="chat-overlay-session-current")
+                        session_label = Static("", id="chat-overlay-session-current")
                         session_label.tooltip = "Current active session"
                         yield session_label
                     with Horizontal(id="chat-overlay-session-toggle"):

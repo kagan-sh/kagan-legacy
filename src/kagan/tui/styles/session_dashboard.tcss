@@ -35,10 +35,14 @@ SessionDashboardScreen {
     color: $success;
 }
 
-#dashboard-task-status.status-failed,
-#dashboard-task-status.status-cancelled {
+#dashboard-task-status.status-failed {
     border: round $error;
     color: $error;
+}
+
+#dashboard-task-status.status-cancelled {
+    border: round $text-muted;
+    color: $text-muted;
 }
 
 #dashboard-body {

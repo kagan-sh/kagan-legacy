@@ -13,6 +13,332 @@
 
 
 
+## v0.19.0-beta.27 (2026-05-04)
+
+
+
+
+### Features
+
+- **tui**: Clickable file paths in chat tool calls (OSC 8)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Bug Fixes
+
+- Address Greptile iter 2 findings (TOCTOU + dup events + log redaction)
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- Address Greptile P1 + P2 on the post-audit PR ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **mcp**: Contain bash_exec / terminal_run cwd inside the bound worktree (F2)
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- Drop nested tabpanel role/id in ArtifactView (Greptile iter 3)
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **core/server**: Post-audit security + async hygiene cleanup (R1)
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **tui**: Preserve full OSC 8 file link targets
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **tui**: Resolve pre-existing lint violations in TUI test files
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **web**: Use same-origin health check before auth hydration
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Refactoring
+
+- **web**: Collapse duplicate KaganApiClient into shared base (R7)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **vscode**: Collapse duplicate KaganClient + a11y / hygiene fixes
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **core**: Collapse hook framework to guard functions (R15)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **chat**: Collapse spawn-per-turn ACP factory (R19)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **tui**: Dedupe task data protocol (R18) ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **web**: Delete dead ArtifactsPanel; dedupe cycleDockMode util (R12)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **core**: Delete Fernet-at-rest from settings (no production callers) (R14)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **core**: Flatten ACP client base (R17) ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **core**: Inline single integration protocol (R16)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **core/server**: Match event.kind for ChatEvent dispatch (R9)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **tests**: Move fixtures to helpers, kill asyncio.sleep, narrow github mocks (R10)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **tui**: Post-audit cleanup — reactive state, dedup, CANCELLED, reduce-motion
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **web**: Post-audit cleanup — useChatSession, a11y, design tokens, perf
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- Post-audit quality pass — security, simplicity, a11y, UX polish
+  ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+- **tests**: Purge tautology tests + relocate misplaced units per testing.md (R21)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **web**: Simplify VisuallyHidden to span (R20)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **server**: Type ServerContext through require_context (R13)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- **core**: Typed ChatSessionView/SessionSummary, kill legacy dicts (R6)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Documentation
+
+- Delete unimplemented unified-client proposal, document pi_rpc, sweep drift (R11)
+  ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+- Refresh post-guido architecture notes ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Chores
+
+- Post-audit polish — docs, CI gates, CLI hints ([#140](https://github.com/kagan-sh/kagan/pull/140),
+  [`f228035`](https://github.com/kagan-sh/kagan/commit/f228035beb6814aa13ab69a6ef59ef7f50117eb0))
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Continuous Integration
+
+- Unblock Snyk security scans ([#141](https://github.com/kagan-sh/kagan/pull/141),
+  [`6b321c9`](https://github.com/kagan-sh/kagan/commit/6b321c9bf6287202f3b73ab4f9891b269b9e7b21))
+
+
+
+
+
 ## v0.19.0-beta.26 (2026-05-04)
 
 

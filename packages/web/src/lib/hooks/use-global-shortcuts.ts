@@ -17,13 +17,7 @@ import {
 } from '@/lib/atoms/ui';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { hasOpenOverlay, isEditableTarget } from '@/lib/utils/dom';
-
-type DockedChatRailMode = Extract<RightRailMode, 'chat-right' | 'chat-bottom'>;
-
-function cycleDockMode(mode: DockedChatRailMode): DockedChatRailMode | 'none' {
-  if (mode === 'chat-right') return 'chat-bottom';
-  return 'none';
-}
+import { type DockedChatRailMode, cycleDockMode } from '@/lib/layout/dock-mode';
 
 /**
  * Wires application-level shortcuts for command/search overlays, chat rail

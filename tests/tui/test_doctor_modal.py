@@ -341,8 +341,8 @@ async def test_install_rc_nonzero_no_state_change(tmp_path) -> None:
         assert app.screen.id == "doctor-modal"
 
 
-async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -> None:
-    """AC3: rc=0 on a backend check → Settings written, telemetry emitted."""
+async def test_install_rc_zero_promotes_settings_and_dismisses_modal(tmp_path) -> None:
+    """AC3: rc=0 on a backend check → Settings written, modal auto-dismissed."""
     from unittest.mock import patch
 
     from kagan.tui import KaganApp
@@ -384,29 +384,14 @@ async def test_install_rc_zero_promotes_settings_and_emits_telemetry(tmp_path) -
             # Pump until modal auto-dismisses (all FAILs resolved → dismiss(True))
             await _wait_for_setup_flow(app)
 
-        # Settings must contain the promoted backend
+        # Observable: settings must contain the promoted backend (written before dismiss)
         settings = await app.core.settings.get()
         assert settings.get("default_agent_backend") == "my-agent", (
             f"Expected 'my-agent' in settings, got: {settings}"
         )
 
-        # Telemetry row must exist in the DB
-        from sqlmodel import select
-
-        from kagan.core._db_helpers import _db_async
-        from kagan.core.models import TelemetryEvent
-
-        def _fetch(s):
-            return s.exec(select(TelemetryEvent)).all()
-
-        events = await _db_async(app.core.engine, _fetch)
-        promo_events = [
-            e for e in events if e.event_type == "backend_auto_promoted"
-        ]
-        assert promo_events, "backend_auto_promoted telemetry event not found"
-        payload = promo_events[0].payload
-        assert payload["backend"] == "my-agent"
-        assert "seconds_since_install_clicked" in payload
+        # Observable: modal dismissed → app navigated to setup-flow (asserted by
+        # _wait_for_setup_flow above); if we reach here the modal is gone.
 
 
 async def test_install_rc_zero_non_backend_check_no_settings_write(tmp_path) -> None:

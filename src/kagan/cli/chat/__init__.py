@@ -6,8 +6,9 @@ Public API re-exported from private sub-modules.
 from kagan.cli.chat._completion import fuzzy_match
 from kagan.cli.chat._session_picker import (
     ChatSessionListItem,
+    ChatSessionView,
     build_chat_session_list_items,
-    chat_session_to_legacy_dict,
+    chat_session_to_view,
     resolve_chat_session_selector,
 )
 from kagan.cli.chat._title import ensure_session_title, generate_session_title, is_default_title
@@ -56,6 +57,7 @@ __all__ = [
     "SLASH_COMMAND_REGISTRY",
     "ChatController",
     "ChatSessionListItem",
+    "ChatSessionView",
     "SlashAction",
     "SlashCommandInvocation",
     "SlashCommandOutcome",
@@ -66,7 +68,7 @@ __all__ = [
     "build_chat_status_line",
     "build_orchestrator_prompt",
     "build_slash_presentation_lines",
-    "chat_session_to_legacy_dict",
+    "chat_session_to_view",
     "ensure_session_title",
     "format_agent_backend_list",
     "format_agent_usage",

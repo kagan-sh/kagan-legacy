@@ -16,6 +16,7 @@ from textual.widget import Widget
 from textual.widgets import Markdown, Static
 from textual.widgets.markdown import MarkdownStream
 
+from kagan.tui._osc8 import file_link
 from kagan.tui.keybindings import (
     STREAMING_TIMELINE_BINDINGS,
     TOOL_CALL_VIEW_BINDINGS,
@@ -267,7 +268,11 @@ class ToolCallView(Vertical):
         "content",
     )
 
-    def _extract_key_arg(self) -> str | None:
+    def _extract_key_arg(self) -> tuple[str, str] | None:
+        """Return the (key, raw_value) of the most significant tool argument.
+
+        Returns None when args are absent or unparseable.
+        """
         if not self.args:
             return None
         parsed: dict[str, object] | None = None
@@ -280,8 +285,7 @@ class ToolCallView(Vertical):
         for key in self._KEY_ARG_PRIORITY:
             value = parsed.get(key)
             if value is not None:
-                preview = str(value)[:50]
-                return f"{key}: {preview}"
+                return key, str(value)
         return None
 
     def _header_line(self) -> str:
@@ -294,7 +298,11 @@ class ToolCallView(Vertical):
             hint = " · Enter to collapse" if self.expanded else " · Enter to expand"
         key_arg = self._extract_key_arg()
         if key_arg:
-            return f"{expand} {title} ({key_arg}) · {status_label}{hint}"
+            key, value = key_arg
+            # Render file paths as clickable OSC 8 hyperlinks when supported.
+            label = value[:50]
+            display_value = file_link(value, label) if key == "path" else label
+            return f"{expand} {title} ({key}: {display_value}) · {status_label}{hint}"
         return f"{expand} {title} · {status_label}{hint}"
 
     def _normalized_status(self) -> str:

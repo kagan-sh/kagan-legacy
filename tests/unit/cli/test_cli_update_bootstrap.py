@@ -4,7 +4,7 @@ import pytest
 
 from kagan.cli._bootstrap import _build_install_command, check_and_install_update
 
-pytestmark = [pytest.mark.core, pytest.mark.unit]
+pytestmark = [pytest.mark.unit]
 
 
 def test_build_install_command_uv_prerelease_uses_uv_flags() -> None:

@@ -327,9 +327,9 @@ async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | Non
     pair = await client.chat_sessions.get_with_history(session_id)
     if pair is None:
         return None
-    from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+    from kagan.cli.chat._session_picker import chat_session_to_view
 
-    return chat_session_to_legacy_dict(*pair)
+    return chat_session_to_view(*pair).model_dump()
 
 
 def _make_test_engine():  # type: ignore[return]
@@ -668,8 +668,8 @@ async def test_resolve_initial_session_uses_task_session_binding(monkeypatch) ->
     result = await controller._resolve_initial_session("tasksess")
 
     assert result is not None
-    assert result["id"] == "tasksess"
-    assert result["source"] == "task-session"
+    assert result.id == "tasksess"
+    assert result.source == "task-session"
 
 
 @pytest.mark.asyncio
@@ -677,15 +677,19 @@ async def test_attach_task_scoped_session_does_not_persist_repl_state() -> None:
     client = _FakeClient()
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
 
+    from kagan.core.chat.sessions import ChatSessionView
+
     await controller._attach_session(
-        {
-            "id": "tasksess",
-            "label": "Task tasksess - Investigate bug",
-            "source": "task-session",
-            "agent_backend": "claude-code",
-            "orchestrator_history": [],
-            "messages_rendered": [],
-        },
+        ChatSessionView(
+            id="tasksess",
+            label="Task tasksess - Investigate bug",
+            source="task-session",
+            agent_backend="claude-code",
+            project_id=None,
+            orchestrator_history=[],
+            messages_rendered=[],
+            updated_at="",
+        ),
         switching=False,
     )
 

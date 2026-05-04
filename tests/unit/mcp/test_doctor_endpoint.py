@@ -17,6 +17,8 @@ from kagan.server.responses import DoctorCheckResponse, DoctorReportResponse
 from tests.helpers.server import get_http_endpoint, json_body, make_request
 from tests.helpers.server_ws import make_api_server
 
+pytestmark = [pytest.mark.unit]
+
 
 def _make_checks(*statuses: str) -> list[DoctorCheck]:
     """Build minimal DoctorCheck stubs for the given statuses."""

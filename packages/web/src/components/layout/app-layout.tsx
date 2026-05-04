@@ -34,13 +34,7 @@ import {
 } from "@/lib/atoms/ui";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-
-type DockedChatRailMode = "chat-right" | "chat-bottom";
-
-function cycleDockMode(mode: DockedChatRailMode): DockedChatRailMode | "none" {
-    if (mode === "chat-right") return "chat-bottom";
-    return "none"; // chat-bottom -> close
-}
+import { type DockedChatRailMode, cycleDockMode } from "@/lib/layout/dock-mode";
 
 function AppLayout() {
     useEventStream();

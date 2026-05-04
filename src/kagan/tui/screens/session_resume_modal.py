@@ -9,7 +9,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from kagan.cli.chat import build_chat_session_list_items, chat_session_to_legacy_dict
+from kagan.cli.chat import build_chat_session_list_items, chat_session_to_view
 from kagan.core.errors import KaganError
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ class SessionResumeModal(ModalScreen[RecentSessionSelection | None]):
             projects = await self.kagan_app.core.projects.list()
             project_names = {project.id: project.name for project in projects}
             pairs = await self.kagan_app.core.chat_sessions.list_with_history()
-            sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+            sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
         except (KaganError, OSError, RuntimeError, ValueError):
             self.query_one("#session-resume-status", Static).update(
                 "Recent sessions are unavailable right now."

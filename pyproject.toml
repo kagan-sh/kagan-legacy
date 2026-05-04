@@ -1,6 +1,6 @@
 [project]
 name = "kagan"
-version = "0.19.0-beta.26"
+version = "0.19.0-beta.28"
 description = "Kanban TUI for AI coding agents with a structural human review gate"
 license = "MIT"
 authors = [
@@ -99,6 +99,7 @@ dev = [
   "pytest-sugar>=1.1.1",
   "playwright>=1.58.0",
   "pytest-playwright>=0.7.2",
+  "pillow>=12.2.0",
 ]
 
 [tool.ruff]

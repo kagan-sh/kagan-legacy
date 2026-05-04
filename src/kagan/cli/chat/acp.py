@@ -26,8 +26,8 @@ from kagan.cli.chat.prompt import (
 )
 from kagan.core import (
     ACP_TIMEOUT_HINT,
-    ACPClientBase,
     BackendCapability,
+    KaganACPClient,
     acp_handshake_timeout_seconds,
     acp_process_exit_hint,
     build_agent_environment,
@@ -97,13 +97,14 @@ async def _new_session_with_mcp_fallback(
         )
 
 
-class _CaptureACPClient(ACPClientBase):
+class _CaptureACPClient(KaganACPClient):
     def __init__(
         self,
         *,
         on_update: Callable[[Any], Awaitable[None] | None] | None = None,
         permission_resolver: Callable[[Any], Awaitable[Any]] | None = None,
     ) -> None:
+        super().__init__(lambda _session_id, _update: None)
         self.text_chunks: list[str] = []
         self._on_update = on_update
         self._permission_resolver = permission_resolver
@@ -116,10 +117,11 @@ class _CaptureACPClient(ACPClientBase):
                 text = getattr(content, "text", "") or ""
                 if text:
                     self.text_chunks.append(text)
-        if self._on_update is None:
+        on_update = self.__dict__.get("_on_update")
+        if on_update is None:
             return
         try:
-            maybe_awaitable = self._on_update(update)
+            maybe_awaitable = on_update(update)
             if isinstance(maybe_awaitable, Awaitable):
                 await maybe_awaitable
         except (RuntimeError, ValueError, TypeError):

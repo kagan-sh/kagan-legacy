@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import Any
+from typing import TYPE_CHECKING
 
 from starlette.responses import JSONResponse
 
 from kagan.server._envelope import WireEnvelope
+
+if TYPE_CHECKING:
+    from kagan.server.mcp.server import ServerContext
 
 
 class AccessTier(Enum):
@@ -14,7 +17,7 @@ class AccessTier(Enum):
     ADMIN = auto()
 
 
-def _effective_tier(ctx: Any | None) -> AccessTier:
+def _effective_tier(ctx: ServerContext | None) -> AccessTier:
     opts = getattr(ctx, "opts", None)
     if bool(getattr(opts, "admin", False)):
         return AccessTier.ADMIN
@@ -23,7 +26,7 @@ def _effective_tier(ctx: Any | None) -> AccessTier:
     return AccessTier.STANDARD
 
 
-def is_access_allowed(ctx: Any | None, minimum_tier: AccessTier) -> bool:
+def is_access_allowed(ctx: ServerContext | None, minimum_tier: AccessTier) -> bool:
     return _effective_tier(ctx).value >= minimum_tier.value
 
 

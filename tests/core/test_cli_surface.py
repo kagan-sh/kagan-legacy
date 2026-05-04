@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from kagan.cli._bootstrap import make_client
+from kagan.core import KaganCore
 from kagan.cli.doctor import DoctorCheck
 from kagan.cli.main import _sanitize_startup_environment, cli
 
@@ -93,7 +93,7 @@ def _seed_surface_chooser_seen(
     *,
     startup_surface: str | None = None,
 ) -> None:
-    client = make_client(db_path=tmp_path / "kagan.db")
+    client = KaganCore(db_path=tmp_path / "kagan.db")
     try:
         asyncio_run(
             client.settings.set(
@@ -109,7 +109,7 @@ def _seed_surface_chooser_seen(
 
 
 def _seed_project(tmp_path: Path, name: str = "Seed Project") -> None:
-    client = make_client(db_path=tmp_path / "kagan.db")
+    client = KaganCore(db_path=tmp_path / "kagan.db")
     try:
         asyncio_run(client.projects.create(name))
     finally:
@@ -134,7 +134,7 @@ def test_first_run_shows_surface_chooser_and_persists_choice(monkeypatch, tmp_pa
     assert "First launch - choose where to start" in result.output
     assert called
 
-    client = make_client(db_path=tmp_path / "kagan.db")
+    client = KaganCore(db_path=tmp_path / "kagan.db")
     try:
         settings = asyncio_run(client.settings.get())
     finally:
@@ -159,7 +159,7 @@ def test_first_run_web_choice_becomes_default_surface(monkeypatch, tmp_path: Pat
     assert result.exit_code == 0
     assert captured["choice"] == "web"
 
-    client = make_client(db_path=tmp_path / "kagan.db")
+    client = KaganCore(db_path=tmp_path / "kagan.db")
     try:
         settings = asyncio_run(client.settings.get())
     finally:

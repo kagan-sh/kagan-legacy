@@ -3,7 +3,8 @@
  * auto-scroll coordination, edit-prefill, slash commands, and interrupt logic
  * for a single chat session identified by `id`.
  *
- * Returns a stable descriptor that chat-page.tsx binds to the view layer.
+ * Returns a stable descriptor that chat-page.tsx and orchestrator-chat-panel
+ * bind to the view layer. This is the single authoritative chat-streaming hook.
  */
 
 import { useState, useEffect, useRef, useCallback, type RefObject, type MutableRefObject } from 'react';
@@ -31,6 +32,12 @@ import { useChatWatch } from '@/lib/hooks/use-chat-watch';
 import type { ChatWatchEvent, WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/components/chat/chat-input-bar';
 
+/** Optional context passed to onSlashCommand by panel consumers. */
+export interface SlashCommandExtra {
+  /** Called for /new and /exit — lets embedded panels override default navigation. */
+  onNew?: () => void;
+}
+
 export interface ChatSessionState {
   loading: boolean;
   label: string;
@@ -46,12 +53,16 @@ export interface ChatSessionState {
   scrollRef: RefObject<HTMLDivElement | null>;
   onSend: (text: string, attachments?: Attachment[]) => void;
   onInterrupt: (opts?: { pendingText: string | null }) => void;
-  onSlashCommand: (command: string) => void;
+  /** Handles slash commands. Pass `extra.onNew` to override /new and /exit navigation. */
+  onSlashCommand: (command: string, extra?: SlashCommandExtra) => void;
   onTakeoverAndRetry: () => void;
   onDismissTakeover: () => void;
   onDismissConflict: () => void;
   onPrefillConsumed: () => void;
   switchBackend: (backend: string) => Promise<void>;
+  /** Expose setters so embedded panels can reset state on session switch. */
+  setEditPrefill: (value: string | null) => void;
+  setLabel: (label: string) => void;
 }
 
 export function useChatSession(id: string | undefined): ChatSessionState {
@@ -117,26 +128,34 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   // ── Load session ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
+
+    let cancelled = false;
     (async () => {
       try {
         const session = await apiClient.getChatSession(id);
+        if (cancelled) return;
         setMessages(session.messages);
         setLabel(session.label || 'Chat');
         setAgentBackend(session.agent_backend ?? null);
 
         const turnStatus = await apiClient.getTurnStatus(id);
-        if (turnStatus.active) {
+        if (!cancelled && turnStatus.active) {
           setIsStreaming(true);
           addNote({ message: 'Agent is working… (reconnected)' });
           pollForTurnCompletion(id);
         }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Session not found');
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Session not found');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
+      cancelled = true;
       setMessages([]);
       resetStream();
       setTakeoverBanner(null);
@@ -364,16 +383,23 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     (opts?: { pendingText: string | null }) => {
       if (!id || !isStreaming) return;
       chatAbortRef.current?.abort();
-      apiClient.interruptChatTurn(id, 'user').catch(() => {});
-      addNote({ message: 'Interrupted by user.' });
-      setIsStreaming(false);
-      localStreamingRef.current = false;
 
-      if (opts?.pendingText) {
-        setTimeout(() => doSendStream(opts.pendingText!), 50);
-      } else {
-        setEditPrefill(lastSentText);
-      }
+      void (async () => {
+        try {
+          await apiClient.interruptChatTurn(id, 'user');
+        } catch {
+          // best-effort — server may already have torn the stream down
+        }
+        addNote({ message: 'Interrupted by user.' });
+        setIsStreaming(false);
+        localStreamingRef.current = false;
+
+        if (opts?.pendingText) {
+          doSendStream(opts.pendingText);
+        } else {
+          setEditPrefill(lastSentText);
+        }
+      })();
     },
     [id, isStreaming, addNote, setIsStreaming, lastSentText, doSendStream],
   );
@@ -393,7 +419,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   }, [id, turnConflict, setTurnConflict, doSendStream]);
 
   const onSlashCommand = useCallback(
-    (command: string) => {
+    (command: string, extra?: SlashCommandExtra) => {
       const [cmd, ...args] = command.split(' ');
       switch (cmd) {
         case '/clear':
@@ -401,12 +427,16 @@ export function useChatSession(id: string | undefined): ChatSessionState {
           break;
         case '/new':
         case '/exit':
-          navigate('/board');
+          if (extra?.onNew) {
+            extra.onNew();
+          } else {
+            navigate('/board');
+          }
           break;
         case '/help':
           setMessages((prev) => [
             ...prev,
-            { role: 'assistant', content: 'Available commands: /clear, /new, /agents <name>, /exit, /help' },
+            { role: 'assistant', content: 'Available commands: /clear, /new, /agents <name>, /flow <goal>, /exit, /help' },
           ]);
           break;
         case '/agents':
@@ -419,6 +449,25 @@ export function useChatSession(id: string | undefined): ChatSessionState {
             ]);
           }
           break;
+        case '/flow': {
+          const goal = args.join(' ').trim();
+          const lines = [
+            '**Structured flow: Plan → Execute → Orchestrate**',
+            '',
+            goal ? `**Goal:** ${goal}` : '',
+            '1. **PLAN** — State the outcome, constraints, and acceptance criteria in 1–3 bullets.',
+            '2. **EXECUTE** — Implement one small step at a time and verify each step.',
+            '3. **ORCHESTRATE** — Summarize what changed, what was verified, and the next action.',
+            '',
+            '_Tip: Start your next message with "Plan for: <goal>" to begin explicitly._',
+          ].filter(Boolean);
+          setMessages((prev) => [
+            ...prev,
+            { role: 'user', content: command },
+            { role: 'assistant', content: lines.join('\n') },
+          ]);
+          break;
+        }
         default:
           onSend(command, undefined);
       }
@@ -451,5 +500,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
     onDismissConflict,
     onPrefillConsumed,
     switchBackend,
+    setEditPrefill,
+    setLabel,
   };
 }

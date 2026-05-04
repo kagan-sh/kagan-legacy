@@ -1,5 +1,4 @@
 from contextlib import AbstractContextManager, suppress
-from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -9,19 +8,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from kagan.core.enums import Priority, TaskStatus
-
-
-class _TaskData(Protocol):
-    id: str
-    title: str
-    description: str
-    status: TaskStatus
-    priority: Priority
-    agent_backend: str | None
-    base_branch: str | None
-    launcher: str | None
-    acceptance_criteria: list[str]
-    review_approved: bool
+from kagan.tui.types import TaskData
 
 
 def _priority_label(priority: Priority) -> str:
@@ -43,7 +30,7 @@ def _status_label(status: TaskStatus) -> str:
 
 
 class TaskInspector(Widget):
-    task_data: reactive[_TaskData | None] = reactive(None)
+    task_data: reactive[TaskData | None] = reactive(None)
     is_open: reactive[bool] = reactive(False)
     message: reactive[str] = reactive("")
     message_level: reactive[str] = reactive("info")
@@ -98,7 +85,7 @@ class TaskInspector(Widget):
     def watch_is_open(self, is_open: bool) -> None:
         self.set_class(is_open, "is-open")
 
-    def watch_task_data(self, _: _TaskData | None) -> None:
+    def watch_task_data(self, _: TaskData | None) -> None:
         self._render_task_data()
 
     def watch_message(self, _: str) -> None:
@@ -111,7 +98,7 @@ class TaskInspector(Widget):
         with self._ignore_unmounted_children():
             self.query_one("#inspector-scroll", VerticalScroll).can_focus = False
 
-    def show_task(self, task: _TaskData) -> None:
+    def show_task(self, task: TaskData) -> None:
         self.task_data = task
         self.is_open = True
         self.call_after_refresh(self._scroll_to_top)
@@ -151,9 +138,11 @@ class TaskInspector(Widget):
         head.update(f"#{task.id[:8]} · {task.title}")
         status = _status_label(task.status)
         priority = _priority_label(task.priority)
-        branch = (task.base_branch or "-").strip() or "-"
-        backend = (task.agent_backend or "project default").strip() or "project default"
-        launcher = (task.launcher or "project default").strip() or "project default"
+        branch = (getattr(task, "base_branch", None) or "-").strip() or "-"
+        backend = (getattr(task, "agent_backend", None) or "project default").strip()
+        backend = backend or "project default"
+        launcher = (getattr(task, "launcher", None) or "project default").strip()
+        launcher = launcher or "project default"
         meta.update(
             f"Status: {status}   Priority: {priority}\n"
             f"Branch: {branch}   Launcher: {launcher}\n"
@@ -163,7 +152,8 @@ class TaskInspector(Widget):
         text = (task.description or "").strip() or "No description."
         description.update(text)
 
-        lines = [item.strip() for item in task.acceptance_criteria if item and item.strip()]
+        criteria_items = getattr(task, "acceptance_criteria", [])
+        lines = [item.strip() for item in criteria_items if item and item.strip()]
         if not lines:
             criteria.update("No acceptance criteria.")
         else:
@@ -174,11 +164,13 @@ class TaskInspector(Widget):
                 rendered = f"{rendered}\n- (+{extra} more)"
             criteria.update(rendered)
 
-        if task.status is TaskStatus.REVIEW and not task.acceptance_criteria:
+        if task.status is TaskStatus.REVIEW and not criteria_items:
             self.set_message(
                 "Review blocked: add acceptance criteria before merge.", level="warning"
             )
-        elif task.status is TaskStatus.REVIEW and not task.review_approved:
+        elif task.status is TaskStatus.REVIEW and not bool(
+            getattr(task, "review_approved", False)
+        ):
             self.set_message("Ready to approve.", level="info")
         else:
             self.clear_message()

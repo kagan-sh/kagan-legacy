@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from kagan.server._access import AccessTier
+    from kagan.server.mcp.server import ServerContext
 
 
 def event_to_wire(event: Any) -> dict[str, Any]:
@@ -146,7 +147,7 @@ def task_to_wire_dict(
     return resp.model_dump(mode="json")
 
 
-async def safe_diff_stats(ctx: Any, task_id: str) -> dict[str, int] | None:
+async def safe_diff_stats(ctx: ServerContext, task_id: str) -> dict[str, int] | None:
     """Fetch diff stats for a single task worktree; return None on transient failure."""
     with contextlib.suppress(KaganError, OSError, RuntimeError, AttributeError):
         stats = await ctx.client.worktrees.diff_stats(task_id)
@@ -155,7 +156,7 @@ async def safe_diff_stats(ctx: Any, task_id: str) -> dict[str, int] | None:
 
 
 async def review_diff_summaries(
-    ctx: Any, tasks: list[Any], runtime: dict[str, dict[str, Any]]
+    ctx: ServerContext, tasks: list[Any], runtime: dict[str, dict[str, Any]]
 ) -> dict[str, dict[str, int] | None]:
     """Compute diff stats only for review tasks with workspaces."""
     review_ids = [
@@ -174,7 +175,7 @@ async def review_diff_summaries(
 
 
 async def bulk_task_review_verdicts(
-    ctx: Any, task_ids: list[str]
+    ctx: ServerContext, task_ids: list[str]
 ) -> dict[str, list[dict[str, str | None]]]:
     """Latest verdict per criterion for each task, in a single DB round-trip.
 
@@ -239,7 +240,9 @@ async def bulk_task_review_verdicts(
         return {tid: [] for tid in unique_ids}
 
 
-async def task_wire_dict(ctx: Any, task_id: str, *, task: Any | None = None) -> dict[str, Any]:
+async def task_wire_dict(
+    ctx: ServerContext, task_id: str, *, task: Any | None = None
+) -> dict[str, Any]:
     """Load one task with the runtime fields used by board and SSE clients.
 
     Issues runtime + verdicts in parallel (and optionally diff stats) so an
@@ -273,7 +276,7 @@ async def task_wire_dict(ctx: Any, task_id: str, *, task: Any | None = None) -> 
 
 
 def _require_access(
-    ctx: Any,
+    ctx: ServerContext,
     *,
     operation: str | None = None,
     minimum_tier: AccessTier | None = None,

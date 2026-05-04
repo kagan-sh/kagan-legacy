@@ -10,8 +10,7 @@ Only public API from ``kagan.core.chat`` is used here; no ``_*`` imports.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -20,22 +19,13 @@ from kagan.core.chat import (
     TurnInProgressError,
     TurnStarted,
 )
-from tests.helpers.driver import KaganDriver
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from tests.helpers.driver import KaganDriver
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
-
-
-# ---------------------------------------------------------------------------
-# Fixture
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def board(tmp_path: Path) -> KaganDriver:
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Chat Test Project")
-    yield driver  # type: ignore[misc]
-    await driver.teardown()
 
 
 # ---------------------------------------------------------------------------

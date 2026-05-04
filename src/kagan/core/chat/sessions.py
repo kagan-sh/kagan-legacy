@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from pydantic import BaseModel
 from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
@@ -35,30 +36,51 @@ CHAT_SCOPE_PREFIX = "chat_scope_state_"
 CHAT_LAST_SESSION_PREFIX = "chat_last_session_"
 
 
-def chat_session_to_legacy_dict(
+class ChatSessionView(BaseModel):
+    """Typed projection of a ChatSession row plus its decoded message history.
+
+    Replaces the legacy ``dict[str, Any]`` that ``chat_session_to_legacy_dict``
+    used to return. All call sites that previously read fields via ``.get("key")``
+    now use attribute access. The model is intentionally mutable so that
+    ``ensure_session_title`` can update ``label`` in-place on the cached
+    instance stored in ``TuiOrchestratorSessionStore._sessions_by_key``.
+    """
+
+    id: str
+    label: str
+    source: str
+    agent_backend: str | None
+    project_id: str | None
+    updated_at: str
+    # Decoded message history as (role, content) pairs.
+    orchestrator_history: list[list[str]]
+    # Rendered lines shown in the REPL/TUI on session restore.
+    messages_rendered: list[str]
+
+
+def chat_session_to_view(
     row: ChatSession,
     messages: list[ChatMessage],
-) -> dict[str, Any]:
-    """Convert a ``(ChatSession, list[ChatMessage])`` pair into the legacy dict shape.
+) -> ChatSessionView:
+    """Project a ``(ChatSession, list[ChatMessage])`` pair into a typed view.
 
-    Several call sites (TUI orchestrator store, server SSE wire mapping, server
-    REST shape) consume the dict shape. Callers use ``client.chat_sessions.X``
-    for persistence and this helper for display serialization.
+    The view is the single source of truth for in-memory session state across
+    the TUI orchestrator store, CLI controller, and server transport.
     """
     history = [[m.role, m.content] for m in messages]
     updated_at = (
         row.updated_at.isoformat() if isinstance(row.updated_at, datetime) else str(row.updated_at)
     )
-    return {
-        "id": row.id,
-        "label": row.label,
-        "source": row.source,
-        "agent_backend": row.agent_backend,
-        "orchestrator_history": history,
-        "messages_rendered": [],
-        "updated_at": updated_at,
-        "project_id": row.project_id,
-    }
+    return ChatSessionView(
+        id=row.id,
+        label=row.label,
+        source=row.source,
+        agent_backend=row.agent_backend,
+        orchestrator_history=history,
+        messages_rendered=[],
+        updated_at=updated_at,
+        project_id=row.project_id,
+    )
 
 
 _SESSION_TITLE_MAX_LENGTH = 80

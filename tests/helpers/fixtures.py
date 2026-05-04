@@ -7,6 +7,14 @@ from tests.helpers.helpers import make_git_repo
 
 
 @pytest.fixture
+async def bare_board(tmp_path: Path) -> KaganDriver:
+    """KaganDriver with no project created — for project-management tests."""
+    driver = await KaganDriver.boot(tmp_path)
+    yield driver  # type: ignore[misc]
+    await driver.teardown()
+
+
+@pytest.fixture
 async def board(tmp_path: Path) -> KaganDriver:
     driver = await KaganDriver.boot(tmp_path)
     await driver.create_project("Test Project")

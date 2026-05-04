@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
 
 from textual import events
 from textual.app import ComposeResult
@@ -11,21 +10,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from kagan.core.enums import Priority, TaskStatus
-
-
-class _TaskData(Protocol):
-    id: str
-    title: str
-    description: str
-    priority: Priority
-    status: TaskStatus
-    review_approved: bool
-    acceptance_criteria: list[str]
-    has_active_session: bool
-    has_session_history: bool
-    active_launcher: str | None
-    latest_launcher: str | None
-
+from kagan.tui.types import TaskData
 
 _TITLE_MAX = 56
 _DESC_MAX = 64
@@ -145,7 +130,7 @@ class TaskCard(Widget):
     }
     """
 
-    task_data: reactive[_TaskData | None] = reactive(None, always_update=True)
+    task_data: reactive[TaskData | None] = reactive(None, always_update=True)
     selected: var[bool] = var(False, always_update=True)
 
     @dataclass
@@ -156,7 +141,7 @@ class TaskCard(Widget):
     class Opened(Message):
         task_id: str
 
-    def __init__(self, task: _TaskData, *, selected: bool = False) -> None:
+    def __init__(self, task: TaskData, *, selected: bool = False) -> None:
         super().__init__(id=f"card-{task.id}", classes="kanban-card")
         # Label refs — populated in compose(), updated incrementally.
         self._rail_label: Static | None = None
@@ -224,38 +209,40 @@ class TaskCard(Widget):
         return "priority-low"
 
     @staticmethod
-    def _indicator_state(task: _TaskData) -> tuple[str, str]:
+    def _indicator_state(task: TaskData) -> tuple[str, str]:
         status = task.status
-        if bool(task.review_approved) or status == TaskStatus.DONE:
+        if bool(getattr(task, "review_approved", False)) or status == TaskStatus.DONE:
             return ("●", "indicator-passed")
         if status == TaskStatus.REVIEW:
             return ("◉", "indicator-reviewing")
-        if task.has_active_session:
-            if task.active_launcher:
+        if bool(getattr(task, "has_active_session", False)):
+            active_launcher = getattr(task, "active_launcher", None)
+            if active_launcher:
                 return ("◉", "indicator-running-interactive")
             return ("◉", "indicator-running-managed")
-        if not task.has_session_history:
+        if not bool(getattr(task, "has_session_history", False)):
             return ("○", "indicator-not-started")
         if status == TaskStatus.IN_PROGRESS:
             return ("●", "indicator-idle")
         return ("●", "indicator-idle")
 
     @staticmethod
-    def _status_line(task: _TaskData) -> tuple[str, str]:
+    def _status_line(task: TaskData) -> tuple[str, str]:
         status = task.status
 
         if status == TaskStatus.DONE:
             return ("Done", "card-run-state run-state-done")
         if status == TaskStatus.REVIEW:
             return ("In review", "card-run-state run-state-review")
-        if task.has_active_session:
-            if task.active_launcher:
+        if bool(getattr(task, "has_active_session", False)):
+            active_launcher = getattr(task, "active_launcher", None)
+            if active_launcher:
                 return (
-                    f"Interactive session active ({task.active_launcher})",
+                    f"Interactive session active ({active_launcher})",
                     "card-run-state run-state-interactive-running",
                 )
             return ("Agent running", "card-run-state run-state-managed-running")
-        if not task.has_session_history:
+        if not bool(getattr(task, "has_session_history", False)):
             return ("Not started", "card-run-state run-state-not-started")
         return ("Ready", "card-run-state run-state-idle")
 
@@ -342,7 +329,7 @@ class TaskCard(Widget):
         self._update_aria_label()
         self._render_task()
 
-    def watch_task_data(self, _task: _TaskData | None) -> None:
+    def watch_task_data(self, _task: TaskData | None) -> None:
         self._update_aria_label()
         self._render_task()
 

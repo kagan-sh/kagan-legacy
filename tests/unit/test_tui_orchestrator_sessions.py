@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+from kagan.cli.chat._session_picker import chat_session_to_view
 
 
 async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
@@ -41,7 +41,7 @@ async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | Non
     pair = await client.chat_sessions.get_with_history(session_id)
     if pair is None:
         return None
-    return chat_session_to_legacy_dict(*pair)
+    return chat_session_to_view(*pair).model_dump()
 
 
 def _load_tui_orchestrator_sessions_module() -> Any:

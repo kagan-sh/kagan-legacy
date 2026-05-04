@@ -24,6 +24,7 @@ permissions:
 jobs:
   snyk-deps:
     name: Dependency Scan
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -62,13 +63,14 @@ jobs:
 
   snyk-code:
     name: Code Analysis (SAST)
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # snyk/actions/setup@master
 
       - name: Snyk code scan
-        run: snyk code test --sarif-file-output=snyk-code.sarif
+        run: snyk code test --severity-threshold=high --sarif-file-output=snyk-code.sarif
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 

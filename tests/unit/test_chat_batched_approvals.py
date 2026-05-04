@@ -217,12 +217,11 @@ async def test_batch_does_not_group_sequential_calls(
     monkeypatch.setattr(batch_module, "run_in_terminal", lambda fn: fn() if callable(fn) else None)
 
     t1 = asyncio.create_task(ui.handle_request(_make_request("fid-1", "seq_1"), session_id="s-1"))
-    await asyncio.sleep(0.040)
+    await asyncio.wait_for(t1, timeout=2.0)
     assert t1.done()
 
     t2 = asyncio.create_task(ui.handle_request(_make_request("fid-2", "seq_2"), session_id="s-1"))
-    await asyncio.sleep(0.040)
-    await t2
+    await asyncio.wait_for(t2, timeout=2.0)
 
     assert panel_render_count[0] == 0, "batch modal must not fire for N=1 windows"
     assert len(engine.resolve_calls) == 2

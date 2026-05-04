@@ -122,58 +122,55 @@ def acp_update_to_chat_event(update: Any) -> ChatEvent | None:
     Pure / side-effect-free — safe to call from any context. Returns ``None``
     for ACP updates that don't have a chat-level analogue (e.g. keepalive).
     Lifted from ``server._chat_routes._bridge_acp_update``.
+
+    Dispatches on the ``session_update`` literal that every ACP schema type
+    carries as its discriminator field.
     """
-    from acp.schema import (
-        AgentMessageChunk,
-        AgentThoughtChunk,
-    )
-    from acp.schema import ToolCallProgress as ACPToolCallProgress
-    from acp.schema import ToolCallStart as ACPToolCallStart
-    from acp.schema import UsageUpdate as ACPUsageUpdate
+    match getattr(update, "session_update", None):
+        case "agent_message_chunk":
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                text = getattr(content, "text", "") or ""
+                if text:
+                    return AssistantChunk(text=text, thought=False)
+            return None
 
-    if isinstance(update, AgentMessageChunk):
-        content = getattr(update, "content", None)
-        if content and getattr(content, "type", None) == "text":
-            text = getattr(content, "text", "") or ""
-            if text:
-                return AssistantChunk(text=text, thought=False)
-        return None
+        case "agent_thought_chunk":
+            content = getattr(update, "content", None)
+            if content and getattr(content, "type", None) == "text":
+                text = getattr(content, "text", "") or ""
+                if text:
+                    return AssistantChunk(text=text, thought=True)
+            return None
 
-    if isinstance(update, AgentThoughtChunk):
-        content = getattr(update, "content", None)
-        if content and getattr(content, "type", None) == "text":
-            text = getattr(content, "text", "") or ""
-            if text:
-                return AssistantChunk(text=text, thought=True)
-        return None
+        case "tool_call":
+            title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
+            tool_id = _coerce_tool_id(update)
+            args = _coerce_tool_args(update)
+            return ToolCallStart(
+                tool_id=tool_id,
+                title=str(title),
+                kind_hint=getattr(update, "kind", None),
+                args=args,
+            )
 
-    if isinstance(update, ACPToolCallStart):
-        title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
-        tool_id = _coerce_tool_id(update)
-        args = _coerce_tool_args(update)
-        return ToolCallStart(
-            tool_id=tool_id,
-            title=str(title),
-            kind_hint=getattr(update, "kind", None),
-            args=args,
-        )
+        case "tool_call_update":
+            tool_id = _coerce_tool_id(update)
+            status_raw = getattr(update, "status", None)
+            status = _normalize_tool_status(status_raw)
+            result = _coerce_tool_result(update)
+            return ToolCallProgress(tool_id=tool_id, status=status, result=result)
 
-    if isinstance(update, ACPToolCallProgress):
-        tool_id = _coerce_tool_id(update)
-        status_raw = getattr(update, "status", None)
-        status = _normalize_tool_status(status_raw)
-        result = _coerce_tool_result(update)
-        return ToolCallProgress(tool_id=tool_id, status=status, result=result)
+        case "usage_update":
+            return UsageUpdate(
+                used=getattr(update, "used", None),
+                size=getattr(update, "size", None),
+                cost=getattr(update, "cost", None),
+                cost_currency=getattr(update, "cost_currency", None),
+            )
 
-    if isinstance(update, ACPUsageUpdate):
-        return UsageUpdate(
-            used=getattr(update, "used", None),
-            size=getattr(update, "size", None),
-            cost=getattr(update, "cost", None),
-            cost_currency=getattr(update, "cost_currency", None),
-        )
-
-    return None
+        case _:
+            return None
 
 
 def _coerce_tool_id(update: Any) -> str:

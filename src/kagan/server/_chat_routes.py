@@ -34,18 +34,10 @@ from kagan.core import (
     resolve_default_agent_backend,
 )
 from kagan.core.chat import (
-    AssistantChunk,
-    AssistantMessagePersisted,
     ChatEvent,
     ChatSessionView,
     SpawnPerTurnACPFactory,
-    ToolCallProgress,
-    ToolCallStart,
-    TurnCancelled,
-    TurnDone,
-    TurnError,
     TurnInProgressError,
-    TurnStarted,
     chat_session_to_view,
 )
 from kagan.server._access import AccessTier, is_access_allowed
@@ -179,33 +171,35 @@ def _chat_event_to_sse_frame(event: ChatEvent) -> dict[str, Any] | None:
     Returns ``None`` for events that have no SSE analogue today — e.g.
     ``UsageUpdate``, ``PermissionRequest`` (handled by ACP-level routes).
     """
-    if isinstance(event, AssistantChunk):
-        frame: dict[str, Any] = {"t": "CHAT_CHUNK", "content": event.text}
-        if event.thought:
-            frame["thought"] = True
-        return frame
-    if isinstance(event, ToolCallStart):
-        return {"t": "CHAT_TOOL_START", "tool": event.title}
-    if isinstance(event, ToolCallProgress):
-        return {"t": "CHAT_TOOL_PROGRESS", "tool": event.tool_id, "status": event.status}
-    if isinstance(event, AssistantMessagePersisted):
-        return {
-            "t": "CHAT_ASSISTANT_MESSAGE",
-            "message_id": event.message_id,
-            "content": event.content,
-            "terminated": event.terminated,
-        }
-    if isinstance(event, TurnDone):
-        return {"t": "CHAT_DONE", "full_response": event.full_response}
-    if isinstance(event, TurnError):
-        return {"t": "CHAT_ERROR", "error": event.message}
-    if isinstance(event, TurnCancelled):
-        return {"t": "CHAT_TURN_TERMINATED", "reason": event.reason}
-    # TurnStarted is emitted as CHAT_TURN_STARTED at a different point in the
-    # producer (it carries by_source from the request), so we ignore it here.
-    if isinstance(event, TurnStarted):
-        return None
-    return None
+    match event.kind:
+        case "assistant_chunk":
+            frame: dict[str, Any] = {"t": "CHAT_CHUNK", "content": event.text}
+            if event.thought:
+                frame["thought"] = True
+            return frame
+        case "tool_call_start":
+            return {"t": "CHAT_TOOL_START", "tool": event.title}
+        case "tool_call_progress":
+            return {"t": "CHAT_TOOL_PROGRESS", "tool": event.tool_id, "status": event.status}
+        case "assistant_message":
+            return {
+                "t": "CHAT_ASSISTANT_MESSAGE",
+                "message_id": event.message_id,
+                "content": event.content,
+                "terminated": event.terminated,
+            }
+        case "done":
+            return {"t": "CHAT_DONE", "full_response": event.full_response}
+        case "error":
+            return {"t": "CHAT_ERROR", "error": event.message}
+        case "turn_cancelled":
+            return {"t": "CHAT_TURN_TERMINATED", "reason": event.reason}
+        case "turn_started":
+            # Emitted as CHAT_TURN_STARTED at a different point in the producer
+            # (it carries by_source from the request), so we ignore it here.
+            return None
+        case _:
+            return None
 
 
 # ---------------------------------------------------------------------------

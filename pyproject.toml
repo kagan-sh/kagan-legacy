@@ -412,7 +412,7 @@ root_package = "kagan"
 name = "kagan.tui must not import kagan.core private modules"
 type = "forbidden"
 source_modules = ["kagan.tui"]
-allow_indirect_imports = "true"
+allow_indirect_imports = true
 forbidden_modules = [
     "kagan.core._acp",
     "kagan.core._agent",
@@ -461,7 +461,7 @@ forbidden_modules = [
 name = "kagan.cli must not import kagan.core private modules"
 type = "forbidden"
 source_modules = ["kagan.cli"]
-allow_indirect_imports = "true"
+allow_indirect_imports = true
 forbidden_modules = [
     "kagan.core._acp",
     "kagan.core._agent",
@@ -510,7 +510,7 @@ forbidden_modules = [
 name = "kagan.server must not import kagan.core private modules"
 type = "forbidden"
 source_modules = ["kagan.server"]
-allow_indirect_imports = "true"
+allow_indirect_imports = true
 forbidden_modules = [
     "kagan.core._acp",
     "kagan.core._agent",
@@ -561,7 +561,7 @@ forbidden_modules = [
 name = "kagan.tui and kagan.cli must not import kagan.server private modules"
 type = "forbidden"
 source_modules = ["kagan.tui", "kagan.cli"]
-allow_indirect_imports = "true"
+allow_indirect_imports = true
 forbidden_modules = [
     "kagan.server._access",
     "kagan.server._analytics_routes",
@@ -585,7 +585,7 @@ forbidden_modules = [
 name = "kagan.server and kagan.tui must not import kagan.cli private modules"
 type = "forbidden"
 source_modules = ["kagan.server", "kagan.tui"]
-allow_indirect_imports = "true"
+allow_indirect_imports = true
 forbidden_modules = [
     "kagan.cli._bootstrap",
     "kagan.cli._doctor_output",

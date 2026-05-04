@@ -418,7 +418,7 @@ async def _task_events(
         payload_truncated = payload_size_bytes > _MAX_PAYLOAD_BYTES
 
         item: dict[str, Any] = {
-            "event_type": event.event_type.value,
+            "event_type": str(event.event_type),
             "payload_size_bytes": payload_size_bytes,
             "payload_truncated": payload_truncated,
             "payload_preview": preview,

@@ -184,7 +184,7 @@ class Tasks:
             except TimeoutError:
                 continue
 
-            if event.event_type is not SessionEventType.TASK_STATUS_CHANGED:
+            if event.event_type != SessionEventType.TASK_STATUS_CHANGED:
                 continue
 
             latest = await self.get(task_id)

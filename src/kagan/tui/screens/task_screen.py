@@ -907,9 +907,9 @@ class TaskScreen(Screen[None]):
         return self._worker_session_id
 
     def _track_session_event(
-        self, event_type: SessionEventType, event_session_id: str | None
+        self, event_type: str, event_session_id: str | None
     ) -> None:
-        if event_type is SessionEventType.AUTO_REVIEW_STARTED:
+        if event_type == SessionEventType.AUTO_REVIEW_STARTED:
             self._pending_reviewer_session_id = True
             return
         if event_session_id is None:

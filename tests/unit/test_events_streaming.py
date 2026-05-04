@@ -39,7 +39,7 @@ def test_enqueue_output_chunk_replaces_old_non_critical_event_when_queue_is_full
     events._enqueue_session_event(queue, incoming)
 
     stored = queue.get_nowait()
-    assert stored.event_type is SessionEventType.OUTPUT_CHUNK
+    assert stored.event_type == SessionEventType.OUTPUT_CHUNK
     assert stored.payload == {"text": "hello"}
 
 
@@ -92,7 +92,7 @@ async def test_emit_non_persistent_event_streams_without_db_write(
     )
 
     queued = queue.get_nowait()
-    assert emitted.event_type is SessionEventType.OUTPUT_CHUNK
+    assert emitted.event_type == SessionEventType.OUTPUT_CHUNK
     assert queued.payload == {"text": "live"}
 
 
@@ -131,7 +131,7 @@ async def test_stream_stops_after_terminal_event_without_db_polling(
     )
 
     event = await next_event_task
-    assert event.event_type is SessionEventType.AGENT_COMPLETED
+    assert event.event_type == SessionEventType.AGENT_COMPLETED
 
     with pytest.raises(StopAsyncIteration):
         await anext(stream)

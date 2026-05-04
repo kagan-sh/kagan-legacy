@@ -445,6 +445,10 @@ class Sessions:
             backend_spec = get_backend_spec(agent_backend)
 
             if backend_spec.has_capability(BackendCapability.ACP_STREAMING):
+                # Register the completion handler as an AgentEnd subscriber so
+                # that wait_idle() can synchronise callers waiting for the
+                # session to finish processing (settlement rule).
+                self._events.register_agent_end_subscriber(session_obj.id)
                 pid, reader_task = await spawn_agent_via_acp(
                     agent_backend,
                     Path(ws.worktree_path),
@@ -780,6 +784,11 @@ class Sessions:
                 )
                 return
             raise
+        finally:
+            # Release the settlement-rule counter registered before the agent
+            # started so that wait_idle() unblocks any caller waiting for this
+            # session to finish.
+            self._events.notify_agent_end_handled(session_id)
 
     async def _should_retry(self, task: Task, session_id: str) -> bool:
         """Run the task's success_command and retry if it fails. Returns True if retrying."""

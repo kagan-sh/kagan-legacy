@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useSessionStream } from '@/lib/hooks/use-session-stream';
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent } from '@kagan/shared-api-client';
 
 function dispatchSessionEvent(taskId: string, event: WireEvent) {
   window.dispatchEvent(

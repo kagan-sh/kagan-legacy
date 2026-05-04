@@ -13,6 +13,7 @@ import type {
   CreateTaskInput,
   DiffFile,
   DiffStats,
+  DoctorReportResponse,
   FsBrowseResponse,
   Mention,
   PreflightResponse,
@@ -42,7 +43,7 @@ import type {
   WireRepository,
   WireTask,
   WireTaskSession,
-} from '@/lib/api/types';
+} from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -699,7 +700,7 @@ export class KaganApiClient {
   // -- Doctor ---------------------------------------------------------------
 
   /** GET /api/doctor — run backend preflight checks, returns DoctorReportResponse */
-  async getDoctorReport(): Promise<import('@/lib/api/types').DoctorReportResponse> {
+  async getDoctorReport(): Promise<DoctorReportResponse> {
     return this.request('/api/doctor');
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WireChatSessionSummary } from "../api/types.js";
+import type { WireChatSessionSummary } from "@kagan/shared-api-client";
 import {
   isTaskSession,
   pickReusableChatSessionId,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TaskStatus, WireTask } from "../api/types.js";
+import type { TaskStatus, WireTask } from "@kagan/shared-api-client";
 import { groupTasksByStatus, sortTasksByTitle, TASK_COLUMN_LABELS } from "./board.tree.helpers.js";
 
 function task(id: string, title: string, status: TaskStatus): WireTask {

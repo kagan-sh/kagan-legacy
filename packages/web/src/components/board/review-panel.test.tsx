@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import { ReviewPanel } from '@/components/board/review-panel';
 import { mockCriterion } from '@/test/mocks';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 
 vi.mock('@/lib/api/client', () => ({
   apiClient: { reviewDecide: vi.fn().mockResolvedValue({}), runTask: vi.fn().mockResolvedValue({}), getTasks: vi.fn().mockResolvedValue([]) },

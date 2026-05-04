@@ -5,7 +5,7 @@
  * no equivalent in the shared wire surface (@kagan/shared-api-client).
  */
 
-import type { Priority, TaskStatus } from "./types.js";
+import type { Priority, TaskStatus } from "@kagan/shared-api-client";
 
 /** Launcher backends supported by the VS Code extension. */
 export type LauncherBackend =

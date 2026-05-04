@@ -3,7 +3,7 @@ import { FolderKanban, GitBranch, Plus, Trash2 } from 'lucide-react';
 import { useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import type { WireProject, WireRepository } from '@/lib/api/types';
+import type { WireProject, WireRepository } from '@kagan/shared-api-client';
 import { boardRepoFilterAtom, projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { CreateProjectDialog } from '@/components/layout/create-project-dialog';
 import { AddRepoDialog } from '@/components/layout/add-repo-dialog';

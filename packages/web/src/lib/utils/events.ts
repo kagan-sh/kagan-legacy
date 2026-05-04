@@ -1,4 +1,4 @@
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent } from '@kagan/shared-api-client';
 
 /** Merge and deduplicate wire events by ID, sorted chronologically. */
 export function mergeWireEvents(current: WireEvent[], incoming: WireEvent[]): WireEvent[] {

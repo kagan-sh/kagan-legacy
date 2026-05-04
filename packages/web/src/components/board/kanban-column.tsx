@@ -1,7 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { STATUS_LABELS, STATUS_COLORS } from '@/lib/utils/constants';
 import { TaskCard } from '@/components/board/task-card';
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';

@@ -4,7 +4,7 @@ import { Bot, ChevronRight, MessageSquare, Plus, ShieldCheck, Trash2 } from 'luc
 import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
-import type { WireChatSessionSummary } from '@/lib/api/types';
+import type { WireChatSessionSummary } from '@kagan/shared-api-client';
 import { tasksAtom } from '@/lib/atoms/board';
 import {
   rightRailChatSessionIdAtom,

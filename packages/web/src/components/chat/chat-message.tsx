@@ -1,4 +1,4 @@
-import type { WireChatMessage } from '@/lib/api/types';
+import type { WireChatMessage } from '@kagan/shared-api-client';
 import { Bot, User } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';

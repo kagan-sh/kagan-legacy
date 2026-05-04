@@ -1,4 +1,4 @@
-import type { AcceptanceCriterionResponse, WireChatSession, WireEvent, WireProject, WireRepository, WireTask } from '@/lib/api/types';
+import type { AcceptanceCriterionResponse, WireChatSession, WireEvent, WireProject, WireRepository, WireTask } from '@kagan/shared-api-client';
 
 let idCounter = 0;
 

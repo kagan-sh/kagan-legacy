@@ -5,7 +5,7 @@ import { ChatStreamEntries } from '@/components/chat/chat-stream-entries';
 import { ChatInputBar, type Attachment } from '@/components/chat/chat-input-bar';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import type { ChatStreamEntry } from '@/lib/atoms/chat';
-import type { WireChatMessage } from '@/lib/api/types';
+import type { WireChatMessage } from '@kagan/shared-api-client';
 
 // ---------------------------------------------------------------------------
 // Props

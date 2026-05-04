@@ -8,7 +8,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import type { WireDiffSummary, WireTask } from "@/lib/api/types";
+import type { WireDiffSummary, WireTask } from "@kagan/shared-api-client";
 import { parseUtc } from "@/lib/utils/time";
 import { CardPulse } from "@/components/board/card-pulse";
 import {

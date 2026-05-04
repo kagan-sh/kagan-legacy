@@ -2,7 +2,7 @@
 // "Readability counts." — async generator, no callbacks, no event bus.
 
 import * as vscode from "vscode";
-import type { SSEMessage } from "./types.js";
+import type { SSEMessage } from "@kagan/shared-api-client";
 
 export class SSEStream implements vscode.Disposable {
   private controller: AbortController | null = null;

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { COLUMN_ORDER } from '@/lib/utils/constants';
 import { hasOpenOverlay, isEditableTarget } from '@/lib/utils/dom';
 

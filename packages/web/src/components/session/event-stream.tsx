@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, BrainCircuit, ChevronRight, User, Wrench } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent } from '@kagan/shared-api-client';
 import { parseUtc, parseUtcMs } from '@/lib/utils/time';
 import { cn } from '@/lib/utils';
 import {

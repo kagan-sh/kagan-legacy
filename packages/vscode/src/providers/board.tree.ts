@@ -10,7 +10,7 @@ import {
   type TaskStatus,
   type Priority,
   type SSEMessage,
-} from "../api/types.js";
+} from "@kagan/shared-api-client";
 import { PRIORITY_ICONS, STATUS_ICONS } from "../api/local.js";
 import { groupTasksByStatus, sortTasksByTitle, TASK_COLUMN_LABELS } from "./board.tree.helpers.js";
 

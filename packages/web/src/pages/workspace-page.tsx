@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { toast } from 'sonner';
 import { MessageSquareText, Plus, Trash2 } from 'lucide-react';
-import type { WireChatSessionSummary } from '@/lib/api/types';
+import type { WireChatSessionSummary } from '@kagan/shared-api-client';
 import { apiClient } from '@/lib/api/client';
 import { tasksAtom } from '@/lib/atoms/board';
 import {

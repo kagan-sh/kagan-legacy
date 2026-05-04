@@ -10,7 +10,7 @@ import {
     X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
-import type { WireChatSession, WireChatSessionSummary } from "@/lib/api/types";
+import type { WireChatSession, WireChatSessionSummary } from "@kagan/shared-api-client";
 import { ChatView } from "@/components/chat/chat-view";
 import { ChatOverlayEmptyState } from "@/components/session/chat-overlay-empty-state";
 import { Button } from "@/components/ui/button";

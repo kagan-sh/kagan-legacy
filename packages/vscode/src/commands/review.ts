@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import type { BoardTreeProvider } from "../providers/board.tree.js";
 import type { ReviewCommentProvider } from "../providers/review.comments.js";
-import type { ReviewDecisionResponse } from "../api/types.js";
+import type { ReviewDecisionResponse } from "@kagan/shared-api-client";
 import { confirmAction, resolveTask, type TaskItem, withErrors } from "./common.js";
 
 function applyReviewResult(

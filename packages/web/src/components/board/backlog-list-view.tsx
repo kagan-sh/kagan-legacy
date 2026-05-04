@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router';
 import { STATUS_LABELS } from '@/lib/utils/constants';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { Panel } from '@/components/shared/workspace';
 
 interface BacklogListViewProps {

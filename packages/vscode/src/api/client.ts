@@ -28,7 +28,7 @@ import type {
   WireRepository,
   WireTask,
   WireTaskSession,
-} from "./types.js";
+} from "@kagan/shared-api-client";
 
 export class ApiError extends Error {
   constructor(

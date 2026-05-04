@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WireTask } from "../api/types.js";
+import type { WireTask } from "@kagan/shared-api-client";
 import { buildReviewDocument } from "./review.document.js";
 
 function task(overrides: Partial<WireTask> = {}): WireTask {

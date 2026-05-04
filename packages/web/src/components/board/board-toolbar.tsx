@@ -12,7 +12,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import type { TaskStatus } from '@/lib/api/types';
+import type { TaskStatus } from '@kagan/shared-api-client';
 
 type StatusFilterValue = TaskStatus | 'ALL';
 

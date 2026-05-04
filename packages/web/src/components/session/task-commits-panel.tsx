@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { InspectorSection } from '@/components/shared/workspace';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { TaskCommit } from '@/lib/api/types';
+import type { TaskCommit } from '@kagan/shared-api-client';
 
 const MAX_VISIBLE_COMMITS = 8;
 

@@ -39,7 +39,7 @@ import {
 } from '@/lib/atoms/ui';
 import { registerCommand } from '@/lib/commands/registry';
 import type { CommandAction } from '@/lib/commands/types';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 
 function toggleTheme(): void {
   const current = store.get(themeModeAtom);

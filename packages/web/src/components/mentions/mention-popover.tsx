@@ -15,7 +15,7 @@ import React, {
   useState,
 } from 'react';
 import { apiClient } from '@/lib/api/client';
-import type { Mention } from '@/lib/api/types';
+import type { Mention } from '@kagan/shared-api-client';
 
 const DEBOUNCE_MS = 200;
 

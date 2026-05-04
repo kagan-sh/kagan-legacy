@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bot, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { AgentBackend } from '@/lib/api/types';
+import type { AgentBackend } from '@kagan/shared-api-client';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';

@@ -9,7 +9,7 @@ import {
     useSensor,
     useSensors,
 } from "@dnd-kit/core";
-import type { TaskStatus, WireTask } from "@/lib/api/types";
+import type { TaskStatus, WireTask } from "@kagan/shared-api-client";
 import {
     COLUMN_ORDER,
     STATUS_LABELS,

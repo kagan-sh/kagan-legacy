@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { apiClient } from "@/lib/api/client";
-import type { WireChatSessionSummary } from "@/lib/api/types";
+import type { WireChatSessionSummary } from "@kagan/shared-api-client";
 import {
     fetchTasksAtom,
     projectSwitchVersionAtom,

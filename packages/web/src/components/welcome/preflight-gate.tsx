@@ -1,7 +1,7 @@
 import { useState, useEffect, useId, useCallback, useRef } from 'react';
 import { AlertTriangle, XCircle, Copy, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { DoctorCheckResponse, DoctorReportResponse } from '@/lib/api/types';
+import type { DoctorCheckResponse, DoctorReportResponse } from '@kagan/shared-api-client';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {

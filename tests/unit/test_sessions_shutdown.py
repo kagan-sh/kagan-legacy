@@ -27,6 +27,15 @@ class _FakeEvents:
     ) -> None:
         self.emitted.append((task_id, event_type, payload, session_id, persist))
 
+    def publish_board(self, event: Any) -> None:  # noqa: ANN401
+        pass
+
+    def notify_agent_end_handled(self, session_id: str) -> None:
+        pass
+
+    def register_agent_end_subscriber(self, session_id: str, count: int = 1) -> None:
+        pass
+
 
 async def _stub_get_task(_task_id: str) -> Any:
     raise AssertionError("_get_task should not run in this shutdown path")

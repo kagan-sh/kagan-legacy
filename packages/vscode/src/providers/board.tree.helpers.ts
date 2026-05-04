@@ -1,4 +1,4 @@
-import { TASK_COLUMNS, type TaskStatus, type WireTask } from "../api/types.js";
+import { TASK_COLUMNS, type TaskStatus, type WireTask } from "@kagan/shared-api-client";
 
 export const TASK_COLUMN_LABELS: Record<TaskStatus, string> = {
   BACKLOG: "Backlog",

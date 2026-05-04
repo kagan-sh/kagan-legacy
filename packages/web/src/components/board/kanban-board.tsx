@@ -31,7 +31,7 @@ import { BoardTaskInspector } from '@/components/board/board-task-inspector';
 import { BoardToolbar } from '@/components/board/board-toolbar';
 import { BacklogListView } from '@/components/board/backlog-list-view';
 import { apiClient } from '@/lib/api/client';
-import type { TaskStatus, WireTask } from '@/lib/api/types';
+import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { integrationImportOpenAtom } from '@/lib/atoms/ui';
 import { store } from '@/lib/atoms/store';
 import { toast } from 'sonner';

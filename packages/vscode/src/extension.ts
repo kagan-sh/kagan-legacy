@@ -19,7 +19,7 @@ import { DoctorStatusProvider } from "./providers/doctor.status.js";
 import { MentionCompletionProvider } from "./providers/mention-completion-provider.js";
 import { MentionLinkProvider } from "./providers/mention-link-provider.js";
 import { StatusBar } from "./status/bar.js";
-import { SSE_TYPE, type SSEMessage } from "./api/types.js";
+import { SSE_TYPE, type SSEMessage } from "@kagan/shared-api-client";
 import { LocalServerSupervisor } from "./server/supervisor.js";
 
 function readConnectionConfig(): { serverUrl: string; protocol: "http" | "https"; authToken: string } {

@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/render';
 import { TaskSidebar } from '@/components/board/task-sidebar';
 import { mockCriterion } from '@/test/mocks';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 
 describe('TaskSidebar', () => {
   it('shows review evidence and merge readiness when review is incomplete', () => {

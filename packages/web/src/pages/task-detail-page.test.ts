@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultTabForTask } from '@/pages/task-detail-page';
-import type { WireTask } from '@/lib/api/types';
+import type { WireTask } from '@kagan/shared-api-client';
 
 function makeTask(overrides: Partial<WireTask>): WireTask {
   return {

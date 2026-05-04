@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
-import type { AgentBackend, PreflightCheck, PreflightResponse } from '@/lib/api/types';
+import type { AgentBackend, PreflightCheck, PreflightResponse } from '@kagan/shared-api-client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

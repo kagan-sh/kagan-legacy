@@ -1,4 +1,4 @@
-import type { WireChatSessionSummary } from "../api/types.js";
+import type { WireChatSessionSummary } from "@kagan/shared-api-client";
 
 export interface StickyChatState {
   activeChatSessionId: string | null;

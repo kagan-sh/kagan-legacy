@@ -1,4 +1,4 @@
-import type { TaskStatus, WireEvent } from '@/lib/api/types';
+import type { TaskStatus, WireEvent } from '@kagan/shared-api-client';
 
 const TASK_STATUS_CHANGED = 'TASK_STATUS_CHANGED';
 

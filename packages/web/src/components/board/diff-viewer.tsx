@@ -9,7 +9,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { loadDiffViewMode, saveDiffViewMode, type DiffViewModePreference } from '@/lib/utils/storage';
 import { parseUnifiedDiff, languageFromPath } from '@/lib/utils/diff';
-import type { DiffStats, DiffFile } from '@/lib/api/types';
+import type { DiffStats, DiffFile } from '@kagan/shared-api-client';
 
 interface DiffViewerProps {
   taskId: string;

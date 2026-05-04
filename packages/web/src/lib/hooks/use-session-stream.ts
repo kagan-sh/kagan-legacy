@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { renderEvent } from '@/lib/api/event-rendering';
-import type { WireEvent } from '@/lib/api/types';
+import type { WireEvent } from '@kagan/shared-api-client';
 
 export type StreamedStatus =
   | 'running'

@@ -5,9 +5,9 @@ import * as vscode from "vscode";
 import type { KaganClient } from "../api/client.js";
 import { ApiError } from "../api/client.js";
 import type { SSEStream } from "../api/sse.js";
-import { SSE_TYPE, CHAT_WATCH_TYPE } from "../api/types.js";
+import { SSE_TYPE, CHAT_WATCH_TYPE } from "@kagan/shared-api-client";
 import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared-api-client";
-import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "../api/types.js";
+import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "@kagan/shared-api-client";
 import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 
 // ── Registration ───────────────────────────────────────────────────────────

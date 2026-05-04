@@ -16,7 +16,7 @@ import type {
   ProjectFolderResolutionResponse,
   WireProject,
   WireRepository,
-} from '@/lib/api/types';
+} from '@kagan/shared-api-client';
 import { isAuthenticatedAtom, retryHealthCheckAtom } from '@/lib/atoms/auth';
 import { projectSwitchVersionAtom } from '@/lib/atoms/board';
 import { Button } from '@/components/ui/button';

@@ -24,6 +24,7 @@ permissions:
 jobs:
   snyk-deps:
     name: Dependency Scan
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -62,6 +63,7 @@ jobs:
 
   snyk-code:
     name: Code Analysis (SAST)
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

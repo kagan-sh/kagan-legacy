@@ -17,8 +17,8 @@ export class StatusBar implements vscode.Disposable {
     this.item.show();
   }
 
-  showConnected(taskCounts: Record<string, number>): void {
-    const total = Object.values(taskCounts).reduce((sum, n) => sum + n, 0);
+  showConnected(taskCounts: Record<string, number | undefined>): void {
+    const total = (Object.values(taskCounts) as (number | undefined)[]).reduce<number>((sum, n) => sum + (n ?? 0), 0);
     this.item.text = `$(list-tree) Kagan: ${total} tasks`;
 
     const md = new vscode.MarkdownString();

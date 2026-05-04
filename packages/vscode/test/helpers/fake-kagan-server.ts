@@ -1,6 +1,6 @@
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { WireTask } from "../../src/api/types.js";
+import type { WireTask } from "@kagan/shared-api-client";
 
 export const TEST_SERVER_PORT = 47865;
 export const TEST_SERVER_URL = `http://127.0.0.1:${TEST_SERVER_PORT}`;

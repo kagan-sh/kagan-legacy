@@ -111,9 +111,9 @@ function describeHttpFailure(input: FailureContext): string {
 export class KaganApiClient {
   private _baseUrl: string;
   private _protocol: "http" | "https";
-  private _token: string | undefined;
+  protected _token: string | undefined;
   private _clientType: string;
-  private _fetchImpl: typeof fetch;
+  protected _fetchImpl: typeof fetch;
 
   constructor(config: KaganClientConfig) {
     this._baseUrl = normalizeBaseUrl(config.baseUrl);
@@ -162,16 +162,16 @@ export class KaganApiClient {
 
   // -- Core HTTP Methods ----------------------------------------------------
 
-  private getFullUrl(path: string): string {
+  protected getFullUrl(path: string): string {
     return `${this._protocol}://${this._baseUrl}${path}`;
   }
 
-  private getAuthHeaders(): Record<string, string> {
+  protected getAuthHeaders(): Record<string, string> {
     if (!this._token) return {};
     return { Authorization: `Bearer ${this._token}` };
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  protected async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await this._fetchImpl(this.getFullUrl(path), {
       method,
       headers: {
@@ -214,19 +214,19 @@ export class KaganApiClient {
     return envelope.data as T;
   }
 
-  private async get<T>(path: string): Promise<T> {
+  protected async get<T>(path: string): Promise<T> {
     return this.request<T>("GET", path);
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  protected async post<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("POST", path, body);
   }
 
-  private async patch<T>(path: string, body: unknown): Promise<T> {
+  protected async patch<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("PATCH", path, body);
   }
 
-  private async del<T>(path: string): Promise<T> {
+  protected async del<T>(path: string): Promise<T> {
     return this.request<T>("DELETE", path);
   }
 

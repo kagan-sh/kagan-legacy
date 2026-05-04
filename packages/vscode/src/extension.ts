@@ -64,6 +64,12 @@ export function activate(context: vscode.ExtensionContext): void {
     reviewDocumentProvider,
   );
 
+  const openInstallDocsCommand = vscode.commands.registerCommand("kagan.openInstallDocs", () => {
+    void vscode.env.openExternal(
+      vscode.Uri.parse("https://docs.kagan.sh/guides/vscode-extension/"),
+    );
+  });
+
   const connectCommand = vscode.commands.registerCommand("kagan.connect", async () => {
     await connect(
       client,
@@ -176,6 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
     boardView,
     diffRegistration,
     reviewRegistration,
+    openInstallDocsCommand,
     connectCommand,
     disconnectCommand,
     refreshCommand,

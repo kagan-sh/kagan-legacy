@@ -1,45 +1,39 @@
-import type {
-  AnalyticsExport,
-  BackendStats,
-  ChatAgentsResponse,
-  ChatMessageDetailResponse,
-  TurnStatusResponse,
-  ChatWatchEvent,
-  CreateTaskInput,
-  DiffFile,
-  DiffStats,
-  DoctorReportResponse,
-  Mention,
-  ReviewDecisionInput,
-  ReviewDecisionResponse,
-  ReviewStatusResponse,
-  RunTaskInput,
-  SearchMentionsInput,
-  SessionTimelineEntry,
-  SettingsResponse,
-  TaskStatus,
-  TaskWorktreeResponse,
-  TurnInProgressResponse,
-  UpdateTaskInput,
-  WireChatSession,
-  WireEnvelope,
-  WireEvent,
-  WireProject,
-  WireRepository,
-  WireTask,
-  WireTaskSession,
+import {
+  KaganApiClient,
+  ApiError,
+  type AnalyticsExport,
+  type BackendStats,
+  type ChatAgentsResponse,
+  type ChatMessageDetailResponse,
+  type TurnStatusResponse,
+  type ChatWatchEvent,
+  type CreateTaskInput,
+  type DiffFile,
+  type DiffStats,
+  type DoctorReportResponse,
+  type Mention,
+  type ReviewDecisionInput,
+  type ReviewDecisionResponse,
+  type ReviewStatusResponse,
+  type RunTaskInput,
+  type SearchMentionsInput,
+  type SessionTimelineEntry,
+  type SettingsResponse,
+  type TaskEventOptions,
+  type TaskStatus,
+  type TaskWorktreeResponse,
+  type TurnInProgressResponse,
+  type UpdateTaskInput,
+  type WireChatSession,
+  type WireChatSessionSummary,
+  type WireEvent,
+  type WireProject,
+  type WireRepository,
+  type WireTask,
+  type WireTaskSession,
 } from "@kagan/shared-api-client";
 
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly detail: string,
-    public readonly errorCode: string | null = null,
-  ) {
-    super(detail);
-    this.name = "ApiError";
-  }
-}
+export { ApiError };
 
 export interface KaganClientConfig {
   baseUrl: string;
@@ -47,224 +41,73 @@ export interface KaganClientConfig {
   token?: string;
 }
 
-export class KaganClient {
-  private token: string | undefined;
-
+/**
+ * VS Code KaganClient — extends the shared KaganApiClient.
+ *
+ * Inherits all HTTP plumbing (auth headers, envelope unwrapping, URL
+ * normalisation) from the shared class. This subclass adds:
+ *   - chatStream() with 409 TURN_IN_PROGRESS special handling
+ *   - watchChatSession() with reconnection and catch-up logic
+ *   - VS Code-specific endpoints (analytics, mentions, doctor, github)
+ *   - streamRequest() — raw fetch helper for SSE paths that must bypass
+ *     envelope unwrapping (streaming SSE, /health raw status)
+ */
+export class KaganClient extends KaganApiClient {
   constructor(
-    private baseUrl: string,
-    private protocol: "http" | "https" = "http",
+    baseUrl: string,
+    protocol: "http" | "https" = "http",
     token?: string,
   ) {
-    this.baseUrl = normalizeBaseUrl(baseUrl);
-    this.token = token;
+    super({ baseUrl, protocol, token, clientType: "vscode" });
   }
 
-  /**
-   * Create a KaganClient from a config object.
-   * Enables clean separation of protocol/auth concerns.
-   */
   static fromConfig(config: KaganClientConfig): KaganClient {
     return new KaganClient(config.baseUrl, config.protocol ?? "http", config.token);
   }
 
-  getBaseUrl(): string {
-    return `${this.protocol}://${this.baseUrl}`;
+  // ── Chat turn-level operations ─────────────────────────────────────────
+
+  /** GET /api/chat/{sessionId}/turn-status */
+  getChatTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
+    return this.get<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
   }
 
-  getHostPort(): string {
-    return this.baseUrl;
+  /** GET /api/chat/sessions/{sessionId}/messages?after_id=N */
+  getChatMessages(sessionId: string, afterId: number): Promise<ChatMessageDetailResponse[]> {
+    return this.get<ChatMessageDetailResponse[]>(
+      `/api/chat/sessions/${sessionId}/messages?after_id=${afterId}`,
+    );
   }
 
-  setBaseUrl(url: string): void {
-    this.baseUrl = normalizeBaseUrl(url);
-  }
-
-  setToken(token: string | undefined): void {
-    this.token = token;
-  }
-
-  setProtocol(protocol: "http" | "https"): void {
-    this.protocol = protocol;
-  }
-
-  /**
-   * Get the full URL with protocol prefix.
-   * Always uses configured protocol — never auto-upgrades to HTTPS.
-   */
-  private getFullUrl(path: string): string {
-    return `${this.protocol}://${this.baseUrl}${path}`;
-  }
-
-  getTasks(status?: TaskStatus): Promise<WireTask[]> {
-    const params = new URLSearchParams();
-    if (status) {
-      params.set("status", status);
-    }
-    return this.get<WireTask[]>(`/api/tasks${withQuery(params)}`);
-  }
-
-  getTask(taskId: string): Promise<WireTask> {
-    return this.get<WireTask>(`/api/tasks/${taskId}`);
-  }
-
-  createTask(input: CreateTaskInput): Promise<WireTask> {
-    return this.post<WireTask>("/api/tasks", input);
-  }
-
-  updateTask(taskId: string, input: UpdateTaskInput): Promise<WireTask> {
-    return this.patch<WireTask>(`/api/tasks/${taskId}`, input);
-  }
-
-  deleteTask(taskId: string): Promise<{ task_id: string; deleted: boolean }> {
-    return this.del<{ task_id: string; deleted: boolean }>(`/api/tasks/${taskId}`);
-  }
-
-  transitionStatus(taskId: string, status: TaskStatus): Promise<WireTask> {
-    return this.post<WireTask>(`/api/tasks/${taskId}/status`, { status });
-  }
-
-  runTask(taskId: string, input?: RunTaskInput): Promise<WireTask> {
-    return this.post<WireTask>(`/api/tasks/${taskId}/run`, input ?? {});
-  }
-
-  cancelTask(taskId: string): Promise<WireTask> {
-    return this.post<WireTask>(`/api/tasks/${taskId}/cancel`, {});
-  }
-
-  sendFollowUp(taskId: string, text: string): Promise<WireTask> {
-    return this.post<WireTask>(`/api/tasks/${taskId}/follow-up`, { text });
-  }
-
-  getTaskCounts(): Promise<Record<string, number>> {
-    return this.get<Record<string, number>>("/api/tasks/counts");
-  }
-
-  getTaskEvents(
-    taskId: string,
-    options?: {
-      limit?: number;
-      offset?: number;
-      tail?: boolean;
-      before?: string;
-      before_id?: string;
-      after?: string;
-      after_id?: string;
-      session_id?: string;
-    },
-  ): Promise<WireEvent[]> {
-    const params = new URLSearchParams();
-    if (options?.limit !== undefined) params.set("limit", String(options.limit));
-    if (options?.offset !== undefined) params.set("offset", String(options.offset));
-    if (options?.tail) params.set("tail", "1");
-    if (options?.before) params.set("before", options.before);
-    if (options?.before_id) params.set("before_id", options.before_id);
-    if (options?.after) params.set("after", options.after);
-    if (options?.after_id) params.set("after_id", options.after_id);
-    if (options?.session_id) params.set("session_id", options.session_id);
-    return this.get<WireEvent[]>(`/api/tasks/${taskId}/events${withQuery(params)}`);
-  }
-
-  getTaskSessions(taskId: string): Promise<WireTaskSession[]> {
-    return this.get<WireTaskSession[]>(`/api/tasks/${taskId}/sessions`);
-  }
-
-  async getDiffStats(taskId: string): Promise<DiffStats> {
-    const stats = await this.get<{
-      files_changed?: number;
-      files?: number;
-      insertions?: number;
-      deletions?: number;
-    }>(`/api/tasks/${taskId}/diff`);
-
-    return {
-      files_changed: stats.files_changed ?? stats.files ?? 0,
-      insertions: stats.insertions ?? 0,
-      deletions: stats.deletions ?? 0,
-    };
-  }
-
-  async getDiffFiles(taskId: string): Promise<DiffFile[]> {
-    const payload = await this.get<{ task_id: string; files: DiffFile[] }>(`/api/tasks/${taskId}/diff/files`);
-    return payload.files ?? [];
-  }
-
-  async getDiffRaw(taskId: string): Promise<string> {
-    const payload = await this.get<{ task_id: string; diff: string }>(`/api/tasks/${taskId}/diff/raw`);
-    return payload.diff ?? "";
-  }
-
-  getTaskWorktree(taskId: string): Promise<TaskWorktreeResponse> {
-    return this.get<TaskWorktreeResponse>(`/api/tasks/${taskId}/worktree`);
-  }
-
-  getReview(taskId: string): Promise<ReviewStatusResponse> {
-    return this.get<ReviewStatusResponse>(`/api/tasks/${taskId}/review`);
-  }
-
-  reviewDecide(taskId: string, input: ReviewDecisionInput): Promise<ReviewDecisionResponse> {
-    return this.post<ReviewDecisionResponse>(`/api/tasks/${taskId}/review/decide`, input);
-  }
-
-  getProjects(): Promise<WireProject[]> {
-    return this.get<WireProject[]>("/api/projects");
-  }
-
-  getProjectRepos(projectId: string): Promise<WireRepository[]> {
-    return this.get<WireRepository[]>(`/api/projects/${projectId}/repos`);
-  }
-
-  getSettings(): Promise<SettingsResponse> {
-    return this.get<SettingsResponse>("/api/settings");
-  }
-
-  updateSettings(input: SettingsResponse): Promise<SettingsResponse> {
-    return this.post<SettingsResponse>("/api/settings", input);
-  }
-
-  /** GET /api/chat/agents */
-  getChatAgents(): Promise<ChatAgentsResponse> {
-    return this.get<ChatAgentsResponse>("/api/chat/agents");
-  }
-
-  // ── Orchestrator chat ──────────────────────────────────────────────────
-
-  getChatSessions(): Promise<WireChatSession[]> {
-    return this.get<WireChatSession[]>("/api/chat/sessions");
-  }
-
-  createChatSession(
-    label?: string,
-    agentBackend?: string,
-    source: string = "vscode",
-  ): Promise<WireChatSession> {
-    return this.post<WireChatSession>("/api/chat/sessions", {
-      label: label ?? null,
-      agent_backend: agentBackend ?? null,
-      source,
-    });
+  /** POST /api/chat/{sessionId}/interrupt */
+  interruptChatTurn(sessionId: string, reason: "user" | "takeover"): Promise<void> {
+    return this.post<void>(`/api/chat/${sessionId}/interrupt`, { reason });
   }
 
   /**
    * POST to chat stream endpoint and return the raw SSE Response for streaming.
-   * Throws ApiError for non-2xx responses EXCEPT 409 (TURN_IN_PROGRESS) — that
-   * is returned as a TurnInProgressResponse via a rejected ApiError with
-   * errorCode === "TURN_IN_PROGRESS". Callers should check for that code.
+   *
+   * Bypasses envelope unwrapping because streaming responses are raw SSE frames,
+   * not JSON envelopes. Uses streamRequest() to add auth headers.
+   *
+   * Throws ApiError for non-2xx responses EXCEPT 409 (TURN_IN_PROGRESS) —
+   * that is thrown as ApiError with errorCode === "TURN_IN_PROGRESS". Callers
+   * should check for that code before showing an interrupt prompt.
    */
-  async chatStream(
+  override async chatStream(
     sessionId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const response = await fetch(this.getFullUrl(`/api/chat/${sessionId}/stream`), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        ...this.getAuthHeaders(),
+    const response = await this.streamRequest(
+      this.getFullUrl(`/api/chat/${sessionId}/stream`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ text }),
+        signal,
       },
-      body: JSON.stringify({ text }),
-      signal,
-    });
+    );
 
     if (response.status === 409) {
       const rawBody = await response.text();
@@ -338,12 +181,10 @@ export class KaganClient {
       const { signal } = controller;
 
       try {
-        const response = await fetch(
+        // Streaming SSE — bypasses envelope unwrapping, auth added by streamRequest()
+        const response = await this.streamRequest(
           this.getFullUrl(`/api/chat/sessions/${sessionId}/watch`),
-          {
-            headers: { Accept: "text/event-stream", ...this.getAuthHeaders() },
-            signal,
-          },
+          { headers: { Accept: "text/event-stream" }, signal },
         );
 
         if (!response.ok || !response.body) {
@@ -399,32 +240,10 @@ export class KaganClient {
     };
   }
 
-  /** POST /api/chat/{sessionId}/interrupt */
-  interruptChatTurn(sessionId: string, reason: "user" | "takeover"): Promise<void> {
-    return this.post<void>(`/api/chat/${sessionId}/interrupt`, { reason });
-  }
-
-  /** GET /api/chat/sessions/{sessionId}/messages?after_id=N */
-  getChatMessages(sessionId: string, afterId: number): Promise<ChatMessageDetailResponse[]> {
-    return this.get<ChatMessageDetailResponse[]>(
-      `/api/chat/sessions/${sessionId}/messages?after_id=${afterId}`,
-    );
-  }
-
-  /** GET /api/chat/{sessionId}/turn-status */
-  getChatTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
-    return this.get<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
-  }
-
-  /** GET /api/chat/sessions/{sessionId} */
-  getChatSession(sessionId: string): Promise<WireChatSession> {
-    return this.get<WireChatSession>(`/api/chat/sessions/${sessionId}`);
-  }
-
-  // ── Analytics ──────────────────────────────────────────────────────
+  // ── Analytics ──────────────────────────────────────────────────────────
 
   getBackendStats(params?: { days?: number }): Promise<BackendStats[]> {
-    const query = params?.days ? `?days=${params.days}` : '';
+    const query = params?.days ? `?days=${params.days}` : "";
     return this.get<BackendStats[]>(`/api/analytics/backend-stats${query}`);
   }
 
@@ -434,9 +253,11 @@ export class KaganClient {
   }
 
   getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
-    const query = params?.days ? `?days=${params.days}` : '';
+    const query = params?.days ? `?days=${params.days}` : "";
     return this.get<AnalyticsExport>(`/api/analytics/export${query}`);
   }
+
+  // ── Mentions ───────────────────────────────────────────────────────────
 
   /** GET /api/mentions/search?project_id=&q=&limit= */
   async searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
@@ -449,6 +270,8 @@ export class KaganClient {
     );
     return envelope.mentions;
   }
+
+  // ── GitHub integration ─────────────────────────────────────────────────
 
   /** GET /api/integrations/github/preflight */
   getGithubPreflight(): Promise<{ id: string; checks: Array<{ ok: boolean; message: string; fix_hint: string | null }>; ready: boolean }> {
@@ -480,13 +303,19 @@ export class KaganClient {
     return this.post("/api/integrations/github/sync", config);
   }
 
-  async ping(): Promise<boolean> {
+  // ── Health ─────────────────────────────────────────────────────────────
+
+  /**
+   * GET /health — connectivity check.
+   *
+   * Bypasses envelope unwrapping via streamRequest() so the raw HTTP status
+   * code is inspectable even when the server returns a non-JSON body. Auth
+   * headers are still sent via streamRequest().
+   */
+  override async ping(): Promise<boolean> {
     try {
-      const response = await fetch(this.getFullUrl("/health"), {
-        headers: {
-          Accept: "application/json",
-          ...this.getAuthHeaders(),
-        },
+      const response = await this.streamRequest(this.getFullUrl("/health"), {
+        headers: { Accept: "application/json" },
       });
       return response.ok;
     } catch {
@@ -494,113 +323,57 @@ export class KaganClient {
     }
   }
 
-  async verifyApi(): Promise<void> {
-    await this.getSettings();
-  }
-
   getDoctor(): Promise<DoctorReportResponse> {
     return this.get<DoctorReportResponse>("/api/doctor");
   }
 
-  private async get<T>(path: string): Promise<T> {
-    return this.request<T>("GET", path);
-  }
+  // ── Private ────────────────────────────────────────────────────────────
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>("POST", path, body);
-  }
-
-  private async patch<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>("PATCH", path, body);
-  }
-
-  private async del<T>(path: string): Promise<T> {
-    return this.request<T>("DELETE", path);
-  }
-
-  private getAuthHeaders(): Record<string, string> {
-    if (!this.token) return {};
-    return { Authorization: `Bearer ${this.token}` };
-  }
-
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(this.getFullUrl(path), {
-      method,
-      headers: {
-        Accept: "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...this.getAuthHeaders(),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
+  /**
+   * Raw fetch with auth headers appended — for streaming paths (SSE, /health)
+   * that must bypass the envelope-unwrapping request() pipeline.
+   */
+  private async streamRequest(url: string, init?: RequestInit): Promise<Response> {
+    return this._fetchImpl(url, {
+      ...init,
+      headers: { ...init?.headers, ...this.getAuthHeaders() },
     });
-
-    const rawBody = await response.text();
-    let envelope: WireEnvelope<T> | null = null;
-    try {
-      envelope = rawBody ? (JSON.parse(rawBody) as WireEnvelope<T>) : null;
-    } catch {
-      envelope = null;
-    }
-
-    if (!response.ok) {
-      const detail = describeHttpFailure({
-        baseUrl: this.baseUrl,
-        path,
-        status: response.status,
-        statusText: response.statusText,
-        envelopeError: envelope?.error ?? null,
-        rawBody,
-      });
-      throw new ApiError(
-        response.status,
-        detail,
-        envelope?.error_code ?? null,
-      );
-    }
-
-    if (!envelope?.ok || envelope.data == null) {
-      throw new ApiError(
-        response.status,
-        envelope?.error ?? "Unknown API error",
-        envelope?.error_code ?? null,
-      );
-    }
-
-    return envelope.data as T;
   }
 }
 
-function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/+$/, "");
-}
+// ── Unused import aliases kept for caller compatibility ────────────────────
+// All types are re-exported via the `import ... from "@kagan/shared-api-client"` above.
+// Callers that did `import { ApiError } from "../api/client.js"` still work via the re-export.
 
-function withQuery(params: URLSearchParams): string {
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
-function describeHttpFailure(input: {
-  baseUrl: string;
-  path: string;
-  status: number;
-  statusText: string;
-  envelopeError: string | null;
-  rawBody: string;
-}): string {
-  const rawDetail =
-    input.envelopeError !== null
-      ? input.envelopeError
-      : input.rawBody.trim() || input.statusText || `HTTP ${input.status}`;
-  const looksLikeWrongServer =
-    input.path.startsWith("/api/") &&
-    (input.status === 404 ||
-      input.status === 405 ||
-      input.status === 501 ||
-      /unsupported method|method not allowed|not found/i.test(rawDetail));
-
-  if (!looksLikeWrongServer) {
-    return rawDetail;
-  }
-
-  return `Server at ${input.baseUrl} does not look like a Kagan API (${rawDetail}). Check kagan.serverUrl and kagan.protocol.`;
-}
+export type {
+  AnalyticsExport,
+  BackendStats,
+  ChatAgentsResponse,
+  ChatMessageDetailResponse,
+  TurnStatusResponse,
+  ChatWatchEvent,
+  CreateTaskInput,
+  DiffFile,
+  DiffStats,
+  DoctorReportResponse,
+  Mention,
+  ReviewDecisionInput,
+  ReviewDecisionResponse,
+  ReviewStatusResponse,
+  RunTaskInput,
+  SearchMentionsInput,
+  SessionTimelineEntry,
+  SettingsResponse,
+  TaskEventOptions,
+  TaskStatus,
+  TaskWorktreeResponse,
+  TurnInProgressResponse,
+  UpdateTaskInput,
+  WireChatSession,
+  WireChatSessionSummary,
+  WireEvent,
+  WireProject,
+  WireRepository,
+  WireTask,
+  WireTaskSession,
+};

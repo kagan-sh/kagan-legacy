@@ -202,6 +202,7 @@ from kagan.core.models import (
     TaskNote,
     Worktree,
 )
+from kagan.core.transitions import IllegalTransition, transition_session, transition_task
 
 __all__ = [
     "ACP_TIMEOUT_HINT",
@@ -258,6 +259,7 @@ __all__ = [
     "ContextCompactor",
     "DBWatcher",
     "EnvCheckResult",
+    "IllegalTransition",
     "InjectionDetector",
     "InsightCategory",
     "InvalidTransitionError",
@@ -383,6 +385,8 @@ __all__ = [
     "set_criterion_verdict",
     "set_repo_default_branch",
     "set_settings",
+    "transition_session",
+    "transition_task",
     "utc_iso",
     "verify_hint_for",
     "write_prompt_file",

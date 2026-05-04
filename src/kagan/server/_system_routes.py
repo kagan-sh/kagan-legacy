@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import JSONResponse, Response
 
+    from kagan.server.mcp.server import ServerContext
+
 _DEFAULT_WIP_LIMITS = {
     TaskStatus.BACKLOG.value: 0,
     TaskStatus.IN_PROGRESS.value: 4,
@@ -64,14 +66,14 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/settings", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_settings(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_settings(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         settings = await ctx.client.settings.get()
         return _ok(settings)
 
     @mcp.custom_route("/api/settings", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def set_settings(request: Request, *, ctx: Any) -> JSONResponse:
+    async def set_settings(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Settings changes", minimum_tier=AccessTier.ADMIN
         )
@@ -87,7 +89,7 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/settings/resolved", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_resolved_settings(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_resolved_settings(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         settings = await ctx.client.settings.get()
 
         from kagan.core.git import get_git_user_identity
@@ -118,7 +120,7 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/fs/browse", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def browse_filesystem(request: Request, *, ctx: Any) -> JSONResponse:
+    async def browse_filesystem(request: Request, *, ctx: ServerContext) -> JSONResponse:
         import asyncio
 
         from kagan.server.responses import FsBrowseResponse, FsEntryResponse
@@ -235,7 +237,7 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/preflight", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_preflight(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_preflight(request: Request, *, ctx: ServerContext) -> JSONResponse:
         agent_backend = request.query_params.get("agent_backend")
         checks = await ctx.client.preflight(agent_backend=agent_backend)
         serialized = [
@@ -252,7 +254,7 @@ def register_system_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/events/stream", methods=["GET"])
     @require_context(mcp)
-    async def event_stream(request: Request, *, ctx: Any) -> Response:
+    async def event_stream(request: Request, *, ctx: ServerContext) -> Response:
         """SSE endpoint — streams board + session events to the client."""
         client_type = (
             sanitize_presence_text(
@@ -275,7 +277,7 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/presence", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_presence(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_presence(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         """List connected clients with recent heartbeats."""
         tracker = getattr(ctx, "presence", None)
         if tracker is None:
@@ -285,7 +287,7 @@ def register_system_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/presence/heartbeat", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def presence_heartbeat(request: Request, *, ctx: Any) -> JSONResponse:
+    async def presence_heartbeat(request: Request, *, ctx: ServerContext) -> JSONResponse:
         """Register or update a client's presence."""
         tracker = getattr(ctx, "presence", None)
         if tracker is None:

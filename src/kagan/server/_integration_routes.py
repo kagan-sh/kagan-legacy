@@ -13,7 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from kagan.server._access import AccessTier
 from kagan.server._helpers import (
@@ -29,13 +29,15 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from kagan.server.mcp.server import ServerContext
 
-async def _resolve_selected_repo_path(ctx: Any) -> Path | None:
+
+async def _resolve_selected_repo_path(ctx: ServerContext) -> Path | None:
     settings = await ctx.client.settings.get()
     return await ctx.client.projects.resolve_repo_path(settings=settings)
 
 
-async def _handle_mentions_search(request: Request, ctx: Any) -> JSONResponse:
+async def _handle_mentions_search(request: Request, ctx: ServerContext) -> JSONResponse:
     """Search kagan tasks + GitHub issues for #-mention autocomplete.
 
     Query params: ``project_id`` (defaults to active project), ``q`` (required),
@@ -72,7 +74,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_integrations(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_integrations(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         from kagan.core.integrations import all_enabled
 
         integrations = all_enabled()
@@ -81,7 +83,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations/{id}/preflight", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def integration_preflight(request: Request, *, ctx: Any) -> JSONResponse:
+    async def integration_preflight(request: Request, *, ctx: ServerContext) -> JSONResponse:
         from kagan.core.integrations import all_enabled
 
         integration_id = cast("str", request.path_params["id"])
@@ -110,7 +112,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations/{id}/detect-repo", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def integration_detect_repo(request: Request, *, ctx: Any) -> JSONResponse:
+    async def integration_detect_repo(request: Request, *, ctx: ServerContext) -> JSONResponse:
         from kagan.core.integrations import all_enabled
 
         integration_id = cast("str", request.path_params["id"])
@@ -145,7 +147,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations/{id}/preview", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def integration_preview(request: Request, *, ctx: Any) -> JSONResponse:
+    async def integration_preview(request: Request, *, ctx: ServerContext) -> JSONResponse:
         from kagan.core.integrations import all_enabled
         from kagan.core.integrations.github import (
             canonical_repo_slug,
@@ -197,7 +199,7 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/integrations/{id}/sync", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def integration_sync(request: Request, *, ctx: Any) -> JSONResponse:
+    async def integration_sync(request: Request, *, ctx: ServerContext) -> JSONResponse:
         from kagan.core.integrations import all_enabled
         from kagan.core.integrations.github import (
             GitHubConfig,
@@ -264,5 +266,5 @@ def register_integration_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/mentions/search", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def mentions_search(request: Request, *, ctx: Any) -> JSONResponse:
+    async def mentions_search(request: Request, *, ctx: ServerContext) -> JSONResponse:
         return await _handle_mentions_search(request, ctx)

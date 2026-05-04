@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from kagan.server.mcp.server import ServerContext
+
 
 def _project_dict(project: Any, *, active: bool = True) -> dict[str, Any]:
     resp = ProjectResponse.model_validate(project)
@@ -41,7 +43,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_projects(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_projects(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         projects = await ctx.client.projects.list()
         active_project_id = ctx.client.active_project_id
         return _ok(
@@ -51,7 +53,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/resolve-folder", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def resolve_project_folder(request: Request, *, ctx: Any) -> JSONResponse:
+    async def resolve_project_folder(request: Request, *, ctx: ServerContext) -> JSONResponse:
         raw_path = request.query_params.get("path")
         target = Path(raw_path).expanduser() if raw_path else Path.cwd()
         resolution = await ctx.client.projects.inspect_folder(target)
@@ -64,7 +66,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def create_project(request: Request, *, ctx: Any) -> JSONResponse:
+    async def create_project(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Project creation", minimum_tier=AccessTier.STANDARD
         )
@@ -77,7 +79,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/{project_id}/activate", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def activate_project(request: Request, *, ctx: Any) -> JSONResponse:
+    async def activate_project(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Project activation", minimum_tier=AccessTier.STANDARD
         )
@@ -90,7 +92,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/{project_id}", methods=["DELETE"])
     @require_context(mcp)
     @handle_errors
-    async def delete_project(request: Request, *, ctx: Any) -> JSONResponse:
+    async def delete_project(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Project deletion", minimum_tier=AccessTier.ADMIN
         )
@@ -103,7 +105,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/{project_id}/repos", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_project_repos(request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_project_repos(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = cast("str", request.path_params["project_id"])
         repos = await ctx.client.projects.repos(project_id)
         settings = await ctx.client.settings.get()
@@ -113,7 +115,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/{project_id}/repos", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def add_project_repo(request: Request, *, ctx: Any) -> JSONResponse:
+    async def add_project_repo(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Repository linking", minimum_tier=AccessTier.STANDARD
         )
@@ -127,7 +129,7 @@ def register_project_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/projects/{project_id}/repos/{repo_id}/select", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def select_project_repo(request: Request, *, ctx: Any) -> JSONResponse:
+    async def select_project_repo(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Repository selection", minimum_tier=AccessTier.STANDARD
         )

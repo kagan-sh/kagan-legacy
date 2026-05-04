@@ -59,6 +59,8 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
 
+    from kagan.server.mcp.server import ServerContext
+
 # ---------------------------------------------------------------------------
 # /watch fanout
 # ---------------------------------------------------------------------------
@@ -212,7 +214,7 @@ def _emit(frame: dict[str, Any]) -> str:
 
 
 async def _sse_stream(
-    ctx: Any,
+    ctx: ServerContext,
     session_id: str,
     session: ChatSessionView,
     text: str,
@@ -371,7 +373,7 @@ async def _sse_stream(
 # ---------------------------------------------------------------------------
 
 
-def _teardown_session_state(ctx: Any, session_id: str) -> None:
+def _teardown_session_state(ctx: ServerContext, session_id: str) -> None:
     """Clear per-session transport state and ask the engine to detach."""
     _chat_subscribers.pop(session_id, None)
     engine = getattr(ctx.client, "chat", None)
@@ -381,7 +383,7 @@ def _teardown_session_state(ctx: Any, session_id: str) -> None:
             asyncio.get_running_loop().create_task(engine.detach(session_id))
 
 
-async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
+async def _patch_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
     """PATCH handler — metadata-only update for a chat session."""
     forbidden = _require_access(
         ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
@@ -414,7 +416,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_sessions(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_sessions(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         source = _request.query_params.get("source")
         project_id = _request.query_params.get("project_id")
         pairs = await ctx.client.chat_sessions.list_with_history(
@@ -426,7 +428,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def create_session(request: Request, *, ctx: Any) -> JSONResponse:
+    async def create_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Chat session creation", minimum_tier=AccessTier.STANDARD
         )
@@ -447,7 +449,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_session(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
         session_id = cast("str", request.path_params["session_id"])
         session = await _load_session_view(ctx.client, session_id)
         if session is None:
@@ -463,7 +465,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions/{session_id}/messages", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_session_messages(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_session_messages(request: Request, *, ctx: ServerContext) -> JSONResponse:
         """Cursor-tail endpoint for reconnecting /watch clients.
 
         Returns messages with id > after_id so clients can catch up on messages
@@ -497,13 +499,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["PATCH"])
     @require_context(mcp)
     @handle_errors
-    async def update_session(request: Request, *, ctx: Any) -> JSONResponse:
+    async def update_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
         return await _patch_session(request, ctx=ctx)
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])
     @require_context(mcp)
     @handle_errors
-    async def delete_session(request: Request, *, ctx: Any) -> JSONResponse:
+    async def delete_session(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Chat session deletion", minimum_tier=AccessTier.STANDARD
         )
@@ -519,7 +521,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/agents", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_agents(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_agents(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         """List available agent backends."""
         from kagan.cli.chat.agents import list_backends_with_availability
 
@@ -537,7 +539,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/chat/{session_id}/stream", methods=["POST"])
     @require_context(mcp)
-    async def chat_stream(request: Request, *, ctx: Any) -> Response:
+    async def chat_stream(request: Request, *, ctx: ServerContext) -> Response:
         """SSE endpoint — runs one chat turn and streams chunks back.
 
         Returns 409 if a turn is already in progress for this session.
@@ -593,7 +595,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
     @mcp.custom_route("/api/chat/sessions/{session_id}/watch", methods=["GET"])
     @require_context(mcp)
-    async def chat_watch(request: Request, *, ctx: Any) -> Response:
+    async def chat_watch(request: Request, *, ctx: ServerContext) -> Response:
         """SSE endpoint — subscribe to all events for a session (broadcast channel).
 
         Multiple clients can connect simultaneously. Each gets every event in
@@ -644,7 +646,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/{session_id}/turn-status", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def turn_status(request: Request, *, ctx: Any) -> JSONResponse:
+    async def turn_status(request: Request, *, ctx: ServerContext) -> JSONResponse:
         """Check whether a chat turn is still running for the given session."""
         session_id = cast("str", request.path_params["session_id"])
         status = ctx.client.chat.turn_status(session_id)
@@ -661,7 +663,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/chat/{session_id}/interrupt", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def chat_interrupt(request: Request, *, ctx: Any) -> JSONResponse:
+    async def chat_interrupt(request: Request, *, ctx: ServerContext) -> JSONResponse:
         """Interrupt a running chat turn.
 
         Request body: {"reason": "user" | "takeover"} (default "user").

@@ -47,9 +47,11 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from kagan.server.mcp.server import ServerContext
+
 
 async def _select_backend_intelligently(
-    ctx: Any,
+    ctx: ServerContext,
     task_id: str,
     agent_backend: str | None,
     task_title: str,
@@ -184,7 +186,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def list_tasks(request: Request, *, ctx: Any) -> JSONResponse:
+    async def list_tasks(request: Request, *, ctx: ServerContext) -> JSONResponse:
         if ctx.client.active_project_id is None:
             return _ok([])
         status_value = request.query_params.get("status")
@@ -209,7 +211,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def create_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def create_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Task creation", minimum_tier=AccessTier.STANDARD
         )
@@ -232,7 +234,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/counts", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def task_counts(_request: Request, *, ctx: Any) -> JSONResponse:
+    async def task_counts(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         counts = await ctx.client.tasks.counts()
         payload = {status.value: count for status, count in counts.items()}
         return _ok(payload)
@@ -240,14 +242,14 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         return _ok(await task_wire_dict(ctx, task_id))
 
     @mcp.custom_route("/api/tasks/{task_id}", methods=["PATCH"])
     @require_context(mcp)
     @handle_errors
-    async def update_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def update_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(ctx, operation="Task updates", minimum_tier=AccessTier.STANDARD)
         if forbidden is not None:
             return forbidden
@@ -265,7 +267,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}", methods=["DELETE"])
     @require_context(mcp)
     @handle_errors
-    async def delete_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def delete_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(ctx, operation="Task deletion", minimum_tier=AccessTier.ADMIN)
         if forbidden is not None:
             return forbidden
@@ -276,7 +278,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/status", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def update_task_status(request: Request, *, ctx: Any) -> JSONResponse:
+    async def update_task_status(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Task status changes", minimum_tier=AccessTier.STANDARD
         )
@@ -290,7 +292,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/run", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def run_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def run_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Task execution", minimum_tier=AccessTier.STANDARD
         )
@@ -334,7 +336,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/cancel", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def cancel_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def cancel_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Task cancellation", minimum_tier=AccessTier.STANDARD
         )
@@ -348,7 +350,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/detach", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def detach_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def detach_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Attached session detach", minimum_tier=AccessTier.STANDARD
         )
@@ -361,7 +363,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/events", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def task_events(request: Request, *, ctx: Any) -> JSONResponse:
+    async def task_events(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         try:
             limit = min(max(int(request.query_params.get("limit", "20")), 1), 1000)
@@ -411,7 +413,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/sessions", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def task_sessions(request: Request, *, ctx: Any) -> JSONResponse:
+    async def task_sessions(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         sessions = await ctx.client.tasks.sessions.list_for_task(task_id)
         return _ok(
@@ -421,7 +423,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/review", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def review_status(request: Request, *, ctx: Any) -> JSONResponse:
+    async def review_status(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
         review_approved = await asyncio.to_thread(ctx.client.reviews.is_approved, task_id)
@@ -436,7 +438,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/review/decide", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def review_decide(request: Request, *, ctx: Any) -> JSONResponse:
+    async def review_decide(request: Request, *, ctx: ServerContext) -> JSONResponse:
         forbidden = _require_access(
             ctx, operation="Review decisions", minimum_tier=AccessTier.STANDARD
         )
@@ -480,7 +482,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/review/conflicts", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def review_conflicts(request: Request, *, ctx: Any) -> JSONResponse:
+    async def review_conflicts(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         conflicts = await ctx.client.reviews.conflicts(task_id)
         return _ok(conflicts)
@@ -488,7 +490,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/diff", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task_diff(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task_diff(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         stats = await ctx.client.worktrees.diff_stats(task_id)
         return _ok(stats)
@@ -496,7 +498,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/diff/raw", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task_diff_raw(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task_diff_raw(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         diff_text = await ctx.client.worktrees.diff(task_id)
         return _ok({"task_id": task_id, "diff": diff_text})
@@ -504,7 +506,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/diff/files", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task_diff_files(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task_diff_files(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         diff_text = await ctx.client.worktrees.diff(task_id)
         files: list[dict[str, Any]] = []
@@ -531,7 +533,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/worktree", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task_worktree(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task_worktree(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         ws = await ctx.client.worktrees.get(task_id)
         if ws is None:
@@ -549,7 +551,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/commits", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def get_task_commits(request: Request, *, ctx: Any) -> JSONResponse:
+    async def get_task_commits(request: Request, *, ctx: ServerContext) -> JSONResponse:
         task_id = cast("str", request.path_params["task_id"])
         task = await ctx.client.tasks.get(task_id)
         base_branch = (cast("str | None", getattr(task, "base_branch", None)) or "main").strip()
@@ -580,7 +582,7 @@ def register_task_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/tasks/{task_id}/follow-up", methods=["POST"])
     @require_context(mcp)
     @handle_errors
-    async def task_follow_up(request: Request, *, ctx: Any) -> JSONResponse:
+    async def task_follow_up(request: Request, *, ctx: ServerContext) -> JSONResponse:
         """Cancel the current run and restart with follow-up text appended."""
         forbidden = _require_access(
             ctx, operation="Task follow-up messages", minimum_tier=AccessTier.STANDARD

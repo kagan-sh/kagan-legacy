@@ -1,17 +1,17 @@
-import type { WireChatSession } from "../api/types.js";
+import type { WireChatSessionSummary } from "../api/types.js";
 
 export interface StickyChatState {
   activeChatSessionId: string | null;
   watchingTaskId: string | null;
 }
 
-export function isTaskSession(session: Pick<WireChatSession, "source"> | null | undefined): boolean {
+export function isTaskSession(session: Pick<WireChatSessionSummary, "source"> | null | undefined): boolean {
   return (session?.source ?? "").trim().toLowerCase() === "task-session";
 }
 
 export function pickReusableChatSessionId(
   globalSessionId: string | undefined,
-  sessions: WireChatSession[],
+  sessions: WireChatSessionSummary[],
 ): string | null {
   const orchestratorSessions = sessions.filter((session) => !isTaskSession(session));
   const trimmedGlobalSessionId = globalSessionId?.trim();

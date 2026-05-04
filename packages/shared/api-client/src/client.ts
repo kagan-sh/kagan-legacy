@@ -40,7 +40,7 @@ import type {
   PresenceHeartbeatInput,
   TaskCountsResponse,
   ChatStreamEvent,
-} from "./types";
+} from "./wire";
 import { ApiError } from "./errors";
 
 // ----------------------------------------------------------------------------
@@ -203,7 +203,7 @@ export class KaganApiClient {
       throw new ApiError(response.status, detail, envelope?.error_code ?? null);
     }
 
-    if (!envelope?.ok || envelope.data === null) {
+    if (!envelope?.ok || envelope.data == null) {
       throw new ApiError(
         response.status,
         envelope?.error ?? "Unknown API error",
@@ -211,7 +211,7 @@ export class KaganApiClient {
       );
     }
 
-    return envelope.data;
+    return envelope.data as T;
   }
 
   private async get<T>(path: string): Promise<T> {

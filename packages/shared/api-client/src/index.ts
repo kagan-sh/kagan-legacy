@@ -5,14 +5,13 @@
 // - Browsers (via native fetch)
 // - VS Code extensions (Node.js with native fetch)
 // - Any environment with fetch support
-//
-// Features:
-// - Full type safety with TypeScript
-// - Automatic auth token handling (Bearer)
-// - Typed errors (ApiError, SSEError, ConfigurationError)
-// - SSE support with automatic reconnection
-// - Platform-agnostic design
 // ============================================================================
+
+// ----------------------------------------------------------------------------
+// Wire types — single source of truth (auto-generated from Python models)
+// ----------------------------------------------------------------------------
+
+export * from "./wire";
 
 // ----------------------------------------------------------------------------
 // Core Client
@@ -57,92 +56,3 @@ export {
   ConfigurationError,
   type ApiErrorDetail,
 } from "./errors";
-
-// ----------------------------------------------------------------------------
-// Types (Everything from types.ts)
-// ----------------------------------------------------------------------------
-
-export type {
-  // Domain
-  TaskStatus,
-  Priority,
-  SessionStatus,
-  ReviewVerdictState,
-  EventType,
-  SSEType,
-
-  // Wire entities
-  ActiveSession,
-  ReviewVerdict,
-  WireTask,
-  WireEvent,
-  WireTaskSession,
-  WireProject,
-  WireRepository,
-  WireChatSession,
-  WireChatSessionSummary,
-
-  // Inputs
-  CreateTaskInput,
-  UpdateTaskInput,
-  TransitionStatusInput,
-  RunTaskInput,
-  ReviewDecisionInput,
-  CreateChatSessionInput,
-  CreateProjectInput,
-
-  // Responses
-  WireEnvelope,
-  TaskDeletedResponse,
-  ProjectActivatedResponse,
-  ProjectDeletedResponse,
-  ReviewStatusResponse,
-  ReviewDecideResponse,
-  ReviewDecisionResponse,
-  SettingsResponse,
-  ResolvedSettingsResponse,
-  WorkflowResolvedSettings,
-  AgentBackendResponse,
-  ChatAgentsResponse,
-  AgentBackend,
-  PreflightCheck,
-  PreflightResponse,
-  TaskCountsResponse,
-  DiffStats,
-  DiffFile,
-  TaskWorktree,
-  TaskWorktreeResponse,
-  TaskCommit,
-  TaskCommitsResponse,
-  TaskEventOptions,
-
-  // Filesystem
-  FsEntry,
-  FsBrowseResponse,
-
-  // Presence
-  ClientPresence,
-  PresenceHeartbeatInput,
-
-  // SSE
-  SSETaskUpdated,
-  SSESessionEvent,
-  SSEMessage,
-
-  // Chat streaming
-  ChatStreamChunk,
-  ChatStreamToolStart,
-  ChatStreamToolProgress,
-  ChatStreamDone,
-  ChatStreamEvent,
-
-  // Client config
-  KaganClientConfig,
-  RequestOptions,
-} from "./types";
-
-// ----------------------------------------------------------------------------
-// Constants
-// ----------------------------------------------------------------------------
-
-export { EVENT_TYPE, SSE_TYPE, TASK_COLUMNS } from "./types";

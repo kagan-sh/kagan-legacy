@@ -1,4 +1,4 @@
-import type { LauncherBackend } from "../api/types.js";
+import type { LauncherBackend } from "../api/local.js";
 
 export function normalizeLauncher(value: string): LauncherBackend {
   const normalized = value.trim().toLowerCase();

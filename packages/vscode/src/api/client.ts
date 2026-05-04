@@ -558,7 +558,7 @@ export class KaganClient {
       );
     }
 
-    if (!envelope?.ok || envelope.data === null) {
+    if (!envelope?.ok || envelope.data == null) {
       throw new ApiError(
         response.status,
         envelope?.error ?? "Unknown API error",
@@ -566,7 +566,7 @@ export class KaganClient {
       );
     }
 
-    return envelope.data;
+    return envelope.data as T;
   }
 }
 

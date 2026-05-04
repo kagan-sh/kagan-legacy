@@ -60,7 +60,7 @@ export function ChatInputBar({
 }: ChatInputBarProps) {
   const [text, setText] = useState('');
   const [showCommands, setShowCommands] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedCommand, setSelectedCommand] = useState<string>('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const isStreaming = useAtomValue(isStreamingAtom);
@@ -98,13 +98,15 @@ export function ChatInputBar({
   const handleSelectCommand = (command: string) => {
     setText(command + ' ');
     setShowCommands(false);
+    setSelectedCommand('');
     inputRef.current?.focus();
   };
 
   const handleChange = (value: string) => {
     setText(value);
-    setShowCommands(value.startsWith('/') && value.length > 0 && !value.includes(' '));
-    setSelectedIndex(0);
+    const open = value.startsWith('/') && value.length > 0 && !value.includes(' ');
+    setShowCommands(open);
+    if (open) setSelectedCommand('');
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -131,19 +133,15 @@ export function ChatInputBar({
     }
 
     if (showCommands && filteredCommands.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // Let Radix Command handle arrow navigation natively — do not preventDefault.
         return;
       }
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
         e.preventDefault();
-        handleSelectCommand(filteredCommands[selectedIndex]?.command ?? '');
+        // Use the currently highlighted command or fall back to first.
+        const target = selectedCommand || filteredCommands[0]?.command || '';
+        if (target) handleSelectCommand(target);
         return;
       }
       if (e.key === 'Escape') {
@@ -227,17 +225,19 @@ export function ChatInputBar({
       {/* Slash command autocomplete using shadcn Command */}
       {showCommands && filteredCommands.length > 0 && (
         <div className="absolute bottom-full left-3 right-3 mb-1 overflow-hidden border border-[color:var(--border-subtle)] bg-[var(--popover)] shadow-[var(--ambient-shadow)]">
-          <Command className="bg-transparent">
+          <Command
+            className="bg-transparent"
+            value={selectedCommand}
+            onValueChange={setSelectedCommand}
+          >
             <CommandList className="max-h-60">
               <CommandGroup heading="Commands">
-                {filteredCommands.map((cmd, i) => (
+                {filteredCommands.map((cmd) => (
                   <CommandItem
                     key={cmd.command}
+                    value={cmd.command}
                     onSelect={() => handleSelectCommand(cmd.command)}
-                    className={cn(
-                      'cursor-pointer',
-                      i === selectedIndex && 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                    )}
+                    className="cursor-pointer"
                   >
                     <code className="mr-2 text-xs text-[var(--primary)]">{cmd.command}</code>
                     <span className="text-xs text-[var(--muted-foreground)]">{cmd.description}</span>

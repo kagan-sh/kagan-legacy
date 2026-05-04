@@ -310,7 +310,7 @@ export function Component() {
           </span>
           <h1 className="mt-4 text-sm font-semibold">Connecting to Kagan server...</h1>
           <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">
-            Could not connect to Kagan server. Make sure <code className=" bg-[color:var(--surface-2)] px-1.5 py-0.5 font-code text-[10px]">kg web</code> is running.
+            Could not connect to Kagan server. Make sure <code className=" bg-[color:var(--surface-2)] px-1.5 py-0.5 font-code text-[10px]">kagan web</code> is running.
           </p>
           <div className="mt-8 flex justify-center">
             <Button
@@ -319,7 +319,7 @@ export function Component() {
                 const ok = await retryHealthCheck();
                 setRetrying(false);
                 if (!ok) {
-                  toast.error('Could not connect to Kagan server. Make sure kg web is running.');
+                  toast.error('Could not connect to Kagan server. Make sure kagan web is running.');
                 }
               }}
               disabled={retrying}

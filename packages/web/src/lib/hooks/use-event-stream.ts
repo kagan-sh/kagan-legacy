@@ -20,14 +20,7 @@ import {
 } from '@/lib/atoms/board';
 import { presenceAtom } from '@/lib/atoms/presence';
 import { isAnyDialogOpenAtom } from '@/lib/atoms/ui';
-import type { WireEvent, WireTask } from '@kagan/shared-api-client';
-
-interface SSEMessage {
-  type: string;
-  task_id?: string;
-  task?: WireTask;
-  event?: WireEvent;
-}
+import type { SSEMessage } from '@kagan/shared-api-client';
 
 export function useEventStream() {
   const location = useLocation();

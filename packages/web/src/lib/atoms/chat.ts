@@ -21,9 +21,15 @@ export type ChatStreamEntry =
 export const streamEntriesAtom = atom<ChatStreamEntry[]>([]);
 export const isStreamingAtom = atom(false);
 
+// Version counter: incremented whenever entries are mutated in-place so
+// subscribers re-render without a full array copy.
+export const streamVersionAtom = atom(0);
+
 /**
  * Append a text chunk to the current streaming state.
- * Merges with the last entry if both are the same kind.
+ * When the last entry is the same kind, mutates it in-place and bumps
+ * streamVersionAtom instead of spreading the array — O(1) per token.
+ * When appending a new entry, a new array reference is set normally.
  */
 export const appendStreamChunkAtom = atom(
   null,
@@ -33,10 +39,9 @@ export const appendStreamChunkAtom = atom(
     const last = entries.at(-1);
 
     if (last && last.kind === kind) {
-      // Merge into the last entry of the same kind
-      const updated = [...entries];
-      updated[updated.length - 1] = { ...last, content: last.content + payload.content };
-      set(streamEntriesAtom, updated);
+      // Mutate the last entry in-place — no array spread per token.
+      (last as Extract<ChatStreamEntry, { kind: 'text' | 'thought' }>).content += payload.content;
+      set(streamVersionAtom, (v) => v + 1);
     } else {
       set(streamEntriesAtom, [...entries, { kind, content: payload.content }]);
     }
@@ -58,13 +63,12 @@ export const addToolStartAtom = atom(
 );
 
 /**
- * Update the latest matching tool call entry.
+ * Update the latest matching tool call entry in-place, bump version.
  */
 export const updateToolProgressAtom = atom(
   null,
   (get, set, payload: { tool: string; status?: string }) => {
-    const entries = [...get(streamEntriesAtom)];
-    // Find the last tool entry with matching name
+    const entries = get(streamEntriesAtom);
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]!;
       if (entry.kind === 'tool' && entry.name === payload.tool) {
@@ -76,7 +80,8 @@ export const updateToolProgressAtom = atom(
         break;
       }
     }
-    set(streamEntriesAtom, entries);
+    // Entries array was mutated in-place; bump version for re-render.
+    set(streamVersionAtom, (v) => v + 1);
   },
 );
 
@@ -108,6 +113,7 @@ export const addStreamNoteAtom = atom(
  */
 export const resetStreamAtom = atom(null, (_get, set) => {
   set(streamEntriesAtom, []);
+  set(streamVersionAtom, 0);
   set(isStreamingAtom, false);
 });
 

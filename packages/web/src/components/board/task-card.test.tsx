@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 import { TaskCard } from '@/components/board/task-card';
 import { mockTask } from '@/test/mocks';
+import type { WireTask } from '@kagan/shared-api-client';
 
 describe('TaskCard', () => {
   it('renders task title', () => {
@@ -54,7 +55,8 @@ describe('TaskCard', () => {
 
     renderWithProviders(<TaskCard task={task} onInspectTask={onInspectTask} />);
 
-    await user.click(screen.getByRole('button', { name: 'Inspect me' }));
+    // aria-label is "Inspect me, Medium priority" — use regex to match title
+    await user.click(screen.getByRole('button', { name: /^Inspect me/ }));
 
     expect(onInspectTask).toHaveBeenCalledWith(task);
   });
@@ -62,7 +64,7 @@ describe('TaskCard', () => {
   describe('a11y: role and selection', () => {
     it('does not have aria-pressed on the card element', () => {
       renderWithProviders(<TaskCard task={mockTask({ title: 'No pressed' })} />);
-      const btn = screen.getByRole('button', { name: 'No pressed' });
+      const btn = screen.getByRole('button', { name: /^No pressed/ });
       expect(btn).not.toHaveAttribute('aria-pressed');
     });
 
@@ -70,8 +72,8 @@ describe('TaskCard', () => {
       renderWithProviders(
         <TaskCard task={mockTask({ title: 'Selected card' })} isSelected />,
       );
-      // aria-label includes "(selected)" suffix
-      const btn = screen.getByRole('button', { name: 'Selected card (selected)' });
+      // aria-label includes priority + "(selected)" suffix
+      const btn = screen.getByRole('button', { name: /Selected card.*\(selected\)/i });
       expect(btn).toHaveAttribute('aria-current', 'true');
     });
 
@@ -79,7 +81,7 @@ describe('TaskCard', () => {
       renderWithProviders(
         <TaskCard task={mockTask({ title: 'Unselected card' })} isSelected={false} />,
       );
-      const btn = screen.getByRole('button', { name: 'Unselected card' });
+      const btn = screen.getByRole('button', { name: /^Unselected card/ });
       expect(btn).not.toHaveAttribute('aria-current');
     });
 
@@ -88,7 +90,7 @@ describe('TaskCard', () => {
       const task = mockTask({ title: 'Key card' });
       renderWithProviders(<TaskCard task={task} onInspectTask={onInspectTask} />);
 
-      const btn = screen.getByRole('button', { name: 'Key card' });
+      const btn = screen.getByRole('button', { name: /^Key card/ });
       btn.focus();
       fireEvent.keyDown(btn, { key: 'Enter' });
 
@@ -100,7 +102,7 @@ describe('TaskCard', () => {
       const task = mockTask({ title: 'Vim card' });
       renderWithProviders(<TaskCard task={task} onInspectTask={onInspectTask} />);
 
-      const btn = screen.getByRole('button', { name: 'Vim card' });
+      const btn = screen.getByRole('button', { name: /^Vim card/ });
       btn.focus();
       fireEvent.keyDown(btn, { key: 'j' });
       fireEvent.keyDown(btn, { key: 'k' });
@@ -175,6 +177,67 @@ describe('TaskCard', () => {
       fireEvent.click(screen.getByTestId('diff-summary'));
 
       expect(onInspectTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('D6: live-pulse respects prefers-reduced-motion', () => {
+    it('omits animate-pulse class on the live dot when reducedMotion=true', () => {
+      // Simulate reduced motion via matchMedia mock
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: (query: string) => ({
+          matches: query.includes('reduce'),
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }),
+      });
+
+      const task: WireTask = mockTask({
+        status: 'IN_PROGRESS',
+        active_session: {
+          id: 's1',
+          status: 'running',
+          launcher: null,
+          agent_backend: 'claude-code',
+          started_at: new Date().toISOString(),
+        },
+      });
+      renderWithProviders(<TaskCard task={task} />);
+
+      const liveDot = screen.getByTestId('live-indicator').querySelector('[aria-hidden="true"]');
+      expect(liveDot?.className).not.toContain('animate-pulse');
+    });
+  });
+
+  describe('D10: priority accessibility', () => {
+    it('includes priority label in the card aria-label', () => {
+      renderWithProviders(<TaskCard task={mockTask({ title: 'Bug fix', priority: 'HIGH' })} />);
+      const card = screen.getByRole('button', { name: /Bug fix.*High priority/i });
+      expect(card).toBeTruthy();
+    });
+
+    it('renders a priority glyph element with aria-hidden', () => {
+      renderWithProviders(<TaskCard task={mockTask({ title: 'Glyph test', priority: 'HIGH' })} />);
+      const btn = screen.getByRole('button', { name: /Glyph test/i });
+      // The glyph is the aria-hidden span with non-empty text.
+      // The priority rail stripe also has aria-hidden but contains no text.
+      const ariaHiddenEls = Array.from(btn.querySelectorAll('[aria-hidden="true"]'));
+      const glyph = ariaHiddenEls.find((el) => (el.textContent ?? '').trim().length > 0);
+      expect(glyph).toBeTruthy();
+      expect(glyph?.textContent?.trim()).toBe('▲');
+    });
+
+    it('LOW priority uses ▼ glyph', () => {
+      renderWithProviders(<TaskCard task={mockTask({ title: 'Low task', priority: 'LOW' })} />);
+      const btn = screen.getByRole('button', { name: /Low task/i });
+      const ariaHiddenEls = Array.from(btn.querySelectorAll('[aria-hidden="true"]'));
+      const glyph = ariaHiddenEls.find((el) => (el.textContent ?? '').trim().length > 0);
+      expect(glyph?.textContent?.trim()).toBe('▼');
     });
   });
 });

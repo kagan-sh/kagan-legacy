@@ -47,8 +47,8 @@ describe('ArtifactsPanel', () => {
     const a2 = makeArtifact({ title: 'Diagram B', type: 'svg' });
     renderPanel([a1, a2]);
 
-    expect(screen.getByRole('button', { name: 'Page A' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Diagram B' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Page A' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Diagram B' })).toBeTruthy();
   });
 
   it('HTML artifact uses a sandboxed iframe with sandbox="" attribute', () => {
@@ -89,5 +89,52 @@ describe('ArtifactsPanel', () => {
     const closeBtn = screen.getByRole('button', { name: 'Close artifacts panel' });
     closeBtn.click();
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  describe('D3: ARIA tab pattern', () => {
+    it('tab container has role="tablist"', () => {
+      renderPanel([makeArtifact({ title: 'Tab One' })]);
+      expect(screen.getByRole('tablist')).toBeTruthy();
+    });
+
+    it('each tab button has role="tab"', () => {
+      renderPanel([
+        makeArtifact({ title: 'First' }),
+        makeArtifact({ title: 'Second' }),
+      ]);
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs).toHaveLength(2);
+    });
+
+    it('active tab has aria-selected="true"', () => {
+      const a = makeArtifact({ title: 'Active Tab' });
+      renderPanel([a]);
+      const tab = screen.getByRole('tab', { name: 'Active Tab' });
+      expect(tab).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('inactive tab has aria-selected="false"', () => {
+      const a1 = makeArtifact({ title: 'Tab A' });
+      const a2 = makeArtifact({ title: 'Tab B' });
+      renderPanel([a1, a2]);
+      // Last artifact is auto-selected; first is inactive.
+      const firstTab = screen.getByRole('tab', { name: 'Tab A' });
+      expect(firstTab).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('content area has role="tabpanel"', () => {
+      renderPanel([makeArtifact({ title: 'Panel' })]);
+      expect(screen.getByRole('tabpanel')).toBeTruthy();
+    });
+
+    it('active tab aria-controls matches tabpanel id', () => {
+      const a = makeArtifact({ title: 'Linked' });
+      renderPanel([a]);
+      const tab = screen.getByRole('tab', { name: 'Linked' });
+      const panelId = tab.getAttribute('aria-controls');
+      expect(panelId).toBeTruthy();
+      const panel = document.getElementById(panelId!);
+      expect(panel).toBeTruthy();
+    });
   });
 });

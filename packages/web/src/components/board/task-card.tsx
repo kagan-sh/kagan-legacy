@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 import type { WireDiffSummary, WireTask } from "@kagan/shared-api-client";
 import { parseUtc } from "@/lib/utils/time";
 import { CardPulse } from "@/components/board/card-pulse";
+import { useReducedMotion } from "@/lib/a11y/use-reduced-motion";
+import { PRIORITY_GLYPHS, PRIORITY_LABELS } from "@/lib/utils/constants";
+import type { Priority } from "@kagan/shared-api-client";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -42,11 +45,12 @@ const PRIORITY_RAIL: Record<string, string> = {
     CRITICAL: "bg-[color:var(--priority-high-background)]",
 };
 
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
 function formatLastActivity(value?: string | null) {
     if (!value) return "No activity";
     const date = parseUtc(value);
     const diffMs = date.getTime() - Date.now();
-    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
     const absMs = Math.abs(diffMs);
 
     if (absMs < 45_000) return "Just now";
@@ -79,10 +83,10 @@ function DiffSummaryRow({
             className="mt-0.5 flex items-center gap-1.5 text-[10px] tabular-nums leading-none"
             aria-label={`Diff: +${summary.additions} -${summary.deletions} across ${summary.files_changed} file${summary.files_changed === 1 ? "" : "s"}`}
         >
-            <span className="text-[color:var(--color-green-600)] dark:text-[color:var(--color-green-400)]">
+            <span className="text-[color:var(--kagan-rail-running)]">
                 +{summary.additions}
             </span>
-            <span className="text-[color:var(--color-red-600)] dark:text-[color:var(--color-red-400)]">
+            <span className="text-[color:var(--kagan-rail-error)]">
                 -{summary.deletions}
             </span>
             <span className="text-muted-foreground">
@@ -99,6 +103,9 @@ function TaskCardBody({
     task: WireTask;
     onDiffNavigate?: (e: React.MouseEvent) => void;
 }) {
+    const reducedMotion = useReducedMotion();
+    const priorityGlyph = PRIORITY_GLYPHS[task.priority as Priority] ?? '—';
+
     return (
         <div className="ml-2 flex min-h-0 flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
@@ -111,13 +118,23 @@ function TaskCardBody({
                         data-testid="live-indicator"
                     >
                         <span
-                            className="size-1.5 animate-pulse rounded-full bg-[var(--kagan-rail-warning)]"
+                            className={cn(
+                                'size-1.5 rounded-full bg-[var(--kagan-rail-warning)]',
+                                !reducedMotion && 'animate-pulse',
+                            )}
                             aria-hidden="true"
                         />
                         Live
                     </span>
                 ) : null}
             </div>
+            {/* Priority glyph — adjacent to the rail, aria-hidden (rail colour + label cover it) */}
+            <span
+                aria-hidden="true"
+                className="absolute left-2 top-2 font-code text-[8px] leading-none text-[color:var(--muted-foreground)]"
+            >
+                {priorityGlyph}
+            </span>
             <CardPulse
                 sessionId={task.active_session?.id ?? null}
                 status={task.status}
@@ -260,7 +277,7 @@ function TaskCardImpl({
             )}
             role="button"
             tabIndex={0}
-            aria-label={isSelected ? `${task.title} (selected)` : task.title}
+            aria-label={isSelected ? `${task.title}, ${PRIORITY_LABELS[task.priority as Priority] ?? task.priority} priority (selected)` : `${task.title}, ${PRIORITY_LABELS[task.priority as Priority] ?? task.priority} priority`}
             aria-current={isSelected ? true : undefined}
             data-task-id={task.id}
             onKeyDown={(e) => {

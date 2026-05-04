@@ -131,4 +131,48 @@ describe("ChatInputBar", () => {
         expect(screen.getByText("Add files or photos")).toBeVisible();
         expect(screen.getByText("Images, docs, code files")).toBeVisible();
     });
+
+    describe("D7: slash autocomplete uses Radix Command native focus management", () => {
+        it("renders command items without manual selectedIndex class", async () => {
+            const user = userEvent.setup();
+            renderWithProviders(<ChatInputBar onSend={vi.fn()} />, {
+                store: connectedStore(),
+            });
+
+            const input = screen.getByPlaceholderText(
+                "Type a message or / for commands...",
+            );
+            await user.type(input, "/h");
+
+            // Command items are rendered by Radix Command (no manually-applied
+            // active background class from selectedIndex).
+            const items = screen.queryAllByRole("option");
+            for (const item of items) {
+                expect(item.className).not.toContain("bg-[var(--accent)] text-[var(--accent-foreground)]");
+            }
+        });
+
+        it("autocomplete list closes after a command is selected", async () => {
+            const user = userEvent.setup();
+            const onSlashCommand = vi.fn();
+            renderWithProviders(
+                <ChatInputBar onSend={vi.fn()} onSlashCommand={onSlashCommand} />,
+                { store: connectedStore() },
+            );
+
+            const input = screen.getByPlaceholderText(
+                "Type a message or / for commands...",
+            );
+            await user.type(input, "/help");
+            // The autocomplete list renders options via Radix Command.
+            // Click the option element (role="option") that contains "/help".
+            const helpOption = screen.queryByRole("option", { name: /\/help/ });
+            if (helpOption) {
+                await user.click(helpOption);
+            }
+
+            // After selection, the autocomplete list should be gone
+            expect(screen.queryByRole("group")).toBeNull();
+        });
+    });
 });

@@ -73,8 +73,9 @@ async def _seed_task(
 
 async def _add_pass_verdicts(core: KaganCore, task_id: str) -> None:
     """Stamp 'pass' verdicts on all acceptance criteria for *task_id*."""
-    from kagan.core._db_helpers import _db_async
     from sqlmodel import select
+
+    from kagan.core._db_helpers import _db_async
 
     def _op(s) -> None:
         criteria = list(

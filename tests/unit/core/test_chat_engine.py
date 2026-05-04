@@ -11,13 +11,6 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from tests.helpers.chat_engine import (
-    PermissionFactory,
-    RaisingFactory,
-    ScriptedFactory,
-    SuspendingFactory,
-    boot_engine,
-)
 
 from kagan.core.chat.engine import TurnInProgressError
 from kagan.core.chat.events import (
@@ -29,6 +22,13 @@ from kagan.core.chat.events import (
     TurnDone,
     TurnError,
     TurnStarted,
+)
+from tests.helpers.chat_engine import (
+    PermissionFactory,
+    RaisingFactory,
+    ScriptedFactory,
+    SuspendingFactory,
+    boot_engine,
 )
 
 if TYPE_CHECKING:

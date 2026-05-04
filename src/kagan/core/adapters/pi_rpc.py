@@ -85,6 +85,7 @@ def translate_pi_rpc_message(
     *,
     session_id: str,
     backend: str = "pi-coding-agent",
+    turn_index: int = 0,
 ) -> AgentEvent | None:
     """Translate a single pi RPC message dict into an :class:`AgentEvent`.
 
@@ -98,6 +99,8 @@ def translate_pi_rpc_message(
         msg:        Parsed JSON dict from a single pi stdout line.
         session_id: Session identifier injected into AgentStart / AgentEnd.
         backend:    Backend name injected into AgentStart / CompactionOccurred.
+        turn_index: Caller's per-prompt turn counter; used as a fallback when
+                    pi's frame doesn't carry an explicit ``turn_index``.
     """
     event_type = msg.get("type")
     if not isinstance(event_type, str):
@@ -105,7 +108,7 @@ def translate_pi_rpc_message(
     handler = _TRANSLATOR_DISPATCH.get(event_type)
     if handler is None:
         return None
-    return handler(msg, session_id=session_id, backend=backend)
+    return handler(msg, session_id=session_id, backend=backend, turn_index=turn_index)
 
 
 # ---------------------------------------------------------------------------
@@ -114,31 +117,36 @@ def translate_pi_rpc_message(
 
 
 def _translate_agent_start(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     return AgentStart(session_id=session_id, agent_backend=backend)
 
 
 def _translate_agent_end(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     return AgentEnd(session_id=session_id, stop_reason="completed")
 
 
 def _translate_turn_start(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
-    return TurnStart(turn_index=0)
+    # Prefer pi-supplied index when present; fall back to the caller's counter.
+    raw = msg.get("turn_index")
+    idx = raw if isinstance(raw, int) else turn_index
+    return TurnStart(turn_index=idx)
 
 
 def _translate_turn_end(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
-    return TurnEnd(turn_index=0)
+    raw = msg.get("turn_index")
+    idx = raw if isinstance(raw, int) else turn_index
+    return TurnEnd(turn_index=idx)
 
 
 def _translate_message_start(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     """pi emits message_start for user, assistant, and toolResult messages.
 
@@ -154,7 +162,7 @@ def _translate_message_start(
 
 
 def _translate_message_update(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     """pi emits message_update only for assistant messages (streaming).
 
@@ -177,7 +185,7 @@ def _translate_message_update(
 
 
 def _translate_message_end(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     message = msg.get("message")
     if not isinstance(message, dict):
@@ -190,7 +198,7 @@ def _translate_message_end(
 
 
 def _translate_tool_start(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     tool_id = str(msg.get("toolCallId") or uuid.uuid4())
     name = str(msg.get("toolName") or "unknown")
@@ -200,7 +208,7 @@ def _translate_tool_start(
 
 
 def _translate_tool_update(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     tool_id = str(msg.get("toolCallId") or uuid.uuid4())
     partial = msg.get("partialResult")
@@ -209,7 +217,7 @@ def _translate_tool_update(
 
 
 def _translate_tool_end(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     tool_id = str(msg.get("toolCallId") or uuid.uuid4())
     is_error = bool(msg.get("isError", False))
@@ -220,13 +228,13 @@ def _translate_tool_end(
 
 
 def _translate_compaction_start(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     return CompactionOccurred(backend=backend)
 
 
 def _translate_noop(
-    msg: dict[str, Any], *, session_id: str, backend: str
+    msg: dict[str, Any], *, session_id: str, backend: str, turn_index: int = 0
 ) -> AgentEvent | None:
     """Return None for known non-event frames (compaction_end, RPC acks, UI requests)."""
     return None
@@ -336,7 +344,10 @@ class PiRpcClient:
         self._env = env
         self._session_id = session_id or str(uuid.uuid4())
         self._proc: asyncio.subprocess.Process | None = None
+        # Per-prompt counters; reset at the start of each _run_prompt so a
+        # long-lived client across many prompts doesn't accumulate state.
         self._cumulative_bytes: int = 0
+        self._turn_counter: int = 0
 
     # ------------------------------------------------------------------
     # Context manager
@@ -460,6 +471,17 @@ class PiRpcClient:
         """Core prompt loop: send command, read events, return final text."""
         assert self._proc is not None
 
+        # Reset the per-prompt cumulative-bytes counter. Greptile P2: the
+        # original counter was initialised once in __init__ and never reset
+        # across multiple prompt() calls on a long-lived client, so it would
+        # eventually trip the 500 MB ceiling and silently abort processing.
+        # The cap is a per-prompt safety bound, not a session-lifetime budget.
+        self._cumulative_bytes = 0
+
+        # Increment per-prompt turn counter so TurnStart/TurnEnd events
+        # carry meaningful turn_index instead of always 0.
+        self._turn_counter += 1
+
         # Send the prompt command.
         self._send_command({"type": "prompt", "message": text})
         with contextlib.suppress(BrokenPipeError, ConnectionResetError, OSError):
@@ -555,6 +577,7 @@ class PiRpcClient:
                     msg,
                     session_id=self._session_id,
                     backend="pi-coding-agent",
+                    turn_index=self._turn_counter,
                 )
                 if event is not None and on_update is not None:
                     try:

@@ -25,6 +25,7 @@ Design notes
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -110,11 +111,13 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                 persist=False,
             )
 
+            # Track in-flight update emits so we can drain them before
+            # tool_execution_end ships. (Greptile P1 — same as bash_exec.)
+            pending_emits: list[asyncio.Task[None]] = []
+
             def _on_update(line: str) -> None:
                 if len(collected_lines) < line_cap:
                     collected_lines.append(line)
-
-                import asyncio as _asyncio
 
                 async def _emit() -> None:
                     try:
@@ -133,8 +136,8 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                         logger.debug("terminal_run on_update emit failed: {}", exc)
 
                 try:
-                    loop = _asyncio.get_running_loop()
-                    loop.create_task(_emit())
+                    loop = asyncio.get_running_loop()
+                    pending_emits.append(loop.create_task(_emit()))
                 except RuntimeError:
                     pass
 
@@ -149,6 +152,9 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         )
 
         if task_id is not None and session_id is not None:
+            # Drain in-flight update emits so end is observed AFTER updates.
+            if pending_emits:
+                await asyncio.gather(*pending_emits, return_exceptions=True)
             # Use collected_lines (capped) instead of run_bash's assembled output
             # so max_output_lines is honoured in the final event too.
             capped_output = "\n".join(collected_lines)

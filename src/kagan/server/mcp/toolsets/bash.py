@@ -236,11 +236,13 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                 persist=False,
             )
 
-            def _on_update(line: str) -> None:
-                # Fire-and-forget: schedule event emission without awaiting.
-                # The event loop will drain this before or during teardown.
-                import asyncio as _asyncio
+            # Track in-flight update emits so we can drain them before
+            # tool_execution_end ships. Without this, the end event races
+            # ahead of late update events, breaking the start→updates→end
+            # ordering contract clients depend on. (Greptile P1.)
+            pending_emits: list[asyncio.Task[None]] = []
 
+            def _on_update(line: str) -> None:
                 async def _emit() -> None:
                     try:
                         await app.client.tasks.events.emit(
@@ -258,8 +260,8 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
                         logger.debug("bash_exec on_update emit failed: {}", exc)
 
                 try:
-                    loop = _asyncio.get_running_loop()
-                    loop.create_task(_emit())
+                    loop = asyncio.get_running_loop()
+                    pending_emits.append(loop.create_task(_emit()))
                 except RuntimeError:
                     pass
 
@@ -272,6 +274,9 @@ def register(mcp: FastMCP, opts: ServerOptions) -> None:
         result = await run_bash(command, cwd=cwd, timeout=timeout, on_update=on_update)
 
         if task_id is not None and session_id is not None:
+            # Drain in-flight update emits so end is observed AFTER updates.
+            if pending_emits:
+                await asyncio.gather(*pending_emits, return_exceptions=True)
             status = "success" if result["exit_code"] == 0 else "error"
             await app.client.tasks.events.emit(
                 task_id,

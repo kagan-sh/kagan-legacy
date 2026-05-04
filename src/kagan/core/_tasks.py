@@ -71,6 +71,21 @@ def _record_task_audit(
 
 # ── Tasks class ─────────────────────────────────────────────────────
 
+# Direct-move matrix used by Tasks.set_status. Module-level so the frozenset
+# is built once at import, not per call. REVIEW→DONE is merge-only and
+# excluded here; the canonical external entry point is the funnel
+# transition_task in core/transitions.py.
+_DIRECT_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
+    {
+        (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
+        (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
+        (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
+        (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
+        (TaskStatus.REVIEW, TaskStatus.BACKLOG),
+        (TaskStatus.DONE, TaskStatus.BACKLOG),
+    }
+)
+
 
 class Tasks:
     def __init__(
@@ -617,17 +632,6 @@ class Tasks:
         from kagan.core.errors import InvalidTransitionError
 
         task = await self.get(task_id)
-        # Legal direct-move pairs (REVIEW→DONE is merge-only and excluded here).
-        _DIRECT_MOVES: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
-            {
-                (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),
-                (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
-                (TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG),
-                (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),
-                (TaskStatus.REVIEW, TaskStatus.BACKLOG),
-                (TaskStatus.DONE, TaskStatus.BACKLOG),
-            }
-        )
         if (task.status, status) not in _DIRECT_MOVES:
             raise InvalidTransitionError(task.status, status)
         moved = await asyncio.to_thread(self._set_status, task_id, status)

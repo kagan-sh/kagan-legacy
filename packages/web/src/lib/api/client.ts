@@ -699,7 +699,7 @@ export class KaganApiClient {
   // -- Doctor ---------------------------------------------------------------
 
   /** GET /api/doctor — run backend preflight checks, returns DoctorReportResponse */
-  async getDoctorReport(): Promise<import('@/lib/api/generated-wire-types').DoctorReportResponse> {
+  async getDoctorReport(): Promise<import('@/lib/api/types').DoctorReportResponse> {
     return this.request('/api/doctor');
   }
 }

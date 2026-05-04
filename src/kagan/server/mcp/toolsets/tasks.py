@@ -8,6 +8,7 @@ import contextlib
 import json
 from typing import Any
 
+import pydantic
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -309,7 +310,11 @@ async def _task_create(
             if app.bound_session_id is not None:
                 result["session_id"] = app.bound_session_id
             created.append(result)
-        except (KaganError, ValueError, TypeError, KeyError) as exc:
+        except (KaganError, ValueError, TypeError, KeyError, pydantic.ValidationError) as exc:
+            # pydantic.ValidationError does NOT inherit from ValueError in v2.
+            # Without it explicitly listed, validation failures (e.g. >50
+            # acceptance_criteria, oversized fields) escape the per-entry
+            # collector and fail the whole batch. (Greptile P1 fix.)
             errors.append({"index": str(idx), "error": str(exc)})
 
     return {

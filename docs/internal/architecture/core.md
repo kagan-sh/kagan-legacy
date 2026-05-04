@@ -71,7 +71,7 @@ kagan/core/
 ├── _sessions.py           # agent session repository
 ├── _settings.py           # settings repository
 ├── _tasks.py              # task repository
-├── _transitions.py        # task lifecycle state machine
+├── transitions.py         # task lifecycle state machine (public — no underscore)
 ├── _utils.py              # utility functions
 ├── _watcher.py            # DBWatcher: filesystem DB change watcher
 ├── _worktrees.py          # worktree management logic
@@ -89,6 +89,8 @@ kagan/core/
 │
 └── adapters/              # adapter sub-package
     ├── __init__.py
+    ├── pi_rpc.py          # JSONL-framed RPC adapter for pi-coding-agent
+    ├── pi_rpc_messages.py # Typed message models for pi RPC protocol
     └── db/                # database adapters
 ```
 
@@ -265,20 +267,22 @@ A task can be executed across multiple sessions with different personas in seque
 
 `tasks.events.stream()` is an async generator yielding `SessionEvent` rows reactively using `asyncio.Event` signaling (not polling). When `emit()` inserts a row, it signals waiting streams. A 5-second safety timeout ensures liveness.
 
-### Two Streaming Paths
+### Three Streaming Paths
 
-|                   | ACP (managed)                     | MCP (interactive / external)         |
-| ----------------- | --------------------------------- | ------------------------------------ |
-| **When**          | All managed executions            | Interactive launches, IDE hosts      |
-| **Transport**     | Direct STDIO JSON-RPC             | Agent spawns kagan MCP as subprocess |
-| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            |
-| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   |
+|                   | ACP (managed)                     | MCP (interactive / external)         | Pi RPC (pi-coding-agent)             |
+| ----------------- | --------------------------------- | ------------------------------------ | ------------------------------------ |
+| **When**          | ACP-capable backends              | Interactive launches, IDE hosts      | `pi-coding-agent` backend            |
+| **Transport**     | Direct STDIO JSON-RPC (ACP)       | Agent spawns kagan MCP as subprocess | JSONL over subprocess stdin/stdout   |
+| **Bidirectional** | Yes — kagan sends prompts, cancel | No — caller invokes tools            | Yes — kagan sends commands, abort    |
+| **Process**       | Kagan owns (can terminate)        | Agent runs in external environment   | Kagan owns (long-lived per session)  |
 
-**Path A — ACP:** Backends with `supports_acp: True` use piped stdin/stdout. Events flow through `KaganACPClient.session_update()` → `map_acp_update_to_event()` → `Events.emit()`. A repetition guard hashes tool calls and cancels stuck agents (≥4 identical calls in last 10).
+**Path A — ACP:** Backends with `ACP_STREAMING` capability use piped stdin/stdout. Events flow through `KaganACPClient.session_update()` → `map_acp_update_to_event()` → `Events.emit()`. A repetition guard hashes tool calls and cancels stuck agents (≥4 identical calls in last 10).
 
 **Path B — MCP:** Agent discovers `.mcp.json` in worktree and spawns `kagan mcp --session-id {id}`. MCP tool calls write events to the DB.
 
-Both converge at `tasks.events.stream()`.
+**Path C — Pi RPC:** `pi-coding-agent` uses `adapters/pi_rpc.PiRpcClient`. The process is spawned once per session and kept alive across prompts. `translate_pi_rpc_message()` converts pi JSONL frames to `AgentEvent` instances. See the Pi RPC adapter section below.
+
+All three converge at `tasks.events.stream()`.
 
 ### Secret Scrubbing
 
@@ -317,7 +321,7 @@ Key points: **DB is the durable buffer** — both paths write to the same table.
 
 Provides `create_db_engine(db_path)` and `default_db_path()`. Sync SQLModel engine with WAL mode and FK enforcement. Creates all tables on first use.
 
-### `_transitions.py` — Task Lifecycle State Machine
+### `transitions.py` — Task Lifecycle State Machine
 
 Valid transitions:
 
@@ -357,8 +361,9 @@ Kagan supports any CLI-based coding agent through a backend registry.
 | `stakpak`        | `stakpak`      | Infrastructure |
 | `mistral-vibe`   | `vibe`         | Mistral        |
 | `vt-code`        | `vtcode`       | VT Code        |
+| `pi-coding-agent`| `npx`          | Pi (Mariozechner) — JSONL-RPC, not CLI-launched |
 
-**Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`.
+**Backend aliases:** `claude` → `claude-code`; `gemini` → `gemini-cli`; `kimi` → `kimi-cli`; `pi` → `pi-coding-agent`.
 
 **Launch sequence:**
 
@@ -385,6 +390,64 @@ Kagan supports any CLI-based coding agent through a backend registry.
 | **neovim**                                  | Neovim at worktree        |
 
 The `.mcp.json` file tells the environment to discover kagan's MCP server scoped to this session.
+
+### `adapters/pi_rpc.py` — Pi RPC Adapter
+
+`pi-coding-agent` does not accept a prompt as a CLI argument. Instead, it exposes a JSONL-framed
+RPC protocol over subprocess stdin/stdout. `PiRpcClient` in `adapters/pi_rpc.py` wraps that
+protocol so the rest of the system interacts with a familiar async interface.
+
+**Wire framing.** Commands to the agent are JSON objects written one per line to stdin. Events
+from the agent arrive as JSON objects one per line on stdout (`AgentSessionEvent` shape from the
+pi protocol). Neither direction uses length prefixes or delimiters beyond the newline.
+
+**Byte guards (CWE-770).** Two limits cap runaway output: 10 MB per JSONL line
+(`_PI_RPC_MAX_LINE_BYTES`) and 500 MB cumulative per prompt invocation
+(`_PI_RPC_MAX_CUMULATIVE_BYTES`). The cumulative counter resets at the start of each `prompt()`
+call, so a long-lived client across many prompts does not accumulate the budget.
+
+**Lifecycle.** `PiRpcClient` is an async context manager. On `__aenter__`, it spawns
+`npx @mariozechner/pi-coding-agent --mode rpc` via `asyncio.create_subprocess_exec`. Pi's process
+does not auto-exit after completing a prompt, so the caller is responsible for termination.
+`aclose()` sends `SIGTERM`, waits up to 2 seconds (`_KILL_GRACE_SECONDS`), then sends `SIGKILL`
+if the process has not exited.
+
+**Event translation.** `translate_pi_rpc_message()` converts a single parsed pi frame into an
+`AgentEvent`. The mapping:
+
+| Pi frame type        | `AgentEvent` variant  | Notes                                        |
+| -------------------- | --------------------- | -------------------------------------------- |
+| `agent_start`        | `AgentStart`          |                                              |
+| `agent_end`          | `AgentEnd`            | Also sets `done = True` to end the read loop |
+| `turn_start`         | `TurnStart`           | turn_index supplied by caller counter        |
+| `turn_end`           | `TurnEnd`             |                                              |
+| `message_start`      | `MessageStart`        | Assistant messages only; user messages skipped |
+| `message_update`     | `MessageUpdate`       | `text_delta` and `thinking_delta` only       |
+| `message_end`        | `MessageEnd`          | Assistant messages only                      |
+| `tool_execution_start` | `ToolExecutionStart` |                                              |
+| `tool_execution_update` | `ToolExecutionUpdate` |                                            |
+| `tool_execution_end` | `ToolExecutionEnd`    |                                              |
+| `compaction_start`   | `CompactionOccurred`  | `compaction_end` is ignored (start suffices) |
+| `response`           | `None`                | RPC ack frames                               |
+| `extension_ui_request` | `None`              | UI frames not applicable in headless mode    |
+| anything else        | `None`                | Silently discarded                           |
+
+**Cancellation.** `prompt()` accepts an `asyncio.Event cancel_event`. When set, a background
+task sends `{"type": "abort"}` to stdin. The read loop still drains remaining output until EOF
+or `agent_end`.
+
+**Backend registry hook.** `_agent.py` registers `pi-coding-agent` with
+`BackendCapability.PI_RPC_STREAMING`. The capability is distinct from `ACP_STREAMING` because
+the transport and launch model differ: pi is not a detached process and does not report through
+MCP. The `_sessions.py` run path currently routes all non-ACP backends through the detached
+launcher (`spawn_agent`); wiring `PI_RPC_STREAMING` to call `PiRpcClient.prompt()` instead is
+a pending integration step.
+
+**Message models.** `adapters/pi_rpc_messages.py` contains typed dataclass models
+(`PiAgentStart`, `PiMessageUpdate`, `PiToolCallStart`, etc.) and `parse_pi_rpc_message()`, which
+validates raw dicts against those models. `translate_pi_rpc_message()` pattern-matches on those
+typed instances, not on raw dicts, so unknown future pi frame types are safely discarded rather
+than raising.
 
 ### `_config.py` — Bootstrap Config
 

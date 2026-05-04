@@ -70,15 +70,15 @@ async def _task_to_dict(task: Any, engine: Any) -> dict[str, Any]:
     return {
         "id": task.id,
         "title": task.title,
-        "description": getattr(task, "description", ""),
+        "description": task.description,
         "status": task.status.value,
         "priority": task.priority.name,
-        "base_branch": getattr(task, "base_branch", None),
+        "base_branch": task.base_branch,
         "acceptance_criteria": criteria,
-        "agent_backend": getattr(task, "agent_backend", None),
-        "launcher": getattr(task, "launcher", None),
-        "repo_id": getattr(task, "repo_id", None),
-        "github_issue": getattr(task, "github_issue", None),
+        "agent_backend": task.agent_backend,
+        "launcher": task.launcher,
+        "repo_id": task.repo_id,
+        "github_issue": task.github_issue,
         "review_approved": approved,
     }
 

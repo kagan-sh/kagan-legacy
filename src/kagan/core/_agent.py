@@ -978,6 +978,7 @@ async def spawn_agent_via_acp(
     db_path: str,
     project_id: str | None = None,
     on_session_update: Callable,
+    on_permission_grant: Callable | None = None,
 ) -> tuple[int, asyncio.Task]:
     """Spawn an ACP-capable agent with owned stdio and start ACP loop task."""
     logger.info("Spawning ACP agent backend={}", backend_name)
@@ -1026,7 +1027,7 @@ async def spawn_agent_via_acp(
 
     from kagan.core._acp import KaganACPClient, run_acp_session
 
-    client = KaganACPClient(on_session_update)
+    client = KaganACPClient(on_session_update, on_permission_grant=on_permission_grant)
     reader_task = asyncio.create_task(
         run_acp_session(
             process=proc,

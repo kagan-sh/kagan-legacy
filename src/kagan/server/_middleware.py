@@ -58,9 +58,12 @@ _RATE_LIMITED_PREFIXES: tuple[str, ...] = (
 )
 
 # Rate-limit windows (seconds) and thresholds.
+# GET / SSE endpoints: 300/min per key.
+# POST (state-mutating) endpoints: 60/min per key.
+# Key is the auth token when a Bearer header is present, otherwise the client IP.
 _RATE_WINDOW_SECONDS: int = 60
-_RATE_LIMIT_DEFAULT: int = 1000
-_RATE_LIMIT_POST: int = 1000
+_RATE_LIMIT_DEFAULT: int = 300
+_RATE_LIMIT_POST: int = 60
 # How often to purge stale entries (seconds).
 _RATE_CLEANUP_INTERVAL: int = 120
 
@@ -192,6 +195,21 @@ class RateLimitMiddleware:
             return client[0]
         return "unknown"
 
+    @staticmethod
+    def _rate_limit_key(scope: Scope) -> str:
+        """Return the rate-limit key for this request.
+
+        Auth-token keying prevents a shared IP (e.g. NAT, corporate proxy) from
+        starving legitimate users: each token gets its own independent quota.
+        Falls back to IP when no Bearer token is present.
+        """
+        headers = dict(scope.get("headers", []))
+        auth = headers.get(b"authorization", b"").decode("latin-1", errors="replace")
+        if auth.startswith("Bearer ") and len(auth) > 7:
+            return f"token:{auth[7:].strip()}"
+        client = scope.get("client")
+        return client[0] if client else "unknown"
+
     def _cleanup_stale(self, now: float) -> None:
         if now - self._last_cleanup < _RATE_CLEANUP_INTERVAL:
             return
@@ -243,12 +261,12 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        ip = self._client_ip(scope)
+        key = self._rate_limit_key(scope)
         method = scope.get("method", "GET")
 
         # Check general rate limit.
-        if not self._check_limit(self._buckets, ip, _RATE_LIMIT_DEFAULT, now):
-            logger.warning("Rate limit exceeded for {} (general)", ip)
+        if not self._check_limit(self._buckets, key, _RATE_LIMIT_DEFAULT, now):
+            logger.warning("Rate limit exceeded for key={} (general)", key[:16])
             response = JSONResponse(
                 {"ok": False, "error": "Rate limit exceeded — try again later"},
                 status_code=429,
@@ -259,9 +277,9 @@ class RateLimitMiddleware:
 
         # Check stricter POST rate limit.
         if method == "POST" and not self._check_limit(
-            self._post_buckets, ip, _RATE_LIMIT_POST, now
+            self._post_buckets, key, _RATE_LIMIT_POST, now
         ):
-            logger.warning("Rate limit exceeded for {} (POST)", ip)
+            logger.warning("Rate limit exceeded for key={} (POST)", key[:16])
             response = JSONResponse(
                 {"ok": False, "error": "Rate limit exceeded for POST — try again later"},
                 status_code=429,

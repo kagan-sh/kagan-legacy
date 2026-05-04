@@ -57,10 +57,7 @@ class TaskCreateRequest(_CriteriaMixin):
 class TaskUpdateRequest(_CriteriaMixin):
     """Canonical request model for updating task fields.
 
-    Used by the REST PATCH /api/tasks/{id} handler.  The ``github_issue``
-    field is accepted for forward-compatibility but not yet wired to
-    ``Tasks.update()`` — callers must skip it explicitly (the skip lives
-    in the route, not here, so MCP callers are not affected).
+    Used by the REST PATCH /api/tasks/{id} handler.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -72,8 +69,3 @@ class TaskUpdateRequest(_CriteriaMixin):
     agent_backend: str | None = Field(default=None, max_length=255)
     launcher: str | None = Field(default=None, max_length=255)
     repo_id: str | None = Field(default=None, max_length=255)
-    # github_issue is accepted but deliberately not wired to Tasks.update().
-    # Tracking issue: the field exists in the DB model but the update path
-    # has no validation/resolution logic yet.  Skip it in both REST and MCP
-    # update routes until that is implemented.
-    github_issue: str | None = Field(default=None, max_length=255)

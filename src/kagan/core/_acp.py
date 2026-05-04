@@ -281,8 +281,16 @@ def _friendly_startup_error_message(*, error: object, agent_backend: str, during
 class KaganACPClient(ACPClientBase):
     """ACP client implementation forwarding session updates to a callback."""
 
-    def __init__(self, on_update: Callable[[str, Any], Any]) -> None:
+    def __init__(
+        self,
+        on_update: Callable[[str, Any], Any],
+        on_permission_grant: Callable[[str, str, str], Any] | None = None,
+    ) -> None:
         self._on_update = on_update
+        # Called when allow_always is auto-approved so callers can surface
+        # the event before the tool executes: on_permission_grant(session_id,
+        # tool_call_id, option_id).
+        self._on_permission_grant = on_permission_grant
         self._conn: acp.Agent | None = None
 
     async def request_permission(
@@ -293,13 +301,31 @@ class KaganACPClient(ACPClientBase):
         **kwargs: Any,
     ) -> RequestPermissionResponse:
         for option in options:
-            if option.kind in {"allow_always", "allow_once"}:
+            if option.kind == "allow_once":
                 logger.debug(
-                    "Auto-approving ACP permission session_id={} option_id={} tool_call_id={}",
+                    "Auto-approving allow_once ACP permission session_id={} option_id={} "
+                    "tool_call_id={}",
                     session_id,
                     option.option_id,
                     tool_call.tool_call_id,
                 )
+                return RequestPermissionResponse(
+                    outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
+                )
+            if option.kind == "allow_always":
+                logger.debug(
+                    "Auto-approving allow_always ACP permission session_id={} option_id={} "
+                    "tool_call_id={}",
+                    session_id,
+                    option.option_id,
+                    tool_call.tool_call_id,
+                )
+                if self._on_permission_grant is not None:
+                    maybe = self._on_permission_grant(
+                        session_id, tool_call.tool_call_id, option.option_id
+                    )
+                    if inspect.isawaitable(maybe):
+                        await maybe
                 return RequestPermissionResponse(
                     outcome=AllowedOutcome(outcome="selected", option_id=option.option_id)
                 )

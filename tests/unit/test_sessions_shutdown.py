@@ -179,8 +179,9 @@ async def test_run_uses_backend_spec_capability_for_detached_launch(
         db_path: str,
         project_id: str | None = None,
         on_session_update: Any,
+        on_permission_grant: Any = None,
     ) -> tuple[int, Any]:
-        del worktree_path, prompt, on_session_update, project_id
+        del worktree_path, prompt, on_session_update, on_permission_grant, project_id
         spawn_calls.append((backend_name, session_id, task_id, db_path))
         return 4242, _FakeReaderTask()
 
@@ -188,7 +189,7 @@ async def test_run_uses_backend_spec_capability_for_detached_launch(
         del name
         created_coroutines.append(coro)
         coro.close()
-        return SimpleNamespace()
+        return SimpleNamespace(add_done_callback=lambda _cb: None)
 
     monkeypatch.setattr("kagan.core._sessions.Sessions._prepare_session", fake_prepare_session)
     monkeypatch.setattr(
@@ -298,7 +299,7 @@ async def test_run_parses_float_timeout_for_non_acp_detached_launch(
     def fake_create_task(coro: Any, *, name: str | None = None) -> Any:
         del name
         coro.close()
-        return SimpleNamespace()
+        return SimpleNamespace(add_done_callback=lambda _cb: None)
 
     async def fake_to_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
         return fn(*args, **kwargs)

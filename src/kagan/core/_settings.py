@@ -11,6 +11,7 @@ from sqlalchemy import Engine
 from sqlmodel import select
 
 from kagan.core._db_helpers import _db_async
+from kagan.core.errors import KaganError
 from kagan.core.models import Setting
 
 # Keys whose values are stored encrypted at rest.
@@ -36,8 +37,11 @@ def _secret_key_path() -> Path:
 def _load_or_create_fernet_key() -> bytes:
     """Return an existing Fernet key or generate and persist a new one.
 
-    The key file is created with mode 0600 so only the owning user can read it.
+    The key file is opened with O_CREAT|O_EXCL and mode 0600 in one atomic
+    syscall so the file is never world-readable, even transiently.
     """
+    import os
+
     from cryptography.fernet import Fernet
 
     path = _secret_key_path()
@@ -46,8 +50,11 @@ def _load_or_create_fernet_key() -> bytes:
 
     key = Fernet.generate_key()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(key)
-    path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    try:
+        os.write(fd, key)
+    finally:
+        os.close(fd)
     return key
 
 
@@ -59,18 +66,27 @@ def _encrypt_value(plaintext: str) -> str:
     return _FERNET_PREFIX + Fernet(key).encrypt(plaintext.encode()).decode()
 
 
+class SettingsDecryptError(KaganError):
+    """Raised when a Fernet-encrypted settings value cannot be decrypted."""
+
+
 def _decrypt_value(ciphertext: str) -> str:
-    """Decrypt a ``fernet:``-prefixed ciphertext; return the original plaintext."""
-    from cryptography.fernet import Fernet, InvalidToken
+    """Decrypt a ``fernet:``-prefixed ciphertext; return the original plaintext.
+
+    Raises ``SettingsDecryptError`` on failure rather than leaking the raw
+    ciphertext back to the caller (callers may log or render the return value;
+    leaking encrypted bytes there is worse than failing loudly).
+    """
+    from cryptography.fernet import Fernet
     from loguru import logger
 
-    token = ciphertext[len(_FERNET_PREFIX):]
+    token = ciphertext[len(_FERNET_PREFIX) :]
     try:
         key = _load_or_create_fernet_key()
         return Fernet(key).decrypt(token.encode()).decode()
-    except (InvalidToken, Exception) as exc:
-        logger.warning("Failed to decrypt settings value — returning ciphertext raw: {}", exc)
-        return ciphertext
+    except Exception as exc:
+        logger.warning("Failed to decrypt settings value: {}", exc)
+        raise SettingsDecryptError("Encrypted settings value could not be decrypted") from exc
 
 
 def _maybe_encrypt(key: str, value: str) -> str:

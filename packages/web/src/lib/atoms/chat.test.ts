@@ -3,7 +3,6 @@ import { createStore } from 'jotai';
 import {
   isStreamingAtom,
   streamEntriesAtom,
-  streamVersionAtom,
   appendStreamChunkAtom,
   addToolStartAtom,
   updateToolProgressAtom,
@@ -41,23 +40,13 @@ describe('appendStreamChunkAtom (WV8: O(1) in-place merge)', () => {
     expect(entries[0]).toMatchObject({ kind: 'text', content: 'Hello' });
   });
 
-  it('merges consecutive text chunks in-place without a new array per token', () => {
+  it('merges consecutive text chunks into the last entry', () => {
     const store = createStore();
     store.set(appendStreamChunkAtom, { content: 'Hello' });
-    const refBefore = store.get(streamEntriesAtom);
     store.set(appendStreamChunkAtom, { content: ' world' });
     const entries = store.get(streamEntriesAtom);
-    // Same array reference: in-place mutation path
-    expect(entries).toBe(refBefore);
+    expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ kind: 'text', content: 'Hello world' });
-  });
-
-  it('bumps streamVersionAtom on in-place merge', () => {
-    const store = createStore();
-    store.set(appendStreamChunkAtom, { content: 'A' });
-    const v0 = store.get(streamVersionAtom);
-    store.set(appendStreamChunkAtom, { content: 'B' });
-    expect(store.get(streamVersionAtom)).toBeGreaterThan(v0);
   });
 
   it('appends new thought entry when kind changes', () => {
@@ -99,13 +88,6 @@ describe('updateToolProgressAtom', () => {
     expect(tool).toMatchObject({ status: 'done' });
   });
 
-  it('bumps streamVersionAtom on progress update', () => {
-    const store = createStore();
-    store.set(addToolStartAtom, { tool: 'bash' });
-    const v0 = store.get(streamVersionAtom);
-    store.set(updateToolProgressAtom, { tool: 'bash', status: 'done' });
-    expect(store.get(streamVersionAtom)).toBeGreaterThan(v0);
-  });
 });
 
 describe('addStreamErrorAtom', () => {
@@ -127,13 +109,12 @@ describe('addStreamNoteAtom', () => {
 });
 
 describe('resetStreamAtom', () => {
-  it('clears entries, resets version, and sets streaming to false', () => {
+  it('clears entries and sets streaming to false', () => {
     const store = createStore();
     store.set(appendStreamChunkAtom, { content: 'hello' });
     store.set(isStreamingAtom, true);
     store.set(resetStreamAtom);
     expect(store.get(streamEntriesAtom)).toHaveLength(0);
-    expect(store.get(streamVersionAtom)).toBe(0);
     expect(store.get(isStreamingAtom)).toBe(false);
   });
 });

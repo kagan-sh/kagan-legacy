@@ -21,16 +21,6 @@ export type ChatStreamEntry =
 export const streamEntriesAtom = atom<ChatStreamEntry[]>([]);
 export const isStreamingAtom = atom(false);
 
-// Version counter: incremented whenever entries are mutated in-place so
-// subscribers re-render without a full array copy.
-export const streamVersionAtom = atom(0);
-
-/**
- * Append a text chunk to the current streaming state.
- * When the last entry is the same kind, mutates it in-place and bumps
- * streamVersionAtom instead of spreading the array — O(1) per token.
- * When appending a new entry, a new array reference is set normally.
- */
 export const appendStreamChunkAtom = atom(
   null,
   (get, set, payload: { content: string; thought?: boolean }) => {
@@ -39,9 +29,9 @@ export const appendStreamChunkAtom = atom(
     const last = entries.at(-1);
 
     if (last && last.kind === kind) {
-      // Mutate the last entry in-place — no array spread per token.
-      (last as Extract<ChatStreamEntry, { kind: 'text' | 'thought' }>).content += payload.content;
-      set(streamVersionAtom, (v) => v + 1);
+      const updated = entries.slice(0, -1);
+      updated.push({ ...last, content: last.content + payload.content });
+      set(streamEntriesAtom, updated);
     } else {
       set(streamEntriesAtom, [...entries, { kind, content: payload.content }]);
     }
@@ -62,9 +52,6 @@ export const addToolStartAtom = atom(
   },
 );
 
-/**
- * Update the latest matching tool call entry in-place, bump version.
- */
 export const updateToolProgressAtom = atom(
   null,
   (get, set, payload: { tool: string; status?: string }) => {
@@ -72,16 +59,16 @@ export const updateToolProgressAtom = atom(
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]!;
       if (entry.kind === 'tool' && entry.name === payload.tool) {
-        entries[i] = {
+        const updated = entries.slice();
+        updated[i] = {
           ...entry,
-          status: (payload.status === 'done' ? 'done' : entry.status),
+          status: payload.status === 'done' ? 'done' : entry.status,
           detail: payload.status ?? entry.detail,
         };
-        break;
+        set(streamEntriesAtom, updated);
+        return;
       }
     }
-    // Entries array was mutated in-place; bump version for re-render.
-    set(streamVersionAtom, (v) => v + 1);
   },
 );
 
@@ -113,7 +100,6 @@ export const addStreamNoteAtom = atom(
  */
 export const resetStreamAtom = atom(null, (_get, set) => {
   set(streamEntriesAtom, []);
-  set(streamVersionAtom, 0);
   set(isStreamingAtom, false);
 });
 

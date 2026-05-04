@@ -16,7 +16,6 @@ import {
   chatMessagesAtom,
   isStreamingAtom,
   streamEntriesAtom,
-  streamVersionAtom,
   appendStreamChunkAtom,
   addToolStartAtom,
   updateToolProgressAtom,
@@ -62,8 +61,6 @@ export function useChatSession(id: string | undefined): ChatSessionState {
   const [messages, setMessages] = useAtom(chatMessagesAtom);
   const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
   const streamEntries = useAtomValue(streamEntriesAtom);
-  // Subscribe to version so in-place mutations (append chunk / tool progress) trigger re-renders.
-  useAtomValue(streamVersionAtom);
   const appendChunk = useSetAtom(appendStreamChunkAtom);
   const addToolStart = useSetAtom(addToolStartAtom);
   const updateToolProgress = useSetAtom(updateToolProgressAtom);

@@ -25,8 +25,8 @@ class InjectionDetector:
             r"ignore\s+(all\s+)?(previous|prior|earlier)\s+(instruction|directive|command)",
             "instruction_override",
         ),
-        (r"\<\|im_start\|\>|\<\|im_end\|\>|\[INST\]|\[\/INST\]", "delimiter_injection"),
-        (r"DAN|jailbreak|anti\-?guard|do\s+anything\s+now", "known_jailbreak"),
+        (r"\<\|im_start\|\>|\<\|im_end\|\>|\[inst\]|\[\/inst\]", "delimiter_injection"),
+        (r"\bdan\b|jailbreak|anti\-?guard|do\s+anything\s+now", "known_jailbreak"),
         (r"system\s+(prompt|instruction|message|override)", "system_spoofing"),
     ]
 

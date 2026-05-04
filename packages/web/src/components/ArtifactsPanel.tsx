@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 
 // TODO(artifacts/pdf-docx-xlsx): PDF, DOCX, and XLSX deferred to a follow-up.
 
-function ArtifactView({ artifact, panelId }: { artifact: Artifact; panelId: string }) {
+function ArtifactView({ artifact }: { artifact: Artifact }) {
   if (artifact.type === 'html') {
     return (
       <iframe
@@ -38,14 +38,8 @@ function ArtifactView({ artifact, panelId }: { artifact: Artifact; panelId: stri
     );
   }
 
-  // markdown
   return (
-    <div
-      role="tabpanel"
-      id={panelId}
-      tabIndex={0}
-      className={cn('overflow-y-auto p-4', focusRing)}
-    >
+    <div className="h-full overflow-y-auto p-4">
       <MarkdownContent content={artifact.content} />
     </div>
   );
@@ -159,9 +153,7 @@ export function ArtifactsPanel({ open, onClose }: ArtifactsPanelProps) {
         tabIndex={0}
         className={cn('min-h-0 flex-1 overflow-hidden', focusRing)}
       >
-        {activeArtifact ? (
-          <ArtifactView artifact={activeArtifact} panelId={panelId ?? ''} />
-        ) : null}
+        {activeArtifact ? <ArtifactView artifact={activeArtifact} /> : null}
       </div>
     </div>
   );

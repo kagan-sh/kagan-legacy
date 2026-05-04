@@ -24,6 +24,8 @@ def _pid_alive(pid: int | None) -> bool:
     """Return True if *pid* is still running in this OS."""
     if pid is None:
         return False
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
     try:
         os.kill(pid, 0)
         return True
@@ -31,6 +33,39 @@ def _pid_alive(pid: int | None) -> bool:
         return False
     except PermissionError:
         return True
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    """Return True if *pid* is running on Windows without signalling it."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        # ERROR_ACCESS_DENIED means the process exists but cannot be queried.
+        return ctypes.get_last_error() == 5
+
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return ctypes.get_last_error() == 5
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 async def reap_orphan_sessions(engine: Engine) -> int:

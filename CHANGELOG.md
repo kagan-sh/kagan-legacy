@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.29 (2026-05-04)
+
+
+
+
+### Bug Fixes
+
+- Treat Windows root-relative commands as paths
+  ([`c4f82d1`](https://github.com/kagan-sh/kagan/commit/c4f82d1801c6db7ecf4a9f88eddd55ec8d23f418))
+
+
+
+
+
 ## v0.19.0-beta.28 (2026-05-04)
 
 

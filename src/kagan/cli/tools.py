@@ -260,6 +260,12 @@ def _run_refinement(prompt_text: str, backend_name: str) -> str:
 
 @click.group(
     name="tools",
+    help=(
+        "Stateless utilities — enhance task descriptions and manage prompt/persona presets.\n\n"
+        "Subcommands:\n"
+        "  enhance   Rewrite a task description into a structured, actionable prompt\n"
+        "  prompts   Export and manage built-in orchestrator/worker/review prompt presets"
+    ),
     epilog=(
         "Examples:\n"
         "  kagan tools enhance 'fix the login bug'\n"
@@ -275,7 +281,10 @@ def tools() -> None:
 tools.add_command(prompts)
 
 
-@tools.command(name="enhance")
+@tools.command(
+    name="enhance",
+    help="Rewrite a task description into a structured, actionable prompt using an AI agent.",
+)
 @click.argument("prompt_text", required=False)
 @click.option("--agent", "agent_backend", type=str, default=None, help="Refinement agent backend.")
 @click.option(

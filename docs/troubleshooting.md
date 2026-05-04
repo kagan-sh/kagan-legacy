@@ -6,6 +6,8 @@ icon: material/bug
 
 # Troubleshooting
 
+> **New user?** Start with `kagan doctor` — it checks agents, git, uv, PATH, and system health in one command.
+
 `kagan` runs doctor checks automatically on startup and shows them only when
 critical blockers are detected. Run doctor directly any time for full diagnostics:
 
@@ -14,6 +16,25 @@ kagan doctor
 ```
 
 Match symptom text below.
+
+## First-run failures
+
+| Symptom                            | Fix                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| No agent installed                 | Install Claude Code, Gemini CLI, or another supported backend; re-run `kagan doctor`                   |
+| `git` not found                    | `brew install git` / `apt install git` / `dnf install git`; ensure `git` is on PATH                   |
+| Git identity not configured        | `git config --global user.name "…"` and `user.email "…"`                                              |
+| `uv` not found / PATH issue        | `curl -LsSf https://astral.sh/uv/install.sh \| sh`; restart shell                                     |
+| `kagan` not found after install    | Run `uv tool install kagan`; ensure `~/.local/bin` is on PATH                                         |
+
+## Interactive launch / terminal
+
+| Symptom                          | Fix                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tmux not found                   | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                           |
+| nvim not found                   | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                                     |
+| VS Code chat did not auto-open   | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then relaunch the interactive session; fallback is `.kagan/start_prompt.md` |
+| Unsupported interactive launcher | Set `attached_launcher = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"`                           |
 
 ## Core / MCP
 
@@ -28,22 +49,6 @@ Match symptom text below.
 | `DISCONNECTED`                 | Run `kagan` first, then `kagan mcp`                                                |
 | `START_PENDING`                | Wait a few seconds, then retry or restart `kagan serve` / `kagan web`              |
 | Logs cut off mid-output        | Use `task_logs` with `offset` and `limit` to page through; follow `next_offset`    |
-
-## Interactive launch / terminal
-
-| Symptom                          | Fix                                                                                                                                               |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| tmux not found                   | `brew install tmux` (macOS) / `apt install tmux` (Debian) / `dnf install tmux` (Fedora)                                                           |
-| nvim not found                   | `brew install neovim` (macOS) / `apt install neovim` (Debian) / `dnf install neovim` (Fedora)                                                     |
-| VS Code chat did not auto-open   | Ensure `GitHub.copilot-chat` is installed (`code --list-extensions`), then relaunch the interactive session; fallback is `.kagan/start_prompt.md` |
-| Unsupported interactive launcher | Set `attached_launcher = "tmux"` \| `"nvim"` \| `"vscode"` \| `"cursor"` \| `"windsurf"` \| `"kiro"` \| `"antigravity"`                           |
-
-## Git
-
-| Symptom                     | Fix                                                        |
-| --------------------------- | ---------------------------------------------------------- |
-| Git not found               | `brew install git` / `apt install git` / `dnf install git` |
-| Git identity not configured | `git config --global user.name "…"` and `user.email "…"`   |
 
 ## Other
 

@@ -84,6 +84,7 @@ def _print_crash_footer() -> None:
     log_path = default_log_path()
     click.echo(f"Log file: {log_path}", err=True)
     click.echo(f"Bug report: {_ISSUES_URL}/new", err=True)
+    click.echo("Run `kagan doctor` for a system health check.", err=True)
 
 
 class _CrashException(click.ClickException):

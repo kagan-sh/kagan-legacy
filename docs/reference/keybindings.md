@@ -131,6 +131,20 @@ AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 | ++1++ - ++9++ | Quick open by position |
 | ++esc++       | Quit                   |
 
+## Quick Actions palette
+
+Open with `Ctrl+Shift+P` from any TUI screen.
+
+The palette surfaces rare or context-specific actions that do not have dedicated keys:
+
+| Action              | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| `review.ai`         | Run AI review on the current REVIEW-state task |
+| `github.import`     | Import issues from a connected GitHub repo     |
+| `repo.sync`         | Sync the active repository reference           |
+
+Type to filter. Press `Enter` to run, `Esc` to dismiss.
+
 ## Common Modals
 
 | Key        | Action                   |

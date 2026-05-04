@@ -626,3 +626,64 @@ def test_root_cli_no_longer_exposes_prompt_commands(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "No such command 'prompts'" in result.output
+
+
+def test_crash_footer_mentions_kagan_doctor(monkeypatch, tmp_path: Path) -> None:
+    """Crash footer must tell users to run `kagan doctor` for self-diagnosis."""
+    from kagan.core.errors import KaganError
+
+    def _raise_kagan_error(*_args, **_kwargs):
+        raise KaganError("simulated failure")
+
+    monkeypatch.setattr("kagan.cli.tui._launch_tui", _raise_kagan_error)
+    monkeypatch.setattr("kagan.cli.tui._run_doctor_gate", lambda **_kw: True)
+    monkeypatch.setattr("kagan.cli.tui._collect_startup_checks", lambda **_kw: [])
+
+    runner = CliRunner(mix_stderr=True)
+    result = runner.invoke(cli, ["tui"], env=_runner_env(tmp_path))
+
+    assert result.exit_code != 0
+    combined = result.output
+    assert "kagan doctor" in combined
+
+
+def test_tools_help_describes_subcommands_inline(tmp_path: Path) -> None:
+    """kagan tools --help must list subcommands and their purpose without traversal."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["tools", "--help"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert "enhance" in result.output
+    assert "prompts" in result.output
+    # The updated docstring describes the commands inline
+    assert "Stateless utilities" in result.output
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Click CliRunner does not simulate an interactive TTY so the REPL banner "
+        "interactive hint line cannot be exercised without a real terminal."
+    ),
+    strict=False,
+)
+def test_chat_interactive_banner_contains_help_hint(monkeypatch, tmp_path: Path) -> None:
+    """Interactive REPL banner must include /help and Ctrl-C guidance."""
+    captured_kwargs: dict = {}
+
+    def _fake_write_boot_banner(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr("kagan.cli.chat.repl._write_boot_banner", _fake_write_boot_banner)
+
+    async def _fake_run_chat_async(*, prompt=None, session_id=None, agent=None, yolo=False):
+        # Simulate interactive call: no prompt
+        from kagan.cli.chat.repl import _write_boot_banner
+        _write_boot_banner(interactive=prompt is None)
+
+    monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chat"], env=_runner_env(tmp_path))
+
+    assert result.exit_code == 0
+    assert captured_kwargs.get("interactive") is True

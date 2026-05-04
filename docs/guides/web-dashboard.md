@@ -86,6 +86,10 @@ Changes save immediately for toggles and dropdowns. Text fields save on blur or 
 
 Full list: [Keybindings reference](../reference/keybindings.md#web-dashboard)
 
+## Server folder label
+
+The Settings page shows a "Server folder" field. This is the working directory where `kagan web` was launched — not a folder you configure. It tells you which project root the server is serving. If it shows the wrong directory, stop the server and restart it from the correct project root.
+
 ## Real-time sync
 
 The dashboard maintains a Server-Sent Events connection to the Kagan server. Task updates from the TUI, CLI, or MCP agents appear within seconds. If the connection drops, the dashboard falls back to HTTP polling every 10 seconds and reconnects automatically.

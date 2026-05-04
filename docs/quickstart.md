@@ -62,6 +62,14 @@ REVIEW → DONE requires your explicit merge. The state machine does not skip th
 
 That's it. The agent ran in isolation, you reviewed the diff, you approved, the merge fired.
 
+## Board state from any terminal
+
+```bash
+kagan list
+```
+
+Shows all projects with task counts — useful when you want a quick status check without opening the TUI.
+
 ## Shortcuts
 
 `?` Help · `n` New task · `s` Start run · `Enter` Open task · `a` Approve · `m` Merge · `Ctrl+Shift+P` Quick Actions · `Ctrl+,` Settings

@@ -305,7 +305,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
 
       (async () => {
         try {
-          for await (const chunk of streamSSE<ChatWatchEvent>(
+          for await (const _chunk of streamSSE<ChatWatchEvent>(
             `/api/chat/${id}/stream`,
             {
               method: 'POST',
@@ -317,9 +317,9 @@ export function useChatSession(id: string | undefined): ChatSessionState {
               signal: controller.signal,
             },
           )) {
-            // /stream chunks are handled via /watch. We also handle them here
-            // for resilience when /watch has not yet connected.
-            handleWatchEvent(chunk);
+            // Drained for backpressure only — /watch is the single source of
+            // UI events. Handling here too would double every chunk.
+            void _chunk;
           }
         } catch (err) {
           if (controller.signal.aborted) return;
@@ -350,7 +350,7 @@ export function useChatSession(id: string | undefined): ChatSessionState {
         }
       })();
     },
-    [id, setIsStreaming, setMessages, handleWatchEvent, addError, setTurnConflict],
+    [id, setIsStreaming, setMessages, addError, setTurnConflict],
   );
 
   const onSend = useCallback(

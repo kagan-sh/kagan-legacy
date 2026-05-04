@@ -210,6 +210,20 @@ class RateLimitMiddleware:
         client = scope.get("client")
         return client[0] if client else "unknown"
 
+    @staticmethod
+    def _safe_log_key(key: str) -> str:
+        """Return a non-reversible label safe to emit to logs.
+
+        Token keys are hashed so a leaked log line cannot replay against the
+        API; IP keys are passed through (they are not credentials).
+        """
+        if key.startswith("token:"):
+            import hashlib
+
+            digest = hashlib.sha256(key[len("token:") :].encode()).hexdigest()
+            return f"token:{digest[:8]}"
+        return key
+
     def _cleanup_stale(self, now: float) -> None:
         if now - self._last_cleanup < _RATE_CLEANUP_INTERVAL:
             return
@@ -266,7 +280,7 @@ class RateLimitMiddleware:
 
         # Check general rate limit.
         if not self._check_limit(self._buckets, key, _RATE_LIMIT_DEFAULT, now):
-            logger.warning("Rate limit exceeded for key={} (general)", key[:16])
+            logger.warning("Rate limit exceeded for key={} (general)", self._safe_log_key(key))
             response = JSONResponse(
                 {"ok": False, "error": "Rate limit exceeded — try again later"},
                 status_code=429,
@@ -279,7 +293,7 @@ class RateLimitMiddleware:
         if method == "POST" and not self._check_limit(
             self._post_buckets, key, _RATE_LIMIT_POST, now
         ):
-            logger.warning("Rate limit exceeded for key={} (POST)", key[:16])
+            logger.warning("Rate limit exceeded for key={} (POST)", self._safe_log_key(key))
             response = JSONResponse(
                 {"ok": False, "error": "Rate limit exceeded for POST — try again later"},
                 status_code=429,

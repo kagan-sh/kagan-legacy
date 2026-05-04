@@ -45,12 +45,12 @@ def _load_or_create_fernet_key() -> bytes:
     from cryptography.fernet import Fernet
 
     path = _secret_key_path()
-    if path.exists():
-        return path.read_bytes().strip()
-
-    key = Fernet.generate_key()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    key = Fernet.generate_key()
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    except FileExistsError:
+        return path.read_bytes().strip()
     try:
         os.write(fd, key)
     finally:

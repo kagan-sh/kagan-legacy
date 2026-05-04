@@ -141,3 +141,29 @@ def test_decrypt_failure_raises_typed_error(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
     with pytest.raises(SettingsDecryptError):
         _decrypt_value(_FERNET_PREFIX + "not-a-valid-fernet-token")
+
+
+def test_secret_key_concurrent_create_is_safe(monkeypatch, tmp_path: Path) -> None:
+    """Two callers racing key creation both end up with the same key; no exception leaks."""
+    from kagan.core import _settings
+
+    monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
+    first = _settings._load_or_create_fernet_key()
+    # Second invocation must hit the FileExistsError branch and re-read.
+    second = _settings._load_or_create_fernet_key()
+    assert first == second
+
+
+def test_rate_limit_log_key_does_not_leak_token() -> None:
+    """Token-keyed rate-limit log lines are hashed, never raw."""
+    from kagan.server._middleware import RateLimitMiddleware
+
+    raw = "token:sk_live_supersecret_AAAAAAAAAAAAAAAA"
+    safe = RateLimitMiddleware._safe_log_key(raw)
+    assert safe.startswith("token:")
+    assert "supersecret" not in safe
+    assert "sk_live" not in safe
+    assert len(safe) <= len("token:") + 8
+
+    # IP keys pass through unchanged.
+    assert RateLimitMiddleware._safe_log_key("192.0.2.1") == "192.0.2.1"

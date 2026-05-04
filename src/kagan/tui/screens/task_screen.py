@@ -44,10 +44,10 @@ from kagan.tui._chat_helpers import (
 )
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
-from kagan.tui.screens.confirm import ConfirmModal
-from kagan.tui.screens.kanban_chat import (
+from kagan.tui.screens._chat_runner import (
     acp_payload,
     apply_task_chat_event,
+    send_chat_message,
     stream_chunk_kind,
     stream_chunk_text,
     tool_call_args,
@@ -57,9 +57,7 @@ from kagan.tui.screens.kanban_chat import (
     tool_call_status,
     tool_call_title,
 )
-from kagan.tui.screens.kanban_chat import (
-    send_orchestrator_message as send_chat_message,
-)
+from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.rejection_input import RejectionInputModal
 from kagan.tui.screens.task_commands import TaskScreenCommandProvider
 from kagan.tui.widgets.chat import ChatPanel

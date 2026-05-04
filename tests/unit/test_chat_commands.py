@@ -5,20 +5,22 @@ import pytest
 from kagan.cli.chat import (
     SLASH_COMMAND_REGISTRY,
     ChatController,
-    delete_chat_session,
     format_agent_backend_list,
     format_session_payload,
     parse_slash_invocation,
     resolve_agent_backend_selection,
     resolve_slash_input,
-    save_chat_session,
-    set_last_session_id,
 )
 from kagan.cli.chat.controller import (
     _bootstrap_noninteractive_message,
     _bootstrap_repository_status,
 )
-from kagan.cli.chat.sessions import _clean_generated_title, _format_relative_time
+from kagan.core.chat.sessions import (
+    clean_generated_title as _clean_generated_title,
+)
+from kagan.core.chat.sessions import (
+    format_relative_time as _format_relative_time,
+)
 from kagan.core import AgentError, BackendSpec
 
 pytestmark = [pytest.mark.unit]
@@ -45,15 +47,20 @@ def test_format_agent_backend_list_marks_current_backend() -> None:
 
 
 def test_orchestrator_controller_rejects_non_acp_backends(monkeypatch) -> None:
-    controller = ChatController(cast("Any", _FakeClient()), agent_backend="custom-backend")
+    """Phase 5c: backend ACP-capability check now lives in the helper used by
+    :class:`LongLivedACPFactory`. Driving it directly mirrors the path taken
+    when the controller opens the factory.
+    """
+    from kagan.cli.chat import acp as cli_chat_acp
 
     monkeypatch.setattr(
-        "kagan.cli.chat.controller.get_backend_spec",
+        cli_chat_acp,
+        "get_backend_spec",
         lambda _name: BackendSpec(name="custom-backend", executable="custom-backend"),
     )
 
-    with pytest.raises(AgentError, match="does not support ACP"):
-        controller._resolve_acp_command()
+    with pytest.raises(RuntimeError, match="does not support ACP"):
+        cli_chat_acp._resolve_acp_command_for_backend("custom-backend")
 
 
 def test_bootstrap_status_mentions_detected_git_root(tmp_path) -> None:
@@ -278,6 +285,53 @@ class _FakeSettingsOps:
         self._store.update(updates)
 
 
+async def save_chat_session(client: Any, session: dict[str, Any]) -> None:
+    """Test helper — upsert a session dict via the aggregate's atomic path."""
+    sid = str(session.get("id") or "").strip()
+    if not sid:
+        return
+    history: list[tuple[str, str]] = []
+    for pair in session.get("orchestrator_history") or []:
+        if isinstance(pair, list | tuple) and len(pair) == 2:
+            role = str(pair[0]).strip()
+            content = str(pair[1]).strip()
+            if role and content:
+                history.append((role, content))
+    raw_backend = session.get("agent_backend")
+    backend: str | None = (
+        raw_backend if isinstance(raw_backend, str) and raw_backend.strip() else None
+    )
+    raw_project = session.get("project_id")
+    project: str | None = (
+        raw_project if isinstance(raw_project, str) and raw_project.strip() else None
+    )
+    await client.chat_sessions.upsert_with_history(
+        sid,
+        label=str(session.get("label") or f"Session {sid[:8]}").strip(),
+        source=str(session.get("source") or "repl") or "repl",
+        agent_backend=backend,
+        project_id=project,
+        history=history,
+    )
+
+
+async def set_last_session_id(client: Any, *, scope: str, session_id: str) -> None:
+    await client.chat_sessions.set_last_session_id(scope=scope, session_id=session_id)
+
+
+async def delete_chat_session(client: Any, session_id: str) -> bool:
+    return await client.chat_sessions.delete(session_id)
+
+
+async def get_chat_session(client: Any, session_id: str) -> dict[str, Any] | None:
+    pair = await client.chat_sessions.get_with_history(session_id)
+    if pair is None:
+        return None
+    from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+
+    return chat_session_to_legacy_dict(*pair)
+
+
 def _make_test_engine():  # type: ignore[return]
     """Create a fully-migrated file-based SQLite engine for unit tests.
 
@@ -292,11 +346,37 @@ def _make_test_engine():  # type: ignore[return]
     return create_db_engine(Path(tmpdir) / "test.db")
 
 
+class _FakeChatEngine:
+    """Stub for ``client.chat`` — controller construction requires it.
+
+    Records ``resolve_permission`` calls; the slash-command tests don't
+    drive the engine, but the controller's ``__init__`` wires the engine
+    into ``PermissionUI`` so the attribute must exist.
+    """
+
+    def __init__(self) -> None:
+        self.resolve_calls: list[tuple[str, str, str, str | None]] = []
+
+    async def resolve_permission(
+        self,
+        session_id: str,
+        future_id: str,
+        *,
+        outcome: str,
+        feedback: str | None = None,
+    ) -> None:
+        self.resolve_calls.append((session_id, future_id, outcome, feedback))
+
+
 class _FakeClient:
     def __init__(self) -> None:
+        from kagan.core.chat import ChatSessions
+
         self.settings = _FakeSettingsOps()
         self.active_project_id: str | None = None
         self._engine = _make_test_engine()
+        self.chat = _FakeChatEngine()
+        self.chat_sessions = ChatSessions(self._engine, self.settings)
 
 
 @pytest.mark.asyncio
@@ -335,8 +415,8 @@ async def test_open_sessions_reattach_attaches_session(monkeypatch) -> None:
     assert controller._chat_session_id == "cfcee6c1"
     # Session is confirmed as attached
     assert any("Attached session" in line for line in lines)
-    # History is loaded (1 user turn)
-    assert len(controller._chat_history) == 1
+    # History is loaded — restored as rendered transcript lines
+    assert len(controller._rendered_messages) == 1
 
 
 @pytest.mark.asyncio
@@ -563,24 +643,25 @@ async def test_resolve_initial_session_returns_none_without_explicit_id() -> Non
 
 @pytest.mark.asyncio
 async def test_resolve_initial_session_uses_task_session_binding(monkeypatch) -> None:
+    from kagan.core.chat.sessions import TaskBinding
+
     client = _FakeClient()
 
-    async def _fake_resolve_task_session_binding(
-        _client: Any, session_id: str
-    ) -> dict[str, Any] | None:
+    async def _fake_resolve_task_binding(self, session_id: str) -> TaskBinding | None:
+        del self
         assert session_id == "tasksess"
-        return {
-            "id": "tasksess",
-            "label": "Task tasksess - Investigate bug",
-            "source": "task-session",
-            "agent_backend": "claude-code",
-            "orchestrator_history": [],
-            "messages_rendered": [],
-        }
+        return TaskBinding(
+            id="tasksess",
+            label="Task tasksess - Investigate bug",
+            source="task-session",
+            agent_backend="claude-code",
+            task_id="tasksess",
+            status="open",
+        )
 
     monkeypatch.setattr(
-        "kagan.cli.chat.controller.resolve_task_session_binding",
-        _fake_resolve_task_session_binding,
+        "kagan.core.chat.ChatSessions.resolve_task_binding",
+        _fake_resolve_task_binding,
     )
 
     controller = ChatController(cast("Any", client), agent_backend="claude-code")
@@ -630,8 +711,6 @@ async def test_delete_chat_session_removes_session() -> None:
 
     deleted = await delete_chat_session(client, "del12345")
     assert deleted is True
-
-    from kagan.cli.chat import get_chat_session
 
     result = await get_chat_session(client, "del12345")
     assert result is None

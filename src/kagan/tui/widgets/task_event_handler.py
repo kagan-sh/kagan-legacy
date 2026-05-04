@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from kagan.core.enums import SessionEventType
-from kagan.tui.screens.kanban_chat import (
+from kagan.tui.screens._chat_runner import (
     apply_task_chat_event,
     stream_chunk_kind,
     stream_chunk_text,

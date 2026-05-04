@@ -12,10 +12,7 @@ from textual.reactive import var
 from textual.screen import Screen
 from textual.widgets import Input, Select, Static, TextArea
 
-from kagan.cli.chat import (
-    resolve_default_agent_backend,
-    warm_orchestrator_backend,
-)
+from kagan.cli.chat import resolve_default_agent_backend, warm_orchestrator_backend
 from kagan.core import resolve_launcher
 from kagan.core._subprocess import resolve_spawn_command
 from kagan.core.enums import ChatMode, Priority, SessionKind, TaskStatus
@@ -35,15 +32,9 @@ from kagan.tui.keybindings import (
     get_keys_for_action,
 )
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
+from kagan.tui.screens._chat_runner import apply_task_chat_event, send_chat_message
 from kagan.tui.screens.confirm import ConfirmModal
 from kagan.tui.screens.github_import_modal import GitHubImportSummary
-from kagan.tui.screens.kanban_chat import (
-    apply_task_chat_event,
-    watch_chat_session,
-)
-from kagan.tui.screens.kanban_chat import (
-    send_orchestrator_message as send_chat_message,
-)
 from kagan.tui.screens.kanban_commands import KanbanCommandProvider
 from kagan.tui.screens.task_editor_modal import TaskEditorModal
 from kagan.tui.screens.tutorial import TutorialOverlay
@@ -167,7 +158,6 @@ class KanbanScreen(Screen[None]):
         self._chat_session_switch_token = 0
         self._chat_message_task: asyncio.Task[None] | None = None
         self._chat_stream_task: asyncio.Task[None] | None = None
-        self._chat_watch_task: asyncio.Task[None] | None = None
         self._watcher: DBWatcher | None = None
         self._watcher_reload_task: asyncio.Task[None] | None = None
         self._branch_sync_task: asyncio.Task[None] | None = None
@@ -318,11 +308,6 @@ class KanbanScreen(Screen[None]):
             self._branch_sync_task = None
 
     async def on_unmount(self) -> None:
-        if self._chat_watch_task is not None:
-            self._chat_watch_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._chat_watch_task
-            self._chat_watch_task = None
         if self._watcher_reload_task is not None:
             self._watcher_reload_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1842,28 +1827,6 @@ class KanbanScreen(Screen[None]):
         session_backend = self.kagan_app.orchestrator_sessions.agent_backend_for_key(active_key)
         if session_backend is not None:
             panel.set_preferred_agent_backend(session_backend)
-        session_id = self.kagan_app.orchestrator_sessions.current_session_id()
-        if session_id:
-            self._start_chat_watch_task(session_id, panel)
-
-    def _start_chat_watch_task(self, session_id: str, panel: ChatPanel) -> None:
-        """Start (or restart) the background SSE watch task for a chat session.
-
-        The task monitors the server-side /watch endpoint for takeover events.
-        In the default local-core configuration there is no HTTP client, so
-        ``watch_chat_session`` exits immediately — no overhead in the common case.
-        """
-        if self._chat_watch_task is not None and not self._chat_watch_task.done():
-            self._chat_watch_task.cancel()
-        http_client = getattr(self.kagan_app, "_chat_http_client", None)
-        self._chat_watch_task = asyncio.create_task(
-            watch_chat_session(
-                session_id=session_id,
-                panel=panel,
-                http_client=http_client,
-            ),
-            name=f"kanban-chat-watch:{session_id}",
-        )
 
     def _task_session_options(self, task: Task) -> list[tuple[str, str]]:
         ticket = task.title.strip() or f"Ticket #{task.id[:8]}"

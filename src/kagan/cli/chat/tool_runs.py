@@ -45,7 +45,7 @@ class ToolRunTracker:
 
     @staticmethod
     def tool_key(update: object) -> str:
-        for attr in ("tool_call_id", "call_id", "id"):
+        for attr in ("tool_call_id", "call_id", "tool_id", "id"):
             value = getattr(update, attr, None)
             if value:
                 return str(value)

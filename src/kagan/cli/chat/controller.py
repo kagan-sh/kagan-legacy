@@ -1,13 +1,30 @@
-"""ChatController — orchestrator agent lifecycle, session and project management."""
+"""ChatController — Rich-console renderer over the long-lived ChatEngine.
+
+Phase 5c rewires the controller onto :class:`kagan.core.chat.ChatEngine` +
+:class:`kagan.core.chat.LongLivedACPFactory`. Every chat turn now:
+
+1. Persists the user message via ``client.chat.push_user(session_id, text)``.
+2. Streams assistant events from
+   ``client.chat.stream_assistant(session_id, prompt_blocks=..., acp_factory=factory)``.
+3. Dispatches events to :class:`CLIRenderer` for printing and
+   :class:`PermissionUI` for permission resolution
+   (which routes back to ``engine.resolve_permission``).
+4. Routes ``Ctrl-C`` through ``engine.cancel(session_id)``; session switches
+   call ``engine.detach(session_id)`` + ``factory.restart()``.
+
+The legacy ``_OrchestratorACPClient`` and the local ``_chat_history`` /
+``_persist_session`` / ``_generate_session_title`` mirroring are gone — the
+engine + ChatSessions own them.
+"""
+
+from __future__ import annotations
 
 import asyncio
 import contextlib
 import os
-import shutil
 import sys
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
 import acp
 import click
@@ -16,11 +33,6 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from rich.live import Live
 
 from kagan.cli.chat._approval_panel import strip_tool_prefix
-from kagan.cli.chat._chat_acp import (
-    _OrchestratorACPClient,
-    _SendResult,
-    _WaveIndicator,
-)
 from kagan.cli.chat._chat_ui import (
     build_session_picker_option,
     export_analytics_json,
@@ -33,12 +45,14 @@ from kagan.cli.chat._chat_ui import (
     print_status_panel,
     show_tool_report,
 )
-from kagan.cli.chat._handshake import execute_handshake
-from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
-from kagan.cli.chat._title import generate_session_title
-from kagan.cli.chat.acp import (
-    _ACP_STDIO_BUFFER_LIMIT_BYTES,
+from kagan.cli.chat._permission_ui import PermissionUI, _SendResult, _WaveIndicator
+from kagan.cli.chat._renderer import CLIRenderer
+from kagan.cli.chat._session_picker import (
+    build_chat_session_list_items,
+    chat_session_to_legacy_dict,
+    resolve_chat_session_selector,
 )
+from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
 from kagan.cli.chat.agents import format_agent_backend_list, list_registered_agent_backends
 from kagan.cli.chat.commands import (
     SlashAction,
@@ -49,7 +63,6 @@ from kagan.cli.chat.prompt import (
     _format_user_request_block,
     _runtime_guidance_for_request,
     build_chat_status_line,
-    build_orchestrator_prompt,
 )
 from kagan.cli.chat.repl import (
     _TOOLBAR_STATE,
@@ -57,6 +70,7 @@ from kagan.cli.chat.repl import (
     _build_prompt_message,
     _build_prompt_placeholder,
     _console,
+    _env_flag_enabled,
     _find_git_root,
     _get_prompt_session,
     _release_prompt_session,
@@ -64,38 +78,36 @@ from kagan.cli.chat.repl import (
     searchable_picker,
     supports_interactive_picker,
 )
-from kagan.cli.chat.sessions import (
-    build_chat_session_list_items,
-    create_chat_session,
-    delete_chat_session,
-    get_chat_session,
-    list_chat_sessions,
-    resolve_chat_session_selector,
-    resolve_task_session_binding,
-    save_chat_session,
-    set_last_session_id,
-)
 from kagan.core import (
-    ACP_TIMEOUT_HINT,
     KAGAN_AGENT_EMAIL,
     KAGAN_AGENT_NAME,
-    BackendCapability,
     DBWatcher,
-    acp_handshake_timeout_seconds,
-    build_agent_environment,
-    build_mcp_manifest,
-    default_db_path,
-    get_backend_spec,
     get_system_git_identity,
-    resolve_acp_command,
-    resolve_orchestrator_prompt,
 )
-from kagan.core.enums import SessionEventType
+from kagan.core.chat import LongLivedACPFactory
+from kagan.core.chat.events import (
+    AssistantChunk,
+    AssistantMessagePersisted,
+    PermissionRequest,
+    TurnCancelled,
+    TurnDone,
+    TurnError,
+    TurnStarted,
+    UsageUpdate,
+)
+from kagan.core.chat.events import (
+    ToolCallProgress as ChatToolCallProgress,
+)
+from kagan.core.chat.events import (
+    ToolCallStart as ChatToolCallStart,
+)
 from kagan.core.errors import AgentError, KaganError
+
+if TYPE_CHECKING:
+    from kagan.core.enums import SessionEventType  # noqa: F401
 
 __all__ = [
     "ChatController",
-    "_OrchestratorACPClient",
     "_SendResult",
     "_WaveIndicator",
 ]
@@ -163,24 +175,24 @@ class ChatController:
         self._mcp_session_id = mcp_session_id
         self._prefer_session_backend = prefer_session_backend
         self._yolo = yolo
-        self._acp_conn: Any | None = None
-        self._acp_client: _OrchestratorACPClient | None = None
-        self._acp_session_id: str | None = None
-        self._is_primed = False
         self._restart_requested = False
         self._turn_count = 0
         self._chat_session_id: str | None = None
         self._chat_session_source = "repl"
         self._persist_repl_session = True
-        self._chat_history: list[tuple[str, str]] = []
         self._rendered_messages: list[str] = []
         self._restored_messages_printed = False
         self._session_title: str | None = None
-        self._title_task: asyncio.Task[None] | None = None
         self._project_name: str | None = None
         self._selected_repo_id: str | None = None
         self._selected_repo_name: str | None = None
         self._watcher = DBWatcher(client)
+
+        show_thoughts = _env_flag_enabled("KAGAN_CHAT_SHOW_THOUGHTS", default=False)
+        self._renderer = CLIRenderer(_console, show_thoughts=show_thoughts)
+        self._permission_ui = PermissionUI(yolo=yolo, renderer=self._renderer, engine=client.chat)
+        self._factory: LongLivedACPFactory | None = None
+        self._permission_tasks: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------
     # Session management
@@ -189,25 +201,38 @@ class ChatController:
     async def hydrate_persistent_session(self, *, explicit_session_id: str | None = None) -> None:
         selected = await self._resolve_initial_session(explicit_session_id)
         if selected is None:
-            selected = await create_chat_session(
-                self.client,
+            row = await self.client.chat_sessions.create(
                 source="repl",
                 label="REPL session",
                 agent_backend=self.agent_backend,
                 project_id=self.client.active_project_id,
             )
+            selected = chat_session_to_legacy_dict(row, [])
         await self._attach_session(selected, switching=False)
 
     async def _resolve_initial_session(
         self, explicit_session_id: str | None
     ) -> dict[str, Any] | None:
-        if explicit_session_id:
-            persisted = await get_chat_session(self.client, explicit_session_id)
-            if persisted is not None:
-                return persisted
-            return await resolve_task_session_binding(self.client, explicit_session_id)
-        # Always start a fresh session — users reconnect via /sessions or --session-id
-        return None
+        if not explicit_session_id:
+            return None
+        cs = self.client.chat_sessions
+        pair = await cs.get_with_history(explicit_session_id)
+        if pair is not None:
+            row, msgs = pair
+            return chat_session_to_legacy_dict(row, msgs)
+        binding = await cs.resolve_task_binding(explicit_session_id)
+        if binding is None:
+            return None
+        return {
+            "id": binding.id,
+            "label": binding.label,
+            "source": binding.source,
+            "agent_backend": binding.agent_backend,
+            "orchestrator_history": [],
+            "messages_rendered": [
+                f"System: Attached to task session {binding.id} (status: {binding.status})."
+            ],
+        }
 
     async def _attach_session(self, session: dict[str, Any], *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
@@ -219,18 +244,27 @@ class ChatController:
         self._chat_session_source = source
         self._persist_repl_session = source == "repl"
         self._mcp_session_id = session_id
-        self._is_primed = False
-        history = session.get("orchestrator_history") or []
-        self._chat_history = [
-            (str(item[0]).strip(), str(item[1]).strip())
-            for item in history
-            if isinstance(item, list | tuple) and len(item) == 2
-        ]
+
         rendered = session.get("messages_rendered") or []
         self._rendered_messages = [str(line).rstrip() for line in rendered if str(line).strip()]
-        self._turn_count = sum(1 for role, _ in self._chat_history if role == "assistant")
+        history = session.get("orchestrator_history") or []
+        self._turn_count = sum(
+            1
+            for pair in history
+            if isinstance(pair, list | tuple)
+            and len(pair) == 2
+            and str(pair[0]).strip() == "assistant"
+        )
+        # Render restored history if not already shown — engine + ChatSessions
+        # own the persistence; controller just renders it once on attach.
+        if not self._rendered_messages and history:
+            self._rendered_messages = [
+                f"{'You' if str(role).strip() == 'user' else 'Agent'}: {str(content).strip()}"
+                for role, content in (
+                    pair for pair in history if isinstance(pair, list | tuple) and len(pair) == 2
+                )
+            ]
         self._restored_messages_printed = False
-        # Restore session title from persisted label
         persisted_label = str(session.get("label") or "")
         default_label = f"Session {session_id}"
         self._session_title = persisted_label if persisted_label != default_label else None
@@ -249,45 +283,10 @@ class ChatController:
             self._restart_requested = True
 
         if self._persist_repl_session:
-            await set_last_session_id(self.client, scope="repl", session_id=session_id)
-            await self._persist_session()
+            await self.client.chat_sessions.set_last_session_id(
+                scope="repl", session_id=session_id
+            )
         return self._restart_requested
-
-    def _append_turn(self, user_text: str, assistant_reply: str) -> None:
-        self._chat_history.append(("user", user_text))
-        self._rendered_messages.append(f"You: {user_text.strip()}")
-        if assistant_reply:
-            self._chat_history.append(("assistant", assistant_reply))
-            self._rendered_messages.append(f"Agent: {assistant_reply}")
-        self._chat_history = self._chat_history[-120:]
-        self._rendered_messages = self._rendered_messages[-300:]
-
-    async def _persist_session(self) -> None:
-        if self._chat_session_id is None or not self._persist_repl_session:
-            return
-        await save_chat_session(
-            self.client,
-            {
-                "id": self._chat_session_id,
-                "label": self._session_title or f"Session {self._chat_session_id}",
-                "source": self._chat_session_source,
-                "agent_backend": self.agent_backend,
-                "orchestrator_history": [[role, content] for role, content in self._chat_history],
-                "messages_rendered": self._rendered_messages,
-            },
-        )
-        await set_last_session_id(self.client, scope="repl", session_id=self._chat_session_id)
-
-    async def _generate_session_title(self, user_message: str, assistant_reply: str) -> None:
-        title = await generate_session_title(
-            self.client,
-            user_message=user_message,
-            assistant_reply=assistant_reply,
-            agent_backend=self.agent_backend,
-        )
-        if title:
-            self._session_title = title
-            await self._persist_session()
 
     def _print_restored_messages(self) -> None:
         if self._restored_messages_printed or not self._rendered_messages:
@@ -296,7 +295,10 @@ class ChatController:
         self._restored_messages_printed = True
 
     async def _open_sessions(self, query: str | None) -> bool:
-        sessions = await list_chat_sessions(self.client, project_id=self.client.active_project_id)
+        pairs = await self.client.chat_sessions.list_with_history(
+            project_id=self.client.active_project_id
+        )
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No persisted sessions yet.[/dim]")
             return False
@@ -359,19 +361,20 @@ class ChatController:
         return await self._switch_agent(selected_backend)
 
     async def _create_new_session(self) -> bool:
-        created = await create_chat_session(
-            self.client,
+        row = await self.client.chat_sessions.create(
             source="repl",
             label="REPL session",
             agent_backend=self.agent_backend,
             project_id=self.client.active_project_id,
         )
+        created = chat_session_to_legacy_dict(row, [])
         should_restart = await self._attach_session(created, switching=True)
         _console.print(f"[green]New session:[/green] {created['id']}")
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
-        sessions = await list_chat_sessions(self.client)
+        pairs = await self.client.chat_sessions.list_with_history()
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
             return
@@ -393,7 +396,7 @@ class ChatController:
             _console.print("[red]Cannot delete the current session.[/red]")
             return
 
-        deleted = await delete_chat_session(self.client, target_id)
+        deleted = await self.client.chat_sessions.delete(target_id)
         if deleted:
             _console.print(f"[green]Deleted:[/green] {target_label} [{target_id}]")
         else:
@@ -404,14 +407,9 @@ class ChatController:
     # ------------------------------------------------------------------
 
     async def ensure_project(self) -> bool:
-        """Resolve an active project from CWD.  Always checks CWD on every boot.
-
-        Returns False if no project could be resolved or created.
-        """
         cwd = Path.cwd()
         cwd_str = str(cwd)
 
-        # 1. Try to match CWD to a known project by repo path.
         project = await self.client.projects.find_by_repo(cwd_str)
         if project is not None:
             await self.client.projects.set_active(project.id)
@@ -419,7 +417,6 @@ class ChatController:
             await self._auto_select_repo(project.id)
             return True
 
-        # 2. Try to match by git root.
         git_root = _find_git_root(cwd)
         if git_root is not None:
             resolved_git_root = git_root.resolve()
@@ -433,7 +430,6 @@ class ChatController:
                         await self._auto_select_repo(proj.id)
                         return True
 
-        # 3. No match — bootstrap a new project for this CWD.
         result = await self._bootstrap_project()
         if result:
             await self._refresh_project_name()
@@ -534,7 +530,7 @@ class ChatController:
         if choice == "2":
             await self.client.settings.set({"git_user_mode": "system_default"})
             label = f"{sys_name} <{sys_email}>"
-            _console.print(f"[green]\u2713[/green] Using system git profile: {label}")
+            _console.print(f"[green]✓[/green] Using system git profile: {label}")
         elif choice == "3":
             try:
                 custom_name = await _get_prompt_session().prompt_async(
@@ -558,12 +554,12 @@ class ChatController:
                 }
             )
             _console.print(
-                f"[green]\u2713[/green] Using custom identity: {custom_name} <{custom_email}>"
+                f"[green]✓[/green] Using custom identity: {custom_name} <{custom_email}>"
             )
         else:
             await self.client.settings.set({"git_user_mode": "kagan_agent"})
             _console.print(
-                f"[green]\u2713[/green] Using default: {KAGAN_AGENT_NAME} <{KAGAN_AGENT_EMAIL}>"
+                f"[green]✓[/green] Using default: {KAGAN_AGENT_NAME} <{KAGAN_AGENT_EMAIL}>"
             )
 
     async def _create_project(self, name: str, repo_path: str) -> bool:
@@ -573,7 +569,7 @@ class ChatController:
             project_id = project.id
             await self.client.projects.add_repo(project.id, repo_path)
             await self.client.projects.set_active(project.id)
-            _console.print(f"[green]\u2713[/green] Created project [bold]{name}[/bold]")
+            _console.print(f"[green]✓[/green] Created project [bold]{name}[/bold]")
             logger.info("Bootstrapped project={} repo={}", project.id, repo_path)
             return True
         except (KaganError, OSError, RuntimeError, ValueError, TypeError) as exc:
@@ -588,7 +584,7 @@ class ChatController:
                 await self.client.projects.set_active(existing.id)
                 logger.info("Recovered existing project={} repo={}", existing.id, repo_path)
                 _console.print(
-                    f"[green]\u2713[/green] Using existing project [bold]{existing.name}[/bold]"
+                    f"[green]✓[/green] Using existing project [bold]{existing.name}[/bold]"
                 )
                 return True
 
@@ -600,31 +596,9 @@ class ChatController:
     # Agent ACP lifecycle
     # ------------------------------------------------------------------
 
-    def _resolve_acp_command(self) -> tuple[str, list[str]]:
-        backend = get_backend_spec(self.agent_backend)
-        if not backend.has_capability(BackendCapability.ACP_STREAMING):
-            raise AgentError(
-                f"Agent backend {self.agent_backend!r} does not support ACP. "
-                "Set a different orchestrator agent or use an ACP-capable backend."
-            )
-
-        acp_cmd = resolve_acp_command(self.agent_backend)
-        if not acp_cmd:
-            raise AgentError(f"No ACP command configured for backend {self.agent_backend!r}")
-
-        exe = acp_cmd[0]
-        if shutil.which(exe) is None:
-            hint = ""
-            if exe == "npx":
-                hint = " Install Node.js first: https://nodejs.org/"
-            raise AgentError(f"ACP executable {exe!r} not found on PATH.{hint}")
-
-        return acp_cmd[0], acp_cmd[1:]
-
     async def run(self, *, prompt: str | None = None) -> None:
         while True:
             self._restart_requested = False
-            self._is_primed = False
             await self._run_agent_session(prompt=prompt)
             if not self._restart_requested:
                 break
@@ -633,155 +607,94 @@ class ChatController:
             _console.print(f"[bold cyan]Switching to {self.agent_backend}...[/bold cyan]")
 
     async def _run_agent_session(self, *, prompt: str | None = None) -> None:
-        try:
-            exe, exe_args = self._resolve_acp_command()
-        except AgentError as exc:
-            _console.print(f"[red]{exc}[/red]")
+        cwd = Path.cwd()
+        factory = LongLivedACPFactory(
+            client=self.client,
+            agent_backend=self.agent_backend,
+            cwd=cwd,
+        )
+        # Show wave indicator while the factory enters (spawn + handshake).
+        skip_anim = os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1"
+        ready_event = asyncio.Event()
+        spawn_error: BaseException | None = None
+
+        async def _enter_factory() -> None:
+            nonlocal spawn_error
+            try:
+                await factory.__aenter__()
+            except BaseException as exc:
+                spawn_error = exc
+            finally:
+                ready_event.set()
+
+        enter_task = asyncio.create_task(_enter_factory(), name="chat-factory-enter")
+        if skip_anim:
+            await ready_event.wait()
+        else:
+            with Live(
+                _WaveIndicator(),
+                console=_console,
+                refresh_per_second=10,
+                transient=True,
+            ) as live:
+                wave = _WaveIndicator()
+                while not ready_event.is_set():
+                    await asyncio.sleep(0.05)
+                    live.update(wave, refresh=True)
+
+        await enter_task
+        if spawn_error is not None:
+            if isinstance(spawn_error, AgentError):
+                _console.print(f"[red]{spawn_error}[/red]")
+            else:
+                logger.exception("ACP factory entry failed", exc_info=spawn_error)
+                _console.print(f"[red]Agent session failed: {spawn_error}[/red]")
             return
 
-        session_id = self._mcp_session_id or uuid4().hex[:16]
-        db_path = str(default_db_path())
-        mcp_content = build_mcp_manifest(
-            session_id=session_id,
-            db_path=db_path,
-            role="ORCHESTRATOR",
-            project_id=self.client.active_project_id,
-        )
-        cwd = Path.cwd()
-        mcp_path = cwd / ".mcp.json"
-        try:
-            await asyncio.to_thread(mcp_path.write_text, mcp_content, "utf-8")
-        except OSError as exc:
-            import errno
-
-            if exc.errno == errno.ENOSPC:  # No space left on device
-                raise AgentError(
-                    f"Cannot write MCP manifest to {mcp_path}: Disk is full. "
-                    f"Free up disk space and try again."
-                ) from exc
-            raise AgentError(f"Failed to write MCP manifest to {mcp_path}: {exc}") from exc
-        logger.debug("Wrote .mcp.json with admin access at {}", mcp_path)
-
-        backend = get_backend_spec(self.agent_backend)
-        env = build_agent_environment(
-            session_id=session_id,
-            task_id=None,
-            backend_env_vars=backend.env_vars,
-        )
-
-        self._acp_client = _OrchestratorACPClient(yolo=self._yolo)
+        self._factory = factory
+        self._permission_ui.bind_engine(self.client.chat)
 
         try:
-            async with acp.spawn_agent_process(
-                self._acp_client,
-                exe,
-                *exe_args,
-                cwd=str(cwd),
-                env=env,
-                transport_kwargs={"limit": _ACP_STDIO_BUFFER_LIMIT_BYTES},
-            ) as (conn, proc):
-                self._acp_conn = conn
-                logger.info("ACP agent process spawned pid={}", proc.pid)
+            _console.print("[green]✓[/green] Agent ready.")
+            _TOOLBAR_STATE.agent_backend = self.agent_backend
+            _TOOLBAR_STATE.project_name = Path.cwd().name
+            status_line = build_chat_status_line(
+                mode="repl",
+                session_label="orchestrator",
+                message_count=self._turn_count,
+            )
+            _console.print(f"[dim]{status_line}[/dim]")
+            _console.print()
+            if prompt is None:
+                self._print_restored_messages()
 
-                ready_event = asyncio.Event()
-                handshake_error: Exception | None = None
+            await self._watcher.initialize()
+            await self._watcher.subscribe()
 
-                async def _do_handshake():
-                    nonlocal handshake_error
-                    try:
-                        acp_session_id, error = await execute_handshake(
-                            conn,
-                            self.agent_backend,
-                            session_id,
-                            self.client.active_project_id,
-                            cwd,
-                        )
-                        if error is not None:
-                            handshake_error = error
-                        else:
-                            self._acp_session_id = acp_session_id
-                    except (
-                        TimeoutError,
-                        acp.RequestError,
-                        OSError,
-                        RuntimeError,
-                        ValueError,
-                    ) as exc:
-                        handshake_error = exc
-                    except Exception as exc:
-                        handshake_error = exc
-                    finally:
-                        ready_event.set()
-
-                handshake_task = asyncio.create_task(_do_handshake())
-
-                skip_anim = os.environ.get("KAGAN_CHAT_SKIP_BOOT_ANIMATION") == "1"
-                if skip_anim:
-                    await ready_event.wait()
-                else:
-                    with Live(
-                        _WaveIndicator(),
-                        console=_console,
-                        refresh_per_second=10,
-                        transient=True,
-                    ) as live:
-                        wave = _WaveIndicator()
-                        while not ready_event.is_set():
-                            await asyncio.sleep(0.05)
-                            live.update(wave, refresh=True)
-
-                await handshake_task
-
-                if handshake_error:
-                    if isinstance(handshake_error, TimeoutError):
-                        timeout_s = acp_handshake_timeout_seconds(self.agent_backend)
-                        _console.print(
-                            "[red]"
-                            f"ACP handshake timed out after {timeout_s:.0f}s. "
-                            f"{ACP_TIMEOUT_HINT}"
-                            "[/red]"
-                        )
-                    else:
-                        logger.exception("ACP handshake failed")
-                        _console.print(f"[red]ACP handshake failed: {handshake_error}[/red]")
-                    return
-
-                _console.print("[green]\u2713[/green] Agent ready.")
-                _TOOLBAR_STATE.agent_backend = self.agent_backend
-                _TOOLBAR_STATE.project_name = Path.cwd().name
-                status_line = build_chat_status_line(
-                    mode="repl",
-                    session_label="orchestrator",
-                    message_count=self._turn_count,
-                )
-                _console.print(f"[dim]{status_line}[/dim]")
-                _console.print()
-                if prompt is None:
-                    self._print_restored_messages()
-
-                await self._watcher.initialize()
-                await self._watcher.subscribe()
-
-                if prompt is not None:
-                    await self._send(text=prompt)
-                else:
-                    await self._repl_loop()
-
-        except (FileNotFoundError, PermissionError) as exc:
-            _console.print(f"[red]Failed to spawn agent: {exc}[/red]")
-        except Exception as exc:
-            logger.exception("Unexpected ACP agent session failure")
-            _console.print(f"[red]Agent session failed: {exc}[/red]")
+            if prompt is not None:
+                await self._send(text=prompt)
+            else:
+                await self._repl_loop()
         finally:
             await self._watcher.close()
-            self._acp_conn = None
-            self._acp_session_id = None
-            if mcp_path.exists():
-                with contextlib.suppress(OSError):
-                    mcp_path.unlink()
+            with contextlib.suppress(Exception):
+                await factory.__aexit__(None, None, None)
+            # Drain any orphaned permission-handling tasks.
+            for task in list(self._permission_tasks):
+                if not task.done():
+                    task.cancel()
+            for task in list(self._permission_tasks):
+                with contextlib.suppress(BaseException):
+                    await task
+            self._permission_tasks.clear()
+            self._factory = None
 
-    async def _send(self, text: str) -> "_SendResult":
-        if self._acp_conn is None or self._acp_session_id is None:
+    # ------------------------------------------------------------------
+    # Sending a turn — drives the engine
+    # ------------------------------------------------------------------
+
+    async def _send(self, text: str) -> _SendResult:
+        if self._chat_session_id is None or self._factory is None:
             _console.print("[red]No agent connected. Try restarting.[/red]")
             return _SendResult()
 
@@ -793,80 +706,84 @@ class ChatController:
             request_text if runtime_guidance is None else f"{request_text}\n\n{runtime_guidance}"
         )
 
-        prompt_blocks: list[Any] = [acp.text_block(request_block)]
-        if not self._is_primed:
-            resumed_text = build_orchestrator_prompt(
-                self._chat_history, request_text, history_limit=20
-            )
-            settings = await self.client.settings.get()
-            system_prompt = resolve_orchestrator_prompt(settings, Path.cwd())
-            prompt_blocks = [
-                acp.text_block(system_prompt),
-                acp.text_block(_format_user_request_block(resumed_text)),
-            ]
-            self._is_primed = True
+        prompt_blocks: list[Any] = [acp.text_block(_format_user_request_block(request_block))]
+
+        # Persist the user message via the engine.
+        try:
+            await self.client.chat.push_user(self._chat_session_id, text)
+        except (KaganError, ValueError) as exc:
+            _console.print(f"[red]Failed to record user message: {exc}[/red]")
+            return _SendResult()
 
         _TOOLBAR_STATE.context_pct = None
         _TOOLBAR_STATE.is_streaming = True
         _console.print()
         _console.print(f"[bold]You:[/bold] {text}")
 
+        self._renderer.start_turn()
+        self._permission_ui.reset_batch_queue()
+
         interrupted = False
-        assistant_reply = ""
-        if self._acp_client is not None:
-            self._acp_client.start_turn()
-        prompt_task = asyncio.create_task(
-            self._acp_conn.prompt(
-                session_id=self._acp_session_id,
-                prompt=prompt_blocks,
-            ),
-            name="chat-prompt",
-        )
-        original_sigint = install_sigint_handler(prompt_task)
+        had_error = False
+
+        # Build a synthetic Task wrapping the engine consumption so SIGINT can
+        # cancel the whole turn through the engine. The handler still fires
+        # ``engine.cancel`` for the partial-on-cancel persist contract.
+        async def _consume_stream() -> None:
+            nonlocal had_error
+            stream = self.client.chat.stream_assistant(
+                self._chat_session_id,
+                prompt_blocks=prompt_blocks,
+                agent_backend=self.agent_backend,
+                acp_factory=self._factory,
+            )
+            try:
+                async for event in stream:
+                    self._dispatch_event(event)
+                    if isinstance(event, TurnError):
+                        had_error = True
+            finally:
+                # ``stream`` is an async generator — closing it propagates
+                # ``GeneratorExit`` into the engine's cleanup branch.
+                with contextlib.suppress(BaseException):
+                    await stream.aclose()
+
+        consume_task = asyncio.create_task(_consume_stream(), name="chat-engine-consume")
+        original_sigint = install_sigint_handler(consume_task)
         try:
-            await prompt_task
+            await consume_task
         except asyncio.CancelledError:
             interrupted = True
-        except (
-            acp.RequestError,
-            TimeoutError,
-            OSError,
-            RuntimeError,
-            ValueError,
-        ) as exc:
-            logger.exception("Failed to send prompt to agent")
+            with contextlib.suppress(BaseException):
+                await self.client.chat.cancel(self._chat_session_id)
+            # Drain remaining events (TurnCancelled / AssistantMessagePersisted)
+            # so the partial-on-cancel persist round-trip surfaces. The
+            # consume_task is already cancelled; the engine's own cancel path
+            # writes the partial via _sessions.append_message.
+            self._permission_ui.cancel_batch_queue()
+        except (acp.RequestError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+            logger.exception("Chat engine consume failed")
             _console.print(f"\n[red]Agent error: {exc}[/red]")
-            return _SendResult()
+            had_error = True
         except Exception as exc:
-            logger.exception("Unexpected failure while sending prompt to agent")
+            logger.exception("Unexpected chat engine consume failure")
             _console.print(f"\n[red]Agent error: {exc}[/red]")
-            return _SendResult()
+            had_error = True
         finally:
             restore_sigint_handler(original_sigint)
             _TOOLBAR_STATE.is_streaming = False
 
-        if self._acp_client is not None:
-            try:
-                assistant_reply = self._acp_client.finish_turn()
-            except Exception:
-                logger.debug("finish_turn failed, treating as empty reply", exc_info=True)
-
-        self._append_turn(text, assistant_reply)
+        # Finalize any pending Markdown the renderer was still buffering.
+        self._renderer.finish_turn()
 
         if interrupted:
             _console.print("\n[dim]Interrupted.[/dim]")
-            await self._persist_session()
             return _SendResult(was_cancelled=True)
 
-        _console.print()  # newline after streamed output
-        self._turn_count += 1
+        _console.print()
+        if not had_error:
+            self._turn_count += 1
         _TOOLBAR_STATE.turn_count = self._turn_count
-
-        if self._turn_count == 1 and self._session_title is None:
-            self._title_task = asyncio.create_task(
-                self._generate_session_title(text, assistant_reply),
-                name="chat-title-gen",
-            )
 
         status_line = build_chat_status_line(
             mode="repl",
@@ -874,52 +791,96 @@ class ChatController:
             message_count=self._turn_count,
         )
         _console.print(f"[dim]{status_line}[/dim]")
-        if self._acp_client is not None and self._acp_client.last_usage is not None:
-            usage = self._acp_client.last_usage
-            metrics_parts: list[str] = []
-            if usage.used is not None and usage.size is not None and usage.size > 0:
-                used_k = usage.used / 1000
-                size_k = usage.size / 1000
-                _TOOLBAR_STATE.context_pct = usage.used / usage.size
-                if size_k >= 1000:
-                    metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
-                else:
-                    metrics_parts.append(f"ctx {used_k:.1f}k/{size_k:.1f}k")
-            if usage.cost is not None:
-                metrics_parts.append(f"${usage.cost.amount:.2f}")
-            if metrics_parts:
-                _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
-            # Context window warning
-            if usage.used is not None and usage.size is not None and usage.size > 0:
-                pct = usage.used / usage.size
-                if pct > 0.8:
-                    _console.print(
-                        f"[bold red]  ⚠ Context window {pct:.0%} full — "
-                        f"agent may degrade[/bold red]"
-                    )
-                elif pct > 0.6:
-                    _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
-        else:
-            _TOOLBAR_STATE.context_pct = None
-        await self._persist_session()
+        self._print_usage_line()
         return _SendResult()
+
+    def _dispatch_event(self, event: Any) -> None:
+        if isinstance(event, AssistantChunk):
+            self._renderer.on_assistant_chunk(event.text, thought=event.thought)
+        elif isinstance(event, ChatToolCallStart):
+            self._renderer.on_tool_call_start(event)
+        elif isinstance(event, ChatToolCallProgress):
+            self._renderer.on_tool_call_progress(event)
+        elif isinstance(event, UsageUpdate):
+            self._renderer.on_usage_update(event)
+        elif isinstance(event, PermissionRequest):
+            self._spawn_permission_task(event)
+        elif isinstance(event, TurnCancelled | TurnError | AssistantMessagePersisted):
+            self._renderer.finalize_pending_markdown()
+        elif isinstance(event, TurnDone | TurnStarted):
+            return
+
+    def _spawn_permission_task(self, event: PermissionRequest) -> None:
+        if self._chat_session_id is None:
+            return
+        session_id = self._chat_session_id
+
+        async def _runner() -> None:
+            try:
+                await self._permission_ui.handle_request(event, session_id)
+            except asyncio.CancelledError:
+                # Best-effort: ensure the engine doesn't keep waiting on us.
+                with contextlib.suppress(Exception):
+                    await self.client.chat.resolve_permission(
+                        session_id, event.future_id, outcome="deny"
+                    )
+                raise
+            except Exception:
+                logger.exception("Permission handler raised; routing as deny")
+                with contextlib.suppress(Exception):
+                    await self.client.chat.resolve_permission(
+                        session_id, event.future_id, outcome="deny"
+                    )
+
+        task = asyncio.create_task(_runner(), name=f"chat-permission-{event.future_id}")
+        self._permission_tasks.add(task)
+        task.add_done_callback(self._permission_tasks.discard)
+
+    def _print_usage_line(self) -> None:
+        usage = self._renderer.last_usage
+        if usage is None:
+            _TOOLBAR_STATE.context_pct = None
+            return
+        used = getattr(usage, "used", None)
+        size = getattr(usage, "size", None)
+        cost = getattr(usage, "cost", None)
+        metrics_parts: list[str] = []
+        if used is not None and size is not None and size > 0:
+            used_k = used / 1000
+            size_k = size / 1000
+            _TOOLBAR_STATE.context_pct = used / size
+            if size_k >= 1000:
+                metrics_parts.append(f"ctx {used_k:.0f}k/{size_k:.0f}k")
+            else:
+                metrics_parts.append(f"ctx {used_k:.1f}k/{size_k:.1f}k")
+        if cost is not None:
+            metrics_parts.append(f"${cost:.2f}")
+        if metrics_parts:
+            _console.print(f"[dim]  {' · '.join(metrics_parts)}[/dim]")
+        if used is not None and size is not None and size > 0:
+            pct = used / size
+            if pct > 0.8:
+                _console.print(
+                    f"[bold red]  ⚠ Context window {pct:.0%} full — agent may degrade[/bold red]"
+                )
+            elif pct > 0.6:
+                _console.print(f"[yellow]  ⚠ Context window {pct:.0%} full[/yellow]")
 
     # ------------------------------------------------------------------
     # REPL loop and slash commands
     # ------------------------------------------------------------------
 
     async def _event_watcher(self) -> None:
-        """Background coroutine that prints one-line notifications for task events."""
+        from kagan.core.enums import SessionEventType
+
         try:
             async for event in self.client.tasks.events.stream_all(replay=False):
                 if event.event_type == SessionEventType.AGENT_FAILED:
                     error = (event.payload or {}).get("error", "Agent failed")
-                    _console.print(
-                        f"\n[bold red]  \u26a0 Task {event.task_id[:8]}: {error}[/bold red]"
-                    )
+                    _console.print(f"\n[bold red]  ⚠ Task {event.task_id[:8]}: {error}[/bold red]")
                 elif event.event_type == SessionEventType.AGENT_COMPLETED:
                     _console.print(
-                        f"\n[green]  \u2713 Task {event.task_id[:8]}: Agent completed[/green]"
+                        f"\n[green]  ✓ Task {event.task_id[:8]}: Agent completed[/green]"
                     )
         except asyncio.CancelledError:
             return
@@ -927,15 +888,6 @@ class ChatController:
             logger.opt(exception=True).warning("Event watcher stopped unexpectedly")
 
     async def _repl_loop(self) -> None:
-        """Run the interactive REPL using a long-lived PromptSession.
-
-        A single ``prompt_async()`` call stays alive across agent reply turns.
-        The Enter keybinding enqueues submissions without closing the prompt,
-        so the bottom toolbar remains pinned at the terminal bottom throughout
-        the session — during user input, agent reply, tool calls, and wave
-        animation alike.  All console output is routed above the prompt by
-        ``patch_stdout(raw=True)``.
-        """
         _console.print(
             "[dim]Press [bold]/help[/bold] for commands, "
             "[bold]Ctrl-C[/bold] clear · [bold]Ctrl-D[/bold] exit.[/dim]\n"
@@ -947,12 +899,10 @@ class ChatController:
         done = False
 
         async def _pump_queue() -> None:
-            """Read submissions from the queue and process them until exit."""
             nonlocal last_sent, done
             while not done:
                 text = await submit_queue.get()
                 if text is None:
-                    # Ctrl-D sentinel: signal exit
                     done = True
                     return
                 stripped = text.strip()
@@ -984,7 +934,6 @@ class ChatController:
 
         try:
             with patch_stdout(raw=True):
-                # Launch queue-drain loop and long-lived prompt concurrently.
                 pump_task = asyncio.create_task(_pump_queue(), name="chat-repl-pump")
                 prompt_task: asyncio.Task[str] = asyncio.create_task(
                     session.prompt_async(
@@ -994,15 +943,12 @@ class ChatController:
                     name="chat-repl-prompt",
                 )
                 try:
-                    # Wait for either the pump to signal done (Ctrl-D / /exit)
-                    # or prompt_async to return (unexpected EOF from the session).
                     await asyncio.wait(
                         [pump_task, prompt_task],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                 finally:
                     done = True
-                    # Unblock the pump if it's waiting on the queue
                     submit_queue.put_nowait(None)
                     for task in (pump_task, prompt_task):
                         if not task.done():
@@ -1022,7 +968,7 @@ class ChatController:
             text,
             session_label="Orchestrator",
             session_key="orchestrator",
-            runtime_session_id=self._acp_session_id,
+            runtime_session_id=self._chat_session_id,
             current_backend=self.agent_backend,
             available_backends=list_registered_agent_backends(),
             project_name=self._project_name,
@@ -1032,7 +978,6 @@ class ChatController:
         if not result.handled:
             return False
 
-        # Print any info/error presentation lines
         for line in build_slash_presentation_lines(result):
             if line.tone == "error":
                 _console.print(f"[red]{line.text}[/red]")
@@ -1049,13 +994,15 @@ class ChatController:
             case SlashAction.SWITCH_AGENT:
                 return await self._switch_agent(result.data or result.selected_agent or "")
             case SlashAction.LIST_SESSIONS:
-                return await self._open_sessions(result.data or result.sessions_query)
+                return await self._handle_session_switch(
+                    self._open_sessions(result.data or result.sessions_query)
+                )
             case SlashAction.DELETE_SESSION:
                 await self._delete_session(result.data or result.delete_session_query or "")
             case SlashAction.NEW_SESSION:
-                return await self._create_new_session()
+                return await self._handle_session_switch(self._create_new_session())
             case SlashAction.SHOW_TOOL:
-                show_tool_report(self._acp_client, result.data or result.tool_query)
+                show_tool_report(self._renderer, result.data or result.tool_query)
             case SlashAction.SHOW_STATUS:
                 print_status_panel(
                     session_title=self._session_title,
@@ -1089,6 +1036,14 @@ class ChatController:
 
         return False
 
+    async def _handle_session_switch(self, action: Any) -> bool:
+        """Run a session-changing slash action; detach engine state if it triggers a restart."""
+        should_restart = await action
+        if should_restart and self._chat_session_id is not None:
+            with contextlib.suppress(Exception):
+                await self.client.chat.detach(self._chat_session_id)
+        return should_restart
+
     async def _handle_analytics(self, data: str | None) -> None:
         if data and data.startswith("export:"):
             path = data[len("export:") :] or None
@@ -1097,7 +1052,7 @@ class ChatController:
             await print_analytics_panel(self.client)
 
     def _show_approvals(self, data: str) -> None:
-        from kagan.cli.chat._chat_acp import get_session_approvals
+        from kagan.cli.chat._permission_ui import get_session_approvals
 
         approvals = get_session_approvals()
 
@@ -1167,5 +1122,4 @@ class ChatController:
         _TOOLBAR_STATE.agent_backend = new_backend
         self._restart_requested = True
         await self.client.settings.set({"default_agent_backend": new_backend})
-        await self._persist_session()
-        return True  # break REPL loop → run() will restart with new backend
+        return True

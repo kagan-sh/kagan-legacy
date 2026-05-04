@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from kagan.cli.chat.sessions import _clean_generated_title, get_chat_session, save_chat_session
+from kagan.core.chat.sessions import clean_generated_title
 
 # Total wall-clock budget for the title generation ACP round-trip.
 _TITLE_GENERATION_TIMEOUT_SECONDS = 30.0
@@ -94,7 +94,7 @@ async def generate_session_title(
             ),
             timeout=_TITLE_GENERATION_TIMEOUT_SECONDS,
         )
-        cleaned = _clean_generated_title(raw_title)
+        cleaned = clean_generated_title(raw_title)
         if cleaned:
             logger.debug("Generated session title: {}", cleaned)
             return cleaned
@@ -132,13 +132,13 @@ async def ensure_session_title(
         agent_backend=agent_backend,
     )
     if title:
-        # Re-read the session from storage before saving to avoid overwriting
-        # concurrent history mutations (e.g. a second message saved while the
-        # title LLM call was in-flight).
-        fresh = await get_chat_session(client, str(session.get("id", "")))
-        target = fresh if fresh is not None else session
-        target["label"] = title
-        await save_chat_session(client, target)
+        # Title is metadata-only — never round-trip through ``upsert_with_history``
+        # which deletes every ``ChatMessage`` row for the session and could race a
+        # concurrent message append. Patch the label via ``cs.update`` instead.
+        sid = str(session.get("id", "")).strip()
+        if sid:
+            await client.chat_sessions.update(sid, label=title)
+            session["label"] = title
     return title
 
 

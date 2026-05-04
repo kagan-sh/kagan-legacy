@@ -42,19 +42,7 @@ from kagan.cli.chat.repl import (
     run_chat,
     run_chat_async,
 )
-from kagan.cli.chat.sessions import (
-    CHAT_LAST_SESSION_PREFIX,
-    CHAT_SCOPE_PREFIX,
-    create_chat_session,
-    delete_chat_session,
-    get_chat_session,
-    get_last_session_id,
-    get_scope_state,
-    list_chat_sessions,
-    save_chat_session,
-    save_scope_state,
-    set_last_session_id,
-)
+from kagan.core.chat.sessions import CHAT_LAST_SESSION_PREFIX, CHAT_SCOPE_PREFIX
 
 __all__ = [
     "CHAT_LAST_SESSION_PREFIX",
@@ -70,8 +58,6 @@ __all__ = [
     "build_chat_status_line",
     "build_orchestrator_prompt",
     "build_slash_presentation_lines",
-    "create_chat_session",
-    "delete_chat_session",
     "ensure_session_title",
     "format_agent_backend_list",
     "format_agent_usage",
@@ -79,11 +65,7 @@ __all__ = [
     "format_unknown_slash_command",
     "fuzzy_match",
     "generate_session_title",
-    "get_chat_session",
-    "get_last_session_id",
-    "get_scope_state",
     "is_default_title",
-    "list_chat_sessions",
     "list_registered_agent_backends",
     "merge_task_follow_up_description",
     "normalize_chat_input",
@@ -96,8 +78,5 @@ __all__ = [
     "run_chat",
     "run_chat_async",
     "run_orchestrator_turn",
-    "save_chat_session",
-    "save_scope_state",
-    "set_last_session_id",
     "warm_orchestrator_backend",
 ]

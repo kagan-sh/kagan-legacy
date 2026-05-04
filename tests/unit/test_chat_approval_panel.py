@@ -6,17 +6,17 @@ from typing import Any
 
 import pytest
 
-import kagan.cli.chat._chat_acp as chat_acp_module
+import kagan.cli.chat._permission_ui as chat_acp_module
 from kagan.cli.chat._approval_panel import (
     _build_display_options,
     _extract_key_args_preview,
     _is_shell_command,
-    strip_tool_prefix,
     _tool_display_name,
     build_approval_panel,
+    strip_tool_prefix,
 )
-from kagan.cli.chat._chat_acp import (
-    _map_approval_result,
+from kagan.cli.chat._permission_ui import (
+    _map_decision_from_approval,
     _run_legacy_input,
     _session_approvals,
 )
@@ -116,8 +116,9 @@ def test_build_display_options_always_returns_four_slots() -> None:
 
 
 def test_build_approval_panel_highlights_selected_index() -> None:
-    from rich.console import Console
     import io
+
+    from rich.console import Console
 
     class _FakeCall:
         title = "mcp__kagan__task_get"
@@ -154,47 +155,31 @@ def test_build_approval_panel_highlights_selected_index() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeOption:
-    def __init__(self, kind: str, option_id: str) -> None:
-        self.kind = kind
-        self.option_id = option_id
+def test_map_decision_allow_once_returns_decision() -> None:
+    decision = _map_decision_from_approval(0, "", action_key="test_tool")
+    assert decision.outcome == "allow_once"
+    assert decision.feedback is None
 
 
-def test_map_approval_result_allow_once_returns_option(monkeypatch: pytest.MonkeyPatch) -> None:
-    opts = [
-        _FakeOption("allow_once", "allow-1"),
-        _FakeOption("allow_always", "allow-all"),
-        _FakeOption("reject_once", "deny-1"),
-    ]
-    result = _map_approval_result(0, "", action_key="test_tool", permission_options=opts)
-    assert result is not None
-    assert result.option_id == "allow-1"
-
-
-def test_map_approval_result_allow_always_grants_session(
+def test_map_decision_allow_always_grants_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_console = type("_FC", (), {"print": lambda *a, **kw: None})()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
 
-    opts = [
-        _FakeOption("allow_once", "allow-1"),
-        _FakeOption("allow_always", "allow-all"),
-    ]
-    result = _map_approval_result(1, "", action_key="my_tool", permission_options=opts)
-    assert result is not None
-    assert result.option_id == "allow-all"
+    decision = _map_decision_from_approval(1, "", action_key="my_tool")
+    assert decision.outcome == "allow_always"
     assert _session_approvals.is_allowed("my_tool")
     _session_approvals.revoke("my_tool")
 
 
-def test_map_approval_result_reject_once_returns_none() -> None:
-    opts = [_FakeOption("allow_once", "allow-1"), _FakeOption("reject_once", "deny-1")]
-    result = _map_approval_result(2, "", action_key="test_tool", permission_options=opts)
-    assert result is None
+def test_map_decision_reject_once_returns_deny() -> None:
+    decision = _map_decision_from_approval(2, "", action_key="test_tool")
+    assert decision.outcome == "deny"
+    assert decision.feedback is None
 
 
-def test_map_approval_result_reject_feedback_logs_and_returns_none(
+def test_map_decision_reject_feedback_carries_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     logged: list[str] = []
@@ -203,12 +188,16 @@ def test_map_approval_result_reject_feedback_logs_and_returns_none(
         "info",
         lambda msg, *args, **kw: logged.append(str(args[0]) if args else msg),
     )
-    opts = [_FakeOption("allow_once", "allow-1")]
-    result = _map_approval_result(
-        3, "please use a different file", action_key="test_tool", permission_options=opts
-    )
-    assert result is None
+    decision = _map_decision_from_approval(3, "please use a different file", action_key="test_tool")
+    assert decision.outcome == "deny_feedback"
+    assert decision.feedback == "please use a different file"
     assert any("please use a different file" in entry for entry in logged)
+
+
+def test_map_decision_reject_feedback_empty_falls_back_to_deny() -> None:
+    decision = _map_decision_from_approval(3, "", action_key="test_tool")
+    assert decision.outcome == "deny"
+    assert decision.feedback is None
 
 
 # ---------------------------------------------------------------------------

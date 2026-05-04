@@ -15,7 +15,7 @@ from typing import Any
 
 from kagan.core import KaganCore, TaskStatus
 from kagan.core.enums import Priority
-from tests.helpers.core_driver import CoreDriver, ProjectView, RepoView, TaskView
+from tests.helpers.core_driver import ChatTurnOutcome, CoreDriver, ProjectView, RepoView, TaskView
 from tests.helpers.fake_agent import FakeAgentFactory
 
 
@@ -346,6 +346,43 @@ class KaganDriver:
         return await self._driver.chat_append_message(
             session_id, role, content, terminated=terminated
         )
+
+    async def chat_send(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        agent_chunks: list[str] | None = None,
+        cancel_after_chars: int | None = None,
+    ) -> ChatTurnOutcome:
+        """Drive a full chat turn through ChatEngine with a scripted factory.
+
+        ``agent_chunks`` controls what the fake agent emits.  Omit for a
+        simple ``"ok"`` reply.  Pass ``cancel_after_chars`` to simulate a
+        mid-stream cancellation.
+        """
+        return await self._driver.chat_send(
+            session_id,
+            text,
+            agent_chunks=agent_chunks,
+            cancel_after_chars=cancel_after_chars,
+        )
+
+    async def chat_history(self, session_id: str) -> list[Any]:
+        """Return ChatMessage rows for a session."""
+        return await self._driver.chat_history(session_id)
+
+    async def chat_event_log(self, session_id: str, outcome: ChatTurnOutcome) -> list[Any]:
+        """Return the events list from a ChatTurnOutcome."""
+        return await self._driver.chat_event_log(session_id, outcome)
+
+    async def chat_cancel_in_flight(self, session_id: str) -> Any:
+        """Cancel any in-flight turn for ``session_id``."""
+        return await self._driver.chat_cancel_in_flight(session_id)
+
+    async def chat_switch_session(self, new_session_id: str) -> None:
+        """Detach engine state for ``new_session_id``."""
+        await self._driver.chat_switch_session(new_session_id)
 
     # ======================================================================
     # Settings

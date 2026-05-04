@@ -1,11 +1,28 @@
+"""Unit tests for the CLI streaming + permission seam.
+
+Phase 5c retargets these tests at :class:`CLIRenderer` (ChatEvent dispatch)
+and :class:`PermissionUI` (engine-driven decision dispatch). The legacy
+ACP-response shape lives in ``_CaptureACPClient`` and is covered by
+``tests/core/unit/test_long_lived_acp_factory.py``.
+"""
+
+from __future__ import annotations
+
 import io
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from acp.schema import AgentMessageChunk, PermissionOption, TextContentBlock, ToolCallStart
 from rich.console import Console
 
-import kagan.cli.chat._chat_acp as chat_acp_module
-import kagan.cli.chat.controller as chat_controller
+import kagan.cli.chat._permission_ui as chat_acp_module
+from kagan.cli.chat._permission_ui import PermissionUI
+from kagan.cli.chat._renderer import CLIRenderer
+from kagan.core.chat.events import (
+    AssistantChunk,
+    PermissionRequest,
+    ToolCallStart,
+)
 
 pytestmark = [pytest.mark.unit]
 
@@ -19,8 +36,7 @@ class _FakeConsoleFile:
 
 
 class _FakeConsole:
-    """Minimal stand-in used by the permission-flow tests, which don't drive
-    the streaming Markdown region."""
+    """Minimal stand-in used by the permission-flow tests."""
 
     def __init__(self) -> None:
         self.file = _FakeConsoleFile()
@@ -31,83 +47,84 @@ class _FakeConsole:
 
 
 def _real_console() -> tuple[Console, io.StringIO]:
-    """Real Rich Console that writes to an in-memory buffer.
-
-    Required because Rich's Live and Markdown renderers call methods on the
-    Console (set_live, height, is_terminal, …) that a hand-rolled fake can't
-    fully implement without becoming a maintenance burden.
-    """
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=80)
     return console, buf
 
 
-def _message_chunk(text: str) -> AgentMessageChunk:
-    return AgentMessageChunk(
-        content=TextContentBlock(type="text", text=text),
-        session_update="agent_message_chunk",
+class _FakeEngine:
+    """Records ``resolve_permission`` calls so tests can assert on them."""
+
+    def __init__(self) -> None:
+        self.resolve_calls: list[tuple[str, str, str, str | None]] = []
+
+    async def resolve_permission(
+        self,
+        session_id: str,
+        future_id: str,
+        *,
+        outcome: str,
+        feedback: str | None = None,
+    ) -> None:
+        self.resolve_calls.append((session_id, future_id, outcome, feedback))
+
+
+def _options(*kinds: str) -> list[dict[str, Any]]:
+    return [
+        {"kind": kind, "name": kind.replace("_", " ").title(), "option_id": f"{kind}-1"}
+        for kind in kinds
+    ]
+
+
+def _request(future_id: str, title: str, kinds: tuple[str, ...]) -> PermissionRequest:
+    return PermissionRequest(
+        future_id=future_id,
+        tool_call={"title": title, "tool_call_id": f"tc-{title}"},
+        options=_options(*kinds),
     )
 
 
-async def test_streamed_chunks_are_collected_and_returned_by_finish_turn(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+# ---------------------------------------------------------------------------
+# CLIRenderer streaming tests
+# ---------------------------------------------------------------------------
+
+
+def test_streamed_chunks_are_collected_and_returned_by_finish_turn() -> None:
     console, _ = _real_console()
-    monkeypatch.setattr(chat_acp_module, "_console", console)
+    renderer = CLIRenderer(console)
+    renderer.start_turn()
 
-    client = chat_controller._OrchestratorACPClient()
-    client.start_turn()
+    renderer.on_assistant_chunk("a")
+    renderer.on_assistant_chunk("b")
+    renderer.on_assistant_chunk("c")
 
-    await client.session_update("session-1", _message_chunk("a"))
-    await client.session_update("session-1", _message_chunk("b"))
-    await client.session_update("session-1", _message_chunk("c"))
-
-    response = client.finish_turn()
+    response = renderer.finish_turn()
     assert response == "abc"
 
 
-async def test_markdown_region_renders_reply_to_console_at_finish_turn(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Pipe characters in the reply must reach the console as a rendered table,
-    not as raw '|' characters in scrollback."""
+def test_markdown_region_renders_reply_to_console_at_finish_turn() -> None:
     console, buf = _real_console()
-    monkeypatch.setattr(chat_acp_module, "_console", console)
+    renderer = CLIRenderer(console)
+    renderer.start_turn()
 
-    client = chat_controller._OrchestratorACPClient()
-    client.start_turn()
-
-    await client.session_update(
-        "session-1",
-        _message_chunk("| col |\n| --- |\n| val |\n"),
-    )
-    client.finish_turn()
+    renderer.on_assistant_chunk("| col |\n| --- |\n| val |\n")
+    renderer.finish_turn()
 
     output = buf.getvalue()
-    # Markdown renders a table header into a Unicode box-drawing border —
-    # absence of that border means the reply was printed as raw pipes.
     assert "━" in output or "─" in output
-    # The cell value is preserved.
     assert "val" in output
 
 
-async def test_markdown_region_finalizes_before_tool_call_start(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A tool start arriving mid-stream must commit the assistant text to
-    scrollback first so the transcript reads top-to-bottom."""
+def test_markdown_region_finalizes_before_tool_call_start() -> None:
     console, buf = _real_console()
-    monkeypatch.setattr(chat_acp_module, "_console", console)
+    renderer = CLIRenderer(console)
+    renderer.start_turn()
 
-    client = chat_controller._OrchestratorACPClient()
-    client.start_turn()
-
-    await client.session_update("session-1", _message_chunk("Looking up files."))
-    await client.session_update(
-        "session-1",
-        ToolCallStart(title="Read file", tool_call_id="tool-1", session_update="tool_call"),
+    renderer.on_assistant_chunk("Looking up files.")
+    renderer.on_tool_call_start(
+        ToolCallStart(tool_id="tool-1", title="Read file", kind_hint=None, args=None)
     )
-    client.finish_turn()
+    renderer.finish_turn()
 
     output = buf.getvalue()
     text_pos = output.find("Looking up files")
@@ -117,110 +134,140 @@ async def test_markdown_region_finalizes_before_tool_call_start(
     assert text_pos < tool_pos
 
 
-async def test_start_turn_discards_in_flight_markdown_region(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Starting a new turn must clear any partial preview from the previous
-    turn so it doesn't bleed into the next reply."""
+def test_start_turn_discards_in_flight_markdown_region() -> None:
     console, _ = _real_console()
-    monkeypatch.setattr(chat_acp_module, "_console", console)
+    renderer = CLIRenderer(console)
+    renderer.start_turn()
+    renderer.on_assistant_chunk("partial")
 
-    client = chat_controller._OrchestratorACPClient()
-    client.start_turn()
-    await client.session_update("session-1", _message_chunk("partial"))
+    assert renderer._md_region.is_active
 
-    assert client._md_region.is_active
-
-    client.start_turn()  # should reset
-    assert not client._md_region.is_active
-    assert client._response_chunks.is_empty
+    renderer.start_turn()
+    assert not renderer._md_region.is_active
+    assert renderer._response_chunks.is_empty
 
 
-async def test_permission_request_denies_in_noninteractive_mode(
+# ---------------------------------------------------------------------------
+# PermissionUI engine-driven dispatch
+# ---------------------------------------------------------------------------
+
+
+async def test_permission_request_routes_deny_in_noninteractive_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: False)
 
-    client = chat_controller._OrchestratorACPClient()
-    response = await client.request_permission(
-        [
-            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
-            PermissionOption(kind="allow_always", name="Allow always", option_id="allow-all"),
-        ],
-        session_id="session-1",
-        tool_call=ToolCallStart(
-            title="Edit file",
-            tool_call_id="tool-1",
-            session_update="tool_call",
-        ),
+    engine = _FakeEngine()
+    ui = PermissionUI(engine=engine, renderer=None)
+
+    await ui.handle_request(
+        _request("fid-1", "Edit file", ("allow_once", "allow_always")), session_id="s-1"
     )
 
-    assert response.outcome.outcome == "cancelled"
+    assert engine.resolve_calls == [("s-1", "fid-1", "deny", None)]
 
 
-async def test_permission_request_selects_interactive_allow_option(
+async def test_permission_request_routes_allow_always_in_interactive_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import kagan.cli.chat._approval_batch as batch_module
+
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
     monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+    monkeypatch.setattr(batch_module, "_debounce_seconds", lambda: 0.0)
 
-    # Mock the async panel to return index 1 = allow_always without launching a real terminal.
-    async def _fake_panel(*_a, **_kw):  # noqa: RUF006
+    async def _fake_panel(*_a: Any, **_kw: Any) -> tuple[int, str]:
         return (1, "")
 
     monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
-    # Ensure no residual session approval bleeds into this test.
     chat_acp_module._session_approvals.revoke("run command")
 
-    client = chat_controller._OrchestratorACPClient()
-    response = await client.request_permission(
-        [
-            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
-            PermissionOption(kind="allow_always", name="Allow always", option_id="allow-all"),
-            PermissionOption(kind="reject_once", name="Deny", option_id="deny-1"),
-        ],
-        session_id="session-1",
-        tool_call=ToolCallStart(
-            title="Run command",
-            tool_call_id="tool-1",
-            session_update="tool_call",
-        ),
+    engine = _FakeEngine()
+    ui = PermissionUI(engine=engine, renderer=None)
+
+    await ui.handle_request(
+        _request("fid-2", "Run command", ("allow_once", "allow_always", "reject_once")),
+        session_id="s-2",
     )
 
-    assert response.outcome.outcome == "selected"
-    assert response.outcome.option_id == "allow-all"
+    assert engine.resolve_calls == [("s-2", "fid-2", "allow_always", None)]
+    chat_acp_module._session_approvals.revoke("run command")
 
 
-async def test_permission_request_can_select_deny_option_from_acp_options(
+async def test_permission_request_routes_deny_when_user_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import kagan.cli.chat._approval_batch as batch_module
+
+    fake_console = _FakeConsole()
+    monkeypatch.setattr(chat_acp_module, "_console", fake_console)
+    monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
+    monkeypatch.setattr(batch_module, "_debounce_seconds", lambda: 0.0)
+
+    async def _fake_panel(*_a: Any, **_kw: Any) -> tuple[int, str]:
+        return (2, "")
+
+    monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
+    chat_acp_module._session_approvals.revoke("run command")
+
+    engine = _FakeEngine()
+    ui = PermissionUI(engine=engine, renderer=None)
+
+    await ui.handle_request(
+        _request("fid-3", "Run command", ("allow_once", "reject_once")),
+        session_id="s-3",
+    )
+
+    assert engine.resolve_calls == [("s-3", "fid-3", "deny", None)]
+
+
+async def test_permission_request_with_no_valid_options_routes_deny() -> None:
+    engine = _FakeEngine()
+    ui = PermissionUI(engine=engine, renderer=None)
+
+    # The engine emits PermissionRequest with options dicts; if none of the
+    # options match the four allowed kinds, the UI should immediately deny.
+    event = PermissionRequest(
+        future_id="fid-4",
+        tool_call={"title": "Mystery"},
+        options=[{"kind": "weird", "name": "Strange"}],
+    )
+    await ui.handle_request(event, session_id="s-4")
+
+    assert engine.resolve_calls == [("s-4", "fid-4", "deny", None)]
+
+
+async def test_permission_request_yolo_short_circuits_to_allow_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_console = _FakeConsole()
     monkeypatch.setattr(chat_acp_module, "_console", fake_console)
-    monkeypatch.setattr(chat_acp_module, "_stdio_is_interactive", lambda: True)
 
-    # Mock the async panel to return index 2 = reject_once.
-    async def _fake_panel(*_a, **_kw):  # noqa: RUF006
-        return (2, "")
+    engine = _FakeEngine()
+    ui = PermissionUI(engine=engine, renderer=None, yolo=True)
 
-    monkeypatch.setattr(chat_acp_module, "_run_approval_panel_async", _fake_panel)
-    # Clear any session-level grant that may bleed from allow_always tests.
-    chat_acp_module._session_approvals.revoke("run command")
-
-    client = chat_controller._OrchestratorACPClient()
-    response = await client.request_permission(
-        [
-            PermissionOption(kind="allow_once", name="Allow once", option_id="allow-1"),
-            PermissionOption(kind="reject_once", name="Deny", option_id="deny-1"),
-        ],
-        session_id="session-1",
-        tool_call=ToolCallStart(
-            title="Run command",
-            tool_call_id="tool-1",
-            session_update="tool_call",
-        ),
+    await ui.handle_request(
+        _request("fid-5", "yolo_tool", ("allow_once", "allow_always")),
+        session_id="s-5",
     )
 
-    assert response.outcome.outcome == "cancelled"
+    assert engine.resolve_calls == [("s-5", "fid-5", "allow_once", None)]
+
+
+async def test_permission_request_raises_when_engine_unbound() -> None:
+    ui = PermissionUI(engine=None, renderer=None)
+    event = _request("fid-x", "tool", ("allow_once",))
+    with pytest.raises(RuntimeError, match="bind_engine"):
+        await ui.handle_request(event, session_id="s")
+
+
+def test_permission_ui_bind_engine_swaps_queue() -> None:
+    ui = PermissionUI(engine=SimpleNamespace(), renderer=None)
+    first_queue = ui._batch_queue
+    new_engine = _FakeEngine()
+    ui.bind_engine(new_engine)
+    assert ui._batch_queue is not first_queue
+    assert ui._batch_queue._engine is new_engine

@@ -126,7 +126,7 @@ async def test_watch_chat_session_exits_when_no_http_client() -> None:
     """watch_chat_session must return immediately when http_client is None."""
     from textual.app import App, ComposeResult
 
-    from kagan.tui.screens.kanban_chat import watch_chat_session
+    from kagan.tui.screens._chat_runner import watch_chat_session
     from kagan.tui.widgets.chat import ChatPanel
 
     class _TestApp(App[None]):
@@ -153,7 +153,7 @@ async def test_watch_chat_session_exits_on_404() -> None:
     """watch_chat_session exits cleanly when the server returns 404 (endpoint not available)."""
     from textual.app import App, ComposeResult
 
-    from kagan.tui.screens.kanban_chat import watch_chat_session
+    from kagan.tui.screens._chat_runner import watch_chat_session
     from kagan.tui.widgets.chat import ChatPanel
 
     class _TestApp(App[None]):
@@ -180,7 +180,7 @@ async def test_watch_chat_session_notifies_on_takeover() -> None:
     """watch_chat_session calls app.notify on CHAT_TURN_TERMINATED with reason=takeover."""
     from textual.app import App, ComposeResult
 
-    from kagan.tui.screens.kanban_chat import watch_chat_session
+    from kagan.tui.screens._chat_runner import watch_chat_session
     from kagan.tui.widgets.chat import ChatPanel
 
     class _TestApp(App[None]):
@@ -229,7 +229,7 @@ async def test_watch_chat_session_ignores_non_takeover_termination() -> None:
     """watch_chat_session must NOT notify for CHAT_TURN_TERMINATED with reason != takeover."""
     from textual.app import App, ComposeResult
 
-    from kagan.tui.screens.kanban_chat import watch_chat_session
+    from kagan.tui.screens._chat_runner import watch_chat_session
     from kagan.tui.widgets.chat import ChatPanel
 
     class _TestApp(App[None]):

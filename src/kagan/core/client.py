@@ -33,6 +33,7 @@ from kagan.core._settings import _make_settings_ns
 from kagan.core._tasks import Tasks
 from kagan.core._watcher import DBWatcher
 from kagan.core._worktrees import Worktrees
+from kagan.core.chat import ChatEngine, ChatSessions, SpawnPerTurnACPFactory
 
 
 class KaganCore:
@@ -48,6 +49,12 @@ class KaganCore:
         self.audit_log = _make_audit_log_ns(self._engine)
         self.analytics = Analytics(self._engine)
         self.persona_presets = PersonaPresetOps(self.settings, self.audit_log)
+        self.chat_sessions = ChatSessions(self._engine, self.settings)
+        self.chat = ChatEngine(
+            sessions=self.chat_sessions,
+            acp_factory=SpawnPerTurnACPFactory(client=self),
+            title_generator=self._make_default_title_generator(),
+        )
 
         self.active_project_id: str | None = None
         # reviews namespace must be built after tasks/worktrees are set
@@ -83,6 +90,36 @@ class KaganCore:
             self._engine.dispose()
         await cleanup_all_spawned_processes()
         logger.debug("Client closed")
+
+    def _make_default_title_generator(self) -> Any:
+        """Build a best-effort title generator wired through ``cli.chat._title``.
+
+        The closure resolves the active agent backend lazily so that backend
+        changes after ``KaganCore`` construction are honoured. Returns ``None``
+        on any failure — the engine swallows the error and keeps the default
+        label.
+        """
+
+        async def _generate(user_text: str, reply: str) -> str | None:
+            from kagan.cli.chat._title import generate_session_title
+            from kagan.core import resolve_default_agent_backend
+
+            try:
+                settings = await self.settings.get()
+                backend = resolve_default_agent_backend(settings)
+            except Exception:
+                logger.debug("Title generator: failed to resolve default backend")
+                return None
+            if not backend:
+                return None
+            return await generate_session_title(
+                self,
+                user_message=user_text,
+                assistant_reply=reply,
+                agent_backend=backend,
+            )
+
+        return _generate
 
     async def preflight(self, *, agent_backend: str | None = None) -> list[PreflightCheckResult]:
         return await asyncio.to_thread(run_all_checks, self._db_path, agent_backend)

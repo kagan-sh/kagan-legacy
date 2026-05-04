@@ -31,6 +31,9 @@ from kagan.tui.screens.session_picker import (
     SessionPickerModal,
     SessionPickerOption,
 )
+from kagan.tui.widgets.chat_input import ChatInput
+from kagan.tui.widgets.chat_session_menu import ChatSessionMenu
+from kagan.tui.widgets.chat_transcript import ChatTranscript
 from kagan.tui.widgets.permission import PermissionPrompt
 from kagan.tui.widgets.status_bar import StatusBar
 from kagan.tui.widgets.streaming import ConfidenceLevel, StreamingOutput
@@ -184,6 +187,10 @@ class ChatPanel(Vertical):
         self._overlay_close_key = "Esc"
         self._status_hint_override: str | None = None
         self._state_only_updates = 0
+        # Cache of chat-session ids belonging to the active project, refreshed
+        # asynchronously via :meth:`_refresh_project_session_keys`. ``None``
+        # means "not yet loaded / no filter" — the picker shows everything.
+        self._project_session_keys_cache: dict[str, set[str]] = {}
 
     @contextlib.contextmanager
     def state_only_updates(self):
@@ -196,10 +203,28 @@ class ChatPanel(Vertical):
     def stream_output(self) -> StreamingOutput:
         return self.query_one("#chat-overlay-output", StreamingOutput)
 
+    def _transcript(self) -> ChatTranscript | None:
+        try:
+            return self.query_one("#chat-overlay-content", ChatTranscript)
+        except NoMatches:
+            return None
+
+    def _chat_input(self) -> ChatInput | None:
+        try:
+            return self.query_one("#chat-overlay-command-line", ChatInput)
+        except NoMatches:
+            return None
+
+    def _session_menu(self) -> ChatSessionMenu | None:
+        try:
+            return self.query_one("#chat-overlay-session-switcher", ChatSessionMenu)
+        except NoMatches:
+            return None
+
     def compose(self) -> ComposeResult:
         yield Static("Orchestrator", id="chat-title")
         with Vertical(id="chat-overlay-main"):
-            with Vertical(id="chat-overlay-content"):
+            with ChatTranscript(id="chat-overlay-content"):
                 with Vertical(id="chat-overlay-empty-state", classes="chat-overlay-empty-state"):
                     with Vertical(classes="chat-overlay-empty-content"):
                         with Vertical(classes="chat-overlay-empty-card"):
@@ -250,7 +275,7 @@ class ChatPanel(Vertical):
 
             with Vertical(id="chat-overlay-bottom"):
                 yield StatusBar(id="chat-overlay-status", classes="chat-status")
-                with Horizontal(
+                with ChatInput(
                     classes="chat-input-row chat-command-line",
                     id="chat-overlay-command-line",
                 ):
@@ -272,7 +297,7 @@ class ChatPanel(Vertical):
                         )
                         badge.tooltip = "Current session kind (Orchestrator/Agent)"
                         yield badge
-                with Horizontal(id="chat-overlay-session-switcher"):
+                with ChatSessionMenu(id="chat-overlay-session-switcher"):
                     with Horizontal(id="chat-overlay-session-current-wrap"):
                         mode_badge = Static(
                             "Docked",
@@ -387,6 +412,14 @@ class ChatPanel(Vertical):
     def set_sessions(self, sessions: list[tuple[str, str]], active_key: str | None = None) -> None:
         normalized = [(label.strip(), key.strip()) for label, key in sessions if label and key]
         self._session_options = normalized or [("Orchestrator", "orchestrator")]
+        # Invalidate + refresh the per-project session-key cache. ``set_sessions``
+        # is called whenever the orchestrator store changes (new/delete/switch),
+        # which is the same trigger ``SessionChanged`` fires under.
+        self._project_session_keys_cache.clear()
+        core = getattr(self.app, "core", None)
+        active_project_id = getattr(core, "active_project_id", None) if core else None
+        if isinstance(active_project_id, str) and active_project_id:
+            self._kick_project_session_keys_refresh(active_project_id)
         for _label, key in self._session_options:
             self._ensure_session_state(key)
         self._prune_session_states()
@@ -1023,10 +1056,9 @@ class ChatPanel(Vertical):
 
     async def _delete_chat_session(self, query: str) -> None:
         """Delete a chat session by number or id."""
-        from kagan.cli.chat.sessions import (
+        from kagan.cli.chat._session_picker import (
             build_chat_session_list_items,
-            delete_chat_session,
-            list_chat_sessions,
+            chat_session_to_legacy_dict,
             resolve_chat_session_selector,
         )
 
@@ -1035,7 +1067,8 @@ class ChatPanel(Vertical):
             self.add_system_message("No client available.")
             return
 
-        sessions = await list_chat_sessions(core)
+        pairs = await core.chat_sessions.list_with_history()
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         if not sessions:
             self.add_system_message("No sessions to delete.")
             return
@@ -1051,7 +1084,7 @@ class ChatPanel(Vertical):
             self.add_system_message("Cannot delete the current session.")
             return
 
-        deleted = await delete_chat_session(core, target.session_id)
+        deleted = await core.chat_sessions.delete(target.session_id)
         if deleted:
             self.add_system_message(f"Deleted: {target.label} [{target.session_id}]")
         else:
@@ -1185,93 +1218,32 @@ class ChatPanel(Vertical):
             self.post_message(self.SessionChanged(key))
 
     def _render_current_session(self) -> None:
-        stream = self._stream_output()
-        if stream is not None:
-            stream.clear()
-            for kind, payload in self._current_state().entries:
-                self._render_entry(stream, kind, payload)
-        self._render_decision_surface()
-        self._update_hidden_buffer()
+        state = self._current_state()
+        transcript = self._transcript()
+        if transcript is not None:
+            transcript.render_session(state.entries, state.decision_surface)
+        else:
+            # Partial-compose harnesses (e.g. doctor modal) may not yield the
+            # transcript subtree; fall through with a no-op so the rest of the
+            # mount sequence proceeds.
+            self._update_hidden_buffer()
         self._update_content_state()
         self._refresh_status()
 
-    def _render_entry(self, stream: StreamingOutput, kind: str, payload: dict[str, Any]) -> None:
-        raw_text = str(payload.get("text") or "")
-        text = raw_text.strip()
-        if kind == "user" and text:
-            stream.post_user_input(text)
-            return
-        if kind == "assistant" and raw_text:
-            stream.append_chunk(raw_text, kind="assistant")
-            return
-        if kind == "thought" and raw_text:
-            stream.append_chunk(raw_text, kind="thought")
-            return
-        if kind == "note" and text:
-            stream.post_note(text)
-            return
-        if kind == "tool":
-            stream.upsert_tool_call(
-                str(payload.get("tool_id") or "tool"),
-                str(payload.get("title") or payload.get("tool_id") or "tool"),
-                status=str(payload.get("status") or "running"),
-                args=payload.get("args"),
-                result=payload.get("result"),
-                kind=payload.get("kind"),
-            )
-
     def _render_decision_surface(self) -> None:
-        with contextlib.suppress(NoMatches):
-            container = self.query_one("#chat-inline-surface", Vertical)
-        if "container" not in locals():
+        transcript = self._transcript()
+        if transcript is None:
             return
-        for child in list(container.children):
-            child.remove()
-        state = self._current_state()
-        if state.decision_surface is None:
-            container.display = False
-            return
-
-        kind, payload = state.decision_surface
-        if kind == "permission":
-            container.mount(
-                PermissionPrompt(
-                    str(payload.get("text") or "Permission required"),
-                    timeout_seconds=int(payload.get("timeout_seconds") or 30),
-                )
-            )
-        container.display = True
+        transcript.render_decision_surface(self._current_state().decision_surface)
 
     def _rendered_messages(self) -> list[str]:
-        rendered: list[str] = []
-        for kind, payload in self._current_state().entries:
-            text = str(payload.get("text") or "").strip()
-            if kind == "user" and text:
-                rendered.append(f"You: {text}")
-            elif kind == "assistant" and text:
-                rendered.append(f"Agent: {text}")
-            elif kind == "thought" and text:
-                rendered.append(f"Thinking: {text}")
-            elif kind == "note" and text:
-                rendered.append(f"System: {text}")
-            elif kind == "tool":
-                title = str(payload.get("title") or payload.get("tool_id") or "tool")
-                status = str(payload.get("status") or "running")
-                rendered.append(f"Tool: {title} [{status}]")
-        return rendered
+        return ChatTranscript.rendered_messages(self._current_state().entries)
 
     def _update_hidden_buffer(self) -> None:
-        with contextlib.suppress(NoMatches):
-            messages = self.query_one("#chat-messages", Static)
-        if "messages" not in locals():
+        transcript = self._transcript()
+        if transcript is None:
             return
-        rendered = self._rendered_messages()
-        if not rendered:
-            messages.set_class(True, "chat-empty")
-            messages.update(self._EMPTY_TEXT)
-            return
-        messages.set_class(False, "chat-empty")
-        messages.update("\n".join(rendered[-200:]))
+        transcript.update_hidden_buffer(self._current_state().entries)
 
     def _update_content_state(self) -> None:
         state = self._current_state()
@@ -1303,7 +1275,10 @@ class ChatPanel(Vertical):
         self._refresh_status()
 
     def _input_widget(self) -> Input:
-        return self.query_one("#chat-overlay-input", Input)
+        chat_input = self._chat_input()
+        if chat_input is None:
+            return self.query_one("#chat-overlay-input", Input)
+        return chat_input.input_widget()
 
     def _input_widget_safe(self) -> Input | None:
         # Returns None when called from a partial-mount test fixture that
@@ -1315,16 +1290,22 @@ class ChatPanel(Vertical):
             return None
 
     def _session_selector(self) -> Select[str] | None:
-        try:
-            return self.query_one("#chat-overlay-session-select", Select)
-        except NoMatches:
-            return None
+        menu = self._session_menu()
+        if menu is None:
+            try:
+                return self.query_one("#chat-overlay-session-select", Select)
+            except NoMatches:
+                return None
+        return menu.session_selector()
 
     def _stream_output(self) -> StreamingOutput | None:
-        try:
-            return self.query_one("#chat-overlay-output", StreamingOutput)
-        except NoMatches:
-            return None
+        transcript = self._transcript()
+        if transcript is None:
+            try:
+                return self.query_one("#chat-overlay-output", StreamingOutput)
+            except NoMatches:
+                return None
+        return transcript.stream_output()
 
     def _status_bar(self) -> StatusBar | None:
         try:
@@ -1659,34 +1640,53 @@ class ChatPanel(Vertical):
         return groups
 
     def _project_session_keys(self, project_id: str) -> set[str] | None:
-        """Return session keys belonging to the given project, or None if unavailable."""
-        import json
+        """Return session keys for the given project from the local cache.
 
-        from sqlmodel import select
+        Returns ``None`` while the cache is cold so callers fall back to
+        showing every session — the cache is populated asynchronously by
+        :meth:`_refresh_project_session_keys`, which is kicked off on
+        :class:`SessionChanged` and on mount. This avoids the legacy
+        ``_db_sync`` call from a sync code path.
+        """
+        cached = self._project_session_keys_cache.get(project_id)
+        if cached is None:
+            # Kick off a background refresh so the next render of the picker
+            # gets the filtered set. Does nothing if a refresh is in flight.
+            self._kick_project_session_keys_refresh(project_id)
+            return None
+        return cached
 
-        from kagan.core._db_helpers import _db_sync
-        from kagan.core.models import Setting
+    def _kick_project_session_keys_refresh(self, project_id: str) -> None:
+        if not self.is_mounted:
+            return
+        # Use ``run_worker`` so concurrent kicks coalesce by name; Textual will
+        # not start a duplicate worker with the same group.
+        self.run_worker(
+            self._refresh_project_session_keys(project_id),
+            name=f"chat-project-session-keys-{project_id}",
+            group=f"chat-project-session-keys-{project_id}",
+            exit_on_error=False,
+        )
 
+    async def _refresh_project_session_keys(self, project_id: str) -> None:
+        """Populate :attr:`_project_session_keys_cache` for ``project_id``.
+
+        Reads from ``client.chat_sessions.list`` — the public aggregate seam
+        that replaces the legacy ``_db_sync(Setting)`` raw read.
+        """
         core = getattr(self.app, "core", None)
-        engine = getattr(core, "_engine", None) if core else None
-        if engine is None:
-            return None
+        if core is None:
+            return
         try:
-            settings = _db_sync(
-                engine, lambda s: {row.key: row.value for row in s.exec(select(Setting)).all()}
-            )
-            blob = settings.get("chat_sessions_v1", "")
-            if not blob:
-                return None
-            parsed = json.loads(blob)
-            sessions = parsed.get("sessions", []) if isinstance(parsed, dict) else []
-            return {
-                f"orchestrator:{s.get('id', '')}"
-                for s in sessions
-                if isinstance(s, dict) and s.get("project_id") == project_id and s.get("id")
-            }
+            rows = await core.chat_sessions.list(project_id=project_id)
         except Exception:
-            return None
+            return
+        keys: set[str] = set()
+        for row in rows:
+            session_id = getattr(row, "id", None)
+            if isinstance(session_id, str) and session_id:
+                keys.add(f"orchestrator:{session_id}")
+        self._project_session_keys_cache[project_id] = keys
 
     @staticmethod
     def _ticket_group_label(option_label: str) -> str:

@@ -1,4 +1,17 @@
-"""kagan.server._chat_routes — REST + SSE endpoints for chat session management."""
+"""kagan.server._chat_routes — REST + SSE endpoints for chat session management.
+
+Phase 3 of refactor R1: the SSE turn lifecycle, partial-buffering, 409-guard,
+and assistant persistence all live on ``ChatEngine`` (``ctx.client.chat``).
+This module is now a thin transport that:
+
+* maps each :class:`ChatEvent` from the engine to its existing SSE wire frame
+  (the web/VSCode clients depend on the exact ``"t": "CHAT_..."`` shapes —
+  see ``packages/web/src/lib/api/types.ts``);
+* keeps a per-server ``_chat_subscribers`` fanout so multiple ``/watch``
+  clients can observe the same session in lockstep;
+* handles the request/response shape for ``/stream``, ``/watch``,
+  ``/turn-status`` and ``/interrupt``.
+"""
 
 from __future__ import annotations
 
@@ -9,20 +22,25 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import acp
 from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
-from kagan.cli.chat.sessions import (
-    append_chat_message,
-    create_chat_session,
-    delete_chat_session,
-    get_chat_session,
-    get_messages_after,
-    list_chat_sessions,
-    save_chat_session,
-)
+from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
 from kagan.core import resolve_default_agent_backend
-from kagan.core.errors import KaganError
+from kagan.core.chat import (
+    AssistantChunk,
+    AssistantMessagePersisted,
+    ChatEvent,
+    SpawnPerTurnACPFactory,
+    ToolCallProgress,
+    ToolCallStart,
+    TurnCancelled,
+    TurnDone,
+    TurnError,
+    TurnInProgressError,
+    TurnStarted,
+)
 from kagan.server._access import AccessTier, is_access_allowed
 from kagan.server._helpers import _err, _ok, _require_access, handle_errors, require_context
 from kagan.server.responses import (
@@ -43,23 +61,13 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 # ---------------------------------------------------------------------------
-# In-process pub/sub state
+# /watch fanout
 # ---------------------------------------------------------------------------
+# The engine produces ChatEvents on a single iterator consumed by the SSE
+# producer. ``/watch`` subscribers tap that producer via this fanout — kept at
+# transport level (not in the engine) because it is a server-only concern.
 
-# Track running chat turn tasks for interrupt support.
-# Values may be asyncio.Task (active turn) or asyncio.Future (sentinel while
-# the route handler awaits before the task is created — prevents a concurrent
-# POST from slipping past the 409 guard during those suspension points).
-_chat_turn_tasks: dict[str, asyncio.Future[Any]] = {}
-
-# Per-session subscriber queues — broadcast to all connected /watch clients
 _chat_subscribers: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
-
-# Accumulated partial response chunks for the in-flight turn
-_chat_partial_buffers: dict[str, list[str]] = defaultdict(list)
-
-# When each in-flight turn started
-_chat_turn_started_at: dict[str, datetime] = {}
 
 
 def _broadcast(session_id: str, event: dict[str, Any]) -> None:
@@ -69,50 +77,22 @@ def _broadcast(session_id: str, event: dict[str, Any]) -> None:
             q.put_nowait(event)
 
 
-async def _claim_turn_slot(
-    client: Any,
-    session_id: str,
-    agent_backend: str | None,
-) -> tuple[dict[str, Any], str] | JSONResponse:
-    """Atomically claim a turn slot and return (session, backend) or an error response.
-
-    Registers a sentinel Future into ``_chat_turn_tasks`` *before* the first
-    ``await`` so that a concurrent POST cannot slip past the 409 guard while
-    this coroutine is suspended.  The sentinel is replaced by the real Task
-    when ``_run_chat_stream`` starts; error paths pop it explicitly.
-    """
-    running = _chat_turn_tasks.get(session_id)
-    if running is not None and not running.done():
-        partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
-        started_at = _chat_turn_started_at.get(session_id)
-        return JSONResponse(
-            TurnInProgressResponse(
-                running_since=started_at.isoformat() if started_at else None,
-                partial_chars=partial_chars,
-            ).model_dump(mode="json"),
-            status_code=409,
-        )
-
-    sentinel: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
-    _chat_turn_tasks[session_id] = sentinel
-    try:
-        session = await get_chat_session(client, session_id)
-        if session is None:
-            _chat_turn_tasks.pop(session_id, None)
-            return _err("Session not found", status=404)
-        settings = await client.settings.get()
-        backend = (
-            agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
-        )
-        return (session, backend)
-    except BaseException:
-        _chat_turn_tasks.pop(session_id, None)
-        raise
-
-
 # ---------------------------------------------------------------------------
 # Wire helpers
 # ---------------------------------------------------------------------------
+
+
+async def _load_session_dict(client: Any, session_id: str) -> dict[str, Any] | None:
+    """Fetch a session + its messages and return the legacy dict shape.
+
+    Wraps ``client.chat_sessions.get_with_history`` for transport-layer code
+    that consumes the dict-shaped wire mappers (``_session_to_wire`` /
+    ``_session_summary``). Returns ``None`` if the session is missing.
+    """
+    pair = await client.chat_sessions.get_with_history(session_id)
+    if pair is None:
+        return None
+    return chat_session_to_legacy_dict(*pair)
 
 
 def _session_to_wire(session: dict[str, Any]) -> dict[str, Any]:
@@ -168,49 +148,60 @@ def _parse_attachments(body: dict[str, Any]) -> list[dict[str, str]] | None:
     return parsed or None
 
 
-async def _bridge_acp_update(
-    update: Any,
-    chunk_queue: asyncio.Queue[dict[str, Any] | None],
-    session_id: str,
-) -> None:
-    """Bridge a single ACP session_update callback into the SSE queue and broadcast."""
-    from acp.schema import AgentMessageChunk, AgentThoughtChunk, ToolCallProgress, ToolCallStart
+# ---------------------------------------------------------------------------
+# ChatEvent -> SSE frame mapping
+# ---------------------------------------------------------------------------
 
-    event: dict[str, Any] | None = None
 
-    if isinstance(update, AgentMessageChunk):
-        content = getattr(update, "content", None)
-        if content and getattr(content, "type", None) == "text":
-            chunk_text = getattr(content, "text", "") or ""
-            if chunk_text:
-                event = {"t": "CHAT_CHUNK", "content": chunk_text}
-    elif isinstance(update, AgentThoughtChunk):
-        content = getattr(update, "content", None)
-        if content and getattr(content, "type", None) == "text":
-            chunk_text = getattr(content, "text", "") or ""
-            if chunk_text:
-                event = {"t": "CHAT_CHUNK", "content": chunk_text, "thought": True}
-    elif isinstance(update, ToolCallStart):
-        title = getattr(update, "title", None) or getattr(update, "name", None) or "tool"
-        event = {"t": "CHAT_TOOL_START", "tool": title}
-    elif isinstance(update, ToolCallProgress):
-        status = getattr(update, "status", None)
-        title = getattr(update, "title", None) or "tool"
-        event = {
-            "t": "CHAT_TOOL_PROGRESS",
-            "tool": title,
-            "status": str(status) if status else None,
+def _chat_event_to_sse_frame(event: ChatEvent) -> dict[str, Any] | None:
+    """Translate one ``ChatEvent`` to its existing SSE wire shape.
+
+    The web client (``packages/web/src/lib/api/types.ts``) and VS Code
+    extension consume these by string type tag. DO NOT change the shapes here
+    without coordinating a wire-drift bump.
+
+    Returns ``None`` for events that have no SSE analogue today — e.g.
+    ``UsageUpdate``, ``PermissionRequest`` (handled by ACP-level routes).
+    """
+    if isinstance(event, AssistantChunk):
+        frame: dict[str, Any] = {"t": "CHAT_CHUNK", "content": event.text}
+        if event.thought:
+            frame["thought"] = True
+        return frame
+    if isinstance(event, ToolCallStart):
+        return {"t": "CHAT_TOOL_START", "tool": event.title}
+    if isinstance(event, ToolCallProgress):
+        return {"t": "CHAT_TOOL_PROGRESS", "tool": event.tool_id, "status": event.status}
+    if isinstance(event, AssistantMessagePersisted):
+        return {
+            "t": "CHAT_ASSISTANT_MESSAGE",
+            "message_id": event.message_id,
+            "content": event.content,
+            "terminated": event.terminated,
         }
+    if isinstance(event, TurnDone):
+        return {"t": "CHAT_DONE", "full_response": event.full_response}
+    if isinstance(event, TurnError):
+        return {"t": "CHAT_ERROR", "error": event.message}
+    if isinstance(event, TurnCancelled):
+        return {"t": "CHAT_TURN_TERMINATED", "reason": event.reason}
+    # TurnStarted is emitted as CHAT_TURN_STARTED at a different point in the
+    # producer (it carries by_source from the request), so we ignore it here.
+    if isinstance(event, TurnStarted):
+        return None
+    return None
 
-    if event is not None:
-        # Accumulate text chunks into the partial buffer
-        if event.get("t") == "CHAT_CHUNK" and not event.get("thought"):
-            _chat_partial_buffers[session_id].append(event.get("content", ""))
-        await chunk_queue.put(event)
-        _broadcast(session_id, event)
+
+# ---------------------------------------------------------------------------
+# SSE producer
+# ---------------------------------------------------------------------------
 
 
-async def _run_chat_stream(
+def _emit(frame: dict[str, Any]) -> str:
+    return f"data: {json.dumps(frame)}\n\n"
+
+
+async def _sse_stream(
     ctx: Any,
     session_id: str,
     session: dict[str, Any],
@@ -218,183 +209,143 @@ async def _run_chat_stream(
     backend: str,
     attachments: list[dict[str, str]] | None,
 ) -> AsyncIterator[str]:
-    """Core SSE generator for a single chat turn.
+    """Drive a single chat turn through ``ChatEngine`` and yield SSE frames.
 
-    The turn task runs independently of the SSE delivery — if the client
-    disconnects mid-stream the agent keeps working, persists its response,
-    and the frontend can poll ``/turn-status`` to reconnect.
-    Chunks are also broadcast to all /watch subscribers in real time.
+    Caller (``chat_stream``) has already verified the session exists and that
+    no turn is in flight (the latter via ``ChatEngine.stream_assistant``'s
+    own claim, surfaced as ``TurnInProgressError`` on first iteration).
     """
-    from kagan.cli.chat.acp import run_orchestrator_turn
-    from kagan.cli.chat.prompt import build_orchestrator_prompt
+    engine = ctx.client.chat
 
+    # Claim the engine slot BEFORE any side effects (push_user, broadcast,
+    # session metadata update). The claim is synchronous so it is atomic
+    # w.r.t. the asyncio scheduler; without it, a concurrent /stream request
+    # on the same session could slip past the pre-flight ``turn_status``
+    # check, persist a user row, broadcast CHAT_USER_MESSAGE +
+    # CHAT_TURN_STARTED, then trip TurnInProgressError inside
+    # ``stream_assistant`` — leaving an orphan user row in DB and /watch
+    # subscribers stuck without a recovery frame. (Greptile P1.)
     try:
+        engine.try_claim_turn(session_id)
+    except TurnInProgressError:
+        err = {"t": "CHAT_ERROR", "error": "Turn already in progress for this session"}
+        _broadcast(session_id, err)
+        yield _emit(err)
+        return
+
+    # Update session metadata BEFORE persisting the user message. The legacy
+    # ``save_chat_session`` shim used ``upsert_with_history`` which DELETEs every
+    # ``ChatMessage`` row for the session and re-inserts only the snapshot —
+    # calling it after ``push_user`` would wipe the just-persisted user row.
+    # Use the metadata-only ``cs.update`` path instead. (Greptile P1 fix.)
+    session["agent_backend"] = backend
+    # The claimed slot must be released if ANYTHING between the claim and
+    # entering ``stream_assistant`` fails — including settings/cwd resolution,
+    # client disconnect at a yield, or push_user. Once ``stream_assistant``
+    # is entered it owns teardown via its own try/finally; ``detach`` is
+    # idempotent so double-teardown is safe.
+    stream_entered = False
+    turn_done = False
+    try:
+        await ctx.client.chat_sessions.update(session_id, agent_backend=backend)
+
+        # Persist user message and broadcast (transport owns user-row emission;
+        # see the note above ``UserMessagePersisted`` in core.chat.events).
+        user_msg = await engine.push_user(session_id, text, attachments=attachments)
+        user_msg_id = getattr(user_msg, "id", None)
+
+        user_event = {
+            "t": "CHAT_USER_MESSAGE",
+            "message_id": user_msg_id,
+            "content": text,
+        }
+        _broadcast(session_id, user_event)
+        yield _emit(user_event)
+
+        started_event = {
+            "t": "CHAT_TURN_STARTED",
+            "at": datetime.now(UTC).isoformat(),
+            "by_source": session.get("source"),
+        }
+        _broadcast(session_id, started_event)
+        yield _emit(started_event)
+
+        # Build a per-request factory that captures cwd + attachments.
+        settings = await ctx.client.settings.get()
+        project_cwd = await ctx.client.projects.resolve_repo_path(settings=settings)
+        factory = SpawnPerTurnACPFactory(
+            client=ctx.client,
+            default_agent_backend=backend,
+            cwd=project_cwd,
+            attachments=attachments,
+        )
+
+        # Build the prompt blocks. Today the spawn-per-turn factory only honours
+        # the user text (it reconstructs system + wrapper internally via
+        # ``run_orchestrator_turn``); we forward the prior conversation here so
+        # the orchestrator sees full context.
+        from kagan.cli.chat.prompt import build_orchestrator_prompt
+
         prior_history: list[tuple[str, str]] = [
             (str(item[0]), str(item[1]))
             for item in (session.get("orchestrator_history") or [])
             if isinstance(item, list | tuple) and len(item) == 2
         ]
+        prompt_text = build_orchestrator_prompt(prior_history, text)
 
-        is_first_message = len(prior_history) == 0
-
-        prompt = build_orchestrator_prompt(prior_history, text)
-        current_settings = await ctx.client.settings.get()
-        project_cwd = await ctx.client.projects.resolve_repo_path(settings=current_settings)
-
-        chunk_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-
-        # Persist user message and broadcast
-        user_msg = await append_chat_message(ctx.client, session_id, "user", text)
-        user_msg_id = getattr(user_msg, "id", None)
-        session["agent_backend"] = backend
-        await save_chat_session(ctx.client, session)
-
-        _broadcast(
+        stream_entered = True
+        async for event in engine.stream_assistant(
             session_id,
-            {"t": "CHAT_USER_MESSAGE", "message_id": user_msg_id, "content": text},
-        )
-
-        started_at = datetime.now(UTC)
-        _chat_turn_started_at[session_id] = started_at
-        _broadcast(
-            session_id,
-            {
-                "t": "CHAT_TURN_STARTED",
-                "at": started_at.isoformat(),
-                "by_source": session.get("source"),
-            },
-        )
-
-        async def _run_turn_and_persist() -> str:
-            """Execute the orchestrator turn and persist the result.
-
-            Persistence happens here (not in the SSE generator) so that the
-            assistant response is saved even when the client disconnects.
-            On CancelledError: persist the partial buffer with terminated=True.
-            """
-            full_response = ""
-            try:
-                result = await run_orchestrator_turn(
-                    ctx.client,
-                    prompt=prompt,
-                    agent_backend=backend,
-                    on_update=lambda u: _bridge_acp_update(u, chunk_queue, session_id),
-                    attachments=attachments,
-                    cwd=project_cwd,
-                )
-                full_response = result or ""
-            except asyncio.CancelledError:
-                # Persist partial buffer if non-empty, then re-raise
-                partial = "".join(_chat_partial_buffers.get(session_id, []))
-                if partial:
-                    try:
-                        assistant_msg = await append_chat_message(
-                            ctx.client,
-                            session_id,
-                            "assistant",
-                            partial,
-                            terminated=True,
-                        )
-                        assistant_msg_id = getattr(assistant_msg, "id", None)
-                        _broadcast(
-                            session_id,
-                            {
-                                "t": "CHAT_ASSISTANT_MESSAGE",
-                                "message_id": assistant_msg_id,
-                                "content": partial,
-                                "terminated": True,
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to persist partial for session {}", session_id)
-                raise
-            except Exception:
-                logger.exception("Chat turn failed for session {}", session_id)
-                raise
-            finally:
-                await chunk_queue.put(None)  # Signal stream end
-                _chat_turn_tasks.pop(session_id, None)
-                _chat_turn_started_at.pop(session_id, None)
-                _chat_partial_buffers.pop(session_id, None)
-
-            # Persist completed assistant response
-            if full_response:
-                assistant_msg = await append_chat_message(
-                    ctx.client, session_id, "assistant", full_response
-                )
-                assistant_msg_id = getattr(assistant_msg, "id", None)
-                _broadcast(
-                    session_id,
-                    {
-                        "t": "CHAT_ASSISTANT_MESSAGE",
-                        "message_id": assistant_msg_id,
-                        "content": full_response,
-                        "terminated": False,
-                    },
-                )
-
-            # Generate title if first message
-            if is_first_message and full_response:
-                await _maybe_generate_title(ctx, session, session_id, text, full_response, backend)
-
-            # Broadcast session updated
-            updated_session = await get_chat_session(ctx.client, session_id)
-            if updated_session is not None:
-                _broadcast(
-                    session_id,
-                    {"t": "CHAT_SESSION_UPDATED", "session": _session_summary(updated_session)},
-                )
-
-            return full_response
-
-        turn_task = asyncio.create_task(_run_turn_and_persist())
-        _chat_turn_tasks[session_id] = turn_task
-
-        try:
-            while True:
-                item = await chunk_queue.get()
-                if item is None:
-                    break
-                yield f"data: {json.dumps(item)}\n\n"
-
-            # Stream completed normally — await result for CHAT_DONE
-            full_response = await turn_task
-            done_event = {"t": "CHAT_DONE", "full_response": full_response}
-            _broadcast(session_id, done_event)
-            yield f"data: {json.dumps(done_event)}\n\n"
-
-        except (asyncio.CancelledError, GeneratorExit, ConnectionError):
-            logger.debug("Client disconnected during chat stream for session {}", session_id)
-            return
-
-    except asyncio.CancelledError:
+            prompt_blocks=[acp.text_block(prompt_text)],
+            agent_backend=backend,
+            acp_factory=factory,
+        ):
+            frame = _chat_event_to_sse_frame(event)
+            if frame is None:
+                continue
+            _broadcast(session_id, frame)
+            yield _emit(frame)
+            if frame.get("t") == "CHAT_DONE":
+                turn_done = True
+    except TurnInProgressError:
+        # Surfaced to the route caller via the wrapper below — no body here.
+        raise
+    except (asyncio.CancelledError, GeneratorExit, ConnectionError):
+        logger.debug("Client disconnected during chat stream for session {}", session_id)
+        # Starlette throws CancelledError at the active yield when the client
+        # drops; the inner stream_assistant generator is abandoned and its
+        # ``finally: _teardown`` only fires when Python's async-gen finalizer
+        # eventually calls aclose(). Until then the sentinel stays in
+        # engine._states and every subsequent /stream 409s. detach() is
+        # idempotent so this is safe even when stream_assistant cleaned up
+        # itself (Greptile P1).
+        await engine.detach(session_id)
         return
     except Exception as exc:
         logger.exception("Chat stream failed for session {}", session_id)
-        yield f"data: {json.dumps({'t': 'CHAT_ERROR', 'error': str(exc)})}\n\n"
+        err = {"t": "CHAT_ERROR", "error": str(exc)}
+        _broadcast(session_id, err)
+        yield _emit(err)
+    finally:
+        if not stream_entered:
+            await engine.detach(session_id)
 
-
-async def _maybe_generate_title(
-    ctx: Any,
-    session: dict[str, Any],
-    session_id: str,
-    text: str,
-    full_response: str,
-    backend: str,
-) -> None:
-    """Best-effort title generation for first-message sessions."""
-    from kagan.cli.chat._title import ensure_session_title
-
-    try:
-        await ensure_session_title(
-            ctx.client,
-            session,
-            user_message=text,
-            assistant_reply=full_response,
-            agent_backend=backend,
-        )
-    except Exception:
-        logger.debug("Chat title generation failed for session {}", session_id)
+    # Post-turn metadata refresh OUTSIDE the error handler. A DB hiccup here
+    # must not emit a spurious CHAT_ERROR after the successful CHAT_DONE that
+    # already shipped — clients toggling spinners / turn counts would see
+    # success-then-error for the same turn (Greptile P1).
+    if turn_done:
+        try:
+            refreshed_pair = await ctx.client.chat_sessions.get_with_history(session_id)
+        except Exception:
+            logger.exception("Post-turn session refresh failed for {}", session_id)
+        else:
+            if refreshed_pair is not None:
+                refreshed = chat_session_to_legacy_dict(*refreshed_pair)
+                _broadcast(
+                    session_id,
+                    {"t": "CHAT_SESSION_UPDATED", "session": _session_summary(refreshed)},
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -402,14 +353,41 @@ async def _maybe_generate_title(
 # ---------------------------------------------------------------------------
 
 
-def _teardown_session_state(session_id: str) -> None:
-    """Cancel any in-flight turn and remove all in-process state for a session."""
-    running_turn = _chat_turn_tasks.pop(session_id, None)
-    if running_turn is not None and not running_turn.done():
-        running_turn.cancel()
+def _teardown_session_state(ctx: Any, session_id: str) -> None:
+    """Clear per-session transport state and ask the engine to detach."""
     _chat_subscribers.pop(session_id, None)
-    _chat_partial_buffers.pop(session_id, None)
-    _chat_turn_started_at.pop(session_id, None)
+    engine = getattr(ctx.client, "chat", None)
+    if engine is not None:
+        # Fire-and-forget — detach is best-effort cleanup at delete time.
+        with contextlib.suppress(RuntimeError):
+            asyncio.get_running_loop().create_task(engine.detach(session_id))
+
+
+async def _patch_session(request: Request, *, ctx: Any) -> JSONResponse:
+    """PATCH handler — metadata-only update for a chat session."""
+    forbidden = _require_access(
+        ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
+    )
+    if forbidden is not None:
+        return forbidden
+    session_id = cast("str", request.path_params["session_id"])
+    session = await _load_session_dict(ctx.client, session_id)
+    if session is None:
+        return _err("Session not found", status=404)
+    body = await request.json()
+    if not isinstance(body, dict):
+        return _err("Request body must be a JSON object", status=400)
+    agent_backend = body.get("agent_backend")
+    if agent_backend is not None:
+        # Metadata-only patch — never round-trip through ``upsert_with_history``,
+        # which DELETEs every ``ChatMessage`` for the session. (Greptile P1 fix.)
+        await ctx.client.chat_sessions.update(session_id, agent_backend=agent_backend)
+        # Re-fetch so the response carries the new ``updated_at`` rather than
+        # the pre-update snapshot. (Greptile P2 fix.)
+        refreshed = await _load_session_dict(ctx.client, session_id)
+        if refreshed is not None:
+            session = refreshed
+    return _ok(_session_to_wire(session))
 
 
 def _register_crud_routes(mcp: FastMCP) -> None:
@@ -421,7 +399,10 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     async def list_sessions(_request: Request, *, ctx: Any) -> JSONResponse:
         source = _request.query_params.get("source")
         project_id = _request.query_params.get("project_id")
-        sessions = await list_chat_sessions(ctx.client, source=source, project_id=project_id)
+        pairs = await ctx.client.chat_sessions.list_with_history(
+            source=source, project_id=project_id
+        )
+        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
         return _ok([_session_summary(s) for s in sessions])
 
     @mcp.custom_route("/api/chat/sessions", methods=["POST"])
@@ -440,13 +421,13 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         label = cast("str | None", body.get("label"))
         source = str(body.get("source") or "web").strip() or "web"
         project_id = cast("str | None", body.get("project_id")) or ctx.client.active_project_id
-        session = await create_chat_session(
-            ctx.client,
+        row = await ctx.client.chat_sessions.create(
             source=source,
             label=label,
             agent_backend=agent_backend,
             project_id=project_id,
         )
+        session = chat_session_to_legacy_dict(row, [])
         return _ok(_session_to_wire(session))
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["GET"])
@@ -454,7 +435,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def get_session(request: Request, *, ctx: Any) -> JSONResponse:
         session_id = cast("str", request.path_params["session_id"])
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
         etag = f'"{session.get("updated_at", "")}"'
@@ -480,11 +461,11 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         except (ValueError, TypeError):
             return _err("after_id must be an integer", status=400)
 
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
 
-        messages = await get_messages_after(ctx.client, session_id, after_id=after_id)
+        messages = await ctx.client.chat_sessions.messages_after(session_id, after_id=after_id)
         wire = [
             ChatMessageDetailResponse(
                 id=m.id or 0,
@@ -502,23 +483,7 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @require_context(mcp)
     @handle_errors
     async def update_session(request: Request, *, ctx: Any) -> JSONResponse:
-        forbidden = _require_access(
-            ctx, operation="Chat session update", minimum_tier=AccessTier.STANDARD
-        )
-        if forbidden is not None:
-            return forbidden
-        session_id = cast("str", request.path_params["session_id"])
-        session = await get_chat_session(ctx.client, session_id)
-        if session is None:
-            return _err("Session not found", status=404)
-        body = await request.json()
-        if not isinstance(body, dict):
-            return _err("Request body must be a JSON object", status=400)
-        agent_backend = body.get("agent_backend")
-        if agent_backend is not None:
-            session["agent_backend"] = agent_backend
-        await save_chat_session(ctx.client, session)
-        return _ok(_session_to_wire(session))
+        return await _patch_session(request, ctx=ctx)
 
     @mcp.custom_route("/api/chat/sessions/{session_id}", methods=["DELETE"])
     @require_context(mcp)
@@ -530,10 +495,10 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         if forbidden is not None:
             return forbidden
         session_id = cast("str", request.path_params["session_id"])
-        deleted = await delete_chat_session(ctx.client, session_id)
+        deleted = await ctx.client.chat_sessions.delete(session_id)
         if not deleted:
             return _err("Session not found", status=404)
-        _teardown_session_state(session_id)
+        _teardown_session_state(ctx, session_id)
         return _ok({"session_id": session_id, "deleted": True})
 
     @mcp.custom_route("/api/chat/agents", methods=["GET"])
@@ -550,58 +515,6 @@ def _register_crud_routes(mcp: FastMCP) -> None:
         settings = await ctx.client.settings.get()
         default = resolve_default_agent_backend(settings)
         return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
-
-
-def _idle_interrupt_response(session_id: str) -> JSONResponse:
-    return _ok(
-        {
-            "session_id": session_id,
-            "interrupted": False,
-            "partial_persisted": False,
-            "partial_chars": 0,
-        }
-    )
-
-
-async def _interrupt_reason(request: Request) -> str:
-    try:
-        body = await request.json()
-    except Exception:
-        return "user"
-    if not isinstance(body, dict):
-        return "user"
-    reason = body.get("reason", "user")
-    return str(reason) if reason in {"user", "takeover"} else "user"
-
-
-async def _interrupt_running_turn(
-    session_id: str,
-    running_task: asyncio.Future[Any],
-    *,
-    reason: str,
-) -> JSONResponse:
-    partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
-
-    running_task.cancel()
-    interrupt_errors = (
-        asyncio.CancelledError,
-        TimeoutError,
-        KaganError,
-        RuntimeError,
-        ConnectionError,
-    )
-    with contextlib.suppress(*interrupt_errors):
-        await asyncio.wait_for(running_task, timeout=5.0)
-
-    _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
-    return _ok(
-        {
-            "session_id": session_id,
-            "interrupted": True,
-            "partial_persisted": partial_chars > 0,
-            "partial_chars": partial_chars,
-        }
-    )
 
 
 def _register_stream_routes(mcp: FastMCP) -> None:
@@ -629,13 +542,32 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         agent_backend = cast("str | None", body.get("agent_backend"))
         attachments = _parse_attachments(body)
 
-        claimed = await _claim_turn_slot(ctx.client, session_id, agent_backend)
-        if isinstance(claimed, JSONResponse):
-            return claimed
-        session, backend = claimed
+        # Resolve session + backend up-front (mirrors the legacy
+        # ``_claim_turn_slot`` body).
+        session = await _load_session_dict(ctx.client, session_id)
+        if session is None:
+            return _err("Session not found", status=404)
+        settings = await ctx.client.settings.get()
+        backend = (
+            agent_backend or session.get("agent_backend") or resolve_default_agent_backend(settings)
+        )
+
+        # Pre-flight 409: cheap turn_status read keeps the early-error path
+        # fast (no need to start the SSE response just to tear it down).
+        status = ctx.client.chat.turn_status(session_id)
+        if status.active:
+            return JSONResponse(
+                TurnInProgressResponse(
+                    running_since=(
+                        status.started_at.isoformat() if status.started_at is not None else None
+                    ),
+                    partial_chars=status.partial_chars,
+                ).model_dump(mode="json"),
+                status_code=409,
+            )
 
         return StreamingResponse(
-            _run_chat_stream(ctx, session_id, session, text, backend, attachments),
+            _sse_stream(ctx, session_id, session, text, backend, attachments),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -656,7 +588,7 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         if not is_access_allowed(ctx, AccessTier.STANDARD):
             return _err("Insufficient access tier for chat", status=403)
 
-        session = await get_chat_session(ctx.client, session_id)
+        session = await _load_session_dict(ctx.client, session_id)
         if session is None:
             return _err("Session not found", status=404)
 
@@ -700,14 +632,14 @@ def _register_stream_routes(mcp: FastMCP) -> None:
     async def turn_status(request: Request, *, ctx: Any) -> JSONResponse:
         """Check whether a chat turn is still running for the given session."""
         session_id = cast("str", request.path_params["session_id"])
-        task = _chat_turn_tasks.get(session_id)
-        partial_chars = sum(len(c) for c in _chat_partial_buffers.get(session_id, []))
-        started_at = _chat_turn_started_at.get(session_id)
+        status = ctx.client.chat.turn_status(session_id)
         return _ok(
             {
-                "active": task is not None and not task.done(),
-                "partial_chars": partial_chars,
-                "running_since": started_at.isoformat() if started_at else None,
+                "active": status.active,
+                "partial_chars": status.partial_chars,
+                "running_since": (
+                    status.started_at.isoformat() if status.started_at is not None else None
+                ),
             }
         )
 
@@ -719,18 +651,47 @@ def _register_stream_routes(mcp: FastMCP) -> None:
 
         Request body: {"reason": "user" | "takeover"} (default "user").
         Returns: {interrupted, partial_persisted, partial_chars}.
-        The partial buffer is persisted as a terminated assistant message if non-empty;
-        CHAT_TURN_TERMINATED is broadcast to /watch subscribers.
+        The partial buffer is persisted as a terminated assistant message if non-empty
+        (handled inside ``ChatEngine``); CHAT_TURN_TERMINATED is broadcast to /watch.
         """
         session_id = cast("str", request.path_params["session_id"])
-        running_task = _chat_turn_tasks.get(session_id)
-        if running_task is None or running_task.done():
-            return _idle_interrupt_response(session_id)
-        return await _interrupt_running_turn(
-            session_id,
-            running_task,
-            reason=await _interrupt_reason(request),
+        reason = await _interrupt_reason(request)
+        result = await ctx.client.chat.cancel(session_id, reason=reason)
+        if not result.was_running:
+            # No active /stream consumer to relay the engine's TurnCancelled
+            # event, so emit a transport-level CHAT_TURN_TERMINATED here so
+            # any /watch-only subscribers still see the cancel. When a turn
+            # *is* running, the engine emits TurnCancelled which
+            # ``_sse_stream`` already broadcasts — broadcasting again here
+            # would deliver the same frame twice. (Greptile P2.)
+            _broadcast(session_id, {"t": "CHAT_TURN_TERMINATED", "reason": reason})
+            return _ok(
+                {
+                    "session_id": session_id,
+                    "interrupted": False,
+                    "partial_persisted": False,
+                    "partial_chars": 0,
+                }
+            )
+        return _ok(
+            {
+                "session_id": session_id,
+                "interrupted": True,
+                "partial_persisted": result.partial_chars > 0,
+                "partial_chars": result.partial_chars,
+            }
         )
+
+
+async def _interrupt_reason(request: Request) -> str:
+    try:
+        body = await request.json()
+    except Exception:
+        return "user"
+    if not isinstance(body, dict):
+        return "user"
+    reason = body.get("reason", "user")
+    return str(reason) if reason in {"user", "takeover"} else "user"
 
 
 def register_chat_routes(mcp: FastMCP) -> None:

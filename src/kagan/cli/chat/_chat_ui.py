@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from kagan.cli.chat._chat_acp import _OrchestratorACPClient
+from kagan.cli.chat._renderer import CLIRenderer
 from kagan.cli.chat.commands import SLASH_COMMAND_REGISTRY
 from kagan.cli.chat.repl import SearchPickerOption, _console
 from kagan.core._formatting import format_duration, format_percentage
@@ -209,13 +209,13 @@ def build_session_picker_option(item: Any) -> SearchPickerOption:
     )
 
 
-def show_tool_report(acp_client: _OrchestratorACPClient | None, query: str | None) -> None:
+def show_tool_report(renderer: CLIRenderer | None, query: str | None) -> None:
     """Render tool usage report."""
-    if acp_client is None:
+    if renderer is None:
         _console.print("[dim]No active agent connection.[/dim]")
         return
 
-    report, pager_mode = acp_client.tool_report(query)
+    report, pager_mode = renderer.tool_report(query)
     if pager_mode:
         with _console.pager(styles=False):
             _console.print(report, highlight=False)

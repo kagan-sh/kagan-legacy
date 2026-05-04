@@ -1,17 +1,21 @@
 """Batched approval queue for concurrent tool-permission requests in kg chat.
 
-When multiple ``request_permission`` calls arrive within the debounce window
-(default 100 ms), they are collected into a single combined panel.  Each caller
-receives an ``asyncio.Future``; the batch responder resolves all of them once
-the user has worked through the panel.
+When multiple permission requests arrive within the debounce window
+(default 100 ms), they are collected into a single combined panel.  Each
+caller receives an ``asyncio.Future`` which is resolved once the user has
+worked through the panel; the queue *also* dispatches the decision via
+``engine.resolve_permission(session_id, future_id, outcome=..., feedback=...)``
+so the assistant turn unblocks.
 
 N=1 path: if only one item arrives before the debounce fires, the caller's
-Future is resolved with the raw (options, tool_call) tuple — the upstream
-``request_permission`` implementation falls through to the existing
-single-approval panel unchanged.
+Future resolves once the single-approval modal returns.
 
 Batch path (N>=2): a single combined panel lists all pending items with
 per-item options 1-4 and bulk options 5 (approve all) / 6 (reject all).
+
+Phase 5c: the queue dispatches via ``ChatEngine.resolve_permission`` and
+no longer constructs ACP responses. ACP-shape translation lives in
+``_CaptureACPClient.request_permission``.
 """
 
 from __future__ import annotations
@@ -20,14 +24,17 @@ import asyncio
 import io
 import os
 import shutil
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from prompt_toolkit.application.run_in_terminal import run_in_terminal
 
 from kagan.cli.chat._approval_panel import no_color, strip_tool_prefix
 from kagan.cli.chat._theme import APPROVAL
+
+if TYPE_CHECKING:
+    from kagan.cli.chat._permission_ui import _DecisionTuple
 
 # ---------------------------------------------------------------------------
 # Environment-configurable debounce + cap
@@ -60,19 +67,26 @@ def _batch_cap() -> int:
 
 @dataclass
 class _PendingItem:
-    """One pending approval request waiting in the batch queue."""
+    """One pending approval request waiting in the batch queue.
+
+    ``future`` resolves to ``None`` (meaning the queue has dispatched the
+    decision via ``engine.resolve_permission``). The caller awaits it purely
+    as a "decided" signal; the actual decision was already routed through the
+    engine. It's kept as a Future (rather than a bare Event) so that
+    ``cancel_all`` can short-circuit pending awaits on SIGINT.
+    """
 
     options: list[Any]
     tool_call: Any
-    future: asyncio.Future[Any]  # resolved with an ACP response object
+    future_id: str
+    session_id: str
+    future: asyncio.Future[None] = field(repr=False)
 
 
 # ---------------------------------------------------------------------------
-# Batch panel rendering helpers
+# Batch panel rendering helpers (unchanged)
 # ---------------------------------------------------------------------------
 
-# Options 1-4 come from the existing single-approval panel.
-# Options 5-6 are batch-only bulk actions.
 _BATCH_OPTION_LABELS: list[tuple[str, str]] = [
     ("Approve once", "allow_once"),
     ("Approve for this session", "allow_always"),
@@ -91,12 +105,6 @@ def _build_batch_panel_ansi(
     feedback_draft: str,
     resolved: dict[int, str] | None = None,
 ) -> str:
-    """Render the combined batch approval panel to an ANSI string.
-
-    `resolved` maps item index → "approved" or "rejected".  Items already
-    decided render with a coloured tick / cross prefix and a dim style,
-    so the user can see at a glance which calls are still pending.
-    """
     from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
@@ -110,14 +118,15 @@ def _build_batch_panel_ansi(
     pending = sum(1 for i in range(n) if i not in resolved)
     lines: list[Any] = []
 
-    # Item list header
     lines.append(Text.from_markup(f"[yellow]{pending} of {n} tool calls pending:[/yellow]"))
     lines.append(Text(""))
 
     for i, item in enumerate(items):
+        raw_tc = item.tool_call
         raw = (
-            getattr(item.tool_call, "title", None)
-            or getattr(item.tool_call, "name", None)
+            (raw_tc.get("title") or raw_tc.get("name") if isinstance(raw_tc, dict) else None)
+            or getattr(raw_tc, "title", None)
+            or getattr(raw_tc, "name", None)
             or "tool call"
         )
         name = strip_tool_prefix(str(raw))
@@ -133,7 +142,6 @@ def _build_batch_panel_ansi(
 
     lines.append(Text(""))
 
-    # Option menu for focused item
     for idx, (label, _kind) in enumerate(_BATCH_OPTION_LABELS):
         num = idx + 1
         is_selected = idx == selected_option
@@ -149,7 +157,6 @@ def _build_batch_panel_ansi(
 
     lines.append(Text(""))
 
-    # Footer hint
     if selected_option == 3 and feedback_draft:
         hint = "  Type feedback  Enter submit  Esc cancel"
     else:
@@ -169,7 +176,7 @@ def _build_batch_panel_ansi(
 
 
 # ---------------------------------------------------------------------------
-# Interactive batch modal
+# Interactive batch modal (unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -180,12 +187,6 @@ async def _run_batch_modal_async(
     _resolve_all: Any,
     _reject_all: Any,
 ) -> None:
-    """Run the interactive batch-approval prompt_toolkit Application.
-
-    Calls _resolve_item(index, option_idx, feedback) for per-item decisions,
-    _resolve_all(option_idx) for approve-all / reject-all.
-    Falls back to legacy_batch_input on any failure.
-    """
     try:
         await _run_batch_interactive(
             items,
@@ -208,7 +209,6 @@ async def _run_batch_modal_async(
 def _find_next_unresolved(
     current: int, n: int, resolved: set[int], direction: int = 1
 ) -> int | None:
-    """Return the next unresolved item index (wrapping), or None if all done."""
     for i in range(1, n + 1):
         candidate = (current + direction * i) % n
         if candidate not in resolved:
@@ -217,7 +217,6 @@ def _find_next_unresolved(
 
 
 def _reset_item_focus(state: dict[str, Any], new_idx: int, fb_buf: Any) -> None:
-    """Move focus to a new item and reset option state."""
     from prompt_toolkit.document import Document
 
     state["focused_item"] = new_idx
@@ -237,7 +236,6 @@ def _handle_num_key(
     reject_all: Any,
     confirm_fn: Any,
 ) -> None:
-    """Handle a digit key press (0-based idx) in the batch modal."""
     state["selected_option"] = idx
     if idx == 3:
         state["feedback_mode"] = True
@@ -259,7 +257,6 @@ async def _run_batch_interactive(
     resolve_all: Any,
     reject_all: Any,
 ) -> None:
-    """Build and run a transient prompt_toolkit Application for batch approval."""
     from prompt_toolkit.application import Application
     from prompt_toolkit.buffer import Buffer
     from prompt_toolkit.document import Document
@@ -275,7 +272,6 @@ async def _run_batch_interactive(
         "selected_option": 0,
         "feedback": "",
         "feedback_mode": False,
-        # idx -> "approved" | "rejected"
         "resolved": {},
     }
 
@@ -389,7 +385,7 @@ async def _run_batch_interactive(
         full_screen=False,
         mouse_support=False,
     )
-    from kagan.cli.chat._chat_acp import _modal_active
+    from kagan.cli.chat._permission_ui import _modal_active
 
     with _modal_active():
         await app.run_async()
@@ -401,13 +397,18 @@ def _run_legacy_batch_input(
     resolve_item: Any,
     reject_all: Any,
 ) -> None:
-    """Sync fallback: iterate items one by one via input()."""
     from kagan.cli.chat.repl import _console
 
     for i, item in enumerate(items):
+        raw_tc = item.tool_call
+        title = (
+            (raw_tc.get("title") if isinstance(raw_tc, dict) else None)
+            or getattr(raw_tc, "title", None)
+            or "tool"
+        )
         _console.print(
             f"[bold yellow]approval ({i + 1}/{len(items)})[/bold yellow]: "
-            f"{strip_tool_prefix(getattr(item.tool_call, 'title', None) or 'tool')}"
+            f"{strip_tool_prefix(str(title))}"
         )
         try:
             raw = input(
@@ -419,7 +420,6 @@ def _run_legacy_batch_input(
             elif raw == "2":
                 resolve_item(i, 1, "")
             elif raw in {"5", "a"}:
-                # approve all remaining
                 for j in range(i, len(items)):
                     resolve_item(j, 0, "")
                 return
@@ -438,24 +438,56 @@ def _run_legacy_batch_input(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_decision_via_engine(
+    engine: Any,
+    item: _PendingItem,
+    decision: _DecisionTuple,
+) -> None:
+    """Push the decision to the engine and mark the local future done.
+
+    Engine call is fire-and-forget — its only failure mode is "future_id
+    unknown" which is already an idempotent no-op inside the engine.
+    """
+    try:
+        coro = engine.resolve_permission(
+            item.session_id,
+            item.future_id,
+            outcome=decision.outcome,
+            feedback=decision.feedback,
+        )
+    except Exception:
+        logger.exception("engine.resolve_permission raised; dropping decision")
+        if not item.future.done():
+            item.future.set_result(None)
+        return
+    asyncio.ensure_future(coro)
+    if not item.future.done():
+        item.future.set_result(None)
+
+
+def _cancelled_decision() -> _DecisionTuple:
+    from kagan.cli.chat._permission_ui import _DecisionTuple as _DT
+
+    return _DT(outcome="deny")
+
+
 def _preresolve_session_approved(
     items: list[_PendingItem],
-) -> tuple[dict[int, Any], list[_PendingItem], list[int]]:
+    *,
+    engine: Any,
+) -> tuple[set[int], list[_PendingItem], list[int]]:
     """Auto-resolve items whose tool was previously approved-for-session.
 
-    Mirrors the short-circuit in ``_flush_single`` so a session-approved tool
-    is auto-approved without forcing the user to re-confirm it through the
-    batch modal. Returns ``(resolutions, unresolved_items, unresolved_index_map)``
-    where ``unresolved_index_map[i]`` gives the original index in *items*
-    corresponding to ``unresolved_items[i]``.
+    Returns ``(resolved_indices, unresolved_items, unresolved_index_map)``.
+    Resolved items are dispatched to the engine immediately.
     """
-    from kagan.cli.chat._chat_acp import (
-        _selected_permission_response,
+    from kagan.cli.chat._permission_ui import (
+        _DecisionTuple,
         _session_approvals,
         _tool_action_key,
     )
 
-    resolutions: dict[int, Any] = {}
+    resolved_indices: set[int] = set()
     unresolved_items: list[_PendingItem] = []
     unresolved_index_map: list[int] = []
     for original_idx, pending in enumerate(items):
@@ -464,72 +496,37 @@ def _preresolve_session_approved(
             unresolved_items.append(pending)
             unresolved_index_map.append(original_idx)
             continue
-        allow_once = next(
-            (o for o in pending.options if getattr(o, "kind", None) == "allow_once"),
-            None,
-        )
-        chosen = allow_once if allow_once is not None else pending.options[0]
-        resolutions[original_idx] = _selected_permission_response(chosen)
-    return resolutions, unresolved_items, unresolved_index_map
-
-
-def _apply_batch_resolutions(
-    items: list[_PendingItem],
-    resolutions: dict[int, Any],
-    *,
-    skip_unresolved: bool = False,
-) -> None:
-    """Resolve every item Future from the *resolutions* mapping.
-
-    Items missing from *resolutions* default to a rejected response unless
-    ``skip_unresolved`` is True, in which case they are left untouched (used
-    when the caller has already resolved them via a separate single-approval
-    flow).
-    """
-    from kagan.cli.chat._chat_acp import _rejected_permission_response
-
-    for i, item in enumerate(items):
-        response = resolutions.get(i)
-        if response is None:
-            if skip_unresolved:
-                continue
-            response = _rejected_permission_response()
-        if not item.future.done():
-            item.future.set_result(response)
+        _resolve_decision_via_engine(engine, pending, _DecisionTuple(outcome="allow_once"))
+        resolved_indices.add(original_idx)
+    return resolved_indices, unresolved_items, unresolved_index_map
 
 
 class _BatchApprovalQueue:
-    """Collect concurrent request_permission calls and present them as one panel.
+    """Collect concurrent permission requests and present them as one panel.
 
-    Usage::
+    Phase 5c: the queue dispatches decisions via
+    ``engine.resolve_permission(session_id, future_id, outcome, feedback)``
+    instead of constructing ACP responses. Item Futures resolve to ``None``
+    once dispatched — they exist only so callers can ``await`` for the
+    "decided" event.
 
-        queue = _BatchApprovalQueue(acp_client)
-        # In _OrchestratorACPClient.request_permission:
-        future = await queue.enqueue(options, tool_call)
-        response = await future  # blocks until batch resolves
-
-    The queue arms a debounce timer on the first enqueue.  When the timer fires
-    (or the cap is reached) it calls ``_flush()`` which renders the batch panel
-    and resolves all pending Futures.
+    Constructed by :class:`PermissionUI`; the ``engine`` ref is supplied at
+    construction time so the queue stays self-contained.
     """
 
-    def __init__(self, client: Any) -> None:
-        self._client = client  # _OrchestratorACPClient reference (for helpers)
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
         self._pending: list[_PendingItem] = []
         self._debounce_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
 
     def reset(self) -> None:
-        """Clear queue state at turn start (called from start_turn)."""
+        """Clear queue state at turn start."""
         if self._debounce_task is not None and not self._debounce_task.done():
             self._debounce_task.cancel()
         self._debounce_task = None
-        # Resolve any lingering futures as cancelled
         for item in self._pending:
-            if not item.future.done():
-                from kagan.cli.chat._chat_acp import _cancelled_permission_response
-
-                item.future.set_result(_cancelled_permission_response())
+            _resolve_decision_via_engine(self._engine, item, _cancelled_decision())
         self._pending.clear()
 
     def cancel_all(self) -> None:
@@ -537,30 +534,38 @@ class _BatchApprovalQueue:
         if self._debounce_task is not None and not self._debounce_task.done():
             self._debounce_task.cancel()
         self._debounce_task = None
-        from kagan.cli.chat._chat_acp import _cancelled_permission_response
-
         for item in self._pending:
-            if not item.future.done():
-                item.future.set_result(_cancelled_permission_response())
+            _resolve_decision_via_engine(self._engine, item, _cancelled_decision())
         self._pending.clear()
 
-    async def enqueue(self, options: list[Any], tool_call: Any) -> asyncio.Future[Any]:
-        """Add one permission request to the queue; return a Future for the response."""
+    async def enqueue(
+        self,
+        options: list[Any],
+        tool_call: Any,
+        *,
+        future_id: str,
+        session_id: str,
+    ) -> asyncio.Future[None]:
+        """Add a request to the queue; return a Future that resolves once decided."""
         loop = asyncio.get_running_loop()
-        fut: asyncio.Future[Any] = loop.create_future()
-        item = _PendingItem(options=options, tool_call=tool_call, future=fut)
+        fut: asyncio.Future[None] = loop.create_future()
+        item = _PendingItem(
+            options=options,
+            tool_call=tool_call,
+            future_id=future_id,
+            session_id=session_id,
+            future=fut,
+        )
 
         async with self._lock:
             self._pending.append(item)
             cap = _batch_cap()
             if len(self._pending) >= cap:
-                # Cancel debounce timer and flush immediately
                 if self._debounce_task is not None and not self._debounce_task.done():
                     self._debounce_task.cancel()
                 self._debounce_task = None
                 asyncio.ensure_future(self._flush())
             elif self._debounce_task is None or self._debounce_task.done():
-                # Arm new debounce timer
                 self._debounce_task = asyncio.create_task(
                     self._debounce_then_flush(), name="batch-approval-debounce"
                 )
@@ -572,7 +577,6 @@ class _BatchApprovalQueue:
         await self._flush()
 
     async def _flush(self) -> None:
-        """Take snapshot of pending items and render panel; resolve all Futures."""
         async with self._lock:
             items = list(self._pending)
             self._pending.clear()
@@ -582,30 +586,23 @@ class _BatchApprovalQueue:
             return
 
         if len(items) == 1:
-            # N=1: fall through to the single-approval panel unchanged.
             await self._flush_single(items[0])
             return
 
         await self._flush_batch(items)
 
     async def _flush_single(self, item: _PendingItem) -> None:
-        """Resolve one item via the existing single-approval panel."""
-        from kagan.cli.chat._chat_acp import (
-            _map_approval_result,
-            _rejected_permission_response,
+        from kagan.cli.chat._permission_ui import (
+            _DecisionTuple,
+            _map_decision_from_approval,
             _run_approval_panel_async,
-            _selected_permission_response,
             _session_approvals,
             _tool_action_key,
         )
 
         action_key = _tool_action_key(item.tool_call)
         if _session_approvals.is_allowed(action_key):
-            for o in item.options:
-                if getattr(o, "kind", None) == "allow_once":
-                    item.future.set_result(_selected_permission_response(o))
-                    return
-            item.future.set_result(_selected_permission_response(item.options[0]))
+            _resolve_decision_via_engine(self._engine, item, _DecisionTuple(outcome="allow_once"))
             return
 
         selected_index, feedback = await _run_approval_panel_async(
@@ -614,73 +611,53 @@ class _BatchApprovalQueue:
             queue_position=1,
             queue_depth=1,
         )
-        option = _map_approval_result(
-            selected_index,
-            feedback,
-            action_key=action_key,
-            permission_options=item.options,
-        )
-        if option is None:
-            item.future.set_result(_rejected_permission_response())
-        else:
-            item.future.set_result(_selected_permission_response(option))
+        decision = _map_decision_from_approval(selected_index, feedback, action_key=action_key)
+        _resolve_decision_via_engine(self._engine, item, decision)
 
     async def _flush_batch(self, items: list[_PendingItem]) -> None:
-        """Render combined batch panel and resolve all item Futures."""
-        from kagan.cli.chat._chat_acp import (
-            _map_approval_result,
-            _rejected_permission_response,
-            _selected_permission_response,
+        from kagan.cli.chat._permission_ui import (
+            _DecisionTuple,
+            _map_decision_from_approval,
             _tool_action_key,
         )
 
-        resolutions, unresolved_items, unresolved_index_map = _preresolve_session_approved(items)
+        resolved_indices, unresolved_items, unresolved_index_map = _preresolve_session_approved(
+            items, engine=self._engine
+        )
 
         if not unresolved_items:
-            _apply_batch_resolutions(items, resolutions)
             return
 
         if len(unresolved_items) == 1:
             await self._flush_single(unresolved_items[0])
-            _apply_batch_resolutions(items, resolutions, skip_unresolved=True)
             return
+
+        # Local map so ``_resolve_all`` / ``_reject_all`` can override
+        # ``_resolve_item`` calls. Items are dispatched to the engine after
+        # the modal exits.
+        decisions: dict[int, _DecisionTuple] = {}
 
         def _resolve_item(unresolved_idx: int, opt_idx: int, feedback: str) -> None:
             original_idx = unresolved_index_map[unresolved_idx]
             item = items[original_idx]
             action_key = _tool_action_key(item.tool_call)
-            option = _map_approval_result(
-                opt_idx,
-                feedback,
-                action_key=action_key,
-                permission_options=item.options,
+            decisions[original_idx] = _map_decision_from_approval(
+                opt_idx, feedback, action_key=action_key
             )
-            if option is None:
-                resolutions[original_idx] = _rejected_permission_response()
-            else:
-                resolutions[original_idx] = _selected_permission_response(option)
 
         def _resolve_all(kind: str) -> None:
             for original_idx in unresolved_index_map:
-                if original_idx in resolutions:
+                if original_idx in decisions:
                     continue
-                item = items[original_idx]
-                for o in item.options:
-                    if getattr(o, "kind", None) == kind:
-                        resolutions[original_idx] = _selected_permission_response(o)
-                        break
-                else:
-                    if item.options:
-                        resolutions[original_idx] = _selected_permission_response(item.options[0])
-                    else:
-                        resolutions[original_idx] = _rejected_permission_response()
+                outcome = "allow_always" if kind == "allow_always" else "allow_once"
+                decisions[original_idx] = _DecisionTuple(outcome=outcome)
 
         def _reject_all_fn() -> None:
             for original_idx in unresolved_index_map:
-                if original_idx not in resolutions:
-                    resolutions[original_idx] = _rejected_permission_response()
+                if original_idx not in decisions:
+                    decisions[original_idx] = _DecisionTuple(outcome="deny")
 
-        run_in_terminal(lambda: None)  # flush any pending terminal output
+        run_in_terminal(lambda: None)
 
         await _run_batch_modal_async(
             unresolved_items,
@@ -689,10 +666,9 @@ class _BatchApprovalQueue:
             _reject_all=_reject_all_fn,
         )
 
-        # Apply resolutions; any still-missing items get rejected
-        for i, item in enumerate(items):
-            response = resolutions.get(i)
-            if response is None:
-                response = _rejected_permission_response()
-            if not item.future.done():
-                item.future.set_result(response)
+        # Dispatch every unresolved item; default to deny for any still missing.
+        for original_idx in unresolved_index_map:
+            if original_idx in resolved_indices:
+                continue
+            decision = decisions.get(original_idx) or _DecisionTuple(outcome="deny")
+            _resolve_decision_via_engine(self._engine, items[original_idx], decision)

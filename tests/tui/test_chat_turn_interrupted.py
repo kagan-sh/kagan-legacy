@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 import pytest
@@ -213,12 +213,10 @@ async def test_watch_chat_session_notifies_on_takeover() -> None:
             )
         )
         # Give the coroutine time to process the SSE line.
-        await asyncio.sleep(0.05)
+        await pilot.pause()
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
         assert any(
             "taken over" in msg.lower() or "interrupted" in msg.lower() for msg in app.notifications
@@ -260,12 +258,10 @@ async def test_watch_chat_session_ignores_non_takeover_termination() -> None:
                 http_client=fake_client,  # type: ignore[arg-type]
             )
         )
-        await asyncio.sleep(0.05)
+        await pilot.pause()
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
         assert not app.notifications, (
             f"Expected no notifications for non-takeover event, got: {app.notifications}"

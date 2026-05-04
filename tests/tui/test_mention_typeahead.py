@@ -7,11 +7,15 @@ boundary — no ``gh`` CLI calls are made.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import TextArea
+
+if TYPE_CHECKING:
+    from kagan.tui.widgets._mention_typeahead import MentionTypeahead
 
 pytestmark = [pytest.mark.tui, pytest.mark.smoke]
 
@@ -119,7 +123,7 @@ async def test_typeahead_lists_kagan_and_github_results() -> None:
             assert option_list.option_count == 2
             # Check source glyphs in rendered text
             labels = [option_list.get_option_at_index(i).prompt for i in range(2)]
-            combined = " ".join(str(l) for l in labels)
+            combined = " ".join(str(label) for label in labels)
             assert "[K]" in combined
             assert "[GH]" in combined
 
@@ -127,8 +131,6 @@ async def test_typeahead_lists_kagan_and_github_results() -> None:
 async def test_select_kagan_inserts_kagan_short_id() -> None:
     """Pressing Enter on a kagan result inserts ``kagan#<id>``."""
     selected_texts: list[str] = []
-
-    from kagan.tui.widgets._mention_typeahead import MentionTypeahead
 
     class _Spy(_MentionTestApp):
         def on_mention_typeahead_mention_selected(
@@ -159,8 +161,6 @@ async def test_select_github_inserts_hash_n() -> None:
     """Pressing Enter on a github result inserts ``#<number>``."""
     selected_texts: list[str] = []
 
-    from kagan.tui.widgets._mention_typeahead import MentionTypeahead
-
     class _Spy(_MentionTestApp):
         def on_mention_typeahead_mention_selected(
             self, event: MentionTypeahead.MentionSelected
@@ -188,8 +188,6 @@ async def test_esc_closes_without_inserting() -> None:
     """Pressing Esc hides the typeahead and posts MentionDismissed, not MentionSelected."""
     dismissed: list[bool] = []
     selected: list[str] = []
-
-    from kagan.tui.widgets._mention_typeahead import MentionTypeahead
 
     class _Spy(_MentionTestApp):
         def on_mention_typeahead_mention_selected(
@@ -223,8 +221,6 @@ async def test_esc_closes_without_inserting() -> None:
 async def test_backspace_past_hash_closes() -> None:
     """Backspacing with an empty query (right after ``#``) closes the typeahead."""
     dismissed: list[bool] = []
-
-    from kagan.tui.widgets._mention_typeahead import MentionTypeahead
 
     class _Spy(_MentionTestApp):
         def on_mention_typeahead_mention_dismissed(

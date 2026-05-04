@@ -33,7 +33,6 @@ import { BacklogListView } from '@/components/board/backlog-list-view';
 import { apiClient } from '@/lib/api/client';
 import type { TaskStatus, WireTask } from '@kagan/shared-api-client';
 import { integrationImportOpenAtom } from '@/lib/atoms/ui';
-import { store } from '@/lib/atoms/store';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/lib/hooks/use-mobile';
 import { useBoardDnd } from '@/lib/hooks/use-board-dnd';
@@ -61,6 +60,7 @@ export function KanbanBoard() {
   const [statusFilter, setStatusFilter] = useAtom(boardStatusFilterAtom);
   const [sort, setSort] = useAtom(boardSortAtom);
   const [boardDialog, setBoardDialog] = useAtom(boardDialogAtom);
+  const setIntegrationImportOpen = useSetAtom(integrationImportOpenAtom);
   const [view, setView] = useState<'kanban' | 'backlog'>('kanban');
   const [wipLimits, setWipLimits] = useState<Record<TaskStatus, number>>(DEFAULT_WIP_LIMITS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -152,8 +152,8 @@ export function KanbanBoard() {
 
   const openCreateDialog = () => setBoardDialog({ kind: 'create' });
   const openImportDialog = useCallback(() => {
-    store.set(integrationImportOpenAtom, true);
-  }, []);
+    setIntegrationImportOpen(true);
+  }, [setIntegrationImportOpen]);
   const editingTask = boardDialog.kind === 'edit' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
   const deleteTask = boardDialog.kind === 'delete' ? tasks.find((t) => t.id === boardDialog.taskId) ?? null : null;
 
@@ -276,7 +276,7 @@ export function KanbanBoard() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => store.set(integrationImportOpenAtom, true)}
+                  onClick={() => setIntegrationImportOpen(true)}
                 >
                   <Download className="size-4" />
                   Import from GitHub

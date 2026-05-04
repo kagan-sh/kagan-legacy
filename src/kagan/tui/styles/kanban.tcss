@@ -390,6 +390,11 @@ TaskCard .card-run-state.run-state-review {
 TaskCard .card-run-state.run-state-done {
     color: $success;
 }
+
+TaskCard .card-run-state.run-state-cancelled {
+    color: $status-cancelled;
+}
+
 /* Card status indicators */
 
 TaskCard .card-indicator {
@@ -405,6 +410,7 @@ TaskCard .indicator-reviewing { color: $accent; }
 TaskCard .indicator-not-started { color: $text-disabled; }
 TaskCard .indicator-passed { color: $status-success; }
 TaskCard .indicator-failed { color: $status-error; }
+TaskCard .indicator-cancelled { color: $status-cancelled; }
 /* Kagan TUI Styles - Screen and modal specific layout/state rules. */
 /* Loaded last so screen-level overrides keep prior cascade behavior. */
 /* === KanbanScreen styles — SCREENS === */

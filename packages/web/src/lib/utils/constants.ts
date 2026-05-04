@@ -9,11 +9,15 @@ export const ALLOWED_TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   DONE: ['BACKLOG'],
 };
 
-export const STATUS_LABELS: Record<TaskStatus, string> = {
+// CANCELLED is a session-level status that may appear in task streams even though
+// the wire TaskStatus union does not include it yet. The wider type lets consumers
+// look it up without a cast while keeping the Record strict for the known four.
+export const STATUS_LABELS: Record<TaskStatus, string> & Record<string, string> = {
 	BACKLOG: 'Backlog',
 	IN_PROGRESS: 'In Progress',
 	REVIEW: 'Review',
-	DONE: 'Done'
+	DONE: 'Done',
+	CANCELLED: 'Cancelled',
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -23,11 +27,20 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 	CRITICAL: 'Critical'
 };
 
-export const STATUS_COLORS: Record<TaskStatus, string> = {
+export const PRIORITY_GLYPHS: Record<Priority, string> = {
+	LOW: '▼',
+	MEDIUM: '—',
+	HIGH: '▲',
+	CRITICAL: '▲',
+};
+
+export const STATUS_COLORS: Record<TaskStatus, string> & Record<string, string> = {
   BACKLOG: 'var(--kagan-rail-idle)',
   IN_PROGRESS: 'var(--kagan-rail-warning)',
   REVIEW: 'var(--kagan-rail-review)',
-  DONE: 'var(--kagan-rail-running)'
+  DONE: 'var(--kagan-rail-running)',
+  // CANCELLED collapses into DONE column; shown with idle (neutral) colour.
+  CANCELLED: 'var(--kagan-rail-idle)',
 };
 
 export function getAllowedTaskTransitions(status: TaskStatus): TaskStatus[] {

@@ -316,10 +316,6 @@
     color: var(--foreground);
   }
 
-  :focus-visible {
-    outline: 1px solid color-mix(in oklab, var(--primary) 78%, white 22%);
-    box-shadow: 0 0 0 4px var(--focus-ring);
-  }
 }
 
 @layer components {

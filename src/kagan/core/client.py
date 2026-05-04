@@ -67,6 +67,14 @@ class KaganCore:
         return self._engine
 
     def close(self) -> None:
+        """Close the client synchronously.
+
+        Prefer the async context manager (``async with KaganCore() as client``)
+        for deterministic cleanup.  This method is best-effort: when called from
+        a running event loop the spawned-process cleanup is scheduled as a
+        fire-and-forget task and may not complete before the loop exits.
+        """
+        logger.warning("close() is best-effort; prefer the async context manager")
         with contextlib.suppress(OSError, RuntimeError, SQLAlchemyError):
             self._engine.dispose()
         try:

@@ -299,7 +299,6 @@ export interface TaskUpdateRequest {
   agent_backend?: string | null;
   launcher?: string | null;
   repo_id?: string | null;
-  github_issue?: string | null;
 }
 
 export interface ChatSessionCreateRequest {

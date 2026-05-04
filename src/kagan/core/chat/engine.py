@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
+from kagan.core._security import scan_text_for_injection
 from kagan.core.chat.acp import (
     ACPSessionFactory,
     ACPTurnResult,
@@ -46,7 +47,7 @@ from kagan.core.chat.events import (
     TurnError,
     TurnStarted,
 )
-from kagan.core.errors import KaganError
+from kagan.core.errors import KaganError, ValidationError
 
 if TYPE_CHECKING:
     import builtins
@@ -155,6 +156,18 @@ class ChatEngine:
         cleaned = text.strip()
         if not cleaned:
             raise ValueError("user message text is required")
+
+        scan = scan_text_for_injection(cleaned)
+        risk = scan.get("risk_level", "SAFE")
+        if risk == "DANGEROUS":
+            raise ValidationError("text", "Message blocked: potential prompt injection detected")
+        if risk == "SUSPICIOUS":
+            logger.warning(
+                "Suspicious chat message for session={}: findings={}",
+                session_id,
+                scan.get("findings", []),
+            )
+
         return await self._sessions.append_message(session_id, "user", cleaned)
 
     # ------------------------------------------------------------------ claim

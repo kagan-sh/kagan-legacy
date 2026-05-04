@@ -8,7 +8,7 @@ from sqlmodel import Session as DBSession
 from kagan.core.models import _utc_now
 
 
-def _col(x: Any) -> Any:
+def _sa_col(x: Any) -> Any:
     """Typed passthrough for SQLModel column expressions.
 
     SQLModel's Mapped[...] columns trip pyrefly when used with
@@ -54,9 +54,9 @@ def _add_and_refresh(s, obj):
 
 __all__ = [
     "_add_and_refresh",
-    "_col",
     "_db_async",
     "_db_sync",
+    "_sa_col",
     "_setting_branch",
     "_setting_enabled",
     "_utc_now",

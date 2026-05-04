@@ -254,12 +254,7 @@ def register_task_routes(mcp: FastMCP) -> None:
         task_id = cast("str", request.path_params["task_id"])
         body = await parse_body(request, UpdateTaskRequest)
         update_args: dict[str, Any] = {}
-        # github_issue is accepted in the request model for forward-compatibility
-        # but not yet wired to tasks.update() — skip it here.
-        _skip_fields = {"github_issue"}
         for field in body.model_fields_set:
-            if field in _skip_fields:
-                continue
             value = getattr(body, field)
             if field == "priority":
                 value = parse_priority(value)

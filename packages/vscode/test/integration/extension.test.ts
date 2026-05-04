@@ -46,6 +46,14 @@ suite("Kagan Extension", () => {
     assert.ok(commands.includes("kagan.task.open"));
   });
 
+  test("registers the kagan.openInstallDocs command", async () => {
+    const commands = await vscode.commands.getCommands(true);
+    assert.ok(
+      commands.includes("kagan.openInstallDocs"),
+      "expected kagan.openInstallDocs to be registered after activation",
+    );
+  });
+
   test("opens a diff document for a task", async () => {
     await vscode.commands.executeCommand("kagan.connect");
     await vscode.commands.executeCommand("kagan.task.diff", { kind: "task", task: TEST_TASK });

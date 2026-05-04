@@ -6,8 +6,12 @@ Seed baseline: ``uv run poe snapshot-update``
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from tests.helpers.driver import KaganDriver
+
+if TYPE_CHECKING:
+    from tests.helpers.driver import KaganDriver
 
 pytestmark = [pytest.mark.tui, pytest.mark.snapshot]
 

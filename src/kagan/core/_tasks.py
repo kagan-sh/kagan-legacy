@@ -13,9 +13,9 @@ from sqlmodel import select
 
 from kagan.core._db_helpers import (
     _add_and_refresh,
-    _col,
     _db_async,
     _db_sync,
+    _sa_col,
     _utc_now,
 )
 from kagan.core._events import BoardEvent, Events, list_events
@@ -750,23 +750,23 @@ class Tasks:
             worktrees = {
                 worktree.task_id
                 for worktree in s.exec(
-                    select(Worktree).where(_col(Worktree.task_id).in_(task_ids))
+                    select(Worktree).where(_sa_col(Worktree.task_id).in_(task_ids))
                 ).all()
             }
 
             latest_events: dict[str, str] = {}
             for event in s.exec(
                 select(SessionEvent)
-                .where(_col(SessionEvent.task_id).in_(task_ids))
-                .order_by(desc(_col(SessionEvent.created_at)))
+                .where(_sa_col(SessionEvent.task_id).in_(task_ids))
+                .order_by(desc(_sa_col(SessionEvent.created_at)))
             ).all():
                 latest_events.setdefault(event.task_id, utc_iso(event.created_at) or "")
 
             active_sessions: dict[str, dict[str, Any]] = {}
             for session in s.exec(
                 select(Session)
-                .where(_col(Session.task_id).in_(task_ids))
-                .order_by(desc(_col(Session.started_at)))
+                .where(_sa_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_sa_col(Session.started_at)))
             ).all():
                 if session.status not in running_statuses or session.task_id in active_sessions:
                     continue
@@ -817,7 +817,9 @@ class Tasks:
 
     async def list_notes(self, task_id: str) -> builtins.list[TaskNote]:
         stmt = (
-            select(TaskNote).where(TaskNote.task_id == task_id).order_by(_col(TaskNote.created_at))
+            select(TaskNote)
+            .where(TaskNote.task_id == task_id)
+            .order_by(_sa_col(TaskNote.created_at))
         )
         return await _db_async(self._engine, lambda s: list(s.exec(stmt).all()))
 

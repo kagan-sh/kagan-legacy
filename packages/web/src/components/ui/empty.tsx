@@ -52,15 +52,16 @@ function EmptyMedia({
     <div
       data-slot="empty-icon"
       data-variant={variant}
+      aria-hidden="true"
       className={cn(emptyMediaVariants({ variant, className }))}
       {...props}
     />
   )
 }
 
-function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
+function EmptyTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <div
+    <h2
       data-slot="empty-title"
       className={cn("text-lg font-medium tracking-tight", className)}
       {...props}

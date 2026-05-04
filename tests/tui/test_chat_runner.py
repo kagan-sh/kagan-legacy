@@ -8,8 +8,10 @@ turn through ``ChatEngine`` and translates engine events onto a
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 import pytest
 from textual.app import App, ComposeResult

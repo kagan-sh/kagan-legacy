@@ -3,6 +3,8 @@ import { useAtomValue } from 'jotai';
 import { X } from 'lucide-react';
 import { artifactsAtom, type Artifact } from '@/lib/atoms/artifacts';
 import { MarkdownContent } from '@/components/shared/markdown-content';
+import { focusRing } from '@/lib/a11y/focus-ring';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Individual artifact view — sandboxed iframes for HTML/SVG, prose for MD
@@ -36,16 +38,15 @@ function ArtifactView({ artifact }: { artifact: Artifact }) {
     );
   }
 
-  // markdown
   return (
-    <div className="overflow-y-auto p-4">
+    <div className="h-full overflow-y-auto p-4">
       <MarkdownContent content={artifact.content} />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Panel header tab bar
+// Panel header tab bar — ARIA tab pattern
 // ---------------------------------------------------------------------------
 
 function TabBar({
@@ -59,29 +60,48 @@ function TabBar({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
+  const tablistId = 'artifacts-tablist';
+
   return (
     <div className="flex items-center justify-between border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-1)]">
-      <div className="flex min-w-0 overflow-x-auto">
-        {artifacts.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onSelect(a.id)}
-            className={
-              a.id === activeId
-                ? 'shrink-0 border-b-2 border-[var(--primary)] px-3 py-2 font-code text-xs text-[var(--foreground)]'
-                : 'shrink-0 border-b-2 border-transparent px-3 py-2 font-code text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
-            }
-          >
-            {a.title ?? a.type}
-          </button>
-        ))}
+      <div
+        role="tablist"
+        id={tablistId}
+        aria-label="Artifacts"
+        className="flex min-w-0 overflow-x-auto"
+      >
+        {artifacts.map((a) => {
+          const isActive = a.id === activeId;
+          const tabId = `artifact-tab-${a.id}`;
+          const panelId = `artifact-panel-${a.id}`;
+          return (
+            <button
+              key={a.id}
+              id={tabId}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={panelId}
+              tabIndex={isActive ? 0 : -1}
+              type="button"
+              onClick={() => onSelect(a.id)}
+              className={cn(
+                'shrink-0 border-b-2 px-3 py-2 font-code text-xs',
+                focusRing,
+                isActive
+                  ? 'border-[var(--primary)] text-[var(--foreground)]'
+                  : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]',
+              )}
+            >
+              {a.title ?? a.type}
+            </button>
+          );
+        })}
       </div>
       <button
         type="button"
         onClick={onClose}
         aria-label="Close artifacts panel"
-        className="shrink-0 p-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+        className={cn('shrink-0 p-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]', focusRing)}
       >
         <X className="size-3.5" />
       </button>
@@ -93,8 +113,6 @@ function TabBar({
 // ArtifactsPanel
 //
 // Collapsible side drawer — rendered when artifactsAtom is non-empty.
-// Consumers should place this beside the chat area and let it expand
-// automatically when artifacts appear (via open prop).
 // ---------------------------------------------------------------------------
 
 interface ArtifactsPanelProps {
@@ -117,6 +135,8 @@ export function ArtifactsPanel({ open, onClose }: ArtifactsPanelProps) {
   if (!open || artifacts.length === 0) return null;
 
   const activeArtifact = artifacts.find((a) => a.id === activeId) ?? artifacts[artifacts.length - 1];
+  const panelId = activeArtifact ? `artifact-panel-${activeArtifact.id}` : undefined;
+  const tabId = activeArtifact ? `artifact-tab-${activeArtifact.id}` : undefined;
 
   return (
     <div className="flex h-full w-full flex-col border-l border-[color:var(--border-subtle)] bg-[color:var(--background)]">
@@ -126,10 +146,14 @@ export function ArtifactsPanel({ open, onClose }: ArtifactsPanelProps) {
         onSelect={setActiveId}
         onClose={onClose}
       />
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {activeArtifact ? (
-          <ArtifactView artifact={activeArtifact} />
-        ) : null}
+      <div
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={tabId}
+        tabIndex={0}
+        className={cn('min-h-0 flex-1 overflow-hidden', focusRing)}
+      >
+        {activeArtifact ? <ArtifactView artifact={activeArtifact} /> : null}
       </div>
     </div>
   );

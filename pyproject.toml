@@ -255,7 +255,7 @@ help = "Dry-run beta release (no changes made)"
 
 [tool.poe.tasks.snapshot-update]
 help = "Update TUI snapshot tests (run sequentially)"
-cmd = "pytest tests/tui/snapshot/ -n 0 -v --snapshot-update"
+cmd = "pytest tests/tui/smoke/ -n 0 -v --snapshot-update"
 
 [tool.poe.tasks.web-build]
 help = "Build React web bundle and copy into the Python package for 'kagan web'"

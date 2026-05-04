@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
@@ -6,7 +8,7 @@ from sqlalchemy import Engine
 from sqlmodel import select
 
 from kagan.core import git
-from kagan.core._db_helpers import _col, _db_async, _db_sync, _setting_enabled, _utc_now
+from kagan.core._db_helpers import _db_async, _db_sync, _sa_col, _setting_enabled, _utc_now
 from kagan.core._prompts import build_conflict_resolution_feedback
 from kagan.core._settings import get_settings
 from kagan.core.enums import TaskStatus
@@ -43,7 +45,7 @@ def is_review_approved(task_id: str, engine: Engine) -> bool:
             latest = s.exec(
                 select(ReviewVerdict)
                 .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(_col(ReviewVerdict.created_at).desc())
+                .order_by(_sa_col(ReviewVerdict.created_at).desc())
             ).first()
             if latest is None:
                 return False
@@ -79,7 +81,7 @@ async def approve_review(
             latest = s.exec(
                 select(ReviewVerdict)
                 .where(ReviewVerdict.criterion_id == criterion.id)
-                .order_by(_col(ReviewVerdict.created_at).desc())
+                .order_by(_sa_col(ReviewVerdict.created_at).desc())
             ).first()
             if latest is not None and latest.verdict.lower() == "pass":
                 continue  # already approved
@@ -420,12 +422,31 @@ async def abort_rebase(
     await git.abort_rebase(ws.worktree_path)
 
 
-# ── Namespace factory (replaces wrapper class) ─────────────────────────────
+# ── Typed namespace (replaces SimpleNamespace + Any return) ────────────────────────
 
 
-def _make_reviews_ns(engine: Engine, client: "KaganCore") -> Any:
-    """Build a SimpleNamespace whose attributes delegate to module functions."""
-    from types import SimpleNamespace
+@dataclass(slots=True)
+class _ReviewsNs:
+    """Typed delegate for ``KaganCore.reviews``.
+
+    Fields are bound callables so ``await client.reviews.approve(task_id)``
+    etc. remain unchanged from the call site.
+    """
+
+    approve: Callable[[str], Awaitable[Task]]
+    reject: Callable[..., Awaitable[Task]]
+    set_criterion_verdict: Callable[..., Awaitable[Task]]
+    clear_verdicts: Callable[[str], Awaitable[Task]]
+    is_approved: Callable[[str], bool]
+    merge: Callable[[str], Awaitable[Task]]
+    rebase: Callable[[str], Awaitable[None]]
+    continue_rebase: Callable[[str], Awaitable[None]]
+    conflicts: Callable[[str], Awaitable[dict[str, Any]]]
+    abort_rebase: Callable[[str], Awaitable[None]]
+
+
+def _make_reviews_ns(engine: Engine, client: "KaganCore") -> _ReviewsNs:
+    """Build a typed reviews delegate bound to *engine* and *client*."""
 
     async def _approve(task_id: str) -> Task:
         return await approve_review(engine, task_id, client=client)
@@ -472,7 +493,7 @@ def _make_reviews_ns(engine: Engine, client: "KaganCore") -> Any:
     async def _abort_rebase(task_id: str) -> None:
         await abort_rebase(engine, task_id, client=client)
 
-    return SimpleNamespace(
+    return _ReviewsNs(
         approve=_approve,
         reject=_reject,
         set_criterion_verdict=_set_criterion_verdict,

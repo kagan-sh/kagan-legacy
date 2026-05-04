@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, BrainCircuit, ChevronRight, User, Wrench } from 'lucide-react';
 import { MarkdownContent } from '@/components/shared/markdown-content';
 import type { WireEvent } from '@kagan/shared-api-client';
+import { EVENT_TYPE } from '@kagan/shared-api-client';
 import { parseUtc, parseUtcMs } from '@/lib/utils/time';
 import { cn } from '@/lib/utils';
 import {
@@ -89,7 +90,7 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
     const time = formatTime(parseUtc(event.created_at));
     const payload = event.payload ?? {};
 
-    if (event.type === 'OUTPUT_CHUNK') {
+    if (event.type === EVENT_TYPE.OUTPUT_CHUNK) {
       const text = (payload.text as string) ?? '';
       const thought = Boolean(payload.thought);
       if (!text) continue;
@@ -103,10 +104,10 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
       } else {
         entries.push({ kind: 'message', text, thought, time, ts });
       }
-    } else if (event.type === 'TOOL_CALL_START' || event.type === 'TOOL_CALL_UPDATE') {
+    } else if (event.type === EVENT_TYPE.TOOL_CALL_START || event.type === EVENT_TYPE.TOOL_CALL_UPDATE) {
       const toolId = extractToolId(payload, event.id);
       const title = extractToolTitle(payload);
-      const defaultStatus = event.type === 'TOOL_CALL_START' ? 'running' : 'done';
+      const defaultStatus = event.type === EVENT_TYPE.TOOL_CALL_START ? 'running' : 'done';
       const status = extractToolStatus(payload, defaultStatus);
 
       // Upsert — update existing tool entry or add new
@@ -121,20 +122,20 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
       } else {
         entries.push({ kind: 'tool', id: toolId, title, status, payload, time, ts });
       }
-    } else if (event.type === 'AGENT_COMPLETED') {
+    } else if (event.type === EVENT_TYPE.AGENT_COMPLETED) {
       entries.push({ kind: 'note', label: 'Agent completed', time, ts });
-    } else if (event.type === 'AGENT_FAILED') {
+    } else if (event.type === EVENT_TYPE.AGENT_FAILED) {
       const detail = (payload.error as string) ?? (payload.details as string) ?? undefined;
       entries.push({ kind: 'note', label: 'Agent failed', detail, time, ts });
-    } else if (event.type === 'TASK_STATUS_CHANGED') {
+    } else if (event.type === EVENT_TYPE.TASK_STATUS_CHANGED) {
       const from = (payload.from as string) ?? '?';
       const to = (payload.to as string) ?? '?';
       entries.push({ kind: 'note', label: `Status: ${from} \u2192 ${to}`, time, ts });
-    } else if (event.type === 'PLAN_UPDATE') {
+    } else if (event.type === EVENT_TYPE.PLAN_UPDATE) {
       entries.push({ kind: 'note', label: 'Plan updated', time, ts });
-    } else if (event.type === 'AUTO_REVIEW_STARTED') {
+    } else if (event.type === EVENT_TYPE.AUTO_REVIEW_STARTED) {
       entries.push({ kind: 'note', label: 'Auto-review started', time, ts });
-    } else if (event.type === 'AGENT_STATUS') {
+    } else if (event.type === EVENT_TYPE.AGENT_STATUS) {
       const usage = payload.usage as Record<string, unknown> | undefined;
       if (usage && typeof usage.used === 'number' && typeof usage.size === 'number') {
         const existingIdx = entries.findIndex(e => e.kind === 'usage');
@@ -158,6 +159,12 @@ function coalesceEvents(events: WireEvent[], userFollowUps?: UserFollowUp[]): St
           entries.push({ kind: 'note', label: text, time, ts });
         }
       }
+    } else {
+      // Remaining event types (MERGE_COMPLETED, CRITERION_VERDICT, etc.) are not
+      // rendered in the live stream — they are handled by other panels. The else
+      // branch satisfies the exhaustiveness intent: every event visits exactly one
+      // branch; new EVENT_TYPE values will fall here without breaking the renderer.
+      void (event.type as string);
     }
   }
 

@@ -44,6 +44,8 @@ from kagan.tui._chat_helpers import (
 from kagan.tui.keybindings import TASK_SCREEN_BINDINGS
 from kagan.tui.orchestrator_sessions import is_orchestrator_session_key
 from kagan.tui.screens._chat_runner import (
+    TASK_REVIEWER_SESSION_KEY,
+    TASK_WORKER_SESSION_KEY,
     acp_payload,
     apply_task_chat_event,
     send_chat_message,
@@ -88,8 +90,6 @@ if TYPE_CHECKING:
     from kagan.tui.app import KaganApp
 
 
-TASK_WORKER_SESSION_KEY = "task-worker"
-TASK_REVIEWER_SESSION_KEY = "task-reviewer"
 TASK_SCREEN_REPLAY_EVENT_LIMIT = 400
 
 
@@ -177,10 +177,6 @@ class TaskScreen(Screen[None]):
 
     async def on_mount(self) -> None:
         await self.kagan_app.orchestrator_sessions.ensure_loaded()
-        if self._task_id is None:
-            app_task_id = getattr(self.kagan_app, "_active_task_id", None)
-            self._task_id = app_task_id if isinstance(app_task_id, str) else None
-
         if self._task_id is None:
             self._refresh_header()
             self._refresh_header_labels()

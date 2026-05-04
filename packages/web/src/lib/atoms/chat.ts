@@ -21,10 +21,6 @@ export type ChatStreamEntry =
 export const streamEntriesAtom = atom<ChatStreamEntry[]>([]);
 export const isStreamingAtom = atom(false);
 
-/**
- * Append a text chunk to the current streaming state.
- * Merges with the last entry if both are the same kind.
- */
 export const appendStreamChunkAtom = atom(
   null,
   (get, set, payload: { content: string; thought?: boolean }) => {
@@ -33,9 +29,8 @@ export const appendStreamChunkAtom = atom(
     const last = entries.at(-1);
 
     if (last && last.kind === kind) {
-      // Merge into the last entry of the same kind
-      const updated = [...entries];
-      updated[updated.length - 1] = { ...last, content: last.content + payload.content };
+      const updated = entries.slice(0, -1);
+      updated.push({ ...last, content: last.content + payload.content });
       set(streamEntriesAtom, updated);
     } else {
       set(streamEntriesAtom, [...entries, { kind, content: payload.content }]);
@@ -57,26 +52,23 @@ export const addToolStartAtom = atom(
   },
 );
 
-/**
- * Update the latest matching tool call entry.
- */
 export const updateToolProgressAtom = atom(
   null,
   (get, set, payload: { tool: string; status?: string }) => {
-    const entries = [...get(streamEntriesAtom)];
-    // Find the last tool entry with matching name
+    const entries = get(streamEntriesAtom);
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]!;
       if (entry.kind === 'tool' && entry.name === payload.tool) {
-        entries[i] = {
+        const updated = entries.slice();
+        updated[i] = {
           ...entry,
-          status: (payload.status === 'done' ? 'done' : entry.status),
+          status: payload.status === 'done' ? 'done' : entry.status,
           detail: payload.status ?? entry.detail,
         };
-        break;
+        set(streamEntriesAtom, updated);
+        return;
       }
     }
-    set(streamEntriesAtom, entries);
   },
 );
 

@@ -27,10 +27,9 @@ from kagan.core._analytics import emit_telemetry
 from kagan.core._compaction import ContextCompactor
 from kagan.core._db import default_db_path
 from kagan.core._db_helpers import (
-    _add_and_refresh,
-    _col,
     _db_async,
     _db_sync,
+    _sa_col,
     _setting_enabled,
     _utc_now,
 )
@@ -85,9 +84,9 @@ async def fetch_project_learnings(engine: Engine, project_id: str) -> list[str]:
     """Return up to 20 unique [LEARNING]-prefixed notes for a project (newest first)."""
     stmt = (
         select(TaskNote)
-        .where(_col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id)))
-        .where(_col(TaskNote.content).like("[LEARNING]%"))
-        .order_by(desc(_col(TaskNote.created_at)))
+        .where(_sa_col(TaskNote.task_id).in_(select(Task.id).where(Task.project_id == project_id)))
+        .where(_sa_col(TaskNote.content).like("[LEARNING]%"))
+        .order_by(desc(_sa_col(TaskNote.created_at)))
         .limit(30)
     )
     notes: list[TaskNote] = await _db_async(engine, lambda s: list(s.exec(stmt).all()))
@@ -109,7 +108,7 @@ async def get_latest_session(engine: Engine, task_id: str) -> Session | None:
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(_col(Session.started_at)))
+            .order_by(desc(_sa_col(Session.started_at)))
         ).first(),
     )
 
@@ -144,7 +143,9 @@ async def list_task_sessions(engine: Engine, task_id: str) -> list[Session]:
         engine,
         lambda s: list(
             s.exec(
-                select(Session).where(Session.task_id == task_id).order_by(_col(Session.started_at))
+                select(Session)
+                .where(Session.task_id == task_id)
+                .order_by(_sa_col(Session.started_at))
             ).all()
         ),
     )
@@ -156,7 +157,7 @@ async def get_latest_task_session(engine: Engine, task_id: str) -> Session | Non
         lambda s: s.exec(
             select(Session)
             .where(Session.task_id == task_id)
-            .order_by(desc(_col(Session.started_at)))
+            .order_by(desc(_sa_col(Session.started_at)))
         ).first(),
     )
 
@@ -167,7 +168,7 @@ async def has_active_session(engine: Engine, task_id: str) -> bool:
         lambda s: s.exec(
             select(Session).where(
                 Session.task_id == task_id,
-                _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                _sa_col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
             )
         ).first(),
     )
@@ -185,8 +186,8 @@ async def active_session_summaries(
         lambda s: list(
             s.exec(
                 select(Session)
-                .where(_col(Session.task_id).in_(task_ids))
-                .order_by(desc(_col(Session.started_at)))
+                .where(_sa_col(Session.task_id).in_(task_ids))
+                .order_by(desc(_sa_col(Session.started_at)))
             ).all()
         ),
     )
@@ -218,6 +219,15 @@ async def active_session_summaries(
         }
 
     return summaries
+
+
+def _log_task_failure(task: asyncio.Task) -> None:
+    """Done-callback that logs unhandled exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("Unhandled exception in background task {}: {}", task.get_name(), exc)
 
 
 def _infer_agent_role(task_status: TaskStatus) -> AgentRole:
@@ -364,18 +374,39 @@ class Sessions:
 
         # Infer agent role based on task status
         agent_role = _infer_agent_role(task.status)
+        start_from_backlog = task.status == TaskStatus.BACKLOG
 
-        session_obj = Session(
+        # Consolidate session creation and optional status update into one
+        # atomic DB write.  A crash between insert and status update previously
+        # left an orphan PENDING session with the task still in BACKLOG.
+        new_session = Session(
             task_id=task_id,
             agent_backend=agent_backend,
             launcher=launcher,
             persona=persona,
             agent_role=agent_role.value,
         )
-        session_obj = await _db_async(self._engine, lambda s: _add_and_refresh(s, session_obj))
 
-        if task.status == TaskStatus.BACKLOG:
-            await asyncio.to_thread(self._set_status, task_id, TaskStatus.IN_PROGRESS)
+        def _create_session_and_update_status(s) -> Session:
+            s.add(new_session)
+            s.flush()
+            s.refresh(new_session)
+            if start_from_backlog:
+                db_task = s.get(Task, task_id)
+                if db_task is not None:
+                    db_task.status = TaskStatus.IN_PROGRESS
+                    db_task.updated_at = _utc_now()
+                    s.add(db_task)
+            # Expunge before commit so post-commit expiry does not orphan the
+            # returned object; all columns are already loaded by s.refresh().
+            s.expunge(new_session)
+            return new_session
+
+        session_obj: Session = await _db_async(
+            self._engine, _create_session_and_update_status, commit=True
+        )
+
+        if start_from_backlog:
             await self._events.emit(
                 task_id,
                 "task_status_changed",
@@ -457,10 +488,15 @@ class Sessions:
                     db_path=db_path_str,
                     project_id=task.project_id,
                     on_session_update=self._make_acp_callback(task_id, session_obj.id),
+                    on_permission_grant=self._make_permission_grant_callback(
+                        task_id, session_obj.id
+                    ),
                 )
                 await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
                 reader_task.add_done_callback(
-                    lambda t: asyncio.create_task(self._handle_acp_done(t, task_id, session_obj.id))
+                    lambda t: asyncio.create_task(
+                        self._handle_acp_done(t, task_id, session_obj.id)
+                    ).add_done_callback(_log_task_failure)
                 )
             else:
                 _raw_timeout = settings_dict.get("agent_timeout_seconds")
@@ -476,10 +512,11 @@ class Sessions:
                     timeout_seconds=_timeout,
                 )
                 await asyncio.to_thread(self._update_session_pid, session_obj.id, pid)
-                asyncio.create_task(
+                monitor = asyncio.create_task(
                     self._monitor_detached(pid, task_id, session_obj.id),
                     name=f"agent-monitor:{task_id}",
                 )
+                monitor.add_done_callback(_log_task_failure)
             logger.info("Detached session started for task={}", task_id)
             return session_obj
 
@@ -529,8 +566,8 @@ class Sessions:
             self._engine,
             lambda s: s.exec(
                 select(Session)
-                .where(Session.task_id == task_id, _col(Session.launcher).is_not(None))
-                .order_by(desc(_col(Session.started_at)))
+                .where(Session.task_id == task_id, _sa_col(Session.launcher).is_not(None))
+                .order_by(desc(_sa_col(Session.started_at)))
             ).first(),
         )
 
@@ -600,7 +637,7 @@ class Sessions:
             lambda s: s.exec(
                 select(Session).where(
                     Session.task_id == task_id,
-                    _col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
+                    _sa_col(Session.status).in_([SessionStatus.PENDING, SessionStatus.RUNNING]),
                 )
             ).first(),
         )
@@ -645,6 +682,25 @@ class Sessions:
             # No status transition, but board cards need to clear active_session.
             self._events.publish_board(BoardEvent(task_id=task_id, kind="session_ended"))
         logger.info("Cancelled session for task={}", task_id)
+
+    def _make_permission_grant_callback(self, task_id: str, session_id: str):
+        """Return a callback that emits a session event when allow_always is granted."""
+
+        async def on_permission_grant(
+            _acp_session_id: str, tool_call_id: str, option_id: str
+        ) -> None:
+            await self._events.emit(
+                task_id,
+                "permission_granted",
+                {
+                    "grant_type": "allow_always",
+                    "tool_call_id": tool_call_id,
+                    "option_id": option_id,
+                },
+                session_id=session_id,
+            )
+
+        return on_permission_grant
 
     def _make_acp_callback(self, task_id: str, session_id: str):
         from kagan.core._acp import map_acp_update_to_event

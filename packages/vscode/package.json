@@ -207,6 +207,12 @@
         "title": "Import from GitHub",
         "category": "Kagan",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "kagan.openInstallDocs",
+        "title": "Install Kagan CLI",
+        "category": "Kagan",
+        "icon": "$(question)"
       }
     ],
     "menus": {
@@ -344,13 +350,16 @@
         {
           "command": "kagan.github.import",
           "when": "kagan.connected"
+        },
+        {
+          "command": "kagan.openInstallDocs"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "kagan.board",
-        "contents": "Not connected to Kagan server.\n[Connect](command:kagan.connect)",
+        "contents": "Not connected to Kagan server.\n[Connect](command:kagan.connect)\n\nNo Kagan CLI on PATH?\n[Install Kagan CLI](command:kagan.openInstallDocs)",
         "when": "!kagan.connected"
       }
     ],

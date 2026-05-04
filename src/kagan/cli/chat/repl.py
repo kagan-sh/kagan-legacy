@@ -955,6 +955,7 @@ def _write_boot_banner(
     *,
     agent_backend: str | None = None,
     yolo: bool = False,
+    interactive: bool = True,
 ) -> None:
     ver = version("kagan")
     cols = shutil.get_terminal_size().columns
@@ -968,6 +969,13 @@ def _write_boot_banner(
     )
     safety = Text("Review agent output before you apply it.", style="dim")
     body: list[Any] = [title, subtitle, tip, safety]
+    if interactive:
+        body.append(
+            Text(
+                "Kagan orchestrator — type your goal, /help for commands, Ctrl-C to exit.",
+                style="dim",
+            )
+        )
     if yolo:
         body.append(
             Text("Yolo mode — every tool call auto-approved.", style="bold red"),
@@ -1062,7 +1070,12 @@ async def run_chat_async(
         _TOOLBAR_STATE.context_pct = None
         _TOOLBAR_STATE.yolo = yolo
 
-        _write_boot_banner(Path.cwd(), agent_backend=controller.agent_backend, yolo=yolo)
+        _write_boot_banner(
+            Path.cwd(),
+            agent_backend=controller.agent_backend,
+            yolo=yolo,
+            interactive=prompt is None,
+        )
 
         await controller.run(prompt=prompt)
 

@@ -10,107 +10,95 @@ import { formatToolName, renderEvent, type RenderableEvent } from "@kagan/shared
 import type { ChatStreamEvent, ChatWatchEvent, WireEvent, WireTask, SSEMessage, TaskStatus } from "@kagan/shared-api-client";
 import { pickReusableChatSessionId, resetStickyChatStateIfNewConversation } from "./chat.participant.helpers.js";
 
-// ── Registration ───────────────────────────────────────────────────────────
+// ── Participant state ──────────────────────────────────────────────────────
+// Collected in a single class so deactivate() can reset it cleanly via
+// context.subscriptions.push({ dispose: () => state.reset() }).
 
-/** Active orchestrator session ID, persisted across chat turns. */
-let activeChatSessionId: string | null = null;
-let sessionCreating: Promise<string> | null = null;
+class ChatParticipantState implements vscode.Disposable {
+  activeChatSessionId: string | null = null;
+  sessionCreating: Promise<string> | null = null;
+  watchingTaskId: string | null = null;
 
-/** Task ID being watched — enables follow-up messages. */
-let watchingTaskId: string | null = null;
+  private watchUnsubscribe: (() => void) | null = null;
+  private watchedSessionId: string | null = null;
+  private remoteChunkBuffer = "";
 
-/** Dispose function for the active /watch SSE subscription. */
-let watchUnsubscribe: (() => void) | null = null;
-
-/** Session ID the current /watch subscription is open for. */
-let watchedSessionId: string | null = null;
-
-/** Buffer for chunks from another client's turn (cleared on CHAT_DONE / CHAT_ASSISTANT_MESSAGE). */
-let remoteChunkBuffer = "";
-
-function stopWatchSubscription(): void {
-  if (watchUnsubscribe) {
-    watchUnsubscribe();
-    watchUnsubscribe = null;
-  }
-  watchedSessionId = null;
-  remoteChunkBuffer = "";
-}
-
-function subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
-  // Skip if already watching this session — avoids tearing down and reopening
-  // the SSE connection on every chat turn for the same session.
-  if (watchedSessionId === sessionId && watchUnsubscribe) return;
-  stopWatchSubscription();
-  watchedSessionId = sessionId;
-  watchUnsubscribe = client.watchChatSession(
-    sessionId,
-    (event: ChatWatchEvent) => handleWatchEvent(event),
-    (err: Error) => console.warn("[kagan] /watch error:", err.message),
-  );
-}
-
-function handleWatchEvent(event: ChatWatchEvent): void {
-  switch (event.t) {
-    case CHAT_WATCH_TYPE.CHAT_CHUNK:
-      remoteChunkBuffer += event.content;
-      break;
-    case CHAT_WATCH_TYPE.CHAT_DONE:
-      remoteChunkBuffer = "";
-      break;
-    case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE:
-      if (event.terminated) {
-        const preview = event.content.slice(0, 80).replace(/\n/g, " ");
-        void vscode.window.showInformationMessage(
-          `Kagan: assistant response was interrupted — "${preview}..."`,
-        );
-      }
-      remoteChunkBuffer = "";
-      break;
-    case CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED:
-      if (event.reason === "takeover") {
-        void vscode.window.showInformationMessage(
-          "This Kagan chat session was taken over by another client.",
-        );
-      }
-      break;
-    default:
-      break;
-  }
-}
-
-async function getOrCreateSession(client: KaganClient, chatCtx: vscode.ChatContext): Promise<string> {
-  if (activeChatSessionId && !isNewConversation(chatCtx)) return activeChatSessionId;
-  if (sessionCreating) return sessionCreating;
-
-  sessionCreating = (async () => {
-    const settings = await client.getSettings().catch(() => ({} as Record<string, string | undefined>));
-    const sessions = await client.getChatSessions().catch(() => []);
-    const reusableSessionId = pickReusableChatSessionId(settings.chat_last_active_session, sessions);
-    if (reusableSessionId) {
-      activeChatSessionId = reusableSessionId;
-      return reusableSessionId;
+  stopWatchSubscription(): void {
+    if (this.watchUnsubscribe) {
+      this.watchUnsubscribe();
+      this.watchUnsubscribe = null;
     }
+    this.watchedSessionId = null;
+    this.remoteChunkBuffer = "";
+  }
 
-    const session = await client.createChatSession(undefined, undefined, "vscode");
-    activeChatSessionId = session.id;
-    return session.id;
-  })().finally(() => {
-    sessionCreating = null;
-  });
+  subscribeToSessionWatch(client: KaganClient, sessionId: string): void {
+    // Skip if already watching this session — avoids tearing down and reopening
+    // the SSE connection on every chat turn for the same session.
+    if (this.watchedSessionId === sessionId && this.watchUnsubscribe) return;
+    this.stopWatchSubscription();
+    this.watchedSessionId = sessionId;
+    this.watchUnsubscribe = client.watchChatSession(
+      sessionId,
+      (event: ChatWatchEvent) => this.handleWatchEvent(event),
+      (err: Error) => console.warn("[kagan] /watch error:", err.message),
+    );
+  }
 
-  return sessionCreating;
+  handleWatchEvent(event: ChatWatchEvent): void {
+    switch (event.t) {
+      case CHAT_WATCH_TYPE.CHAT_CHUNK:
+        this.remoteChunkBuffer += event.content;
+        break;
+      case CHAT_WATCH_TYPE.CHAT_DONE:
+        this.remoteChunkBuffer = "";
+        break;
+      case CHAT_WATCH_TYPE.CHAT_ASSISTANT_MESSAGE:
+        if (event.terminated) {
+          const preview = event.content.slice(0, 80).replace(/\n/g, " ");
+          void vscode.window.showInformationMessage(
+            `Kagan: assistant response was interrupted — "${preview}..."`,
+          );
+        }
+        this.remoteChunkBuffer = "";
+        break;
+      case CHAT_WATCH_TYPE.CHAT_TURN_TERMINATED:
+        if (event.reason === "takeover") {
+          void vscode.window.showInformationMessage(
+            "This Kagan chat session was taken over by another client.",
+          );
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  reset(): void {
+    this.stopWatchSubscription();
+    this.activeChatSessionId = null;
+    this.sessionCreating = null;
+    this.watchingTaskId = null;
+  }
+
+  dispose(): void {
+    this.reset();
+  }
 }
+
+// ── Registration ───────────────────────────────────────────────────────────
 
 export function registerChatParticipant(
   context: vscode.ExtensionContext,
   client: KaganClient,
   sse: SSEStream,
 ): void {
+  const state = new ChatParticipantState();
+
   const participant = vscode.chat.createChatParticipant(
     "kagan.agent",
     (request, chatCtx, stream, token) =>
-      handleRequest(client, sse, request, chatCtx, stream, token),
+      handleRequest(state, client, sse, request, chatCtx, stream, token),
   );
 
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "kagan.svg");
@@ -130,12 +118,13 @@ export function registerChatParticipant(
     vscode.commands.executeCommand("workbench.action.chat.open", { query });
   });
 
-  context.subscriptions.push(participant, openChat, { dispose: stopWatchSubscription });
+  context.subscriptions.push(participant, openChat, state);
 }
 
 // ── Request handler ────────────────────────────────────────────────────────
 
 async function handleRequest(
+  state: ChatParticipantState,
   client: KaganClient,
   sse: SSEStream,
   request: vscode.ChatRequest,
@@ -143,26 +132,28 @@ async function handleRequest(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
-  ({ activeChatSessionId, watchingTaskId } = resetStickyChatStateIfNewConversation(
-    { activeChatSessionId, watchingTaskId },
+  const next = resetStickyChatStateIfNewConversation(
+    { activeChatSessionId: state.activeChatSessionId, watchingTaskId: state.watchingTaskId },
     chatCtx,
-  ));
+  );
+  state.activeChatSessionId = next.activeChatSessionId;
+  state.watchingTaskId = next.watchingTaskId;
 
   switch (request.command) {
     case "status":
       await handleStatus(client, stream);
       return;
     case "watch":
-      await handleWatch(client, sse, request.prompt, stream, token);
+      await handleWatch(state, client, sse, request.prompt, stream, token);
       return;
     default:
       // If watching a task, send follow-up instead of orchestrator chat
-      if (watchingTaskId && request.prompt.trim()) {
-        await handleFollowUp(client, watchingTaskId, request.prompt.trim(), stream);
+      if (state.watchingTaskId && request.prompt.trim()) {
+        await handleFollowUp(state, client, state.watchingTaskId, request.prompt.trim(), stream);
         return;
       }
       // Default: orchestrator chat — send the message to the Kagan orchestrator
-      await handleChat(client, request.prompt, chatCtx, stream, token);
+      await handleChat(state, client, request.prompt, chatCtx, stream, token);
   }
 }
 
@@ -173,7 +164,7 @@ async function handleStatus(
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
   const counts = await client.getTaskCounts();
-  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  const total = (Object.values(counts) as (number | undefined)[]).reduce<number>((s, n) => s + (n ?? 0), 0);
 
   stream.markdown(`**Board** -- ${total} task${total === 1 ? "" : "s"}\n\n`);
   stream.markdown(`| Column | Count |\n|--------|-------|\n`);
@@ -196,6 +187,7 @@ async function handleStatus(
 // ── default: orchestrator chat ─────────────────────────────────────────────
 
 async function handleChat(
+  state: ChatParticipantState,
   client: KaganClient,
   prompt: string,
   chatCtx: vscode.ChatContext,
@@ -209,8 +201,8 @@ async function handleChat(
   }
 
   stream.progress("Starting orchestrator session...");
-  activeChatSessionId = await getOrCreateSession(client, chatCtx);
-  subscribeToSessionWatch(client, activeChatSessionId);
+  state.activeChatSessionId = await getOrCreateSession(state, client, chatCtx);
+  state.subscribeToSessionWatch(client, state.activeChatSessionId);
 
   stream.progress("Thinking...");
 
@@ -218,7 +210,7 @@ async function handleChat(
   token.onCancellationRequested(() => abort.abort());
 
   try {
-    const response = await client.chatStream(activeChatSessionId, text, abort.signal);
+    const response = await client.chatStream(state.activeChatSessionId, text, abort.signal);
     await streamChatResponse(response, stream, abort.signal);
   } catch (err) {
     if (abort.signal.aborted) return;
@@ -229,11 +221,11 @@ async function handleChat(
         "Cancel",
       );
       if (choice === "Interrupt & take over") {
-        await client.interruptChatTurn(activeChatSessionId, "takeover");
+        await client.interruptChatTurn(state.activeChatSessionId, "takeover");
         // Small delay so the server processes the interrupt before retry
         await new Promise((resolve) => setTimeout(resolve, 300));
         try {
-          const retryResponse = await client.chatStream(activeChatSessionId, text, abort.signal);
+          const retryResponse = await client.chatStream(state.activeChatSessionId, text, abort.signal);
           await streamChatResponse(retryResponse, stream, abort.signal);
           return;
         } catch {
@@ -245,7 +237,7 @@ async function handleChat(
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`\n\n**Error:** ${message}\n`);
     // Session may be stale — clear it so next turn creates a fresh one
-    activeChatSessionId = null;
+    state.activeChatSessionId = null;
   }
 }
 
@@ -254,7 +246,8 @@ async function streamChatResponse(
   stream: vscode.ChatResponseStream,
   signal: AbortSignal,
 ): Promise<void> {
-  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  if (!response.body) return;
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
 
   try {
@@ -301,9 +294,39 @@ function isNewConversation(chatCtx: vscode.ChatContext): boolean {
   return chatCtx.history.length === 0;
 }
 
+// ── Session resolution ─────────────────────────────────────────────────────
+
+async function getOrCreateSession(
+  state: ChatParticipantState,
+  client: KaganClient,
+  chatCtx: vscode.ChatContext,
+): Promise<string> {
+  if (state.activeChatSessionId && !isNewConversation(chatCtx)) return state.activeChatSessionId;
+  if (state.sessionCreating) return state.sessionCreating;
+
+  state.sessionCreating = (async () => {
+    const settings = await client.getSettings().catch(() => ({} as Record<string, string | undefined>));
+    const sessions = await client.getChatSessions().catch(() => []);
+    const reusableSessionId = pickReusableChatSessionId(settings.chat_last_active_session, sessions);
+    if (reusableSessionId) {
+      state.activeChatSessionId = reusableSessionId;
+      return reusableSessionId;
+    }
+
+    const session = await client.createChatSession({ label: null, agent_backend: null, source: "vscode" });
+    state.activeChatSessionId = session.id;
+    return session.id;
+  })().finally(() => {
+    state.sessionCreating = null;
+  });
+
+  return state.sessionCreating;
+}
+
 // ── /watch ─────────────────────────────────────────────────────────────────
 
 async function handleWatch(
+  state: ChatParticipantState,
   client: KaganClient,
   sse: SSEStream,
   prompt: string,
@@ -317,7 +340,7 @@ async function handleWatch(
     return;
   }
 
-  watchingTaskId = task.id;
+  state.watchingTaskId = task.id;
   stream.markdown(`**${task.title}** -- ${task.status}\n\n`);
 
   if (task.status === "IN_PROGRESS") {
@@ -342,6 +365,7 @@ async function handleWatch(
 // ── Follow-up ─────────────────────────────────────────────────────────
 
 async function handleFollowUp(
+  state: ChatParticipantState,
   client: KaganClient,
   taskId: string,
   text: string,
@@ -354,7 +378,7 @@ async function handleFollowUp(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     stream.markdown(`\n\n**Error sending follow-up:** ${message}\n`);
-    watchingTaskId = null;
+    state.watchingTaskId = null;
   }
 }
 

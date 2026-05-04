@@ -40,7 +40,7 @@ Tested and documented: **Claude Code** · **Codex** · **Gemini CLI**
 
 11 more backends supported — see [`concepts/architecture-overview.md`](concepts/architecture-overview.md#supported-agents).
 
-Set `default_worker_agent` in config or pick per task. Kagan detects what's installed automatically.
+Set `default_agent_backend` in config or pick per task. Kagan detects what's installed automatically.
 
 ______________________________________________________________________
 

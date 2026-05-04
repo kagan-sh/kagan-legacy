@@ -161,6 +161,18 @@ def test_link_returns_plain_text_when_unsupported(monkeypatch: pytest.MonkeyPatc
     assert result == "click me"
 
 
+def test_link_does_not_validate_url_when_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from kagan.tui._osc8 import link
+
+    monkeypatch.setenv("KAGAN_OSC8", "0")
+    _clear_osc8_cache()
+
+    result = link("https://example.com/\x1bunsafe", "plain")
+    assert result == "plain"
+
+
 def test_link_returns_osc8_framing_when_supported(monkeypatch: pytest.MonkeyPatch) -> None:
     from kagan.tui._osc8 import link
 
@@ -274,6 +286,23 @@ def test_header_line_contains_osc8_for_path_arg_when_supported(
     # OSC 8 open sequence must appear in the header.
     assert "\x1b]8;;" in header
     assert "src/kagan/tui/app.py" in header
+
+
+def test_header_line_uses_full_path_for_uri_but_truncated_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from kagan.tui.widgets.streaming import ToolCallView
+
+    monkeypatch.setenv("KAGAN_OSC8", "1")
+    _clear_osc8_cache()
+
+    path = "src/kagan/tui/widgets/very/deep/path/with/a/long/file/name.py"
+    view = _make_tool_call_view("Read", {"path": path})
+    assert isinstance(view, ToolCallView)
+    header = view._header_line()
+
+    assert Path(path).resolve().as_uri() in header
+    assert f"{path[:50]}\x1b]8;;" in header
 
 
 def test_header_line_contains_plain_path_when_unsupported(

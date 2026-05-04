@@ -285,7 +285,7 @@ class ToolCallView(Vertical):
         for key in self._KEY_ARG_PRIORITY:
             value = parsed.get(key)
             if value is not None:
-                return key, str(value)[:50]
+                return key, str(value)
         return None
 
     def _header_line(self) -> str:
@@ -300,7 +300,8 @@ class ToolCallView(Vertical):
         if key_arg:
             key, value = key_arg
             # Render file paths as clickable OSC 8 hyperlinks when supported.
-            display_value = file_link(value, value) if key == "path" else value
+            label = value[:50]
+            display_value = file_link(value, label) if key == "path" else label
             return f"{expand} {title} ({key}: {display_value}) · {status_label}{hint}"
         return f"{expand} {title} · {status_label}{hint}"
 

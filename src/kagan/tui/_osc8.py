@@ -89,13 +89,13 @@ def link(url: str, text: str) -> str:
         ``ESC]8;;<url>ST<text>ESC]8;;ST`` when OSC 8 is supported,
         otherwise plain *text*.
     """
+    if not is_osc8_supported():
+        return text
+
     bad = _URL_ILLEGAL.intersection(url)
     if bad:
         escaped = ", ".join(repr(c) for c in sorted(bad))
         raise ValueError(f"URL contains illegal control character(s): {escaped}")
-
-    if not is_osc8_supported():
-        return text
 
     return f"{_ESC}]8;;{url}{_ST}{text}{_ESC}]8;;{_ST}"
 

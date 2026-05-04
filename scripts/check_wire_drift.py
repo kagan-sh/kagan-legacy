@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Check that generated TypeScript wire types are up to date with Python response models.
+"""Check that generated TypeScript wire types are up to date with the Python source models.
 
-Regenerates the TypeScript output from the response models and compares it
-against the checked-in generated file.
+Regenerates the TypeScript output from the full wire surface and compares it
+against the checked-in generated file at packages/shared/api-client/src/wire.ts.
 
 Exits 0 if consistent, 1 if drifted.
 """
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-GENERATED_TS = REPO_ROOT / "packages" / "web" / "src" / "lib" / "api" / "generated-wire-types.ts"
+GENERATED_TS = REPO_ROOT / "packages" / "shared" / "api-client" / "src" / "wire.ts"
 
 
 def main() -> int:
@@ -23,7 +23,10 @@ def main() -> int:
     from generate_wire_types import generate_ts  # type: ignore[import-untyped]
 
     if not GENERATED_TS.exists():
-        print(f"DRIFT: {GENERATED_TS} does not exist — run: uv run python scripts/generate_wire_types.py -o {GENERATED_TS}")
+        print(
+            f"DRIFT: {GENERATED_TS} does not exist — run: "
+            f"uv run python scripts/generate_wire_types.py -o {GENERATED_TS}"
+        )
         return 1
 
     expected = generate_ts()
@@ -34,7 +37,7 @@ def main() -> int:
         print(f"  uv run python scripts/generate_wire_types.py -o {GENERATED_TS}")
         return 1
 
-    print("Wire drift check passed (generated TS matches response models)")
+    print("Wire drift check passed (wire.ts matches Python source models)")
     return 0
 
 

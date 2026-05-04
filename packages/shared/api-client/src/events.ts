@@ -3,7 +3,7 @@
 // Supports automatic reconnection with exponential backoff
 // ============================================================================
 
-import type { SSEMessage } from "./types";
+import type { SSEMessage } from "./wire";
 import { SSEError } from "./errors";
 
 export interface SSEEventMap {

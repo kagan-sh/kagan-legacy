@@ -49,8 +49,11 @@ def resolve_spawn_command(executable: str, *args: str) -> list[str]:
 
     # --- Windows path ---
 
-    # If the caller passed an absolute path, skip which() and inspect suffix.
-    if Path(executable).is_absolute():
+    # If the caller passed an absolute or root-relative path, skip which() and
+    # inspect suffix. On Windows/Python 3.13, pathlib no longer treats
+    # "\foo" or "/foo" as absolute because they lack a drive, but those are
+    # still explicit paths rather than command names.
+    if Path(executable).is_absolute() or executable.startswith(("/", "\\")):
         return _wrap_windows(executable, args)
 
     resolved = shutil.which(executable)

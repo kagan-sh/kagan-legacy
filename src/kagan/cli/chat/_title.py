@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from kagan.core.chat.sessions import clean_generated_title
+from kagan.core.chat.sessions import ChatSessionView, clean_generated_title
 
 # Total wall-clock budget for the title generation ACP round-trip.
 _TITLE_GENERATION_TIMEOUT_SECONDS = 30.0
@@ -110,8 +110,8 @@ async def generate_session_title(
 
 
 async def ensure_session_title(
-    client: Any,
-    session: dict[str, Any],
+    client: object,
+    session: ChatSessionView,
     *,
     user_message: str,
     assistant_reply: str = "",
@@ -120,9 +120,11 @@ async def ensure_session_title(
     """Generate a title and persist it to the session if it still has a default title.
 
     Returns the generated title, or ``None`` if skipped/failed.
+    Mutates ``session.label`` in-place so the cached instance in
+    ``TuiOrchestratorSessionStore._sessions_by_key`` reflects the new title
+    without a DB round-trip.
     """
-    label = str(session.get("label") or "").strip()
-    if not is_default_title(label):
+    if not is_default_title(session.label):
         return None
 
     title = await generate_session_title(
@@ -131,14 +133,12 @@ async def ensure_session_title(
         assistant_reply=assistant_reply,
         agent_backend=agent_backend,
     )
-    if title:
+    if title and session.id.strip():
         # Title is metadata-only — never round-trip through ``upsert_with_history``
         # which deletes every ``ChatMessage`` row for the session and could race a
         # concurrent message append. Patch the label via ``cs.update`` instead.
-        sid = str(session.get("id", "")).strip()
-        if sid:
-            await client.chat_sessions.update(sid, label=title)
-            session["label"] = title
+        await client.chat_sessions.update(session.id, label=title)  # type: ignore[attr-defined]
+        session.label = title
     return title
 
 

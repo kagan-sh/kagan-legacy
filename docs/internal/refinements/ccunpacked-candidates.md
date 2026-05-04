@@ -59,9 +59,9 @@ run after every LLM response. Users configure hooks in `settings.json` tied to t
 events (e.g., `PreToolExecution`, `PostToolExecution`, `NotificationHook`). The
 `/hooks` command manages them. Hooks can block, modify, or log tool calls.
 
-**Kagan Gap:** Only a `RepetitionGuard` exists (`_repetition_guard.py`) — detects the
-same tool call 8+ times in a 20-call window and cancels. No general-purpose hook
-system for pre/post tool execution, no user-configurable hooks, no notification hooks.
+**Kagan Gap:** Kagan has two hard-coded guard functions in `_hooks.py`: repetition
+detection and dangerous-command blocking. There is no general-purpose hook system
+for pre/post tool execution, no user-configurable hooks, and no notification hooks.
 
 **Impact:** **UX + Reliability — High.** Hooks enable guardrails (prevent destructive
 commands), audit logging (track all file writes), quality gates (lint after every edit),
@@ -70,7 +70,7 @@ policy on agent behavior.
 
 **Proposed Refinement:**
 
-1. Define a `Hook` protocol in `src/kagan/core/hooks.py`:
+1. Define a new `Hook` protocol in `src/kagan/core/hooks.py`:
    ```python
    class Hook(Protocol):
        event: HookEvent  # PRE_TOOL, POST_TOOL, POST_SAMPLING, SESSION_END
@@ -81,8 +81,8 @@ policy on agent behavior.
    fires them at the appropriate lifecycle points.
 1. Integrate into `_sessions.py` ACP callback — fire `POST_TOOL` after each
    `ToolCallEnd` event, `POST_SAMPLING` after each full LLM turn.
-1. Built-in hooks: `RepetitionGuard` (migrate existing), `DangerousCommandBlocker`
-   (reject `rm -rf /`, `git push --force` etc.), `LintAfterEdit`.
+1. Built-in hooks: wrap the existing repetition and dangerous-command guards,
+   then add `LintAfterEdit`.
 1. Expose hook management via MCP toolset and TUI settings screen.
 
 **Affected files:**

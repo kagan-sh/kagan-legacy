@@ -18,7 +18,6 @@ through the full in-memory MCP protocol stack.
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from typing import TYPE_CHECKING
 
@@ -131,7 +130,7 @@ class TestRunBashOnUpdate:
 
 class TestTerminalRunMcpTool:
     async def test_tool_is_registered_on_admin_server(
-        self, mcp_board_admin_with_core: "ClientSession"
+        self, mcp_board_admin_with_core: ClientSession
     ) -> None:
         """terminal_run must appear in the tool list for ORCHESTRATOR role."""
         result = await mcp_board_admin_with_core.list_tools()
@@ -139,10 +138,11 @@ class TestTerminalRunMcpTool:
         assert "terminal_run" in names
 
     async def test_tool_returns_expected_shape(
-        self, mcp_board_admin_with_core: "ClientSession"
+        self, mcp_board_admin_with_core: ClientSession
     ) -> None:
         """terminal_run must return output, exit_code, timed_out."""
         import json
+
         from mcp.types import TextContent
 
         if sys.platform == "win32":
@@ -165,7 +165,7 @@ class TestTerminalRunMcpTool:
         assert "hello_terminal" in payload["output"]
 
     async def test_tool_not_visible_without_orchestrator_role(
-        self, mcp_board: "ClientSession"
+        self, mcp_board: ClientSession
     ) -> None:
         """terminal_run must not be visible on a default server without core.
 
@@ -188,15 +188,16 @@ class TestTerminalRunMcpTool:
 
 
 class TestBashExecMcpTool:
-    async def test_tool_is_registered(self, mcp_board: "ClientSession") -> None:
+    async def test_tool_is_registered(self, mcp_board: ClientSession) -> None:
         """bash_exec must appear in the tool list."""
         result = await mcp_board.list_tools()
         names = {t.name for t in result.tools}
         assert "bash_exec" in names
 
-    async def test_returns_output_and_exit_code(self, mcp_board: "ClientSession") -> None:
+    async def test_returns_output_and_exit_code(self, mcp_board: ClientSession) -> None:
         """bash_exec returns output, exit_code, timed_out even without a task context."""
         import json
+
         from mcp.types import TextContent
 
         if sys.platform == "win32":
@@ -215,10 +216,11 @@ class TestBashExecMcpTool:
         assert "mcp_hello" in payload["output"]
 
     async def test_nonzero_exit_code_not_an_mcp_error(
-        self, mcp_board: "ClientSession"
+        self, mcp_board: ClientSession
     ) -> None:
         """bash_exec returning non-zero exit_code does not raise an MCP error."""
         import json
+
         from mcp.types import TextContent
 
         if sys.platform == "win32":
@@ -235,7 +237,7 @@ class TestBashExecMcpTool:
         assert payload["exit_code"] != 0
 
     async def test_tool_execution_update_events_emitted_with_task_context(
-        self, mcp_board_admin_with_core: "ClientSession", tmp_path
+        self, mcp_board_admin_with_core: ClientSession, tmp_path
     ) -> None:
         """bash_exec emits tool_execution_update events when task context is available.
 
@@ -250,6 +252,7 @@ class TestBashExecMcpTool:
         documents the "no task context" path is safe.
         """
         import json
+
         from mcp.types import TextContent
 
         # Without a session-bound context (bound_task_id is None), bash_exec

@@ -225,9 +225,7 @@ async def test_timeout_kills_real_subprocess() -> None:
     handle = loop.call_later(0.05, _kill_agent, proc)
     _AGENT_TIMEOUTS[pid] = _AgentTimeout(proc=proc, handle=handle)
 
-    # Wait long enough for terminate + grace period + force kill
-    total_wait = 0.05 + _AGENT_TIMEOUT_GRACE_SECONDS + 1.0
-    await asyncio.sleep(total_wait)
+    await asyncio.wait_for(proc.wait(), timeout=_AGENT_TIMEOUT_GRACE_SECONDS + 2.0)
 
     rc = proc.returncode
     assert isinstance(rc, int), "Process must have been terminated by the timeout"

@@ -863,7 +863,7 @@ export interface SearchMentionsInput {
   limit?: number;
 }
 
-// ── Chat stream event types (legacy naming from /api/chat/{id}/stream) ────────
+// ── Chat stream event types (POST /api/chat/{id}/stream response) ────────────
 
 export interface ChatStreamChunk {
   t: "CHAT_CHUNK";
@@ -887,11 +887,36 @@ export interface ChatStreamDone {
   full_response: string;
 }
 
+export interface ChatStreamError {
+  t: "CHAT_ERROR";
+  error?: string;
+}
+
+export interface ChatStreamSessionUpdated {
+  t: "CHAT_SESSION_UPDATED";
+  /** Session summary from the server (post-turn metadata refresh). */
+  session?: ChatSessionSummaryResponse;
+}
+
 export type ChatStreamEvent =
   | ChatStreamChunk
   | ChatStreamToolStart
   | ChatStreamToolProgress
-  | ChatStreamDone;
+  | ChatStreamDone
+  | ChatStreamError
+  | ChatStreamSessionUpdated;
+
+/** Abbreviated-key constant map for the POST /api/chat/{id}/stream event types. */
+export const CHAT_STREAM_EVENT = {
+  CHUNK: "CHAT_CHUNK",
+  TOOL_START: "CHAT_TOOL_START",
+  TOOL_PROGRESS: "CHAT_TOOL_PROGRESS",
+  DONE: "CHAT_DONE",
+  ERROR: "CHAT_ERROR",
+  SESSION_UPDATED: "CHAT_SESSION_UPDATED",
+} as const;
+
+export type ChatStreamEventType = (typeof CHAT_STREAM_EVENT)[keyof typeof CHAT_STREAM_EVENT];
 
 // ── Task event query options ──────────────────────────────────────────────────
 

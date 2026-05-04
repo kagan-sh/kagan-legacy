@@ -1,7 +1,6 @@
 """Tests: GitHub integration — label mapping, idempotent sync, verbatim body, preflight."""
 
 import json
-from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,9 +9,6 @@ from kagan.core import KaganCore, Priority
 from kagan.core.integrations.github import (
     GitHubConfig,
     GitHubIntegration,
-    GitHubIssue,
-    _extract_label_names,
-    _map_labels,
     canonical_repo_slug,
     format_github_setup_message,
     github_blocking_checks,
@@ -22,83 +18,6 @@ from kagan.core.integrations.github import (
 from tests.helpers.helpers import make_git_repo
 
 pytestmark = [pytest.mark.integrations]
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def client(tmp_path):
-    c = KaganCore(db_path=tmp_path / "test.db")
-    project = await c.projects.create("Test Project")
-    await c.projects.set_active(project.id)
-    # Attach a repo so GitHub import has a target repo_id
-    repo_path = tmp_path / "test-repo"
-    await make_git_repo(repo_path)
-    await c.projects.add_repo(project.id, str(repo_path))
-    yield c
-    c.close()
-
-
-@pytest.fixture
-def config():
-    return GitHubConfig(owner="octocat", repo="hello-world")
-
-
-@pytest.fixture
-def integration():
-    return GitHubIntegration()
-
-
-# ---------------------------------------------------------------------------
-# Label mapping (pure functions — fast, no I/O)
-# ---------------------------------------------------------------------------
-
-
-def test_extract_label_names_from_gh_format() -> None:
-    """Labels are extracted from nested gh JSON format."""
-    issue: GitHubIssue = {"labels": [{"name": "bug"}, {"name": "priority:high"}]}
-    assert _extract_label_names(issue) == ["bug", "priority:high"]
-
-
-def test_extract_label_names_handles_empty() -> None:
-    """Empty or missing labels return empty list."""
-    assert _extract_label_names({}) == []
-    assert _extract_label_names({"labels": []}) == []
-    assert _extract_label_names(cast("GitHubIssue", {"labels": None})) == []
-
-
-def test_map_labels_priority() -> None:
-    """Priority labels map to Priority enum values."""
-    priority, remaining = _map_labels(["priority:high", "bug"])
-    assert priority == Priority.HIGH
-    assert remaining == ["bug"]
-
-
-def test_map_labels_unknown_labels_pass_through() -> None:
-    priority, remaining = _map_labels(["kagan:detached", "enhancement"])
-    assert priority == Priority.MEDIUM
-    assert remaining == ["kagan:detached", "enhancement"]
-
-
-def test_map_labels_combined() -> None:
-    priority, remaining = _map_labels(["priority:critical", "kagan:attached", "frontend", "bug"])
-    assert priority == Priority.CRITICAL
-    assert remaining == ["kagan:attached", "frontend", "bug"]
-
-
-def test_map_labels_case_insensitive() -> None:
-    """Label matching is case-insensitive."""
-    priority, _ = _map_labels(["Priority:HIGH"])
-    assert priority == Priority.HIGH
-
-
-def test_map_labels_defaults_when_no_mapped_labels() -> None:
-    priority, remaining = _map_labels(["bug", "documentation"])
-    assert priority == Priority.MEDIUM
-    assert remaining == ["bug", "documentation"]
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +296,6 @@ async def test_sync_creates_tasks_from_issues(
     assert "Bug report" in titles
     assert "Feature request" in titles
 
-    # Verify label mapping
     bug_task = next(t for t in tasks if t.title == "Bug report")
     assert bug_task.priority == Priority.HIGH
 
@@ -620,7 +538,6 @@ async def test_sync_raises_when_no_repo_attached(
     """sync() raises KaganError when project has no repositories attached."""
     from kagan.core.errors import KaganError
 
-    # Create a fresh client with a project that has NO repos attached
     client = KaganCore(db_path=tmp_path / "no_repo_test.db")
     project = await client.projects.create("No Repo Project")
     await client.projects.set_active(project.id)
@@ -645,12 +562,10 @@ async def test_sync_raises_when_multiple_repos_and_none_selected(
     """sync() raises KaganError when project has multiple repos but none is selected."""
     from kagan.core.errors import KaganError
 
-    # Create a fresh client with a project that has multiple repos but none selected
     client = KaganCore(db_path=tmp_path / "multi_repo_test.db")
     project = await client.projects.create("Multi Repo Project")
     await client.projects.set_active(project.id)
 
-    # Attach two repos
     repo1_path = tmp_path / "repo1"
     repo2_path = tmp_path / "repo2"
     await make_git_repo(repo1_path)

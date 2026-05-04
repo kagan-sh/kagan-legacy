@@ -312,35 +312,23 @@ class CLIRenderer:
         through this. Kept here so the seam is visible and so phase 5c is a
         small wiring change rather than a rewrite.
         """
-        from kagan.core.chat.events import (
-            AssistantChunk,
-            AssistantMessagePersisted,
-            TurnCancelled,
-            TurnDone,
-            TurnError,
-            UsageUpdate,
-        )
-        from kagan.core.chat.events import (
-            ToolCallProgress as ChatToolCallProgress,
-        )
-        from kagan.core.chat.events import (
-            ToolCallStart as ChatToolCallStart,
-        )
-
-        if isinstance(event, AssistantChunk):
-            self.on_assistant_chunk(event.text, thought=event.thought)
-        elif isinstance(event, ChatToolCallStart):
-            self.on_tool_call_start(event)
-        elif isinstance(event, ChatToolCallProgress):
-            self.on_tool_call_progress(event)
-        elif isinstance(event, UsageUpdate):
-            self.on_usage_update(event)
-        elif isinstance(event, TurnDone):
-            # finish_turn() is the controller's responsibility; here we just
-            # ensure pending Markdown is flushed.
-            self.finalize_pending_markdown()
-        elif isinstance(event, TurnCancelled | TurnError | AssistantMessagePersisted):
-            self.finalize_pending_markdown()
+        match event.kind:
+            case "assistant_chunk":
+                self.on_assistant_chunk(event.text, thought=event.thought)
+            case "tool_call_start":
+                self.on_tool_call_start(event)
+            case "tool_call_progress":
+                self.on_tool_call_progress(event)
+            case "usage":
+                self.on_usage_update(event)
+            case "done":
+                # finish_turn() is the controller's responsibility; here we just
+                # ensure pending Markdown is flushed.
+                self.finalize_pending_markdown()
+            case "turn_cancelled" | "error" | "assistant_message":
+                self.finalize_pending_markdown()
+            case _:
+                pass
 
 
 __all__ = [

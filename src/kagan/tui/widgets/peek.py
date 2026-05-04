@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -7,15 +6,8 @@ from textual.css.query import NoMatches
 from textual.reactive import reactive
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus
-
-
-class _TaskData(Protocol):
-    id: str
-    title: str
-    description: str
-    status: TaskStatus
-    priority: Priority
+from kagan.core.enums import Priority
+from kagan.tui.types import TaskData
 
 
 def _priority_name(value: Priority) -> str:
@@ -42,7 +34,7 @@ class PeekOverlay(Vertical):
     }
     """
 
-    peek_task: reactive[_TaskData | None] = reactive(None)
+    peek_task: reactive[TaskData | None] = reactive(None)
     peek_visible: reactive[bool] = reactive(False)
 
     def __init__(self, **kwargs) -> None:
@@ -64,10 +56,10 @@ class PeekOverlay(Vertical):
     def on_mount(self) -> None:
         self._sync_task_content()
 
-    def watch_peek_task(self, task: _TaskData | None) -> None:
+    def watch_peek_task(self, task: TaskData | None) -> None:
         self._sync_task_content(task)
 
-    def _sync_task_content(self, task: _TaskData | None = None) -> None:
+    def _sync_task_content(self, task: TaskData | None = None) -> None:
         model = self._build_model(self.peek_task if task is None else task)
         try:
             self.query_one("#peek-title", Static).update(model.title)
@@ -80,7 +72,7 @@ class PeekOverlay(Vertical):
         self.display = visible
         self.set_class(visible, "visible")
 
-    def show_task(self, task: _TaskData) -> None:
+    def show_task(self, task: TaskData) -> None:
         self.peek_task = task
         self.peek_visible = True
 
@@ -98,7 +90,7 @@ class PeekOverlay(Vertical):
         self.peek_visible = True
         return True
 
-    def _build_model(self, task: _TaskData | None) -> _PeekModel:
+    def _build_model(self, task: TaskData | None) -> _PeekModel:
         if task is None:
             return _PeekModel("", "", "")
         title = f"#{task.id}: {task.title[:30]}"

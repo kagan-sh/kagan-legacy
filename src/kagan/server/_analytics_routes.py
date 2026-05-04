@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from kagan.server.mcp.server import ServerContext
+
 
 def _group_by_key(stats: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
     """Group stats list by a key field."""
@@ -45,7 +47,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/backend-stats", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _backend_stats(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _backend_stats(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
@@ -55,7 +57,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/session-timeline", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _session_timeline(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _session_timeline(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
@@ -66,7 +68,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/timeline-summary", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _timeline_summary(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _timeline_summary(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -77,7 +79,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/recommended-backend", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _recommended_backend(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _recommended_backend(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -87,7 +89,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/export", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _export(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _export(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         days = int(request.query_params.get("days", "30"))
         if not project_id:
@@ -105,7 +107,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/by-role", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _by_role(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _by_role(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -118,7 +120,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/by-task-type", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _by_task_type(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _by_task_type(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})
@@ -131,7 +133,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/by-role-and-task-type", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _by_role_and_task_type(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _by_role_and_task_type(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok([])
@@ -146,7 +148,7 @@ def register_analytics_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/api/analytics/recommend-for-task", methods=["GET"])
     @require_context(mcp)
     @handle_errors
-    async def _recommend_for_task(request: Request, *, ctx: Any) -> JSONResponse:
+    async def _recommend_for_task(request: Request, *, ctx: ServerContext) -> JSONResponse:
         project_id = ctx.client.active_project_id
         if not project_id:
             return _ok({})

@@ -1,11 +1,10 @@
-import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from 'react';
 
-type VisuallyHiddenProps<T extends ElementType = 'span'> = {
-  as?: T;
+type VisuallyHiddenProps = {
   children: ReactNode;
-} & Omit<ComponentPropsWithoutRef<T>, 'as' | 'children'>;
+} & Omit<ComponentPropsWithoutRef<'span'>, 'children'>;
 
-const style: React.CSSProperties = {
+const style: CSSProperties = {
   position: 'absolute',
   width: 1,
   height: 1,
@@ -20,15 +19,13 @@ const style: React.CSSProperties = {
 /**
  * Hides content visually while keeping it available to assistive tech.
  */
-export function VisuallyHidden<T extends ElementType = 'span'>({
-  as,
+export function VisuallyHidden({
   children,
   ...rest
-}: VisuallyHiddenProps<T>) {
-  const Tag = (as ?? 'span') as ElementType;
+}: VisuallyHiddenProps) {
   return (
-    <Tag style={style} {...rest}>
+    <span style={style} {...rest}>
       {children}
-    </Tag>
+    </span>
   );
 }

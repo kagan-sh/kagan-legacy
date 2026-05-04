@@ -146,7 +146,7 @@ ChatController.process_input()
 
 ### ACP Integration
 
-- `_OrchestratorACPClient` — implements `ACPClientBase`
+- `_OrchestratorACPClient` — concrete ACP client adapter
 - `_CaptureACPClient` — silent variant for title generation
 - `warm_orchestrator_backend()` — pre-warms agent to reduce latency
 - Tool calls rendered with status indicators (pending ✓/✗)

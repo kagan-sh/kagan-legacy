@@ -23,7 +23,7 @@ import {
 import { sessionPickerOpenAtom, type RightRailMode } from "@/lib/atoms/ui";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { useChatStream } from "@/lib/chat/use-chat-stream";
+import { useChatSession } from "@/lib/hooks/use-chat-session";
 
 const INITIAL_VISIBLE = 30;
 
@@ -69,13 +69,13 @@ export function OrchestratorChatPanel({
         availableBackends,
         editPrefill,
         scrollRef,
-        handleSend,
-        handleInterrupt,
-        handleSlashCommand,
+        onSend,
+        onInterrupt,
+        onSlashCommand,
         switchBackend,
         setEditPrefill,
         setLabel,
-    } = useChatStream(sessionId);
+    } = useChatSession(sessionId);
 
     // Progressive message rendering
     const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
@@ -123,11 +123,11 @@ export function OrchestratorChatPanel({
         return () => { cancelled = true; };
     }, [sessionId]);
 
-    const onSlashCommand = useCallback(
+    const handleSlashCommand = useCallback(
         (command: string) => {
-            handleSlashCommand(command, { onNew: () => setSessionPickerOpen(true) });
+            onSlashCommand(command, { onNew: () => setSessionPickerOpen(true) });
         },
-        [handleSlashCommand, setSessionPickerOpen],
+        [onSlashCommand, setSessionPickerOpen],
     );
 
     const headerSlot = (
@@ -246,9 +246,9 @@ export function OrchestratorChatPanel({
                     loading={false}
                     editPrefill={editPrefill ?? undefined}
                     onPrefillConsumed={() => setEditPrefill(null)}
-                    onSend={handleSend}
-                    onInterrupt={handleInterrupt}
-                    onSlashCommand={onSlashCommand}
+                    onSend={onSend}
+                    onInterrupt={onInterrupt}
+                    onSlashCommand={handleSlashCommand}
                     scrollRef={scrollRef}
                     visibleCount={visibleCount}
                     onLoadMore={() => setVisibleCount((c) => c + 30)}

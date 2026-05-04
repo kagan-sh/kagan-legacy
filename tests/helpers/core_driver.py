@@ -513,7 +513,7 @@ class CoreDriver:
         agent_backend: str | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view
 
         row = await self._ctx.chat_sessions.create(
             source=source,
@@ -521,15 +521,15 @@ class CoreDriver:
             agent_backend=agent_backend,
             project_id=project_id,
         )
-        return chat_session_to_legacy_dict(row, [])
+        return chat_session_to_view(row, []).model_dump()
 
     async def chat_get_session(self, session_id: str) -> dict[str, Any] | None:
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view
 
         pair = await self._ctx.chat_sessions.get_with_history(session_id)
         if pair is None:
             return None
-        return chat_session_to_legacy_dict(*pair)
+        return chat_session_to_view(*pair).model_dump()
 
     async def chat_list_sessions(
         self,
@@ -537,12 +537,12 @@ class CoreDriver:
         source: str | None = None,
         project_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        from kagan.cli.chat._session_picker import chat_session_to_legacy_dict
+        from kagan.cli.chat._session_picker import chat_session_to_view
 
         pairs = await self._ctx.chat_sessions.list_with_history(
             source=source, project_id=project_id
         )
-        return [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+        return [chat_session_to_view(row, msgs).model_dump() for row, msgs in pairs]
 
     async def chat_delete_session(self, session_id: str) -> bool:
         return await self._ctx.chat_sessions.delete(session_id)

@@ -48,8 +48,9 @@ from kagan.cli.chat._chat_ui import (
 from kagan.cli.chat._permission_ui import PermissionUI, _SendResult, _WaveIndicator
 from kagan.cli.chat._renderer import CLIRenderer
 from kagan.cli.chat._session_picker import (
+    ChatSessionView,
     build_chat_session_list_items,
-    chat_session_to_legacy_dict,
+    chat_session_to_view,
     resolve_chat_session_selector,
 )
 from kagan.cli.chat._signals import install_sigint_handler, restore_sigint_handler
@@ -204,47 +205,50 @@ class ChatController:
                 agent_backend=self.agent_backend,
                 project_id=self.client.active_project_id,
             )
-            selected = chat_session_to_legacy_dict(row, [])
+            selected = chat_session_to_view(row, [])
         await self._attach_session(selected, switching=False)
 
     async def _resolve_initial_session(
         self, explicit_session_id: str | None
-    ) -> dict[str, Any] | None:
+    ) -> ChatSessionView | None:
         if not explicit_session_id:
             return None
         cs = self.client.chat_sessions
         pair = await cs.get_with_history(explicit_session_id)
         if pair is not None:
             row, msgs = pair
-            return chat_session_to_legacy_dict(row, msgs)
+            return chat_session_to_view(row, msgs)
         binding = await cs.resolve_task_binding(explicit_session_id)
         if binding is None:
             return None
-        return {
-            "id": binding.id,
-            "label": binding.label,
-            "source": binding.source,
-            "agent_backend": binding.agent_backend,
-            "orchestrator_history": [],
-            "messages_rendered": [
+        return ChatSessionView(
+            id=binding.id,
+            label=binding.label,
+            source=binding.source,
+            agent_backend=binding.agent_backend,
+            project_id=None,
+            orchestrator_history=[],
+            messages_rendered=[
                 f"System: Attached to task session {binding.id} (status: {binding.status})."
             ],
-        }
+            updated_at="",
+        )
 
-    async def _attach_session(self, session: dict[str, Any], *, switching: bool) -> bool:
+    async def _attach_session(self, session: ChatSessionView, *, switching: bool) -> bool:
         previous_session_id = self._chat_session_id
-        session_id = str(session.get("id") or "").strip()
+        session_id = session.id.strip()
         if not session_id:
             return False
-        source = str(session.get("source") or "repl").strip() or "repl"
+        source = session.source.strip() or "repl"
         self._chat_session_id = session_id
         self._chat_session_source = source
         self._persist_repl_session = source == "repl"
         self._mcp_session_id = session_id
 
-        rendered = session.get("messages_rendered") or []
-        self._rendered_messages = [str(line).rstrip() for line in rendered if str(line).strip()]
-        history = session.get("orchestrator_history") or []
+        self._rendered_messages = [
+            str(line).rstrip() for line in session.messages_rendered if str(line).strip()
+        ]
+        history = session.orchestrator_history
         self._turn_count = sum(
             1
             for pair in history
@@ -262,10 +266,10 @@ class ChatController:
                 )
             ]
         self._restored_messages_printed = False
-        persisted_label = str(session.get("label") or "")
+        persisted_label = session.label
         default_label = f"Session {session_id}"
         self._session_title = persisted_label if persisted_label != default_label else None
-        backend = session.get("agent_backend")
+        backend = session.agent_backend
         if (
             self._prefer_session_backend
             and isinstance(backend, str)
@@ -293,17 +297,15 @@ class ChatController:
         pairs = await self.client.chat_sessions.list_with_history(
             project_id=self.client.active_project_id
         )
-        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+        sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No persisted sessions yet.[/dim]")
             return False
 
         items = build_chat_session_list_items(sessions, current_session_id=self._chat_session_id)
-        sessions_by_id: dict[str, dict[str, Any]] = {
-            str(session.get("id") or ""): session for session in sessions
-        }
+        sessions_by_id: dict[str, ChatSessionView] = {session.id: session for session in sessions}
 
-        selected: dict[str, Any] | None = None
+        selected: ChatSessionView | None = None
         selected_id: str | None = None
         if query:
             selected_item = resolve_chat_session_selector(items, query)
@@ -328,7 +330,7 @@ class ChatController:
                 return False
 
         should_restart = await self._attach_session(selected, switching=True)
-        _console.print(f"[green]Attached session:[/green] {selected_id or selected.get('id')}")
+        _console.print(f"[green]Attached session:[/green] {selected_id or selected.id}")
         if not should_restart:
             self._print_restored_messages()
         return should_restart
@@ -362,22 +364,20 @@ class ChatController:
             agent_backend=self.agent_backend,
             project_id=self.client.active_project_id,
         )
-        created = chat_session_to_legacy_dict(row, [])
+        created = chat_session_to_view(row, [])
         should_restart = await self._attach_session(created, switching=True)
-        _console.print(f"[green]New session:[/green] {created['id']}")
+        _console.print(f"[green]New session:[/green] {created.id}")
         return should_restart
 
     async def _delete_session(self, query: str) -> None:
         pairs = await self.client.chat_sessions.list_with_history()
-        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+        sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
         if not sessions:
             _console.print("[dim]No sessions to delete.[/dim]")
             return
 
         items = build_chat_session_list_items(sessions, current_session_id=self._chat_session_id)
-        sessions_by_id: dict[str, dict[str, Any]] = {
-            str(session.get("id") or ""): session for session in sessions
-        }
+        sessions_by_id: dict[str, ChatSessionView] = {session.id: session for session in sessions}
 
         target_item = resolve_chat_session_selector(items, query)
         target = sessions_by_id.get(target_item.session_id) if target_item is not None else None
@@ -385,8 +385,8 @@ class ChatController:
             _console.print(f"[red]Unknown session: {query}[/red]")
             return
 
-        target_id = str(target.get("id") or "")
-        target_label = str(target.get("label") or target_id)
+        target_id = target.id
+        target_label = target.label or target_id
         if target_id == self._chat_session_id:
             _console.print("[red]Cannot delete the current session.[/red]")
             return

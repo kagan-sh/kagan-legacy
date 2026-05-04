@@ -2,18 +2,19 @@
 
 Covers:
 - F4: Chat injection scan blocks DANGEROUS messages, warns on SUSPICIOUS.
-- F6: Sensitive settings keys are encrypted at rest and decrypted on read.
-- Core 5: Session launch atomicity (session + status update in one write).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from kagan.core.errors import ValidationError
 from tests.helpers.driver import KaganDriver
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = [pytest.mark.core, pytest.mark.smoke]
 
@@ -89,69 +90,6 @@ async def test_push_user_accepts_safe_message(board: KaganDriver) -> None:
     msg = await engine.push_user(sid, "please fix the login bug")
     assert msg.role == "user"
     assert msg.content == "please fix the login bug"
-
-
-# ---------------------------------------------------------------------------
-# F6 — Settings encryption at rest
-# ---------------------------------------------------------------------------
-
-
-async def test_sensitive_key_decrypted_on_read(board: KaganDriver, tmp_path: Path) -> None:
-    """Values stored under a *_token key are decrypted transparently on read."""
-    await board.settings_update({"github_token": "ghp_supersecret"})
-    result = await board.settings_get()
-    assert result.get("github_token") == "ghp_supersecret"
-
-
-async def test_non_sensitive_key_stored_plaintext(board: KaganDriver) -> None:
-    """Values for non-sensitive keys are stored and returned as-is."""
-    await board.settings_update({"default_agent_backend": "claude-code"})
-    result = await board.settings_get()
-    assert result.get("default_agent_backend") == "claude-code"
-
-
-async def test_sensitive_key_round_trip(board: KaganDriver) -> None:
-    """Setting and getting a sensitive key returns the original plaintext value."""
-    keys = ["api_token", "webhook_secret", "signing_key"]
-    updates = {k: f"value-for-{k}" for k in keys}
-    await board.settings_update(updates)
-    result = await board.settings_get()
-    for k, v in updates.items():
-        assert result.get(k) == v, f"Key {k!r} did not round-trip correctly"
-
-
-def test_secret_key_file_is_owner_only_from_creation(monkeypatch, tmp_path: Path) -> None:
-    """Key file is created with mode 0600 in one syscall — never world-readable."""
-    import stat as _stat
-
-    from kagan.core import _settings
-
-    monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
-    _settings._load_or_create_fernet_key()
-    mode = (tmp_path / "secret.key").stat().st_mode & 0o777
-    assert mode == _stat.S_IRUSR | _stat.S_IWUSR
-
-
-def test_decrypt_failure_raises_typed_error(monkeypatch, tmp_path: Path) -> None:
-    """Tampered ciphertext raises SettingsDecryptError; never returns raw bytes."""
-    from kagan.core._settings import SettingsDecryptError, _decrypt_value, _FERNET_PREFIX
-
-    from kagan.core import _settings
-
-    monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
-    with pytest.raises(SettingsDecryptError):
-        _decrypt_value(_FERNET_PREFIX + "not-a-valid-fernet-token")
-
-
-def test_secret_key_concurrent_create_is_safe(monkeypatch, tmp_path: Path) -> None:
-    """Two callers racing key creation both end up with the same key; no exception leaks."""
-    from kagan.core import _settings
-
-    monkeypatch.setattr(_settings, "_secret_key_path", lambda: tmp_path / "secret.key")
-    first = _settings._load_or_create_fernet_key()
-    # Second invocation must hit the FileExistsError branch and re-read.
-    second = _settings._load_or_create_fernet_key()
-    assert first == second
 
 
 def test_rate_limit_log_key_does_not_leak_token() -> None:

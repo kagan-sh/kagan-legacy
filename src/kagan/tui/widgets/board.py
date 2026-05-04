@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Protocol
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -9,23 +8,9 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from kagan.core.enums import Priority, TaskStatus
+from kagan.core.enums import TaskStatus
+from kagan.tui.types import TaskData
 from kagan.tui.widgets.card import TaskCard
-
-
-class _TaskData(Protocol):
-    id: str
-    title: str
-    description: str
-    priority: Priority
-    status: TaskStatus
-    review_approved: bool
-    acceptance_criteria: list[str]
-    has_active_session: bool
-    has_session_history: bool
-    active_launcher: str | None
-    latest_launcher: str | None
-
 
 _COLUMN_ORDER: tuple[TaskStatus, ...] = (
     TaskStatus.BACKLOG,
@@ -97,7 +82,7 @@ class BoardColumn(Vertical):
         content.tooltip = f"{self._header_label()} tasks (use arrow keys to navigate)"
         yield content
 
-    def set_tasks(self, tasks: list[_TaskData], selected_task_id: str | None) -> None:
+    def set_tasks(self, tasks: list[TaskData], selected_task_id: str | None) -> None:
         try:
             content = self.query_one(f"#content-{self.status.value.lower()}", ScrollableContainer)
         except NoMatches:
@@ -201,20 +186,20 @@ class BoardView(Widget):
     class TaskOpened(Message):
         task_id: str
 
-    tasks: reactive[list[_TaskData]] = reactive(list)
+    tasks: reactive[list[TaskData]] = reactive(list)
     selected_task_id: reactive[str | None] = reactive(None)
 
     def compose(self) -> ComposeResult:
         for status in _COLUMN_ORDER:
             yield BoardColumn(status)
 
-    def watch_tasks(self, _: list[_TaskData]) -> None:
+    def watch_tasks(self, _: list[TaskData]) -> None:
         self._refresh_columns()
 
     def watch_selected_task_id(self, _: str | None) -> None:
         self._update_selection_only()
 
-    def set_tasks(self, tasks: list[_TaskData], *, selected_task_id: str | None = None) -> None:
+    def set_tasks(self, tasks: list[TaskData], *, selected_task_id: str | None = None) -> None:
         self.tasks = tasks
         if selected_task_id is not None:
             self.selected_task_id = selected_task_id
@@ -312,8 +297,8 @@ class BoardView(Widget):
             task_data = card.task_data
             card.selected = bool(task_data is not None and task_data.id == selected)
 
-    def _tasks_by_status(self) -> dict[TaskStatus, list[_TaskData]]:
-        grouped: dict[TaskStatus, list[_TaskData]] = {status: [] for status in _COLUMN_ORDER}
+    def _tasks_by_status(self) -> dict[TaskStatus, list[TaskData]]:
+        grouped: dict[TaskStatus, list[TaskData]] = {status: [] for status in _COLUMN_ORDER}
         for task in self.tasks:
             grouped[task.status].append(task)
         return grouped

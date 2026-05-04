@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from kagan.core import Tasks
+    from kagan.server.mcp.server import ServerContext
 
 _SSE_KEEPALIVE_SECONDS = 25.0
 # Safety-net fallback interval — the event bus delivers most mutations
@@ -44,7 +45,7 @@ def _queue_put_best_effort(queue: asyncio.Queue[dict[str, Any]], data: dict[str,
         queue.put_nowait(data)
 
 
-async def _wait_for_server_ctx(mcp: FastMCP) -> Any | None:
+async def _wait_for_server_ctx(mcp: FastMCP) -> ServerContext | None:
     ctx = get_server_context(mcp)
     for _ in range(60):
         if ctx is not None:
@@ -54,7 +55,7 @@ async def _wait_for_server_ctx(mcp: FastMCP) -> Any | None:
     return None
 
 
-async def _build_project_task_ids(ctx: Any) -> set[str] | None:
+async def _build_project_task_ids(ctx: ServerContext) -> set[str] | None:
     """Return the set of task IDs belonging to the bound project, or None if unscoped."""
     project_id = getattr(ctx, "bound_project_id", None)
     if project_id is None:
@@ -71,7 +72,7 @@ _REFRESH_INTERVAL = 50  # rebuild the allowed set every N events
 
 
 async def _check_task_allowed(
-    ctx: Any,
+    ctx: ServerContext,
     task_id: str,
     allowed_task_ids: set[str] | None,
     events_since_refresh: int,
@@ -96,7 +97,7 @@ async def _check_task_allowed(
     return True, allowed_task_ids, events_since_refresh
 
 
-async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+async def _forward_session_events(ctx: ServerContext, queue: asyncio.Queue[dict[str, Any]]) -> None:
     # Scope events to the bound project context so that SSE clients only
     # receive events for tasks they are authorized to see.  The task set is
     # rebuilt periodically to pick up newly-created tasks.
@@ -125,7 +126,7 @@ async def _forward_session_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]
         logger.debug("SSE session event stream failed", exc_info=True)
 
 
-async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) -> None:
+async def _forward_board_events(ctx: ServerContext, queue: asyncio.Queue[dict[str, Any]]) -> None:
     # Board events are also scoped to the bound project context.
     allowed_task_ids = await _build_project_task_ids(ctx)
     events_since_refresh = 0
@@ -152,7 +153,7 @@ async def _forward_board_events(ctx: Any, queue: asyncio.Queue[dict[str, Any]]) 
         logger.debug("SSE board event stream failed", exc_info=True)
 
 
-async def _task_update_message(ctx: Any, task_id: str) -> dict[str, Any]:
+async def _task_update_message(ctx: ServerContext, task_id: str) -> dict[str, Any]:
     try:
         task = await task_wire_dict(ctx, task_id)
         return {"type": "TASK_UPDATED", "task_id": task_id, "task": task}

@@ -4,8 +4,9 @@ from typing import Any
 
 from kagan.cli.chat import (
     ChatSessionListItem,
+    ChatSessionView,
     build_chat_session_list_items,
-    chat_session_to_legacy_dict,
+    chat_session_to_view,
     ensure_session_title,
     is_default_title,
 )
@@ -25,25 +26,22 @@ class TuiOrchestratorSessionStore:
 
     Owns the **transient** TUI bits that don't fit on the core aggregate:
 
-    * the in-memory cache of session dicts the picker renders without a DB
-      round-trip on every keystroke,
+    * the in-memory cache of typed session views the picker renders without a
+      DB round-trip on every keystroke,
     * the ``active_key`` pointer driven by the session switcher,
     * the per-source rendering helpers (``(cli)`` / ``(web)`` badges),
     * the title-generation kick-off cadence.
 
-    Persistence flows through ``client.chat_sessions`` directly. The dict
-    shape returned to ``ChatPanel.set_sessions`` is built locally via
-    :func:`chat_session_to_legacy_dict` rather than imported from the
-    deleted ``cli.chat.sessions`` shim.
+    Persistence flows through ``client.chat_sessions`` directly.
     """
 
-    def __init__(self, client: Any, *, startup_session_id: str | None = None) -> None:
+    def __init__(self, client: object, *, startup_session_id: str | None = None) -> None:
         self._client = client
         self._startup_session_id = startup_session_id.strip() if startup_session_id else None
         self._loaded = False
         self._loaded_project_id: str | None = None
         self._lock = asyncio.Lock()
-        self._sessions_by_key: dict[str, dict[str, Any]] = {}
+        self._sessions_by_key: dict[str, ChatSessionView] = {}
         self._active_key: str | None = None
 
     def _current_project_id(self) -> str | None:
@@ -69,29 +67,29 @@ class TuiOrchestratorSessionStore:
                 self._loaded_project_id = None
                 return
 
-            pairs = await self._client.chat_sessions.list_with_history(
+            pairs = await self._client.chat_sessions.list_with_history(  # type: ignore[attr-defined]
                 project_id=current_project_id,
             )
-            sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+            sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
             selected = await self._resolve_initial_session(sessions, project_id=current_project_id)
             if selected is None:
-                row = await self._client.chat_sessions.create(
+                row = await self._client.chat_sessions.create(  # type: ignore[attr-defined]
                     source=_TUI_ORCHESTRATOR_SOURCE,
                     label="TUI session",
                     project_id=current_project_id,
                 )
-                selected = chat_session_to_legacy_dict(row, [])
+                selected = chat_session_to_view(row, [])
                 sessions.append(selected)
 
             self._sessions_by_key = {
-                self._session_key(str(session.get("id") or "")): session
+                self._session_key(session.id): session
                 for session in sessions
-                if str(session.get("id") or "").strip()
+                if session.id.strip()
             }
-            self._active_key = self._session_key(str(selected.get("id") or ""))
-            await self._client.chat_sessions.set_last_session_id(
+            self._active_key = self._session_key(selected.id)
+            await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]
                 scope=_TUI_ORCHESTRATOR_SCOPE,
-                session_id=str(selected.get("id") or ""),
+                session_id=selected.id,
             )
             self._loaded = True
             self._loaded_project_id = current_project_id
@@ -102,30 +100,30 @@ class TuiOrchestratorSessionStore:
         if session is None:
             return self.active_history()
         self._active_key = key
-        await self._client.chat_sessions.set_last_session_id(
+        await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]
             scope=_TUI_ORCHESTRATOR_SCOPE,
-            session_id=str(session.get("id") or ""),
+            session_id=session.id,
         )
-        return self._normalize_history(session.get("orchestrator_history") or [])
+        return self._normalize_history(session.orchestrator_history)
 
     async def create_new(self, *, agent_backend: str | None = None) -> str:
         await self.ensure_loaded()
         project_id = self._current_project_id()
         if project_id is None:
             return self.active_key()
-        row = await self._client.chat_sessions.create(
+        row = await self._client.chat_sessions.create(  # type: ignore[attr-defined]
             source=_TUI_ORCHESTRATOR_SOURCE,
             label="TUI session",
             agent_backend=agent_backend,
             project_id=project_id,
         )
-        created = chat_session_to_legacy_dict(row, [])
-        key = self._session_key(str(created.get("id") or ""))
+        created = chat_session_to_view(row, [])
+        key = self._session_key(created.id)
         self._sessions_by_key[key] = created
         self._active_key = key
-        await self._client.chat_sessions.set_last_session_id(
+        await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]
             scope=_TUI_ORCHESTRATOR_SCOPE,
-            session_id=str(created.get("id") or ""),
+            session_id=created.id,
         )
         return key
 
@@ -143,47 +141,42 @@ class TuiOrchestratorSessionStore:
         if session is None:
             return
 
-        session_id = str(session.get("id") or "").strip()
+        session_id = session.id.strip()
         if not session_id:
             return
 
-        label = str(session.get("label") or f"TUI session {session_id}").strip()
-        normalized = {
-            "id": session_id,
-            "label": label,
-            "source": str(session.get("source") or _TUI_ORCHESTRATOR_SOURCE),
-            "agent_backend": agent_backend or session.get("agent_backend"),
-            "orchestrator_history": [[role, content] for role, content in history],
-            "messages_rendered": [line for line in rendered_messages if line.strip()],
-            "project_id": self._current_project_id() or session.get("project_id"),
-        }
+        label = session.label.strip() or f"TUI session {session_id}"
+        effective_backend = agent_backend or session.agent_backend
+        backend_value: str | None = (
+            effective_backend
+            if isinstance(effective_backend, str) and effective_backend.strip()
+            else None
+        )
+        project_id = self._current_project_id() or session.project_id
+        project_value: str | None = (
+            project_id if isinstance(project_id, str) and project_id.strip() else None
+        )
         history_pairs: list[tuple[str, str]] = [
             (str(role), str(content))
-            for role, content in (
-                pair
-                for pair in (normalized.get("orchestrator_history") or [])
-                if isinstance(pair, list | tuple) and len(pair) == 2
-            )
+            for role, content in history
             if str(role).strip() and str(content).strip()
         ]
-        raw_backend = normalized.get("agent_backend")
-        backend_value: str | None = (
-            raw_backend if isinstance(raw_backend, str) and raw_backend.strip() else None
-        )
-        raw_project = normalized.get("project_id")
-        project_value: str | None = (
-            raw_project if isinstance(raw_project, str) and raw_project.strip() else None
-        )
-        await self._client.chat_sessions.upsert_with_history(
+        await self._client.chat_sessions.upsert_with_history(  # type: ignore[attr-defined]
             session_id,
             label=label,
-            source=str(normalized.get("source") or _TUI_ORCHESTRATOR_SOURCE),
+            source=session.source or _TUI_ORCHESTRATOR_SOURCE,
             agent_backend=backend_value,
             project_id=project_value,
             history=history_pairs,
         )
-        self._sessions_by_key[self._active_key] = normalized
-        await self._client.chat_sessions.set_last_session_id(
+        # Update the cached view in-place rather than replacing — ensure_session_title
+        # may already have mutated session.label; we only overwrite changed fields.
+        session.agent_backend = backend_value
+        session.orchestrator_history = [[role, content] for role, content in history]
+        session.messages_rendered = [line for line in rendered_messages if line.strip()]
+        if project_value is not None:
+            session.project_id = project_value
+        await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]
             scope=_TUI_ORCHESTRATOR_SCOPE,
             session_id=session_id,
         )
@@ -197,7 +190,7 @@ class TuiOrchestratorSessionStore:
         items = build_chat_session_list_items(sessions, current_session_id=current_id)
         options: list[tuple[str, str]] = []
         for item in items:
-            backend_tag = f" · {item.agent_backend}" if getattr(item, "agent_backend", None) else ""
+            backend_tag = f" · {item.agent_backend}" if item.agent_backend else ""
             source_tag = self._source_badge(item.source)
             label = f"{item.label} [{item.session_id}]{backend_tag}{source_tag}"
             options.append((label, self._session_key(item.session_id)))
@@ -237,12 +230,12 @@ class TuiOrchestratorSessionStore:
         if session is None:
             return self._active_key
 
-        session_id = str(session.get("id") or "").strip()
+        session_id = session.id.strip()
         preserved_backend = self.agent_backend_for_key(key)
         if not session_id:
             return self._active_key
 
-        deleted = await self._client.chat_sessions.delete(session_id)
+        deleted = await self._client.chat_sessions.delete(session_id)  # type: ignore[attr-defined]
         if not deleted:
             return self._active_key
 
@@ -253,14 +246,14 @@ class TuiOrchestratorSessionStore:
             if project_id is None:
                 self._active_key = None
                 return None
-            row = await self._client.chat_sessions.create(
+            row = await self._client.chat_sessions.create(  # type: ignore[attr-defined]
                 source=_TUI_ORCHESTRATOR_SOURCE,
                 label="TUI session",
                 agent_backend=preserved_backend,
                 project_id=project_id,
             )
-            created = chat_session_to_legacy_dict(row, [])
-            next_key = self._session_key(str(created.get("id") or ""))
+            created = chat_session_to_view(row, [])
+            next_key = self._session_key(created.id)
             self._sessions_by_key[next_key] = created
             self._active_key = next_key
         elif self._active_key == key:
@@ -270,7 +263,7 @@ class TuiOrchestratorSessionStore:
 
         current_session_id = self.current_session_id()
         if current_session_id:
-            await self._client.chat_sessions.set_last_session_id(
+            await self._client.chat_sessions.set_last_session_id(  # type: ignore[attr-defined]
                 scope=_TUI_ORCHESTRATOR_SCOPE,
                 session_id=current_session_id,
             )
@@ -287,14 +280,14 @@ class TuiOrchestratorSessionStore:
         session = self._sessions_by_key.get(key)
         if session is None:
             return []
-        return self._normalize_history(session.get("orchestrator_history") or [])
+        return self._normalize_history(session.orchestrator_history)
 
     def should_generate_title(self, key: str | None = None) -> bool:
         target = key or self.active_key()
         session = self._sessions_by_key.get(target)
         if session is None:
             return False
-        return is_default_title(str(session.get("label") or ""))
+        return is_default_title(session.label)
 
     async def generate_title(
         self,
@@ -308,28 +301,27 @@ class TuiOrchestratorSessionStore:
         session = self._sessions_by_key.get(target)
         if session is None:
             return None
-        title = await ensure_session_title(
+        # ensure_session_title mutates session.label in-place when a title is
+        # generated, so the cached view reflects the new title without a reload.
+        return await ensure_session_title(
             self._client,
             session,
             user_message=user_message,
             assistant_reply=assistant_reply,
             agent_backend=agent_backend,
         )
-        if title:
-            self._sessions_by_key[target] = session
-        return title
 
     def source_for_key(self, key: str) -> str:
         session = self._sessions_by_key.get(key)
         if session is None:
             return ""
-        return str(session.get("source") or "").strip()
+        return session.source.strip()
 
     def agent_backend_for_key(self, key: str) -> str | None:
         session = self._sessions_by_key.get(key)
         if session is None:
             return None
-        backend = session.get("agent_backend")
+        backend = session.agent_backend
         if isinstance(backend, str) and backend.strip():
             return backend
         return None
@@ -342,25 +334,25 @@ class TuiOrchestratorSessionStore:
 
     async def _resolve_initial_session(
         self,
-        sessions: Sequence[dict[str, Any]],
+        sessions: Sequence[ChatSessionView],
         *,
         project_id: str,
-    ) -> dict[str, Any] | None:
+    ) -> ChatSessionView | None:
         if self._startup_session_id:
-            pair = await self._client.chat_sessions.get_with_history(self._startup_session_id)
+            pair = await self._client.chat_sessions.get_with_history(self._startup_session_id)  # type: ignore[attr-defined]
             self._startup_session_id = None
             if pair is not None:
                 row, msgs = pair
-                explicit = chat_session_to_legacy_dict(row, msgs)
+                explicit = chat_session_to_view(row, msgs)
                 if self._is_project_session(explicit, project_id=project_id):
                     return explicit
 
-        last_session_id = await self._client.chat_sessions.get_last_session_id(
+        last_session_id = await self._client.chat_sessions.get_last_session_id(  # type: ignore[attr-defined]
             scope=_TUI_ORCHESTRATOR_SCOPE
         )
         if last_session_id:
             for session in sessions:
-                if str(session.get("id") or "") == last_session_id:
+                if session.id == last_session_id:
                     return session
 
         if sessions:
@@ -368,10 +360,8 @@ class TuiOrchestratorSessionStore:
         return None
 
     @staticmethod
-    def _is_project_session(session: dict[str, Any], *, project_id: str) -> bool:
-        session_id = str(session.get("id") or "").strip()
-        session_project_id = str(session.get("project_id") or "").strip()
-        return bool(session_id) and session_project_id == project_id
+    def _is_project_session(session: ChatSessionView, *, project_id: str) -> bool:
+        return bool(session.id.strip()) and session.project_id == project_id
 
     @staticmethod
     def _session_key(session_id: str) -> str:

@@ -414,16 +414,16 @@ class KanbanScreen(Screen[None]):
         task_ids = [task.id for task in tasks]
         summaries_data = await self.kagan_app.core.tasks.sessions.active_session_summaries(task_ids)
 
-        summaries: dict[str, _TaskSessionSummary] = {}
-        for task_id, summary_data in summaries_data.items():
-            summaries[task_id] = _TaskSessionSummary(
-                has_history=bool(summary_data.get("has_history")),
-                has_active=bool(summary_data.get("has_active")),
-                active_launcher=summary_data.get("active_launcher"),
-                latest_launcher=summary_data.get("latest_launcher"),
+        # SessionSummary is now a typed Pydantic model — field access replaces .get()
+        return {
+            task_id: _TaskSessionSummary(
+                has_history=summary.has_history,
+                has_active=summary.has_active,
+                active_launcher=summary.active_launcher,
+                latest_launcher=summary.latest_launcher,
             )
-
-        return summaries
+            for task_id, summary in summaries_data.items()
+        }
 
     async def _collect_review_approvals(self, tasks: list[Task]) -> dict[str, bool]:
         """Fetch review approval state for all tasks that are in REVIEW status."""

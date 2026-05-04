@@ -1058,7 +1058,7 @@ class ChatPanel(Vertical):
         """Delete a chat session by number or id."""
         from kagan.cli.chat import (
             build_chat_session_list_items,
-            chat_session_to_legacy_dict,
+            chat_session_to_view,
             resolve_chat_session_selector,
         )
 
@@ -1068,7 +1068,7 @@ class ChatPanel(Vertical):
             return
 
         pairs = await core.chat_sessions.list_with_history()
-        sessions = [chat_session_to_legacy_dict(row, msgs) for row, msgs in pairs]
+        sessions = [chat_session_to_view(row, msgs) for row, msgs in pairs]
         if not sessions:
             self.add_system_message("No sessions to delete.")
             return

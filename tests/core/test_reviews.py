@@ -7,20 +7,9 @@ import pytest
 from kagan.core import PreflightError, TaskStatus
 from kagan.core.errors import MergeConflictError
 from tests.helpers.driver import KaganDriver
-from tests.helpers.helpers import commit_file, make_git_repo
+from tests.helpers.helpers import commit_file
 
 pytestmark = [pytest.mark.core, pytest.mark.slow]
-
-
-@pytest.fixture
-async def git_board(tmp_path):
-    repo_path = tmp_path / "repo"
-    await make_git_repo(repo_path, base_branch="main")
-
-    driver = await KaganDriver.boot(tmp_path)
-    await driver.create_project("Review Git Project", repo_path=str(repo_path))
-    yield driver
-    await driver.teardown()
 
 
 async def test_merge_moves_task_to_done_and_removes_workspace(

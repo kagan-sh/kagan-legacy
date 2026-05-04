@@ -33,7 +33,7 @@ from kagan.core._settings import _make_settings_ns
 from kagan.core._tasks import Tasks
 from kagan.core._watcher import DBWatcher
 from kagan.core._worktrees import Worktrees
-from kagan.core.chat import ChatEngine, ChatSessions, SpawnPerTurnACPFactory
+from kagan.core.chat import ChatEngine, ChatSessions, make_spawn_per_turn_acp_factory
 
 
 class KaganCore:
@@ -52,7 +52,7 @@ class KaganCore:
         self.chat_sessions = ChatSessions(self._engine, self.settings)
         self.chat = ChatEngine(
             sessions=self.chat_sessions,
-            acp_factory=SpawnPerTurnACPFactory(client=self),
+            acp_factory=make_spawn_per_turn_acp_factory(client=self),
             title_generator=self._make_default_title_generator(),
         )
 

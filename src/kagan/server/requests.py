@@ -3,20 +3,25 @@
 Each model declares exactly the fields that a route accepts.
 Use ``parse_body(request, Model)`` from ``_helpers`` to validate.
 
-Task create/update models live in ``kagan.core.client._io.tasks`` so both
-the REST routes and MCP toolsets share a single canonical definition.
-Re-exported here for backwards compatibility with existing route imports.
+Canonical definitions live in ``kagan.core._io.*`` so both REST routes and
+MCP toolsets share a single source of truth.  The names below are re-exported
+from their canonical locations for backwards compatibility with existing route
+imports.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
+from kagan.core._io.projects import ProjectCreateRequest, RepoAddRequest
+from kagan.core._io.reviews import ReviewDecideRequest
 from kagan.core._io.tasks import TaskCreateRequest, TaskUpdateRequest
 
-# Re-export under the old names used by route imports.
+# Re-export under the legacy names used by route imports.
 CreateTaskRequest = TaskCreateRequest
 UpdateTaskRequest = TaskUpdateRequest
+CreateProjectRequest = ProjectCreateRequest
+AddRepoRequest = RepoAddRequest
 
 __all__ = [
     "AddRepoRequest",
@@ -38,19 +43,6 @@ class RunTaskRequest(BaseModel):
     agent_backend: str | None = Field(default=None, max_length=255)
     persona: str | None = Field(default=None, max_length=255)
     launcher: str | None = Field(default=None, max_length=255)
-
-
-class ReviewDecideRequest(BaseModel):
-    action: str = Field(..., max_length=50)
-    feedback: str | None = Field(default=None, max_length=50_000)
-
-
-class CreateProjectRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-
-class AddRepoRequest(BaseModel):
-    path: str = Field(..., min_length=1, max_length=4096)
 
 
 class FollowUpRequest(BaseModel):

@@ -21,7 +21,6 @@ import {
   useBackendOptions,
   useCriteriaList,
   useGithubRepoSlug,
-  resolveGithubIssue,
   TaskFormFields,
 } from '@/components/board/task-form';
 
@@ -81,7 +80,9 @@ export function EditTaskDialog({ open, onOpenChange, task, onUpdated }: EditTask
         launcher: data.launcher || undefined,
         base_branch: data.base_branch?.trim() || undefined,
         acceptance_criteria: criteriaList.criteria,
-        github_issue: resolveGithubIssue(data),
+        // github_issue is not accepted by PATCH /api/tasks/:id (TaskUpdateRequest
+        // does not expose it). The server ignores extra fields anyway, but TS
+        // would flag it. Use the create endpoint to set github_issue at creation time.
       });
 
       toast.success('Task updated');

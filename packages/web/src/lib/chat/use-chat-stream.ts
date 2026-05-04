@@ -4,24 +4,17 @@ import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { streamSSE } from '@/lib/api/sse';
 import { isStreamingAtom, type ChatStreamEntry } from '@/lib/atoms/chat';
+import { CHAT_STREAM_EVENT } from '@kagan/shared-api-client';
 import type { WireChatMessage } from '@kagan/shared-api-client';
 import type { Attachment } from '@/components/chat/chat-input-bar';
 
-// ---------------------------------------------------------------------------
-// SSE event discriminator — keep the wire string in one place so a server
-// rename surfaces as a TS error instead of silently ignoring chunks.
-// ---------------------------------------------------------------------------
+export { CHAT_STREAM_EVENT } from '@kagan/shared-api-client';
+export type { ChatStreamEventType } from '@kagan/shared-api-client';
 
-export const CHAT_STREAM_EVENT = {
-  CHUNK: 'CHAT_CHUNK',
-  TOOL_START: 'CHAT_TOOL_START',
-  TOOL_PROGRESS: 'CHAT_TOOL_PROGRESS',
-  ERROR: 'CHAT_ERROR',
-  DONE: 'CHAT_DONE',
-  SESSION_UPDATED: 'CHAT_SESSION_UPDATED',
-} as const;
-
-export type ChatStreamEventType = (typeof CHAT_STREAM_EVENT)[keyof typeof CHAT_STREAM_EVENT];
+// ---------------------------------------------------------------------------
+// Local discriminated union for the stream endpoint.
+// Fields are optional because the wire shape has partial fields in some events.
+// ---------------------------------------------------------------------------
 
 interface ChatChunkMsg {
   t: typeof CHAT_STREAM_EVENT.CHUNK;
@@ -46,7 +39,8 @@ interface ChatDoneMsg {
 }
 interface ChatSessionUpdatedMsg {
   t: typeof CHAT_STREAM_EVENT.SESSION_UPDATED;
-  label?: string;
+  /** Server sends { t, session: ChatSessionSummaryResponse } post-turn. */
+  session?: { label?: string };
 }
 
 type ChatStreamMessage =
@@ -83,8 +77,9 @@ export function asChatStreamMessage(raw: Record<string, unknown>): ChatStreamMes
     case CHAT_STREAM_EVENT.DONE:
       return { t };
     case CHAT_STREAM_EVENT.SESSION_UPDATED: {
-      if (raw.label !== undefined && typeof raw.label !== 'string') return null;
-      return { t, label: raw.label };
+      // Server sends { t: "CHAT_SESSION_UPDATED", session: { label, ... } }
+      const session = raw.session as { label?: string } | undefined;
+      return { t, session };
     }
     default:
       return null;
@@ -318,7 +313,7 @@ export function useChatStream(sessionId: string | undefined): UseChatStreamResul
           }
           return;
         case CHAT_STREAM_EVENT.SESSION_UPDATED:
-          if (msg.label !== undefined) setLabel(msg.label);
+          if (msg.session?.label !== undefined) setLabel(msg.session.label);
           return;
       }
     },

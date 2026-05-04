@@ -253,7 +253,9 @@ describe('asChatStreamMessage field validation', () => {
     expect(msg?.t).toBe(CHAT_STREAM_EVENT.DONE);
   });
 
-  it('rejects CHAT_SESSION_UPDATED when label is a number', () => {
-    expect(asChatStreamMessage({ t: CHAT_STREAM_EVENT.SESSION_UPDATED, label: 123 })).toBeNull();
+  it('accepts CHAT_SESSION_UPDATED with no session field', () => {
+    // Server sends { t, session: { label, ... } }; the session field is optional.
+    const msg = asChatStreamMessage({ t: CHAT_STREAM_EVENT.SESSION_UPDATED });
+    expect(msg?.t).toBe(CHAT_STREAM_EVENT.SESSION_UPDATED);
   });
 });

@@ -4,28 +4,48 @@
 // ============================================================================
 
 import type {
+  AnalyticsByRole,
+  AnalyticsByTaskType,
+  AnalyticsExport,
+  BackendRecommendation,
+  BackendStats,
+  BackendTaskRecommendation,
   ChatAgentsResponse,
+  ChatMessageDetailResponse,
+  ClientPresence,
+  CombinedStats,
   CreateChatSessionInput,
   CreateProjectInput,
   CreateTaskInput,
   DiffFile,
   DiffStats,
+  DoctorReportResponse,
   FsBrowseResponse,
+  KaganClientConfig,
+  Mention,
   PreflightResponse,
+  PresenceHeartbeatInput,
   ProjectActivatedResponse,
   ProjectDeletedResponse,
+  ProjectFolderResolutionResponse,
   ResolvedSettingsResponse,
   ReviewDecideResponse,
   ReviewDecisionInput,
   ReviewStatusResponse,
+  RoleStats,
   RunTaskInput,
+  SearchMentionsInput,
+  SessionTimelineEntry,
   SettingsResponse,
   TaskCommitsResponse,
+  TaskCountsResponse,
   TaskDeletedResponse,
   TaskEventOptions,
   TaskStatus,
+  TaskTypeStats,
   TaskWorktreeResponse,
   TransitionStatusInput,
+  TurnStatusResponse,
   UpdateTaskInput,
   WireChatSession,
   WireChatSessionSummary,
@@ -35,10 +55,6 @@ import type {
   WireRepository,
   WireTask,
   WireTaskSession,
-  KaganClientConfig,
-  ClientPresence,
-  PresenceHeartbeatInput,
-  TaskCountsResponse,
   ChatStreamEvent,
 } from "./wire";
 import { ApiError } from "./errors";
@@ -233,11 +249,10 @@ export class KaganApiClient {
   // -- Tasks ----------------------------------------------------------------
 
   /** GET /api/tasks */
-  getTasks(status?: TaskStatus): Promise<WireTask[]> {
+  getTasks(status?: TaskStatus, repoId?: string): Promise<WireTask[]> {
     const params = new URLSearchParams();
-    if (status) {
-      params.set("status", status);
-    }
+    if (status) params.set("status", status);
+    if (repoId) params.set("repo_id", repoId);
     return this.get<WireTask[]>(`/api/tasks${withQuery(params)}`);
   }
 
@@ -473,8 +488,8 @@ export class KaganApiClient {
   }
 
   /** GET /api/chat/:sessionId/turn-status */
-  getTurnStatus(sessionId: string): Promise<{ active: boolean }> {
-    return this.get<{ active: boolean }>(`/api/chat/${sessionId}/turn-status`);
+  getTurnStatus(sessionId: string): Promise<TurnStatusResponse> {
+    return this.get<TurnStatusResponse>(`/api/chat/${sessionId}/turn-status`);
   }
 
   /** GET /api/chat/agents */
@@ -544,6 +559,20 @@ export class KaganApiClient {
     }
   }
 
+  /** POST /api/chat/:sessionId/interrupt */
+  interruptChatTurn(sessionId: string, reason: "user" | "takeover"): Promise<void> {
+    return this.post<void>(`/api/chat/${sessionId}/interrupt`, { reason });
+  }
+
+  /** GET /api/chat/sessions/:sessionId/messages */
+  getChatMessages(sessionId: string, afterId?: number): Promise<ChatMessageDetailResponse[]> {
+    const params = new URLSearchParams();
+    if (afterId !== undefined) params.set("after_id", String(afterId));
+    return this.get<ChatMessageDetailResponse[]>(
+      `/api/chat/sessions/${sessionId}/messages${withQuery(params)}`,
+    );
+  }
+
   // -- Filesystem -----------------------------------------------------------
 
   /** GET /api/fs/browse */
@@ -594,6 +623,184 @@ export class KaganApiClient {
   /** POST /api/presence/heartbeat */
   sendPresenceHeartbeat(input: PresenceHeartbeatInput): Promise<void> {
     return this.post<void>("/api/presence/heartbeat", input);
+  }
+
+  // -- Projects (extended) --------------------------------------------------
+
+  /**
+   * GET /api/projects/resolve-folder
+   * Returns null if the server does not expose this endpoint (404).
+   */
+  async resolveProjectFolder(path?: string): Promise<ProjectFolderResolutionResponse | null> {
+    const params = new URLSearchParams();
+    if (path) params.set("path", path);
+    try {
+      return await this.get<ProjectFolderResolutionResponse>(
+        `/api/projects/resolve-folder${withQuery(params)}`,
+      );
+    } catch (error) {
+      if (ApiError.isApiError(error) && error.isNotFound()) return null;
+      throw error;
+    }
+  }
+
+  // -- Mentions -------------------------------------------------------------
+
+  /** GET /api/mentions/search */
+  async searchMentions(input: SearchMentionsInput): Promise<Mention[]> {
+    const params = new URLSearchParams();
+    params.set("project_id", input.projectId);
+    params.set("q", input.q);
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    const envelope = await this.get<{ mentions: Mention[]; total: number }>(
+      `/api/mentions/search${withQuery(params)}`,
+    );
+    return envelope.mentions;
+  }
+
+  // -- Analytics ------------------------------------------------------------
+
+  /** GET /api/analytics/backend-stats */
+  getBackendStats(params?: { days?: number }): Promise<BackendStats[]> {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<BackendStats[]>(`/api/analytics/backend-stats${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/session-timeline */
+  getSessionTimeline(params?: { days?: number }): Promise<SessionTimelineEntry[]> {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<SessionTimelineEntry[]>(`/api/analytics/session-timeline${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/export */
+  getAnalyticsExport(params?: { days?: number }): Promise<AnalyticsExport> {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<AnalyticsExport>(`/api/analytics/export${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/recommended-backend */
+  getRecommendedBackend(): Promise<BackendRecommendation> {
+    return this.get<BackendRecommendation>("/api/analytics/recommended-backend");
+  }
+
+  /** GET /api/analytics/by-role */
+  getAnalyticsByRole(params?: { days?: number }): Promise<AnalyticsByRole> {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<AnalyticsByRole>(`/api/analytics/by-role${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/by-task-type */
+  getAnalyticsByTaskType(params?: { days?: number }): Promise<AnalyticsByTaskType> {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<AnalyticsByTaskType>(`/api/analytics/by-task-type${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/by-role-and-task-type */
+  getAnalyticsByRoleAndTaskType(params?: {
+    role?: string;
+    task_type?: string;
+    days?: number;
+  }): Promise<CombinedStats[]> {
+    const qs = new URLSearchParams();
+    if (params?.role) qs.set("role", params.role);
+    if (params?.task_type) qs.set("task_type", params.task_type);
+    if (params?.days) qs.set("days", String(params.days));
+    return this.get<CombinedStats[]>(`/api/analytics/by-role-and-task-type${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/recommend-for-task */
+  recommendBackendForTask(params: {
+    title: string;
+    description?: string;
+    role?: string;
+  }): Promise<BackendTaskRecommendation> {
+    const qs = new URLSearchParams();
+    qs.set("title", params.title);
+    if (params.description) qs.set("description", params.description);
+    if (params.role) qs.set("role", params.role);
+    return this.get<BackendTaskRecommendation>(`/api/analytics/recommend-for-task${withQuery(qs)}`);
+  }
+
+  /** GET /api/analytics/by-role (legacy — flattens the grouped response) */
+  async getStatsByRole(): Promise<RoleStats[]> {
+    const grouped = await this.getAnalyticsByRole();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/by-task-type (legacy — flattens the grouped response) */
+  async getStatsByTaskType(): Promise<TaskTypeStats[]> {
+    const grouped = await this.getAnalyticsByTaskType();
+    return Object.values(grouped).flat();
+  }
+
+  /** GET /api/analytics/by-role-and-task-type (legacy alias) */
+  getCombinedStats(): Promise<CombinedStats[]> {
+    return this.getAnalyticsByRoleAndTaskType();
+  }
+
+  // -- Integrations ---------------------------------------------------------
+
+  /** GET /api/integrations */
+  getIntegrations(): Promise<{ integrations: Array<{ id: string; name: string }> }> {
+    return this.get("/api/integrations");
+  }
+
+  /** GET /api/integrations/:id/preflight */
+  getIntegrationPreflight(id: string): Promise<{
+    id: string;
+    checks: Array<{ ok: boolean; message: string; fix_hint: string | null }>;
+    ready: boolean;
+  }> {
+    return this.get(`/api/integrations/${id}/preflight`);
+  }
+
+  /** GET /api/integrations/:id/detect-repo */
+  detectIntegrationRepo(id: string): Promise<{ id: string; repo_slug: string | null }> {
+    return this.get(`/api/integrations/${id}/detect-repo`);
+  }
+
+  /** GET /api/integrations/:id/preview */
+  previewIntegrationIssues(
+    id: string,
+    params: { repo_slug: string; state?: string; labels?: string; limit?: number },
+  ): Promise<{
+    id: string;
+    issues: Array<{
+      number: number;
+      title: string;
+      state: string;
+      labels: string[];
+      url: string;
+      already_synced: boolean;
+    }>;
+    total: number;
+  }> {
+    const qs = new URLSearchParams();
+    qs.set("repo_slug", params.repo_slug);
+    if (params.state) qs.set("state", params.state);
+    if (params.labels) qs.set("labels", params.labels);
+    if (params.limit) qs.set("limit", String(params.limit));
+    return this.get(`/api/integrations/${id}/preview${withQuery(qs)}`);
+  }
+
+  /** POST /api/integrations/:id/sync */
+  runIntegrationSync(
+    id: string,
+    config: Record<string, unknown>,
+  ): Promise<{ id: string; created: number; updated: number; skipped: number; errors: string[] }> {
+    return this.post(`/api/integrations/${id}/sync`, config);
+  }
+
+  // -- Doctor ---------------------------------------------------------------
+
+  /** GET /api/doctor */
+  getDoctorReport(): Promise<DoctorReportResponse> {
+    return this.get("/api/doctor");
   }
 
   // -- Health ---------------------------------------------------------------

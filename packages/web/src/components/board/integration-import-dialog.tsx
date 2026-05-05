@@ -72,7 +72,7 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
 
   useEffect(() => {
     if (!open) return;
-    setState('open'); setLabels(''); setLimit(100);
+    setState('open'); setLabels(''); setLimit(100); setRepo('');
     setReady(null); setPreflightMsg('');
     setStep('filter'); setIssues([]); setSelected(new Set());
     void detect();
@@ -164,7 +164,14 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
 
             <div>
               <Label htmlFor="integration-repo" className="mb-1">Repository</Label>
-              <Input id="integration-repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="font-mono text-sm" autoFocus />
+              {detecting && !repo ? (
+                <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm text-[var(--muted-foreground)]">
+                  <Spinner className="size-3" />
+                  <span>Detecting active repository...</span>
+                </div>
+              ) : (
+                <Input id="integration-repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="font-mono text-sm" autoFocus />
+              )}
             </div>
 
             <div className="flex gap-4">

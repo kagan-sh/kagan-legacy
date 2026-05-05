@@ -77,9 +77,11 @@ export function ContextBar() {
    */
   const ensureRepoSelected = useCallback(
     async (projectId: string, repoList: WireRepository[]) => {
-      const hasSelected = repoList.some((r) => r.selected);
+      const selectedRepo = repoList.find((r) => r.selected);
       const firstRepo = repoList[0];
-      if (!hasSelected && firstRepo) {
+      if (selectedRepo) {
+        setRepoFilter(selectedRepo.id);
+      } else if (firstRepo) {
         try {
           await apiClient.selectProjectRepo(projectId, firstRepo.id);
           await loadRepos(projectId);
@@ -87,7 +89,8 @@ export function ContextBar() {
         } catch {
           // best-effort
         }
-      } else if (!hasSelected && repoList.length === 0) {
+      } else {
+        setRepoFilter(null);
         setAddRepoOpen(true);
       }
     },
@@ -193,14 +196,16 @@ export function ContextBar() {
     if (!activeProject || !activeRepo) return;
     try {
       await apiClient.deleteProjectRepo(activeProject.id, activeRepo.id);
-      await loadRepos(activeProject.id);
+      const repoList = await loadRepos(activeProject.id);
+      await ensureRepoSelected(activeProject.id, repoList);
+      bumpProjectVersion((v) => v + 1);
       toast.success(`Removed repository "${activeRepo.name}"`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to remove repository');
     } finally {
       setDeleteRepoOpen(false);
     }
-  }, [activeProject, activeRepo, loadRepos]);
+  }, [activeProject, activeRepo, loadRepos, ensureRepoSelected, bumpProjectVersion]);
 
   // -- Render ----------------------------------------------------------------
 

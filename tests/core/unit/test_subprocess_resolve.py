@@ -7,7 +7,7 @@ import pytest
 
 from kagan.core._subprocess import resolve_spawn_command
 
-pytestmark = [pytest.mark.core, pytest.mark.unit]
+pytestmark = [pytest.mark.core, pytest.mark.unit, pytest.mark.windows_ci]
 
 
 # ---------------------------------------------------------------------------
@@ -90,16 +90,15 @@ def test_windows_which_none_falls_back_to_original(monkeypatch: pytest.MonkeyPat
 
 
 # ---------------------------------------------------------------------------
-# Absolute path — skip which(), inspect suffix
+# Explicit Windows paths — skip which(), inspect suffix
 # ---------------------------------------------------------------------------
-# Note: these tests use POSIX-style absolute paths (/...) so that
-# Path.is_absolute() returns True when the test suite runs on macOS/Linux.
-# On a real Windows host the same logic handles C:\... paths correctly.
+# Root-relative paths ("\...") are explicit Windows paths even though they do
+# not carry a drive letter. They must not be treated as bare command names.
 
 
 def test_absolute_cmd_path_wraps_without_calling_which(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
-    abs_path = "/tools/claude.cmd"
+    abs_path = "\\tools\\claude.cmd"
     with patch("kagan.core._subprocess.shutil.which") as mock_which:
         result = resolve_spawn_command(abs_path, "--flag")
     mock_which.assert_not_called()
@@ -110,7 +109,7 @@ def test_absolute_exe_path_passes_through_without_calling_which(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
-    abs_path = "/usr/local/bin/git.exe"
+    abs_path = "\\usr\\local\\bin\\git.exe"
     with patch("kagan.core._subprocess.shutil.which") as mock_which:
         result = resolve_spawn_command(abs_path, "status")
     mock_which.assert_not_called()
@@ -160,7 +159,7 @@ def test_windows_mixed_case_ps1_suffix_triggers_wrap(monkeypatch: pytest.MonkeyP
 
 def test_absolute_cmd_no_extra_args(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
-    abs_path = "/tools/cursor.cmd"
+    abs_path = "\\tools\\cursor.cmd"
     # absolute path: which() must not be called
     with patch("kagan.core._subprocess.shutil.which") as mock_which:
         result = resolve_spawn_command(abs_path)

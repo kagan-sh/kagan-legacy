@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StreamingStatus } from '@/components/chat/streaming-status';
 import type { ToolRendererProps } from './index';
 
 export function ReadFileRenderer({ args, status }: ToolRendererProps) {
@@ -22,7 +23,7 @@ export function ReadFileRenderer({ args, status }: ToolRendererProps) {
         {path ?? 'Reading file'}
       </span>
       {status === 'running' && (
-        <span className="shrink-0 text-[var(--kagan-thinking)]">reading</span>
+        <StreamingStatus label="reading" />
       )}
       {status === 'failed' && (
         <span className="shrink-0 text-[var(--destructive)]">failed</span>

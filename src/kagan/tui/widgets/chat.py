@@ -182,7 +182,7 @@ class ChatPanel(Vertical):
         self._chat_input_disable_depth = 0
         self._pending_after_interrupt: str | None = None
         self._history_programmatic_update = False
-        self._overlay_split_key = "Ctrl+I"
+        self._overlay_split_key = "F4"
         self._overlay_fullscreen_key = "Ctrl+Shift+T"
         self._overlay_close_key = "Esc"
         self._status_hint_override: str | None = None
@@ -304,9 +304,7 @@ class ChatPanel(Vertical):
                             id="chat-overlay-mode-badge",
                             classes="mode-docked",
                         )
-                        mode_badge.tooltip = (
-                            "Chat panel mode: Docked or Expanded (Ctrl+I to toggle)"
-                        )
+                        mode_badge.tooltip = "Chat panel mode: Docked or Expanded (F4 to toggle)"
                         yield mode_badge
                         session_indicator = Static(
                             "●",

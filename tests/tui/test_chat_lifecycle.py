@@ -135,9 +135,7 @@ async def test_chat_panel_renders_streaming_assistant_chunks(
     from kagan.tui.widgets.chat import ChatPanel
 
     app = KaganApp(db_path=chat_app.tmp_path / "kagan.db")
-    app.core.chat._acp = _ScriptedFactory(
-        updates=[_text_chunk("Hello, "), _text_chunk("world!")]
-    )
+    app.core.chat._acp = _ScriptedFactory(updates=[_text_chunk("Hello, "), _text_chunk("world!")])
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")

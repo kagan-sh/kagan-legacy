@@ -137,11 +137,11 @@ Open with `Ctrl+Shift+P` from any TUI screen.
 
 The palette surfaces rare or context-specific actions that do not have dedicated keys:
 
-| Action              | Description                                    |
-| ------------------- | ---------------------------------------------- |
-| `review.ai`         | Run AI review on the current REVIEW-state task |
-| `github.import`     | Import issues from a connected GitHub repo     |
-| `repo.sync`         | Sync the active repository reference           |
+| Action          | Description                                    |
+| --------------- | ---------------------------------------------- |
+| `review.ai`     | Run AI review on the current REVIEW-state task |
+| `github.import` | Import issues from a connected GitHub repo     |
+| `repo.sync`     | Sync the active repository reference           |
 
 Type to filter. Press `Enter` to run, `Esc` to dismiss.
 

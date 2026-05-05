@@ -56,9 +56,7 @@ async def test_chat_turn_cancel_persists_partial_with_terminated_flag(
     session = await board.chat_create_session(source="test", label="cancel-test")
     sid = session["id"]
 
-    outcome = await board.chat_send(
-        sid, "hi", agent_chunks=["partial"], cancel_after_chars=1
-    )
+    outcome = await board.chat_send(sid, "hi", agent_chunks=["partial"], cancel_after_chars=1)
 
     assert outcome.terminated is True
     history = await board.chat_history(sid)
@@ -193,9 +191,7 @@ async def test_chat_event_sequence_matches_documented_order(board: KaganDriver) 
     "failure_mode",
     ["history_raises", "settings_get_raises", "post_done_refresh_raises"],
 )
-async def test_chat_slot_released_on_failure_mode(
-    board: KaganDriver, failure_mode: str
-) -> None:
+async def test_chat_slot_released_on_failure_mode(board: KaganDriver, failure_mode: str) -> None:
     """The engine slot must be free after any pre-stream or mid-stream failure."""
     from acp.schema import TextContentBlock
 
@@ -254,9 +250,7 @@ async def test_chat_slot_released_on_failure_mode(
             )
         )
 
-    assert not engine.turn_status(sid).active, (
-        f"Slot leaked after failure mode '{failure_mode}'"
-    )
+    assert not engine.turn_status(sid).active, f"Slot leaked after failure mode '{failure_mode}'"
 
 
 # ---------------------------------------------------------------------------

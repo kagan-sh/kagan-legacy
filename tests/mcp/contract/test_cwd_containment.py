@@ -49,7 +49,8 @@ async def _start_server(opts: ServerOptions) -> tuple[ClientSession, asyncio.Tas
                 server_read, server_write = server_streams
                 server_task = asyncio.create_task(
                     mcp._mcp_server.run(
-                        server_read, server_write,
+                        server_read,
+                        server_write,
                         mcp._mcp_server.create_initialization_options(),
                     )
                 )

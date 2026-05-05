@@ -678,6 +678,7 @@ def test_chat_interactive_banner_contains_help_hint(monkeypatch, tmp_path: Path)
     async def _fake_run_chat_async(*, prompt=None, session_id=None, agent=None, yolo=False):
         # Simulate interactive call: no prompt
         from kagan.cli.chat.repl import _write_boot_banner
+
         _write_boot_banner(interactive=prompt is None)
 
     monkeypatch.setattr("kagan.cli.chat.run_chat_async", _fake_run_chat_async)

@@ -553,9 +553,7 @@ class Events:
         Call once per subscriber (e.g. the session manager's completion handler)
         before the agent session starts so the counter is ready when the event fires.
         """
-        self._agent_end_pending[session_id] = (
-            self._agent_end_pending.get(session_id, 0) + count
-        )
+        self._agent_end_pending[session_id] = self._agent_end_pending.get(session_id, 0) + count
         if session_id not in self._agent_end_idle:
             self._agent_end_idle[session_id] = asyncio.Event()
 

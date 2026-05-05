@@ -49,9 +49,7 @@ async def test_add_repo_requires_git_when_auto_init_disabled(
         await bare_board.add_repo(repo_path)
 
 
-async def test_add_repo_uses_default_base_branch_setting(
-    bare_board: KaganDriver, tmp_path
-) -> None:
+async def test_add_repo_uses_default_base_branch_setting(bare_board: KaganDriver, tmp_path) -> None:
     repo_path = tmp_path / "trunk-folder"
     project_id = await bare_board.create_project("Branch Default Project")
     await bare_board.settings_update({"default_base_branch": "trunk"})

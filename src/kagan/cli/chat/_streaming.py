@@ -1,9 +1,12 @@
 """Response chunk processing and streaming output with memory safeguards."""
 
+import re
+from threading import RLock
 from typing import Any
 
 from loguru import logger
 from rich.markdown import Markdown
+from rich.text import Text
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
 _MAX_RESPONSE_CHUNKS_BYTES = 10 * 1024 * 1024
@@ -57,38 +60,61 @@ class ResponseChunkBuffer:
         return len(self._chunks) == 0
 
 
+_WORD_RE = re.compile(r"\S+\s*|\s+")
+
+
+def _looks_like_markdown(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if "```" in stripped:
+        return True
+    for line in stripped.splitlines():
+        compact = line.strip()
+        if compact.startswith(("# ", "## ", "### ", "- ", "* ", "> ")):
+            return True
+        if compact.startswith("|") and compact.endswith("|"):
+            return True
+    return False
+
+
 class StreamingMarkdownRegion:
-    """Accumulates streaming Markdown chunks and commits them on finalize.
-
-    Chunks accumulate in a buffer.  ``finalize()`` commits the final
-    Markdown render to the console via ``_console.print(Markdown(text))``.
-    ``patch_stdout(raw=True)`` in the outer REPL loop routes this output
-    above the prompt-toolkit toolbar so the footer stays pinned.
-
-    The previous ``attach()`` / parent-tail mechanism (``TurnLiveRegion``)
-    has been removed.  Streaming updates are now purely accumulative;
-    the prompt-toolkit toolbar provides the only live footer.
-    """
+    """Streams incoming chunks immediately and keeps the final Markdown buffer."""
 
     def __init__(self, console: Any) -> None:
         self._console = console
         self._buffer: list[str] = []
+        self._printed = False
+        self._lock = RLock()
 
     def append(self, text: str) -> None:
         if not text:
             return
-        self._buffer.append(text)
+        with self._lock:
+            self._buffer.append(text)
+            self._print_words(text)
 
     def finalize(self) -> None:
-        """Commit the accumulated Markdown to the console and clear the buffer."""
-        text = self._joined().strip()
-        self._buffer = []
+        """Finish the live line, then render Markdown when the reply needs it."""
+        with self._lock:
+            text = self._joined().strip()
+            printed = self._printed
+            self._buffer = []
+            self._printed = False
         if text:
-            self._console.print(Markdown(text))
+            if printed:
+                self._console.print()
+                self._console.file.flush()
+                if _looks_like_markdown(text):
+                    self._console.print(Markdown(text))
+            else:
+                self._console.print(Markdown(text))
 
     def discard(self) -> None:
         """Clear the buffer without printing (used on turn reset)."""
-        self._buffer = []
+        with self._lock:
+            self._buffer = []
+            self._printed = False
 
     @property
     def is_active(self) -> bool:
@@ -96,3 +122,11 @@ class StreamingMarkdownRegion:
 
     def _joined(self) -> str:
         return "".join(self._buffer)
+
+    def _print_words(self, text: str) -> None:
+        for token in _WORD_RE.findall(text):
+            if not token:
+                continue
+            self._console.print(Text(token, style="bright_white"), end="", highlight=False)
+            self._console.file.flush()
+            self._printed = True

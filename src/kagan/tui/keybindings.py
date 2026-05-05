@@ -86,7 +86,7 @@ KANBAN_BINDINGS: list[BindingType] = [
     Binding("f", "expand_description", "Expand Description"),
     Binding("p", "peek_task", "Peek"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
+    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("b", "set_branch", "Branch"),
@@ -112,7 +112,7 @@ TASK_SCREEN_BINDINGS: list[BindingType] = [
     Binding("m", "merge", "Merge"),
     Binding("b", "rebase", "Rebase"),
     Binding("ctrl+f", "expand_chat_overlay", "AI Fullscreen", key_display="Ctrl+F"),
-    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
+    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
@@ -123,7 +123,7 @@ SESSION_DASHBOARD_BINDINGS: list[BindingType] = [
     Binding("s", "start_agent", "Start"),
     Binding("x", "stop_agent", "Stop"),
     Binding("r", "restart_agent", "Restart"),
-    Binding("ctrl+i", "toggle_chat", "AI Panel", key_display="Ctrl+I"),
+    Binding("ctrl+i,f4", "toggle_chat", "AI Panel", key_display="F4"),
     Binding("ctrl+shift+t", "fullscreen_chat", "", key_display="Ctrl+Shift+T", show=False),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("escape", "back", "Back"),
@@ -134,7 +134,7 @@ WORKSPACE_BINDINGS: list[BindingType] = [
     Binding("n", "new_session", "New"),
     Binding("x", "delete_session", "Delete"),
     Binding("slash", "focus_search", "Search", key_display="/"),
-    Binding("ctrl+i", "focus_chat", "Chat", key_display="Ctrl+I"),
+    Binding("ctrl+i,f4", "focus_chat", "Chat", key_display="F4"),
     Binding("ctrl+k", "switch_session", "Session Switcher", key_display="Ctrl+K"),
     Binding("w", "toggle_board", "Board"),
     Binding("escape", "back", "Back"),
@@ -321,7 +321,7 @@ class FooterBuilder:
     def kanban_with_card() -> list[tuple[str, str]]:
         return [
             ("Enter", "open"),
-            ("Ctrl+I", "AI panel"),
+            ("F4", "AI panel"),
             ("P", "peek"),
             ("e", "edit"),
             ("x", "delete"),
@@ -338,7 +338,7 @@ class FooterBuilder:
         return [
             ("1/2", "tabs"),
             ("Enter", "action"),
-            ("Ctrl+I", "AI panel"),
+            ("F4", "AI panel"),
             ("Ctrl+F", "assistant full"),
             ("e", "edit"),
             ("d", "delete"),
@@ -364,7 +364,7 @@ class FooterBuilder:
             ("s", "start"),
             ("x", "stop"),
             ("r", "restart"),
-            ("Ctrl+I", "AI panel"),
+            ("F4", "AI panel"),
             ("Esc", "back"),
         ]
 

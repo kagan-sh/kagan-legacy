@@ -47,9 +47,7 @@ class TestFsReadFile:
         tmp_path: Path,
     ) -> None:
         f = _file(tmp_path, "plain.txt", b"hello\nworld\n")
-        result = await mcp_board_admin_with_core.call_tool(
-            "fs_read_file", {"path": str(f)}
-        )
+        result = await mcp_board_admin_with_core.call_tool("fs_read_file", {"path": str(f)})
         assert not result.isError
         payload = _text(result)
         assert payload["content"] == "hello\nworld\n"
@@ -63,9 +61,7 @@ class TestFsReadFile:
         tmp_path: Path,
     ) -> None:
         f = _file(tmp_path, "crlf.txt", b"line1\r\nline2\r\n")
-        result = await mcp_board_admin_with_core.call_tool(
-            "fs_read_file", {"path": str(f)}
-        )
+        result = await mcp_board_admin_with_core.call_tool("fs_read_file", {"path": str(f)})
         assert not result.isError
         payload = _text(result)
         assert payload["eol_style"] == "crlf"
@@ -78,9 +74,7 @@ class TestFsReadFile:
     ) -> None:
         raw = b"\xef\xbb\xbfhello\nworld"
         f = _file(tmp_path, "bom.txt", raw)
-        result = await mcp_board_admin_with_core.call_tool(
-            "fs_read_file", {"path": str(f)}
-        )
+        result = await mcp_board_admin_with_core.call_tool("fs_read_file", {"path": str(f)})
         assert not result.isError
         payload = _text(result)
         assert payload["has_bom"] is True

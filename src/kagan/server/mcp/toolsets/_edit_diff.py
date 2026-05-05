@@ -137,17 +137,22 @@ _RE_SMART_DOUBLE: re.Pattern[str] = _char_class([0x201C, 0x201D, 0x201E, 0x201F]
 
 # Unicode dashes/hyphens: U+2010 hyphen, U+2011 NB-hyphen, U+2012 figure dash,
 # U+2013 en-dash, U+2014 em-dash, U+2015 horizontal bar, U+2212 minus sign
-_RE_DASHES: re.Pattern[str] = _char_class(
-    [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212]
-)
+_RE_DASHES: re.Pattern[str] = _char_class([0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212])
 
 # Special Unicode spaces: U+00A0 NBSP, U+2002-U+200A various spaces,
 # U+202F narrow NBSP, U+205F medium math space, U+3000 ideographic space
 _RE_SPECIAL_SPACES: re.Pattern[str] = _char_class(
     [
         0x00A0,  # NO-BREAK SPACE
-        0x2002, 0x2003, 0x2004, 0x2005, 0x2006,  # EN/EM/3-PER-EM/4-PER-EM/6-PER-EM SPACE
-        0x2007, 0x2008, 0x2009, 0x200A,  # FIGURE/PUNCTUATION/THIN/HAIR SPACE
+        0x2002,
+        0x2003,
+        0x2004,
+        0x2005,
+        0x2006,  # EN/EM/3-PER-EM/4-PER-EM/6-PER-EM SPACE
+        0x2007,
+        0x2008,
+        0x2009,
+        0x200A,  # FIGURE/PUNCTUATION/THIN/HAIR SPACE
         0x202F,  # NARROW NO-BREAK SPACE
         0x205F,  # MEDIUM MATHEMATICAL SPACE
         0x3000,  # IDEOGRAPHIC SPACE
@@ -288,9 +293,8 @@ def merge_overlapping_edits(edits: list[LineEdit]) -> list[LineEdit]:
             # Merge: extend to whichever end_line is larger.
             new_end = max(last.end_line, current.end_line)
             # Join replacements; ensure a single newline between them.
-            needs_sep = (
-                not last.replacement.endswith("\n")
-                and not current.replacement.startswith("\n")
+            needs_sep = not last.replacement.endswith("\n") and not current.replacement.startswith(
+                "\n"
             )
             sep = "\n" if needs_sep else ""
             new_replacement = last.replacement + sep + current.replacement
@@ -417,8 +421,6 @@ def apply_edits_to_normalized_content(
                 "This might indicate an issue with special characters or "
                 "the text not existing as expected."
             )
-        raise ValueError(
-            f"No changes made to {path}. The replacements produced identical content."
-        )
+        raise ValueError(f"No changes made to {path}. The replacements produced identical content.")
 
     return base_content, new_content

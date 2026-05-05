@@ -46,19 +46,23 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
   const detect = useCallback(async () => {
     setDetecting(true);
     try {
-      const [repoResult, preflight] = await Promise.all([
+      const [repoSettled, preflightSettled] = await Promise.allSettled([
         apiClient.detectIntegrationRepo('github'),
         apiClient.getIntegrationPreflight('github'),
       ]);
-      if (repoResult.repo_slug) setRepo(repoResult.repo_slug);
-      setReady(preflight.ready);
-      if (!preflight.ready) {
-        const failing = preflight.checks.find((c) => !c.ok);
-        setPreflightMsg(failing?.message ?? 'Integration not ready');
+      if (repoSettled.status === 'fulfilled' && repoSettled.value.repo_slug) {
+        setRepo(repoSettled.value.repo_slug);
       }
-    } catch {
-      setReady(null);
-      setPreflightMsg('Could not reach integration API');
+      if (preflightSettled.status === 'fulfilled') {
+        setReady(preflightSettled.value.ready);
+        if (!preflightSettled.value.ready) {
+          const failing = preflightSettled.value.checks.find((c) => !c.ok);
+          setPreflightMsg(failing?.message ?? 'Integration not ready');
+        }
+      } else {
+        setReady(null);
+        setPreflightMsg('Could not reach integration API');
+      }
     } finally {
       setDetecting(false);
     }
@@ -66,7 +70,7 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
 
   useEffect(() => {
     if (!open) return;
-    setRepo(''); setState('open'); setLabels(''); setLimit(100);
+    setState('open'); setLabels(''); setLimit(100);
     setReady(null); setPreflightMsg('');
     setStep('filter'); setIssues([]); setSelected(new Set());
     void detect();

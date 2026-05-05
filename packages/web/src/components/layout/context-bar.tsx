@@ -97,11 +97,14 @@ export function ContextBar() {
     const init = async () => {
       const data = await loadProjects();
       const active = data.find((p) => p.active);
-      if (active) await loadRepos(active.id);
+      if (active) {
+        const repoList = await loadRepos(active.id);
+        await ensureRepoSelected(active.id, repoList);
+      }
       setLoading(false);
     };
     init();
-  }, [loadProjects, loadRepos]);
+  }, [loadProjects, loadRepos, ensureRepoSelected]);
 
   // -- Handlers --------------------------------------------------------------
 
@@ -158,9 +161,12 @@ export function ContextBar() {
 
   const handleRepoAdded = useCallback(async () => {
     if (activeProject) {
-      await loadRepos(activeProject.id);
+      const repoList = await loadRepos(activeProject.id);
+      const selected = repoList.find((r) => r.selected);
+      if (selected) setRepoFilter(selected.id);
+      bumpProjectVersion((v) => v + 1);
     }
-  }, [activeProject, loadRepos]);
+  }, [activeProject, loadRepos, setRepoFilter, bumpProjectVersion]);
 
   const handleDeleteProject = useCallback(async () => {
     if (!activeProject) return;

@@ -1,5 +1,6 @@
 import { FileDiff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StreamingStatus } from '@/components/chat/streaming-status';
 import type { ToolRendererProps } from './index';
 
 export function DiffRenderer({ args, status }: ToolRendererProps) {
@@ -23,7 +24,7 @@ export function DiffRenderer({ args, status }: ToolRendererProps) {
           {path ?? 'Applying diff'}
         </span>
         {status === 'running' && (
-          <span className="shrink-0 text-[var(--kagan-thinking)]">running</span>
+          <StreamingStatus label="running" />
         )}
         {status === 'failed' && (
           <span className="shrink-0 text-[var(--destructive)]">failed</span>

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from rich.console import Console
@@ -99,6 +99,19 @@ def test_streamed_chunks_are_collected_and_returned_by_finish_turn() -> None:
 
     response = renderer.finish_turn()
     assert response == "abc"
+
+
+def test_streamed_words_are_printed_and_flushed_before_finish_turn() -> None:
+    fake_console = _FakeConsole()
+    renderer = CLIRenderer(cast("Any", fake_console))
+    renderer.start_turn()
+
+    renderer.on_assistant_chunk("hello world")
+
+    rendered = "".join(str(args[0]) for args, _ in fake_console.calls if args)
+    assert "hello " in rendered
+    assert "world" in rendered
+    assert fake_console.file.flush_count >= 2
 
 
 def test_markdown_region_renders_reply_to_console_at_finish_turn() -> None:

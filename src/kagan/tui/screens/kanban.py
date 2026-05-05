@@ -631,7 +631,11 @@ class KanbanScreen(Screen[None]):
 
     @staticmethod
     def _global_hints() -> list[tuple[str, str]]:
-        rows = get_global_shortcut_help_rows()
+        rows = [
+            row
+            for row in get_global_shortcut_help_rows()
+            if row[1].lower() not in {"help", "quick actions"}
+        ]
         return rows[:3]
 
     def _mode_label(self) -> str:
@@ -708,7 +712,7 @@ class KanbanScreen(Screen[None]):
         open_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")
         search_key = get_key_for_action(KANBAN_BINDINGS, "search", default="/")
         new_key = get_key_for_action(KANBAN_BINDINGS, "new_task", default="n")
-        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="Ctrl+I")
+        overlay_key = get_key_for_action(KANBAN_BINDINGS, "toggle_chat", default="F4")
         right_key = get_key_for_action(KANBAN_BINDINGS, "move_right", default="Shift+Right")
         left_key = get_key_for_action(KANBAN_BINDINGS, "move_left", default="Shift+Left")
         session_key = get_key_for_action(KANBAN_BINDINGS, "open_task", default="Enter")

@@ -215,9 +215,7 @@ class TestBashExecMcpTool:
         assert payload["exit_code"] == 0
         assert "mcp_hello" in payload["output"]
 
-    async def test_nonzero_exit_code_not_an_mcp_error(
-        self, mcp_board: ClientSession
-    ) -> None:
+    async def test_nonzero_exit_code_not_an_mcp_error(self, mcp_board: ClientSession) -> None:
         """bash_exec returning non-zero exit_code does not raise an MCP error."""
         import json
 

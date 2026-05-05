@@ -598,7 +598,7 @@ class WorkspaceScreen(Screen[None]):
             parts.append(item.agent_backend)
         if item.updated_relative:
             parts.append(f"updated {item.updated_relative}")
-        parts.append("Ctrl+I to type")
+        parts.append("F4 to type")
         parts.append("Esc to step back")
         subtitle.update(" · ".join(parts))
 
@@ -607,7 +607,7 @@ class WorkspaceScreen(Screen[None]):
         new_key = get_key_for_action(WORKSPACE_BINDINGS, "new_session", default="n")
         delete_key = get_key_for_action(WORKSPACE_BINDINGS, "delete_session", default="x")
         board_key = get_key_for_action(WORKSPACE_BINDINGS, "toggle_board", default="w")
-        chat_key = get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="Ctrl+I")
+        chat_key = get_key_for_action(WORKSPACE_BINDINGS, "focus_chat", default="F4")
         switch_key = get_key_for_action(WORKSPACE_BINDINGS, "switch_session", default="Ctrl+K")
         open_key = get_key_for_action(WORKSPACE_BINDINGS, "open_session", default="Enter")
         widget = focused or self.focused

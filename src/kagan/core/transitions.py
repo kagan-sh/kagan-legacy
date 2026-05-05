@@ -207,6 +207,7 @@ async def transition_session(
     Returns:
         The refreshed ``Session`` model after the status write.
     """
+
     def _get_session(s):
         obj = s.get(Session, session_id)
         if obj is None:

@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatOverlayEmptyState } from '@/components/session/chat-overlay-empty-state';
 import { extractToolStatus, extractToolTitle } from '@/lib/api/event-rendering';
+import { StreamingGlyph } from '@/components/chat/streaming-glyph';
+import { StreamingStatus } from '@/components/chat/streaming-status';
 
 /** A user follow-up message displayed inline in the event stream. */
 export interface UserFollowUp {
@@ -303,8 +305,8 @@ export function EventStream({ events, userFollowUps, isRunning, className, hasMo
 function LiveIndicator() {
   return (
     <div className="flex items-center gap-2 border-b border-[color:var(--border-subtle)] px-4 py-1.5">
-      <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
-      <span className="font-code text-[10px] uppercase tracking-wider text-emerald-600">Live</span>
+      <StreamingGlyph className="text-[10px] leading-none" />
+      <span className="font-code text-[10px] uppercase tracking-wider text-[var(--kagan-thinking)]">Live</span>
     </div>
   );
 }
@@ -362,8 +364,9 @@ function ToolCallRow({ title, status, payload, time }: { title: string; status: 
   return (
     <Collapsible disabled={!hasDetail}>
       <div className="flex items-center gap-2 bg-[color:var(--surface-1)] shadow-[var(--ambient-shadow)] px-3 py-1.5 text-[12px]">
-        <Wrench className={cn('size-3.5 shrink-0', status === 'running' ? 'text-[var(--primary)] animate-pulse' : 'text-[var(--kagan-rail-running)]')} />
+        <Wrench className={cn('size-3.5 shrink-0', status === 'running' ? 'text-[var(--kagan-thinking)]' : 'text-[var(--kagan-rail-running)]')} />
         <span className="min-w-0 flex-1 truncate font-medium text-[var(--foreground)]">{title}</span>
+        {status === 'running' ? <StreamingStatus label="running" /> : null}
         <span className="font-code text-[10px] text-[var(--muted-foreground)]">{time}</span>
         {hasDetail ? (
           <CollapsibleTrigger asChild>

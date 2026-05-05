@@ -31,7 +31,6 @@ from kagan.core import (
     AttachmentBody,
     ChatSessionCreateRequest,
     ChatSessionPatchRequest,
-    resolve_default_agent_backend,
 )
 from kagan.core.chat import (
     ChatEvent,
@@ -523,14 +522,17 @@ def _register_crud_routes(mcp: FastMCP) -> None:
     @handle_errors
     async def list_agents(_request: Request, *, ctx: ServerContext) -> JSONResponse:
         """List available agent backends."""
-        from kagan.cli.chat.agents import list_backends_with_availability
+        from kagan.cli.chat.agents import (
+            list_backends_with_availability,
+            resolve_available_chat_backend,
+        )
 
+        backend_availability = list_backends_with_availability()
         backends = [
-            AgentBackendResponse.model_validate(backend)
-            for backend in list_backends_with_availability()
+            AgentBackendResponse.model_validate(backend) for backend in backend_availability
         ]
         settings = await ctx.client.settings.get()
-        default = resolve_default_agent_backend(settings)
+        default = resolve_available_chat_backend(settings, backends=backend_availability)
         return _ok(ChatAgentsResponse(backends=backends, default=default).model_dump(mode="json"))
 
 
@@ -565,7 +567,12 @@ def _register_stream_routes(mcp: FastMCP) -> None:
         if session is None:
             return _err("Session not found", status=404)
         settings = await ctx.client.settings.get()
-        backend = agent_backend or session.agent_backend or resolve_default_agent_backend(settings)
+        if agent_backend or session.agent_backend:
+            backend = agent_backend or session.agent_backend
+        else:
+            from kagan.cli.chat.agents import resolve_available_chat_backend
+
+            backend = resolve_available_chat_backend(settings)
 
         # Pre-flight 409: cheap turn_status read keeps the early-error path
         # fast (no need to start the SSE response just to tear it down).

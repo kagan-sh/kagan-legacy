@@ -84,8 +84,8 @@ export function ContextBar() {
       } else if (firstRepo) {
         try {
           await apiClient.selectProjectRepo(projectId, firstRepo.id);
-          await loadRepos(projectId);
           setRepoFilter(firstRepo.id);
+          await loadRepos(projectId);
         } catch {
           // best-effort
         }

@@ -13,6 +13,46 @@
 
 
 
+## v0.19.0-beta.30 (2026-05-05)
+
+
+
+
+### Bug Fixes
+
+- **chat**: Require ACP launchers for backend readiness
+  ([#145](https://github.com/kagan-sh/kagan/pull/145),
+  [`45e42dd`](https://github.com/kagan-sh/kagan/commit/45e42ddc6c73b59946e846e99501834039cfe3f3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Continuous Integration
+
+- Streamline GitHub Actions feedback loops
+  ([`31ae55a`](https://github.com/kagan-sh/kagan/commit/31ae55a1f0011e0bb189e957ed5bd5d2767a10f6))
+
+
+
+
+
 ## v0.19.0-beta.29 (2026-05-04)
 
 

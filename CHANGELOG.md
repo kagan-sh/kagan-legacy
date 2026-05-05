@@ -13,6 +13,73 @@
 
 
 
+## v0.19.0-beta.31 (2026-05-05)
+
+
+
+
+### Bug Fixes
+
+- **chat**: Filter ACP stdout noise before parsing
+  ([#148](https://github.com/kagan-sh/kagan/pull/148),
+  [`1394e10`](https://github.com/kagan-sh/kagan/commit/1394e100b4690dfa68b5e40332408d1e09902265))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Continuous Integration
+
+- Skip web and vscode jobs on unrelated PRs ([#148](https://github.com/kagan-sh/kagan/pull/148),
+  [`1394e10`](https://github.com/kagan-sh/kagan/commit/1394e100b4690dfa68b5e40332408d1e09902265))
+
+- Trim Windows gate to compatibility slice ([#147](https://github.com/kagan-sh/kagan/pull/147),
+  [`0a2e262`](https://github.com/kagan-sh/kagan/commit/0a2e2624e7a9c28ab07716180a27c6a1d4fae45f))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Testing
+
+- Make runtime env test platform-explicit ([#146](https://github.com/kagan-sh/kagan/pull/146),
+  [`20fed7a`](https://github.com/kagan-sh/kagan/commit/20fed7ab672291cc541a71f2a1693fd328f16671))
+
+
+
+
+
 ## v0.19.0-beta.30 (2026-05-05)
 
 

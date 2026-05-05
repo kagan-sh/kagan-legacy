@@ -29,7 +29,7 @@ type E2EProject = {
   repoId: string;
 };
 
-let fixturePromise: Promise<E2EProject> | null = null;
+const fixturePromises = new Map<string, Promise<E2EProject>>();
 
 async function expectOk(response: APIResponse, label: string): Promise<void> {
   if (response.ok()) return;
@@ -73,11 +73,16 @@ async function createFixture(request: APIRequestContext): Promise<E2EProject> {
 }
 
 async function getFixture(request: APIRequestContext): Promise<E2EProject> {
-  fixturePromise ??= createFixture(request).catch((error: unknown) => {
-    fixturePromise = null;
+  const workerKey = process.env.TEST_WORKER_INDEX ?? 'default';
+  const existing = fixturePromises.get(workerKey);
+  if (existing) return existing;
+
+  const created = createFixture(request).catch((error: unknown) => {
+    fixturePromises.delete(workerKey);
     throw error;
   });
-  return fixturePromise;
+  fixturePromises.set(workerKey, created);
+  return created;
 }
 
 export async function ensureBoardReady(

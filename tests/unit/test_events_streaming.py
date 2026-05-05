@@ -79,6 +79,7 @@ async def test_output_chunk_drain_suppresses_write_failure(
 ) -> None:
     chunk = OutputChunk("", kind="assistant")
     chunk.stream_fragment("opening words")
+    chunk.stream_fragment(" after")
 
     async def _raise(_fragment: str) -> None:
         raise RuntimeError("unmounted")
@@ -86,6 +87,9 @@ async def test_output_chunk_drain_suppresses_write_failure(
     monkeypatch.setattr(chunk, "_write_animated", _raise)
 
     await chunk._drain_fragments()
+
+    assert chunk._accumulated_text == "opening words after"
+    assert chunk._pending_fragments.empty()
 
 
 @pytest.mark.asyncio

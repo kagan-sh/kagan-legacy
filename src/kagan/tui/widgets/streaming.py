@@ -136,6 +136,16 @@ class OutputChunk(Markdown):
                 await self._write_animated(fragment)
             except Exception:
                 logger.debug("Streaming output drain stopped", exc_info=True)
+                self._clear_pending_fragments()
+                with contextlib.suppress(Exception):
+                    self.update(self._accumulated_text)
+                return
+
+    def _clear_pending_fragments(self) -> None:
+        while True:
+            try:
+                self._pending_fragments.get_nowait()
+            except asyncio.QueueEmpty:
                 return
 
     async def _write_animated(self, fragment: str) -> None:

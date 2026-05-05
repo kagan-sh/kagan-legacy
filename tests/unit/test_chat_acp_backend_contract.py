@@ -95,7 +95,7 @@ async def test_run_orchestrator_turn_uses_backend_spec_env_vars(
         captured["cwd"] = kwargs["cwd"]
         return _FakeSpawnContext()
 
-    monkeypatch.setattr(chat_acp.acp, "spawn_agent_process", _fake_spawn_agent_process)
+    monkeypatch.setattr(chat_acp, "spawn_filtered_agent_process", _fake_spawn_agent_process)
 
     client = SimpleNamespace(
         active_project_id=None,
@@ -176,8 +176,8 @@ async def test_run_orchestrator_turn_retries_without_mcp_servers_when_backend_re
             return False
 
     monkeypatch.setattr(
-        chat_acp.acp,
-        "spawn_agent_process",
+        chat_acp,
+        "spawn_filtered_agent_process",
         lambda *_args, **_kwargs: _FakeSpawnContext(),
     )
 

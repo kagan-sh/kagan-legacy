@@ -474,8 +474,11 @@ async def run_acp_session(
     if process.stdin is None or process.stdout is None:
         raise RuntimeError("ACP process must expose stdin/stdout pipes")
 
-    conn = acp.connect_to_agent(client, process.stdin, process.stdout)
     resolved_backend = backend_name or _infer_backend_name_from_process(process)
+    from kagan.core._acp_streams import JsonRpcObjectStreamReader
+
+    stdout = JsonRpcObjectStreamReader(process.stdout, backend_name=resolved_backend)
+    conn = acp.connect_to_agent(client, process.stdin, stdout)
     timeout_s = _acp_startup_timeout_seconds(resolved_backend)
     try:
         try:

@@ -33,6 +33,7 @@ from acp.schema import (
 )
 from loguru import logger
 
+from kagan.core._acp_spawn import spawn_filtered_agent_process
 from kagan.core.errors import AgentError
 
 if TYPE_CHECKING:
@@ -241,10 +242,11 @@ class LongLivedACPFactory:
 
         try:
             conn, proc = await stack.enter_async_context(
-                acp.spawn_agent_process(
+                spawn_filtered_agent_process(
                     capture,
                     resolved_cmd[0],
                     *resolved_cmd[1:],
+                    backend_name=self.agent_backend,
                     cwd=str(resolved_cwd),
                     env=env,
                     transport_kwargs={"limit": _ACP_STDIO_BUFFER_LIMIT_BYTES},

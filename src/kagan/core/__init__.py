@@ -18,6 +18,7 @@ from kagan.core._acp import (
     acp_startup_timeout_seconds,
     friendly_acp_error_message,
 )
+from kagan.core._acp_spawn import spawn_filtered_agent_process
 from kagan.core._agent import (
     CLAUDE_CODE_BACKEND,
     CODEX_BACKEND,
@@ -392,6 +393,7 @@ __all__ = [
     "set_criterion_verdict",
     "set_repo_default_branch",
     "set_settings",
+    "spawn_filtered_agent_process",
     "transition_session",
     "transition_task",
     "utc_iso",

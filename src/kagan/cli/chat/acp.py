@@ -37,6 +37,7 @@ from kagan.core import (
     get_backend_spec,
     resolve_orchestrator_prompt,
     resolve_spawn_command,
+    spawn_filtered_agent_process,
 )
 from kagan.core.errors import AgentError
 
@@ -305,10 +306,11 @@ async def run_orchestrator_turn(
     capture_client = _CaptureACPClient(on_update=on_update, permission_resolver=permission_resolver)
     timeout_s = _acp_handshake_timeout_seconds(agent_backend)
     try:
-        async with acp.spawn_agent_process(
+        async with spawn_filtered_agent_process(
             capture_client,
             resolved_cmd[0],
             *resolved_cmd[1:],
+            backend_name=agent_backend,
             cwd=str(resolved_cwd),
             env=env,
             transport_kwargs={"limit": _ACP_STDIO_BUFFER_LIMIT_BYTES},

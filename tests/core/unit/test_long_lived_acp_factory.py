@@ -1,6 +1,6 @@
 """Unit tests for ``kagan.core.chat._factories.LongLivedACPFactory``.
 
-Mocks ``acp.spawn_agent_process`` and the ACP-capable-backend lookup so these
+Mocks the ACP spawn helper and the ACP-capable-backend lookup so these
 tests don't actually spawn an orchestrator subprocess. The factory's contract:
 ONE subprocess across many turns; ``restart()`` tears down + respawns; the
 permission resolver round-trips through the long-lived ``_CaptureACPClient``.
@@ -60,7 +60,7 @@ class _FakeConn:
 
 
 class _SpawnRecorder:
-    """Tracks how many times spawn_agent_process is invoked."""
+    """Tracks how many times the ACP spawn helper is invoked."""
 
     def __init__(self) -> None:
         self.count = 0
@@ -116,8 +116,6 @@ def patched_factory(
     monkeypatch.setattr(core_agent_mod, "get_backend_spec", lambda _name: spec)
 
     recorder = _SpawnRecorder()
-    monkeypatch.setattr(cli_chat_acp.acp, "spawn_agent_process", recorder.spawn)
-
     # Stub orchestrator system-prompt resolution so _build_prompt_blocks is fast.
     import kagan.core.chat._factories as factories_mod
 
@@ -135,6 +133,7 @@ def patched_factory(
         lambda _settings, _cwd: "SYSTEM",
         raising=False,
     )
+    monkeypatch.setattr(factories_mod, "spawn_filtered_agent_process", recorder.spawn)
     # The factory imports it lazily inside _build_prompt_blocks. Patch the
     # source module that the lazy import resolves to.
     import kagan.core as core_pkg
@@ -177,7 +176,7 @@ async def test_long_lived_factory_shares_subprocess_across_turns(
             )
             assert result.cancelled is False
 
-    assert recorder.count == 1, "spawn_agent_process must be called once across turns"
+    assert recorder.count == 1, "ACP spawn helper must be called once across turns"
     assert len(recorder.conns[0].prompt_calls) == 2
 
 

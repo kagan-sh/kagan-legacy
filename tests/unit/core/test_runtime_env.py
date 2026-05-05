@@ -315,7 +315,7 @@ class TestBuildSanitizedSubprocessEnvironment:
             "SSH_AUTH_SOCK": "/tmp/ssh.sock",
             "GIT_CONFIG_GLOBAL": "/home/user/.gitconfig",
         }
-        result = build_sanitized_subprocess_environment(base_env)
+        result = build_sanitized_subprocess_environment(base_env, platform_name="linux")
         for key in _ESSENTIAL_ENV:
             assert key in result
             assert result[key] == base_env[key]

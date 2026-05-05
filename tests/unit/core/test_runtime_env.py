@@ -645,6 +645,8 @@ class TestIntegrationScenarios:
 class TestEssentialEnvSelector:
     """Tests for the _essential_env() platform-selection helper."""
 
+    pytestmark = pytest.mark.windows_ci
+
     def test_posix_set_returned_for_linux(self) -> None:
         """Linux platform should return the POSIX frozenset."""
         assert _essential_env("linux") is _ESSENTIAL_ENV_POSIX
@@ -686,6 +688,8 @@ class TestEssentialEnvSelector:
 
 class TestBuildSanitizedWindowsPlatform:
     """Tests for build_sanitized_subprocess_environment on Windows platform."""
+
+    pytestmark = pytest.mark.windows_ci
 
     def _windows_env(self) -> dict[str, str]:
         """Return a representative Windows environment dict."""

@@ -72,10 +72,43 @@ async function createFixture(request: APIRequestContext): Promise<E2EProject> {
   return { projectId: projectId!, repoId: repoId! };
 }
 
+async function fixtureIsUsable(
+  request: APIRequestContext,
+  fixture: E2EProject,
+): Promise<boolean> {
+  const projects = await request.get('/api/projects');
+  if (!projects.ok()) return false;
+  const projectEnvelope = (await projects.json()) as WireEnvelope<WireProject[]>;
+  const project = projectEnvelope.data?.find((candidate) => candidate.id === fixture.projectId);
+  if (!project) return false;
+
+  const repos = await request.get(`/api/projects/${fixture.projectId}/repos`);
+  if (!repos.ok()) return false;
+  const repoEnvelope = (await repos.json()) as WireEnvelope<WireRepository[]>;
+  const repo = repoEnvelope.data?.find((candidate) => candidate.id === fixture.repoId);
+  if (!repo) return false;
+
+  if (!project.active) {
+    const activated = await request.post(`/api/projects/${fixture.projectId}/activate`, { data: {} });
+    if (!activated.ok()) return false;
+  }
+  if (!repo.selected) {
+    const selected = await request.post(`/api/projects/${fixture.projectId}/repos/${fixture.repoId}/select`, {
+      data: {},
+    });
+    if (!selected.ok()) return false;
+  }
+  return true;
+}
+
 async function getFixture(request: APIRequestContext): Promise<E2EProject> {
   const workerKey = process.env.TEST_WORKER_INDEX ?? 'default';
   const existing = fixturePromises.get(workerKey);
-  if (existing) return existing;
+  if (existing) {
+    const fixture = await existing;
+    if (await fixtureIsUsable(request, fixture)) return fixture;
+    fixturePromises.delete(workerKey);
+  }
 
   const created = createFixture(request).catch((error: unknown) => {
     fixturePromises.delete(workerKey);

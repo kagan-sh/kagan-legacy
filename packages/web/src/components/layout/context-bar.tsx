@@ -87,7 +87,7 @@ export function ContextBar() {
           setRepoFilter(firstRepo.id);
           await loadRepos(projectId);
         } catch {
-          // best-effort
+          setRepoFilter(null);
         }
       } else {
         setRepoFilter(null);

@@ -65,6 +65,29 @@ async def test_streaming_output_append_chunk_sanitizes_before_merge() -> None:
         assert chunks[0]._accumulated_text == "hello\nworld"
 
 
+async def test_output_chunk_queues_fragment_before_mount() -> None:
+    chunk = OutputChunk("", kind="assistant")
+
+    chunk.stream_fragment("opening words")
+
+    assert chunk._accumulated_text == "opening words"
+    assert chunk._pending_fragments.qsize() == 1
+
+
+async def test_output_chunk_drain_suppresses_write_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = OutputChunk("", kind="assistant")
+    chunk.stream_fragment("opening words")
+
+    async def _raise(_fragment: str) -> None:
+        raise RuntimeError("unmounted")
+
+    monkeypatch.setattr(chunk, "_write_animated", _raise)
+
+    await chunk._drain_fragments()
+
+
 @pytest.mark.asyncio
 async def test_emit_non_persistent_event_streams_without_db_write(
     monkeypatch: pytest.MonkeyPatch,

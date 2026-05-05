@@ -6,6 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from loguru import logger
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -113,11 +114,9 @@ class OutputChunk(Markdown):
         self._accumulated_text = f"{self._accumulated_text}{fragment}"
         if delay is not None:
             self.word_delay_seconds = max(0.0, delay)
+        self._pending_fragments.put_nowait(fragment)
         if self.is_mounted or self.parent is not None:
-            self._pending_fragments.put_nowait(fragment)
             self._ensure_drain_task()
-        else:
-            self.update(self._accumulated_text)
 
     def on_mount(self) -> None:
         if not self._pending_fragments.empty():
@@ -133,7 +132,11 @@ class OutputChunk(Markdown):
                 fragment = self._pending_fragments.get_nowait()
             except asyncio.QueueEmpty:
                 return
-            await self._write_animated(fragment)
+            try:
+                await self._write_animated(fragment)
+            except Exception:
+                logger.debug("Streaming output drain stopped", exc_info=True)
+                return
 
     async def _write_animated(self, fragment: str) -> None:
         for token in _STREAM_WORD_RE.findall(fragment):

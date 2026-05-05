@@ -73,7 +73,10 @@ async function createFixture(request: APIRequestContext): Promise<E2EProject> {
 }
 
 async function getFixture(request: APIRequestContext): Promise<E2EProject> {
-  fixturePromise ??= createFixture(request);
+  fixturePromise ??= createFixture(request).catch((error: unknown) => {
+    fixturePromise = null;
+    throw error;
+  });
   return fixturePromise;
 }
 

@@ -128,8 +128,11 @@ class OutputChunk(Markdown):
             self._drain_task = asyncio.create_task(self._drain_fragments())
 
     async def _drain_fragments(self) -> None:
-        while not self._pending_fragments.empty():
-            fragment = await self._pending_fragments.get()
+        while True:
+            try:
+                fragment = self._pending_fragments.get_nowait()
+            except asyncio.QueueEmpty:
+                return
             await self._write_animated(fragment)
 
     async def _write_animated(self, fragment: str) -> None:

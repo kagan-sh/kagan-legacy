@@ -27,6 +27,42 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.detect.outputs.web }}
+      vscode: ${{ steps.detect.outputs.vscode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "vscode=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only "$BASE_SHA"...HEAD > /tmp/changed-files
+
+          if grep -Eq '^(packages/web/|packages/shared/|src/kagan/server/|src/kagan/wire/|scripts/generate_wire_types\.py|pnpm-lock\.yaml|package\.json|pnpm-workspace\.yaml)' /tmp/changed-files; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(packages/vscode/|packages/shared/|src/kagan/server/responses\.py|src/kagan/wire/|scripts/generate_wire_types\.py|pnpm-lock\.yaml|package\.json|pnpm-workspace\.yaml)' /tmp/changed-files; then
+            echo "vscode=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vscode=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -210,8 +246,8 @@ jobs:
           uv run pytest tests/tui/smoke/ -n auto -v
 
   test-vscode:
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
-    needs: [fast-gate]
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.vscode == 'true'
+    needs: [fast-gate, changes]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -237,8 +273,8 @@ jobs:
           fi
 
   test-web:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
-    needs: [lint, fast-gate]
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.web == 'true')
+    needs: [lint, fast-gate, changes]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

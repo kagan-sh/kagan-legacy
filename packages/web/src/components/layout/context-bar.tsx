@@ -179,9 +179,11 @@ export function ContextBar() {
       const data = await loadProjects();
       const nextActive = data.find((p) => p.active);
       if (nextActive) {
-        await loadRepos(nextActive.id);
+        const repoList = await loadRepos(nextActive.id);
+        await ensureRepoSelected(nextActive.id, repoList);
       } else {
         setRepos([]);
+        setRepoFilter(null);
       }
       bumpProjectVersion((v) => v + 1);
       toast.success(`Deleted project "${activeProject.name}"`);
@@ -190,7 +192,14 @@ export function ContextBar() {
     } finally {
       setDeleteProjectOpen(false);
     }
-  }, [activeProject, loadProjects, loadRepos, bumpProjectVersion]);
+  }, [
+    activeProject,
+    loadProjects,
+    loadRepos,
+    ensureRepoSelected,
+    setRepoFilter,
+    bumpProjectVersion,
+  ]);
 
   const handleDeleteRepo = useCallback(async () => {
     if (!activeProject || !activeRepo) return;

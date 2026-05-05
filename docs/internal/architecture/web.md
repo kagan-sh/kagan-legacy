@@ -84,6 +84,17 @@ ______________________________________________________________________
 - `task-commits-panel.tsx` -- commit history panel for a task workspace
 - `chat-overlay-empty-state.tsx` -- empty state for the chat overlay when no session is active
 
+### `chat/`
+
+- `streaming-glyph.tsx` -- shared animated wave glyph used by chat, session streams, and tool renderers
+- `streaming-status.tsx` -- shared status label for thinking, tool, command, read, search, image, and generic streaming states
+- `chat-input-bar.tsx` -- reusable chat composer with send/interrupt affordances
+- `chat-stream-entries.tsx` -- orchestrator stream entry renderer
+
+### `layout/`
+
+- `context-bar.tsx` -- active project/repo selector; guarantees an active repo when possible and prompts for Add Repository when required
+
 ### `workspace/`
 
 - `workspace-sidebar.tsx` -- orchestrator session list with search, create, and delete actions
@@ -106,6 +117,7 @@ ______________________________________________________________________
 ## State Architecture
 
 - **Jotai atoms** in `src/lib/atoms/` hold authentication, board, chat, connection, theme, and UI shell state.
+- **ContextBar** coordinates active project/repo selection and seeds `boardRepoFilterAtom`; if repos exist it keeps one selected, and if none exist it opens the Add Repository dialog.
 - **Route-local state** handles page-specific loading, tab selection, and transient form state.
 - **SSE sync** lives in `use-event-stream.ts` and feeds board/task updates into the atom graph. Chat streaming uses per-turn SSE via `POST /api/chat/{id}/stream`.
 

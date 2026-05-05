@@ -51,63 +51,63 @@ These shortcuts apply in the web dashboard (`kagan web`).
 | ++slash++                        | Search                    |
 | ++f++                            | Expand description        |
 | ++ctrl+f++                       | Fullscreen AI chat        |
-| ++ctrl+i++                       | Toggle AI Panel           |
+| ++f4++ / ++ctrl+i++              | Toggle AI Panel           |
 | ++ctrl+k++                       | Session Switcher          |
 | ++esc++                          | Close AI Panel            |
 | ++b++                            | Set branch                |
 
 `Enter` is two-step on the TUI board: first press opens the inspector for the selected card; press `Enter` again to open the full task screen.
 
-Press `Ctrl+I` to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
+Press `F4` (or `Ctrl+I`) to open/close AI Panel, `Space` to cycle split layout, and `Ctrl+F` to expand an already-open overlay fullscreen.
 
 Rare actions like GitHub import, repo sync, and AI review are available via Quick Actions (`Ctrl+Shift+P`).
 
 ## Workspace
 
-| Key        | Action                                                                        |
-| ---------- | ----------------------------------------------------------------------------- |
-| ++enter++  | Open highlighted session                                                      |
-| ++n++      | Start new session                                                             |
-| ++x++      | Delete highlighted session                                                    |
-| ++slash++  | Focus session search                                                          |
-| ++ctrl+i++ | Focus chat input                                                              |
-| ++ctrl+k++ | Session Switcher                                                              |
-| ++w++      | Return to Kanban                                                              |
-| ++esc++    | Step back: clear search or leave chat, then return to Kanban from the sidebar |
+| Key                 | Action                                                                        |
+| ------------------- | ----------------------------------------------------------------------------- |
+| ++enter++           | Open highlighted session                                                      |
+| ++n++               | Start new session                                                             |
+| ++x++               | Delete highlighted session                                                    |
+| ++slash++           | Focus session search                                                          |
+| ++f4++ / ++ctrl+i++ | Focus chat input                                                              |
+| ++ctrl+k++          | Session Switcher                                                              |
+| ++w++               | Return to Kanban                                                              |
+| ++esc++             | Step back: clear search or leave chat, then return to Kanban from the sidebar |
 
-The TUI Workspace is orchestrator-first: the left sidebar is the session list, and the main pane is the full chat surface. Focus enters on the sidebar by default so list actions stay predictable; use `Ctrl+I` to move into chat input.
+The TUI Workspace is orchestrator-first: the left sidebar is the session list, and the main pane is the full chat surface. Focus enters on the sidebar by default so list actions stay predictable; use `F4` (or `Ctrl+I`) to move into chat input.
 
 ## Task Screen
 
-| Key           | Action             |
-| ------------- | ------------------ |
-| ++1++ / ++2++ | Switch tabs        |
-| ++enter++     | Primary action     |
-| ++e++         | Edit task          |
-| ++d++         | Delete task        |
-| ++a++         | Approve            |
-| ++x++         | Reject             |
-| ++m++         | Merge              |
-| ++b++         | Rebase             |
-| ++ctrl+f++    | Fullscreen AI chat |
-| ++ctrl+i++    | Toggle AI Panel    |
-| ++ctrl+k++    | Session Switcher   |
-| ++esc++       | Back               |
+| Key                 | Action             |
+| ------------------- | ------------------ |
+| ++1++ / ++2++       | Switch tabs        |
+| ++enter++           | Primary action     |
+| ++e++               | Edit task          |
+| ++d++               | Delete task        |
+| ++a++               | Approve            |
+| ++x++               | Reject             |
+| ++m++               | Merge              |
+| ++b++               | Rebase             |
+| ++ctrl+f++          | Fullscreen AI chat |
+| ++f4++ / ++ctrl+i++ | Toggle AI Panel    |
+| ++ctrl+k++          | Session Switcher   |
+| ++esc++             | Back               |
 
 AI review is Quick Actions first (`Ctrl+Shift+P` -> `review.ai`).
 
 ## Session Dashboard
 
-| Key              | Action             |
-| ---------------- | ------------------ |
-| ++enter++        | Start/focus        |
-| ++s++            | Start agent        |
-| ++x++            | Stop agent         |
-| ++r++            | Restart agent      |
-| ++ctrl+i++       | Toggle AI Panel    |
-| ++ctrl+shift+t++ | Fullscreen AI chat |
-| ++ctrl+k++       | Session Switcher   |
-| ++esc++          | Back               |
+| Key                 | Action             |
+| ------------------- | ------------------ |
+| ++enter++           | Start/focus        |
+| ++s++               | Start agent        |
+| ++x++               | Stop agent         |
+| ++r++               | Restart agent      |
+| ++f4++ / ++ctrl+i++ | Toggle AI Panel    |
+| ++ctrl+shift+t++    | Fullscreen AI chat |
+| ++ctrl+k++          | Session Switcher   |
+| ++esc++             | Back               |
 
 ## AI Panel
 

@@ -34,7 +34,7 @@ ______________________________________________________________________
 - The right pane shows a compact active-conversation header above the full chat surface
 - Focus enters on the session list by default so `n`, `x`, `/`, and `Enter` always target the sidebar first
 - `n` creates a new orchestrator session, `x` deletes the selected session, `Enter` opens the highlighted session
-- `Ctrl+I` explicitly moves focus into the chat input; opening or creating a session also moves focus into chat
+- `F4` (or `Ctrl+I`) explicitly moves focus into the chat input; opening or creating a session also moves focus into chat
 - `Esc` is layered: in search it clears the filter first, from chat it returns to the sidebar, and from the sidebar it returns to Kanban
 - `w` always switches back to Kanban directly
 - Footer hints are focus-aware: sidebar, search, and chat each show different next actions
@@ -63,7 +63,8 @@ ______________________________________________________________________
 ## 6. AI Panel
 
 - Two modes: orchestrator and task session
-  - `Ctrl+I` toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
+  - `F4` (or `Ctrl+I`) toggles AI Panel, `Space` cycles split layout, `Ctrl+F` fullscreen while open, `Ctrl+K` Session Switcher, `Esc` close
+- Streaming output appends fragments as they arrive, drains words on a short timer, and follows the newest content without duplicating finalized text
 - `Enter` send, `Shift+Enter` newline, `Tab` accept completion
 - `Ctrl+C` clears input text; `Esc` stops the active agent
 
@@ -100,6 +101,7 @@ ______________________________________________________________________
 | `w`                | Switch to workspace                                  |
 | `a`                | Attach interactive run (stops managed run if active) |
 | `Space`            | Cycle AI split                                       |
+| `F4` / `Ctrl+I`    | Toggle AI Panel                                      |
 | `p`                | Peek                                                 |
 | `e`                | Edit                                                 |
 | `x`                | Delete (confirm)                                     |
@@ -109,16 +111,16 @@ ______________________________________________________________________
 
 ### Workspace
 
-| Key      | Action                                                         |
-| -------- | -------------------------------------------------------------- |
-| `Enter`  | Open highlighted session                                       |
-| `n`      | New session                                                    |
-| `x`      | Delete selected session                                        |
-| `/`      | Focus search                                                   |
-| `Ctrl+I` | Focus chat input                                               |
-| `Ctrl+K` | Session Switcher                                               |
-| `w`      | Return to board                                                |
-| `Esc`    | Step back: clear search, then leave chat, then return to board |
+| Key             | Action                                                         |
+| --------------- | -------------------------------------------------------------- |
+| `Enter`         | Open highlighted session                                       |
+| `n`             | New session                                                    |
+| `x`             | Delete selected session                                        |
+| `/`             | Focus search                                                   |
+| `F4` / `Ctrl+I` | Focus chat input                                               |
+| `Ctrl+K`        | Session Switcher                                               |
+| `w`             | Return to board                                                |
+| `Esc`           | Step back: clear search, then leave chat, then return to board |
 
 ### Task Screen
 
@@ -127,4 +129,5 @@ ______________________________________________________________________
 | `1` / `2`             | Switch tabs                       |
 | `a` / `x` / `m` / `b` | Approve / reject / merge / rebase |
 | `Ctrl+F`              | Fullscreen AI chat (when open)    |
+| `F4` / `Ctrl+I`       | Toggle AI Panel                   |
 | `Esc`                 | Back                              |

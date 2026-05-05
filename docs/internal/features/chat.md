@@ -250,7 +250,7 @@ ______________________________________________________________________
 
 **Given** the agent sends `AgentMessageChunk` events
 **When** `_OrchestratorACPClient` receives them
-**Then** the chunks are printed to Rich console with streaming animation.
+**Then** each chunk is printed to the Rich console immediately with streaming animation, and turn finalization only closes the live line or renders fallback Markdown when nothing was streamed.
 
 ______________________________________________________________________
 

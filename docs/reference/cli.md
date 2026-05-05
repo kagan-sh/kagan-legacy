@@ -69,11 +69,11 @@ Runs startup diagnostics (Python, git, agent backend availability, tmux, IDE, DB
 
 `kagan` runs these checks silently on boot and only surfaces output when critical blockers are detected. Exit code 0 when all pass/warn, exit code 1 on any failure.
 
-| Option                  | Description                                     |
-| ----------------------- | ----------------------------------------------- |
-| `--verbosity tldr`      | Warnings and failures only                      |
-| `--verbosity short`     | Concise guidance + one source pointer (default) |
-| `--verbosity technical` | Full rationale, commands, official source links |
+| Option                  | Description                                                              |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `--verbosity tldr`      | Warnings and failures only                                               |
+| `--verbosity short`     | Rich summary, required checks, backend panel, and action table (default) |
+| `--verbosity technical` | Full rationale, commands, official source links                          |
 
 ______________________________________________________________________
 

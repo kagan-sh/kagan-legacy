@@ -83,7 +83,7 @@ Press `.` for Actions → run `github import` → enter repo (auto-detected from
 
 ### Web
 
-Click **Import from GitHub** on the board toolbar. Same fields, same preview, same toggles.
+Click **Import from GitHub** on the board toolbar. The repository field auto-fills from the active project repo when possible, then the same preview and import toggles as the CLI flow apply.
 
 ### VS Code
 

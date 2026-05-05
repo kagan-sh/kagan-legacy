@@ -13,6 +13,20 @@
 
 
 
+## v0.19.0-beta.32 (2026-05-05)
+
+
+
+
+### Chores
+
+- Polish agent response streaming
+  ([`afafde3`](https://github.com/kagan-sh/kagan/commit/afafde3ce80133fa185cd4ffa86ca639a97a7e48))
+
+
+
+
+
 ## v0.19.0-beta.31 (2026-05-05)
 
 

@@ -166,11 +166,10 @@ export function ContextBar() {
   const handleRepoAdded = useCallback(async () => {
     if (activeProject) {
       const repoList = await loadRepos(activeProject.id);
-      const selected = repoList.find((r) => r.selected);
-      if (selected) setRepoFilter(selected.id);
+      await ensureRepoSelected(activeProject.id, repoList);
       bumpProjectVersion((v) => v + 1);
     }
-  }, [activeProject, loadRepos, setRepoFilter, bumpProjectVersion]);
+  }, [activeProject, loadRepos, ensureRepoSelected, bumpProjectVersion]);
 
   const handleDeleteProject = useCallback(async () => {
     if (!activeProject) return;

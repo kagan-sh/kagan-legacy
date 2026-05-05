@@ -121,6 +121,8 @@ class OutputChunk(Markdown):
     def on_mount(self) -> None:
         if not self._pending_fragments.empty():
             self._ensure_drain_task()
+        elif self._accumulated_text:
+            self.update(self._accumulated_text)
 
     def _ensure_drain_task(self) -> None:
         if self._drain_task is None or self._drain_task.done():

@@ -21,6 +21,7 @@ _STATUS_STYLES = {
     "warn": "yellow",
     "fail": "red",
 }
+_BACKEND_CHECK_PREFIX = "backend: "
 
 
 def emit_tldr(checks: list[DoctorCheck]) -> None:
@@ -92,7 +93,7 @@ def _required_table(checks: list[DoctorCheck]) -> Table:
     rows = [
         check
         for check in checks
-        if check.category != "backend" and not check.name.startswith("backend:")
+        if check.category != "backend" and not check.name.startswith(_BACKEND_CHECK_PREFIX)
     ]
     table = Table(
         title="Required environment",
@@ -119,7 +120,9 @@ def _backend_panel(checks: list[DoctorCheck]) -> Panel:
         (c for c in checks if c.category == "backend" and c.name == "agent backends"),
         None,
     )
-    backend_rows = [c for c in checks if c.category == "backend" and c.name.startswith("backend:")]
+    backend_rows = [
+        c for c in checks if c.category == "backend" and c.name.startswith(_BACKEND_CHECK_PREFIX)
+    ]
     installed = [_backend_display_name(c) for c in backend_rows if c.status == "pass"]
     missing = [_backend_display_name(c) for c in backend_rows if c.status != "pass"]
 
@@ -148,7 +151,7 @@ def _action_table(checks: list[DoctorCheck]) -> Table:
         for c in checks
         if c.status in {"warn", "fail"}
         and c.fix_hint
-        and not (c.category == "backend" and c.name.startswith("backend:"))
+        and not (c.category == "backend" and c.name.startswith(_BACKEND_CHECK_PREFIX))
     ]
 
     table = Table(
@@ -175,4 +178,4 @@ def _status_label(status: str) -> Text:
 
 
 def _backend_display_name(check: DoctorCheck) -> str:
-    return check.name.removeprefix("backend: ").strip()
+    return check.name.removeprefix(_BACKEND_CHECK_PREFIX).strip()

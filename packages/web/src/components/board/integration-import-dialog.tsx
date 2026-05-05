@@ -52,6 +52,8 @@ export function IntegrationImportDialog({ open, onOpenChange }: IntegrationImpor
       ]);
       if (repoSettled.status === 'fulfilled' && repoSettled.value.repo_slug) {
         setRepo(repoSettled.value.repo_slug);
+      } else {
+        setRepo('');
       }
       if (preflightSettled.status === 'fulfilled') {
         setReady(preflightSettled.value.ready);

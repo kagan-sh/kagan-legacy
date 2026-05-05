@@ -83,6 +83,7 @@ export function ContextBar() {
         try {
           await apiClient.selectProjectRepo(projectId, firstRepo.id);
           await loadRepos(projectId);
+          setRepoFilter(firstRepo.id);
         } catch {
           // best-effort
         }
@@ -90,7 +91,7 @@ export function ContextBar() {
         setAddRepoOpen(true);
       }
     },
-    [loadRepos],
+    [loadRepos, setRepoFilter, setAddRepoOpen],
   );
 
   useEffect(() => {

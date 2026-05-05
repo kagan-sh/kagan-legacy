@@ -63,21 +63,6 @@ class ResponseChunkBuffer:
 _WORD_RE = re.compile(r"\S+\s*|\s+")
 
 
-def _looks_like_markdown(text: str) -> bool:
-    stripped = text.strip()
-    if not stripped:
-        return False
-    if "```" in stripped:
-        return True
-    for line in stripped.splitlines():
-        compact = line.strip()
-        if compact.startswith(("# ", "## ", "### ", "- ", "* ", "> ")):
-            return True
-        if compact.startswith("|") and compact.endswith("|"):
-            return True
-    return False
-
-
 class StreamingMarkdownRegion:
     """Streams incoming chunks immediately and keeps the final Markdown buffer."""
 
@@ -105,8 +90,6 @@ class StreamingMarkdownRegion:
             if printed:
                 self._console.print()
                 self._console.file.flush()
-                if _looks_like_markdown(text):
-                    self._console.print(Markdown(text))
             else:
                 self._console.print(Markdown(text))
 

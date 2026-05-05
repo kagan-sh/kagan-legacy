@@ -5,7 +5,6 @@ from threading import RLock
 from typing import Any
 
 from loguru import logger
-from rich.markdown import Markdown
 from rich.text import Text
 
 # 10MB safeguard to prevent OOM from unbounded chunk accumulation
@@ -64,7 +63,7 @@ _WORD_RE = re.compile(r"\S+\s*|\s+")
 
 
 class StreamingMarkdownRegion:
-    """Streams incoming chunks immediately and keeps the final Markdown buffer."""
+    """Streams incoming chunks immediately and keeps the final response buffer."""
 
     def __init__(self, console: Any) -> None:
         self._console = console
@@ -80,7 +79,7 @@ class StreamingMarkdownRegion:
             self._print_words(text)
 
     def finalize(self) -> None:
-        """Finish the live line, then render Markdown when the reply needs it."""
+        """Finish the live line after a streamed response."""
         with self._lock:
             text = self._joined().strip()
             printed = self._printed
@@ -90,8 +89,6 @@ class StreamingMarkdownRegion:
             if printed:
                 self._console.print()
                 self._console.file.flush()
-            else:
-                self._console.print(Markdown(text))
 
     def discard(self) -> None:
         """Clear the buffer without printing (used on turn reset)."""
